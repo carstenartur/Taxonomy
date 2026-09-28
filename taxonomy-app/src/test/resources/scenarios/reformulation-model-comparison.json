@@ -1,0 +1,10 @@
+{
+  "provenance": "Authored evaluation cases and catalogue-front assumptions; not external requirements or evidence of model quality.",
+  "cases": [
+    {"id": "sparse", "source": "We need working-time recording.", "literalConstraints": []},
+    {"id": "precise-negative-numerical", "source": "Record working time at electronic terminals only. No browser entry. Retain entries for 30 days, including entries with weak architecture scores. Keep the original paper consent note visible even without a taxonomy mapping.", "literalConstraints": ["terminals only", "No browser entry", "30 days", "paper consent"]},
+    {"id": "contradictory", "source": "Delete working-time entries after 30 days. Keep every working-time entry for at least 90 days. A supervisor must resolve this conflict; do not choose a retention period silently.", "literalConstraints": ["30 days", "90 days", "conflict"]},
+    {"id": "multilevel", "source": "Acquire working-time events from terminals, validate incomplete pairs, calculate daily totals and publish a monthly statement. Corrections require an attributable history. A rejected correction must not modify the original event. Keep source timestamps on the published statement.", "literalConstraints": ["terminals", "monthly", "rejected correction", "timestamps"]},
+    {"id": "incomplete", "source": "Provide a civilian observation service. The required notification channels, stale-data threshold, retention period and responsible reviewer are not yet decided. Do not invent values or treat the service as a safety-critical replacement for official warnings.", "literalConstraints": ["not yet decided", "safety-critical", "official warnings"]}
+  ]
+}

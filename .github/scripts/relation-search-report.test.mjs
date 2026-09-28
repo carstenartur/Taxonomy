@@ -26,3 +26,48 @@ test('regular UI verification executes both relationship report suites', async (
     assert.ok(scripts[owner].includes('npm run test:requirement-relations'), `missing suite owner: ${owner}`);
   }
 });
+
+test('source contributions remain inspectable without any verified edge', () => {
+  const r = base();
+  r.sources = [{ node: { id: 'reader' }, rationale: 'Needed by the requirement', question: '',
+    contributions: [{ text: 'Read published evidence', quote: 'Read evidence.', condition: '' }] }];
+  const html = render(r);
+  assert.match(html, /relation.search.sources/);
+  assert.match(html, /reader/);
+  assert.match(html, /Read published evidence/);
+  assert.match(html, /<q>Read evidence\.<\/q>/);
+  assert.doesNotMatch(html, /VERIFIED/);
+});
+test('source questions, conditions and quotations are escaped and bounded', () => {
+  const r = base();
+  r.sources = [{ node: { id: '<reader>' }, rationale: '<script>bad</script>', question: 'Which <channel>?',
+    contributions: Array.from({ length: 5 }, (_, i) => ({ text: `part-${i}`, quote: '<quoted>', condition: '<optional>' })) }];
+  const html = render(r);
+  assert.match(html, /&lt;reader&gt;/);
+  assert.match(html, /Which &lt;channel&gt;\?/);
+  assert.match(html, /&lt;quoted&gt;/);
+  assert.match(html, /&lt;optional&gt;/);
+  assert.match(html, /relation.search.omitted 4 5/);
+  assert.doesNotMatch(html, /<script|part-4/);
+});
+function elementTable(element) {
+  const local = { TaxonomyState: {} };
+  vm.runInNewContext(source.replace('window.TaxonomyScoring = {',
+    'window.elementProbe = renderElementsTable; window.TaxonomyScoring = {'),
+    { window: local, TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml } });
+  return local.elementProbe([element], new Set());
+}
+test('scoped source and target proposals never display absent scores as assessed zeros', () => {
+  for (const origin of ['REQUIREMENT_EVIDENCE', 'RELATION_EVIDENCE']) {
+    const html = elementTable({ nodeCode: 'reader', origin, relevance: 0, directLlmScore: 0 });
+    assert.doesNotMatch(html, /<td>0\.0%<\/td>|<td>0<\/td>/);
+    assert.match(html, /<td>—<\/td><td>—<\/td>/);
+  }
+});
+test('scoped raw and effective assessment values remain distinct, including explicit zero', () => {
+  for (const [rawScore, effectiveRelevance] of [[80, 32], [0, 0]]) {
+    const html = elementTable({ nodeCode: 'reader', origin: 'REQUIREMENT_EVIDENCE', relevance: 0.95,
+      directLlmScore: 95, scoreDetail: { rawScore, effectiveRelevance } });
+    assert.ok(html.includes(`<td>${effectiveRelevance.toFixed(1)}%</td><td>${rawScore}</td>`));
+  }
+});

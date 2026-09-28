@@ -89,7 +89,8 @@
         if (status === 'PARTIAL') return 'PARTIAL';
         if (status === 'CANCELLED') return 'CANCELLED';
         if (status === 'ERROR' || status === 'FAILED') return 'FAILED';
-        return result && result.scores ? 'SUCCEEDED' : 'FAILED';
+        // Scores alone do not prove that the complete analysis succeeded.
+        return 'FAILED';
     }
 
     function installFetchLifecycle() {
@@ -312,21 +313,36 @@
             }
             document.addEventListener('taxonomy:operation-state', listener);
 
-            var analyze = document.getElementById('analyzeBtn');
-            if (!analyze || analyze.disabled || analyze.getAttribute('aria-disabled') === 'true') {
+            function failedStart(error) {
                 document.removeEventListener('taxonomy:operation-state', listener);
+                var statusArea = document.getElementById('statusArea');
+                var fallback = C.language() === 'de'
+                    ? 'Die vollständige Analyse kann in diesem Zustand nicht gestartet werden.'
+                    : 'The complete analysis cannot be started in the current state.';
                 resolve({
-                    operationId: null,
+                    operationId: selectedOperationId,
                     operationType: 'ANALYSIS',
                     status: 'FAILED',
                     phase: 'VALIDATING',
-                    message: C.language() === 'de'
-                        ? 'Die vollständige Analyse kann in diesem Zustand nicht gestartet werden.'
-                        : 'The complete analysis cannot be started in the current state.'
+                    message: boundedMessage(error && error.message,
+                        boundedMessage(statusArea && statusArea.textContent, fallback))
                 });
+            }
+
+            var analyze = document.getElementById('analyzeBtn');
+            if (!analyze || analyze.disabled || analyze.getAttribute('aria-disabled') === 'true') {
+                failedStart();
                 return;
             }
-            analyze.click();
+            try {
+                analyze.click();
+                // runAnalysis either starts its fetch synchronously (which emits
+                // RUNNING above), or rejects the action during preflight. A no-op
+                // must not keep a listener that could adopt a later unrelated run.
+                if (!selectedOperationId) failedStart();
+            } catch (error) {
+                failedStart(error);
+            }
         });
     }
 
@@ -336,6 +352,17 @@
         if (!target) return;
         target.dataset.sessionControl = 'copilot';
         target.dataset.sessionTestOutcome = 'operation';
+
+        // Preserve imported/manual completed evidence without manufacturing a new provider call.
+        if (currentScoresAreAuthoritative() && !C.S.recoveryContext
+                && !window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) return;
+
+        if (window.TaxonomyAnalysisRecovery) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            window.TaxonomyAnalysisRecovery.startCopilot();
+            return;
+        }
 
         if (currentScoresAreAuthoritative()) return;
 

@@ -124,7 +124,7 @@ public class CrossTaxonomyReconciler {
         var shared=new TreeMap<String,List<String>>();for(var s:d.statements())for(String link:s.architectureLinks())shared.computeIfAbsent(link,k->new ArrayList<>()).add(s.id());
         shared.entrySet().removeIf(e->e.getValue().size()<2);
         return new ReconciliationInput(b,round,d.sections(),d.statements(),d.questions(),answers,boundaries,shared,
-            d.statements().stream().filter(s->s.provenance()==Statement.Provenance.ORIGINAL).map(Statement::id).toList());
+            d.statements().stream().filter(s->s.provenance().isSource()).map(Statement::id).toList());
     }
     private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,ReconciliationResult review,List<DecisionAnswer> answers,Map<String,String> boundary,Set<String> touched,ReformulationStepExecutor steps) {
         var affected=new LinkedHashSet<>(review.affectedSectionIds());boolean changed;
@@ -137,7 +137,7 @@ public class CrossTaxonomyReconciler {
         // Peers remain frozen for the round; ancestors receive completed child results in DAG order.
         var ordered=new ArrayList<String>();var visiting=new HashSet<String>();for(String id:affected)order(id,sections,affected,visiting,ordered);
         for(String id:ordered) {
-            var section=sections.get(id);var localStatements=before.statements().stream().filter(s->section.statementIds().contains(s.id()) || s.provenance()==Statement.Provenance.ORIGINAL).toList();
+            var section=sections.get(id);var localStatements=before.statements().stream().filter(s->section.statementIds().contains(s.id()) || s.provenance().isSource()).toList();
             var localQuestions=before.questions().stream().filter(q->!Collections.disjoint(q.referenceIds(),section.questionIds()) || !Collections.disjoint(q.affectedStatementIds(),section.statementIds()) || q.key().scope().equals("global")).toList();
             var localQIds=new HashSet<String>();localQuestions.forEach(q->localQIds.addAll(q.referenceIds()));
             var localAnswers=answers.stream().filter(a->localQIds.contains(a.questionId())).toList();
@@ -151,7 +151,7 @@ public class CrossTaxonomyReconciler {
                 if(selected.contains(e.path("sourceCode").asText()) || selected.contains(e.path("targetCode").asText()) || selected.contains(k))localEdges.put(k,v);});
             var frozenContext=new ReconcilePromptBuilder(json).scopedContext(baseline,selected);
             var in=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(Map.of("section",section,"frozenNodeContext",frozenContext,"reconciliationFindings",review.findings().stream().filter(f->f.statementIds().isEmpty() || !Collections.disjoint(f.statementIds(),section.statementIds())).toList())),sourceSpans(baseline),localStatements,children,localEdges,localAnswers,localQuestions,"Preserve exact original and prior evidence. Re-synthesize only this affected section, keeping peer outputs frozen within the round; summarize completed child details. Resolve findings visibly; do not overwrite human/source wording.");
-            var result=steps.execute("REWORD",in,NodeSynthesisResult.class,()->nodes.synthesize(in,steps));result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
+            var result=RejectedWordingGuard.review(steps.execute("REWORD",in,NodeSynthesisResult.class,()->nodes.synthesize(in,steps)),statements.values(),InheritedDecisionContext.rejected(in,json));result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
             var sids=new ArrayList<>(section.statementIds());sids.addAll(result.preservedStatementIds());result.statementProposals().forEach(s->sids.add(s.id()));
             var qids=new ArrayList<>(section.questionIds());qids.addAll(result.preservedQuestionIds());result.questionProposals().forEach(q->qids.add(q.id()));
             sections.put(id,new Section(id,section.taxonomyCode(),section.title(),result.summary(),section.children(),distinct(sids),distinct(qids)));
@@ -166,13 +166,13 @@ public class CrossTaxonomyReconciler {
     }
     private static List<Statement.SourceSpan> sourceSpans(ReformulationBaseline b){return b.originalText().isEmpty()?List.of():List.of(new Statement.SourceSpan(0,b.originalText().length(),b.originalText()));}
     private static ReformulationDocument preserveSource(ReformulationBaseline baseline,ReformulationDocument doc) {
-        var statements=new ArrayList<>(doc.statements());var source=statements.stream().filter(s->s.provenance()==Statement.Provenance.ORIGINAL && s.wording().equals(baseline.originalText())).findFirst();
-        if(source.isEmpty() && !baseline.originalText().isBlank()){var s=new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":0").substring(0,24),baseline.originalText(),sourceSpans(baseline),Statement.Provenance.ORIGINAL,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED");statements.add(s);source=Optional.of(s);}
+        var statements=new ArrayList<>(doc.statements());var source=statements.stream().filter(s->s.provenance().isSource() && s.wording().equals(baseline.originalText())).findFirst();
+        if(source.isEmpty() && !baseline.originalText().isBlank()){var origin=baseline.frozenContext().containsKey("adoptedLineage")?Statement.Provenance.ADOPTED_SOURCE:Statement.Provenance.ORIGINAL;var s=new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":0").substring(0,24),baseline.originalText(),sourceSpans(baseline),origin,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED");statements.add(s);source=Optional.of(s);}
         return new ReformulationDocument(doc.text(),doc.sections(),statements,doc.questions(),doc.validation(),doc.nodeResults());
     }
     private ReformulationDocument layout(ReformulationBaseline baseline,ReformulationDocument doc,List<ValidationReport.Finding> findings,Map<String,String> boundary,List<DecisionAnswer> answers) {
         var statements=doc.statements();
-        var sourceIds=statements.stream().filter(s->s.provenance()==Statement.Provenance.ORIGINAL).map(Statement::id).toList();
+        var sourceIds=statements.stream().filter(s->s.provenance().isSource()).map(Statement::id).toList();
         var bySection=new LinkedHashMap<String,Section>();doc.sections().forEach(v->bySection.put(v.id(),v));
         var nested=new HashSet<String>();doc.sections().forEach(v->nested.addAll(v.children()));
         var sorted=doc.sections().stream().sorted(Comparator.comparingInt(CrossTaxonomyReconciler::layoutPriority).thenComparing(Section::id)).toList();
@@ -183,12 +183,17 @@ public class CrossTaxonomyReconciler {
         sections.add(new Section("@interfaces",null,"Schnittstellen / Interfaces","Directed boundary relations: "+String.join("; ",interfaceText),List.of(),statements.stream().filter(s->s.architectureLinks().stream().anyMatch(boundary::containsKey)).map(Statement::id).toList(),List.of()));
         sections.add(new Section("@cross-cutting",null,"Übergreifende Vorgaben / Cross-cutting constraints","Original restrictions apply across taxonomy views.",List.of(),sourceIds,doc.questions().stream().filter(q->q.key().scope().equals("global")).map(DecisionQuestion::id).toList()));
         sections.add(new Section("@unmapped",null,"Original / Unmapped source","Original text retained verbatim; mapping and semantic completeness require review.",List.of(),sourceIds,List.of()));
+        var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements));
+        rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
+        var safeSections=sections.stream().map(s->new Section(s.id(),s.taxonomyCode(),s.title(),
+                RejectedWordingGuard.safeSummary(s.summary(),rejected,findings),s.children(),s.statementIds(),s.questionIds()))
+                .toList();
         findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,"ORIGINAL_REMAINDER","Original clauses remain visibly available independently of architecture scores",sourceIds,sourceSpans(baseline)));
         var byId=new HashMap<String,Statement>();statements.forEach(s->byId.put(s.id(),s));var rendered=new HashSet<String>();var text=new StringBuilder();
-        for(var section:sections){text.append(section.title()).append("\n").append("[Unreviewed summary] ").append(section.summary()).append("\n");
-            for(String id:section.statementIds()){var s=byId.get(id);if(s!=null && (!sourceIds.contains(id) || section.id().equals("@unmapped")) && rendered.add(id))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n");}
+        for(var section:safeSections){text.append(section.title()).append("\n").append("[Unreviewed summary] ").append(section.summary()).append("\n");
+            for(String id:section.statementIds()){var s=byId.get(id);if(s!=null && !"REJECTED".equals(s.reviewState()) && (!sourceIds.contains(id) || section.id().equals("@unmapped")) && rendered.add(id))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n");}
             text.append("\n");}
-        for(var s:statements)if(rendered.add(s.id()))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n\n");
+        for(var s:statements)if(!"REJECTED".equals(s.reviewState()) && rendered.add(s.id()))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n\n");
         for(var q:doc.questions()) {
             text.append("[").append(q.state()).append("] ").append(q.wording());
             if(q.state()==DecisionQuestion.State.OPEN)text.append(" — ").append(String.join(" / ",q.answerSchema().options()));
@@ -197,7 +202,7 @@ public class CrossTaxonomyReconciler {
             text.append("\n");
         }
         findings.stream().filter(f->f.kind()==ValidationReport.Kind.CONFLICT).distinct().forEach(f->text.append("[CONFLICT] ").append(f.message()).append("\n"));
-        return new ReformulationDocument(text.toString(),sections,statements,doc.questions(),doc.validation(),doc.nodeResults());
+        return new ReformulationDocument(text.toString(),safeSections,statements,doc.questions(),doc.validation(),doc.nodeResults());
     }
     private static void place(Section s,Map<String,Section> byId,Set<String> placed,List<Section> result) {
         if(!placed.add(s.id()))return;result.add(s);s.children().stream().sorted().map(byId::get).filter(Objects::nonNull).forEach(child->place(child,byId,placed,result));

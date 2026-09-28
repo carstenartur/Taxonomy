@@ -34,6 +34,7 @@ public class SavedAnalysisService {
 
     private static final int CURRENT_VERSION = 2;
     private static final int MIN_SUPPORTED_VERSION = 1;
+    private static final int MAX_SUPPORTED_VERSION = 3;
 
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
@@ -94,7 +95,7 @@ public class SavedAnalysisService {
      *
      * <p>Validation rules:
      * <ul>
-     *   <li>{@code version} must be {@value #SUPPORTED_VERSION}</li>
+     *   <li>{@code version} must be within the supported version range</li>
      *   <li>{@code requirement} must not be blank</li>
      *   <li>{@code scores} must not be null or empty</li>
      *   <li>Unknown node codes in {@code scores} generate warnings but do not fail</li>
@@ -106,12 +107,16 @@ public class SavedAnalysisService {
      * @throws IOException              if the JSON cannot be parsed
      */
     public SavedAnalysis importFromJson(String json) throws IOException {
-        SavedAnalysis saved = objectMapper.readValue(json, SavedAnalysis.class);
+        int version = objectMapper.readTree(json).path("version").asInt(2);
+        SavedAnalysis saved = version >= 3
+                ? objectMapper.readerFor(SavedAnalysis.class)
+                    .without(tools.jackson.databind.DeserializationFeature.ACCEPT_FLOAT_AS_INT).readValue(json)
+                : objectMapper.readValue(json, SavedAnalysis.class);
 
-        if (saved.getVersion() < MIN_SUPPORTED_VERSION || saved.getVersion() > CURRENT_VERSION) {
+        if (saved.getVersion() < MIN_SUPPORTED_VERSION || saved.getVersion() > MAX_SUPPORTED_VERSION) {
             throw new IllegalArgumentException(
                     "Unsupported version: " + saved.getVersion()
-                            + " (supported: " + MIN_SUPPORTED_VERSION + "–" + CURRENT_VERSION + ")");
+                            + " (supported: " + MIN_SUPPORTED_VERSION + "–" + MAX_SUPPORTED_VERSION + ")");
         }
         if (saved.getRequirement() == null || saved.getRequirement().isBlank()) {
             throw new IllegalArgumentException("requirement must not be blank");
@@ -119,6 +124,8 @@ public class SavedAnalysisService {
         if (saved.getScores() == null || saved.getScores().isEmpty()) {
             throw new IllegalArgumentException("scores must not be null or empty");
         }
+
+        validateCoverageEvidence(saved);
 
         // Warn about unknown node codes but do not reject
         List<String> unknownCodes = new ArrayList<>();
@@ -132,6 +139,18 @@ public class SavedAnalysisService {
         }
 
         return saved;
+    }
+
+    /** Version-3 evidence must refer to real catalogue identities on both exchange paths. */
+    public void validateCoverageEvidence(SavedAnalysis saved) {
+        saved.validateCoverageEvidence();
+        if (saved.getVersion() >= 3) {
+            for (String code : saved.getAnalysisCoverage().nodes().keySet()) {
+                if (taxonomyService.getNodeByCode(code) == null) {
+                    throw new IllegalArgumentException("Unknown catalogue node in assessment coverage: " + code);
+                }
+            }
+        }
     }
 
     /**

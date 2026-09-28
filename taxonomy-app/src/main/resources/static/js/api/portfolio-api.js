@@ -103,7 +103,7 @@ window.TaxonomyPortfolioApi = (function () {
     function reformulationReportPath(projectId, requirementId, proposalId, kind, identity, format) {
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
         if (typeof proposalId !== 'string' || !uuid.test(proposalId)) throw new TypeError('Invalid proposal ID');
-        if (!['json', 'md', 'html'].includes(format)) throw new TypeError('Unsupported report format');
+        if (!['json', 'md', 'html', 'docx'].includes(format)) throw new TypeError('Unsupported report format');
         if (kind === 'revisions') identity = positiveInteger(identity, 'revision');
         else if (typeof identity !== 'string' || !uuid.test(identity)) throw new TypeError('Invalid adoption command ID');
         return requirementPath(projectId, requirementId) + '/reformulations/' + proposalId

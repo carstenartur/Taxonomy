@@ -11,6 +11,9 @@ package com.taxonomy.dto;
  */
 public enum NodeOrigin {
 
+    /** Quoted source contribution proposal; no separately verified relationship is implied. */
+    REQUIREMENT_EVIDENCE("node.origin.requirement.evidence"),
+
     /** Endpoint retained by requirement-scoped, separately verified relation evidence. */
     RELATION_EVIDENCE("node.origin.relation.evidence"),
 

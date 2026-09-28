@@ -27,6 +27,20 @@ public final class RelationSearchUseCaseContract {
         System.out.println("Relation use-case contracts: " + passed + " passed, " + failed.size() + " failed");
         if (!failed.isEmpty()) throw new AssertionError(failed.size() + " failed");
     }
+    public static void testDefaultSearchIsWiredIntoRealUseCase() throws Exception {
+        Fixture f = fixture(null, 24, false);
+        var result = f.analyze(true);
+        check(result.getRelationSearchReport() != null && !result.getRelationSearchReport().result().edges().isEmpty(),
+                "Default production use case must execute scoped search without a test enabling it");
+        check(f.legacy.get() == 0 && f.legacyViews.get() == 0, "Default must not use score-only inference");
+    }
+    public static void testDefaultMalformedResponseNeverFallsBackToScores() throws Exception {
+        Fixture f = fixture(null, 24, true);
+        var result = f.analyze(true);
+        check("PARTIAL".equals(result.getStatus()) && result.getRelationSearchReport() != null,
+                "Default failure preserves explicit partial evidence");
+        check(f.legacy.get() == 0 && f.legacyViews.get() == 0, "No default-error fallback to legacy relations");
+    }
     public static void testEnabledSearchIsWiredIntoRealUseCase() throws Exception {
         Fixture f = fixture(true, 24, false);
         var result = f.analyze(true);
@@ -51,7 +65,7 @@ public final class RelationSearchUseCaseContract {
     }
     public static void testDisabledModeRetainsExistingBehaviourWithoutExtraCalls() throws Exception {
         Fixture f = fixture(false, 24, false); var r = f.analyze(true);
-        check(r.getRelationSearchReport() == null && f.raw.get() == 0 && f.legacy.get() == 1 && f.legacyViews.get() == 1, "opt-in is explicit");
+        check(r.getRelationSearchReport() == null && f.raw.get() == 0 && f.legacy.get() == 1 && f.legacyViews.get() == 1, "legacy override is explicit");
     }
     public static void testNoArchitectureStillRetainsScopedReport() throws Exception {
         Fixture f = fixture(true, 24, false); var r = f.analyze(false);
@@ -64,12 +78,13 @@ public final class RelationSearchUseCaseContract {
         check(copy.getRelationSearchReport() != null && !copy.getRelationSearchReport().result().edges().isEmpty(), "snapshot report retained");
         check(!copy.getArchitectureView().getIncludedRelationships().getFirst().getRequirementEvidence().isEmpty(), "view evidence retained");
     }
-    static Fixture fixture(boolean enabled, int calls, boolean invalid) throws Exception {
+    static Fixture fixture(Boolean enabled, int calls, boolean invalid) throws Exception {
         AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1)); r.setStatus("SUCCESS"); return r; }
             @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return invalid ? "please try again" : RequirementRelationSearchContract.answer(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
+            @Override public LlmProvider getActiveProvider() { return LlmProvider.CUSTOM_OPENAI; }
             @Override public void clearRequestProvider() { }
         };
         TaxonomyNode source = node("process", "BP", "BP"), root = node("IP", "IP", null), target = node("evidence", "IP", "IP");
@@ -82,7 +97,8 @@ public final class RelationSearchUseCaseContract {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(String text, String provider) { return null; }
         };
         var service = new RequirementRelationSearchService(catalogue, new RelationCompatibilityMatrix(), llm, policy);
-        field(service, "enabled", enabled); field(service, "maxCalls", calls);
+        if (enabled != null) field(service, "enabled", enabled);
+        field(service, "maxCalls", calls);
         var generator = new AnalysisRelationGenerator(new RelationCompatibilityMatrix(), id -> Optional.empty()) {
             @Override public List<RelationHypothesisDto> generate(Map<String,Integer> scores) { legacy.incrementAndGet(); return List.of(); }
         };

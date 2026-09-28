@@ -22,4 +22,12 @@ class ReformulationCoverageValidatorTest {
         assertThat(report.findings()).noneSatisfy(f->assertThat(f.kind()).isEqualTo(ValidationReport.Kind.STRUCTURAL_LOSS));
         assertThat(report.findings()).anySatisfy(f->{assertThat(f.code()).isEqualTo("UNCONFIRMED_ADDITION");assertThat(f.statementIds()).containsExactly("addition");});
     }
+    @Test void rejectedOriginalProvenanceCannotCoverSource() {
+        var b=WalkUpReformulationTest.baseline();var span=new Statement.SourceSpan(0,b.originalText().length(),b.originalText());
+        var rejected=new Statement("rejected",b.originalText(),List.of(span),Statement.Provenance.ORIGINAL,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"REJECTED");
+        var candidate=new ReformulationDocument(b.originalText(),List.of(),List.of(rejected),List.of(),new ValidationReport(List.of()),List.of());
+        var findings=new ReformulationCoverageValidator().validate(b,candidate,candidate).findings();
+        assertThat(findings).extracting(ValidationReport.Finding::code).contains("ORIGINAL_NOT_VISIBLE");
+    }
 }

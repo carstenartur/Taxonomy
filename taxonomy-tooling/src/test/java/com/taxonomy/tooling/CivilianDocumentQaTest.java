@@ -9,6 +9,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CivilianDocumentQaTest {
     @Test
+    void reformulationExportsHaveMeasuredBudgetsWithNoEmptyBodyAllowance() throws Exception {
+        assertThat(CivilianDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(25)), "", List.of("Source"), true))
+                .containsEntry("pages", 25);
+        assertThat(CivilianDocumentQa.checkText("reformulation-adoption.docx", xml(page("Source").repeat(26)), "", List.of("Source"), true))
+                .containsEntry("pages", 26);
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(29)), "", List.of("Source"), true))
+                .hasMessageContaining("limit 28");
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("reformulation-adoption.docx", xml(page("Source").repeat(30)), "", List.of("Source"), true))
+                .hasMessageContaining("limit 29");
+    }
+    @Test
     void joinsContinuedParagraphsWithoutRunningFurnitureAndKeepsUnicode() throws Exception {
         String bbox = xml(page("Öffentliche Warnungen") + page("für Bürger"));
         assertThat(CivilianDocumentQa.checkText("decision.docx", bbox, "unused",
@@ -97,6 +108,35 @@ class CivilianDocumentQaTest {
         assertThat(selected.flag("visio-only")).isTrue();
         assertThat(selected.required("artifacts")).isEqualTo("actual");
         assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("visio-only")).isFalse();
+    }
+
+    @Test
+    void cliReformulationOnlyFlagKeepsTheArtifactArgument() {
+        var selected = TaxonomyTooling.Arguments.parse(new String[]{"--reformulation-only", "--artifacts", "actual"});
+        assertThat(selected.flag("reformulation-only")).isTrue();
+        assertThat(selected.required("artifacts")).isEqualTo("actual");
+        assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("reformulation-only")).isFalse();
+    }
+
+    @Test
+    void failedRerenderCannotLeaveAnEarlierSuccessManifest(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        var manifest = root.resolve("reformulation-document-quality.json");
+        java.nio.file.Files.writeString(manifest, "previous success");
+        assertThatThrownBy(() -> CivilianDocumentQa.inspectReformulations(root, "unused-renderer"))
+                .hasMessageContaining("No completed reformulation lifecycle artifacts");
+        assertThat(java.nio.file.Files.exists(manifest)).isFalse();
+    }
+
+    @Test
+    void rerenderRemovesOnlyItsOwnGeneratedEvidence(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        var generated = List.of("revision.pdf", "revision.txt", "revision.bbox.html", "revision-01.png", "revision-99.png");
+        var preserved = List.of("adoption.pdf", "adoption-01.png", "revision-notes.png", "revision.docx", "revision.json");
+        for (String name : java.util.stream.Stream.concat(generated.stream(), preserved.stream()).toList()) {
+            java.nio.file.Files.writeString(root.resolve(name), name);
+        }
+        CivilianDocumentQa.clearReformulationRender(root, "revision");
+        for (String name : generated) assertThat(java.nio.file.Files.exists(root.resolve(name))).as(name).isFalse();
+        for (String name : preserved) assertThat(java.nio.file.Files.readString(root.resolve(name))).isEqualTo(name);
     }
 
     private static String xml(String pages) {

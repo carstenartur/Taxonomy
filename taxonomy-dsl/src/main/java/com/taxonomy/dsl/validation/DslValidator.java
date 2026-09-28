@@ -45,7 +45,8 @@ public class DslValidator {
                                           "UA", Set.of("BP")));
         m.put("CONSUMES",          Map.of("BP", Set.of("IP"),
                                           "CR", Set.of("IP"),
-                                          "CI", Set.of("IP")));
+                                          "CI", Set.of("IP"),
+                                          "UA", Set.of("IP")));
         m.put("USES",              Map.of("UA", Set.of("CR", "CI", "CO"),
                                           "SY", Set.of("SY", "CR"),
                                           "BP", Set.of("CR", "CI"),

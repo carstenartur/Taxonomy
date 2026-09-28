@@ -179,6 +179,57 @@ class TaxonomyLargeResultBudgetIT {
                 .isGreaterThanOrEqualTo(responseDelay);
     }
 
+    @Test
+    void longestTaskDoesNotIncludeBrowserWorkAfterRenderCompletion() {
+        captureSearchRender(3, 0);
+        Map<?, ?> first = readSearchRenderTiming();
+        int blockingMillis = (int) policy.maxLongestTaskMs() + 100;
+        double observedBlock = decimal(executeAsync("""
+                const done = arguments[arguments.length - 1];
+                const blockingMillis = arguments[0];
+                // A real browser task, not unobservable synchronous WebDriver work.
+                setTimeout(() => {
+                  const started = performance.now();
+                  while (performance.now() - started < blockingMillis) { }
+                  done(performance.now() - started);
+                }, 0);
+                """, blockingMillis));
+        assertThat(observedBlock).isGreaterThanOrEqualTo(blockingMillis);
+        Map<?, ?> afterBrowserWork = readSearchRenderTiming();
+        assertThat(afterBrowserWork.get("longestTaskMs"))
+                .as("completed search does not acquire a later unrelated browser task")
+                .isEqualTo(first.get("longestTaskMs"));
+        assertThat(afterBrowserWork.get("longTasks")).isEqualTo(first.get("longTasks"));
+        assertThat(afterBrowserWork.get("renderDurationMs")).isEqualTo(first.get("renderDurationMs"));
+    }
+
+    @Test
+    void longestTaskStillIncludesSlowSynchronousSearchRendering() {
+        int blockingMillis = (int) policy.maxLongestTaskMs() + 100;
+        execute("""
+                const blockingMillis = arguments[0];
+                const original = window.TaxonomySearch.performSearch;
+                window.__taxonomyBudgetOriginalSearch = original;
+                window.TaxonomySearch.performSearch = function (...args) {
+                  const started = performance.now();
+                  while (performance.now() - started < blockingMillis) { }
+                  return original.apply(this, args);
+                };
+                """, blockingMillis);
+        try {
+            captureSearchRender(3, 0);
+            Map<?, ?> timing = readSearchRenderTiming();
+            assertThat(decimal(timing.get("longestTaskMs")))
+                    .as("a slow real search task still violates the unchanged long-task budget")
+                    .isGreaterThanOrEqualTo(blockingMillis);
+        } finally {
+            execute("""
+                    window.TaxonomySearch.performSearch = window.__taxonomyBudgetOriginalSearch;
+                    delete window.__taxonomyBudgetOriginalSearch;
+                    """);
+        }
+    }
+
     /** Capture completion in the browser, not when a later WebDriver poll reads it. */
     private static void captureSearchRender(int resultCount, int responseDelayMillis) {
         Map<?, ?> completion = map(executeAsync("""
@@ -189,19 +240,48 @@ class TaxonomyLargeResultBudgetIT {
                 document.querySelector('#searchPanel').open = true;
                 area.innerHTML = '';
                 delete area.dataset.totalResults;
-                window.__taxonomySearchLongTasks = [];
                 window.__taxonomyBudgetInstall(count, arguments[1]);
                 window.__taxonomySearchRenderTiming = null;
-                let frame = 0, paintedFrame = 0, settled = false;
+                if (!window.PerformanceObserver
+                    || !PerformanceObserver.supportedEntryTypes.includes('longtask')) {
+                  done({error: 'Browser does not support long-task measurements'});
+                  return;
+                }
+                const tasks = [];
+                const recordTasks = entries => entries.forEach(entry => tasks.push({
+                  startTime: entry.startTime, duration: entry.duration
+                }));
+                const taskObserver = new PerformanceObserver(entries => recordTasks(entries.getEntries()));
+                taskObserver.observe({entryTypes: ['longtask']});
+                let frame = 0, paintedFrame = 0, startTimer = 0, settled = false, startedAt = 0;
                 const finish = value => {
                   if (settled) return;
                   settled = true;
                   observer.disconnect();
                   clearTimeout(deadline);
+                  clearTimeout(startTimer);
                   cancelAnimationFrame(frame);
                   cancelAnimationFrame(paintedFrame);
-                  if (!value.error) window.__taxonomySearchRenderTiming = Object.freeze(value);
-                  done(value);
+                  if (value.error) {
+                    taskObserver.disconnect();
+                    done(value);
+                    return;
+                  }
+                  // Long-task records for the last rendering turn are queued after its rAF
+                  // callbacks. Drain them in the next task, without extending the measured window.
+                  setTimeout(() => {
+                    recordTasks(taskObserver.takeRecords());
+                    taskObserver.disconnect();
+                    const longTasks = tasks.filter(entry => entry.startTime < value.completedAt
+                      && entry.startTime + entry.duration > startedAt);
+                    // Keep the whole duration of overlapping tasks: do not clip a slow task
+                    // at the boundary and accidentally turn a real budget failure green.
+                    const timing = Object.freeze({...value, startedAt,
+                      longestTaskMs: Math.max(0, ...longTasks.map(entry => entry.duration)),
+                      longTasks: Object.freeze(longTasks.map(entry => Object.freeze(entry)))});
+                    window.__taxonomySearchRenderTiming = timing;
+                    done(timing);
+                  }, 0);
                 };
                 const observer = new MutationObserver(() => {
                   if (Number(area.dataset.totalResults) !== count
@@ -224,12 +304,16 @@ class TaxonomyLargeResultBudgetIT {
                 const deadline = setTimeout(() => finish({error: 'Search rendering did not finish'}), 20000);
                 observer.observe(area, {childList: true, subtree: true, attributes: true,
                   attributeFilter: ['data-total-results']});
-                const startedAt = performance.now();
-                try {
-                  window.TaxonomySearch.performSearch('budget-' + count, 'fulltext', count);
-                } catch (error) {
-                  finish({error: String(error)});
-                }
+                // Start in a native browser task so synchronous search work is observable,
+                // separate from the WebDriver command and the preceding fixture setup.
+                startTimer = setTimeout(() => {
+                  startedAt = performance.now();
+                  try {
+                    window.TaxonomySearch.performSearch('budget-' + count, 'fulltext', count);
+                  } catch (error) {
+                    finish({error: String(error)});
+                  }
+                }, 0);
                 """, resultCount, responseDelayMillis));
         assertThat(completion.containsKey("error"))
                 .as("browser-owned search render completion: %s", completion)
@@ -243,6 +327,10 @@ class TaxonomyLargeResultBudgetIT {
                 if (!timing) throw new Error('No completed search render measurement');
                 return {
                   renderDurationMs: timing.renderDurationMs,
+                  startedAt: timing.startedAt,
+                  completedAt: timing.completedAt,
+                  longestTaskMs: timing.longestTaskMs,
+                  longTasks: timing.longTasks,
                   driverObservationDelayMs: performance.now() - timing.completedAt
                 };
                 """));
@@ -282,7 +370,6 @@ class TaxonomyLargeResultBudgetIT {
         Map<?, ?> measured = map(execute("""
                 const area = document.querySelector('#searchResultsArea');
                 const list = area.querySelector('.search-results-list');
-                const tasks = window.__taxonomySearchLongTasks || [];
                 const heap = performance.memory ? performance.memory.usedJSHeapSize : null;
                 const names = Array.from(area.querySelectorAll('.search-result-name'));
                 const clipped = names.filter(name => {
@@ -300,7 +387,6 @@ class TaxonomyLargeResultBudgetIT {
                   resultAreaScrollHeight: area.scrollHeight,
                   resultListHeight: list ? Math.ceil(list.getBoundingClientRect().height) : 0,
                   documentHeight: document.documentElement.scrollHeight,
-                  longestTaskMs: tasks.length ? Math.max(...tasks) : 0,
                   heap: heap,
                   truncationClassNames: area.querySelectorAll(
                     '.search-result-name.text-truncate').length,
@@ -389,7 +475,10 @@ class TaxonomyLargeResultBudgetIT {
                         - number(baseline.get("documentHeight"))));
         metrics.put("renderDurationMs", decimal(renderTiming.get("renderDurationMs")));
         metrics.put("driverObservationDelayMs", decimal(renderTiming.get("driverObservationDelayMs")));
-        metrics.put("longestTaskMs", decimal(measured.get("longestTaskMs")));
+        metrics.put("searchStartedAtMs", decimal(renderTiming.get("startedAt")));
+        metrics.put("searchCompletedAtMs", decimal(renderTiming.get("completedAt")));
+        metrics.put("longTasks", renderTiming.get("longTasks"));
+        metrics.put("longestTaskMs", decimal(renderTiming.get("longestTaskMs")));
         metrics.put("heapIncreaseBytes", heapIncrease);
         metrics.put("truncationClassNames", number(measured.get("truncationClassNames")));
         metrics.put("clippedNames", number(measured.get("clippedNames")));
@@ -527,7 +616,7 @@ class TaxonomyLargeResultBudgetIT {
                 .isPositive()
                 .isLessThanOrEqualTo(policy.maxRenderDurationMs());
         assertThat(decimal(metrics.get("longestTaskMs")))
-                .as(scenario.id() + " longest browser task")
+                .as(scenario.id() + " longest browser task; measured entries: %s", metrics.get("longTasks"))
                 .isLessThanOrEqualTo(policy.maxLongestTaskMs());
         assertThat(decimal(metrics.get("interactionLatencyMs")))
                 .as(scenario.id() + " next-result interaction")
@@ -551,8 +640,7 @@ class TaxonomyLargeResultBudgetIT {
         assertThat(metrics.get("interactionFocusConfirmed"))
                 .as(scenario.id() + " confirmed result focus")
                 .isEqualTo(Boolean.TRUE);
-        assertThat(metrics.get("interactionFocusTarget"))
-                .isEqualTo("result");
+        assertThat(metrics.get("interactionFocusTarget")).isEqualTo("result");
         assertThat(String.valueOf(metrics.get("activeClass")))
                 .contains("search-result-item");
         assertThat(metrics.get("activeTag")).isEqualTo("a");
@@ -627,17 +715,6 @@ class TaxonomyLargeResultBudgetIT {
                   throw new Error('No real taxonomy node is available for navigation evidence');
                 }
                 window.__taxonomyBudgetRealCode = realNode.dataset.code;
-                window.__taxonomySearchLongTasks = [];
-                if (window.PerformanceObserver
-                    && PerformanceObserver.supportedEntryTypes
-                    && PerformanceObserver.supportedEntryTypes.includes('longtask')) {
-                  window.__taxonomySearchLongTaskObserver = new PerformanceObserver(entries => {
-                    entries.getEntries().forEach(entry => {
-                      window.__taxonomySearchLongTasks.push(entry.duration);
-                    });
-                  });
-                  window.__taxonomySearchLongTaskObserver.observe({entryTypes: ['longtask']});
-                }
                 window.__taxonomyBudgetInstall = function (count, responseDelayMs = 0) {
                   const original = window.__taxonomyBudgetOriginalFetch;
                   const nodes = () => Array.from({length: count}, (_, index) => {

@@ -25,8 +25,10 @@ class PortfolioJsonCodecBoundaryTest {
         assertThatThrownBy(()->codec.read("{",Map.class)).isInstanceOf(PortfolioException.class).hasMessageContaining("deserialize portfolio payload");
         assertThatThrownBy(()->codec.readLongList("{}" )).isInstanceOf(PortfolioException.class).hasMessageContaining("source fragment IDs");
         assertThatThrownBy(()->codec.readStringMap("[]")).isInstanceOf(PortfolioException.class).hasMessageContaining("extension attributes");
-        var mapper=mock(ObjectMapper.class);var failure=new IllegalArgumentException("serialization failure");
-        when(mapper.writeValueAsString("payload")).thenThrow(failure);
+        // The codec constructs a strict evidence reader from rebuild(); keep a
+        // real mapper there while faulting only the intended serialization call.
+        var mapper=spy(new ObjectMapper());var failure=new IllegalArgumentException("serialization failure");
+        doThrow(failure).when(mapper).writeValueAsString("payload");
         assertThatThrownBy(()->new PortfolioJsonCodec(mapper).write("payload"))
                 .isInstanceOf(PortfolioException.class).hasCause(failure);
     }

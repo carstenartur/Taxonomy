@@ -392,7 +392,8 @@
     }
 
     // ── Analysis ──────────────────────────────────────────────────────────────
-    function runAnalysis() {
+    function runAnalysis(options) {
+        options = options || {};
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
             B().showStatus('warning', t('scoring.enter.requirement'));
@@ -436,6 +437,7 @@
             B().showStatus('danger', t('scoring.secure.id.unavailable'));
             return;
         }
+        if (!options.continuation || !options.continuation.continuationAction || options.continuation.continuationAction === 'START') {
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
@@ -452,10 +454,14 @@
         var lifecycle = window.__TaxonomyAnalysisSessionContext;
         if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
         B().renderView(S.taxonomyData, S.currentScores);
+        S.analysisCoverage = null;
+        if (!options.recoveryManaged) { S.analysisRecovery = null; S.recoveryContext = null; }
+        }
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
-                applyLocalRawScores(snapshot.rawScores || {}, true, true);
+                applyLocalRawScores(options.continuation
+                    ? Object.assign({}, previousRaw, snapshot.rawScores || {}) : snapshot.rawScores || {}, true, true);
                 var changed = Object.keys(S.currentScores || {}).filter(function (code) {
                     return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code];
                 });
@@ -487,8 +493,9 @@
             requestBody.provider = provider;
         }
 
+        if (options.continuation) requestBody = Object.assign({}, options.continuation);
         const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
-        fetch('/api/analyze', {
+        return fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId,
                 'X-Taxonomy-Workspace-Id': workspacePin },
@@ -514,10 +521,16 @@
                 // Polling may have stopped after observing completion, but only the latest
                 // in-scope operation owns this full response and may update the application.
                 if (progress && !progress.acceptsResult()) return;
+                if (options.recoveryManaged && document.getElementById('businessText').value.trim() !== text) {
+                    if (progress) progress.finish(result.status, false);
+                    setAnalyzing(false); return result;
+                }
                 if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
                 setAnalyzing(false);
                 if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
+                S.analysisCoverage = result.analysisCoverage || null;
+                S.analysisRecovery = result.recovery || null;
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
                 S.currentProductCoverageGaps = result.productCoverageGaps || [];
@@ -543,6 +556,8 @@
                 } else if (result.status === 'PARTIAL') {
                     B().showStatus('warning',
                         t('analyze.partial', (result.errorMessage || t('analyze.incomplete')), matchedCount));
+                } else if (result.status === 'CANCELLED') {
+                    B().showStatus('warning', result.errorMessage || 'Analysis cancelled; valid partial results retained.');
                 } else if (result.status === 'ERROR') {
                     B().showStatus('danger',
                         '❌ ' + t('scoring.analysis.failed', result.errorMessage || 'Unknown error.'));
@@ -602,8 +617,8 @@
                     S.currentArchView = result.architectureView;
                     var summaryBtn = document.getElementById('viewSummary');
                     if (summaryBtn) summaryBtn.style.display = '';
-                    // Auto-switch to summary view
-                    B().switchView('summary');
+                    // Keep the user's diagram selection and viewport during recovery.
+                    if (!options.recoveryManaged) B().switchView('summary');
                     // Add quick action to navigate to Architecture tab
                     var statusArea = document.getElementById('statusArea');
                     if (statusArea && window.navigateToPage) {
@@ -619,12 +634,13 @@
                         statusArea.appendChild(archLink);
                     }
                 }
+                return result;
             })
             .catch(err => {
                 if (progress && !progress.acceptsResult()) return;
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
-                    if (!err.httpStatus) progress.transportFailed();
+                    if (!err.httpStatus && !options.recoveryManaged) progress.transportFailed();
                     else progress.finish('ERROR', false);
                 }
                 setAnalyzing(false);
@@ -637,6 +653,7 @@
                     warnings: [t('scoring.error', err.message)],
                     status: 'ERROR'
                 });
+                if (options.recoveryManaged) throw err;
             });
     }
 
@@ -1148,14 +1165,22 @@
             var originKey = e.origin ? 'node.origin.' + e.origin.replace(/_/g, '.').toLowerCase() : '';
             var originLabel = originKey ? t(originKey) : (e.includedBecause || '');
             var originBadge = e.origin ? '<span class="badge bg-' + originBadgeColor(e.origin) + ' text-dark">' + escapeHtml(originLabel) + '</span>' : escapeHtml(e.includedBecause || '');
+            var scoped = e.origin === 'RELATION_EVIDENCE' || e.origin === 'REQUIREMENT_EVIDENCE';
+            var detail = e.scoreDetail;
+            var relevanceLabel = scoped
+                ? (detail && Number.isFinite(detail.effectiveRelevance) ? detail.effectiveRelevance.toFixed(1) + '%' : '—')
+                : (e.relevance * 100).toFixed(1) + '%';
+            var rawLabel = scoped
+                ? (detail && Number.isFinite(detail.rawScore) ? String(detail.rawScore) : '—')
+                : String(e.directLlmScore || 0);
             tbl += '<tr class="' + rowClass + '"' +
                 (e.presenceReason ? ' title="' + escapeHtml(e.presenceReason) + '"' : '') + '>' +
                 '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                 '<td>' + escapeHtml(e.title || '') + '</td>' +
                 '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
                 '<td>' + escapeHtml(sheetLabel) + '</td>' +
-                '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                '<td>' + (e.directLlmScore || 0) + '</td>' +
+                '<td>' + relevanceLabel + '</td>' +
+                '<td>' + rawLabel + '</td>' +
                 '<td>' + originBadge + '</td>' +
                 '<td>' + (e.selectedForImpact ? '🎯' : '') +
                 (e.anchor ? ' ★' : '') +
@@ -1223,6 +1248,20 @@
         section('relation.search.questions', result.unfinished, function (item) {
             return escapeHtml((item.sourceId || '') + ' · ' + (item.type || '') + ' · '
                 + (item.reason || '') + ': ' + (item.question || ''));
+        });
+        section('relation.search.sources', report.sources, function (source) {
+            var node = source.node || {};
+            var parts = Array.isArray(source.contributions) ? source.contributions : [];
+            var sourceHtml = '<strong>' + escapeHtml(node.id || '') + '</strong><br>'
+                + escapeHtml(source.rationale || '') + '<br>' + escapeHtml(source.question || '');
+            parts.slice(0, 4).forEach(function (part) {
+                sourceHtml += '<div>' + escapeHtml(part.text || '') + '<br><q>'
+                    + escapeHtml(part.quote || '') + '</q><br>'
+                    + escapeHtml(t('relation.search.conditions')) + ': ' + escapeHtml(part.condition || '') + '</div>';
+            });
+            if (parts.length > 4) sourceHtml += '<p>'
+                + escapeHtml(t('relation.search.omitted', 4, parts.length)) + '</p>';
+            return sourceHtml;
         });
         section('relation.search.evidence', result.edges, function (edge) {
             var part = edge.contribution || {}, node = part.source || {}, target = edge.target || {}, evidence = edge.evidence || {};

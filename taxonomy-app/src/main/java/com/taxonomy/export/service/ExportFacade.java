@@ -96,6 +96,10 @@ public class ExportFacade {
         return savedAnalysisService.importFromJson(jsonBody);
     }
 
+    public void validateCoverageEvidence(SavedAnalysis saved) {
+        savedAnalysisService.validateCoverageEvidence(saved);
+    }
+
     public List<String> findUnknownCodes(SavedAnalysis saved) {
         return savedAnalysisService.findUnknownCodes(saved);
     }

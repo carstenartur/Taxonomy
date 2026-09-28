@@ -343,3 +343,22 @@ The [persistence diagram](#dsl-storage-architecture) separates authoritative sta
 from derived indexes. The [feature graph](#module-architecture) answers a different
 question: which libraries may reference one another. Do not combine the two arrow
 meanings when extending these diagrams.
+
+## Requirement reformulation journal
+
+`taxonomy-analysis` performs frozen-input bottom-up synthesis and bounded cross-taxonomy
+reconciliation through the existing provider transport. `taxonomy-portfolio` owns
+the scoped baseline, immutable revisions, typed human answers, guarded adoption and
+historical report material. `taxonomy-app` assembles authenticated HTTP/UI adapters.
+The configured analysis/context budgets and module dependency directions are unchanged.
+
+The proposal journal does not mutate the active requirement or architecture. A separate
+preview-bound adoption transaction activates a draft and stores its receipt atomically.
+Explicit project checkpoints include the evidence; materialization and restart preserve
+its historical identities. New analysis and offers inherit adopted provenance rather
+than reclassifying model additions as original external requirements. Prompt encoding
+v6 includes inherited question discoveries/origins in the request-local context dictionary;
+this removes repeated serialization without dropping unique evidence or raising limits.
+
+The [acceptance contract](../testing/requirement-reformulation.md) separates deterministic
+application/browser/renderer evidence from opt-in real-provider and human quality review.

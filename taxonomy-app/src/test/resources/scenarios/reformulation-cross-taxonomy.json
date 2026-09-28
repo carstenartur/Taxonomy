@@ -1,0 +1,20 @@
+{
+  "id": "authored-cross-taxonomy-v1",
+  "responseProvenance": "Authored deterministic test assumptions, not external requirements or live model evidence.",
+  "requirement": {"text": "Acquire civilian observations and deliver user-selected text notices. Delivery must take no more than 5 minutes; preserve the handwritten meeting note as unmapped original content."},
+  "bindings": {"BP-1017": "Acquire Data", "CO-1048": "Short Messaging Access Services", "BP-1060": "Analytical Support"},
+  "application": {
+    "summary": "Acquire civilian observations and deliver user-selected text notices within 5 minutes. Preserve the handwritten meeting note.",
+    "addition": "Consider an attributable delivery-failure history without changing the 5 minutes limit.",
+    "sharedQuestion": "How should failed notice delivery be handled?",
+    "sharedOptions": ["Keep a failure for explicit review", "Offer a separately confirmed retry"],
+    "numericQuestion": "How long should delivery-failure evidence be retained?",
+    "unit": "days",
+    "unmappedQuote": "handwritten meeting note",
+    "protectedFragments": ["user-selected text notices", "5 minutes", "handwritten meeting note"]
+  },
+  "rules": [
+    {"id": "cross-parent", "task": "NODE", "nodeId": "BP-1060", "children": ["BP-1017"], "boundaryEdges": {"edge-notice": {"sourceCode": "BP-1017", "targetCode": "CO-1048"}}, "answers": [], "response": {"summary": "Acquire observations and deliver text notices within 5 minutes.", "statementProposals": [], "preservedStatementIds": [], "questionProposals": [], "preservedQuestionIds": [], "uncoveredSourceRefs": [], "conflictCandidates": []}},
+    {"id": "cross-reconcile", "task": "RECONCILE", "sections": ["BP-1017", "CO-1048"], "children": [], "boundaryEdges": {"edge-notice": {"sourceCode": "BP-1017", "targetCode": "CO-1048"}}, "answers": [], "response": {"affectedSectionIds": [], "sourceResolutions": [], "findings": []}}
+  ]
+}

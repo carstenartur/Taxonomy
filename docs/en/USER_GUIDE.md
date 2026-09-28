@@ -1846,3 +1846,30 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 **No.** The Failure Impact view (⚠️ button) is a deliberate feature, not an error state. It highlights all nodes that would be affected if the selected node failed or was removed. Use it for change-impact analysis and risk assessment. See [Section 8 — Graph Explorer](#8-using-the-graph-explorer) for full details.
 
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
+
+## Saved reformulation offers and decision questions
+
+Open a saved requirement with an analysis snapshot and create a reformulation offer
+for that source version. The original, proposal and questions are separate views;
+on narrow screens use their tabs. Wait for the recorded synthesis result. A completed
+run supplies a proposal for review and does not approve or activate it.
+
+Answer each relevant question with the offered type, or explicitly defer it. Use
+Other only with its explanation. Conditional follow-ups appear when their prerequisite
+is satisfied. Questions with similar wording can concern different subjects or scopes.
+Keep the original restriction visible when an answer conflicts with it. Save edits
+before switching offers; status refresh preserves unsaved text. Regeneration after an
+answer affects the relevant sections; protected manual edits remain separately
+reviewable candidates. Compare a saved revision with its predecessor.
+
+Use **Review adoption…** to inspect the exact text and unresolved questions. Confirm
+the text, acknowledge warnings and provide a rationale to adopt it as a draft.
+Closing the preview before sending does not adopt anything. After adoption, run a
+new analysis when needed; the previous architecture is retained and marked stale.
+A subsequent offer preserves the adopted decisions and their evidence.
+
+Download a selected saved revision or adoption receipt as JSON, Markdown, HTML or
+Word. Downloads exclude unsaved typing and retain the historical source, decisions
+and architecture. Save a separate project checkpoint when you want portable Git
+history. See the [complete workflow](../features/requirement-reformulation.md) and
+[verification boundaries](../testing/requirement-reformulation.md).

@@ -31,8 +31,10 @@ The initial draft is explicitly marked as unevaluated. Synthesis can propose wor
 and decision questions, but it does not answer those questions for the user or adopt
 a new requirement version. An empty question list or a completed run is not approval.
 Structural validation and deterministic playback do not establish live-model language
-quality or semantic completeness. Durable node recovery/cache, separately confirmed
-adoption, historical export and live-model quality acceptance remain later packages.
+quality or semantic completeness. Durable step recovery, separately confirmed adoption,
+historical exports and explicit portable checkpoints are implemented. The separate
+[real-provider comparison and human quality gate](../testing/requirement-reformulation.md)
+must not be inferred from passing deterministic tests.
 
 ## Interactive proposal workspace
 
@@ -142,3 +144,25 @@ references and verified question lineage while keeping previous statement/source
 and human-answer evidence unchanged. Invalid candidates remain `PARTIAL`; late
 results and human-edited drafts remain protected. Original requirement/version,
 active architecture and review state are never modified by these operations.
+
+## Adoption, history and another analysis
+
+Use **Review adoption…** to inspect the saved preview of the exact final text, current
+requirement and open decisions. Confirm the text and acknowledge the warnings, then
+enter a rationale. Only this separate command activates a requirement version as a
+draft. A changed requirement or proposal invalidates the preview. Repeating the same
+command returns its original receipt without reapplying an old version.
+
+Adoption marks analysis as needing refresh; it does not run another analysis or change
+the architecture automatically. A new analysis and offer carry the adopted source and
+its frozen decisions forward. Inherited discoveries use a request-local context
+dictionary, including their original records, so repeated historical context does not
+consume the provider budget several times. Unique content and the configured limits
+are unchanged; genuinely oversized inputs still fail explicitly.
+
+Download an exact saved revision or adoption receipt as JSON, Markdown, HTML or DOCX.
+Unsaved browser text is excluded. The Word report renders the frozen architecture and
+review evidence from that historical record. Later edits, adoption, reanalysis and
+application restart do not reinterpret it against live catalogue state. Use the
+existing explicit project Git checkpoint to include this evidence in portable history;
+saving a proposal alone does not create a commit.

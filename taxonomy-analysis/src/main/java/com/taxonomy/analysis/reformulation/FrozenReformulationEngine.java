@@ -43,7 +43,9 @@ public class FrozenReformulationEngine {
         var plan=new WalkUpPlanner().plan(hierarchy);var byId=new HashMap<String,WalkUpPlanner.Node>();hierarchy.forEach(n->byId.put(n.id(),n));
         var sourceSpans=anchors(baseline.originalText());var sourceStatements=new ArrayList<Statement>();
         var verbatimSource=baseline.originalText().isEmpty()?List.<Statement.SourceSpan>of():List.of(new Statement.SourceSpan(0,baseline.originalText().length(),baseline.originalText()));
-        for(var span:verbatimSource) sourceStatements.add(new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":"+span.start()).substring(0,24),span.exactText(),List.of(span),Statement.Provenance.ORIGINAL,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED"));
+        var sourceOrigin=baseline.frozenContext().containsKey("adoptedLineage")
+                ?Statement.Provenance.ADOPTED_SOURCE:Statement.Provenance.ORIGINAL;
+        for(var span:verbatimSource) sourceStatements.add(new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":"+span.start()).substring(0,24),span.exactText(),List.of(span),sourceOrigin,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED"));
         var boundary=new TreeMap<String,String>();
         for(var edge:json.readTree(baseline.frozenContext().getOrDefault("relationMappings","[]"))) {
             String id="edge-"+edge.path("id").asText();if(boundary.put(id,edge.toString())!=null) throw new IllegalArgumentException("Duplicate frozen relation ID");
@@ -61,7 +63,10 @@ public class FrozenReformulationEngine {
             data.put("terminalContributions",step.terminalIds().stream().map(byId::get).toList());data.put("directParentContributions",step.directNodeIds().stream().map(byId::get).toList());
             var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundariesFor(step,node,children,boundary),answers,openDecisions,"Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
             java.util.function.Supplier<Completed> work=()->{
-                var result=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
+                var generated=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
+                var evidence=new ArrayList<Statement>(retainedStatements);
+                children.forEach(c->evidence.addAll(c.statementProposals()));
+                var result=RejectedWordingGuard.review(generated,evidence,InheritedDecisionContext.rejected(input,json));
                 var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
                 retainedStatements.forEach(v->carriedStatements.put(v.id(),v));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
                 children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.put(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
@@ -85,7 +90,7 @@ public class FrozenReformulationEngine {
         // Coverage is structurally preserved, not semantically certified; no-match remainder stays explicit.
         if(plan.getFirst().nodeId().equals(WalkUpPlanner.DOCUMENT_ROOT)) findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,"NO_TAXONOMY_MATCH","Source-based offer without an invented taxonomy path",sourceStatements.stream().map(Statement::id).toList(),sourceSpans));
         findings.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW,"UNREVIEWED_GENERATION","Generated offer requires human semantic review",List.of(),List.of()));
-        String text=String.join("\n\n",statements.values().stream().map(Statement::wording).toList());
+        String text=String.join("\n\n",statements.values().stream().filter(s->!"REJECTED".equals(s.reviewState())).map(Statement::wording).toList());
         return new ReformulationDocument(text,sections,List.copyOf(statements.values()),List.copyOf(questions.values()),new ValidationReport(findings),List.copyOf(results.values()));
     }
     /** Reword only invalidated sections, bottom-up. Independent section records remain byte-stable. */
@@ -107,8 +112,12 @@ public class FrozenReformulationEngine {
         var visiting=new HashSet<String>();
         for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps);
         StringBuilder text=new StringBuilder();var rendered=new HashSet<String>();
-        for(var section:sections.values()) {
-            text.append(section.title()).append("\n").append(section.summary()).append("\n\n");
+        for(var section:List.copyOf(sections.values())) {
+            var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
+            rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
+            String summary=RejectedWordingGuard.safeSummary(section.summary(),rejected,findings);
+            if(!summary.equals(section.summary()))sections.put(section.id(),new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),section.statementIds(),section.questionIds()));
+            text.append(section.title()).append("\n").append(summary).append("\n\n");
             for(String id:section.statementIds()) {
                 var statement=statements.get(id);
                 if(statement!=null && !"REJECTED".equals(statement.reviewState()) && rendered.add(id))
@@ -150,22 +159,19 @@ public class FrozenReformulationEngine {
             var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
                     answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
                     "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
-            var generated=steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
-            var rejected=statements.values().stream().filter(s->"REJECTED".equals(s.reviewState())).map(s->s.wording().strip()).collect(java.util.stream.Collectors.toSet());
+            var generated=RejectedWordingGuard.review(steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),statements.values(),InheritedDecisionContext.rejected(input,json));
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {
-                if(rejected.contains(statement.wording().strip())) {
-                    statement=new Statement(statement.id(),statement.wording(),statement.sourceSpans(),statement.provenance(),statement.architectureLinks(),statement.questionDependencies(),
-                            statement.conditionalValidity(),statement.editingOrigin(),"REJECTED");
-                    findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,"REJECTED_ADDITION_REINTRODUCED","Candidate repeated rejected wording; retained as rejected evidence",List.of(statement.id()),List.of()));
-                }
-                additions.add(statement);statements.put(statement.id(),statement);
+                var retained=statements.putIfAbsent(statement.id(),statement);
+                additions.add(retained==null?statement:retained);
             }
             generated.questionProposals().forEach(q->questions.put(q.id(),q));
             var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));
             var sectionQuestions=new LinkedHashSet<>(section.questionIds());generated.questionProposals().forEach(q->sectionQuestions.add(q.id()));
             String summary=generated.summary();
-            for(String wording:rejected)if(summary.contains(wording))summary=section.summary();
+            var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
+            rejected.addAll(InheritedDecisionContext.rejected(input,json));
+            summary=RejectedWordingGuard.safeSummary(summary,rejected,findings);
             sections.put(id,new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),List.copyOf(sectionStatements),List.copyOf(sectionQuestions)));
             findings.addAll(generated.conflictCandidates());
             result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),generated.questionProposals(),generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());

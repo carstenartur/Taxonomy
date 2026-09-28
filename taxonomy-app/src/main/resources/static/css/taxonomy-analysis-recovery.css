@@ -1,0 +1,67 @@
+/* The reserved reading clearance avoids covering the last editable page control. */
+html { scroll-padding-block-end: var(--analysis-recovery-clearance, 0px); }
+body { padding-block-end: var(--analysis-recovery-clearance, 0px); }
+.analysis-recovery-bar, .analysis-recovery-dialog {
+    box-sizing: border-box;
+    background: var(--bs-body-bg, Canvas);
+    color: var(--bs-body-color, CanvasText);
+    border: 2px solid var(--bs-border-color, ButtonText);
+    border-radius: .5rem;
+    font: inherit;
+    overflow-wrap: anywhere;
+}
+.analysis-recovery-bar {
+    position: fixed; z-index: 1040; padding: .5rem .75rem;
+    display: flex; align-items: center; gap: .75rem; overflow: auto;
+    box-shadow: 0 .15rem .6rem #0003;
+}
+.analysis-recovery-bar[hidden] { display: none !important; }
+#analysisRecoveryStatus { flex: 1 1 12rem; min-width: 0; }
+.analysis-recovery-buttons { display: flex; flex: 0 1 auto; gap: .4rem; flex-wrap: wrap; }
+.analysis-recovery-bar button, .analysis-recovery-dialog button { min-height: 44px; white-space: normal; }
+.analysis-recovery-dialog { position: fixed; inset: auto; margin: 0; padding: .75rem; overflow: hidden; }
+.analysis-recovery-dialog[open] { display: flex; flex-direction: column; gap: .5rem; }
+.analysis-recovery-dialog::backdrop { background: #0008; }
+.analysis-recovery-heading { display: flex; align-items: start; justify-content: space-between; gap: .5rem; flex: 0 0 auto; }
+.analysis-recovery-heading h2 { font-size: 1.1rem; margin: .25rem 0; }
+#analysisRecoverySummary { margin: 0; flex: 0 0 auto; }
+.analysis-recovery-body { overflow: auto; min-height: 0; flex: 1 1 auto; }
+.analysis-recovery-body pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9em; }
+.analysis-recovery-actions { display: flex; flex-wrap: wrap; gap: .4rem; flex: 0 0 auto; }
+.analysis-recovery-error { border-inline-start: .25rem solid; padding-inline-start: .5rem; font-weight: bold; }
+.analysis-coverage-warning { border: 2px dashed currentColor; padding: .5rem; margin-block: .5rem; }
+.analysis-coverage-node { display: inline-block; margin-inline-start: .4rem; padding: .1rem .25rem; border: 1px dashed currentColor; font-size: .85em; }
+@media (max-width: 480px) {
+    .analysis-recovery-bar { gap: .3rem; flex-wrap: wrap; }
+    .analysis-recovery-buttons { width: 100%; }
+    .analysis-recovery-buttons button { flex: 1 1 5rem; }
+    .analysis-recovery-actions { flex-direction: column; }
+}
+@media (max-height: 300px) {
+    .analysis-recovery-heading h2 { font-size: 1rem; }
+    .analysis-recovery-dialog { padding: .3rem; gap: .25rem; }
+    .analysis-recovery-actions { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; }
+    .analysis-recovery-actions button { font-size: .8rem; flex: 1 1 0; min-width: 0; padding: .2rem; }
+
+}
+@media (forced-colors: active) {
+    .analysis-recovery-bar, .analysis-recovery-dialog { background: Canvas; color: CanvasText; border-color: ButtonText; }
+}
+
+/* Pinch zoom and an on-screen keyboard change visualViewport, not CSS layout media queries. */
+.analysis-recovery-dialog[data-compact="true"] { padding: .3rem; gap: .25rem; }
+.analysis-recovery-dialog[data-compact="true"] .analysis-recovery-heading h2 {
+    font-size: 1rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; min-width: 0;
+}
+.analysis-recovery-dialog[data-compact="true"] .analysis-recovery-actions {
+    flex-direction: row; flex-wrap: nowrap; overflow-x: auto;
+}
+.analysis-recovery-dialog[data-compact="true"] .analysis-recovery-actions button {
+    font-size: .8rem; flex: 1 1 0; min-width: 0; padding: .2rem;
+}
+.analysis-recovery-bar[data-narrow="true"] { gap: .3rem; flex-wrap: wrap; }
+.analysis-recovery-bar[data-narrow="true"] .analysis-recovery-buttons { width: 100%; }
+.analysis-recovery-bar[data-narrow="true"] .analysis-recovery-buttons button { flex: 1 1 5rem; }
+.analysis-recovery-bar[data-compact="true"] #analysisRecoveryStatus {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}

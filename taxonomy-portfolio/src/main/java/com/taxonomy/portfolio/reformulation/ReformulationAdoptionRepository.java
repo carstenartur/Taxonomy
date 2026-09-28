@@ -9,5 +9,7 @@ public interface ReformulationAdoptionRepository extends JpaRepository<Reformula
     boolean existsByPreviewId(String previewId);
     List<ReformulationAdoption> findByProposalIdAndScopeKeyOrderByCreatedAtDesc(String proposalId,String scopeKey);
     @EntityGraph(attributePaths = {"preview", "version", "version.requirement", "version.requirement.project"})
+    List<ReformulationAdoption> findByRequirementIdAndTargetVersionIdAndScopeKey(Long requirementId,Long targetVersionId,String scopeKey);
+    @EntityGraph(attributePaths = {"preview", "version", "version.requirement", "version.requirement.project"})
     List<ReformulationAdoption> findByScopeKeyOrderByCreatedAtAsc(String scopeKey);
 }

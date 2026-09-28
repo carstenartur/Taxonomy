@@ -112,7 +112,19 @@ public class DecisionRationaleReportController {
             List<TaxonomyDiscrepancy> discrepancies,
             List<ProductCoverageGap> productCoverageGaps,
             String language,
-            Long analysisDurationMillis) {
+            Long analysisDurationMillis,
+            com.taxonomy.dto.AnalysisCoverage analysisCoverage) {
+        public DecisionReportRequest(Map<String, Integer> scores, Map<String, Integer> rawScores,
+                Map<String, Integer> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Integer> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, null);
+        }
+
         public DecisionReportRequest(
             Map<String, Integer> scores,
             Map<String, Integer> rawScores,
@@ -230,7 +242,8 @@ public class DecisionRationaleReportController {
                 effectiveScores,
                 reasons,
                 request.provider(),
-                request.analysisStatus(),
+                request.analysisCoverage() != null && request.analysisCoverage().hasOpenEvaluations()
+                        ? "PARTIAL" : request.analysisStatus(),
                 request.discrepancies(),
                 request.productCoverageGaps(),
                 List.of(),
@@ -238,7 +251,7 @@ public class DecisionRationaleReportController {
                 scoreDetails, request.analysisDurationMillis());
         DecisionRationaleReport report = reportService.generate(
                 input, context, viewContext, locale);
-        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
+        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale).withAnalysisCoverage(request.analysisCoverage());
     }
 
     private AnalysisScoreSemantics.Derived resolveScoreSemantics(

@@ -65,6 +65,7 @@ function createHarness({
       if (!listeners.has(type)) listeners.set(type, []);
       listeners.get(type).push({ listener, capture });
     },
+    dispatchEvent(event) { (listeners.get(event.type) || []).forEach(entry => entry.listener(event)); return true; },
     getElementById(id) { return elements[id] || null; },
     createElement() { return { className: '', textContent: '' }; }
   };
@@ -106,6 +107,7 @@ function createHarness({
   vm.runInNewContext(authoritySource, {
     window,
     document,
+    CustomEvent: class CustomEvent { constructor(type) { this.type = type; } },
     Boolean,
     Object,
     String
@@ -182,13 +184,13 @@ test('Copilot forces complete analysis without changing interactive preference',
   assert.equal(event.defaultPrevented, true);
 });
 
-test('Copilot preflight rejects manual provider only when scores are missing', () => {
+test('Copilot preflight rejects manual provider when authoritative scores are missing', () => {
   const missing = createHarness({ provider: 'MANUAL' });
   const blocked = missing.clickCopilot();
   assert.equal(blocked.defaultPrevented, true);
   assert.match(missing.elements.copilotContent.rendered.textContent, /requires an AI provider/i);
 
-  const completed = createHarness({ provider: 'MANUAL', currentScores: { IP: 100 } });
+  const completed = createHarness({ provider: 'MANUAL', status: 'SUCCESS', currentScores: { IP: 100 } });
   const allowed = completed.clickCopilot();
   assert.equal(allowed.defaultPrevented, false);
 });

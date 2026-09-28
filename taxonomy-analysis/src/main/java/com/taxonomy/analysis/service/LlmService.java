@@ -209,8 +209,8 @@ public class LlmService {
         if (cachedMockAnalysis != null) { return cachedMockAnalysis; }
         try {
             cachedMockAnalysis = savedAnalysisService.loadFromClasspath(
-                    "mock-scores/secure-voice-comms.json");
-            log.info("MOCK — loaded mock scores from classpath:mock-scores/secure-voice-comms.json");
+                    "mock-scores/communication-demo.json");
+            log.info("MOCK — loaded mock scores from classpath:mock-scores/communication-demo.json");
         } catch (Exception e) {
             log.warn("MOCK — failed to load mock scores from classpath, using hardcoded fallback: {}", e.getMessage());
         }
@@ -221,9 +221,8 @@ public class LlmService {
      * Builds mock {@link ScoreParseResult} for the given nodes.
      *
      * <p>First tries to look up each node's score in the saved analysis JSON loaded from
-     * {@code classpath:mock-scores/secure-voice-comms.json}. The JSON was pre-computed by
-     * {@code MockScoreGeneratorIT} using a hierarchical distribution algorithm that guarantees
-     * children scores sum exactly to their parent's score at every level.
+     * {@code classpath:mock-scores/communication-demo.json}. This explicitly synthetic, bounded demo selects only the paths used by
+     * {@link MockRelationReplies}; it is not a semantic evaluation of arbitrary input.
      *
      * <p>When <em>all</em> nodes are found in the JSON the pre-computed scores are returned
      * as-is, without any re-normalization.  Re-normalizing would distort the carefully computed
@@ -273,7 +272,7 @@ public class LlmService {
         }
 
         // When every score came from the pre-computed JSON the distribution is already correct:
-        // MockScoreGeneratorIT.distributeScores() guarantees children sum exactly to their parent.
+        // The bounded demo supplies complete sibling sets, including explicit zeros.
         // Return the JSON values directly — re-normalizing would distort them.
         if (allFromJson) {
             recordSuccess();
@@ -711,18 +710,62 @@ public class LlmService {
         return result;
     }
 
+    /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
+    public String recoveryPolicyFingerprint(String requestedProvider) {
+        LlmProvider provider;
+        if (requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)) {
+            provider = getActiveProvider();
+        } else {
+            try {
+                provider = LlmProvider.valueOf(requestedProvider.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException invalidProvider) {
+                throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
+            }
+        }
+        String endpoint = provider == LlmProvider.GEMINI ? providerConfig.getGeminiUrl()
+                : provider == LlmProvider.LOCAL_ONNX ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
+        String model = provider == LlmProvider.GEMINI || provider == LlmProvider.LOCAL_ONNX ? endpoint
+                : providerConfig.getOpenAiCompatibleModel(provider);
+        String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
+                .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.name(), endpoint, model,
+                Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
+                Integer.toString(minimumProductScore()), templates);
+    }
+    private String productQuestionPrompt(String text, List<TaxonomyNode> nodes) {
+        return promptTemplateService.renderProductPrompt(text, buildNodeListWithContext(nodes),
+                String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()), minimumProductScore());
+    }
+    private String categoryQuestionPrompt(String text, List<TaxonomyNode> nodes, int parentScore) {
+        return promptTemplateService.renderPrompt(nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot(),
+                text, buildNodeListWithContext(nodes), parentScore,
+                String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()));
+    }
+
     private LlmCallDetail callProductBatchDetailed(String businessText, List<TaxonomyNode> products) {
-        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
-                () -> performProductBatchDetailed(businessText, products));
+        if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
+            return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
+                    () -> performProductBatchDetailed(businessText, products, null));
+        String prompt = productQuestionPrompt(businessText, products);
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+                "PRODUCT", getActiveProviderName(), products.stream().map(TaxonomyNode::getCode).toList(), prompt,
+                () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
+                        () -> performProductBatchDetailed(businessText, products, prompt)));
     }
 
     private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
-        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
-                () -> performLlmPropagatingDetailed(businessText, nodes, parentScore));
+        if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
+            return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
+                    () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null));
+        String prompt = categoryQuestionPrompt(businessText, nodes, parentScore);
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+                "CATEGORY", getActiveProviderName(), nodes.stream().map(TaxonomyNode::getCode).toList(), prompt,
+                () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
+                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt)));
     }
 
     private LlmCallDetail performProductBatchDetailed(
-            String businessText, List<TaxonomyNode> products) {
+            String businessText, List<TaxonomyNode> products, String preparedPrompt) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setProvider(getActiveProviderName());
         int minimumScore = minimumProductScore();
@@ -776,8 +819,7 @@ public class LlmService {
         String nodeList = buildNodeListWithContext(products);
         String expectedKeys = String.join(", ",
                 products.stream().map(TaxonomyNode::getCode).toList());
-        String prompt = promptTemplateService.renderProductPrompt(
-                businessText, nodeList, expectedKeys, minimumScore);
+        String prompt = preparedPrompt != null ? preparedPrompt : productQuestionPrompt(businessText, products);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — independently scoring {} concrete products", provider,
@@ -1099,7 +1141,7 @@ public class LlmService {
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
     private LlmCallDetail performLlmPropagatingDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+            String businessText, List<TaxonomyNode> nodes, int parentScore, String preparedPrompt) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setReasons(Map.of());
         detail.setProvider(getActiveProviderName());
@@ -1162,7 +1204,7 @@ public class LlmService {
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
         String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);
+        String prompt = preparedPrompt != null ? preparedPrompt : categoryQuestionPrompt(businessText, nodes, parentScore);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
@@ -1446,7 +1488,7 @@ public class LlmService {
     public String callLlmRaw(String prompt) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
-            return "[]"; // Return empty JSON array for mock mode
+            return MockRelationReplies.reply(prompt);
         }
 
         LlmProvider provider = getActiveProvider();

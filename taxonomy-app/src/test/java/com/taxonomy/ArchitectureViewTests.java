@@ -32,7 +32,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
 
-@SpringBootTest(properties = "llm.mock=true")
+// These existing cases specify the legacy score/propagation contract. Keep
+// their assertions unchanged; DefaultArchitectureAnalysisTest covers the default.
+@SpringBootTest(properties = {
+        "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class ArchitectureViewTests {

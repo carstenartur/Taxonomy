@@ -24,6 +24,7 @@ import com.taxonomy.portfolio.repository.ProjectConflictRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
+import com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,7 @@ public class ProjectPortfolioService {
     private final ProjectConflictRepository conflictRepository;
     private final PortfolioFingerprintService fingerprintService;
     private final PortfolioJsonCodec jsonCodec;
+    private final ReformulationPositiveReviewGuard positiveReviewGuard;
 
     public ProjectPortfolioService(ArchitectureProjectRepository projectRepository,
                                    ProjectRequirementRepository requirementRepository,
@@ -62,7 +64,8 @@ public class ProjectPortfolioService {
                                    ProjectSolutionRepository projectSolutionRepository,
                                    ProjectConflictRepository conflictRepository,
                                    PortfolioFingerprintService fingerprintService,
-                                   PortfolioJsonCodec jsonCodec) {
+                                   PortfolioJsonCodec jsonCodec,
+                                   ReformulationPositiveReviewGuard positiveReviewGuard) {
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
         this.versionRepository = versionRepository;
@@ -70,6 +73,7 @@ public class ProjectPortfolioService {
         this.conflictRepository = conflictRepository;
         this.fingerprintService = fingerprintService;
         this.jsonCodec = jsonCodec;
+        this.positiveReviewGuard = positiveReviewGuard;
     }
 
     @Transactional
@@ -292,6 +296,9 @@ public class ProjectPortfolioService {
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement update");
         ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
+        if (request.status() == RequirementStatus.APPROVED || request.status() == RequirementStatus.IMPLEMENTING
+                || request.status() == RequirementStatus.SATISFIED || request.reviewStatus() == ReviewStatus.CONFIRMED)
+            positiveReviewGuard.requireReviewable(requirement.getProject(), requirement, currentVersion(requirement));
         requirement.updateMetadata(
                 request.title() != null ? requireText(request.title(), "title", 240) : null,
                 request.status(),

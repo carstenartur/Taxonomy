@@ -51,6 +51,7 @@ function createHarness({
       if (!listeners.has(type)) listeners.set(type, []);
       listeners.get(type).push({ listener, capture });
     },
+    dispatchEvent(event) { (listeners.get(event.type) || []).forEach(entry => entry.listener(event)); return true; },
     getElementById(id) { return elements[id] || null; },
     createElement() { return { className: '', textContent: '' }; }
   };
@@ -76,6 +77,7 @@ function createHarness({
   vm.runInNewContext(guardSource, {
     window,
     document,
+    CustomEvent: class CustomEvent { constructor(type) { this.type = type; } },
     Boolean,
     Object,
     String,
@@ -155,7 +157,7 @@ test('a partial terminal result stays non-authoritative', () => {
 });
 
 test('a later Copilot click rejects any known non-authoritative score status', () => {
-  for (const status of ['PARTIAL', 'ERROR', 'IN_PROGRESS', 'UNKNOWN', 'CANCELLED']) {
+  for (const status of [null, '', 'PARTIAL', 'ERROR', 'IN_PROGRESS', 'UNKNOWN', 'CANCELLED']) {
     const harness = createHarness({
       status,
       currentScores: { IP: 40 },
@@ -174,8 +176,8 @@ test('a later Copilot click rejects any known non-authoritative score status', (
   }
 });
 
-test('legacy manual and imported scores remain reusable', () => {
-  for (const status of [null, 'IMPORTED', 'SUCCESS']) {
+test('explicitly authorized manual and imported scores remain reusable', () => {
+  for (const status of ['IMPORTED', 'SUCCESS']) {
     const harness = createHarness({
       status,
       currentScores: { IP: 100 },

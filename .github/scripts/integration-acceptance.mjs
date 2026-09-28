@@ -2,6 +2,55 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+/** Successful large responses must not be read through the bounded inspector cache. */
+async function requireStatus(response, expected) {
+  const status = response.status();
+  if (status === expected) return;
+  let detail;
+  try { detail = (await response.text()).slice(0, 2000); }
+  catch { detail = 'Response body unavailable; the HTTP status remains a failure'; }
+  assert.equal(status, expected, `HTTP ${status}: ${detail}`);
+}
+
+/** Inspect the durable operation which the actual UI displayed, using its scoped read API. */
+export async function readRenderedExportPreview(page, response, connection, previousOperation, profile) {
+  await requireStatus(response, 200);
+  await page.waitForFunction(({ connection, previousOperation }) => {
+    const url = new URL(location.href);
+    const id = url.searchParams.get('operation');
+    return url.searchParams.get('connection') === connection && Boolean(id) && id !== previousOperation
+      && document.getElementById('integrationOperation').textContent.includes(id)
+      && !document.getElementById('integrationApply').disabled;
+  }, { connection, previousOperation });
+  const rendered = new URL(page.url());
+  assert.equal(rendered.searchParams.get('connection'), connection);
+  const id = rendered.searchParams.get('operation');
+  assert.ok(id && id !== previousOperation, 'The export must display its new operation');
+  const operationPath = '/' + encodeURIComponent(connection) + '/operations/' + encodeURIComponent(id);
+  const readPath = await page.evaluate(path => window.IntegrationApi.downloadUrl(path), operationPath);
+  const endpoint = new URL(readPath, rendered);
+  assert.equal(endpoint.origin, rendered.origin, 'Read only the authenticated application operation');
+  assert.ok(endpoint.pathname.endsWith('/api/integrations' + operationPath));
+  for (const key of ['repositoryId', 'workspaceId', 'branch']) {
+    assert.equal(endpoint.searchParams.get(key), rendered.searchParams.get(key), `Operation read changed ${key}`);
+  }
+  const persisted = await page.request.get(endpoint.toString());
+  try {
+    await requireStatus(persisted, 200);
+    const operation = await persisted.json();
+    assert.equal(operation.id, id); assert.equal(operation.connectionId, connection);
+    assert.equal(operation.direction, 'OUTBOUND'); assert.equal(operation.status, 'PREVIEWED');
+    assert.equal(operation.context.connectionId, connection);
+    assert.equal(operation.context.authority, 'BIDIRECTIONAL');
+    assert.equal(operation.context.profile, profile.id); assert.equal(operation.context.profileVersion, profile.version);
+    for (const [query, field] of [['repositoryId', 'repositoryId'], ['workspaceId', 'workspaceScopeKey'], ['branch', 'branch']]) {
+      if (rendered.searchParams.has(query)) assert.equal(operation.context.internalState[field], rendered.searchParams.get(query));
+    }
+    assert.ok(Array.isArray(operation.changes)); assert.ok(Array.isArray(operation.document.losses));
+    return operation;
+  } finally { await persisted.dispose?.(); }
+}
+
 /** Uses actual authenticated forms, durable operations and the source-controlled Archi producer fixture. */
 export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures }) {
   const failuresBefore = httpFailures.length;
@@ -91,8 +140,7 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
 
     const exportResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/${connection}/export-previews`));
     await page.locator('#integrationExport').click();
-    const exported = await exportResponse; assert.equal(exported.status(), 200, await exported.text());
-    const exportPreview = await exported.json();
+    const exportPreview = await readRenderedExportPreview(page, await exportResponse, connection, unchanged.id, expectedProfile);
     const unsupported = new Set(exportPreview.document.losses.filter(loss => loss.disposition === 'UNSUPPORTED').map(loss => loss.artifactId));
     await page.waitForFunction(() => !document.getElementById('integrationApply').disabled);
     for (let index = 0; index < Math.ceil(exportPreview.changes.length / 40); index++) {
@@ -106,7 +154,7 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     await page.locator('#integrationRationale').fill('Reviewed exact workspace export');
     const prepared = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/${connection}/files`));
     await page.locator('#integrationApply').click();
-    const preparedResponse = await prepared; assert.equal(preparedResponse.status(), 200, await preparedResponse.text());
+    await requireStatus(await prepared, 200);
     await page.locator('#integrationDownload:not([hidden])').waitFor();
     const download = await page.request.get(new URL(await page.locator('#integrationDownload').getAttribute('href'), page.url()).toString());
     assert.equal(download.status(), 200); assert.match(await download.text(), /id-37d5bc4b/);
