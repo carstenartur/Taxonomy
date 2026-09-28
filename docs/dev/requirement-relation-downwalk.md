@@ -30,7 +30,7 @@ stays within the ordinary 24-call budget. The old saved example remains readable
 Malformed-response tests inject their failures explicitly instead of using mock mode
 as a surrogate failure. Unrelated raw mock tasks retain their empty-array response.
 
-The civilian reference uses separately authored, requirement-specific replies at the
+The scenario reference uses separately authored, requirement-specific replies at the
 remote HTTP boundary and checks exact required connections independently. Its
 exhaustive two-pass test budget is 256 calls per pass; production defaults remain
 unchanged. Optional SMS is retained in evidence, not promoted to a required edge.

@@ -1,6 +1,6 @@
 # Directed-relation quality: bounded first delivery for #927
 
-The existing `CivilianArchitectureAcceptanceTest` still executes the real application,
+The existing `ScenarioArchitectureAcceptanceTest` still executes the real application,
 HTTP authentication, catalogue, two-pass analysis, persistence, export/reopen and
 optional browser checks. Only the outbound model responses are authored playback.
 The fresh-process launcher now evaluates the saved result before its completion
@@ -9,7 +9,7 @@ is introduced. No production search algorithm, prompt, budget or quality gate ch
 
 ## Output and provenance
 
-The existing `target/civilian-acceptance` artifact directory gains
+The existing `target/scenario-acceptance` artifact directory gains
 `relation-quality.json`, `relation-quality.csv` and `relation-quality.html`.
 JSON and HTML retain the case/reference versions, fixture and exact snapshot hashes,
 application source revision, catalogue and prompt fingerprints, actual relation-call
@@ -56,7 +56,7 @@ quality, semantic completeness on arbitrary input or superiority over another to
 ## Execution and bounded inputs
 
 The ordinary `./mvnw test` runs the JUnit contracts and the existing scenario launcher.
-The documented civilian acceptance profile also uses that unchanged launcher.
+The documented scenario acceptance profile also uses that unchanged launcher.
 Before a scenario starts, earlier quality reports are removed. If it fails before
 producing its final saved snapshot/run receipt, no replacement success report is
 published. Metric mismatches reached by the post-processor are written before the
@@ -78,7 +78,7 @@ full application/Maven suite were not run locally.**
 
 Supplementary Java 21 checks compiled the actual new helper sources and passed
 29 metric checks plus 14 report checks. Report checks use the genuine saved
-civilian snapshot from CI run `36354588531`, artifact `10944295583` (archive SHA-256
+scenario snapshot from CI run `36354588531`, artifact `10944295583` (archive SHA-256
 `1fa87243ac9dce65e348de0caf3210962f9ded7e24a1917b70868b60de95dacf`).
 The report retains that artifact's recorded source revision; it is not relabelled
 as a fresh execution of this branch. The checked snapshot contains seven expected

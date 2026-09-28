@@ -17,10 +17,10 @@ import java.util.Set;
 
 import static com.taxonomy.acceptance.DirectedRelationMetrics.*;
 
-/** Post-processes the existing civilian application scenario; never calls a provider or supplies its answers. */
-public final class CivilianRelationQuality {
+/** Post-processes the existing scenario application scenario; never calls a provider or supplies its answers. */
+public final class ScenarioRelationQuality {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String CASE_ID = "civilian-flood-information-v1";
+    private static final String CASE_ID = "flood-information-v1";
     private static final List<String> REPORTS = List.of("relation-quality.json", "relation-quality.csv", "relation-quality.html");
     private static final Reference REFERENCE = new Reference(Set.of(
             new Relation("CI-1052", "SUPPORTS", "BP-1017"), new Relation("UA-1580", "CONSUMES", "IP-1116"),
@@ -28,7 +28,7 @@ public final class CivilianRelationQuality {
             new Relation("UA-1580", "USES", "CI-1052"), new Relation("CI-1052", "PRODUCES", "IP-1116"),
             new Relation("UA-1580", "USES", "CR-1097")), Set.of(), Set.of());
 
-    private CivilianRelationQuality() { }
+    private ScenarioRelationQuality() { }
 
     public static void clearReports(Path directory) throws IOException {
         for (String report : REPORTS) Files.deleteIfExists(directory.resolve(report));
@@ -37,7 +37,7 @@ public final class CivilianRelationQuality {
     public static void verify(Path directory) throws IOException {
         var result = write(directory);
         if (result.verdict() != Verdict.PASS) {
-            throw new AssertionError("Authored civilian relation evaluation: " + result.verdict()
+            throw new AssertionError("Authored scenario relation evaluation: " + result.verdict()
                     + "; inspect relation-quality.json (not a live-model benchmark)");
         }
     }
@@ -71,7 +71,7 @@ public final class CivilianRelationQuality {
         Evaluation evaluation = evaluate(REFERENCE, predictions, state);
         var report = new LinkedHashMap<String, Object>();
         report.put("schemaVersion", 1);
-        report.put("referenceVersion", "civilian-directed-relations-v1");
+        report.put("referenceVersion", "scenario-directed-relations-v1");
         report.put("evidenceKind", "AUTHORED_PLAYBACK_NOT_LIVE_MODEL");
         report.put("caseId", caseId);
         report.put("fixtureSha256", fingerprint(run, "fixtureSha256"));

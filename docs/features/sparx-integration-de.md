@@ -130,16 +130,16 @@ Eigentümer. Beispiel mit zu ersetzenden, nicht geheimen Werten:
 taxonomy:
   integrations:
     remotes:
-      civilian-pcs:
+      scenario-pcs:
         repository-id: <repository-id>
         organization-id: USER:<repository-eigentuemer>
         base-uri: https://pcs.example.org/model/oslc/am/
-        credential-environment-variable: CIVILIAN_PCS_TOKEN
+        credential-environment-variable: SCENARIO_PCS_TOKEN
         allow-private-networks: false
         allow-insecure-http: false
 ```
 
-`CIVILIAN_PCS_TOKEN` enthält die PCS-Sitzungs-GUID aus dem
+`SCENARIO_PCS_TOKEN` enthält die PCS-Sitzungs-GUID aus dem
 [dokumentierten Modell-Login](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html).
 Login, SSO und Token-Erneuerung erfolgen in diesem Schritt administrativ.
 Der Transport sendet `Authorization: OSLC <token>` und den erforderlichen
@@ -148,7 +148,7 @@ Parameter maskieren. Taxonomy speichert nur den Profilschlüssel und Ressourcen 
 Zugangsdaten. Ein fehlgeschlagener Abruf kann nach Erneuerung des serverseitigen
 Tokens mit derselben Vorgangs-ID fortgesetzt werden.
 
-Auf der Integrationsseite AM-Profil, zulässigen Modus und `civilian-pcs` wählen.
+Auf der Integrationsseite AM-Profil, zulässigen Modus und `scenario-pcs` wählen.
 Die **externe Repository-Identität muss genau `base-uri` entsprechen**; die externe
 Konfiguration bleibt leer. Für Anforderungselemente ein Projekt zuordnen.
 Das Ressourcenfeld für `sp/`-Discovery leer lassen oder `qc/` eingeben. Gefilterte

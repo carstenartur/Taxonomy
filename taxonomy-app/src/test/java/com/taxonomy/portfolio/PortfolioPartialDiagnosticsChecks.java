@@ -67,7 +67,7 @@ public final class PortfolioPartialDiagnosticsChecks {
         var scope = new WorkspaceContext(actor, "partial-" + UUID.randomUUID(), "draft");
         var project = projects.createProject(new CreateProjectRequest("DIAG", "Diagnostic test", null,
                 null, null, null, null, null), actor, scope);
-        String original = "Provide readable explanations for incomplete civilian information-product analyses.";
+        String original = "Provide readable explanations for incomplete scenario information-product analyses.";
         var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest("CIV-1",
                 "Diagnostic requirement", original, null, null, null, null, null, null, null, null), actor, scope);
         var job = persistence.createOrReuseJob(project.id(), List.of(requirement.id()), null, 25,

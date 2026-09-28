@@ -12,13 +12,13 @@ import java.util.List;
 import static com.taxonomy.acceptance.DirectedRelationMetrics.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-class CivilianRelationQualityTest {
+class ScenarioRelationQualityTest {
     @TempDir Path directory;
     private final ObjectMapper json = new ObjectMapper();
 
     @Test void writesExplicitlyAuthoredReportsFromTheSavedSnapshot() throws Exception {
         inputs();
-        var result = CivilianRelationQuality.write(directory);
+        var result = ScenarioRelationQuality.write(directory);
         assertEquals(Verdict.PASS, result.verdict());
         var report = json.readTree(Files.readString(directory.resolve("relation-quality.json")));
         assertEquals("AUTHORED_PLAYBACK_NOT_LIVE_MODEL", report.path("evidenceKind").stringValue());
@@ -30,7 +30,7 @@ class CivilianRelationQualityTest {
         assertTrue(Files.readString(directory.resolve("relation-quality.html")).contains("Not a live-model benchmark"));
         assertTrue(Files.readString(directory.resolve("relation-quality.csv")).contains("PASS"));
         byte[] before = Files.readAllBytes(directory.resolve("relation-quality.json"));
-        CivilianRelationQuality.write(directory);
+        ScenarioRelationQuality.write(directory);
         assertArrayEquals(before, Files.readAllBytes(directory.resolve("relation-quality.json")));
     }
 
@@ -38,19 +38,19 @@ class CivilianRelationQualityTest {
         var snapshot = inputs();
         ((ObjectNode) snapshot.at("/analysis/relationSearchReport/result")).putArray("unfinished").addObject();
         saveSnapshot(snapshot);
-        var result = CivilianRelationQuality.write(directory);
+        var result = ScenarioRelationQuality.write(directory);
         assertEquals(RunState.PARTIAL, result.state());
         assertEquals(Verdict.INCONCLUSIVE, result.verdict());
         assertNull(result.recall());
-        assertThrows(AssertionError.class, () -> CivilianRelationQuality.verify(directory));
+        assertThrows(AssertionError.class, () -> ScenarioRelationQuality.verify(directory));
     }
 
     @Test void missingStatusIsRejectedAndRemovesEarlierSuccessReports() throws Exception {
         var snapshot = inputs();
-        CivilianRelationQuality.write(directory);
+        ScenarioRelationQuality.write(directory);
         ((ObjectNode) snapshot.path("analysis")).remove("status");
         saveSnapshot(snapshot);
-        assertThrows(IllegalArgumentException.class, () -> CivilianRelationQuality.write(directory));
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
         assertFalse(Files.exists(directory.resolve("relation-quality.json")));
         assertFalse(Files.exists(directory.resolve("relation-quality.html")));
         assertFalse(Files.exists(directory.resolve("relation-quality.csv")));
@@ -60,26 +60,26 @@ class CivilianRelationQualityTest {
         var snapshot = inputs();
         ((ObjectNode) snapshot.at("/analysis/relationSearchReport/result")).remove("unfinished");
         saveSnapshot(snapshot);
-        assertThrows(IllegalArgumentException.class, () -> CivilianRelationQuality.write(directory));
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
     }
 
     @Test void foreignSnapshotAndUnversionedCaseAreRejected() throws Exception {
         var snapshot = inputs();
         ((ObjectNode) snapshot.path("summary")).put("id", "another-snapshot");
         saveSnapshot(snapshot);
-        assertThrows(IllegalArgumentException.class, () -> CivilianRelationQuality.write(directory));
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
         inputs();
         var run = (ObjectNode) json.readTree(Files.readString(directory.resolve("run.json")));
         run.put("scenario", "another-case");
         Files.writeString(directory.resolve("run.json"), run.toString());
-        assertThrows(IllegalArgumentException.class, () -> CivilianRelationQuality.write(directory));
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
     }
 
     @Test void referenceErrorsAreWrittenBeforeVerificationFails() throws Exception {
         var snapshot = inputs();
         ((ObjectNode) snapshot.at("/analysis/architectureView/includedRelationships/0")).put("relationType", "PRODUCES");
         saveSnapshot(snapshot);
-        assertThrows(AssertionError.class, () -> CivilianRelationQuality.verify(directory));
+        assertThrows(AssertionError.class, () -> ScenarioRelationQuality.verify(directory));
         var report = json.readTree(Files.readString(directory.resolve("relation-quality.json")));
         assertEquals("FAIL", report.at("/evaluation/verdict").stringValue());
         assertEquals(1, report.at("/evaluation/falsePositives").size());
@@ -104,7 +104,7 @@ class CivilianRelationQualityTest {
             relations.addObject().put("sourceCode", parts[0]).put("relationType", parts[1]).put("targetCode", parts[2]);
         }
         saveSnapshot(snapshot);
-        var run = json.createObjectNode().put("scenario", "civilian-flood-information-v1")
+        var run = json.createObjectNode().put("scenario", "flood-information-v1")
                 .put("fixtureSha256", "c".repeat(64)).put("snapshotId", "snapshot-1")
                 .put("sourceRevision", "d".repeat(40)).put("llmCalls", 350);
         Files.writeString(directory.resolve("run.json"), run.toString());

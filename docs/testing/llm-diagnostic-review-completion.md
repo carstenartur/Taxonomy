@@ -57,15 +57,15 @@ retirement immediately after a real committed claim and a separate superseding-
 owner case. Both use real transactional persistence. The established capacity,
 shutdown and finalization-order checks are retained.
 
-## Civilian acceptance and real heap isolation
+## Scenario acceptance and real heap isolation
 
-The SQL Server verification lane at head `ca27cebb` failed in the ordinary civilian
+The SQL Server verification lane at head `ca27cebb` failed in the ordinary scenario
 application test before database-specific integration tests. The recorded reason
 was `MEMORY_PRESSURE` in the second analysis pass, not an SQL assertion. The
 application correctly kept the first completed pass and reported a partial result.
 A successful standalone scenario is not proof of the whole database matrix.
 
-The complete civilian scenario now runs in a fresh JVM instead of sharing the
+The complete scenario now runs in a fresh JVM instead of sharing the
 accumulated heap of earlier reactor test classes. Its normal JUnit entry point
 requires a successful child exit and completion marker. The child executes Spring's
 real test lifecycle, imports, bean overrides and cleanup. Its maximum heap cannot

@@ -15,13 +15,13 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 /** Replaces only the remote HTTP exchange, including in asynchronous Copilot jobs. */
 @TestConfiguration(proxyBeanMethods = false)
-public class CivilianLlmConfiguration {
-    public static final String URL = "https://civilian.invalid/v1/chat/completions";
+public class ScenarioLlmConfiguration {
+    public static final String URL = "https://scenario.invalid/v1/chat/completions";
 
     @Bean @Lazy(false)
-    ScenarioLlmPlayback civilianLlmPlayback(RestTemplate restTemplate, org.springframework.core.env.Environment environment) throws Exception {
-        var playback = environment.getProperty("civilian.reformulation", Boolean.class, false)
-                ? new ScenarioLlmPlayback(ReformulationCivilianCorpus.scenario(environment.getProperty("civilian.reformulation-case", "flood"))) : ScenarioLlmPlayback.flood();
+    ScenarioLlmPlayback scenarioLlmPlayback(RestTemplate restTemplate, org.springframework.core.env.Environment environment) throws Exception {
+        var playback = environment.getProperty("scenario.reformulation", Boolean.class, false)
+                ? new ScenarioLlmPlayback(ReformulationScenarioCorpus.scenario(environment.getProperty("scenario.reformulation-case", "flood"))) : ScenarioLlmPlayback.flood();
         var mapper = new ObjectMapper();
         var server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(ExpectedCount.manyTimes(), request -> { }).andRespond(request -> {
@@ -29,7 +29,7 @@ public class CivilianLlmConfiguration {
                 playback.reject("Unexpected remote request; no network fallback permitted");
             }
             var body = mapper.readTree(((MockClientHttpRequest) request).getBodyAsString());
-            if (!body.path("model").asText().equals("civilian-fixture")
+            if (!body.path("model").asText().equals("scenario-fixture")
                     || body.path("messages").size() != 1
                     || !body.at("/messages/0/role").asText().equals("user")) {
                 playback.reject("Unexpected OpenAI-compatible request envelope");

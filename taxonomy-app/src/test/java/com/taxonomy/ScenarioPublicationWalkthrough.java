@@ -6,20 +6,20 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real authenticated application routes prepare a browser-reviewable test-only publication. */
-final class CivilianPublicationWalkthrough {
-    static JsonNode prepare(CivilianArchitectureAcceptanceTest app, PublicationContractProvider provider) throws Exception {
+final class ScenarioPublicationWalkthrough {
+    static JsonNode prepare(ScenarioArchitectureAcceptanceTest app, PublicationContractProvider provider) throws Exception {
         var repository = app.post("/api/repositories", Map.of("displayName", "Publication contract — TEST ONLY", "slug", "publication-" + UUID.randomUUID(), "description", "Genuine HTTP contract acceptance; not PCS", "visibility", "PRIVATE", "defaultBranch", "draft"), 200);
         var workspace = app.post("/api/repositories/" + repository.path("repositoryId").asText() + "/workspaces", Map.of("displayName", "Publication contract — TEST ONLY", "description", "", "sourceBranch", "draft"), 200);
         String scope = "?repositoryId=" + repository.path("repositoryId").asText() + "&workspaceId=" + workspace.path("workspaceId").asText() + "&branch=draft";
         UUID connection = UUID.randomUUID(); String path = "/api/integrations/" + connection;
         app.post("/api/integrations" + scope, Map.of("id", connection, "name", "Publication contract — TEST ONLY / NUR TEST", "connectorId", PublicationContractProvider.PROFILE, "profileVersion", "1", "authority", "BIDIRECTIONAL", "externalScope", PublicationContractProvider.SCOPE.externalScope()), 200);
-        for (String title : List.of("Flood observations", "Verified warning channel", "Civilian response coordination")) {
+        for (String title : List.of("Flood observations", "Verified warning channel", "Scenario response coordination")) {
             var editor = app.get("/api/architecture/editor" + scope); String id = UUID.randomUUID().toString();
             var command = Map.of("context", editor.path("document").path("context"), "metadata", metadata(id, "Prepare reviewed contract publication"), "kind", "CREATE_ELEMENT", "type", "System", "properties", Map.of("title", title));
-            CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/commands" + scope, command, editor.path("document").path("context").path("revision").asLong());
+            ScenarioIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/commands" + scope, command, editor.path("document").path("context").path("revision").asLong());
         }
         var editor = app.get("/api/architecture/editor" + scope); String checkpoint = UUID.randomUUID().toString();
-        CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/checkpoints" + scope, Map.of("context", editor.path("document").path("context"), "metadata", metadata(checkpoint, "Freeze publication source")), editor.path("document").path("context").path("revision").asLong());
+        ScenarioIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/checkpoints" + scope, Map.of("context", editor.path("document").path("context"), "metadata", metadata(checkpoint, "Freeze publication source")), editor.path("document").path("context").path("revision").asLong());
         var overview = app.get(path + scope);
         var preview = app.post(path + "/publication-previews" + scope, Map.of("operationId", UUID.randomUUID(), "expected", overview.path("current"), "mode", "PUSH", "scope", PublicationContractProvider.SCOPE, "expectedExternalRevision", provider.revision()), 200);
         assertThat(preview.path("preview").path("changes")).hasSize(3);
@@ -28,13 +28,13 @@ final class CivilianPublicationWalkthrough {
         app.save("publication-context.json", result); app.save("publication-preview.json", preview);
         return result;
     }
-    static JsonNode prepareDivergence(CivilianArchitectureAcceptanceTest app, PublicationContractProvider provider, JsonNode context) throws Exception {
+    static JsonNode prepareDivergence(ScenarioArchitectureAcceptanceTest app, PublicationContractProvider provider, JsonNode context) throws Exception {
         String scope = context.path("scope").asText(), path = "/api/integrations/" + context.path("connection").asText();
         var editor = app.get("/api/architecture/editor" + scope); String id = UUID.randomUUID().toString();
-        CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/commands" + scope,
+        ScenarioIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/commands" + scope,
                 Map.of("context", editor.path("document").path("context"), "metadata", metadata(id, "Keep a reviewed divergence visible"), "kind", "CREATE_ELEMENT", "type", "System", "properties", Map.of("title", "Review pending evacuation plans")), editor.path("document").path("context").path("revision").asLong());
         editor = app.get("/api/architecture/editor" + scope); String checkpoint = UUID.randomUUID().toString();
-        CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/checkpoints" + scope,
+        ScenarioIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/checkpoints" + scope,
                 Map.of("context", editor.path("document").path("context"), "metadata", metadata(checkpoint, "Freeze explicit divergence for review")), editor.path("document").path("context").path("revision").asLong());
         var preview = app.post(path + "/publication-previews" + scope,
                 Map.of("operationId", UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mode", "PUSH", "scope", PublicationContractProvider.SCOPE, "expectedExternalRevision", provider.revision()), 200);

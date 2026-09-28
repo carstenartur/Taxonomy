@@ -1,8 +1,8 @@
 package com.taxonomy;
 
-import com.taxonomy.acceptance.CivilianLlmConfiguration;
+import com.taxonomy.acceptance.ScenarioLlmConfiguration;
 import com.taxonomy.acceptance.ScenarioLlmPlayback;
-import com.taxonomy.acceptance.CivilianExportQa;
+import com.taxonomy.acceptance.ScenarioExportQa;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
@@ -28,24 +28,24 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real HTTP, authentication, catalogue, jobs, persistence and exports; only LLM HTTP is replaced. */
-class CivilianArchitectureAcceptanceTest {
+class ScenarioArchitectureAcceptanceTest {
     // Build the Spring fixture only in the child JVM, not in the long-lived reactor
     // test process. The resource guard still observes real, unmodified heap samples.
     @SpringBootTest(classes = TaxonomyApplication.class,
             webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
             "taxonomy.features.multi-repository-api.enabled=true",
             "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
-            "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + CivilianLlmConfiguration.URL,
-            "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
+            "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + ScenarioLlmConfiguration.URL,
+            "custom.llm.model=scenario-fixture", "taxonomy.admin-password=Scenario-Acceptance-2026!",
             "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2",
             // Exhaustive authored response coverage, not a change to the production budget.
             "taxonomy.analysis.relations.hierarchical.max-calls=256"
     })
-    @Import({CivilianLlmConfiguration.class, com.taxonomy.interop.publication.PublicationCivilianConfiguration.class})
+    @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-    static class Scenario extends CivilianArchitectureAcceptanceTest { }
+    static class Scenario extends ScenarioArchitectureAcceptanceTest { }
 
-    static final String PASSWORD = "Civilian-Acceptance-2026!";
+    static final String PASSWORD = "Scenario-Acceptance-2026!";
     @LocalServerPort int port;
     @Autowired ScenarioLlmPlayback playback;
     @Autowired com.taxonomy.interop.publication.PublicationContractProvider publicationProvider;
@@ -60,10 +60,10 @@ class CivilianArchitectureAcceptanceTest {
     com.taxonomy.architecture.service.ArchitectureReportService liveReports;
     final ObjectMapper json = new ObjectMapper();
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    final Path output = Path.of("target/civilian-acceptance");
+    final Path output = Path.of("target/scenario-acceptance");
 
-    @Test void generatesAndReopensCivilianArchitectureThroughTheRealCopilot() throws Exception {
-        CivilianAcceptanceProcess.verify();
+    @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot() throws Exception {
+        ScenarioAcceptanceProcess.verify();
     }
 
     void verifyScenario() throws Exception {
@@ -76,7 +76,7 @@ class CivilianArchitectureAcceptanceTest {
             assertThat(names).containsEntry(binding.getKey(), binding.getValue().asText());
         }
         try (var browser = Boolean.getBoolean("generateScreenshots")
-                ? new CivilianBrowserWalkthrough(port, output) : null) {
+                ? new ScenarioBrowserWalkthrough(port, output) : null) {
             Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture);
             long projectId = run.projectId();
             long requirementId = run.requirementId();
@@ -180,7 +180,7 @@ class CivilianArchitectureAcceptanceTest {
                     assertThat(response.headers().firstValue("X-Taxonomy-Snapshot-Id")).contains(snapshotId);
                     graphHashes.add(response.headers().firstValue("X-Taxonomy-Canonical-Graph-Sha256").orElseThrow());
                     assertThat(response.headers().firstValue("X-Taxonomy-Artifact-Sha256"))
-                            .contains(CivilianExportQa.sha256(response.body()));
+                            .contains(ScenarioExportQa.sha256(response.body()));
                 }
             }
             assertThat(graphHashes).hasSize(1);
@@ -220,13 +220,13 @@ class CivilianArchitectureAcceptanceTest {
             assertThat(wordHashes).hasSize(1);
             artifacts.put("report.docx", wordResponse.body());
             Files.write(output.resolve("report.docx"), wordResponse.body());
-            save("quality.json", json.valueToTree(CivilianExportQa.verify(projection, artifacts, output,
+            save("quality.json", json.valueToTree(ScenarioExportQa.verify(projection, artifacts, output,
                     Boolean.getBoolean("generateScreenshots"))));
-            CivilianIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
+            ScenarioIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
             // Export/reopen must not perform another analysis, even when a provider is configured.
             playback.verifyCoverage(2);
             playback.verifyRelationCoverage(2);
-            CivilianPublicationWalkthrough.prepare(this, publicationProvider);
+            ScenarioPublicationWalkthrough.prepare(this, publicationProvider);
             if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts, this);
             playback.verifyCoverage(2);
             playback.verifyRelationCoverage(2);
@@ -304,7 +304,7 @@ class CivilianArchitectureAcceptanceTest {
     Run startThroughHttp(JsonNode fixture) throws Exception {
         String projectKey = "CIV-FLOOD-" + UUID.randomUUID().toString().substring(0, 8);
         long projectId = post("/api/projects", Map.of("projectKey", projectKey,
-                "title", "Civilian flood information", "description", "Source-backed deterministic acceptance scenario",
+                "title", "Flood information", "description", "Source-backed deterministic acceptance scenario",
                 "status", "ACTIVE"), 201).path("id").asLong();
         var requirement = fixture.get("requirement");
         long requirementId = post("/api/projects/" + projectId + "/requirements", Map.of(

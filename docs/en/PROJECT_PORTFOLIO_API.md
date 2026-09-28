@@ -543,4 +543,4 @@ Word headings, TOC fields, static internal navigation, repeating table headers, 
 
 Use `language=de` for generated German labels. Saved evidence and administrator-authored template text remain unchanged. The decision DOCX continues through the current versioned DOTX body-marker/decorator path; existing custom styles, headers, footers, logos and template identity are preserved. `/api/report/docx` remains the typed, structured **ad-hoc/live** report endpoint and does not assert frozen snapshot provenance.
 
-The civilian acceptance pipeline checks source parity and semantic completeness, and renders both Word artifacts with LibreOffice/Poppler. This is not Microsoft Word product certification.
+The scenario acceptance pipeline checks source parity and semantic completeness, and renders both Word artifacts with LibreOffice/Poppler. This is not Microsoft Word product certification.

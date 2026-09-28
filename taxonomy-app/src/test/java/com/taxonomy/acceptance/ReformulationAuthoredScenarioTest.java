@@ -8,7 +8,7 @@ import java.util.UUID;
 class ReformulationAuthoredScenarioTest {
     @ParameterizedTest @ValueSource(strings = {"time-recording", "cross-taxonomy"})
     void actualAnalysisPreservesNegativeNumericalAndUnmappedSource(String scenario) throws Exception {
-        Path output = Files.createDirectories(Path.of("target/reformulation-civilian-acceptance", scenario + "-" + UUID.randomUUID()));
-        ReformulationCivilianAcceptanceTest.launch(output, "authored-" + scenario);
+        Path output = Files.createDirectories(Path.of("target/reformulation-scenario-acceptance", scenario + "-" + UUID.randomUUID()));
+        ReformulationScenarioAcceptanceTest.launch(output, "authored-" + scenario);
     }
 }

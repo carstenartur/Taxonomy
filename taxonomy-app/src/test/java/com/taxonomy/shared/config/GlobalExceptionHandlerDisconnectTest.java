@@ -30,7 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
-/** Reproduces the nested servlet-output failure from civilian acceptance logs. */
+/** Reproduces the nested servlet-output failure from scenario acceptance logs. */
 class GlobalExceptionHandlerDisconnectTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler(new StaticMessageSource());

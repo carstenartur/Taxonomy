@@ -65,7 +65,7 @@ input boundary. Invalid graph inputs continue to return HTTP 400.
   Visio download, HTTP-200 HTML rejection, truncated VSDX rejection. Downloaded files
   were reopened and CRC checked. Both light/dark button contrast states were checked.
   These are controlled components, not full-application or desktop-product certification.
-- The complete civilian scenario now requires all five registered adapters and reopens
+- The complete scenario now requires all five registered adapters and reopens
   the actual Sparx ZIP/XMI, checking membership, original IDs, direction, source types,
   checksum and fresh-copy disclosure. Parent fresh-JVM isolation and every existing
   export assertion remain. This expanded complete scenario still requires CI execution.

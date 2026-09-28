@@ -78,7 +78,7 @@ checks are separate evidence, not an invented full browser result. Current-head
 CI/coverage, PostgreSQL and independent review remain required. No test thresholds,
 security rules or architecture baseline counts are weakened in this change.
 
-Remaining: live-model/full civilian acceptance, rich Word/portable evidence,
+Remaining: live-model/full scenario acceptance, rich Word/portable evidence,
 large irreducible reconciliation inputs and retention policy. This is not a claim
 that all eight plan packages are finished.
 

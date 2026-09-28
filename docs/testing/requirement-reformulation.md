@@ -5,12 +5,12 @@
 Run the Maven-owned selection with Java 21 and Docker:
 
 ```sh
-./mvnw -B -ntp -pl taxonomy-app -am test -Pcivilian-acceptance
+./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
 ```
 
 The profile and `.mvn/verification-suites.json` explicitly select the existing
-civilian scenario and browser contracts plus `ReformulationCivilianAcceptanceTest`,
-`ReformulationCivilianBrowserTest` and `ReformulationAuthoredScenarioTest`.
+scenario and browser contracts plus `ReformulationScenarioAcceptanceTest`,
+`ReformulationScenarioBrowserTest` and `ReformulationAuthoredScenarioTest`.
 The CI job requires positive named JUnit results; a successful reactor with zero
 selected tests is insufficient. The ordinary full CI, coverage, database, security,
 UI and transport gates remain required independently.
@@ -39,7 +39,7 @@ download and explicit adoption. The existing `ReformulationBrowserTest` addition
 covers all answer kinds, conditional questions, separate deferral and late results.
 No HTML, final database state or prepared analysis result is inserted into this path.
 
-Evidence is under `taxonomy-app/target/reformulation-civilian-acceptance/`: prompts,
+Evidence is under `taxonomy-app/target/reformulation-scenario-acceptance/`: prompts,
 calls, fatal mismatches, jobs, snapshots, revisions, receipts, exports, child-process
 logs, screenshots and restart identity. CI excludes the temporary database itself.
 The document gate independently renders the actual DOCX exports with LibreOffice,
@@ -49,8 +49,8 @@ compiling `taxonomy-tooling`:
 
 ```sh
 java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling \
-  check-civilian-documents --reformulation-only \
-  --artifacts taxonomy-app/target/reformulation-civilian-acceptance
+  check-scenario-documents --reformulation-only \
+  --artifacts taxonomy-app/target/reformulation-scenario-acceptance
 ```
 
 Local focused successes and current-head CI are recorded separately in

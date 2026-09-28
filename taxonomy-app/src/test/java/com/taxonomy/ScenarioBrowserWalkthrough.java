@@ -1,6 +1,6 @@
 package com.taxonomy;
 
-import com.taxonomy.acceptance.CivilianExportQa;
+import com.taxonomy.acceptance.ScenarioExportQa;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -27,7 +27,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Opt-in real browser journey. No intercepted application requests, injected HTML or result data. */
-final class CivilianBrowserWalkthrough implements AutoCloseable {
+final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private final RemoteWebDriver driver;
     private final WebDriverWait wait;
     private final String origin;
@@ -39,7 +39,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
     private final List<Map<String, Object>> controls = new ArrayList<>();
     private boolean completed;
 
-    CivilianBrowserWalkthrough(int port, Path output) throws Exception {
+    ScenarioBrowserWalkthrough(int port, Path output) throws Exception {
         assertThat(Boolean.getBoolean("generateScreenshots")).isTrue();
         this.output = output;
         downloads = output.resolve("browser-downloads").toAbsolutePath();
@@ -50,7 +50,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         if (System.getProperty("webdriver.chrome.driver") != null) {
             ChromeOptions options = new ChromeOptions();
             options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
-            String binary = System.getProperty("civilian.chrome.binary");
+            String binary = System.getProperty("scenario.chrome.binary");
             if (binary != null) options.setBinary(binary);
             options.setExperimentalOption("prefs", Map.of("download.default_directory", downloads.toString(),
                     "download.prompt_for_download", false, "plugins.always_open_pdf_externally", true));
@@ -85,10 +85,10 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait = new WebDriverWait(driver, Duration.ofSeconds(45));
     }
 
-    CivilianArchitectureAcceptanceTest.Run start(JsonNode fixture) throws Exception {
+    ScenarioArchitectureAcceptanceTest.Run start(JsonNode fixture) throws Exception {
         driver.get(origin + "/login");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys("admin");
-        driver.findElement(By.name("password")).sendKeys(CivilianArchitectureAcceptanceTest.PASSWORD);
+        driver.findElement(By.name("password")).sendKeys(ScenarioArchitectureAcceptanceTest.PASSWORD);
         driver.findElement(By.cssSelector("form")).submit();
         wait.until(browser -> !browser.getCurrentUrl().contains("/login"));
         driver.get(origin + "/projects?lang=en");
@@ -97,7 +97,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         click(By.cssSelector("[data-bs-target='#projectModal']"));
         var modal = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectModal")));
         fill(modal, "projectKey", projectKey);
-        fill(modal, "projectTitle", "Civilian flood information");
+        fill(modal, "projectTitle", "Flood information");
         fill(modal, "projectDescription", "GOV.UK service requirements and Environment Agency API contract; deterministic LLM responses.");
         modal.findElement(By.cssSelector("button[type='submit']")).click();
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("projectModal")));
@@ -111,7 +111,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         modal.findElement(By.cssSelector("button[type='submit']")).click();
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
         var row = wait.until(browser -> browser.findElements(By.cssSelector("#requirementsTable tbody tr")).stream()
-                .filter(element -> element.getText().contains("CIV-FLOOD-001")).findFirst().orElse(null));
+                .filter(element -> element.getText().contains("FLOOD-001")).findFirst().orElse(null));
         long requirementId = Long.parseLong(row.findElement(By.cssSelector(".requirement-snapshots"))
                 .getAttribute("data-requirement-id"));
         long projectId = Long.parseLong(String.valueOf(driver.executeScript(
@@ -120,7 +120,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
         new Select(driver.findElement(By.id("copilotProfile"))).selectByValue("EXHAUSTIVE");
         inventory("requirement");
-        screenshot("73-civilian-requirement.png");
+        screenshot("73-scenario-requirement.png");
         click(By.id("copilotRun"));
         wait.until(browser -> {
             String id = browser.findElement(By.id("copilotOperation")).getAttribute("data-operation-id");
@@ -132,17 +132,17 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=")
                 || browser.findElements(By.id("copilotOperation")).stream()
                 .anyMatch(element -> operation.equals(element.getAttribute("data-operation-id"))));
-        return new CivilianArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
+        return new ScenarioArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
     }
 
     void inspect(long projectId, long requirementId, String snapshotId, JsonNode projection,
-                 Map<String, byte[]> artifacts, CivilianArchitectureAcceptanceTest app) throws Exception {
+                 Map<String, byte[]> artifacts, ScenarioArchitectureAcceptanceTest app) throws Exception {
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
         inventory("result");
         driver.executeScript("arguments[0].scrollIntoView({block:'start'})",
                 driver.findElement(By.id("snapshotResultOverview")));
-        screenshot("74-civilian-result.png");
+        screenshot("74-scenario-result.png");
         driver.navigate().refresh();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
         assertThat(driver.getCurrentUrl()).contains("snapshot=" + snapshotId);
@@ -154,7 +154,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         click(By.id("fitArchitecture"));
         awaitFit();
         inventory("architecture");
-        screenshot("75-civilian-architecture.png");
+        screenshot("75-scenario-architecture.png");
 
         int total = driver.findElements(By.cssSelector(".architecture-node")).size();
         var search = driver.findElement(By.id("architectureSearch"));
@@ -175,7 +175,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait.until(browser -> visibleNodeIds().equals(neighbors));
         click(By.id("fitArchitecture"));
         awaitFit();
-        screenshot("76-civilian-focus.png");
+        screenshot("76-scenario-focus.png");
         click(By.id("architectureOverview"));
         wait.until(browser -> browser.findElements(By.cssSelector(".architecture-node")).size() == total);
         Set<String> anchors = new TreeSet<>();
@@ -243,9 +243,9 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             byte[] bytes = Files.readAllBytes(downloads.resolve(name));
             assertThat(bytes).as("Browser download %s", name).isNotEmpty();
             downloaded.put(button.getValue(), bytes);
-            downloadHashes.put(button.getKey(), CivilianExportQa.sha256(bytes));
+            downloadHashes.put(button.getKey(), ScenarioExportQa.sha256(bytes));
         }
-        CivilianExportQa.verify(projection, downloaded, output, false);
+        ScenarioExportQa.verify(projection, downloaded, output, false);
         // Chrome clamps ordinary window widths to 500px. Emulate and assert the
         // actual narrow viewport, rather than accepting the requested outer size.
         ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",
@@ -255,14 +255,14 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         awaitFit();
         assertThat(Boolean.TRUE.equals(driver.executeScript(
                 "return document.documentElement.scrollWidth <= window.innerWidth + 2"))).as("No horizontal page overflow").isTrue();
-        screenshot("77-civilian-mobile.png");
+        screenshot("77-scenario-mobile.png");
         Files.writeString(output.resolve("controls.json"), new ObjectMapper().writeValueAsString(controls));
         Files.writeString(output.resolve("browser.json"), new ObjectMapper().writeValueAsString(Map.of(
                 "browser", driver.getCapabilities().getBrowserName(), "version", driver.getCapabilities().getBrowserVersion(),
                 "mobileViewport", Map.of("width", 390, "height", 844),
                 "downloadSha256", downloadHashes, "contextNodeCount", total - anchors.size(),
-                "snapshotId", snapshotId, "screenshots", List.of("73-civilian-requirement.png", "74-civilian-result.png",
-                "75-civilian-architecture.png", "76-civilian-focus.png", "77-civilian-mobile.png"))));
+                "snapshotId", snapshotId, "screenshots", List.of("73-scenario-requirement.png", "74-scenario-result.png",
+                "75-scenario-architecture.png", "76-scenario-focus.png", "77-scenario-mobile.png"))));
         inspectNativePackageControls(app);
         inspectPublicationControls(app);
         Files.writeString(output.resolve("controls.json"), new ObjectMapper().writeValueAsString(controls));
@@ -270,7 +270,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
     }
 
     /** Real browser controls, backed by the API walkthrough's isolated native workspace. */
-    private void inspectNativePackageControls(CivilianArchitectureAcceptanceTest app) throws Exception {
+    private void inspectNativePackageControls(ScenarioArchitectureAcceptanceTest app) throws Exception {
         var context = new ObjectMapper().readTree(Files.readString(output.resolve("integration-native-context.json")));
         String scope = context.path("scope").asText();
         var editorContext = context.path("editorContext");
@@ -306,7 +306,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         byte[] original = Files.readAllBytes(output.resolve("native-browser-fixture.xmi"));
         String changed = new String(original, StandardCharsets.UTF_8).replace("10000000-0000-4000-8000-000000000004", "10000000-0000-4000-8000-000000000005")
                 .replace("10000000_0000_4000_8000_000000000004", "10000000_0000_4000_8000_000000000005");
-        var preview = CivilianIntegrationWalkthrough.uploadXmi(app, "/api/integrations/" + context.path("connection").asText(), scope, changed.getBytes(StandardCharsets.UTF_8));
+        var preview = ScenarioIntegrationWalkthrough.uploadXmi(app, "/api/integrations/" + context.path("connection").asText(), scope, changed.getBytes(StandardCharsets.UTF_8));
         for (String language : List.of("en", "de")) {
             driver.get(origin + "/integrations" + scope + "&connection=" + context.path("connection").asText() + "&operation=" + preview.path("id").asText() + "&lang=" + language);
             wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationApply")));
@@ -340,7 +340,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         });
     }
 
-    private void inspectPublicationControls(CivilianArchitectureAcceptanceTest app) throws Exception {
+    private void inspectPublicationControls(ScenarioArchitectureAcceptanceTest app) throws Exception {
         var context = new ObjectMapper().readTree(Files.readString(output.resolve("publication-context.json")));
         String link = origin + "/integrations" + context.path("scope").asText() + "&connection=" + context.path("connection").asText() + "&operation=" + context.path("operation").asText();
         for (String language : List.of("en", "de")) {
@@ -370,7 +370,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             driver.executeScript("arguments[0].scrollIntoView({block:'start'})", driver.findElement(By.id("integrationReview")));
             inventory("publication-recovery-" + language); screenshot("83-publication-recovery-" + language + ".png");
         }
-        var divergence = CivilianPublicationWalkthrough.prepareDivergence(app, app.publicationProvider, context);
+        var divergence = ScenarioPublicationWalkthrough.prepareDivergence(app, app.publicationProvider, context);
         String predecessor = divergence.path("operationId").asText();
         String predecessorLink = origin + "/integrations" + context.path("scope").asText() + "&connection=" + context.path("connection").asText() + "&operation=" + predecessor;
         driver.get(predecessorLink + "&lang=en"); wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationReject"))).sendKeys(Keys.ENTER);
@@ -485,7 +485,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 Files.write(output.resolve("browser-failure.png"), driver.getScreenshotAs(OutputType.BYTES));
                 Files.writeString(output.resolve("browser-failure.html"), driver.getPageSource());
             } catch (Exception evidenceFailure) {
-                System.err.println("Unable to capture civilian browser failure evidence: " + evidenceFailure.getClass().getSimpleName());
+                System.err.println("Unable to capture scenario browser failure evidence: " + evidenceFailure.getClass().getSimpleName());
             }
         }
         try { driver.quit(); }

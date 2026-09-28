@@ -5,10 +5,10 @@ import java.nio.file.*;
 import java.util.UUID;
 
 /** Same real lifecycle with desktop/390px interaction and explicit browser adoption. */
-class ReformulationCivilianBrowserTest {
+class ReformulationScenarioBrowserTest {
     @Test void realAnalysedOfferSupportsKeyboardDraftRetentionDownloadAndExplicitAdoption() throws Exception {
-        Path output = Files.createDirectories(Path.of("target/reformulation-civilian-acceptance", "browser-" + UUID.randomUUID()));
-        ReformulationCivilianAcceptanceTest.launch(output, "browser");
-        ReformulationCivilianAcceptanceTest.launch(output, "read");
+        Path output = Files.createDirectories(Path.of("target/reformulation-scenario-acceptance", "browser-" + UUID.randomUUID()));
+        ReformulationScenarioAcceptanceTest.launch(output, "browser");
+        ReformulationScenarioAcceptanceTest.launch(output, "read");
     }
 }

@@ -529,4 +529,4 @@ Beide verwenden dieselbe gespeicherte Anforderungsversion, Entscheidungsevidenz 
 
 `language=en` wählt englische generierte Beschriftungen. Gespeicherte Evidenz und administrativ gepflegte Vorlagentexte bleiben unverändert. Der Entscheidungsbericht verwendet weiterhin den versionierten DOTX-Body-Marker und Dekorator; eigene Formatvorlagen, Kopf- und Fußzeilen, Logos und Vorlagenidentität bleiben erhalten. `/api/report/docx` bleibt der strukturierte **Ad-hoc-/Live-Bericht** ohne behauptete Snapshot-Herkunft.
 
-Die zivile Akzeptanzprüfung prüft Quellenparität und semantische Vollständigkeit und rendert beide Word-Dateien mit LibreOffice/Poppler. Dies ist keine Produktzertifizierung für Microsoft Word.
+Die Akzeptanzprüfung prüft Quellenparität und semantische Vollständigkeit und rendert beide Word-Dateien mit LibreOffice/Poppler. Dies ist keine Produktzertifizierung für Microsoft Word.

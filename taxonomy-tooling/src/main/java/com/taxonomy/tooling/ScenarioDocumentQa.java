@@ -20,13 +20,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-/** Independent LibreOffice/Poppler checks of the actual civilian acceptance exports. */
-final class CivilianDocumentQa {
+/** Independent LibreOffice/Poppler checks of the actual scenario acceptance exports. */
+final class ScenarioDocumentQa {
     private static final String POPPLER_DOCTYPE = "<!DOCTYPE html PUBLIC "
             + "\"-//W3C//DTD XHTML 1.0 Transitional//EN\" "
             + "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">";
 
-    private CivilianDocumentQa() { }
+    private ScenarioDocumentQa() { }
 
     static int run(String[] rawArguments, Path workingDirectory, PrintStream output, PrintStream error) {
         try {
@@ -37,11 +37,11 @@ final class CivilianDocumentQa {
                     ? inspectReformulations(root, soffice) : inspect(root, soffice, arguments.flag("visio-only"))));
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
-            error.println("::error::Civilian document QA failed: " + failure.getMessage());
+            error.println("::error::Scenario document QA failed: " + failure.getMessage());
             return 1;
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
-            error.println("::error::Civilian document QA interrupted");
+            error.println("::error::Scenario document QA interrupted");
             return 1;
         }
     }
@@ -132,7 +132,7 @@ final class CivilianDocumentQa {
             if(word)wordGraphHash=checkFrozenWordSource(name,unzip(root.resolve(name)),architecture,wordGraphHash);
             String stem = name.substring(0, name.lastIndexOf('.'));
             Path pdf = output.resolve(stem + ".pdf");
-            Path temporary = Files.createTempDirectory("civilian-lo-");
+            Path temporary = Files.createTempDirectory("scenario-lo-");
             try {
                 Path rendered = Files.createDirectory(temporary.resolve("output"));
                 command(soffice, "-env:UserInstallation=" + temporary.resolve("profile").toUri(),
@@ -378,8 +378,8 @@ final class CivilianDocumentQa {
     }
 
     private static String command(String... arguments) throws IOException, InterruptedException {
-        Path stdout = Files.createTempFile("civilian-command-", ".out");
-        Path stderr = Files.createTempFile("civilian-command-", ".err");
+        Path stdout = Files.createTempFile("scenario-command-", ".out");
+        Path stderr = Files.createTempFile("scenario-command-", ".err");
         Process process = null;
         try {
             process = new ProcessBuilder(arguments).redirectOutput(stdout.toFile()).redirectError(stderr.toFile()).start();

@@ -14,7 +14,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real DOM and downloads against the HTTP-created analysed offer. No browser state is injected. */
-final class ReformulationCivilianBrowser implements AutoCloseable {
+final class ReformulationScenarioBrowser implements AutoCloseable {
     private final RemoteWebDriver driver;
     private final BrowserWebDriverContainer<?> container;
     private final WebDriverWait wait;
@@ -22,13 +22,13 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
     private final String origin;
     private boolean completed;
 
-    ReformulationCivilianBrowser(int port, Path output) throws Exception {
+    ReformulationScenarioBrowser(int port, Path output) throws Exception {
         this.output = Files.createDirectories(output.resolve("browser"));
         downloads = Files.createDirectories(this.output.resolve("downloads")).toAbsolutePath();
         var options = new ChromeOptions();
         options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
         if (System.getProperty("webdriver.chrome.driver") != null) {
-            String binary = System.getProperty("civilian.chrome.binary"); if (binary != null) options.setBinary(binary);
+            String binary = System.getProperty("scenario.chrome.binary"); if (binary != null) options.setBinary(binary);
             options.setExperimentalOption("prefs", Map.of("download.default_directory", downloads.toString(), "download.prompt_for_download", false));
             container = null; origin = "http://localhost:" + port; driver = new ChromeDriver(options);
         } else {
@@ -61,7 +61,7 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         assertThat(driver.findElement(By.cssSelector("[data-reformulation-original]")).getDomProperty("textContent")).isEqualTo(original);
         assertThat(driver.findElement(By.cssSelector("[data-reformulation-status]")).getDomAttribute("aria-live")).isEqualTo("polite");
         var editor = driver.findElement(By.cssSelector("[data-reformulation-editor]"));
-        editor.clear(); editor.sendKeys("Unsaved civilian wording — keep this across status refresh.");
+        editor.clear(); editor.sendKeys("Unsaved scenario wording — keep this across status refresh.");
         shot("desktop-offer.png");
         ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",
                 Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
@@ -81,15 +81,15 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         shot("mobile-questions.png");
         selectView("proposal");
         click(By.xpath("//section[@id='reformulationOffers']//button[normalize-space()='Refresh status']"));
-        wait.until(d -> d.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value").startsWith("Unsaved civilian wording"));
+        wait.until(d -> d.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value").startsWith("Unsaved scenario wording"));
         assertThat((Boolean) driver.executeScript("return document.documentElement.scrollWidth <= window.innerWidth")).isTrue();
         click(By.cssSelector("[data-reformulation-report='json']"));
         String file = wait.until(d -> downloaded().stream().filter(n -> n.endsWith(".json")).findFirst().orElse(null));
         if (container != null) driver.downloadFile(file, downloads);
         var report = new tools.jackson.databind.ObjectMapper().readTree(Files.readString(downloads.resolve(file)));
         assertThat(report.path("kind").asText()).isEqualTo("PROPOSAL_REVISION");
-        assertThat(report.toString()).doesNotContain("Unsaved civilian wording");
-        assertThat(driver.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value")).startsWith("Unsaved civilian wording");
+        assertThat(report.toString()).doesNotContain("Unsaved scenario wording");
+        assertThat(driver.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value")).startsWith("Unsaved scenario wording");
         shot("mobile-draft-and-download.png");
     }
     void preview(String path) throws Exception {
