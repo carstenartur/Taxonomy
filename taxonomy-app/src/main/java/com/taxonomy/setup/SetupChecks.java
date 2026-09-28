@@ -72,22 +72,7 @@ public final class SetupChecks {
                 }
             }
         }
-        if (profiles.contains("keycloak")) {
-            if (profiles.contains("local-user-management")) {
-                error(result, "spring.profiles.active", "Choose central login or local user management, not both.");
-            }
-            if ("true".equalsIgnoreCase(value(properties, "taxonomy.security.local-users-enabled"))) {
-                error(result, "taxonomy.security.local-users-enabled", "Local user administration must remain disabled with Keycloak.");
-            }
-            endpoint(result, properties, "spring.security.oauth2.client.provider.keycloak.issuer-uri");
-            required(result, properties, "spring.security.oauth2.client.registration.keycloak.client-id");
-            required(result, properties, "spring.security.oauth2.client.registration.keycloak.client-secret");
-            result.add(new Finding(Status.NOT_CHECKED, "authentication.roles",
-                    "Verify a real login and ROLE_USER/ROLE_ARCHITECT/ROLE_ADMIN mapping at the identity provider."));
-        } else {
-            result.add(new Finding(Status.NOT_CHECKED, "authentication.bootstrap",
-                    "Check initial administrator provisioning or an existing administrator; no account is created by this check."));
-        }
+        result.addAll(checkAuthentication(properties, profiles));
         String port = value(properties, "server.port");
         if (!port.isEmpty()) {
             try {
@@ -126,6 +111,28 @@ public final class SetupChecks {
         result.add(new Finding(Status.NOT_CHECKED, "database.schema", "No schema migration, write-permission test or rollback test is performed."));
         if (result.stream().noneMatch(f -> f.status() == Status.ERROR)) {
             result.add(new Finding(Status.OK, "configuration.static", "Supported static configuration checks passed; this is not an installation acceptance test."));
+        }
+        return List.copyOf(result);
+    }
+
+    /** Shared by preflight and the production startup guard; does not contact the identity provider. */
+    public static List<Finding> checkAuthentication(Function<String, String> properties, Set<String> profiles) {
+        List<Finding> result = new ArrayList<>();
+        if (profiles.contains("keycloak")) {
+            if (profiles.contains("local-user-management")) {
+                error(result, "spring.profiles.active", "Choose central login or local user management, not both.");
+            }
+            if ("true".equalsIgnoreCase(value(properties, "taxonomy.security.local-users-enabled"))) {
+                error(result, "taxonomy.security.local-users-enabled", "Local user administration must remain disabled with Keycloak.");
+            }
+            endpoint(result, properties, "spring.security.oauth2.client.provider.keycloak.issuer-uri");
+            required(result, properties, "spring.security.oauth2.client.registration.keycloak.client-id");
+            required(result, properties, "spring.security.oauth2.client.registration.keycloak.client-secret");
+            result.add(new Finding(Status.NOT_CHECKED, "authentication.roles",
+                    "Verify a real login and ROLE_USER/ROLE_ARCHITECT/ROLE_ADMIN mapping at the identity provider."));
+        } else {
+            result.add(new Finding(Status.NOT_CHECKED, "authentication.bootstrap",
+                    "Check initial administrator provisioning or an existing administrator; no account is created by this check."));
         }
         return List.copyOf(result);
     }

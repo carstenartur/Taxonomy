@@ -25,6 +25,19 @@
 {{- if not (has $databaseType (list "existing" "postgres" "mssql")) -}}
 {{- fail "database.type must be existing, postgres or mssql" -}}
 {{- end -}}
+{{- $httpsEndpoint := "(?i)^https://(\\[[0-9a-f:.]+\\]|([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.?)(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
+{{- $customUrl := get $config "CUSTOM_LLM_URL" | default "" | toString -}}
+{{- if $customUrl -}}
+{{- $loopbackEndpoint := "(?i)^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
+{{- if or (not (or (regexMatch $httpsEndpoint $customUrl) (regexMatch $loopbackEndpoint $customUrl))) (contains "\\" $customUrl) -}}
+{{- fail "config.CUSTOM_LLM_URL requires HTTPS (HTTP only on loopback) without credentials, query, fragment or whitespace; use a Secret for authentication" -}}
+{{- end -}}
+{{- end -}}
+{{- range .Values.extraEnv -}}
+{{- if eq (.name | default "") "CUSTOM_LLM_URL" -}}
+{{- fail "Configure CUSTOM_LLM_URL through config.CUSTOM_LLM_URL so its endpoint is validated" -}}
+{{- end -}}
+{{- end -}}
 {{- $profiles := list -}}
 {{- range splitList "," (get $config "SPRING_PROFILES_ACTIVE" | default "postgres,kubernetes") -}}
 {{- if trim . -}}{{- $profiles = append $profiles (trim .) -}}{{- end -}}
@@ -80,7 +93,6 @@
 {{- if not (hasKey $secrets "TAXONOMY_ADMIN_PASSWORD") -}}{{- fail "Local login requires the TAXONOMY_ADMIN_PASSWORD Secret mapping" -}}{{- end -}}
 {{- else -}}
 {{/* Cluster endpoints require HTTPS even for loopback; CLI-only local development retains its loopback exception. */}}
-{{- $httpsEndpoint := "(?i)^https://(\\[[0-9a-f:.]+\\]|([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.?)(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
 {{- range $name := list "KEYCLOAK_ISSUER_URI" "KEYCLOAK_JWK_SET_URI" -}}
 {{- $endpoint := get $config $name | default "" | toString -}}
 {{- if or (eq $name "KEYCLOAK_ISSUER_URI") (ne $endpoint "") -}}

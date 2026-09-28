@@ -81,6 +81,11 @@ public final class SetupCommand {
         Set<String> profiles = new HashSet<>(Arrays.asList(environment.getActiveProfiles()));
         if (profiles.isEmpty()) { profiles.addAll(Arrays.asList(environment.getDefaultProfiles())); }
         List<SetupChecks.Finding> findings = new ArrayList<>(SetupChecks.check(environment::getProperty, profiles));
+        if (Boolean.getBoolean("taxonomy.native")
+                && SetupChecks.value(environment::getProperty, "spring.datasource.url").startsWith("jdbc:hsqldb:mem:")) {
+            findings.add(new SetupChecks.Finding(SetupChecks.Status.ERROR, "spring.datasource.url",
+                    "Native installations require persistent data; in-memory development defaults are not allowed."));
+        }
         if (connections && findings.stream().noneMatch(f -> f.status() == SetupChecks.Status.ERROR)) {
             findings.addAll(SetupProbe.check(environment::getProperty, profiles));
         } else {
@@ -92,22 +97,34 @@ public final class SetupCommand {
     }
 
     static StandardEnvironment loadEnvironment(String[] args) {
+        StandardEnvironment environment = initialEnvironment(args);
+        ConfigDataEnvironmentPostProcessor.applyTo(environment);
+        return environment;
+    }
+
+    private static StandardEnvironment initialEnvironment(String[] args) {
         StandardEnvironment environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new SimpleCommandLinePropertySource(args));
         new SpringApplicationJsonEnvironmentPostProcessor().postProcessEnvironment(environment, new SpringApplication(SetupCommand.class));
-        ConfigDataEnvironmentPostProcessor.applyTo(environment);
         return environment;
     }
 
     /** Native JVM option is retained even when jpackage default arguments are replaced. */
     public static String[] applicationArguments(String[] args) {
         List<String> result = new ArrayList<>(Arrays.stream(args).filter(arg -> !setupArgument(arg)).toList());
-        if (Boolean.getBoolean("taxonomy.native") && result.stream().noneMatch(arg -> arg.startsWith("--spring.config.additional-location="))) {
+        if (Boolean.getBoolean("taxonomy.native")) {
             Path config = configurationDirectory().resolve("application.properties");
-            if (!Files.isRegularFile(config)) {
+            if (!Files.isRegularFile(config) || !Files.isReadable(config)) {
                 throw new IllegalStateException("Native configuration is missing. Run Taxonomy-Configure first; no development defaults are used.");
             }
-            result.add("--spring.config.additional-location=" + config.toUri());
+            // Keep the installation mandatory, even when CLI, JSON, JVM options or environment
+            // supply optional overlays. Use Spring's precedence before loading ConfigData.
+            String additional = initialEnvironment(result.toArray(String[]::new))
+                    .getProperty("spring.config.additional-location", "");
+            result.removeIf(arg -> arg.equals("--spring.config.additional-location")
+                    || arg.startsWith("--spring.config.additional-location="));
+            result.add("--spring.config.additional-location=" + config.toUri()
+                    + (additional.isBlank() ? "" : "," + additional));
         }
         return result.toArray(String[]::new);
     }

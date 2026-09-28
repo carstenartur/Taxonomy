@@ -31,7 +31,7 @@ For larger or business-critical deployments, use the `production` profile togeth
 
 ## 2. Security configuration
 
-- [ ] **Strong initial administrator password supplied** — `TAXONOMY_ADMIN_PASSWORD` is set; production Compose refuses a missing value.
+- [ ] **Login-mode credentials supplied** — local production login requires a strong `TAXONOMY_ADMIN_PASSWORD`; production Compose refuses a missing value. Guided Helm `authentication.mode=keycloak` instead requires the configured OIDC issuer/client and `KEYCLOAK_CLIENT_SECRET`, with no local bootstrap password. Any optional machine token remains independently validated.
 - [ ] **Default `admin/admin` rejected** — verify the deployment does not start or go live with the default password.
 - [ ] **Password change policy enabled** — `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`.
 - [ ] **Brute-force protection enabled** — `TAXONOMY_LOGIN_RATE_LIMIT=true`.

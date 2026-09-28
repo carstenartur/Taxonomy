@@ -43,11 +43,15 @@ public final class SetupProbe {
             } else {
                 try {
                     Path path = Path.of(directory);
-                    boolean available = List.of("model.onnx", "tokenizer.json", "serving.properties").stream()
+                    boolean available = List.of("model.onnx", "tokenizer.json").stream()
                             .allMatch(name -> Files.isRegularFile(path.resolve(name)) && Files.isReadable(path.resolve(name)));
                     result.add(new SetupChecks.Finding(available ? SetupChecks.Status.OK : SetupChecks.Status.ERROR,
                             "embedding.model.dir", available ? "Expected model files are readable; inference was not tested."
-                            : "The model directory must contain readable model.onnx, tokenizer.json and serving.properties."));
+                            : "The model directory must contain readable model.onnx and tokenizer.json."));
+                    if (available && !Files.isRegularFile(path.resolve("serving.properties"))) {
+                        result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, "embedding.serving-properties",
+                                "Serving metadata is generated during model startup; generation permissions and model loading were not tested. No file was written."));
+                    }
                 } catch (IllegalArgumentException invalid) {
                     result.add(new SetupChecks.Finding(SetupChecks.Status.ERROR, "embedding.model.dir", "Invalid model directory."));
                 }

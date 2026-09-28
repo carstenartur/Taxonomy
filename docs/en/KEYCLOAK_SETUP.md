@@ -1,5 +1,22 @@
 # Keycloak & SSO Setup
 
+## Guided Helm and production startup
+
+Use `authentication.mode=keycloak` for the guided Rancher/Helm setup. It activates
+`production,keycloak` while preserving the database/deployment profiles. Supply
+`KEYCLOAK_CLIENT_SECRET` through the selected Secret and HTTPS issuer/JWK endpoints;
+no `TAXONOMY_ADMIN_PASSWORD` or local bootstrap account is required. The production
+guard still rejects missing central-login settings, conflicting local management,
+and an unsafe optional Actuator/admin machine token (`ADMIN_PASSWORD` environment
+variable, normally mapped from the separate `ADMIN_TOKEN` Secret key). Do not disable
+production checks or introduce a dummy local password. The ordinary non-production
+Keycloak development examples below are not the guided production contract.
+
+See [guided installation](../INSTALLATION_SETUP.md) for exact configuration/check
+commands and [database Pods](../../deploy/helm/taxonomy/DATABASE_PODS.md) for external
+PostgreSQL/MSSQL Services. A successful preflight or guard startup is not proof of a
+successful OIDC login, role mapping or TLS setup in the target cluster.
+
 > **✅ Implementation Status: Available**
 >
 > Keycloak/OIDC integration is implemented and can be activated via the `keycloak` Spring profile.

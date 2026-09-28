@@ -1,6 +1,52 @@
 # Guided installation validation — 2026-09-28
 
-## Source and scope
+## Second review: production login, custom endpoints and native startup
+
+Regression baseline: `f5993eba133cd16b006f4548ae4f66bd54708f4a`.
+A full tracked-source archive was exported by diagnostic run `36485033050`.
+The matching CI application artifact identifies the PR merge-test commit
+`29ab9f81d57c10316cd33c7460e1bc7d414cfdd8` and JAR SHA-256
+`74a1f9587664cf650f2e879c4044d2b2fcfec82fbb7a920e1ae6cd67b02f33b5`.
+Its dependency JARs were used to compile the actual changed setup/guard sources;
+this is **not** a new complete application build after the fixes.
+
+Observed locally with JDK 21, a UTF-8 locale and real Helm 3.21.0:
+
+- The final 27-case `SetupStartupRegressionCases` fails **15 cases** with the
+  unchanged production sources and passes all 27 with the fixes. It exercises
+  actual Spring ConfigData/constructor injection and the ApplicationRunner
+  lifecycle, including Keycloak without a local password, continued machine-token
+  checks, rejected central-login conflicts, mandatory native config with optional
+  overlays, CLI/JVM/JSON precedence, and generated model metadata.
+- The real rendered Keycloak Deployment environment, with its central Secret
+  resolved to a test-only fixture and no local bootstrap mapping, fails startup
+  against the old guard and passes against the corrected guard. A short machine
+  token still fails at the **machine-token** check. The test starts only the
+  production guard in Spring, not the full application, database or identity
+  provider. It does not prove SSO/login, role mapping or cluster TLS acceptance.
+- The expanded security render suite reports **114 cases / 50 failures** on the
+  old chart and **114 cases / 0 failures** on the corrected chart. New cases cover
+  custom endpoints in existing/local/Keycloak modes, with and without Schema,
+  exact-loopback HTTP and refusal of credentials/query/fragment/backslash input.
+  Existing setup render contracts and Helm lint also pass.
+- Existing Java suites also pass: 54 setup contracts, 67 first-review regressions,
+  15 Spring contracts and 10 native package-command contracts. A first local run
+  in the POSIX locale could not encode the existing Unicode path fixture; rerunning
+  with `LC_ALL=C.UTF-8` passed without modifying that test or weakening its assertion.
+- Both the documented `./mvnw verify -DexcludedGroups=real-llm` and the current
+  catalogue command `./mvnw -B verify -Pci` were attempted. This container could not
+  download Maven 3.9.16 due to unavailable network access. Neither command completed
+  locally. The full new-head CI remains required, independently of these diagnostics.
+
+`SetupInfrastructureTest` owns both the new startup cases and the rendered-startup
+contract. No additional product CI authority, disabled tests, weaker thresholds,
+production MSSQL qualification, or native installer release approval is introduced.
+Installation, native packaging, Helm and English/German Keycloak documentation
+have been aligned with the actual configuration rules.
+
+## Initial implementation evidence (historical)
+
+### Source and scope
 
 Implementation base: `6b6394b3013843f1186166b3313ffe54d538663c` on Taxonomy main.
 The local workspace is a partial export, not a full Maven checkout. No merge,

@@ -71,5 +71,22 @@ for name in ADMIN_TOKEN CUSTOM_ACCESS_TOKEN customApiKey CUSTOM_PRIVATE_KEY CUST
 done
 reject 'template rejects HTTP issuer without schema' 'KEYCLOAK_ISSUER_URI' "${OIDC[@]}" --set-string config.KEYCLOAK_ISSUER_URI=http://identity.example.invalid/realm
 accept 'Secret transport without schema remains valid' --set-json 'secretEnv.CUSTOM_ACCESS_TOKEN={"key":"CUSTOM_ACCESS_TOKEN","optional":false}'
+# Custom provider URLs use the same endpoint restrictions, with HTTP only on exact loopback hosts.
+for schema in present absent; do
+  if [[ "$schema" == present ]]; then TEST_CHART=$CHART; else TEST_CHART="$TMP/no-schema"; fi
+  for mode in existing local keycloak; do
+    custom=("${OIDC[@]}" --set "authentication.mode=$mode" --set config.LLM_PROVIDER=CUSTOM_OPENAI --set config.CUSTOM_LLM_MODEL=fixture-model)
+    for url in 'https://ai.example.invalid/v1/chat/completions' 'http://localhost:11434/v1/chat/completions' 'http://127.0.0.1:11434/v1/chat/completions' 'http://[::1]:11434/v1/chat/completions'; do
+      printf '%s' "$url" >"$TMP/endpoint-value"
+      accept "custom endpoint ($schema schema, $mode)" "${custom[@]}" --set-file "config.CUSTOM_LLM_URL=$TMP/endpoint-value"
+    done
+    for url in 'https://user:fixture-secret-never-print@ai.example.invalid/v1' 'https://ai.example.invalid/v1?token=fixture-secret-never-print' 'https://ai.example.invalid/v1#fragment' 'http://ai.example.invalid/v1' 'http://localhost.evil.invalid/v1' 'https://:443/v1' 'https://ai.example.invalid\evil/v1' 'file:/private/ai'; do
+      printf '%s' "$url" >"$TMP/endpoint-value"
+      reject "unsafe custom endpoint ($schema schema, $mode)" 'CUSTOM_LLM_URL' "${custom[@]}" --set-file "config.CUSTOM_LLM_URL=$TMP/endpoint-value"
+    done
+  done
+  reject 'custom endpoint may not bypass validation through extraEnv' 'CUSTOM_LLM_URL' \
+    --set-json 'extraEnv=[{"name":"CUSTOM_LLM_URL","value":"https://user:fixture-secret-never-print@ai.example.invalid/v1"}]'
+done
 echo "Setup Helm security regressions: $COUNT cases, $FAILED failures"
 test "$FAILED" -eq 0

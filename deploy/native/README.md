@@ -26,7 +26,21 @@ Windows packages are per-user (not a machine-wide service) and retain a fixed
 upgrade UUID. All launchers carry a JVM option selecting native mode, so passing
 application arguments cannot accidentally enable development defaults. The default
 configuration location is `${user.home}/.taxonomy/application.properties`; a missing
-file blocks normal startup. Configure explicitly with `Taxonomy-Configure` or run
+or unreadable file blocks normal startup and native checks, even with
+`--spring.config.additional-location=optional:file:/missing.properties`. The
+mandatory installation is loaded first; additional locations retain their normal
+Spring precedence as overlays. Native mode rejects in-memory HSQLDB, including a
+silent fallback caused by an empty configuration. Help and configuration commands
+remain available before installation.
+
+Select a different installation directory with the JVM option
+`-Dtaxonomy.config-directory=/absolute/config` (Windows example:
+`-Dtaxonomy.config-directory=C:\Taxonomy\config`) for every launcher. For packaged
+launchers this can be supplied through `JAVA_TOOL_OPTIONS` or a managed launcher
+configuration; do not put secrets in JVM options. `--configure=/absolute/config`
+selects the write destination only and does not persist a new launcher default.
+
+Configure explicitly with `Taxonomy-Configure` or run
 `Taxonomy --configure-local` with `TAXONOMY_ADMIN_PASSWORD` injected securely.
 `Taxonomy-Check` does not create a web server or database. The normal `Taxonomy`
 launcher starts the server, after static validation. Use the browser at the

@@ -30,7 +30,9 @@ Der bestehende Schalter `TAXONOMY_SECURITY_LOCAL_USERS_ENABLED=false` kann die
 lokale Verwaltung zusätzlich vollständig deaktivieren. Er schaltet nicht den
 Anmeldemechanismus selbst um. Das Profil erzwingt diesen Schalter **nicht** auf `true`.
 Auch ein irrtümliches `true` aktiviert im Keycloak-Modus weder die lokale Seite noch
-die lokale REST-Verwaltung. Die Reihenfolge der Profile spielt dabei keine Rolle.
+die lokale REST-Verwaltung. Die Reihenfolge der Profile spielt dabei keine Rolle. Unter `production,keycloak`
+weist der Startschutz widersprüchliche lokale Verwaltungsprofile/-einstellungen
+bereits beim Start zurück; es wird kein lokales Bootstrap-Passwort verlangt.
 
 ### Active Directory und andere externe Konten
 

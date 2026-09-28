@@ -1,5 +1,23 @@
 # Keycloak- & SSO-Einrichtung
 
+## Geführte Helm-Einrichtung und Produktionsstart
+
+Für Rancher/Helm `authentication.mode=keycloak` wählen. Dadurch werden
+`production,keycloak` zusätzlich zu den Datenbank-/Deployment-Profilen aktiviert.
+`KEYCLOAK_CLIENT_SECRET` kommt aus dem gewählten Secret; Issuer und JWK-Endpunkt
+benötigen HTTPS. Ein `TAXONOMY_ADMIN_PASSWORD` oder lokales Bootstrap-Konto wird dabei
+nicht verlangt. Der Produktionsschutz prüft weiterhin die zentralen Anmeldedaten,
+widersprüchliche lokale Verwaltung und einen optionalen Actuator-/Maschinentoken
+(Umgebungsvariable `ADMIN_PASSWORD`, gewöhnlich aus dem getrennten Secret-Schlüssel
+`ADMIN_TOKEN`). Keine Prüfungen deaktivieren und kein Dummy-Lokalpasswort ergänzen.
+Die folgenden Entwicklungsbeispiele ohne `production` sind nicht die Vorgabe für
+geführte Produktionsinstallationen.
+
+Siehe [Einrichtungsanleitung](../INSTALLATION_SETUP.md) für Konfiguration und
+Prüfbefehle sowie [separate Datenbank-Pods](../../deploy/helm/taxonomy/DATABASE_PODS.md)
+für PostgreSQL-/MSSQL-Services. Ein erfolgreicher Vorabcheck oder Startschutz-Test
+ersetzt keine echte OIDC-Anmeldung, Rollenprüfung und TLS-Abnahme im Zielcluster.
+
 > **✅ Implementierungsstatus: Verfügbar**
 >
 > Die Keycloak/OIDC-Integration ist implementiert und kann über das `keycloak`-Spring-Profil aktiviert werden.

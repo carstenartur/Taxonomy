@@ -17,8 +17,12 @@ database/deployment profiles. Conflicting login profiles are rejected.
 
 Keep the password/API keys in the existing Kubernetes Secret. Optional
 `database.url` and `database.username` replace only their respective Secret mappings;
-leaving them blank preserves the old mapping. The guided URL is PostgreSQL-only;
-the existing low-level config remains available for previously supported setups.
+leaving them blank preserves the old mapping. Select `database.type=postgres` or
+`database.type=mssql` for PostgreSQL or SQL Server, including a database in a separate
+Pod/namespace addressed through its Kubernetes Service. `existing` preserves manual
+profile selection. The chart does not install the database. See
+[separate database Pods](../deploy/helm/taxonomy/DATABASE_PODS.md) for Service DNS,
+TLS/CA, network policies, persistence and the remaining MSSQL qualification limits.
 No password may be placed in the guided JDBC URL. Local login uses Secret key
 `ADMIN_PASSWORD` through `TAXONOMY_ADMIN_PASSWORD`; monitoring uses the distinct
 `ADMIN_TOKEN`. In central-login mode the local bootstrap mapping is removed and
@@ -27,9 +31,29 @@ never its value. A client with HTTPS issuer, role claims and a tested real
 administrator login must already exist. Network-policy egress and ingress/TLS
 remain cluster-specific values; selecting an endpoint does not open the network.
 
+With `production,keycloak`, the startup guard checks the central-login settings
+instead of demanding an unused local password. Missing issuer/client ID/client
+secret or conflicting local-user settings still stop startup. An optional machine
+token is still checked for strength in **both** modes. Local production login still
+requires its strong bootstrap password and a distinct machine token when configured.
+Do not supply a dummy local password or disable `production` to make OIDC start.
+
+`config.CUSTOM_LLM_URL` is validated before rendering, including in `existing` mode.
+Use HTTPS; HTTP is allowed only for the exact loopback hosts `localhost`, `127.0.0.1`
+or `[::1]`, for an explicitly local provider. No embedded user/password, query,
+fragment, whitespace or backslash is accepted. Supply the provider API key through
+`secretEnv.CUSTOM_LLM_API_KEY`, never in the endpoint. Set the endpoint through
+`config.CUSTOM_LLM_URL`, not `extraEnv`; the latter cannot bypass validation.
+A provider in another Pod is **not** loopback and requires HTTPS and network access.
+
 The chart's JSON schema validates values even without Rancher. The existing
 render tests stay in place. `SetupInfrastructureTest` additionally executes
-`deploy/helm/taxonomy/verify-setup.sh` under Maven (Helm is required in canonical CI).
+`deploy/helm/taxonomy/verify-setup.sh` and `verify-setup-security.sh` under Maven
+(Helm is required in canonical CI). It also passes the rendered Keycloak Deployment
+environment to a real Spring startup of `ProductionSecurityGuard`, resolving the
+central Secret with a test-only value. This checks ConfigData, dependency injection
+and the ApplicationRunner lifecycle without starting a database or an identity
+provider; it is not a full SSO acceptance test.
 Neither successful chart rendering nor a Secret reference proves connectivity.
 Do not bypass existing Recreate/migration/storage safety guards.
 
@@ -60,6 +84,12 @@ read-only hint, HTTP discovery reachability without redirects, readable local
 model files. They do **not** verify effective DB write/migration permissions,
 certificate policy beyond the configured client's behavior, OIDC metadata
 semantics, actual login/roles, inference quality, paid requests or model downloads.
+For local models, `model.onnx` and `tokenizer.json` are required readable inputs.
+`serving.properties` is generated/repaired by `LocalEmbeddingService` during actual
+model startup. Its absence alone is not an error: preflight reports metadata
+generation as `NOT_CHECKED`, does not create the file and does not claim the model
+will load. A read-only mount may require operator-provided metadata; writable
+metadata generation, model validity and inference still need runtime acceptance.
 Embedded HSQLDB is not opened because doing so can create/lock files. No temporary
 DDL is executed. HTTP 200 is reported only as discovery reachability, not SSO success.
 
@@ -100,7 +130,17 @@ java -jar taxonomy-app.jar --spring.config.additional-location=file:/absolute/co
 ```
 
 Native launchers use that per-user file automatically and fail closed when it is
-missing. A normal JAR keeps its existing developer behavior. The local initializer
+missing or unreadable. The required file is loaded even when additional locations
+are supplied via CLI, environment, JVM properties or Spring application JSON. Those
+locations are overlays, not replacements for the installation. An optional missing
+overlay must never cause a fallback to development defaults; native startup also
+rejects in-memory HSQLDB, even if an empty installation file exists.
+
+For an installation in another directory, set the JVM option
+`-Dtaxonomy.config-directory=/absolute/config` for **all three launchers**. The
+`--configure=/absolute/config` argument only chooses where setup writes; it does not
+change the default directory of future processes. Ordinary `java -jar` use keeps
+its existing developer behavior and normal Spring location handling. The local initializer
 currently creates **HSQLDB + local authentication only**. Other database/OIDC/AI
 settings use the same normal Spring properties and protected configtree; they are
 not a new GUI wizard. See the existing configuration reference and Keycloak guide.

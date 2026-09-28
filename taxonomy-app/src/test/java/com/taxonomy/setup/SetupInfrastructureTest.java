@@ -21,6 +21,12 @@ class SetupInfrastructureTest {
         SetupReviewRegressionCases.main(new String[0]);
     }
 
+    @Test
+    @org.junit.jupiter.api.parallel.ResourceLock(org.junit.jupiter.api.parallel.Resources.SYSTEM_PROPERTIES)
+    void startupConfigurationContracts() throws Exception {
+        SetupStartupRegressionCases.main(new String[0]);
+    }
+
     @Test void nativePackageCommandContracts() throws Exception {
         Path source = repository().resolve("deploy/native");
         var compiler = ToolProvider.getSystemJavaCompiler();
@@ -32,7 +38,9 @@ class SetupInfrastructureTest {
                 "-cp", directory.toString(), "PackageTaxonomyCases"), directory, 60);
     }
 
-    @Test void guidedHelmContracts() throws Exception {
+    @Test
+    @org.junit.jupiter.api.parallel.ResourceLock(org.junit.jupiter.api.parallel.Resources.SYSTEM_PROPERTIES)
+    void guidedHelmContracts() throws Exception {
         boolean available;
         try {
             Process helm = new ProcessBuilder("helm", "version", "--short").redirectErrorStream(true)
@@ -47,6 +55,18 @@ class SetupInfrastructureTest {
         Path root = repository();
         run(List.of("bash", root.resolve("deploy/helm/taxonomy/verify-setup.sh").toString()), root, 120);
         run(List.of("bash", root.resolve("deploy/helm/taxonomy/verify-setup-security.sh").toString()), root, 120);
+        Path manifest = directory.resolve("keycloak.yaml");
+        Process render = new ProcessBuilder("helm", "template", "taxonomy", root.resolve("deploy/helm/taxonomy").toString(),
+                "--set", "image.tag=sha-0123456789abcdef0123456789abcdef01234567",
+                "--set", "existingSecret=taxonomy-secrets", "--set", "authentication.mode=keycloak",
+                "--set", "config.KEYCLOAK_ISSUER_URI=https://identity.example.invalid/realms/taxonomy",
+                "--set", "config.KEYCLOAK_CLIENT_ID=taxonomy-app")
+                .redirectOutput(manifest.toFile()).redirectError(directory.resolve("render-error.log").toFile()).start();
+        try {
+            assertTrue(render.waitFor(30, TimeUnit.SECONDS), "Helm render timed out");
+            assertEquals(0, render.exitValue(), "Helm must render the startup contract");
+        } finally { if (render.isAlive()) { render.destroyForcibly(); } }
+        SetupStartupRegressionCases.renderedKeycloakStartup(manifest);
     }
 
     private void run(List<String> command, Path workingDirectory, int seconds) throws Exception {
