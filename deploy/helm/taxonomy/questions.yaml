@@ -10,9 +10,25 @@ questions:
     type: secret
     required: true
     group: Database and credentials
+  - variable: database.type
+    label: Database engine
+    description: >-
+      existing preserves manually configured database profiles. postgres or mssql
+      selects the matching JDBC driver and dialect through the existing Spring profile.
+      Other deployment and login profiles are preserved. MSSQL remains a compatibility
+      profile, not production-certified. This chart connects to a database Service;
+      it does not install a database Pod or manage its storage and backups.
+    type: enum
+    options: [existing, postgres, mssql]
+    default: existing
+    group: Database and credentials
   - variable: database.url
-    label: PostgreSQL JDBC URL (optional override)
-    description: Leave empty to use SPRING_DATASOURCE_URL from the Secret. Do not embed credentials. Review TLS and network-policy egress.
+    label: Database JDBC URL (optional override)
+    description: >-
+      Leave empty to use SPRING_DATASOURCE_URL from the Secret. For separate Pods use
+      a stable Service DNS name, not localhost or a Pod IP. Select the matching engine.
+      Do not embed credentials. Review TLS, DNS and network-policy egress/ingress.
+      See DATABASE_PODS.md for PostgreSQL and MSSQL examples across namespaces.
     type: string
     default: ""
     group: Database and credentials
@@ -93,7 +109,7 @@ questions:
     group: AI configuration
   - variable: upgrade.strategy
     label: Upgrade strategy
-    description: Recreate stops the old pod before PostgreSQL migrations. A Helm rollback does not undo database migrations.
+    description: Recreate stops the old pod before database migrations. A Helm rollback does not undo database migrations.
     type: enum
     default: Recreate
     options: [Recreate, RollingUpdate]
@@ -108,7 +124,7 @@ questions:
     group: Upgrade safety
   - variable: persistence.enabled
     label: Persist /app/data
-    description: Enable for local-filesystem indexes or deliberate local data. PostgreSQL remains authoritative.
+    description: Enable for local-filesystem indexes or deliberate local data. The external database remains authoritative and needs its own storage.
     type: boolean
     default: false
     group: Storage

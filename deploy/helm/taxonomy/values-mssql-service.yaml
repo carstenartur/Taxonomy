@@ -1,0 +1,23 @@
+# COMPATIBILITY/TEST profile, not a production migration/restore certification.
+# Provision schema, database Service, credentials and trusted TLS first.
+# This does not run PostgreSQL migrations or enable ddl-auto=update; see DATABASE_PODS.md.
+existingSecret: taxonomy-secrets
+database:
+  type: mssql
+  url: "jdbc:sqlserver://mssql.database.svc.cluster.local:1433;databaseName=taxonomy;encrypt=true;trustServerCertificate=false"
+  username: taxonomy
+networkPolicy:
+  allowSameNamespaceEgress: false
+  # The database-side ingress policy must also allow the Taxonomy Pods.
+  # Adapt labels to the actual database Pods; preserve other required egress rules.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mssql
+      ports:
+        - protocol: TCP
+          port: 1433

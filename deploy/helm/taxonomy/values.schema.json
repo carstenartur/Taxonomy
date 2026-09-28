@@ -9,7 +9,6 @@
       "additionalProperties": false,
       "properties": {
         "mode": {
-          "type": "string",
           "enum": [
             "existing",
             "local",
@@ -27,15 +26,64 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "existing",
+            "postgres",
+            "mssql"
+          ],
+          "default": "existing"
+        },
         "url": {
           "type": "string",
-          "pattern": "^$|^jdbc:postgresql://[^\\s@]+$"
+          "pattern": "^$|^jdbc:(postgresql|sqlserver)://[^\\s@]+$"
         },
         "username": {
           "type": "string",
           "pattern": "^[^\\r\\n]*$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "postgres"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "url": {
+                "pattern": "^$|^jdbc:postgresql://[^\\s@]+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "mssql"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "url": {
+                "pattern": "^$|^jdbc:sqlserver://[^\\s@]+$"
+              }
+            }
+          }
+        }
+      ]
     },
     "existingSecret": {
       "type": "string"
