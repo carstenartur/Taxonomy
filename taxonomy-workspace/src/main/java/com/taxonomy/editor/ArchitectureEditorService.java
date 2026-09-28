@@ -426,6 +426,9 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         parts.add(Long.toString(command.context().revision()));
         if (command.operation() instanceof SemanticCommand semantic) {
             switch (semantic.command()) {
+                case SetRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
+                case ImportRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
+                case DeleteRequirementPlanning p -> { parts.add(p.requirementId()); parts.add(p.entryId()); }
                 case CreateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
                 case UpdateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
                 case DeleteArchitecturePackage p -> parts.add(p.id());
@@ -456,6 +459,11 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         return digest(Arrays.asList("CHECKPOINT", EditorJournal.scope(context), context.username(),
                 Long.toString(command.context().revision()), command.metadata().rationale(),
                 command.metadata().correlationId(), command.metadata().causationId()));
+    }
+
+    private static void planningFingerprint(List<String> parts, String requirement, com.taxonomy.dsl.planning.PlanningEntry entry) {
+        parts.add(requirement); parts.add(entry.id()); parts.add(entry.profile()); parts.add(entry.version());
+        parts.add(entry.origin()); properties(parts, entry.values());
     }
 
     private static void properties(List<String> parts, Map<String, String> properties) {

@@ -54,3 +54,7 @@ dialog::backdrop { background: #17243aaa; }
     #editorGraph .editor-node.selected rect { stroke: Highlight; }
     button:disabled { opacity: 1; color: GrayText; }
 }
+
+/* Planning metadata is readable without nested scrolling, including unknown profiles. */
+#editorPlanningValues dd { margin-inline-start: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#editorPlanningStatus { overflow-wrap: anywhere; }

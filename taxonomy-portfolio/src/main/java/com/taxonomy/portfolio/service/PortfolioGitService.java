@@ -122,6 +122,12 @@ public class PortfolioGitService {
                 header.set(0, identities.getOrDefault(header.getFirst(), header.getFirst()));
                 block = new BlockAst(block.getKind(), header, block.getProperties(), block.getChildren(), block.getExtensions(), null);
             }
+            if ("requirement".equals(block.getKind())) {
+                String requirementId = block.getHeaderTokens().getFirst();
+                BlockAst old = existing.getBlocks().stream().filter(b -> "requirement".equals(b.getKind())
+                        && requirementId.equals(b.getHeaderTokens().getFirst())).findFirst().orElse(null);
+                block = com.taxonomy.dsl.planning.PlanningInformation.retain(block, old);
+            }
             blocks.add(block);
         }
         MetaAst meta = existing.getMeta() != null

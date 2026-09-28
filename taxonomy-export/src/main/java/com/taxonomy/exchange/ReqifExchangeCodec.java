@@ -59,6 +59,7 @@ public final class ReqifExchangeCodec {
                     "This object has no mapped requirement text; its source and attributes remain available for review"));
             if (titleKey != null) fields.extensions.put("titleAttribute", titleKey);
             if (textKey != null) fields.extensions.put("textAttribute", textKey);
+            ReqifPlanningAttributes.read(id, fields.values, fields.extensions, losses);
             fields.extensions.put("lastChange", object.getAttribute("LAST-CHANGE"));
             fields.extensions.put("longName", object.getAttribute("LONG-NAME"));
             fields.extensions.put("xml", xml(object));
@@ -117,7 +118,13 @@ public final class ReqifExchangeCodec {
                 placements = flat;
             }
             return write(new ExchangeDocument(initial.profile(), initial.profileVersion(), initial.externalVersion(), initial.completeScope(), initial.source(),
-                    initial.artifacts(), initial.relations(), placements, initial.metadata(), source.losses()));
+                    initial.artifacts().stream().map(a -> source.artifacts().stream()
+                            .filter(original -> original.id().equals(a.id()) && original.extensions().containsKey(PlanningEnvelope.EXTENSION))
+                            .findFirst().map(original -> {
+                                Map<String, String> extras = new LinkedHashMap<>(a.extensions());
+                                extras.put(PlanningEnvelope.EXTENSION, original.extensions().get(PlanningEnvelope.EXTENSION));
+                                return new Artifact(a.id(), a.kind(), a.type(), a.title(), a.text(), a.attributes(), extras);
+                            }).orElse(a)).toList(), initial.relations(), placements, initial.metadata(), source.losses()));
         }
         Document doc = source.source() == null || source.source().isBlank() ? generated(source) : parse(source.source().getBytes(StandardCharsets.UTF_8));
         Element core = all(doc, NS, "REQ-IF-CONTENT").getFirst();
@@ -141,7 +148,7 @@ public final class ReqifExchangeCodec {
                 for (Element definition : children(all(generated, NS, group).getFirst())) {
                     Element previous = present.get(required(definition, "IDENTIFIER"));
                     if (previous == null) target.appendChild(doc.importNode(definition, true));
-                    else if (!ExchangeXml.semantic(xml(previous)).equals(ExchangeXml.semantic(xml(definition))))
+                    else if (!ReqifPlanningAttributes.equivalentWithoutPlanning(previous, definition))
                         throw invalid("TYPE_IDENTITY_COLLISION", "A native export type collides with an existing external identity");
                 }
             }
@@ -161,9 +168,11 @@ public final class ReqifExchangeCodec {
             } else {
                 object = (Element) doc.importNode(generatedObjects.get(artifact.id()), true);
                 objects.appendChild(object);
+                ReqifPlanningAttributes.write(doc, object, artifact, ids);
                 continue;
             }
             updateObject(object, artifact, ids);
+            ReqifPlanningAttributes.write(doc, object, artifact, ids);
         }
         Element specifications = child(core, "SPECIFICATIONS");
         if (specifications == null) specifications = append(core, NS, "SPECIFICATIONS");

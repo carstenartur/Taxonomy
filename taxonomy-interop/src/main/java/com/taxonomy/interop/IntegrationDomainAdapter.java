@@ -1,6 +1,8 @@
 package com.taxonomy.interop;
 
 import com.taxonomy.interop.IntegrationPortfolioPort.*;
+import com.taxonomy.interop.planning.PlanningExchangeBridge;
+import com.taxonomy.exchange.PlanningEnvelope;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
@@ -94,6 +96,11 @@ public class IntegrationDomainAdapter {
                 : projects.listRequirements(connection.projectId(), context.username(), workspace(context));
         Map<Long, RequirementData> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
+        boolean planningPresent = ReqifExchangeCodec.PROFILE.equals(connection.connectorId()) && (hasPlanning(blocks)
+                || mappings.stream().anyMatch(m -> m.internal() != null && m.internal().extensions().containsKey(PlanningEnvelope.EXTENSION)));
+        String projectKey = connection.projectId() != null && (supportsNativePackages(connection) || planningPresent || hasPlanning(blocks))
+                ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null;
+        PlanningExchangeBridge planning = planningPresent ? new PlanningExchangeBridge(document.dsl()) : null;
         Map<String, Artifact> items = new TreeMap<>();
         List<MappingLoss> losses = new ArrayList<>();
         for (Identity mapping : mappings) {
@@ -108,6 +115,7 @@ public class IntegrationDomainAdapter {
                 RequirementData requirement = byId.get(mapping.requirementId());
                 if (requirement == null || requirement.archived()) continue;
                 current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), requirement.title(), requirement.requireCurrentVersion().text(), baseline.attributes(), baseline.extensions());
+                if (planning != null) current = planning.overlay(current, projectKey, requirement.requirementKey());
             } else if (baseline.kind() == ArtifactKind.ELEMENT || baseline.kind() == ArtifactKind.VIEW) {
                 String kind = baseline.kind() == ArtifactKind.ELEMENT ? "element" : "view";
                 BlockAst block = blocks.get(kind + ":" + mapping.businessIdentity()); if (block == null) continue;
@@ -161,9 +169,22 @@ public class IntegrationDomainAdapter {
                         "Requirement package membership remains exchange evidence"));
         }
         InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),
-                document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
-        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), supportsNativePackages(connection) && connection.projectId() != null
-                ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null);
+                document.state().semanticRevision(), connection.projectId(), projectFingerprint(requirements));
+        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), projectKey);
+    }
+
+    /** Project change detection does not need to overlay mappings onto an earlier workspace snapshot. */
+    public String projectFingerprint(RepositoryContext context, Connection connection) {
+        return projectFingerprint(connection.projectId() == null ? List.of()
+                : projects.listRequirements(connection.projectId(), context.username(), workspace(context)));
+    }
+    private String projectFingerprint(List<RequirementData> requirements) {
+        return json.fingerprint(requirements.stream().map(r -> java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList());
+    }
+
+    private static boolean hasPlanning(Map<String, BlockAst> blocks) {
+        return blocks.values().stream().filter(b -> "requirement".equals(b.getKind()))
+                .anyMatch(b -> b.getProperties().stream().anyMatch(p -> p.key().startsWith(com.taxonomy.dsl.planning.PlanningInformation.PREFIX)));
     }
 
     public void requireProject(RepositoryContext context, Long projectId) { projects.requireProject(projectId, context.username(), workspace(context)); }
@@ -191,6 +212,15 @@ public class IntegrationDomainAdapter {
                         ? externalId(connection, "model") : "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
         Map<String, Artifact> items = new TreeMap<>(current.items());
         List<MappingLoss> losses = new ArrayList<>(template.losses()); losses.addAll(current.losses());
+        Map<String, BlockAst> planningBlocks = ArchitectureSemanticPatch.index(document.dsl());
+        PlanningExchangeBridge planning = ReqifExchangeCodec.PROFILE.equals(connection.connectorId())
+                && (hasPlanning(planningBlocks) || current.items().values().stream().anyMatch(a -> a.extensions().containsKey(PlanningEnvelope.EXTENSION)))
+                ? new PlanningExchangeBridge(document.dsl()) : null;
+        if (!ReqifExchangeCodec.PROFILE.equals(connection.connectorId())) for (BlockAst block : planningBlocks.values())
+            if ("requirement".equals(block.getKind()) && (connection.projectId() == null || Objects.equals(current.projectKey(), block.property("x-project-key")))
+                    && block.getProperties().stream().anyMatch(p -> p.key().startsWith(com.taxonomy.dsl.planning.PlanningInformation.PREFIX)))
+                losses.add(new MappingLoss(block.getHeaderTokens().getFirst(), "planning", "PLANNING_FORMAT_UNSUPPORTED", LossDisposition.UNSUPPORTED,
+                        "This format profile declares no planning-information mapping. Use the reviewed ReqIF profile or explicitly omit these data."));
         if (connection.projectId() != null) {
             Map<Long, Identity> known = new LinkedHashMap<>(); mappings.stream().filter(m -> m.requirementId() != null).forEach(m -> known.put(m.requirementId(), m));
             List<Artifact> added = new ArrayList<>();
@@ -202,7 +232,9 @@ public class IntegrationDomainAdapter {
                         : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
                         : requirementExternalId(connection, requirement.id());
                 Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : SparxSnapshots.isSparx(connection.connectorId()) ? "Class" : "taxonomy-object", requirement.title(),
-                        requirement.requireCurrentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
+                        requirement.requireCurrentVersion().text(), Map.of(), Map.of());
+                if (planning != null) artifact = planning.overlay(artifact, current.projectKey(), requirement.requirementKey());
+                items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
             }
             if (connection.connectorId().equals(ReqifExchangeCodec.PROFILE) && previous != null && !added.isEmpty()) {
                 // Local additions have their own stable specification; imported multi-level hierarchies stay intact.
@@ -278,8 +310,7 @@ public class IntegrationDomainAdapter {
                 items.put(ExchangeItems.key(view), view); int position = 0;
                 for (var property : block.getProperties()) if (property.key().equals("include") && ids.containsKey(property.value())) {
                     String elementId = ids.get(property.value());
-                    Artifact placement = new Artifact(stableId(connection.id(), viewId + ":" + elementId), ArtifactKind.PLACEMENT, "placement", "", "",
-                            Map.of("x", Integer.toString(position % 5 * 180), "y", Integer.toString(position / 5 * 100), "w", "160", "h", "70"),
+                    Artifact placement = new Artifact(stableId(connection.id(), viewId + ":" + elementId), ArtifactKind.PLACEMENT, "placement", "", "", Map.of("x", Integer.toString(position % 5 * 180), "y", Integer.toString(position / 5 * 100), "w", "160", "h", "70"),
                             Map.of("container", viewId, "parent", "", "artifact", elementId, "position", Integer.toString(position++)));
                     items.put(ExchangeItems.key(placement), placement);
                 }

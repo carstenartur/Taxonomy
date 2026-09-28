@@ -31,9 +31,11 @@ public class ExchangeConnectorRegistry {
     }
     private static final class Reqif implements LifecycleIntegrationConnector {
         private final ReqifExchangeCodec codec = new ReqifExchangeCodec();
-        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ReqifExchangeCodec.PROFILE, ReqifExchangeCodec.VERSION, "ReqIF 1.2", Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT), Set.of("application/reqif+xml", "application/xml")); }
+        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ReqifExchangeCodec.PROFILE, ReqifExchangeCodec.VERSION, "ReqIF 1.2", Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT), Set.of("application/reqif+xml", "application/xml"),
+                List.of(new PlanningSupport("go-live", "1", Set.of("precision", "value"), true, true, "REQIF_STRING_ENVELOPE", "TAXONOMY_PROFILE_ONLY", false),
+                        new PlanningSupport("standard-reference", "1", Set.of("identifier", "edition", "section"), true, true, "REQIF_STRING_ENVELOPE", "TAXONOMY_PROFILE_ONLY", false))); }
         @Override public ExchangeDocument previewInbound(InboundRequest request) { return codec.read(request.content(), request.externalVersion(), request.completeScope()); }
-        @Override public ExchangeFile previewOutbound(OutboundRequest request) { return new ExchangeFile("application/reqif+xml", "requirements.reqif", codec.write(request.document()), request.document().losses()); }
+        @Override public ExchangeFile previewOutbound(OutboundRequest request) { return new ExchangeFile("application/reqif+xml", "requirements.reqif", codec.write(request.document()), com.taxonomy.exchange.PlanningEnvelope.report(request.document())); }
     }
     private static final class ArchiMate implements LifecycleIntegrationConnector {
         private final ArchiMateExchangeCodec codec = new ArchiMateExchangeCodec();

@@ -26,6 +26,9 @@ public class ArchitectureEditorProjection {
                          List<String> relationTypes, List<String> relationStatuses,
                          Map<String, Map<String, java.util.Set<String>>> relationRules,
                          Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {
+        public List<com.taxonomy.dsl.planning.PlanningProfile.Descriptor> getPlanningProfiles() {
+            return new com.taxonomy.dsl.planning.PlanningInformation().descriptors();
+        }
         public List<String> getPackageProperties() { return List.of("title", "description"); }
         public List<String> getPackageCommands() { return List.of("CREATE_PACKAGE", "UPDATE_PACKAGE", "SET_PACKAGE_PLACEMENTS", "DELETE_PACKAGE"); }
     }
@@ -33,7 +36,14 @@ public class ArchitectureEditorProjection {
                                List<String> values, String labelKey) {}
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
-                       DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {}
+                       DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
+        public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
+            var registry = new com.taxonomy.dsl.planning.PlanningInformation();
+            Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> result = new java.util.LinkedHashMap<>();
+            for (var requirement : model.getRequirements()) result.put(requirement.getId(), registry.read(model, requirement.getId()));
+            return java.util.Collections.unmodifiableMap(result);
+        }
+    }
 
     public View project(ArchitectureEditorService.Document document, boolean mayEdit) {
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());

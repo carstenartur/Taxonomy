@@ -19,11 +19,22 @@ public final class IntegrationContracts {
     public enum OperationStatus { FETCH_PENDING, FETCH_FAILED, PREVIEWED, APPLYING, APPLIED, CHECKPOINT_PENDING, COMPLETED, CONFLICT, CANCELLED, FAILED, PARTIAL }
     public enum LossDisposition { MAPPED, PRESERVED_EXTENSION, TRANSFORMED, UNSUPPORTED }
 
+    /** Adapter guarantees are profile-specific, not claims about every product that reads the format. */
+    public record PlanningSupport(String profile, String version, Set<String> fields,
+                                  boolean readable, boolean writable, String representation,
+                                  String roundTripScope, boolean nativeEvaluation) {
+        public PlanningSupport { fields = Set.copyOf(fields); }
+    }
     public record IntegrationDescriptor(String id, String version, String title,
-                                        Set<Capability> capabilities, Set<String> mediaTypes) {
+                                        Set<Capability> capabilities, Set<String> mediaTypes,
+                                        List<PlanningSupport> planningSupport) {
+        public IntegrationDescriptor(String id, String version, String title, Set<Capability> capabilities, Set<String> mediaTypes) {
+            this(id, version, title, capabilities, mediaTypes, List.of());
+        }
         public IntegrationDescriptor {
             require(id, "connector id"); require(version, "connector version");
             capabilities = Set.copyOf(capabilities); mediaTypes = Set.copyOf(mediaTypes);
+            planningSupport = planningSupport == null ? List.of() : List.copyOf(planningSupport);
         }
     }
 

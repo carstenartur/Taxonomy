@@ -77,6 +77,30 @@
                     </div>
                 </fieldset>
             </form>
+            <section id="editorPlanning" aria-labelledby="editorPlanningHeading">
+                <h2 id="editorPlanningHeading" data-i18n="editor.planning.title">Requirement planning information</h2>
+                <p data-i18n="editor.planning.help">Planning goals and source references belong to this workspace requirement. A reference is not proof of compliance; a goal is not confirmation of operation.</p>
+                <label for="editorPlanningRequirement" data-i18n="editor.planning.requirement">Requirement</label>
+                <select id="editorPlanningRequirement"></select>
+                <label for="editorPlanningEntry" data-i18n="editor.planning.entry">Planning entry</label>
+                <select id="editorPlanningEntry"></select>
+                <p id="editorPlanningStatus" role="status" aria-live="polite"></p>
+                <dl id="editorPlanningValues"></dl>
+                <form id="editorPlanningForm">
+                    <fieldset id="editorPlanningActions" disabled>
+                        <label for="editorPlanningProfile" data-i18n="editor.planning.profile">Profile</label>
+                        <select id="editorPlanningProfile"></select>
+                        <div id="editorPlanningFields"></div>
+                        <label for="editorPlanningReason" data-i18n="editor.rationale">Reason for the command</label>
+                        <textarea id="editorPlanningReason" rows="2" maxlength="1000" required></textarea>
+                        <div class="editor-toolbar">
+                            <button id="editorPlanningSave" type="submit" data-i18n="editor.preview">Preview change</button>
+                            <button id="editorPlanningDelete" type="button" disabled data-i18n="editor.delete">Preview deletion</button>
+                            <button id="editorPlanningNew" type="button" data-i18n="editor.planning.newEntry">New planning entry</button>
+                        </div>
+                    </fieldset>
+                </form>
+            </section>
             <section aria-labelledby="editorPackagesHeading">
                 <h2 id="editorPackagesHeading" data-i18n="editor.packages">Packages</h2>
                 <fieldset id="editorPackageFields" disabled>
@@ -143,6 +167,7 @@
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
 <script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
+<script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
 </body>
 </html>

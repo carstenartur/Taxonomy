@@ -659,8 +659,9 @@ class CompleteCopilotSessionIT {
             try {
                 WebElement element = browser.findElement(locator);
                 if (!element.isDisplayed() || !element.isEnabled()) return false;
+                // Do not inherit smooth scrolling: the native click needs settled geometry.
                 javascript().executeScript(
-                        "arguments[0].scrollIntoView({block:'center',inline:'nearest'});",
+                        "arguments[0].scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});",
                         element);
                 element.click();
                 return true;
