@@ -55,6 +55,25 @@ public final class PlanningExchangeBridge {
             for (var entry : PlanningEnvelope.read(artifact.extensions().get(PlanningEnvelope.EXTENSION)))
                 profiles.validatePortable(domain(entry));
     }
+    /** Select actual, explicitly accepted incoming entries before retaining LOCAL omissions. */
+    public static Map<String, Artifact> acceptedIncoming(List<IntegrationChange> changes,
+            Map<String, Decision> decisions, Map<String, Artifact> selected) {
+        Map<String, Artifact> incoming = new TreeMap<>();
+        for (IntegrationChange change : changes) {
+            Decision decision = decisions.get(change.id());
+            Artifact observed = change.after();
+            if ((decision != Decision.ACCEPT && decision != Decision.TAKE_EXTERNAL)
+                    || observed == null || observed.kind() != ArtifactKind.REQUIREMENT) continue;
+            String payload = observed.extensions().get(PlanningEnvelope.EXTENSION);
+            if (payload == null || PlanningEnvelope.read(payload).isEmpty()) continue;
+            Artifact reviewed = selected.get(change.externalId());
+            if (reviewed == null || reviewed.kind() != ArtifactKind.REQUIREMENT || !observed.id().equals(reviewed.id()))
+                throw problem("Accepted planning entries require their exact reviewed requirement");
+            // Keep reviewed field mappings, but never promote retained local entries to received data.
+            incoming.put(change.externalId(), withPayload(reviewed, payload));
+        }
+        return Map.copyOf(incoming);
+    }
     public static boolean hasEntries(Map<String, Artifact> selected) {
         return selected.values().stream().filter(artifact -> artifact.kind() == ArtifactKind.REQUIREMENT)
                 .anyMatch(artifact -> artifact.extensions().containsKey(PlanningEnvelope.EXTENSION));
@@ -101,7 +120,7 @@ public final class PlanningExchangeBridge {
     }
     private static boolean samePayload(String a, String b) {
         if (a == null || b == null) return a == b;
-        return PlanningEnvelope.read(a).equals(PlanningEnvelope.read(b));
+        return java.util.Set.copyOf(PlanningEnvelope.read(a)).equals(java.util.Set.copyOf(PlanningEnvelope.read(b)));
     }
     private static PlanningEntry domain(PlanningEnvelope.Entry entry) { return new PlanningEntry(entry.id(), entry.profile(), entry.version(), entry.origin(), entry.values()); }
     private static Artifact withPayload(Artifact artifact, String payload) {

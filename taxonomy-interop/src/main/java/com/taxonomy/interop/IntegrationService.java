@@ -202,9 +202,11 @@ public class IntegrationService {
             Map<String, Identity> known = new TreeMap<>(); mappings.forEach(m -> known.put(m.externalId(), m));
             Map<String, Artifact> selected = select(operation, review, current.items(), known);
             boolean planningProfile = ReqifExchangeCodec.PROFILE.equals(connection.connectorId());
+            Map<String, Artifact> incomingPlanning = planningProfile && connection.authority() != AuthorityMode.LINK_ONLY
+                    ? PlanningExchangeBridge.acceptedIncoming(operation.changes(), review.decisions(), selected) : Map.of();
             if (planningProfile && connection.authority() != AuthorityMode.LINK_ONLY)
                 selected.replaceAll((key, value) -> PlanningExchangeBridge.retainOmissions(value, current.items().get(key)));
-            boolean planningEntries = planningProfile && PlanningExchangeBridge.hasEntries(selected);
+            boolean planningEntries = !incomingPlanning.isEmpty();
             ExchangeDocument resultDocument = ExchangeItems.expand(operation.document(), selected);
             boolean linked = connection.authority() == AuthorityMode.LINK_ONLY;
             boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));
@@ -213,7 +215,7 @@ public class IntegrationService {
             String planningDsl = !linked && changed && (domain.supportsNativePackages(connection) || planningEntries) && connection.projectId() != null
                     ? domain.portfolioContribution(context).apply(before.dsl()) : before.dsl();
             Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && (domain.supportsNativePackages(connection) || planningEntries)
-                    ? domain.planRequirements(context, connection, selected, mappings, planningDsl) : Map.of();
+                    ? domain.planRequirements(context, connection, domain.supportsNativePackages(connection) ? selected : incomingPlanning, mappings, planningDsl) : Map.of();
             var endpointIndex = domain.indexEndpoints(connection, selected, mappings, requirementPlans);
             // Selection already contains accepted endpoint choices and retained local approval.
             // Raw review entries must not independently affect rejected/kept connectors.
@@ -224,7 +226,7 @@ public class IntegrationService {
             }
             if (!linked && changed && planningEntries) {
                 PlanningExchangeBridge.validateInbound(resultDocument);
-                commands.addAll(PlanningExchangeBridge.commands(selected, requirementPlans));
+                commands.addAll(PlanningExchangeBridge.commands(incomingPlanning, requirementPlans));
             }
             session.beginReview(review);
             for (IntegrationChange change : operation.changes()) {

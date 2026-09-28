@@ -1,105 +1,116 @@
 # Planning profiles: verification and delivery evidence
 
-Date: 2026-09-26. Target baseline:
-`6f7f1e9c02ee6bcbd07186dd3c4ffb688ba4edeb`.
+## Current correction set — 2026-09-28
 
-## Initial patch delivery: source and environment
+PR #1138, branch `feature/planning-profiles`. These corrections are based on
+`500ef55dd79da44f05219a235f309e0030a61485`; they do not change `main`, test timeouts,
+CI rules, required checks, or the agreed first-step feature scope.
 
-The local environment could read the repository through the GitHub connector but
-could not clone/push using Git and offered no GitHub write action. Production
-sources were recovered from the source HTML in the exact-baseline CI coverage
-artifact; application resources and dependency JARs were recovered from the
-exact-baseline built application. The source-recovery manifest was retained.
-The browser package manifest was fetched separately at that exact commit and its
-Git blob was verified as `32aeb0acd7ffe0815915b6240f7ccea2ee662b1f`.
+### Publication boundary
 
-Reference workflow: `36233612828` (CI/CD on the baseline, **before these changes**).
-Reference application artifact: `10902769459`, SHA-256
-`cc75fa253bb3d92f1c49cfc8c938e618f61e53e81e153d32760f2a4111b49ffd`.
-Reference quality artifact: `10904820526`, SHA-256
-`e757d373a109164530ce0d0850b43c05da6d9c39c8495903c1b1e5101f8acfda`.
+The connector's security check blocked publication of the modified
+`CompleteCopilotSessionIT.java`. That browser-test correction and its additional
+JUnit regression remain local and are delivered separately as a patch; they are
+**not in this commit**. The block was not bypassed. Only the three review
+corrections, their focused contract tests and this report are being published.
+The PR is back in draft and must not merge until the browser correction is applied
+and the resulting exact-head checks pass normally.
 
-The local Git baseline is reconstructed and is not upstream commit ancestry.
-No issue, pull request or remote commit was created. Delivery is a patch for the
-pinned baseline, not a claim of a merged or released feature.
+### Actual CI failure on the preceding head
 
-## Executed checks
+CI/CD run `36388503592`, core job `108819348006`, contains one failing test:
+`CompleteCopilotSessionIT.completeSessionSupportsCancelReconnectReloadResultsAndEquivalentExports`.
+Its Selenium exception waits 300 seconds for `newVersionModal` to become visible,
+at `exerciseRequirementWorkspaceControls`, after the successful Copilot result.
+The method's total elapsed time is 405.4 seconds. This is not an LLM timeout,
+ReqIF failure, or the earlier editor-rationale defect.
 
-| Check | Actual result |
+The click helper inherited Bootstrap's smooth scrolling and immediately issued
+native WebDriver input. An isolated Chromium reproduction using the actual
+rendered requirement template and packaged assets showed that input can miss the
+moving button. Immediate scrolling resolves that reproduced race. The locally prepared JUnit
+regression creates a real long requirement through the UI, checks the synchronous
+click target geometry, and opens/closes the actual Bootstrap modal with native
+WebDriver input. Closing also waits for the existing `shown.bs.modal` marker;
+visibility alone can precede completion of Bootstrap's opening transition.
+No timeout was increased, test skipped, or JavaScript click/show substituted.
+
+The CI artifact does not contain a pointer-event trace, so the isolated race
+reproduction is not claimed to be a recording of the original CI click.
+The complete corrected Selenium/PostgreSQL session still requires exact-head CI.
+
+### Review corrections
+
+- An unsupported incoming profile version no longer invokes the previous known
+  profile's removal hook. Its canonical source link stays intact while the new
+  envelope remains uninterpreted.
+- Planning commands are derived only from explicitly accepted incoming requirement
+  envelopes, before local omissions are retained. Rejected, metadata-free and
+  empty-envelope imports do not re-import local planning entries. The external
+  baseline continues to use `change.after()`; the local result is distinct.
+- Envelope comparison ignores entry order, preventing false omission notices for
+  valid unsorted input. Duplicate identities are still rejected by the codec.
+
+### Fresh local checks
+
+| Check | Executed result |
 |---|---|
-| Compile all 20 new/changed Java production classes | Passed with Java 21.0.11, `javac -parameters`, against the baseline application's actual classes and dependencies. |
-| `PlanningProfileContract` | 48 assertions passed: precision, canonical source/edition/section links, preservation, unknown versions, third profile, DSL changes/diff/undo, shared-source and malformed-data cases. |
-| `ReqifPlanningContract` | 21 assertions passed: official-schema-validated read/write, current-value overlay, new requirements, unknown profiles, malformed envelopes and string-length limits. |
-| `PlanningIntegrationContract` | 14 assertions passed: canonical overlay, internal versus observed external state, omission retention, scope/identity and command planning. |
-| JavaScript unit tests | Six tests passed with Node 22.16.0. They are registered in both existing CI UI chains through `test:integrations-review`. |
-| Actual application HTTP import | Reviewed multipart ReqIF import completed through the real application, file-backed HSQLDB, existing integration journal and a Git checkpoint. Both profiles appeared in the editor API. |
-| Actual application editor HTTP | Non-mutating preview, save, same-command replay, stale-revision rejection (412), unsupported manual profile rejection (400), undo, redo and historical read-only state passed. Original requirement text versions remained at version 1. |
-| Actual process restart | Restarted the JVM using the same file-backed HSQLDB. Revision 5, planned year 2034 and source edition 2026 were retained. |
-| Actual application export/reimport | Downloaded ReqIF contained the changed canonical year. A reimport with the planning attribute removed retained local entries without falsely recording them as present externally. Original text versions remained unchanged. |
-| Isolated Chromium panel | Actual server-rendered panel HTML, production JS/CSS and real API projection tested in German/English at 1440x1000 and 390x844. Valid intent, read-only state, controls within viewport and zero page errors checked. |
-| Syntax and patch checks | JavaScript syntax checks and `git diff --check` passed. Delivery also checks patch application and changed-file equality against the reconstructed local baseline. |
+| Three modified Java production classes | Compile with Java 21 against the exact `500ef55` application classes/dependencies. Not a full reactor build. |
+| `PlanningProfileContract` | **54 assertions passed**, including preservation of a known source link during an unknown-version import. |
+| `ReqifPlanningContract` | **21 assertions passed**, executing the unchanged current source with blob `67e8a09c715f379012a0e4f9ac6babda583b0ebd`. |
+| `PlanningIntegrationContract` | **39 assertions passed**, including accepted-input selection and order-independent omission reporting. |
+| JavaScript planning/editor tests | **11 tests passed**, zero skipped; both production modules and the conflict-rationale regressions are exercised. |
+| Isolated real Chromium modal checks | **12 cases passed**: desktop/mobile, ordinary/reduced motion, three repetitions. Uses the new JUnit test's exact embedded scroll/geometry script, rendered template and packaged Bootstrap/application CSS/utilities. |
+| Diff and syntax checks | `git diff --check` and JavaScript syntax checks passed. |
+| Full prescribed Maven command | `./mvnw verify -DexcludedGroups="real-llm"` cannot start in the recovered partial workspace: `mvnw` is absent (exit 127). No weaker command is presented as a substitute. |
 
-The contract runners contain real assertions and execute actual production code;
-the Java unit-test wrappers use those same runners. Red-before-green evidence was
-recorded for missing profiles, undo, fresh ReqIF metadata loss, stale overlay,
-UI and hardening cases. The interop contract uses a small portfolio-port fixture;
-the separate HTTP runs use the actual application and database.
+The current executable total is **54 + 21 + 39 = 114 Java assertions**.
+Earlier PR prose stated 22 ReqIF assertions; this fresh count comes from the
+hash-verified current test source, rather than copying that stale total.
+The added browser JUnit method has not been executed through Selenium locally.
+Direct browser navigation to the local server is blocked by the environment;
+the offline Chromium check is not a connected browser/server end-to-end test.
 
-## Verification limitations
+Red-before-green evidence was recorded for the synchronous scroll check,
+source-link removal and false order-dependent omission. The selection regression
+first exercised the previous selected-state decision rule, then the corrected
+accepted-input helper. It is a focused contract, not a full IntegrationService
+HTTP transaction test. No installed vendor-product certification is implied.
 
-This is **not** a full Maven reactor build. Root build tooling and the complete
-repository test tree were not available locally; Maven/dependency access was
-blocked. JUnit wrappers were added for normal module-owned execution, while their
-underlying runners were executed directly here. Node CI expects version 24; local
-Node was 22.16.0.
+The exact-head packaged application is from artifact `10955721043` in run
+`36388503592`; its archive SHA-256 is
+`dc32cd32209458fa7796a9a2f99c107a22299c0119db7441c1c12e0e31d4166f`.
+The failed core report artifact `10957136672` has SHA-256
+`eef2a0d7b57ab83b7cc8b199ee4a3af702d6840420e4dec47ddf894191b9fad1`.
+These identify input evidence, not successful CI for the new corrections.
 
-Direct Chromium navigation to the local server was blocked by the browser
-administration policy (`ERR_BLOCKED_BY_ADMINISTRATOR`). The policy was not bypassed:
-the browser check was an isolated panel check with a deterministic UUID fixture,
-while HTTP/database operations were exercised separately. It is not a connected
-full-browser E2E run or an axe accessibility certification.
+## Historical delivery evidence
 
-No installed StrictDoc/DOORS/Polarion or other vendor product was run on the new
-profile. Schema-valid Taxonomy round trips do not establish vendor compatibility.
-No full PostgreSQL/MSSQL/Oracle matrix, ONNX/LLM evaluation, repository-wide coverage
-or independent reviewer execution was performed. The final review was self-review.
-The normal exact-head CI checks and review remain necessary before merge.
+The initial patch was based on
+`6f7f1e9c02ee6bcbd07186dd3c4ffb688ba4edeb`, using recovered sources and packaged
+application dependencies rather than a complete checkout. That delivery reported
+20 compiled production classes, 48/21/14 contract assertions, six Node tests,
+separate HTTP/database-restart checks, ReqIF re-export/omission checks, and isolated
+German/English desktop/mobile panel checks. Those HTTP/restart checks have not
+been re-executed for this correction set. The old no-PR/no-write statements
+applied to that initial delivery only: PR #1138 now contains the implementation.
 
-## Commands for a full checkout after applying the patch
+On `dc1f0cc`, run `36380054908` passed the core reactor, application packaging,
+UI contracts, six browser lanes and existing interoperability tests, but its
+aggregate intentionally failed the draft gate. On `500ef55`, the ready-for-review
+run reached the actual Copilot-session failure described above. Neither run is
+verification of the new corrections, and neither justifies bypassing a check.
+
+## Required completion
+
+Run the normal repository verification on the new exact head, including the
+complete Copilot session and added modal regression, and address outstanding
+review discussions. In a complete checkout the prescribed full command is:
 
 ```sh
-./mvnw -B -pl taxonomy-dsl,taxonomy-export,taxonomy-interop,taxonomy-workspace -am test
-(cd .github && npm ci && npm run test:integrations-review)
-./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 
-Use the repository's documented Java 21 / Node 24 toolchain and normal database,
-product-compatibility and browser lanes. These commands are the next verification
-steps in a complete checkout; they are not reported as executed locally.
-
-## Continuation: exact-baseline recheck and publication preparation
-
-The subsequent session has GitHub Git-data write actions available. It created
-`feature/planning-profiles` at the same upstream baseline without changing `main`
-or creating any issue. The initial patch-only statements above describe the
-earlier delivery, not this subsequent publication work.
-
-The baseline application artifact was downloaded again and its SHA-256 verified.
-All 20 changed/new production classes were recompiled against those exact baseline
-classes and dependencies. The three contract runners initially repeated their
-48 + 21 + 14 successful assertions, and all six JavaScript tests passed.
-
-A further regression exposed integer narrowing in the transport-envelope schema
-check: the unsupported schema number `4294967297` was accepted as schema 1 after
-`intValue()` overflow. The new test failed before the fix. Requiring
-`canConvertToInt()` before comparing the number rejects this value. The same
-contract runners then passed **48 + 22 + 14 = 84 assertions**, and the six
-JavaScript tests remained successful. This is a bounded validation correction,
-not an additional planning feature. One Java constructor call has a formatting-only
-line join during transfer; its arguments and behavior are unchanged.
-
-Git blob identities are used to compare transferred content with the locally
-verified files before publishing a complete commit. An uploaded, unreferenced Git
-tree is not a commit or a published implementation. Full Maven, connected-browser,
-database-matrix and installed-product verification remain outstanding; historical
-checks on the baseline application do not verify the new feature.
+Use the repository-owned CI suites and documented Java 21 / Node 24 toolchain.
+Do not remove tests, relax required checks, or treat schema-valid Taxonomy ReqIF
+round trips as certification of arbitrary vendor custom-field behavior.

@@ -90,6 +90,56 @@ public final class PlanningIntegrationContract {
         // Metadata-free imports must keep the pre-existing requirements-only flow.
         check(!PlanningExchangeBridge.hasEntries(Map.of("REQUIREMENT:external", noPlanning)), "Empty import enables planning commands");
         check(PlanningExchangeBridge.hasEntries(selected), "Planning import was not detected");
+        // Retained LOCAL data is not authority to generate incoming planning commands.
+        var textOnlyChange = new IntegrationChange("change", "REQUIREMENT:external", ChangeKind.UPDATE,
+                java.util.Set.of("text"), "before", "after", current, noPlanning, List.of());
+        var acceptedText = PlanningExchangeBridge.acceptedIncoming(List.of(textOnlyChange),
+                Map.of("change", Decision.ACCEPT), selected);
+        equal(Map.of(), acceptedText);
+        equal(List.of(), PlanningExchangeBridge.commands(acceptedText, Map.of()));
+        var planningChange = new IntegrationChange("change", "REQUIREMENT:external", ChangeKind.UPDATE,
+                java.util.Set.of("planning"), "before", "after", current, artifact, List.of());
+        for (Decision decision : List.of(Decision.REJECT, Decision.KEEP_INTERNAL))
+            equal(Map.of(), PlanningExchangeBridge.acceptedIncoming(List.of(planningChange), Map.of("change", decision), selected));
+        equal(Map.of(), PlanningExchangeBridge.acceptedIncoming(List.of(planningChange), Map.of(), selected));
+        var localExtra = new Artifact("external", artifact.kind(), artifact.type(), "Reviewed title", "Reviewed text",
+                Map.of(), Map.of(PlanningEnvelope.EXTENSION, PlanningEnvelope.write(List.of(
+                        new PlanningEnvelope.Entry("launch", "go-live", "1", "MANUAL", Map.of("precision", "YEAR", "value", "2031")),
+                        new PlanningEnvelope.Entry("local-only", "other", "1", "MANUAL", Map.of())))));
+        var mixedSelection = Map.of("REQUIREMENT:external", localExtra, "REQUIREMENT:other", current);
+        for (Decision decision : List.of(Decision.ACCEPT, Decision.TAKE_EXTERNAL)) {
+            var incoming = PlanningExchangeBridge.acceptedIncoming(List.of(planningChange), Map.of("change", decision), mixedSelection);
+            equal(java.util.Set.of("REQUIREMENT:external"), incoming.keySet());
+            equal("Reviewed title", incoming.get("REQUIREMENT:external").title());
+            equal(old, incoming.get("REQUIREMENT:external").extensions().get(PlanningEnvelope.EXTENSION));
+            var incomingCommands = PlanningExchangeBridge.commands(incoming, plans);
+            equal(1, incomingCommands.size());
+            equal("launch", ((ArchitectureCommand.ImportRequirementPlanning) incomingCommands.getFirst()).entry().id());
+        }
+        var emptyRemote = new Artifact("external", artifact.kind(), artifact.type(), "Title", "Original", Map.of(),
+                Map.of(PlanningEnvelope.EXTENSION, PlanningEnvelope.write(List.of())));
+        var emptyChange = new IntegrationChange("change", "REQUIREMENT:external", ChangeKind.UPDATE,
+                java.util.Set.of("planning"), "before", "after", current, emptyRemote, List.of());
+        equal(Map.of(), PlanningExchangeBridge.acceptedIncoming(List.of(emptyChange), Map.of("change", Decision.ACCEPT), selected));
+        rejects(() -> PlanningExchangeBridge.acceptedIncoming(List.of(planningChange), Map.of("change", Decision.ACCEPT), Map.of()));
+        // Neither local omission retention nor review extraction rewrites remote observations.
+        check(!textOnlyChange.after().extensions().containsKey(PlanningEnvelope.EXTENSION), "Remote omission was acknowledged");
+        equal(old, planningChange.after().extensions().get(PlanningEnvelope.EXTENSION));
+        // Entry order is not semantic: the same valid envelope may arrive unsorted.
+        String reversedPayload = """
+                {"schema":1,"entries":[
+                  {"id":"z","profile":"other","version":"1","origin":"external","values":{}},
+                  {"id":"a","profile":"other","version":"1","origin":"external","values":{}}
+                ]}
+                """;
+        var reordered = new Artifact("external", ArtifactKind.REQUIREMENT, "taxonomy-object", "Title", "Original",
+                Map.of(), Map.of(PlanningEnvelope.EXTENSION, reversedPayload));
+        var reorderedDocument = new ExchangeDocument(ReqifExchangeCodec.PROFILE, "1", "incoming", false, "",
+                List.of(reordered), List.of(), List.of(), Map.of(), List.of());
+        var reorderedDescription = PlanningExchangeBridge.describeInbound(reorderedDocument,
+                Map.of("REQUIREMENT:external", PlanningExchangeBridge.retainOmissions(reordered, reordered)));
+        equal(0L, reorderedDescription.losses().stream().filter(l -> "PLANNING_OMISSION_RETAINED".equals(l.code())).count());
+        equal(reversedPayload, reorderedDescription.artifacts().getFirst().extensions().get(PlanningEnvelope.EXTENSION));
         // Limit the total number of per-entry commands before any accepted mutation.
         var many = new java.util.LinkedHashMap<String, Artifact>();
         var manyPlans = new java.util.LinkedHashMap<String, RequirementApplyPlan>();

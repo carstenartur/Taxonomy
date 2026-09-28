@@ -50,6 +50,20 @@ public final class PlanningProfileContract {
         equal(java.util.Set.of("linkId"), stored.values().keySet());
         equal(referenced, profiles.upsert(referenced, "R", ref, false));
         equal(goalDsl, new ArchitectureDslCommands().inverse(referenced, goalDsl, referenced).dsl());
+        // An opaque newer version cannot delete the last authoritative source link.
+        var futureReference = new PlanningEntry("norm", "standard-reference", "99", "external-A",
+                Map.of("futureMeaning", "uninterpreted"));
+        String newerUnknown = profiles.upsert(referenced, "R", futureReference, true);
+        equal(1, new ArchitectureDslCommands().model(newerUnknown).getRequirementSourceLinks().size());
+        String linkKey = "requirementSourceLink:" + model.getRequirementSourceLinks().getFirst().getId();
+        equal(ArchitectureSemanticPatch.index(referenced).get(linkKey).getProperties().stream().map(p -> p.key() + "=" + p.value()).toList(),
+                ArchitectureSemanticPatch.index(newerUnknown).get(linkKey).getProperties().stream().map(p -> p.key() + "=" + p.value()).toList());
+        var futureView = profiles.read(newerUnknown, "R").stream().filter(v -> v.entry().id().equals("norm")).findFirst().orElseThrow();
+        equal(futureReference, futureView.entry());
+        check(!futureView.supported(), "Future reference must not be interpreted by v1");
+        check(ArchitectureSemanticPatch.between(referenced, newerUnknown).stream()
+                .allMatch(c -> "requirement:R".equals(c.id())), "Opaque import changed a canonical source object");
+        equal(newerUnknown, profiles.upsert(newerUnknown, "R", futureReference, true));
         var unknownEdition = new PlanningEntry("norm", "standard-reference", "1", "MANUAL", Map.of("identifier", "TEST-DIRECTIVE", "section", "A.1"));
         String noEdition = profiles.upsert(BASE, "R", unknownEdition, false);
         equal(0, new ArchitectureDslCommands().model(noEdition).getSourceVersions().size());

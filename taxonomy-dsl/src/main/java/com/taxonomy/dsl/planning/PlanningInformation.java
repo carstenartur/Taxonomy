@@ -81,7 +81,8 @@ public final class PlanningInformation {
             throw new IllegalArgumentException("Unknown planning profiles are read-only");
         if (previous != null && !previous.profile().equals(entry.profile()))
             throw new IllegalArgumentException("A planning entry cannot change its profile identity; remove it explicitly first");
-        if (previous != null && !previous.version().equals(entry.version())) {
+        // An unknown incoming version is opaque evidence, not authority to remove a known projection.
+        if (profile != null && previous != null && !previous.version().equals(entry.version())) {
             PlanningProfile previousProfile = profiles.get(new Key(previous.profile(), previous.version()));
             if (previousProfile != null) dsl = previousProfile.remove(dsl, requirement, entry.id(), previous.values());
         }
