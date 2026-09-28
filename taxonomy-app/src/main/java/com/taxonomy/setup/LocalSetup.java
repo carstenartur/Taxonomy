@@ -13,11 +13,18 @@ import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 /** Creates an explicit local installation; never called as a fallback after startup failure. */
 public final class LocalSetup {
+    // Match credential values, not metadata such as token-uri or api-key-file.
+    // Keep the same suffix policy as the Helm config and environment guards.
+    private static final Pattern CREDENTIAL_KEY = Pattern.compile(
+            "(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$");
+
     private LocalSetup() { }
 
     public static Properties localProperties(Path dataDirectory) {
@@ -73,7 +80,7 @@ public final class LocalSetup {
     }
 
     private static boolean secretKey(String key) {
-        return key.endsWith("password") || key.endsWith("secret") || key.endsWith("token") || key.endsWith("api.key");
+        return CREDENTIAL_KEY.matcher(key.toLowerCase(Locale.ROOT)).find();
     }
 
     private static void createPrivateDirectory(Path path) throws IOException {

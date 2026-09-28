@@ -2,6 +2,19 @@
 {{- define "taxonomy.environment" -}}
 {{- $config := deepCopy .Values.config -}}
 {{- $secrets := deepCopy .Values.secretEnv -}}
+{{/* Defense in depth: retain this check when a caller skips JSON Schema validation. */}}
+{{- $credentialKey := "(?i)(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$" -}}
+{{- range $name, $_ := $config -}}
+{{- if regexMatch $credentialKey $name -}}{{- fail "Credentials in config require a Secret mapping; never put credential values in ordinary Helm values" -}}{{- end -}}
+{{- end -}}
+{{- range .Values.extraEnv -}}
+{{- if regexMatch $credentialKey (.name | default "") -}}
+{{- $source := .valueFrom | default dict -}}
+{{- if or (hasKey . "value") (empty (get $source "secretKeyRef")) -}}
+{{- fail "Credential environment variables require valueFrom.secretKeyRef; literal values and ConfigMap references are not allowed" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- $authentication := .Values.authentication | default dict -}}
 {{- $mode := get $authentication "mode" | default "existing" -}}
 {{- $database := .Values.database | default dict -}}
@@ -66,7 +79,16 @@
 {{- $_ := set $config "TAXONOMY_SECURITY_LOCAL_USERS_ENABLED" "true" -}}
 {{- if not (hasKey $secrets "TAXONOMY_ADMIN_PASSWORD") -}}{{- fail "Local login requires the TAXONOMY_ADMIN_PASSWORD Secret mapping" -}}{{- end -}}
 {{- else -}}
-{{- if empty (get $config "KEYCLOAK_ISSUER_URI") -}}{{- fail "Keycloak requires config.KEYCLOAK_ISSUER_URI" -}}{{- end -}}
+{{/* Cluster endpoints require HTTPS even for loopback; CLI-only local development retains its loopback exception. */}}
+{{- $httpsEndpoint := "(?i)^https://(\\[[0-9a-f:.]+\\]|([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.?)(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
+{{- range $name := list "KEYCLOAK_ISSUER_URI" "KEYCLOAK_JWK_SET_URI" -}}
+{{- $endpoint := get $config $name | default "" | toString -}}
+{{- if or (eq $name "KEYCLOAK_ISSUER_URI") (ne $endpoint "") -}}
+{{- if or (not (regexMatch $httpsEndpoint $endpoint)) (contains "\\" $endpoint) -}}
+{{- fail (printf "Guided Keycloak setup requires config.%s over HTTPS without credentials, query, fragment or whitespace" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- if empty (get $config "KEYCLOAK_CLIENT_ID") -}}{{- fail "Keycloak requires config.KEYCLOAK_CLIENT_ID" -}}{{- end -}}
 {{- $_ := set $config "SPRING_PROFILES_ACTIVE" (join "," (uniq (concat $profiles (list "production" "keycloak")))) -}}
 {{- $_ := set $config "TAXONOMY_SECURITY_LOCAL_USERS_ENABLED" "false" -}}

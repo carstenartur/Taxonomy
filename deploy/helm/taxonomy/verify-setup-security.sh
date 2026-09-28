@@ -48,11 +48,14 @@ for endpoint in KEYCLOAK_ISSUER_URI KEYCLOAK_JWK_SET_URI; do
       'https://identity.example.invalid/realm?token=fixture-secret-never-print' \
       'https://identity.example.invalid/realm#fragment' 'https://:443/realm' \
       'https://identity example.invalid/realm' 'https://identity.example.invalid\evil/realm'; do
-    reject "unsafe $endpoint" "$endpoint" "${OIDC[@]}" --set-string "config.$endpoint=$url"
+    # --set-string consumes backslash escapes; --set-file preserves the exact hostile input.
+    printf '%s' "$url" >"$TMP/endpoint-value"
+    reject "unsafe $endpoint" "$endpoint" "${OIDC[@]}" --set-file "config.$endpoint=$TMP/endpoint-value"
   done
 done
 for name in ADMIN_TOKEN CUSTOM_ACCESS_TOKEN customApiKey CUSTOM_PRIVATE_KEY CUSTOM_CREDENTIALS Custom_PassWd; do
-  reject "schema rejects ordinary $name" 'config' --set-json "config={\"$name\":\"fixture-secret-never-print\"}"
+  # Helm reports propertyNames errors with the offending key, not the containing config path.
+  reject "schema rejects ordinary $name" "propertyName '$name'" --set-json "config={\"$name\":\"fixture-secret-never-print\"}"
 done
 accept 'metadata is not a credential' --set-json 'config={"CUSTOM_TOKEN_URI":"https://identity.example.invalid/token","PASSWORD_MIN_LENGTH":"16","CUSTOM_API_KEY_FILE":"/private/key"}'
 accept 'custom credential uses Secret reference' --set-json 'secretEnv.CUSTOM_ACCESS_TOKEN={"key":"CUSTOM_ACCESS_TOKEN","optional":false}'

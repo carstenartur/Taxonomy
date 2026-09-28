@@ -95,20 +95,9 @@
     "config": {
       "type": "object",
       "propertyNames": {
+        "$comment": "Credential-value suffixes, case-insensitive and separator-tolerant. Metadata such as TOKEN_URI or API_KEY_FILE remains valid. Keep aligned with LocalSetup and the template guard.",
         "not": {
-          "enum": [
-            "SPRING_DATASOURCE_PASSWORD",
-            "TAXONOMY_ADMIN_PASSWORD",
-            "ADMIN_PASSWORD",
-            "KEYCLOAK_CLIENT_SECRET",
-            "GEMINI_API_KEY",
-            "OPENAI_API_KEY",
-            "DEEPSEEK_API_KEY",
-            "DASHSCOPE_API_KEY",
-            "LLAMA_API_KEY",
-            "MISTRAL_API_KEY",
-            "CUSTOM_LLM_API_KEY"
-          ]
+          "pattern": "([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][._-]*[Kk][Ee][Yy]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][._-]*[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]?)$"
         }
       },
       "additionalProperties": {

@@ -14,14 +14,43 @@ public final class SetupChecks {
     /** Findings deliberately contain only fixed messages and property names, never values. */
     public record Finding(Status status, String key, String message) { }
 
+    private enum Database {
+        POSTGRES("jdbc:postgresql:", "postgres"),
+        MSSQL("jdbc:sqlserver:", "mssql"),
+        ORACLE("jdbc:oracle:", "oracle"),
+        HSQLDB("jdbc:hsqldb:", "hsqldb", "hsqldb-file");
+
+        private final String jdbcPrefix;
+        private final Set<String> profiles;
+
+        Database(String jdbcPrefix, String... profiles) {
+            this.jdbcPrefix = jdbcPrefix;
+            this.profiles = Set.of(profiles);
+        }
+
+        boolean accepts(String url) { return url.startsWith(jdbcPrefix); }
+        boolean active(Set<String> activeProfiles) { return profiles.stream().anyMatch(activeProfiles::contains); }
+    }
+
+    private static final List<String> SCHEMA_ACTION_PROPERTIES = List.of(
+            "spring.jpa.hibernate.ddl-auto",
+            "spring.jpa.properties.hibernate.hbm2ddl.auto",
+            "spring.jpa.properties.jakarta.persistence.schema-generation.database.action");
+    private static final Set<String> UNSAFE_PERSISTENT_SCHEMA_ACTIONS = Set.of(
+            "create", "create-only", "create-drop", "drop", "drop-and-create", "truncate");
+
     private SetupChecks() { }
 
     public static List<Finding> check(Function<String, String> properties, Set<String> profiles) {
         List<Finding> result = new ArrayList<>();
         String url = value(properties, "spring.datasource.url");
         boolean memory = url.startsWith("jdbc:hsqldb:mem:");
-        boolean known = url.startsWith("jdbc:postgresql:") || url.startsWith("jdbc:hsqldb:")
-                || url.startsWith("jdbc:sqlserver:") || url.startsWith("jdbc:oracle:");
+        boolean known = false;
+        List<Database> activeDatabases = new ArrayList<>();
+        for (Database database : Database.values()) {
+            known |= database.accepts(url);
+            if (database.active(profiles)) { activeDatabases.add(database); }
+        }
         if (!known) {
             error(result, "spring.datasource.url", "Select a supported JDBC URL and matching database profile.");
         } else if (memory) {
@@ -29,9 +58,19 @@ public final class SetupChecks {
                     ? Status.ERROR : Status.WARNING, "spring.datasource.url",
                     "In-memory data is lost at shutdown; do not use this configuration for persistent operation."));
         }
-        String ddl = value(properties, "spring.jpa.hibernate.ddl-auto");
-        if (!memory && Set.of("create", "create-drop", "drop").contains(ddl.toLowerCase(Locale.ROOT))) {
-            error(result, "spring.jpa.hibernate.ddl-auto", "Destructive schema creation is not allowed for a persistent installation.");
+        if (activeDatabases.size() > 1) {
+            error(result, "spring.profiles.active", "Choose database profiles for only one database engine.");
+        } else if (activeDatabases.size() == 1 && !activeDatabases.getFirst().accepts(url)) {
+            error(result, "spring.datasource.url", "The JDBC URL does not match the selected database profile and its driver/dialect.");
+        }
+        // Check native Hibernate/JPA overrides too; they must not bypass ddl-auto validation.
+        // create-only does not drop first, but is still schema creation, not a safe existing-data check.
+        if (!memory) {
+            for (String property : SCHEMA_ACTION_PROPERTIES) {
+                if (UNSAFE_PERSISTENT_SCHEMA_ACTIONS.contains(value(properties, property).toLowerCase(Locale.ROOT))) {
+                    error(result, property, "Schema creation, dropping or truncation is not allowed for a persistent installation.");
+                }
+            }
         }
         if (profiles.contains("keycloak")) {
             if (profiles.contains("local-user-management")) {
