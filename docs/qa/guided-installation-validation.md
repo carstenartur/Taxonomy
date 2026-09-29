@@ -1,5 +1,58 @@
 # Guided installation validation — 2026-09-28
 
+## Third review: configuration paths and verified non-reproductions — 2026-09-29
+
+Baseline: `2bc9426f2427f099ba9283a506a0afa39f83eb14`, source tree
+`295e83f7bfef0b427dff51af47655da56c44f35b`, exported from the exact commit by
+GitHub diagnostic run `36515861593`. The local source tree matches that tree hash.
+
+Two new findings were reproduced and fixed without relaxing existing policies:
+
+- A guided Keycloak installation could restore the removed local bootstrap
+  environment variable through an additional Secret reference. Helm now rejects
+  that name explicitly; unrelated Secret-backed additions remain supported.
+- Java preflight skipped custom URL validation when provider selection was blank
+  or a different provider was selected. Configured custom endpoints are now checked
+  independently of provider selection. A URL supplied for automatic custom selection
+  also requires its model; no cloud-provider selection priority or API-key policy
+  has been changed.
+
+Observed local red/green verification with Java 21, UTF-8 and real Helm 3.21.0:
+
+| Existing Maven-owned suite | Same final tests on baseline | Corrected source |
+| --- | --- | --- |
+| SetupReviewRegressionCases | 107 cases, 17 failures | 107 cases, 0 failures |
+| SetupStartupRegressionCases | 31 cases, 3 failures | 31 cases, 0 failures |
+| verify-setup-security.sh | 118 cases, 2 failures | 118 cases, 0 failures |
+
+Existing 54 setup contracts, 15 Spring contracts, 10 native packaging command
+contracts, Helm lint and existing render contracts also passed. The startup
+regressions exercise actual ConfigData and command exit codes, including automatic
+provider selection and diagnostics that do not expose fixture credentials.
+
+Two other review statements were checked rather than blindly applied:
+
+- The database matrix uses **file-backed** HSQLDB, not `mem:`. All original 67
+  regression cases pass on the unchanged baseline, including all four HSQLDB alias
+  combinations with `production`. Removing `production` is unnecessary and would
+  reduce coverage. A clarifying comment was added; the independent volatile-memory
+  production rejection remains unchanged.
+- The earlier unconditional local-password guard has already been corrected in
+  the baseline. Its real Spring ApplicationRunner startup succeeds without a local
+  password in Keycloak mode and still rejects missing central configuration and a
+  weak machine token. This was rerun, including the real rendered Helm environment;
+  no further weakening or disabling of the guard is warranted.
+
+These focused runs compile the actual changed sources against dependency JARs from
+an existing, checksummed CI application artifact (provenance in the previous section).
+They are not a replacement for the complete PR-head Maven, integration and security
+checks. Both local full-build commands (`./mvnw verify -DexcludedGroups=real-llm`
+and `./mvnw -B verify -Pci`) were attempted and stopped because the wrapper could
+not download Maven 3.9.16 in this network-restricted container. No reduced Maven
+command was substituted. Full CI and the maintainer's review decision remain required before merge;
+no installer qualification, real OIDC login, or production MSSQL acceptance is
+inferred from these tests. No extra product workflow or verification authority is added.
+
 ## Second review: production login, custom endpoints and native startup
 
 Regression baseline: `f5993eba133cd16b006f4548ae4f66bd54708f4a`.

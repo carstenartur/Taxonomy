@@ -46,6 +46,13 @@ Configure explicitly with `Taxonomy-Configure` or run
 launcher starts the server, after static validation. Use the browser at the
 configured local address. No automatic OS service registration is included.
 
+Static validation checks every supplied `custom.llm.url` even when `llm.provider`
+is blank (automatic selection) or another provider is selected. Use HTTPS, or HTTP
+only on exact loopback, without URL credentials, query or fragment. Automatic
+custom configuration requires `custom.llm.model` alongside the URL; authentication
+belongs in the separate configtree. No inference or provider request is performed
+by this validation.
+
 Changing packages must not delete `.taxonomy`. Back up that directory and any
 external database before updating. Never run initial setup over an existing directory.
 A package rollback cannot undo a migrated schema. Installer signing, real Windows

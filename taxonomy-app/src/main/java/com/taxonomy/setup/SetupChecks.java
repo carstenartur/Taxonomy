@@ -89,12 +89,17 @@ public final class SetupChecks {
             }
         }
         String provider = value(properties, "llm.provider").toUpperCase(Locale.ROOT);
+        String customUrl = value(properties, "custom.llm.url");
+        // Validate configured endpoints even when provider selection is automatic or changes later.
+        // Do not duplicate provider-selection priority or require an API key for a local endpoint.
+        if (!customUrl.isEmpty() || provider.equals("CUSTOM_OPENAI")) {
+            endpoint(result, properties, "custom.llm.url");
+        }
+        if (provider.equals("CUSTOM_OPENAI") || (provider.isEmpty() && !customUrl.isEmpty())) {
+            required(result, properties, "custom.llm.model");
+        }
         switch (provider) {
-            case "", "LOCAL_ONNX" -> { }
-            case "CUSTOM_OPENAI" -> {
-                endpoint(result, properties, "custom.llm.url");
-                required(result, properties, "custom.llm.model");
-            }
+            case "", "LOCAL_ONNX", "CUSTOM_OPENAI" -> { }
             case "GEMINI", "OPENAI", "DEEPSEEK", "QWEN", "LLAMA", "MISTRAL" ->
                     required(result, properties, provider.toLowerCase(Locale.ROOT) + ".api.key");
             default -> error(result, "llm.provider", "Choose a supported provider; no provider is configured by this check.");

@@ -105,6 +105,12 @@
 {{- $_ := set $config "SPRING_PROFILES_ACTIVE" (join "," (uniq (concat $profiles (list "production" "keycloak")))) -}}
 {{- $_ := set $config "TAXONOMY_SECURITY_LOCAL_USERS_ENABLED" "false" -}}
 {{- $_ := unset $secrets "TAXONOMY_ADMIN_PASSWORD" -}}
+{{/* Reserve the removed bootstrap name too: it is no longer in the duplicate-check map. */}}
+{{- range .Values.extraEnv -}}
+{{- if eq (.name | default "") "TAXONOMY_ADMIN_PASSWORD" -}}
+{{- fail "Guided Keycloak setup must not receive TAXONOMY_ADMIN_PASSWORD through extraEnv, including Secret references" -}}
+{{- end -}}
+{{- end -}}
 {{- $_ := set $secrets "KEYCLOAK_CLIENT_SECRET" (dict "key" (get $authentication "keycloakClientSecretKey" | default "KEYCLOAK_CLIENT_SECRET") "optional" false) -}}
 {{- if empty (get $config "KEYCLOAK_JWK_SET_URI") -}}
 {{- $_ := set $config "KEYCLOAK_JWK_SET_URI" (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" (get $config "KEYCLOAK_ISSUER_URI"))) -}}

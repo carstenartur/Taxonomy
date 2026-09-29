@@ -37,6 +37,10 @@ secret or conflicting local-user settings still stop startup. An optional machin
 token is still checked for strength in **both** modes. Local production login still
 requires its strong bootstrap password and a distinct machine token when configured.
 Do not supply a dummy local password or disable `production` to make OIDC start.
+Guided Keycloak also rejects `extraEnv` entries named `TAXONOMY_ADMIN_PASSWORD`, including entries
+using `valueFrom.secretKeyRef`: an unused local bootstrap password must not be
+reintroduced after the chart removes its normal mapping. Unrelated Secret-backed
+extra environment variables and the separate machine token remain supported.
 
 `config.CUSTOM_LLM_URL` is validated before rendering, including in `existing` mode.
 Use HTTPS; HTTP is allowed only for the exact loopback hosts `localhost`, `127.0.0.1`
@@ -45,6 +49,13 @@ fragment, whitespace or backslash is accepted. Supply the provider API key throu
 `secretEnv.CUSTOM_LLM_API_KEY`, never in the endpoint. Set the endpoint through
 `config.CUSTOM_LLM_URL`, not `extraEnv`; the latter cannot bypass validation.
 A provider in another Pod is **not** loopback and requires HTTPS and network access.
+The Java preflight applies the endpoint check whenever `custom.llm.url` is non-empty,
+not only when `llm.provider=CUSTOM_OPENAI` is explicit. This includes automatic
+provider selection with a blank `llm.provider` and endpoints retained while another
+provider is selected. A custom URL supplied for automatic selection needs a non-empty
+`custom.llm.model`; explicit `CUSTOM_OPENAI` still requires both fields. Provider
+selection priority is unchanged and a custom endpoint's API key remains optional.
+Without a configured custom URL, automatic selection keeps its previous behavior.
 
 The chart's JSON schema validates values even without Rancher. The existing
 render tests stay in place. `SetupInfrastructureTest` additionally executes

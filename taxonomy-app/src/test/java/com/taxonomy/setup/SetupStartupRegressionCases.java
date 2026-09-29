@@ -222,6 +222,28 @@ public final class SetupStartupRegressionCases {
                         "--spring.config.additional-location=" + overlay.toUri(), "--server.port=8183"}));
                 require("8183".equals(env.getProperty("server.port")), "CLI precedence lost");
             });
+            run("native auto-detected endpoint is checked before startup", () ->
+                    require(SetupCommand.execute(new String[] {"--llm.provider=",
+                            "--custom.llm.url=http://ai.example.invalid/v1/chat/completions",
+                            "--custom.llm.model=fixture-model"}, out) == 2, "unsafe automatic endpoint accepted"));
+            run("static command rejects auto-detected URL credentials without disclosure", () -> {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                try (PrintStream diagnostics = new PrintStream(bytes)) {
+                    require(SetupCommand.execute(new String[] {"--check-configuration=static", "--llm.provider=",
+                            "--custom.llm.url=https://user:" + PRIVATE + "@ai.example.invalid/v1/chat/completions",
+                            "--custom.llm.model=fixture-model"}, diagnostics) == 2, "credential-bearing URL accepted");
+                }
+                require(bytes.toString().contains("ERROR custom.llm.url"), "wrong validation failure");
+                require(!bytes.toString().contains(PRIVATE), "endpoint credential disclosed");
+            });
+            run("native auto-detected HTTPS endpoint remains valid", () ->
+                    require(SetupCommand.execute(new String[] {"--llm.provider=",
+                            "--custom.llm.url=https://ai.example.invalid/v1/chat/completions",
+                            "--custom.llm.model=fixture-model"}, out) == -1, "valid automatic endpoint rejected"));
+            run("native auto-detected endpoint requires model", () ->
+                    require(SetupCommand.execute(new String[] {"--llm.provider=",
+                            "--custom.llm.url=https://ai.example.invalid/v1/chat/completions",
+                            "--custom.llm.model="}, out) == 2, "incomplete automatic configuration accepted"));
             run("native setup checks do not create database files", () -> {
                 try (var entries = Files.list(config.resolve("data"))) { require(entries.count() == 0, "preflight wrote database"); }
             });

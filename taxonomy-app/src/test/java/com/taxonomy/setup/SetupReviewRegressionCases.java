@@ -21,6 +21,7 @@ public final class SetupReviewRegressionCases {
     private interface Check { void run() throws Exception; }
     private record TestCase(String name, Check check) { }
     private record DatabaseCase(String profile, String url, String engine) { }
+    private record EndpointCase(String name, String url) { }
 
     public static void main(String[] args) throws Exception {
         List<TestCase> cases = new ArrayList<>();
@@ -31,6 +32,8 @@ public final class SetupReviewRegressionCases {
             cases.add(new TestCase("reject ordinary credential " + key, () -> rejectCredential(key)));
         }
         cases.add(new TestCase("preserve safe metadata and separate credentials", SetupReviewRegressionCases::safeLocalConfiguration));
+        // Keep production in this matrix: HSQLDB fixtures are file-backed, not volatile.
+        // The separate mem: case below verifies that volatile production storage is refused.
         List<DatabaseCase> databases = List.of(
                 new DatabaseCase("postgres", "jdbc:postgresql://database:5432/taxonomy", "postgres"),
                 new DatabaseCase("mssql", "jdbc:sqlserver://database:1433;databaseName=taxonomy", "mssql"),
@@ -90,6 +93,7 @@ public final class SetupReviewRegressionCases {
             require(hasError(findings), "Profile mismatch accepted");
             require(!findings.toString().contains(SECRET), "Diagnostic disclosed a credential");
         }));
+        customEndpointCases(cases);
         int failed = 0;
         for (TestCase test : cases) {
             try {
@@ -103,6 +107,66 @@ public final class SetupReviewRegressionCases {
         }
         System.out.println("Setup review regressions: " + cases.size() + " cases, " + failed + " failures");
         if (failed != 0) { throw new AssertionError("Setup review regressions failed: " + failed); }
+    }
+
+    private static void customEndpointCases(List<TestCase> cases) {
+        List<EndpointCase> invalid = List.of(
+                new EndpointCase("remote HTTP", "http://ai.example.invalid/v1/chat/completions"),
+                new EndpointCase("userinfo", "https://user:" + SECRET + "@ai.example.invalid/v1/chat/completions"),
+                new EndpointCase("query", "https://ai.example.invalid/v1/chat/completions?token=" + SECRET),
+                new EndpointCase("fragment", "https://ai.example.invalid/v1/chat/completions#fragment"),
+                new EndpointCase("loopback lookalike", "http://localhost.example.invalid/v1/chat/completions"),
+                new EndpointCase("missing host", "https://:443/v1/chat/completions"),
+                new EndpointCase("backslash", "https://ai.example.invalid\\evil/v1/chat/completions"),
+                new EndpointCase("non-HTTP scheme", "file:/private/model"));
+        List<EndpointCase> valid = List.of(
+                new EndpointCase("HTTPS", "https://ai.example.invalid/v1/chat/completions"),
+                new EndpointCase("localhost", "http://localhost:11434/v1/chat/completions"),
+                new EndpointCase("IPv4 loopback", "http://127.0.0.1:11434/v1/chat/completions"),
+                new EndpointCase("IPv6 loopback", "http://[::1]:11434/v1/chat/completions"));
+        for (String provider : List.of("", "CUSTOM_OPENAI", "GEMINI")) {
+            String selection = provider.isEmpty() ? "auto" : provider;
+            for (EndpointCase endpoint : invalid) {
+                cases.add(new TestCase("reject custom " + endpoint.name() + " with " + selection, () -> {
+                    var settings = customConfiguration(provider, endpoint.url());
+                    var findings = SetupChecks.check(settings::get, Set.of("hsqldb"));
+                    require(findings.stream().anyMatch(f -> f.status() == SetupChecks.Status.ERROR
+                            && f.key().equals("custom.llm.url")), "Unsafe custom endpoint passed preflight");
+                    require(!findings.toString().contains(SECRET), "Endpoint diagnostic exposed a credential");
+                }));
+            }
+            for (EndpointCase endpoint : valid) {
+                cases.add(new TestCase("accept custom " + endpoint.name() + " with " + selection, () ->
+                        require(!hasError(SetupChecks.check(customConfiguration(provider, endpoint.url())::get,
+                                Set.of("hsqldb"))), "Valid custom endpoint rejected")));
+            }
+        }
+        for (String provider : List.of("", "CUSTOM_OPENAI")) {
+            cases.add(new TestCase("custom candidate needs model with " + (provider.isEmpty() ? "auto" : provider), () -> {
+                var settings = customConfiguration(provider, valid.getFirst().url());
+                settings.put("custom.llm.model", "  ");
+                require(SetupChecks.check(settings::get, Set.of("hsqldb")).stream().anyMatch(f ->
+                        f.status() == SetupChecks.Status.ERROR && f.key().equals("custom.llm.model")),
+                        "Incomplete custom configuration accepted");
+            }));
+        }
+        cases.add(new TestCase("explicit custom still requires URL", () ->
+                require(hasError(SetupChecks.check(customConfiguration("CUSTOM_OPENAI", "")::get,
+                        Set.of("hsqldb"))), "Missing explicit custom URL accepted")));
+        cases.add(new TestCase("other explicit provider does not require unused custom model", () -> {
+            var settings = customConfiguration("GEMINI", valid.getFirst().url());
+            settings.remove("custom.llm.model");
+            require(!hasError(SetupChecks.check(settings::get, Set.of("hsqldb"))), "Unused model made mandatory");
+        }));
+    }
+
+    private static Map<String, String> customConfiguration(String provider, String url) {
+        var settings = config("jdbc:hsqldb:file:/unused/taxonomy");
+        settings.put("llm.provider", provider);
+        settings.put("custom.llm.url", url);
+        settings.put("custom.llm.model", "fixture-model");
+        if (provider.equals("GEMINI")) { settings.put("gemini.api.key", SECRET); }
+        return settings;
     }
 
     private static void rejectCredential(String key) throws Exception {

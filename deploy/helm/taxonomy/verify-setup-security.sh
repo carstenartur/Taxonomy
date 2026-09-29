@@ -74,6 +74,10 @@ accept 'Secret transport without schema remains valid' --set-json 'secretEnv.CUS
 # Custom provider URLs use the same endpoint restrictions, with HTTP only on exact loopback hosts.
 for schema in present absent; do
   if [[ "$schema" == present ]]; then TEST_CHART=$CHART; else TEST_CHART="$TMP/no-schema"; fi
+  reject "Keycloak extraEnv cannot restore local bootstrap ($schema schema)" 'TAXONOMY_ADMIN_PASSWORD' "${OIDC[@]}" \
+    --set-json 'extraEnv=[{"name":"TAXONOMY_ADMIN_PASSWORD","valueFrom":{"secretKeyRef":{"name":"local-admin","key":"password"}}}]'
+  accept "Keycloak still permits unrelated Secret refs ($schema schema)" "${OIDC[@]}" \
+    --set-json 'extraEnv=[{"name":"CUSTOM_ACCESS_TOKEN","valueFrom":{"secretKeyRef":{"name":"other-credentials","key":"token"}}}]'
   for mode in existing local keycloak; do
     custom=("${OIDC[@]}" --set "authentication.mode=$mode" --set config.LLM_PROVIDER=CUSTOM_OPENAI --set config.CUSTOM_LLM_MODEL=fixture-model)
     for url in 'https://ai.example.invalid/v1/chat/completions' 'http://localhost:11434/v1/chat/completions' 'http://127.0.0.1:11434/v1/chat/completions' 'http://[::1]:11434/v1/chat/completions'; do
