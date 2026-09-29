@@ -33,6 +33,9 @@ Optional local-user administration, guided Rancher/Helm configuration and the na
 setup foundation reuse existing authentication and configuration. Backup instructions
 now resolve the real Compose volume. PostgreSQL is the external production migration
 path; MSSQL/Oracle remain compatibility profiles pending complete qualification.
+Existing file-backed HSQLDB installations now prepare repository and portfolio
+tenancy before Hibernate startup. The upgrade preserves recorded identities and
+rejects ambiguous provenance instead of leaving populated tables unmigrated.
 Follow the [upgrade notes](../../release_notes.md#upgrade-notes) and test restore,
 search and Git history before production rollout.
 

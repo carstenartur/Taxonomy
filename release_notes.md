@@ -324,6 +324,7 @@ A bounded set of existing Python release adapters and evidence generators remain
 13. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
 14. Follow the corrected [backup/restore procedure](docs/en/CONTAINER_IMAGE.md#5-persistence-and-backup), which resolves the actual Compose service volume. Restore acceptance must include users, workspace state, search and Git history.
 15. Use PostgreSQL's managed migration path for external production databases. MSSQL and Oracle remain compatibility profiles pending complete production qualification; switching a profile is not a cross-database data migration. Never use `ddl-auto=create` to upgrade an existing database.
+16. File-backed HSQLDB upgrades from 1.3 prepare required repository and portfolio tenant fields before Hibernate starts. Keep schema migration enabled and resolve reported provenance/key conflicts from a restored stopped-writer backup; do not bypass the checks or reassign historical data to the current branch. See the [database upgrade guidance](docs/en/DATABASE_SETUP.md#hsqldb-default).
 
 ## Verification boundary
 

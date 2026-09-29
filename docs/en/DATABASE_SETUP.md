@@ -46,6 +46,23 @@ The application ships with an embedded HSQLDB database. No installation or exter
 
 The in-memory default is for development and tests. The small controlled production Compose baseline uses file-backed HSQLDB and filesystem Lucene; multi-user external production uses PostgreSQL.
 
+For an upgrade from 1.3, stop all application writers and verify a complete
+[backup and restore](CONTAINER_IMAGE.md#5-persistence-and-backup) before starting the
+new version. With the HSQLDB profile and schema migration enabled, startup prepares
+the existing repository and portfolio rows before Hibernate adds the remaining
+schema. Repository/workspace/branch identities are derived from recorded
+provenance; existing completed identities are preserved. Ambiguous repositories,
+colliding portfolio keys within the same tenant or inconsistent parent references stop the
+upgrade. Restore the stopped-writer backup before resolving the reported data
+conflict and retrying. Do not use `create` or disable schema migration to get past
+an upgrade failure.
+
+Historical central portfolios remain available by selecting the central view
+(API clients send an explicitly empty `X-Taxonomy-Workspace-Id`). Their GET/HEAD
+read routes keep the exact repository and branch identity. New analyses and
+changes still require an isolated workspace; selecting a workspace does not move
+the old central records into it.
+
 ---
 
 ## PostgreSQL

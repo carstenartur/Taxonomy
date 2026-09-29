@@ -1,8 +1,9 @@
 # Release-readiness corrections, 2026-09-29
 
 Baseline: `73fdb2eca456bae1f4e7c99021de8af5dcd06033` (main).
-Scope: the accepted release audit's root-scoring/provider/ONNX defects and
-English/German documentation drift. This record is **not a release approval**.
+Scope: the accepted release audit's root-scoring/provider/ONNX defects,
+English/German documentation drift and failures reproduced during candidate
+acceptance. This record is **not a release approval**.
 
 ## Changes
 
@@ -19,6 +20,9 @@ English/German documentation drift. This record is **not a release approval**.
   hierarchy levels, parent/role semantics and version framing.
 - Bilingual operating, backup, database, API, workspace, preferences, analysis and
   verification documentation; expanded 1.4.0 release summaries.
+- Pre-Hibernate HSQLDB upgrade preparation for populated 1.3 repository and
+  portfolio tables, with exact parent/tenant validation. Historical central
+  portfolio reads retain their recorded scope; mutations require a workspace.
 - A [language policy proposal](../dev/ANALYSIS_LANGUAGE_POLICY.md). Language settings
   have not been implemented or advertised as shipped functionality.
 
@@ -35,6 +39,10 @@ English/German documentation drift. This record is **not a release approval**.
 | Rendered root prompt / scenario playback | New test reproduced `Missing requirement` twice before correction; 6/6 now pass across the authored corpora, full-source validation, adopted text and the existing child prompt |
 | Root flow after the prompt-format correction | 7/7 passed again; independent relevance and child budgets remain distinct |
 | Preferences / working-draft component regression | 4/4 passed for 50→150, pending autosave, failed Preferences save and pending initial restore; wired into the Maven-owned UI contract command |
+| Full scenario acceptance on follow-up head `e8ec78a` | Workflow `36535134461` passed, including the real browser/playback scenario and independent Word/Visio export rendering |
+| Historical central portfolio reads | Baseline rejects explicit-central GET/HEAD; the initial broad read exception failed the Copilot-status regression. The positive allowlist now passes 8/8, including rejection of mutating status reads and unknown routes |
+| HSQLDB portfolio migration | 7/7 JUnit tests pass against the real HSQLDB driver: complete parent chain, immutable branch identity, inconsistent scope/parents, target-key collisions, distinct central branches and post-upgrade current-version constraint |
+| Integration with main `2806480` / merged PR #1141 | 14/14 ONNX reference and Jackson XML constraint tests pass; the readiness/fingerprint fixes and main's security regression/evidence are both retained |
 | Native ONNX pooling | Real native tensor/translator check passed; included in the 131 tests |
 | Release notes/delivery/image and Maven cache contracts | Passed |
 | Changed Markdown local file links | 370 checked across 43 Markdown files before adding this evidence record; no missing targets |
@@ -70,6 +78,51 @@ asserts both the visible architecture and the authoritative saved draft after
 autosave, navigation and reload. It still seeds an explicit completed-state fixture;
 the separate scenario lane exercises actual analysis completion. The strengthened
 browser workflow must pass before its coverage is counted as executed evidence.
+Its first run on `e8ec78a` exposed the preceding import scenario's retained Export
+subtab. The assertion now navigates to Overview and its Layer View through the
+actual UI before checking visible architecture text.
+
+## Upgrade and restore acceptance
+
+The original published 1.3.0 application JAR was verified against release asset
+`500250134`: SHA-256
+`f5c05641d32ddb22d34817a1b0c8630656e435fd6203ca4e1f5fd83e01569eb6`,
+embedded commit `e2aba2c6dc15cd9c2a98b695a70c1cf6380baca1`, `git.dirty=false`.
+It created a file-backed production HSQLDB with 2,572 taxonomy nodes and 37
+relations. A relation created through the 1.3 API raised the count to 38. After
+stopping the writer, its backup was restored into a separate directory and
+started under 1.3; readiness, authenticated reads and the custom relation's
+provenance were preserved. The backup SHA-256 was
+`a647ede386fd713529f198a1dcd6207fd05c917ce8ced29b86eb203d47af591f`.
+
+The first candidate failed on that populated database before the existing
+application-runner migration could execute: Hibernate could not add required
+`system_repository.version` / `taxonomy_relation.repository_id` columns. A second
+fixture created a project, requirement and version through the old application's
+API and exposed the same ordering problem for portfolio tenant columns.
+
+The corrected local probe overlays compiled migration/interceptor classes on the
+unaltered CI candidate artifact `11017925044` from workflow `36532240384`.
+The underlying JAR has SHA-256
+`915d2b0b4c319e37d13b599814a6de0e23ec3e33d600c1718fe9e011bfb7b654`,
+embedded merge commit `c256728c7dc502f366bb8b0855fc32e24819806f` and
+`git.dirty=false`. The overlay is explicitly a local diagnostic build, **not** a
+new immutable CI candidate or release artifact.
+
+That probe reaches readiness with all 38 relations, preserves the historical
+project/requirement/version and serves central reads with an explicitly empty
+workspace header. Central POST is rejected; a selected isolated workspace can
+create a project and requirement. With the explicitly local `MOCK` provider, a
+new analysis job and item complete successfully, persist a retrievable snapshot,
+and return the same job/snapshot for the same idempotency key after restart.
+After the final review corrections, the overlay SHA-256 is
+`7e117147a36d6abf737d7cd91b015fbf71139451bd9e8231fd41eeb96cab1fd8`.
+Historical project/version reads pass again, both mutating Copilot status routes
+return 403 for central access, and another MOCK analysis persists a successful
+job/item/snapshot before a successful restart. The exact current-version FK also
+rejects a sibling requirement's version after migration.
+No external-model quality, Docker volume restore or PostgreSQL upgrade is claimed
+by this local HSQLDB acceptance.
 
 ## Independent review and remaining gates
 
@@ -78,6 +131,14 @@ blocker after a backup failure-handling correction: the documentation now aborts
 before archiving if the application cannot be stopped, and restarts the service
 while retaining a failure result if archiving fails. The wrong-volume defect and
 the failure paths were checked separately; no live Docker restore is claimed.
+
+The follow-up review found and corrected three issues in the upgrade work: a broad
+central GET exception included Copilot status routes that can schedule/finalize
+work; the initial duplicate-key check rejected valid central keys across different
+branches; and Hibernate retained a legacy current-version FK without its exact
+requirement/scope columns. The explicit read allowlist, target-tenant collision
+check and composite FK have dedicated regressions. Nullable snapshot/version
+pointers are also validated before startup can expose the migrated records.
 
 Before merge/publication, complete the required checks on the actual branch/release
 candidate: Java 21 Maven reactor, browser/UI, ONNX reference workflow, database,

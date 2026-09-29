@@ -36,7 +36,11 @@ Optionale lokale Benutzerverwaltung, geführte Rancher-/Helm-Konfiguration und d
 native Setup-Grundlage verwenden die vorhandene Authentifizierung und Konfiguration.
 Die Backup-Anleitung ermittelt jetzt das tatsächliche Compose-Volume. PostgreSQL
 ist der externe Produktionspfad mit verwalteten Migrationen; MSSQL/Oracle bleiben
-Kompatibilitätsprofile mit offener vollständiger Qualifizierung. Vor Produktivbetrieb
+Kompatibilitätsprofile mit offener vollständiger Qualifizierung. Vorhandene
+dateibasierte HSQLDB-Installationen bereiten Repository- und Portfolio-Zuordnungen
+jetzt vor dem Hibernate-Start vor. Das Upgrade erhält gespeicherte Zuordnungen und
+bricht bei uneindeutiger Herkunft ab, statt befüllte Tabellen unmigriert zu lassen.
+Vor Produktivbetrieb
 die [Upgrade-Hinweise](../../release_notes.md#upgrade-notes) beachten und Wiederherstellung,
 Suche und Git-Historie prüfen.
 

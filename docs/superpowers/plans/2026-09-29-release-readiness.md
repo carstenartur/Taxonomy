@@ -72,3 +72,24 @@ The implemented scope and available checks are complete; see
 [executed evidence and remaining release gates](../../testing/release-readiness-2026-09-29.md).
 Full candidate CI, upgrade/restore and browser acceptance remain prerequisites for
 publication. Language controls remain a reviewed proposal, not shipped settings.
+
+## Follow-up acceptance
+
+- [x] Reproduce and correct the rendered-root-prompt/scenario-playback mismatch;
+  retain strict source/scope validation and independent scoring.
+- [x] Add the 50→150 Preferences component regression and strengthen the existing
+  ADMIN browser scenario's visible UI and authoritative draft assertions.
+- [x] Download and verify the original 1.3.0 release JAR, create persistent data,
+  stop the old application and restore its backup under the old version.
+- [x] Correct the reproduced HSQLDB upgrade failure before Hibernate/catalogue
+  initialization, including newly required fields in populated portfolio tables;
+  preserve repository provenance and final database constraints.
+- [x] Re-run the local upgrade, restart and restore probes with the corrected
+  diagnostic overlay, including historical reads and new analysis/snapshot writes.
+- [ ] Repeat upgrade acceptance with the unchanged final CI application artifact.
+- [ ] Complete required CI/browser/scenario/ONNX/database gates on the final head.
+
+The authentic 1.3.0 → first-candidate probe found a release blocker: adding new
+NOT NULL columns to populated HSQLDB tables fails before the existing application
+runner can backfill them. The correction passes the local probe and targeted
+review; immutable-candidate acceptance and final CI remain release gates.

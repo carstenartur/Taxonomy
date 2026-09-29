@@ -46,6 +46,24 @@ Die Anwendung wird mit einer eingebetteten HSQLDB-Datenbank ausgeliefert. Es ist
 
 Der In-Memory-Standard eignet sich für Entwicklung und Tests. Die Produktions-Docker-Konfiguration verwendet dateibasierte HSQLDB- und Lucene-Speicherung.
 
+Vor einem Upgrade von 1.3 alle schreibenden Anwendungsinstanzen stoppen und eine
+vollständige [Sicherung und Wiederherstellung](CONTAINER_IMAGE.md#5-persistenz-und-backup)
+prüfen. Mit aktiviertem HSQLDB-Profil und aktivierter Schemamigration bereitet der
+Start vorhandene Repository- und Portfolio-Daten vor, bevor Hibernate das übrige
+Schema ergänzt. Repository-, Workspace- und Branch-Zuordnungen werden aus
+gespeicherten Herkunftsdaten abgeleitet; bereits vollständige Zuordnungen bleiben
+erhalten. Uneindeutige Repositories, kollidierende Portfolio-Schlüssel im selben Mandanten
+oder widersprüchliche Elternbezüge stoppen das Upgrade. Vor der Behebung des
+gemeldeten Datenkonflikts und einem erneuten Versuch die Sicherung des gestoppten
+Systems wiederherstellen. Ein Upgrade-Fehler darf nicht mit `create` oder durch
+Abschalten der Schemamigration umgangen werden.
+
+Historische zentrale Portfolios bleiben über die zentrale Ansicht lesbar
+(API-Clients senden `X-Taxonomy-Workspace-Id` ausdrücklich leer). Ihre
+GET-/HEAD-Leserouten behalten die genaue Repository- und Branch-Zuordnung.
+Neue Analysen und Änderungen benötigen weiterhin einen isolierten Workspace;
+seine Auswahl verschiebt die alten zentralen Datensätze nicht dorthin.
+
 ---
 
 ## PostgreSQL

@@ -1,4 +1,4 @@
-import { navigateToPage } from './ui-role-fixtures.mjs';
+import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
 function workingStateExpression() {
   return () => {
@@ -160,7 +160,14 @@ function assertDraftEvidence(draft, assert, expectedReason) {
 }
 
 async function assertVisibleArchitecture(page, assert) {
+  // Earlier import acceptance leaves the Export subtab selected. Opening the
+  // Architecture page keeps that selection, so select Overview through its UI.
+  await navigateArchitectureSubtab(page, 'overview');
   await page.locator('#architectureViewPanel').waitFor({ state: 'visible', timeout: 20_000 });
+  // The default network draws labels on a canvas. Open the actual Layer View
+  // control so the persisted element can be verified as visible text.
+  await page.locator('#architectureViewContent .impact-view-btn[data-mode="swimlane"]').click();
+  await page.locator('#impactSwimView').waitFor({ state: 'visible', timeout: 20_000 });
   const visible = await page.locator('#architectureViewContent').innerText();
   assert(visible.includes('QA preference preservation sentinel')
       && visible.includes('Business Processes'),
