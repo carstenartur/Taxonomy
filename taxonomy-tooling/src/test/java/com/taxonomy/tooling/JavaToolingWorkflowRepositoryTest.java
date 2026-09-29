@@ -224,7 +224,7 @@ class JavaToolingWorkflowRepositoryTest {
                 .contains(merge)
                 .contains("head_before=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
                 .contains("head_after=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
-                .contains("gh pr merge \"$PR_NUMBER\" --merge --match-head-commit \"$EXPECTED_SHA\"");
+                .contains("gh pr merge \"$PR_NUMBER\" --rebase --match-head-commit \"$EXPECTED_SHA\"");
         assertThat(workflow.indexOf(canonical))
                 .isLessThan(workflow.indexOf(completeGates));
         assertThat(workflow.indexOf(registration))

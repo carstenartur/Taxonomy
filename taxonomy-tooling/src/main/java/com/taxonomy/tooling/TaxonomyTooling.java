@@ -60,6 +60,8 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "check-release-plan" -> checkReleasePlan(
                     commandArguments, workingDirectory, output, error);
+            case "check-release-history" -> checkReleaseHistory(
+                    commandArguments, workingDirectory, output, error);
             case "compare-versions" -> compareVersions(commandArguments, error);
             case "read-pom-version" -> readPomVersion(
                     commandArguments, workingDirectory, output, error);
@@ -152,6 +154,28 @@ public final class TaxonomyTooling {
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
             error.println("Release check failed: " + failure.getMessage());
+            return 1;
+        }
+    }
+
+    private static int checkReleaseHistory(
+            String[] rawArguments, Path workingDirectory, PrintStream output, PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            Path root = arguments.path("root", workingDirectory).toAbsolutePath().normalize();
+            String release = arguments.required("release-commit");
+            String main = arguments.required("main-commit");
+            boolean handoff = arguments.optional("expected-next-commit") != null
+                    || arguments.optional("expected-base-commit") != null;
+            String mapped = handoff
+                    ? ReleaseHistoryVerifier.verifyHandoff(root, release,
+                            arguments.required("expected-next-commit"),
+                            arguments.required("expected-base-commit"), main)
+                    : ReleaseHistoryVerifier.verifyRelease(root, release, main);
+            output.println("Release history verified: " + release + " maps to " + mapped + " in " + main);
+            return 0;
+        } catch (IllegalArgumentException failure) {
+            error.println("Release history check failed: " + failure.getMessage());
             return 1;
         }
     }

@@ -304,27 +304,16 @@ public final class ReleaseParametersResolver {
         if (tagCommit.exitCode() != 0) {
             return;
         }
-        GitSupport.Result ancestry = GitSupport.run(
-                repository,
-                "merge-base",
-                "--is-ancestor",
-                tagCommit.stdout().strip(),
-                "HEAD");
-        if (ancestry.exitCode() == 0) {
-            return;
-        }
-        if (ancestry.exitCode() == 1) {
+        try {
+            ReleaseHistoryVerifier.verifyRelease(repository, tagCommit.stdout().strip(), "HEAD");
+        } catch (IllegalArgumentException failure) {
             throw new IllegalArgumentException(
                     "staged release tag " + tag
-                            + " is not an ancestor of the current "
+                            + " is not an ancestor or an exact verified rebase of the current "
                             + currentVersion
-                            + " checkout; repair release ancestry before publication");
+                            + " checkout; repair release ancestry before publication: "
+                            + failure.getMessage(), failure);
         }
-        String detail = ancestry.stderr().isBlank()
-                ? "unknown git merge-base error"
-                : ancestry.stderr().strip();
-        throw new IllegalArgumentException(
-                "cannot verify staged release ancestry for " + tag + ": " + detail);
     }
 
     public static void appendOutputs(Path output, Parameters parameters)

@@ -109,7 +109,7 @@ cannot safely replace:
 - keep the GitHub Release as a draft until downstream artifacts are complete;
 - generate and attach JAR, SBOM, VEX and Helm artifacts;
 - build the container image from the immutable tag;
-- advance `main` once, by fast-forward, to the selected next snapshot;
+- advance `main` once through a protected pull request using rebase merge;
 - verify the exact resulting `main` commit with canonical CI;
 - publish and deploy only after every preceding gate succeeds;
 - resume a staged release without recreating its tag or version commits.
@@ -117,3 +117,26 @@ cannot safely replace:
 This division keeps the Maven checks reproducible on a developer checkout while
 preserving the stronger atomic publication guarantees already required by
 Taxonomy.
+
+## Linear history and immutable release provenance
+
+`protected-release-main-advance.yml` waits for the canonical verification and
+all required PR checks before using `gh pr merge --rebase --match-head-commit`.
+It does not bypass branch protection or change repository rules.
+
+GitHub rebase merge creates new commit IDs. The release tag and its already-built
+artifacts continue to identify the original, verified release commit. They are
+never moved to a rewritten commit. Before and after merging, the Java
+`check-release-history` command requires exactly two single-parent commits above
+the recorded source main: the release and the next development snapshot. Both
+complete Git trees must match the verified staging commits, including file
+contents, paths and modes. The workflow also binds the resulting main SHA to
+GitHub's recorded PR merge result; concurrent main changes abort publication.
+The final CI, database, CodeQL and security gates run on that exact resulting
+main SHA as before.
+
+Resume accepts a tag already in main's ancestry, or its byte-identical release
+tree rebased directly onto the tag's original parent in main's first-parent
+history. A squash that removes the intermediate release state, a different
+base, or changed release contents fails. This mapping preserves the published
+source identity without claiming that GitHub retained the original commit IDs.

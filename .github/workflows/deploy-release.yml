@@ -161,10 +161,8 @@ jobs:
           git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
           git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
 
-          if ! git merge-base --is-ancestor "$tag" origin/main; then
-            echo "::error::Staged tag $tag is not an ancestor of origin/main"
-            exit 1
-          fi
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-history \
+            --root . --release-commit "$tag" --main-commit origin/main
 
           git checkout --detach "$tag"
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
