@@ -190,57 +190,51 @@ LOGGING_LEVEL_ORG_ECLIPSE_JGIT=INFO    # JGit operations
 
 ### What to Back Up
 
-| Component | Location | Frequency | Method |
-|---|---|---|---|
-| **Database** | PostgreSQL / MSSQL / Oracle | Daily | `pg_dump`, SQL Server backup, RMAN |
-| **Lucene index** | `/app/data/lucene-index` | Daily | File-system snapshot |
-| **JGit repository** | `/app/data/git` | Daily | File-system snapshot or `git bundle` |
-| **Configuration** | Environment variables | On change | Version-controlled `.env` file |
-| **Uploaded data** | `/app/data/uploads` (if applicable) | Daily | File-system snapshot |
+| Component | Location | Method |
+|---|---|---|
+| **Authoritative database, including JGit packs, refs and reflog** | PostgreSQL for external production; `/app/data/taxonomydb*` for file-backed HSQLDB | Database-native consistent backup, or stop all writers before an HSQLDB volume snapshot |
+| **Lucene indexes** | `TAXONOMY_SEARCH_DIRECTORY_ROOT` when filesystem-backed | Consistent snapshot alongside the database; test restored search |
+| **Configuration and secrets** | Deployment-specific secret store, external configuration | Protected backup with separately managed access |
+| **Source/provenance files** | Deployment-specific, if used | Include with the same recovery point |
 
-### Database Backup (PostgreSQL)
+For PostgreSQL, use a database-native backup against the primary database. Stop
+all application writers for a coordinated restore; restore into an isolated,
+empty target database with the appropriate database-native tooling, then verify
+schema history and application data. Do not treat a filesystem volume snapshot
+as a backup of an external PostgreSQL database. The database also contains the
+canonical JGit objects and history; there is no separate `/app/data/git` store.
 
-```bash
-# Automated daily backup
-pg_dump -h localhost -U taxonomy -d taxonomy -F c -f /backup/taxonomy-$(date +%Y%m%d).dump
+### Production Compose / file-backed HSQLDB
 
-# Restore
-pg_restore -h localhost -U taxonomy -d taxonomy /backup/taxonomy-20260315.dump
-```
+Use the [container image backup and restore procedure](CONTAINER_IMAGE.md#5-persistence-and-backup).
+It resolves the actual Compose service mount rather than creating a bare,
+project-independent `taxonomy-data` volume. Stop every process that can write
+the HSQLDB files before archiving and test extraction into a new empty volume
+on a separate instance. Back up the deployment secrets separately.
 
-### Full Application Backup (Docker Volume)
+### Recovery procedure
 
-```bash
-# Stop the container
-docker stop taxonomy-analyzer
+1. Stop all writers and restore a complete database backup to an isolated instance.
+2. Restore a matching filesystem index snapshot when that deployment stores Lucene on disk; do not mix backup times.
+3. Start the isolated instance and inspect its readiness and application logs.
+4. Verify login/roles, workspaces, taxonomy, DSL branches and commit traversal, and representative search and export results.
+5. Promote only a tested recovery point under the deployment's change procedure.
 
-# Backup the data volume
-docker run --rm -v taxonomy-data:/data -v /backup:/backup \
-  alpine tar czf /backup/taxonomy-data-$(date +%Y%m%d).tar.gz /data
-
-# Restart
-docker start taxonomy-analyzer
-```
-
-### Recovery Procedure
-
-1. Stop the application
-2. Restore the database from the latest backup
-3. Restore the Lucene index directory (or let the application rebuild it on startup)
-4. Restore the JGit repository directory
-5. Start the application
-6. Verify via `GET /api/status/startup` and `GET /actuator/health`
-7. Verify taxonomy data via `GET /api/taxonomy`
-
-> **Note:** The Lucene index is rebuilt automatically from the database on startup if it is missing. Database backup is the critical recovery path.
+A missing index is **not** guaranteed to rebuild completely at startup. The
+commit-index startup task reindexes its scope only when the relational commit
+projection is empty. Taxonomy node/relation embedding reindexing requires the
+local ONNX embedding path to be enabled. Consult the release-specific index
+recovery procedure before deleting or replacing any index files.
 
 ---
 
 ## Database Maintenance
 
-### HSQLDB (Development Only)
+### HSQLDB
 
-HSQLDB uses in-memory mode by default. No maintenance required. Data is lost on restart.
+HSQLDB uses in-memory mode by default for development, losing data on restart.
+The production Compose baseline instead uses a file-backed HSQLDB database;
+back it up with all writers stopped using the procedure above.
 
 ### PostgreSQL
 
@@ -259,10 +253,10 @@ WHERE state = 'active' AND now() - pg_stat_activity.query_start > interval '5 mi
 
 ### Connection Pool Monitoring
 
-Monitor via Actuator:
+Monitor via Actuator with a distinct configured machine token (do not paste a login password into shell history):
 
 ```bash
-curl -u admin:password http://localhost:8080/actuator/metrics/hikaricp.connections.active
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/actuator/metrics/hikaricp.connections.active
 ```
 
 ---
@@ -274,13 +268,14 @@ curl -u admin:password http://localhost:8080/actuator/metrics/hikaricp.connectio
 - **Development (in-memory):** `local-heap` — no disk I/O, lost on restart
 - **Production (persistent):** `local-filesystem` at `TAXONOMY_SEARCH_DIRECTORY_ROOT` (default: `/app/data/lucene-index`)
 
-### Rebuild Index
+### Index recovery
 
-The index is rebuilt automatically on application startup from the database. To force a rebuild:
-
-1. Stop the application
-2. Delete the index directory: `rm -rf /app/data/lucene-index/*`
-3. Start the application — index is rebuilt during initialization
+Do not delete `/app/data/lucene-index/*` expecting an automatic full rebuild.
+Restore a matching snapshot and verify representative search. The commit
+search scope is rebuilt on startup only when its relational projection is
+empty; local node/relation vector indexing runs only with embeddings enabled
+and `LLM_PROVIDER=LOCAL_ONNX`. Other indexed entities need a verified,
+release-specific rebuild path before discarding their on-disk indexes.
 
 ### Index Size
 
@@ -290,18 +285,13 @@ Typical index size for ~2,500 taxonomy nodes: **5–20 MB** (depending on relati
 
 ## JGit Repository Maintenance
 
-### Repository Location
+### Database-backed history
 
-The JGit repository stores DSL versions, branches, and merge history at the path configured by the application (typically `/app/data/git`).
-
-### Garbage Collection
-
-JGit repositories accumulate loose objects over time. Run periodic garbage collection:
-
-```bash
-cd /app/data/git
-git gc --aggressive --prune=now
-```
+Architecture DSL objects, refs and reflog are stored through JGit Core in the
+configured relational database, including `git_packs` and `git_reflog`.
+Protect them through database backup and verify refs, commit traversal and
+pack contents after a restore. Filesystem `git gc` and `git bundle` against
+`/app/data/git` do not maintain or back up this store.
 
 ### Remote Replication
 
@@ -379,7 +369,7 @@ server {
 ### Search Not Working
 
 1. Check embedding model status: `GET /api/embedding/status`
-2. Check Lucene index: restart application to trigger re-index
+2. Verify the index backup and the release-specific recovery path; a restart does not guarantee full reindexing
 3. Check logs for `HSEARCH` errors
 
 ---

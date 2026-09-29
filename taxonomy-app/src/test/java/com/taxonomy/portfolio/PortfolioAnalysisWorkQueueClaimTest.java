@@ -13,6 +13,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PortfolioAnalysisWorkQueueClaimTest {
 
     @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
     private ProjectPortfolioService projectService;
 
     @Autowired
@@ -40,7 +44,8 @@ class PortfolioAnalysisWorkQueueClaimTest {
     void pendingWorkItemCanBeClaimedOnlyOnceWithoutPrematureJobCompletion() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         WorkspaceContext context = new WorkspaceContext(
-                "claim-" + suffix.toLowerCase(), "ws-claim-" + suffix, "draft");
+                "claim-" + suffix.toLowerCase(), "ws-claim-" + suffix, "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
         var project = projectService.createProject(
                 new CreateProjectRequest(
                         "P-" + suffix,

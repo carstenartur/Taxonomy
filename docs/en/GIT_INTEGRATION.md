@@ -141,16 +141,12 @@ As the project grows, multiple branches coexist — feature branches, review bra
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-POST /api/dsl/branches
-{
-  "name": "feature/new-service",
-  "startPoint": "draft"
-}
+POST /api/dsl/branches?name=feature/new-service&fromBranch=draft
 ```
 
 </details>
 
-The active branch for materialization is configured via the `dsl.default-branch` preference (see [Preferences](PREFERENCES.md)).
+The selected workspace and its current branch determine the working context. The historical `dsl.default-branch` preference no longer selects a repository branch (see [Preferences](PREFERENCES.md)).
 
 ---
 
@@ -175,7 +171,7 @@ In a real project, the timeline grows as the architecture evolves — with commi
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-GET /api/dsl/history?branch=draft&limit=20
+GET /api/dsl/history?branch=draft
 ```
 
 </details>
@@ -197,13 +193,13 @@ Click **🔍 Compare** in the context bar or history view. The comparison view s
 
 | Mode | Endpoint | Output |
 |---|---|---|
-| **Semantic** | `GET /api/dsl/diff?from={sha}&to={sha}` | Structured JSON showing added, removed, and changed elements and relations |
-| **Unified text** | `GET /api/dsl/text-diff?from={sha}&to={sha}` | Standard unified diff format (patch) |
+| **Semantic** | `GET /api/dsl/diff/{beforeId}/{afterId}` | Structured JSON showing added, removed, and changed elements and relations |
+| **Unified text** | `GET /api/dsl/diff/text/{beforeId}/{afterId}` | Standard unified diff format (patch) |
 
 You can also diff between branches:
 
 ```
-GET /api/dsl/diff-branches?from=draft&to=main
+POST /api/workspace/compare?leftBranch=draft&rightBranch=main
 ```
 
 </details>
@@ -234,11 +230,7 @@ In the **Version History**, select the desired commit and click the transfer act
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-POST /api/dsl/cherry-pick
-{
-  "commitId": "abc1234...",
-  "targetBranch": "draft"
-}
+POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft
 ```
 
 </details>
@@ -265,11 +257,7 @@ After a successful merge, a confirmation toast is displayed:
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-POST /api/dsl/merge
-{
-  "fromBranch": "feature/new-service",
-  "intoBranch": "draft"
-}
+POST /api/dsl/merge?fromBranch=feature/new-service&intoBranch=draft
 ```
 
 </details>
@@ -320,7 +308,7 @@ Response:
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-GET /api/dsl/cherry-pick/preview?commitId=abc1234&branch=draft
+GET /api/dsl/cherry-pick/preview?commitId={fullCommitSha}&targetBranch=draft
 ```
 
 Response:
@@ -343,7 +331,7 @@ Response:
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-GET /api/dsl/operation/check?branch=draft
+GET /api/dsl/operation/check?branch=draft&operationType=merge
 ```
 
 </details>

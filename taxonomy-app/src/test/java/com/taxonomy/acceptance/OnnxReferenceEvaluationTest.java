@@ -31,6 +31,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class OnnxReferenceEvaluationTest {
     @TempDir Path temporary;
 
+    private static final String CATALOGUE = """
+            [{"code":"CP","nameEn":"Capabilities","descriptionEn":"Root description",
+              "name":"Capabilities","description":"Root description",
+              "taxonomyRoot":"CP","level":0,"analysisRole":"CATEGORY","children":[
+                {"code":"CP-1","nameEn":"Payroll","descriptionEn":"Payroll processing",
+                 "taxonomyRoot":"CP","level":1,"analysisRole":"PRODUCT","children":[]}
+              ]}]
+            """;
+
+    @Test void reportUsesCanonicalCatalogueIdentityIncludingInheritedParentAndVersion() throws Exception {
+        var catalogue = new ObjectMapper().readTree(CATALOGUE);
+        assertEquals("4ef66c20abe633ad6f2abce22cb6a138444b32f5815d79158ca6ba2041092d13",
+                OnnxReferenceEvaluation.catalogueFingerprint(catalogue));
+    }
+
+    @Test void scoreSemanticsChangesInvalidateTheEvaluationCatalogue() throws Exception {
+        var mapper = new ObjectMapper();
+        String original = OnnxReferenceEvaluation.catalogueFingerprint(mapper.readTree(CATALOGUE));
+        assertNotEquals(original, OnnxReferenceEvaluation.catalogueFingerprint(
+                mapper.readTree(CATALOGUE.replace("\"PRODUCT\"", "\"CATEGORY\""))));
+        assertNotEquals(original, OnnxReferenceEvaluation.catalogueFingerprint(
+                mapper.readTree(CATALOGUE.replace("\"level\":1", "\"level\":2"))));
+    }
+
     @Test void missingModelCannotPublishOldSuccessOrDropUnexecutedCases() throws Exception {
         Path outputDirectory = temporary.resolve("reports");
         Files.createDirectories(outputDirectory);

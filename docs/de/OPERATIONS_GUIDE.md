@@ -190,57 +190,55 @@ LOGGING_LEVEL_ORG_ECLIPSE_JGIT=INFO    # JGit-Operationen
 
 ### Was gesichert werden muss
 
-| Komponente | Speicherort | Häufigkeit | Methode |
-|---|---|---|---|
-| **Datenbank** | PostgreSQL / MSSQL / Oracle | Täglich | `pg_dump`, SQL Server Backup, RMAN |
-| **Lucene-Index** | `/app/data/lucene-index` | Täglich | Dateisystem-Snapshot |
-| **JGit-Repository** | `/app/data/git` | Täglich | Dateisystem-Snapshot oder `git bundle` |
-| **Konfiguration** | Umgebungsvariablen | Bei Änderung | Versionskontrollierte `.env`-Datei |
-| **Hochgeladene Daten** | `/app/data/uploads` (falls zutreffend) | Täglich | Dateisystem-Snapshot |
+| Komponente | Speicherort | Methode |
+|---|---|---|
+| **Maßgebliche Datenbank mit JGit-Packs, Refs und Reflog** | PostgreSQL bei externer Produktion; `/app/data/taxonomydb*` bei dateibasierter HSQLDB | Konsistente datenbankeigene Sicherung oder alle Schreiber vor einem HSQLDB-Volume-Snapshot stoppen |
+| **Lucene-Indizes** | `TAXONOMY_SEARCH_DIRECTORY_ROOT` bei Dateispeicherung | Zum Datenbankstand passender Snapshot; Suche nach Restore prüfen |
+| **Konfiguration und Secrets** | Deployment-spezifischer Secret-Store, externe Konfiguration | Geschützte, getrennt verwaltete Sicherung |
+| **Quelldateien und Provenienz** | Deployment-abhängig, falls verwendet | Mit demselben Wiederherstellungsstand sichern |
 
-### Datenbanksicherung (PostgreSQL)
+Für PostgreSQL ist eine datenbankeigene Sicherung der Primary-Datenbank zu
+verwenden. Stoppen Sie für einen koordinierten Restore alle Anwendungsschreiber;
+spielen Sie die Sicherung mit den Datenbankwerkzeugen in eine isolierte, leere
+Zieldatenbank ein und prüfen Sie Schema-Historie und Nutzdaten. Ein Snapshot des
+Taxonomy-Volumes sichert keine externe PostgreSQL-Datenbank. Die Datenbank
+enthält auch die maßgeblichen JGit-Objekte und die Historie; ein separates
+`/app/data/git`-Verzeichnis ist dafür nicht vorgesehen.
 
-```bash
-# Automatische tägliche Sicherung
-pg_dump -h localhost -U taxonomy -d taxonomy -F c -f /backup/taxonomy-$(date +%Y%m%d).dump
+### Produktions-Compose / dateibasierte HSQLDB
 
-# Wiederherstellung
-pg_restore -h localhost -U taxonomy -d taxonomy /backup/taxonomy-20260315.dump
-```
-
-### Vollständige Anwendungssicherung (Docker-Volume)
-
-```bash
-# Container stoppen
-docker stop taxonomy-analyzer
-
-# Daten-Volume sichern
-docker run --rm -v taxonomy-data:/data -v /backup:/backup \
-  alpine tar czf /backup/taxonomy-data-$(date +%Y%m%d).tar.gz /data
-
-# Neu starten
-docker start taxonomy-analyzer
-```
+Verwenden Sie das [Sicherungs- und Restore-Verfahren des Containerleitfadens](CONTAINER_IMAGE.md#5-persistenz-und-backup).
+Es ermittelt das tatsächliche Volume des Compose-Dienstes, statt ein neues,
+projektunabhängiges `taxonomy-data`-Volume anzulegen. Stoppen Sie alle
+Prozesse, die HSQLDB-Dateien schreiben können, vor der Archivierung. Testen
+Sie das Entpacken in ein neues, leeres Volume auf einer separaten Instanz und
+sichern Sie die Deployment-Secrets getrennt.
 
 ### Wiederherstellungsverfahren
 
-1. Anwendung stoppen
-2. Datenbank aus der letzten Sicherung wiederherstellen
-3. Lucene-Indexverzeichnis wiederherstellen (oder die Anwendung den Index beim Start neu aufbauen lassen)
-4. JGit-Repository-Verzeichnis wiederherstellen
-5. Anwendung starten
-6. Überprüfung über `GET /api/status/startup` und `GET /actuator/health`
-7. Taxonomiedaten über `GET /api/taxonomy` überprüfen
+1. Alle Schreiber stoppen und ein vollständiges Datenbank-Backup in einer isolierten Instanz wiederherstellen.
+2. Bei dateibasiertem Lucene den zum Datenbankstand passenden Index-Snapshot wiederherstellen; keine verschiedenen Sicherungszeitpunkte mischen.
+3. Isolierte Instanz starten, Readiness und Anwendungslogs prüfen.
+4. Anmeldung/Rollen, Workspaces, Taxonomie, DSL-Branches und Commit-Verlauf sowie repräsentative Such- und Exportergebnisse prüfen.
+5. Nur einen getesteten Wiederherstellungsstand gemäß betrieblichem Änderungsverfahren übernehmen.
 
-> **Hinweis:** Der Lucene-Index wird beim Start automatisch aus der Datenbank neu aufgebaut, wenn er fehlt. Die Datenbanksicherung ist der kritische Wiederherstellungspfad.
+Ein fehlender Index wird beim Start **nicht** garantiert vollständig neu
+aufgebaut. Die Commit-Index-Startaufgabe indiziert nur dann ihren Bereich,
+wenn die relationale Commit-Projektion leer ist. Für die Neuindizierung der
+Taxonomie-Knoten und -Relationen als Embeddings muss der lokale ONNX-Pfad
+aktiv sein. Löschen oder ersetzen Sie Indexdateien erst nach einem
+release-spezifisch geprüften Wiederherstellungsverfahren.
 
 ---
 
 ## Datenbankwartung
 
-### HSQLDB (nur Entwicklung)
+### HSQLDB
 
-HSQLDB verwendet standardmäßig den In-Memory-Modus. Es ist keine Wartung erforderlich. Daten gehen beim Neustart verloren.
+HSQLDB verwendet für die Entwicklung standardmäßig den In-Memory-Modus;
+beim Neustart gehen diese Daten verloren. Der Produktions-Compose-Stack
+verwendet dagegen dateibasierte HSQLDB. Sichern Sie sie nach dem oben
+beschriebenen Verfahren bei angehaltenen Schreibern.
 
 ### PostgreSQL
 
@@ -259,10 +257,10 @@ WHERE state = 'active' AND now() - pg_stat_activity.query_start > interval '5 mi
 
 ### Connection-Pool-Überwachung
 
-Überwachung über Actuator:
+Überwachung über Actuator mit gesondertem konfiguriertem Maschinen-Token (kein Anmeldepasswort in der Shell-Historie):
 
 ```bash
-curl -u admin:password http://localhost:8080/actuator/metrics/hikaricp.connections.active
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/actuator/metrics/hikaricp.connections.active
 ```
 
 ---
@@ -274,13 +272,16 @@ curl -u admin:password http://localhost:8080/actuator/metrics/hikaricp.connectio
 - **Entwicklung (In-Memory):** `local-heap` — kein Festplatten-I/O, geht beim Neustart verloren
 - **Produktion (persistent):** `local-filesystem` unter `TAXONOMY_SEARCH_DIRECTORY_ROOT` (Standard: `/app/data/lucene-index`)
 
-### Index neu aufbauen
+### Index-Wiederherstellung
 
-Der Index wird beim Start der Anwendung automatisch aus der Datenbank neu aufgebaut. Um einen Neuaufbau zu erzwingen:
-
-1. Anwendung stoppen
-2. Indexverzeichnis löschen: `rm -rf /app/data/lucene-index/*`
-3. Anwendung starten — der Index wird während der Initialisierung neu aufgebaut
+Löschen Sie `/app/data/lucene-index/*` nicht in der Erwartung eines
+vollständigen automatischen Neuaufbaus. Stellen Sie einen passenden Snapshot
+wieder her und prüfen Sie repräsentative Suchanfragen. Der Commit-Suchbereich
+wird beim Start nur dann neu aufgebaut, wenn die relationale Projektion leer
+ist. Lokale Knoten-/Relationsvektoren werden nur bei aktivierten Embeddings
+und `LLM_PROVIDER=LOCAL_ONNX` neu indiziert. Für andere indizierte Entitäten
+ist vor dem Verwerfen ihrer Dateindizes ein geprüftes, release-spezifisches
+Neuaufbauverfahren nötig.
 
 ### Indexgröße
 
@@ -290,18 +291,14 @@ Typische Indexgröße für ~2.500 Taxonomie-Knoten: **5–20 MB** (abhängig von
 
 ## JGit-Repository-Wartung
 
-### Repository-Speicherort
+### Datenbankgestützte Historie
 
-Das JGit-Repository speichert DSL-Versionen, Branches und Merge-Historien unter dem von der Anwendung konfigurierten Pfad (typischerweise `/app/data/git`).
-
-### Garbage Collection
-
-JGit-Repositories sammeln im Laufe der Zeit lose Objekte an. Führen Sie regelmäßig eine Garbage Collection durch:
-
-```bash
-cd /app/data/git
-git gc --aggressive --prune=now
-```
+Architecture-DSL-Objekte, Refs und Reflog liegen über JGit Core in der
+konfigurierten relationalen Datenbank, unter anderem in `git_packs` und
+`git_reflog`. Sichern Sie diese über das Datenbank-Backup und prüfen Sie
+Refs, Commit-Verlauf und Pack-Inhalte nach dem Restore. Dateibasierte
+Befehle wie `git gc` und `git bundle` unter `/app/data/git` warten oder
+sichern diesen Speicher nicht.
 
 ### Remote-Replikation
 
@@ -379,7 +376,7 @@ server {
 ### Suche funktioniert nicht
 
 1. Embedding-Modell-Status prüfen: `GET /api/embedding/status`
-2. Lucene-Index prüfen: Anwendung neu starten, um eine Neuindizierung auszulösen
+2. Index-Backup und release-spezifischen Wiederherstellungspfad prüfen; ein Neustart garantiert keine vollständige Neuindizierung
 3. Protokolle auf `HSEARCH`-Fehler prüfen
 
 ---

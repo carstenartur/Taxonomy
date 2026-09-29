@@ -8,7 +8,8 @@ Dieses Dokument beschreibt die sicherheits- und persistenzrelevanten Mindestanfo
 |---|---|---|
 | Lokaler Maven-/Docker-Start | standardmäßig flüchtig | Entwicklung und Evaluation |
 | `docker-compose.prod.yml` | dateibasierte HSQLDB und Lucene unter `/app/data` | kleine kontrollierte Produktivinstallation |
-| `production,postgres` / `production,mssql` / `production,oracle` | externe Datenbank plus persistenter Lucene-Pfad | empfohlener Mehrbenutzerbetrieb |
+| `production,postgres` mit `TAXONOMY_DDL_AUTO=validate` | externe Datenbank mit freigegebenen Migrationen plus persistenter Lucene-Pfad | empfohlener Mehrbenutzerbetrieb |
+| `mssql` / `oracle` | externe Testdatenbank | Kompatibilitätsevaluation; produktiver Migrations-, Upgrade- und Restore-Vertrag ausstehend |
 | Render Free | flüchtig | öffentliche Demonstration, nicht kollaborative Produktion |
 
 ## Produktivstart mit Docker und Caddy
@@ -29,6 +30,12 @@ TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
 ```
 
 Ein Produktionsstart wird verweigert, wenn das Administratorpasswort fehlt, einem dokumentierten Platzhalter entspricht oder kürzer als 16 Zeichen ist.
+
+Das generische `production`-Profil verwendet für die HSQLDB-Compose-Basis
+`ddl-auto=update`. Für PostgreSQL setzen Sie ausdrücklich
+`TAXONOMY_DDL_AUTO=validate`; die freigegebenen JGit-Core- und Taxonomy-Flyway-
+Migrationen laufen vor der Hibernate-Validierung. Ein Profilwechsel kopiert
+keine HSQLDB-Daten. Siehe [Datenbank-Einrichtung](DATABASE_SETUP.md#wechsel-von-hsqldb-zu-postgresql).
 
 ## Sicherheitsanforderungen
 

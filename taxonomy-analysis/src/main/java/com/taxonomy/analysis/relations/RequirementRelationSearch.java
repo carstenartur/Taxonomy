@@ -36,6 +36,15 @@ public final class RequirementRelationSearch {
         this.checkpoint = Objects.requireNonNull(checkpoint);
     }
 
+    /** No remote assessment is possible with an embedding-only provider. */
+    public static RelationSearchReport unassessed(String original, int maxCalls, String reason) {
+        if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
+        return new RelationSearchReport(1, sha256(original),
+                "relation-downwalk-v1/root-compatibility-profile/contribution-round-robin",
+                List.of(), new Result(List.of(), List.of(), List.of(), 0, 0, 0),
+                0, maxCalls, 0, List.of(reason), reason);
+    }
+
     public RelationSearchReport search(String original, Map<String, Integer> scores, Options options) {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
         Objects.requireNonNull(scores); Objects.requireNonNull(options);

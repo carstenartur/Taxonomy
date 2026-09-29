@@ -319,6 +319,13 @@ class LlmResponseParserTest {
     class ParseScoreParseResult {
 
         @Test
+        void oneChildStillReceivesTheParentBudget() throws Exception {
+            var child = node("BP-1", "BP", "BP");
+            var result = parser.parseScoreParseResult("{\"BP-1\":20}", List.of(child), 60);
+            assertEquals(60, result.scores().get("BP-1"));
+        }
+
+        @Test
         void oldFormat_integerValues() throws Exception {
             String text = "{\"BP\": 60, \"CP\": 40}";
             List<TaxonomyNode> nodes = List.of(node("BP"), node("CP"));

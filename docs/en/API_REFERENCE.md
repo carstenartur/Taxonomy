@@ -609,7 +609,7 @@ curl -u admin:password -X DELETE http://localhost:8080/api/admin/users/2
 
 ## Workspace Management
 
-All workspace endpoints require authentication (HTTP Basic). Each user automatically gets a personal workspace on first access.
+All workspace endpoints require authentication. An automatic default workspace is created on first access. For API calls from a tab selecting one of several workspaces, send `X-Taxonomy-Workspace-Id: {workspaceId}` on each request; an unpinned request follows the user's active/default workspace and can be affected by another session. SSE transports that cannot set headers may use `?workspaceId={workspaceId}`. An explicitly empty workspace header selects a read-only central context; workspace-bound writes are rejected, and `GET /api/workspace/current` returns 204 in that context.
 
 ### Get Current Workspace
 
@@ -780,7 +780,7 @@ curl -u alice:password http://localhost:8080/api/workspace/provisioning-status
 }
 ```
 
-**Provision workspace (create personal branch):**
+**Provision default workspace (seed its isolated repository):**
 ```bash
 curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
 ```
@@ -789,10 +789,12 @@ curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
 ```json
 {
   "status": "READY",
-  "branch": "alice/workspace",
+  "branch": "draft",
   "baseBranch": "draft"
 }
 ```
+
+The automatic default workspace starts on `draft` in its own `ws-{workspaceId}` repository. A separately created workspace normally starts on `main`. The `alice/workspace/{workspaceId}` branch form applies only to legacy shared-repository storage.
 
 **Get repository topology:**
 ```bash

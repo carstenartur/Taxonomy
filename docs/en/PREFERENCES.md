@@ -10,7 +10,7 @@ The Preferences system provides **runtime-configurable settings** for the Taxono
 - [Using the Web UI](#using-the-web-ui)
 - [Available Settings](#available-settings)
 - [LLM Configuration](#llm-configuration)
-- [DSL and Git Configuration](#dsl-and-git-configuration)
+- [Repository and legacy keys](#repository-and-legacy-keys)
 - [Size Limits](#size-limits)
 - [Diagram Configuration](#diagram-configuration)
 - [Audit Trail](#audit-trail)
@@ -44,8 +44,7 @@ The following table clarifies the scope for each setting category:
 | Category | Scope | Who Can Change | Affects |
 |---|---|---|---|
 | **LLM Configuration** | ☁️ System | Admin only | All analysis requests for all users |
-| **DSL and Git Configuration** | ☁️ System | Admin only | The shared DSL repository and all branches |
-| **Size Limits** | ☁️ System | Admin only | All users' analysis, export, and view operations |
+| **Size Limits** | ☁️ System | Admin only | Ad-hoc analysis request defaults and limits |
 | **Diagram Configuration** | ☁️ System | Admin only | Architecture diagram rendering for all users |
 
 > **Note:** Per-user and per-workspace preferences are not currently supported. If a setting needs to be different for different users or teams, it must be configured at the environment-variable level using separate deployment instances (see [Configuration Reference](CONFIGURATION_REFERENCE.md)).
@@ -79,7 +78,7 @@ curl -u admin:password -X PUT \
 
 ## Using the Web UI
 
-The **Preferences** tab in the navigation bar provides a graphical interface for managing all application settings. This tab is visible only to users with admin privileges.
+The **Preferences** tab in the navigation bar provides a graphical interface for the supported runtime settings. This tab is visible only to users with admin privileges.
 
 ### Opening Preferences
 
@@ -88,11 +87,13 @@ The **Preferences** tab in the navigation bar provides a graphical interface for
 
 ### Editing Settings
 
-The Preferences page is organized into three collapsible cards:
+The Preferences page has three cards:
 
-1. **🤖 LLM Configuration** — Controls for LLM request rate, timeout, server rate limiting, and minimum relevance score.
-2. **📂 JGit / DSL Configuration** — Default branch, project name, auto-save interval, remote Git URL, token, and push-on-commit toggle.
-3. **📈 Size Limits** — Maximum business text length, architecture nodes, and export nodes.
+1. **🤖 LLM Configuration** — Request rate, timeout, and incoming LLM quota.
+2. **📈 Size Limits** — Maximum ad-hoc business-text length and default architecture-node count.
+3. **Diagram Configuration** — Selection policy for architecture diagrams.
+
+Repository branches, remotes and credentials are managed in their repository context; historical `dsl.*` and minimum-relevance keys may remain in stored snapshots but are not active UI controls.
 
 Each card shows the current value for each setting. To change a setting:
 
@@ -106,7 +107,7 @@ At the bottom of the Preferences page, expand the **📋 Preferences Change Hist
 
 ### Resetting to Defaults
 
-Click **↩️ Reset to Defaults** to restore all settings to the values from `application.properties`. This also creates a Git commit, so the previous values can be recovered from the history.
+Click **↩️ Reset to Defaults** to restore all settings to the values from `application.properties`. This also creates a Git commit; the history lets an administrator inspect earlier values, though there is no restore-by-commit API.
 
 ---
 
@@ -197,7 +198,7 @@ To reset all preferences to the values from `application.properties`:
 curl -u admin:password -X POST http://localhost:8080/api/preferences/reset
 ```
 
-This creates a new commit in the preference history, so you can always revert back to a previous state using the Git history.
+This creates a new commit in the preference history. The API exposes history for audit, but it does not offer a restore-by-commit endpoint.
 
 ---
 

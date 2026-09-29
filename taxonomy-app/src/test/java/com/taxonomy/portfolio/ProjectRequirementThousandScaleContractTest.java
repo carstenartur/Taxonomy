@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
@@ -34,6 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional
 class ProjectRequirementThousandScaleContractTest {
 
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
     private static final int REQUIREMENT_COUNT = 1_000;
     private static final int MAXIMUM_READ_STATEMENTS = 3;
     private static final Duration MAXIMUM_READ_DURATION = Duration.ofSeconds(30);
@@ -47,7 +51,8 @@ class ProjectRequirementThousandScaleContractTest {
     @Test
     void listsOneThousandCurrentRequirementVersionsWithConstantDatabaseWork() {
         WorkspaceContext context = new WorkspaceContext(
-                "scale-thousand-user", "ws-scale-thousand-" + shortId(), "draft");
+                "scale-thousand-user", "ws-scale-thousand-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
         var projectView = projectService.createProject(
                 new CreateProjectRequest(
                         "P-SCALE-1000-" + shortId(),

@@ -2,8 +2,10 @@ package com.taxonomy.acceptance;
 
 import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -32,6 +34,9 @@ public final class OnnxReferenceEvaluation {
     public static final String QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
     public static final Path OUTPUT = Path.of("target", "failsafe-reports", "local-onnx-reference");
     private static final ObjectMapper JSON = new ObjectMapper();
+    // /api/taxonomy also exposes read-only compatibility aliases (name/description).
+    private static final ObjectMapper CATALOGUE_JSON = JsonMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final int TOP_K = 10;
     private static final List<String> MODEL_FILES = List.of("model.onnx", "tokenizer.json",
             "tokenizer_config.json", "special_tokens_map.json", "config.json");
@@ -220,9 +225,10 @@ public final class OnnxReferenceEvaluation {
         return result;
     }
 
-    private static String catalogueFingerprint(JsonNode validatedRoots) {
+    static String catalogueFingerprint(JsonNode roots) throws IOException {
+        catalogue(roots); // Apply the same shape and canonical-field guards to direct callers.
         return TaxonomyDataFingerprint.sha256(Arrays.asList(
-                JSON.treeToValue(validatedRoots, TaxonomyNodeDto[].class)));
+                CATALOGUE_JSON.treeToValue(roots, TaxonomyNodeDto[].class)));
     }
 
     private static Map<String, Map<String, String>> catalogue(JsonNode roots) throws IOException {

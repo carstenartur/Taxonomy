@@ -18,6 +18,7 @@ import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.portfolio.service.ProductCatalogService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.SolutionPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @WithMockUser(roles = "ADMIN")
 class PortfolioDecisionGitRoundtripTest {
 
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
     @Autowired private ProjectPortfolioService projectService;
     @Autowired private SolutionPortfolioService solutionService;
     @Autowired private ProductCatalogService productService;
@@ -46,8 +50,11 @@ class PortfolioDecisionGitRoundtripTest {
     @Test
     void solutionProjectDecisionAndSelectedProductRoundTripAcrossWorkspaces() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        WorkspaceContext alice = new WorkspaceContext("alice", "decision-alice-" + suffix, "draft");
-        WorkspaceContext bob = new WorkspaceContext("bob", "decision-bob-" + suffix, "draft");
+        String repositoryId = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        WorkspaceContext alice = new WorkspaceContext("alice", "decision-alice-" + suffix,
+                "draft", repositoryId);
+        WorkspaceContext bob = new WorkspaceContext("bob", "decision-bob-" + suffix,
+                "draft", repositoryId);
         String projectKey = "P-DEC-" + suffix;
         String solutionKey = "SOL-DEC-" + suffix;
         String productKey = "PRD-DEC-" + suffix;

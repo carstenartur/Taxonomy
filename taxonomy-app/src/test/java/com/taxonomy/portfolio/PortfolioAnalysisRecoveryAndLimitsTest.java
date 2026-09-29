@@ -17,6 +17,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "taxonomy.portfolio.max-analysis-batch=2")
 class PortfolioAnalysisRecoveryAndLimitsTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -166,11 +170,11 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 context);
     }
 
-    private static WorkspaceContext context(String username) {
+    private WorkspaceContext context(String username) {
         return new WorkspaceContext(
                 username,
                 "ws-" + username + "-" + shortId(),
-                "draft");
+                "draft", systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private static String shortId() {

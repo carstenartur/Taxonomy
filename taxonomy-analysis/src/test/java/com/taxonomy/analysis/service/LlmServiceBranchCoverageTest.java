@@ -69,8 +69,8 @@ class LlmServiceBranchCoverageTest {
             AnalysisResult result = service.analyzeWithBudget("requirement");
             assertThat(result.getStatus()).isEqualTo("PARTIAL");
             assertThat(result.getErrorMessage()).startsWith("CANCELLED:");
-            // A single category receives its full parent budget after existing normalization.
-            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");
+            // The independent root retains its own relevance on a cooperative stop.
+            assertThat(result.getScores()).containsEntry("BP", 80).doesNotContainKey("CP");
             assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
             assertThat(result.getTree()).isEmpty();
             verify(taxonomyService, never()).getFullTree();
@@ -247,6 +247,8 @@ class LlmServiceBranchCoverageTest {
         lenient().when(providerConfig.getAvailableProviders()).thenReturn(List.of("OPENAI", "LOCAL_ONNX"));
         lenient().when(gatewayRegistry.getGateway(LlmProvider.OPENAI)).thenReturn(gateway);
         lenient().when(promptTemplateService.renderPrompt(any(), anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn("rendered prompt");
+        lenient().when(promptTemplateService.renderRootPrompt(anyString(), anyString(), anyString()))
                 .thenReturn("rendered prompt");
         lenient().when(promptTemplateService.renderLeafJustificationPrompt(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("leaf prompt");

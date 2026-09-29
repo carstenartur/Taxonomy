@@ -111,11 +111,34 @@ class TaxonomySchemaMigrationConfigTest {
         IllegalStateException failure = new IllegalStateException("core migration failed");
         doThrow(failure).when(core).migrate(flyway);
         FlywayMigrationStrategy application = new TaxonomySchemaMigrationConfig()
-                .taxonomyFlywayMigrationStrategy(core);
+                .taxonomyFlywayMigrationStrategy(core, true);
 
         assertThatThrownBy(() -> application.migrate(flyway)).isSameAs(failure);
         verify(core).migrate(flyway);
         verifyNoInteractions(flyway);
+    }
+
+    @Test
+    void disabledPortableMigrationLeavesLegacyHsqlColumnsUntouched() throws SQLException {
+        DataSource dataSource = nonPostgresDataSource();
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE system_repository (id BIGINT PRIMARY KEY)");
+        }
+        FlywayMigrationStrategy core = mock(FlywayMigrationStrategy.class);
+        Flyway flyway = mock(Flyway.class);
+        Configuration configuration = configuration(dataSource);
+        when(flyway.getConfiguration()).thenReturn(configuration);
+
+        new TaxonomySchemaMigrationConfig()
+                .taxonomyFlywayMigrationStrategy(core, false).migrate(flyway);
+
+        try (Connection connection = dataSource.getConnection();
+             ResultSet columns = connection.getMetaData().getColumns(
+                     null, null, "SYSTEM_REPOSITORY", "VERSION")) {
+            assertThat(columns.next()).isFalse();
+        }
+        verify(core).migrate(flyway);
     }
 
     @Test

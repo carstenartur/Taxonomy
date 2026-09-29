@@ -45,7 +45,7 @@ jobs:
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Ponnx 2>&1 | tee target/local-onnx-reference.log
+          ./mvnw -B verify -Ponnx -T 2 2>&1 | tee target/local-onnx-reference.log
       - name: Require executed ONNX tests
         run: |
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \

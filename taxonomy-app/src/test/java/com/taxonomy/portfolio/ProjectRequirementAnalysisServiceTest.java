@@ -28,6 +28,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioFingerprintService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,9 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class ProjectRequirementAnalysisServiceTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -270,7 +274,8 @@ class ProjectRequirementAnalysisServiceTest {
     }
 
     private WorkspaceContext context(String username) {
-        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft");
+        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private String shortId() {

@@ -223,6 +223,12 @@ Derselbe Befehl **Abbrechen** steht während einer laufenden Verarbeitung direkt
 
 Ein Arbeitsentwurf wird für denselben Benutzer und Workspace über Browser-Tabs und Geräte hinweg gemeinsam verwendet. **Neue Analyse** erzeugt deshalb einen ausdrücklich leeren, versionierten Stand, statt nur den lokalen Browserzustand zu löschen. Dadurch ist der Befehl wiederholbar und ein älterer Tab kann verworfenen Anforderungstext nicht unbemerkt wiederherstellen. Versucht ein veralteter Tab anschließend alte Inhalte zu speichern, kann weiterhin ein Konflikthinweis erscheinen; laden Sie den aktuellen Entwurf oder verwenden Sie bewusst **Datei → Neue Analyse**.
 
+### Eine pausierte Ad-hoc-Copilot-Analyse fortsetzen
+
+Scheitert eine Anbieterabfrage, pausiert der Lauf und zeigt die betroffene Frage im **Copilot**-Wiederherstellungsdialog. Bereits abgeschlossene Antworten und gültige Bewertungen bleiben gespeichert. Mit **Abfrage wiederholen und fortsetzen** wird genau diese Frage erneut gestellt; mit **Bereich offenlassen und fortfahren** bleiben ihre Knoten ungeklärt, während die übrige Arbeit weiterläuft. Ein erneuter Versuch kann eine weitere Anbieteranfrage auslösen. Bei ungewissem Ausgang weist der Dialog darauf hin, dass der Anbieter die vorige Anfrage bereits verarbeitet oder berechnet haben könnte. **Status aktualisieren** liest den gespeicherten Lauf ohne neue Anbieterabfrage. Nach einem Neuladen öffnen Sie den gespeicherten Lauf im selben Workspace und prüfen den Status, bevor Sie entscheiden.
+
+Ein Teilergebnis kennzeichnet fehlgeschlagene, übersprungene und abhängige Knoten als **Nicht bewertet**. Unbekannt ist weder eine gemessene Null noch ein Beleg für fehlende Relevanz. Globale Lücken-, Muster- und Empfehlungsaussagen bleiben bis zur Bewertung der offenen Bereiche ungeklärt. **Lauf abbrechen** erhält abgeschlossene Ergebnisse; **Neue Analyse** leert den Arbeitsentwurf wie oben beschrieben. Dieser Dialog betrifft die Ad-hoc-Analyse; persistierte Projektanalysejobs haben eine eigene Wiederholungsfunktion im Job-Center.
+
 Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
 
 > **Detailansicht** — Das Bild unten zeigt den vollständig aufgeklappten BP-Baum auf allen Ebenen. Klicken Sie auf einen beliebigen Knoten, um seine Bewertung und Begründung zu sehen.

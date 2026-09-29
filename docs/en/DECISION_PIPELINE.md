@@ -4,8 +4,10 @@
 > exactly how a business requirement is transformed into scored nodes,
 > architecture views, and exportable diagrams.
 >
-> This document describes **implemented behaviour** as of 2026-03-31.
-> Sections marked with ⚠️ describe incomplete or planned features.
+> The default analysis now uses requirement-scoped relation discovery. The
+> score-derived hypothesis and eleven-step propagation sections below describe
+> only the explicit legacy mode (`taxonomy.analysis.relations.hierarchical.enabled=false`).
+> Historical results are not automatically recomputed.
 
 ---
 
@@ -60,8 +62,17 @@
 
 When a user submits a business requirement via `POST /api/analyze`, the following phases execute in order:
 
+**Default (`taxonomy.analysis.relations.hierarchical.enabled=true`):**
+
+1. `LlmService.analyzeWithBudget` scores each taxonomy root independently from 0–100 with a root-specific prompt; positive roots supply budgets to child-category batches. A one-child category still consumes its parent budget. Concrete `PRODUCT` items follow their separate suitability contract.
+2. `RequirementRelationSearchService.search` uses the selected **generative** provider for bounded source contribution extraction, directed target navigation and independent verification. It records quotes, conditions, questions and unfinished work in `relationSearchReport`. Verified edges are unaccepted proposals, not catalogue facts. The default makes no score-product hypotheses and writes no global `relation_hypothesis` or DSL relation from this phase. Exhausted call/work/depth limits retain partial evidence, not a negative relationship finding.
+3. If requested, `RequirementArchitectureViewService.buildFromEvidence` projects verified required edges and unconditional quoted source contributions under the view limit. Optional/alternative evidence remains in the report; no seed propagation or cartesian impact inference fills missing edges. `LOCAL_ONNX` provides embedding scores, but cannot answer relation-search JSON. The relation report explicitly says `GENERATION_UNSUPPORTED`; the result remains `PARTIAL` with no relation calls or inferred fallback.
+4. Diagram projection and selected-snapshot export may omit presentation elements. Consult [the export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary) for ArchiMate/Visio limits; no file download constitutes adoption.
+
+The following diagram and the detailed Phase 2/3 steps apply **only** when the operator explicitly sets the relationship-search property to `false`:
+
 ```
-Phase 1: LLM Scoring
+Phase 1: Root relevance and child scoring
   └─ LlmService.analyzeWithBudget()
        └─ Produces: Map<nodeCode, score 0–100>
 
@@ -111,7 +122,7 @@ The LLM scores taxonomy nodes in a top-down budget-propagation pattern:
 **Output:** `AnalysisResult` containing `Map<String, Integer>` of
 nodeCode → score for all evaluated nodes.
 
-**What the LLM does _not_ do:** The LLM does not select anchors,
+**Legacy mode only — what the LLM does _not_ do:** The LLM does not select anchors,
 propagate relevance, generate impact relations, or decide which nodes
 appear in the architecture view. Those are all deterministic steps that
 happen _after_ scoring is complete.
@@ -119,6 +130,8 @@ happen _after_ scoring is complete.
 ---
 
 ## Phase 2 — Relation Hypothesis Generation
+
+**Legacy mode only.** The default scoped search described above does not invoke this generator.
 
 **Entry point:** `AnalysisRelationGenerator.generate(Map<String, Integer> scores)`
 
@@ -145,6 +158,8 @@ rule-based using the compatibility matrix.
 ---
 
 ## Phase 3 — Architecture View Construction
+
+**Legacy mode only.** The default view is built from `relationSearchReport` evidence.
 
 **Entry point:** `RequirementArchitectureViewService.build(scores, businessText, maxNodes, provisionalRelations)`
 
@@ -348,6 +363,10 @@ in 11 sequential steps:
 
 ## Relation Lifecycle
 
+The following lifecycle belongs to legacy score-derived or separately requested global
+hypotheses. A default analysis leaves scoped evidence in its analysis result; it does
+not enter this global `PROVISIONAL` lifecycle automatically.
+
 ```
                     ┌──────────────────────┐
                     │  Analysis completes  │
@@ -390,6 +409,12 @@ relation-proposal feature.
 ---
 
 ## Persistence Model
+
+The table below documents legacy/global catalogue objects. Portfolio analysis
+snapshots and their frozen requirement-scoped `relationSearchReport` are stored by
+the portfolio workflow; the old in-memory `SavedAnalysis` description applies only
+to the ad-hoc client export path. Saving default scoped evidence does not insert a
+global relation hypothesis or mutate the active workspace DSL.
 
 ### What Is Stored Where
 

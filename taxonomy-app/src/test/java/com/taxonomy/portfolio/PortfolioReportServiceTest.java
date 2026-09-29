@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioReportService;
 import com.taxonomy.portfolio.service.PortfolioReportService.Format;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 class PortfolioReportServiceTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired
     private PortfolioReportService reportService;
@@ -71,7 +75,8 @@ class PortfolioReportServiceTest {
 
     private WorkspaceContext context() {
         String user = "report-" + shortId();
-        return new WorkspaceContext(user, "ws-" + user, "draft");
+        return new WorkspaceContext(user, "ws-" + user, "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private String shortId() {

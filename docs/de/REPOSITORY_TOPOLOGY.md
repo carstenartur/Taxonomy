@@ -72,8 +72,9 @@ Integration mit bestehender Enterprise-Git-Infrastruktur vorgesehen (Gitea, GitH
 
 ## Lebenszyklus der Arbeitsbereich-Bereitstellung
 
-Wenn ein neuer Benutzer auf die Anwendung zugreift, durchläuft sein Arbeitsbereich
-einen Bereitstellungs-Lebenszyklus:
+Beim ersten Zugriff werden Arbeitsbereich-Metadaten erstellt. Der automatische
+Standard wird bei der ersten Nutzung bereitgestellt; andere Arbeitsbereiche
+können ausdrücklich vorbereitet oder nach Fehlern erneut versucht werden:
 
 ```
 Anmeldung / Erster Zugriff
@@ -83,11 +84,11 @@ Arbeitsbereich-Metadaten erstellt
     Status: NOT_PROVISIONED
     │
     ▼
-Benutzer löst "Arbeitsbereich vorbereiten" aus
+Erste Nutzung des Standards oder ausdrückliches "Arbeitsbereich vorbereiten"
     Status: PROVISIONING
     │
     ├── Erfolg → Status: READY
-    │     └── Persönlicher Branch erstellt (z.B. alice/workspace)
+    │     └── Workspace-Repository aus dem gewählten gemeinsamen Branch befüllt
     │
     └── Fehler → Status: FAILED
           └── Fehlermeldung für erneuten Versuch gespeichert
@@ -97,8 +98,8 @@ Benutzer löst "Arbeitsbereich vorbereiten" aus
 
 | Status | Beschreibung |
 |--------|-------------|
-| `NOT_PROVISIONED` | Arbeitsbereich-Metadaten existieren, aber es wurde noch kein Git-Branch erstellt |
-| `PROVISIONING` | Branch-Erstellung läuft |
+| `NOT_PROVISIONED` | Arbeitsbereich-Metadaten existieren, aber das Git-Repository ist noch nicht befüllt |
+| `PROVISIONING` | Repository-Bereitstellung läuft |
 | `READY` | Arbeitsbereich ist vollständig bereitgestellt und einsatzbereit |
 | `FAILED` | Bereitstellung fehlgeschlagen; siehe Fehlermeldung für Details |
 
@@ -131,13 +132,16 @@ Gibt den aktuellen Bereitstellungszustand des Benutzer-Arbeitsbereichs zurück.
 
 ### POST /api/workspace/provision
 
-Erstellt den persönlichen Branch des Benutzers aus dem gemeinsamen Repository.
+Befüllt das getrennte Workspace-Repository aus dem gewählten gemeinsamen Branch.
+Der automatische Standard-Arbeitsbereich bleibt auf `draft`; ein neu erstellter
+Arbeitsbereich verwendet normalerweise `main` im eigenen Repository. Der Branch
+`username/workspace/{workspaceId}` gehört nur zum alten gemeinsamen Repository-Modus.
 
 **Antwort:**
 ```json
 {
   "status": "READY",
-  "branch": "alice/workspace",
+  "branch": "draft",
   "baseBranch": "draft"
 }
 ```
@@ -262,11 +266,9 @@ DslGitRepositoryFactory
   └── evict(workspaceId) → Cache-Bereinigung bei Löschung
 
 Service Repository Routing:
-  Alle Services lösen das korrekte Repository über explizite
-  WorkspaceContext-Parameter auf, die vom Aufrufer übergeben werden.
-  Nur die DslOperationsFacade (Request/UI-Schicht) ruft
-  resolveCurrentContext() aus dem SecurityContextHolder auf.
-  Backend-Services akzeptieren WorkspaceContext als Methodenparameter:
+  Repository-sensitive Pfade lösen Repository und Workspace explizit aus der
+  authentifizierten Identität und einer optionalen genauen Tab-Auswahl auf.
+  Ältere WorkspaceContext-Adapter ordnen zu:
   - SHARED-Kontext → System-Repository ("taxonomy-dsl")
   - Workspace-Kontext → pro-Workspace-Repo ("ws-{id}")
   Factory-Modus (pro-Workspace-Repos) ist der Produktions-Standard.
@@ -300,7 +302,8 @@ WorkspaceContextResolver
   Die Kontextauflösung verwendet eine zweistufige Suche:
   1. workspaceManager.findActiveWorkspace(username) → Multi-Workspace-fähige Suche
   2. Falls null: workspaceManager.findUserWorkspace(username) → Legacy-Fallback
-  Falls keiner einen bereitgestellten Workspace zurückgibt, wird auf WorkspaceContext.SHARED zurückgefallen.
+  Ohne Workspace ist ein zentraler Lesekontext möglich. Workspace-gebundene
+  Schreibzugriffe werden abgewiesen; eine explizit leere Workspace-Auswahl ist nur lesbar.
 ```
 
 ## Datenisolationsmodell

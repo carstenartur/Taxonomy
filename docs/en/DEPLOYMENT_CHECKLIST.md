@@ -6,28 +6,30 @@ This checklist is a release gate for controlled Taxonomy deployments. A checked 
 
 - [ ] **Deployment topology approved** — VM, Kubernetes, Docker host, or managed platform documented.
 - [ ] **Database selected**:
-  - PostgreSQL / SQL Server / Oracle for multi-user production, or
+  - PostgreSQL with released Flyway migrations and `TAXONOMY_DDL_AUTO=validate` for multi-user production, or
   - file-backed HSQLDB only for small controlled installations.
 - [ ] **No in-memory production database** — `jdbc:hsqldb:mem:` is not used for persistent deployments.
-- [ ] **Schema management defined** — use the production profile; plan migration tooling before incompatible schema changes.
+- [ ] **Schema management defined** — released PostgreSQL/JGit Core Flyway migrations and restore procedure verified; SQL Server and Oracle remain evaluation profiles pending migration/upgrade/recovery qualification.
 - [ ] **Persistent Lucene index configured** — `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem` and a persistent root path.
 - [ ] **Persistent storage mounted** — `/app/data` or the database volume survives container recreation.
 - [ ] **Restart persistence test passed** — create a user/workspace/change, restart or recreate the container, and verify the state remains available.
-- [ ] **Backup and restore test completed** — database, Git/JGit state, uploaded provenance data and configuration secrets are covered.
+- [ ] **Backup and restore test completed** — database (including JGit packs/refs), a matching index snapshot where applicable, uploaded provenance data and configuration secrets are covered; Compose backup resolves the actual service volume.
 
 ### Supported embedded production baseline
 
 The supplied `docker-compose.prod.yml` configures:
 
 ```text
-SPRING_PROFILES_ACTIVE=hsqldb
+SPRING_PROFILES_ACTIVE=production,hsqldb
 TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true
 TAXONOMY_DDL_AUTO=update
 TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
 TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
 ```
 
-For larger or business-critical deployments, use the `production` profile together with an external database profile, for example `production,postgres`.
+For larger or business-critical deployments, use `production,postgres` with
+`TAXONOMY_DDL_AUTO=validate`. A cross-database transfer requires a separate,
+verified data migration; changing a profile does not copy existing records.
 
 ## 2. Security configuration
 

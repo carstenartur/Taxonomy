@@ -18,6 +18,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProductCatalogService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.SolutionPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 class PortfolioInputValidationIntegrationTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired private ProjectPortfolioService projectService;
     @Autowired private ProductCatalogService productService;
@@ -150,8 +154,9 @@ class PortfolioInputValidationIntegrationTest {
                 currency);
     }
 
-    private static WorkspaceContext context(String username) {
-        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft");
+    private WorkspaceContext context(String username) {
+        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private static String shortId() {

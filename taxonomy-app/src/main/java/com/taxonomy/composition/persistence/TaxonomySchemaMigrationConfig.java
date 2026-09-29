@@ -4,6 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
@@ -63,10 +64,16 @@ public class TaxonomySchemaMigrationConfig {
     @Primary
     public FlywayMigrationStrategy taxonomyFlywayMigrationStrategy(
             @Qualifier("jgitStorageFlywayMigrationStrategy")
-            FlywayMigrationStrategy coreMigrationStrategy) {
+            FlywayMigrationStrategy coreMigrationStrategy,
+            @Value("${taxonomy.schema-migration.enabled:true}")
+            boolean contractMigrationEnabled) {
         return flyway -> {
             coreMigrationStrategy.migrate(flyway);
-            migrateApplicationSchema(flyway.getConfiguration());
+            Configuration configuration = flyway.getConfiguration();
+            migrateApplicationSchema(configuration);
+            if (contractMigrationEnabled) {
+                HsqlLegacyUpgradeMigrator.migrate(configuration.getDataSource());
+            }
         };
     }
 

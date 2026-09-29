@@ -179,10 +179,13 @@ Merge-Anfrage:
 
 ```json
 {
-  "fromBranch": "alice-requirements",
-  "intoBranch": "integration"
+  "sourceBranch": "alice-requirements",
+  "targetBranch": "integration"
 }
 ```
+
+Beide Branches müssen im ausgewählten Workspace-Repository liegen. Alternativ akzeptiert
+der Endpunkt `?source=alice-requirements&target=integration` mit einer optionalen JSON-Nachricht.
 
 Befinden sich beide Branches im selben Repository, erzeugt auch der semantische Fallback einen echten Merge-Commit mit zwei Eltern.
 

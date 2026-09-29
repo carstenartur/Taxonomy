@@ -13,6 +13,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -28,6 +29,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 class ProjectPortfolioServiceTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -217,7 +221,8 @@ class ProjectPortfolioServiceTest {
     }
 
     private WorkspaceContext context(String username) {
-        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft");
+        return new WorkspaceContext(username, "ws-" + username + "-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private String shortId() {

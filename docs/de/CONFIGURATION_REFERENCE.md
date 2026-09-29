@@ -75,7 +75,7 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 | `DASHSCOPE_API_KEY` | `qwen.api.key` | leer | Qwen/DashScope-Zugang. |
 | `LLAMA_API_KEY` | `llama.api.key` | leer | Llama-Zugang. |
 | `MISTRAL_API_KEY` | `mistral.api.key` | leer | Mistral-Zugang. |
-| `CUSTOM_LLM_URL` | `custom.llm.url` | leer | HTTP(S)-Chat-Completions-URL mit Host, ohne Userinfo, endend auf `/chat/completions`. |
+| `CUSTOM_LLM_URL` | `custom.llm.url` | leer | Vollständige Chat-Completions-URL. Geführtes Helm-/Native-Setup verlangt HTTPS außer bei exaktem Loopback-HTTP; keine Zugangsdaten, Query, Fragmente oder Leerzeichen in der URL. |
 | `CUSTOM_LLM_MODEL` | `custom.llm.model` | leer | Erforderliche Modellkennung für `CUSTOM_OPENAI`. |
 | `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | leer | Optionaler Bearer-Token; leer sendet keinen Authorization-Header. |
 | `TAXONOMY_LLM_RPM` | Git-Einstellung `taxonomy.llm.rpm` | `5` | Ausgehende Requests je Anbieter und Minute. |
@@ -249,7 +249,7 @@ Ausdrücklich ungemessener eigener Autopilot-Endpunkt:
 
 ```bash
 LLM_PROVIDER=CUSTOM_OPENAI
-CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+CUSTOM_LLM_URL=https://llm.example.internal/v1/chat/completions
 CUSTOM_LLM_MODEL=architecture-model
 TAXONOMY_AI_COST_POLICY=UNMETERED
 TAXONOMY_AI_AUTOPILOT_ENABLED=true
@@ -257,6 +257,10 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 Docker Compose reicht `.env` an den Anwendungscontainer weiter. Bei Helm gehören Nicht-Geheimnisse nach `config`, Zugangsdaten ins referenzierte Secret und zusätzliche Werte nach `extraEnv`.
+Serverzertifikat und Hostname müssen von der Anwendung als vertrauenswürdig
+geprüft werden können. Ein HTTP-Ziel in einem anderen Container oder Pod
+besteht die geführte Helm-/Native-Prüfung nicht; HTTP ist dort nur für einen
+ausdrücklich lokalen Loopback-Endpunkt zulässig.
 
 ## Dateibasierte lokale Analyse (`hsqldb-file`)
 

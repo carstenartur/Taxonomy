@@ -2,6 +2,7 @@ package com.taxonomy.portfolio;
 
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,10 +13,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 class PortfolioPartialDiagnosticsTest {
     @Autowired ProjectPortfolioService projects;
     @Autowired PortfolioAnalysisPersistenceService persistence;
+    @Autowired SystemRepositoryService repositories;
 
     @ParameterizedTest
     @ValueSource(strings = {"error", "warning", "bounded", "bounded-warning", "unicode", "boundary", "success", "unknown"})
     void persistsBoundedReasonWithoutLosingFullEvidence(String scenario) {
-        PortfolioPartialDiagnosticsChecks.check(projects, persistence, scenario);
+        PortfolioPartialDiagnosticsChecks.check(projects, persistence, repositories, scenario);
     }
 }

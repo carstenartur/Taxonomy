@@ -9,6 +9,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
@@ -29,9 +30,10 @@ public final class PortfolioPartialDiagnosticsChecks {
                 "--spring.datasource.url=jdbc:hsqldb:mem:partialdiagnostic", "--logging.level.root=WARN")) {
             var projects = app.getBean(ProjectPortfolioService.class);
             var persistence = app.getBean(PortfolioAnalysisPersistenceService.class);
+            var repositories = app.getBean(SystemRepositoryService.class);
             int failures = 0;
             for (String name : List.of("error", "warning", "bounded", "bounded-warning", "unicode", "boundary", "success", "unknown")) {
-                try { check(projects, persistence, name); System.out.println("PASS " + name); }
+                try { check(projects, persistence, repositories, name); System.out.println("PASS " + name); }
                 catch (AssertionError | RuntimeException failure) { failures++; System.err.println("FAIL " + name + ": " + failure.getMessage()); }
             }
             if (failures != 0) throw new AssertionError(failures + " diagnostic checks failed");
@@ -40,7 +42,8 @@ public final class PortfolioPartialDiagnosticsChecks {
     }
 
     public static void check(ProjectPortfolioService projects,
-                             PortfolioAnalysisPersistenceService persistence, String name) {
+                             PortfolioAnalysisPersistenceService persistence,
+                             SystemRepositoryService repositories, String name) {
         String error = switch (name) {
             case "error" -> "MEMORY_PRESSURE: Analysis stopped cooperatively";
             case "bounded" -> "Incomplete analysis for IP: " + "detail ".repeat(500);
@@ -64,7 +67,8 @@ public final class PortfolioPartialDiagnosticsChecks {
             default -> null;
         };
         String actor = "diagnostic-test";
-        var scope = new WorkspaceContext(actor, "partial-" + UUID.randomUUID(), "draft");
+        var scope = new WorkspaceContext(actor, "partial-" + UUID.randomUUID(), "draft",
+                repositories.getPrimaryRepository().getRepositoryId());
         var project = projects.createProject(new CreateProjectRequest("DIAG", "Diagnostic test", null,
                 null, null, null, null, null), actor, scope);
         String original = "Provide readable explanations for incomplete scenario information-product analyses.";
@@ -102,7 +106,8 @@ public final class PortfolioPartialDiagnosticsChecks {
         require(snapshot.analysis().getScores().equals(analysis.getScores()), "Partial scores were modified");
         require(saved.items().getFirst().requirementVersionId().equals(requirement.currentVersionId()), "Original version changed");
         try {
-            persistence.getJob(job.id(), project.id(), actor, new WorkspaceContext(actor, "other-workspace", "draft"));
+            persistence.getJob(job.id(), project.id(), actor,
+                    new WorkspaceContext(actor, "other-workspace", "draft", scope.repositoryId()));
             throw new AssertionError("Foreign workspace must not see diagnostic text");
         } catch (PortfolioException denied) {
             require(denied.getKind() == PortfolioException.Kind.NOT_FOUND, "Unexpected scope denial");

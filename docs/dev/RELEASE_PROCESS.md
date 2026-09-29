@@ -15,8 +15,8 @@ Run this before starting a release:
 
 ```bash
 ./mvnw -B -Prelease-check validate \
-  -DreleaseVersion=1.3.0 \
-  -DnextDevelopmentVersion=1.3.1-SNAPSHOT
+  -DreleaseVersion=1.4.0 \
+  -DnextDevelopmentVersion=1.4.1-SNAPSHOT
 ```
 
 The command is non-mutating. It verifies:
@@ -42,28 +42,32 @@ For example, a major transition is valid:
 
 ```bash
 ./mvnw -B -Prelease-check validate \
-  -DreleaseVersion=1.3.0 \
+  -DreleaseVersion=1.4.0 \
   -DnextDevelopmentVersion=2.0.0-SNAPSHOT
 ```
 
-Repeating `1.3.0-SNAPSHOT` as the next version is invalid because the current
-snapshot is the source of release `1.3.0`; development must continue at a newer
+Repeating `1.4.0-SNAPSHOT` as the next version is invalid because the current
+snapshot is the source of release `1.4.0`; development must continue at a newer
 version.
 
 ## Complete local release verification
 
-The complete release candidate check combines the release contract with the
-same canonical suite used by pull requests:
+The local release candidate check combines the release contract with a
+combined Maven verification lifecycle:
 
 ```bash
-./mvnw -B -Prelease-check,ci clean verify \
-  -DreleaseVersion=1.3.0 \
-  -DnextDevelopmentVersion=1.3.1-SNAPSHOT
+./mvnw -B -Prelease-check,ci clean verify -DrunOnnxTests=true \
+  -DreleaseVersion=1.4.0 \
+  -DnextDevelopmentVersion=1.4.1-SNAPSHOT
 ```
 
-This command requires the same Docker, browser and model-download prerequisites
-as `./mvnw -B -Pci verify`. It still creates no tag, branch, GitHub Release,
-container image or deployment.
+This command requires Docker, browser and a provisioned pinned embedding model
+(`TAXONOMY_EMBEDDING_MODEL_DIR` and `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false`
+for the offline CI-style run). The actual CI workflow runs a core `-Pci`
+lane with UI execution skipped, then runs repository-owned UI shards and an
+evidence gate as separate jobs. A single local Maven command does not by
+itself reproduce that complete split CI evidence. It creates no tag, branch,
+GitHub Release, container image or deployment.
 
 ## States used by the publication state machine
 
@@ -80,8 +84,8 @@ reproducing a failed release stage:
 
 ```bash
 ./mvnw -B -Prelease-check validate \
-  -DreleaseVersion=1.3.0 \
-  -DnextDevelopmentVersion=1.3.1-SNAPSHOT \
+  -DreleaseVersion=1.4.0 \
+  -DnextDevelopmentVersion=1.4.1-SNAPSHOT \
   -DreleaseCheckCurrentState=advanced
 ```
 

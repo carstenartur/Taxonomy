@@ -290,6 +290,13 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.persistence",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.reformulation",

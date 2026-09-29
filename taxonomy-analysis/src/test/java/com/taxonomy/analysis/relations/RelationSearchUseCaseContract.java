@@ -58,6 +58,24 @@ public final class RelationSearchUseCaseContract {
         check(r.getRelationSearchReport() != null && "PARTIAL".equals(r.getStatus()) && f.raw.get() == 0, "explicit partial with no remote call");
         check(r.getArchitectureView().getIncludedRelationships().isEmpty() && !r.getWarnings().isEmpty(), "no fallback for insufficient budget");
     }
+    public static void testEmbeddingOnlyProviderLeavesRelationsUnassessedWithoutCallingRawCompletion() throws Exception {
+        Fixture f = fixture(true, 24, false, LlmProvider.LOCAL_ONNX);
+        AnalysisResult result = f.analyze(true);
+        check("PARTIAL".equals(result.getStatus()), "embedding-only relation evidence must be incomplete");
+        check(result.getRelationSearchReport() != null && !result.getRelationSearchReport().isSearchExhausted()
+                        && result.getRelationSearchReport().stopReason().contains("UNSUPPORTED"),
+                "immutable report must explain the unsupported generative assessment");
+        check(result.getRelationSearchReport().result().edges().isEmpty()
+                        && result.getArchitectureView().getIncludedRelationships().isEmpty(),
+                "no verified relationships may be inferred from local similarity scores");
+        check(f.raw.get() == 0 && f.legacy.get() == 0,
+                "unsupported raw completion must not be called or retried, nor fall back to score products");
+        var json = JsonMapper.builder().build();
+        AnalysisResult saved = json.readValue(json.writeValueAsString(result), AnalysisResult.class);
+        check("PARTIAL".equals(saved.getStatus()) && saved.getRelationSearchReport() != null
+                        && saved.getRelationSearchReport().stopReason().contains("UNSUPPORTED"),
+                "provider limitation must survive the snapshot export boundary");
+    }
     public static void testMalformedResponsePreservesPartialEvidence() throws Exception {
         Fixture f = fixture(true, 24, true); var r = f.analyze(true);
         check("PARTIAL".equals(r.getStatus()) && r.getRelationSearchReport() != null && !r.getWarnings().isEmpty(), "parse failure visible");
@@ -79,12 +97,15 @@ public final class RelationSearchUseCaseContract {
         check(!copy.getArchitectureView().getIncludedRelationships().getFirst().getRequirementEvidence().isEmpty(), "view evidence retained");
     }
     static Fixture fixture(Boolean enabled, int calls, boolean invalid) throws Exception {
+        return fixture(enabled, calls, invalid, LlmProvider.CUSTOM_OPENAI);
+    }
+    static Fixture fixture(Boolean enabled, int calls, boolean invalid, LlmProvider provider) throws Exception {
         AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1)); r.setStatus("SUCCESS"); return r; }
             @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return invalid ? "please try again" : RequirementRelationSearchContract.answer(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
-            @Override public LlmProvider getActiveProvider() { return LlmProvider.CUSTOM_OPENAI; }
+            @Override public LlmProvider getActiveProvider() { return provider; }
             @Override public void clearRequestProvider() { }
         };
         TaxonomyNode source = node("process", "BP", "BP"), root = node("IP", "IP", null), target = node("evidence", "IP", "IP");

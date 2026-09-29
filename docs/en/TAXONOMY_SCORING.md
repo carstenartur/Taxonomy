@@ -1,12 +1,12 @@
 # Grouping and scoring the sub-taxonomies
 
-> **Implementation scope:** source `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` from PR #1118, not an already deployed installation. The separate #1113 parser changes are not part of this baseline. The **binding change requirements** below were clarified on 23 September 2026; documenting them does not prove end-to-end runtime enforcement. This documentation increment changes no code, scores, catalogue data or historical snapshots.
+> **Scope:** The catalogue hierarchy and provenance review below was based on source `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` from PR #1118. The binding change requirements for local navigation and original parent relationships remain open acceptance targets. The scoring/runtime description below includes the separate release-readiness correction for independent roots; it does not certify semantic quality or retroactively change historical snapshots.
 
 [Deutsch](../de/TAXONOMY_SCORING.md) · [Context and navigation](../dev/hierarchy-context-and-navigation.md) · [Technical score envelope](../dev/ANALYSIS_SCORE_SEMANTICS.md)
 
 ## Shared execution, different questions
 
-There are not eight separately implemented scoring algorithms. Ordinary LLM category calls share a parent-budget parser; prompts differ in subject matter. Only entries explicitly classified as `PRODUCT` use independent product scoring. Being a leaf or a user application does not select that contract.
+There are not eight separately implemented scoring algorithms. Each top-level root uses an independent relevance prompt and parser. Child-category calls share a parent-budget parser; prompts differ in subject matter. Only entries explicitly classified as `PRODUCT` use independent product suitability scoring. Being a leaf or a user application does not select that contract.
 
 | Page | Subject | Current ordinary path |
 |---|---|---|
@@ -55,7 +55,7 @@ Values remain unchanged when `S = P`; an all-zero response stays zero. A returne
 
 Normalization allocates weights. It proves neither fulfilment, necessity, probability, cost share nor mutual exclusion. Multiple processes, roles, services, applications or products can be jointly required; a small allocated share can be indispensable.
 
-**Known root defect:** `analyzeAllTaxonomies` and `analyzeStreaming` send each root separately through this parser with `P = 100`. A positive singleton response `20` becomes `100`; `0` stays `0`. This contradicts intended independent root relevance and still needs correction. Mock values can differ.
+**Independent roots:** `analyzeWithBudget` and `analyzeStreaming` assess each root separately on a 0–100 scale, without a sum-to-100 prompt or child-budget normalization. A root response of `20` remains `20`; `0` and `100` remain distinct. The local ONNX path retains its root similarity score without allocation, and mock roots retain their bounded demonstration values. Positive root scores become budgets only for their *children*. A legitimate single-child category still follows the child-budget rule.
 
 ## Current IP product arithmetic
 
@@ -70,7 +70,7 @@ An unevaluated direct parent yields effective fallback `0` with a warning, not e
 
 ## Suitability, necessity and search priority
 
-Equal high scores can describe jointly needed contributions, alternatives or merely plausible candidates. Contributions, evidence and conditions establish need. Opt-in relationship search distinguishes `REQUIRED`, `OPTIONAL` and `ALTERNATIVE`, but this is not yet a complete product-variant decision mechanism.
+Equal high scores can describe jointly needed contributions, alternatives or merely plausible candidates. Contributions, evidence and conditions establish need. Requirement-scoped relationship search is enabled by default for generative providers and distinguishes `REQUIRED`, `OPTIONAL` and `ALTERNATIVE`; it is not yet a complete product-variant decision mechanism. `LOCAL_ONNX` supplies embedding scores but cannot generate the required relation JSON. That phase is explicitly unassessed and the analysis remains partial, without an invented negative finding or score-derived fallback.
 
 **Change target:** Under the same requirement context and genuine semantic containment, branch relevance should be consistent (`child <= parent`). Keep contradictions visible with original evidence rather than hiding them by capping/multiplication. This does not require sibling sums to equal the parent. Local navigation groups may have a distinct search priority, not product relevance. Their insertion must not change an original item's suitability or need. Traversal must allow multiple required branches without requiring multiple paths per entry. Unresolved IP attachment must not silently exclude relevant entries.
 

@@ -45,6 +45,12 @@ public class RequirementRelationSearchService {
     }
 
     public RelationSearchReport search(String original, Map<String,Integer> scores) {
+        if (!llm.supportsGenerativeCompletion()) {
+            return RequirementRelationSearch.unassessed(original, options().limits().maxCalls(),
+                    "GENERATION_UNSUPPORTED: " + llm.getActiveProvider().name()
+                            + " provides embeddings, not requirement-scoped relation assessments; "
+                            + "all relationships remain unassessed.");
+        }
         var adapter = new RequirementRelationSearch.InputCatalogue() {
             public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }
             public List<Node> roots() { return scalars(catalogue.getRootNodes()); }

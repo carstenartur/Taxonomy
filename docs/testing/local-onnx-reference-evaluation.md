@@ -29,7 +29,8 @@ There is no response playback or parallel embedding/search implementation.
 
 ## Evidence, errors and limits
 
-* Require enabled/available/modelAvailable AND semanticReady, READY index state,
+* Require enabled/available/modelAvailable AND semanticReady, a node-ready index state
+  (`INDEXING_RELATIONS`, `READY` or `PARTIAL`),
   positive vector-index population and agreement with the catalogue count. A cold
   availability flag alone cannot certify inference. Re-check readiness around each
   search, and re-check catalogue and model-file identities at completion.
@@ -55,7 +56,8 @@ There is no response playback or parallel embedding/search implementation.
 
 `target/failsafe-reports/local-onnx-reference/` contains JSON, CSV and readable HTML.
 Reports record actual application JAR/source identity, model/tokenizer/config hashes,
-reference and catalogue-projection fingerprints, query configuration,
+reference and canonical effective-catalogue fingerprints (`TaxonomyDataFingerprint.sha256`,
+including version framing, effective levels, parent identity and analysis role), query configuration,
 attempted search count and timings. Dynamic timing is intentionally separate from
 stable case ordering and measurement values; new live runs are not promised to be
 byte-identical. No requirement text, auth headers, provider replies or secret values
@@ -63,7 +65,18 @@ are copied into the report. Unit-test negative reports use temporary directories
 Model provisioning/container startup failures before the evaluation method remain
 Failsafe errors rather than generated inference evidence.
 
-## Initial implementation verification (historical)
+## Verification performed while implementing
+
+The release-readiness follow-up accepts the production node-search readiness
+contract even when relation indexing is still running or has failed independently.
+It also replaces the initial evaluator-only catalogue projection hash with the
+canonical score-semantics fingerprint. Three new regressions failed against the
+old readiness/hash behavior and passed after correction; the eleven reference
+helper tests pass using authentic Jackson 3.1.6 and application dependencies from
+the clean `73fdb2e` CI artifact, compiled with `--release 21` on JDK 25. This is a
+focused helper test run, not a new full-model retrieval or complete Maven pass.
+
+The following paragraphs record the initial implementation's historical checks:
 
 Java 21 compilation with `-Xlint:all -Werror` passed for both helper classes against
 the application's actual Jackson 3.1.5 dependencies. A hand-computed metric probe
@@ -87,7 +100,6 @@ local Chromium policy. The workflow must supply exact-head execution evidence.
 Do not close #927 or merge based only on these supplementary checks. This slice
 does not implement generated relations, reformulation, alternative groups,
 hierarchical metrics, general resumable evaluation or the rest of the roadmap.
-
 
 ## Verified CI checkpoint and dependency security correction (2026-09-29)
 

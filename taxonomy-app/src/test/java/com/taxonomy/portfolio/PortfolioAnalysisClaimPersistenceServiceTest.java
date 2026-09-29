@@ -18,6 +18,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** End-to-end evidence that a recovered claim invalidates every late worker result. */
 @SpringBootTest
 class PortfolioAnalysisClaimPersistenceServiceTest {
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -254,10 +258,11 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
                 context);
     }
 
-    private static WorkspaceContext context() {
+    private WorkspaceContext context() {
         String suffix = shortId().toLowerCase();
         String username = "claim-generation-" + suffix;
-        return new WorkspaceContext(username, "ws-" + suffix, "draft");
+        return new WorkspaceContext(username, "ws-" + suffix, "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 
     private static String shortId() {

@@ -154,6 +154,16 @@ public class PromptTemplateService {
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : ""));
     }
 
+    /** Evaluates one catalogue root independently, without a child allocation budget. */
+    public String renderRootPrompt(String taxonomyCode, String businessText, String nodeList) {
+        String template = getTemplate("root-relevance");
+        return substitute(template, Map.of(
+                "{{BUSINESS_TEXT}}", businessText,
+                "{{NODE_LIST}}", nodeList,
+                "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
+                "{{EXPECTED_KEYS}}", taxonomyCode));
+    }
+
     /**
      * Renders the effective prompt by substituting all {@code {{...}}} placeholders.
      * Delegates to {@link #renderPrompt(String, String, String, int, String)} with an empty expected-keys string.

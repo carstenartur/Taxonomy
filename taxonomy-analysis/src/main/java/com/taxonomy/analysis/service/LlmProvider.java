@@ -11,5 +11,11 @@ public enum LlmProvider {
     /** Operator-configured OpenAI-compatible HTTP endpoint, including self-hosted models. */
     CUSTOM_OPENAI,
     /** Local embedding model via DJL / ONNX Runtime. No API key required. */
-    LOCAL_ONNX
+    LOCAL_ONNX;
+
+    public enum CompletionCapability { GENERATIVE_TEXT, EMBEDDINGS_ONLY }
+
+    public CompletionCapability completionCapability() {
+        return this == LOCAL_ONNX ? CompletionCapability.EMBEDDINGS_ONLY : CompletionCapability.GENERATIVE_TEXT;
+    }
 }

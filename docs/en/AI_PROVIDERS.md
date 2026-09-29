@@ -41,6 +41,12 @@ The `LlmService` is the central component for AI analysis. It supports eight run
 | **LOCAL_ONNX** | bge-small-en-v1.5 | local embedding settings | No |
 
 `CUSTOM_OPENAI` is a generative LLM integration for OpenAI-compatible Chat Completions servers. `LOCAL_ONNX` is different: it provides local embedding-based similarity scoring and does not generate textual LLM responses.
+Embedding inference is disabled by default. To run `LOCAL_ONNX`, set
+`LLM_PROVIDER=LOCAL_ONNX` and `TAXONOMY_EMBEDDING_ENABLED=true`, then supply a
+readable pre-downloaded model directory or explicitly allow runtime download.
+The automatic node/relation vector-indexing startup path requires both the
+selected `LOCAL_ONNX` provider and enabled embeddings. It does not replace
+the need for a verified recovery plan for other Lucene indexes.
 
 ---
 
@@ -50,7 +56,7 @@ Use `CUSTOM_OPENAI` to connect Taxonomy to a self-hosted or otherwise operator-c
 
 ```bash
 export LLM_PROVIDER=CUSTOM_OPENAI
-export CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+export CUSTOM_LLM_URL=https://llm.example.internal/v1/chat/completions
 export CUSTOM_LLM_MODEL=architecture-model
 ```
 
@@ -60,7 +66,7 @@ Authentication is optional:
 export CUSTOM_LLM_API_KEY=secret-token
 ```
 
-With an empty API key, Taxonomy sends no `Authorization` header. With a configured key, it sends Bearer authentication. Both URL and model are mandatory, and the URL must be a complete `http://` or `https://` Chat Completions endpoint.
+With an empty API key, Taxonomy sends no `Authorization` header. With a configured key, it sends Bearer authentication. Both URL and model are mandatory. Guided Helm/native checks require HTTPS for non-loopback endpoints and reject embedded credentials, queries and fragments. Configure the server certificate/CA trust and network policy; a model server in another Pod or container is not loopback. HTTP is accepted there only for exact local loopback hosts.
 
 See [Custom OpenAI-Compatible LLM](../dev/custom-llm.md) for the JSON contract, Docker examples, security guidance, and troubleshooting.
 
@@ -94,7 +100,12 @@ Example:
 }
 ```
 
-`availableProviders` always contains `LOCAL_ONNX`. Cloud providers are added when their API key is configured; `CUSTOM_OPENAI` is added when URL and model are complete and valid.
+`availableProviders` lists `LOCAL_ONNX` as a selectable provider even if
+embedding inference is not yet enabled or its model is unavailable. Selection
+alone is not a readiness signal; check `GET /api/embedding/status` and perform
+a real local scoring/search acceptance. Cloud providers are added when their
+API key is configured; `CUSTOM_OPENAI` is added when URL and model are complete
+and valid.
 
 ---
 

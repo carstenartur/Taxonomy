@@ -24,7 +24,7 @@ requires a pre-existing identity provider.
 |---|---|---|
 | Compile | `./mvnw compile` | Java 21 |
 | Normal developer verification | `./mvnw verify` | No Docker; unit, Spring, contract and architecture tests |
-| Complete required verification | `./mvnw -B verify -Pci` | Docker and POSIX tools |
+| Local combined CI-profile verification | `./mvnw -B verify -Pci -DrunOnnxTests=true` | Docker, browser/model prerequisites and POSIX tools; CI itself splits UI into shards |
 | Core container integration | `./mvnw -B verify -Pcore-integration` | Docker |
 | PostgreSQL | `./mvnw -B verify -Pdatabase-postgres` | Docker |
 | SQL Server | `./mvnw -B verify -Pdatabase-mssql` | Docker |
@@ -34,13 +34,24 @@ requires a pre-existing identity provider.
 | Browser and accessibility only | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | permission to install browser OS libraries |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | Docker |
 
-`./mvnw -B verify -Pci` is the canonical pull-request command. It runs:
+`./mvnw -B verify -Pci -DrunOnnxTests=true` is the local combined lifecycle
+when the reference model is provisioned. The pull-request
+workflow runs this profile in the core reactor with `-DrunOnnxTests=true`
+and `-Dtaxonomy.ui.skip=true`, then independently requires the commit-bound UI
+application, UI contracts, Maven-owned UI shard matrix, observability and
+interoperability lanes. The final `verify` job checks every lane and verifies
+digest-bound shard evidence. Together they form the canonical pull-request
+gate; no single core Maven log proves the browser matrix passed. The core
+profile runs:
 
 1. all normal unit, Spring, architecture and contract tests;
-2. core, PostgreSQL, local ONNX and imported-realm Keycloak Testcontainers integration tests;
+2. core, PostgreSQL and imported-realm Keycloak Testcontainers integration tests;
+   local ONNX also requires `-DrunOnnxTests=true` and the pinned model;
 3. the reactor-wide JaCoCo threshold and dependency-policy gates;
 4. documentation, frontend-boundary, dependency-alignment and supply-chain checks;
-5. the role, workflow, state, browser, zoom, forced-colors and axe matrix.
+5. when run locally without `taxonomy.ui.skip=true`, the browser matrix;
+   in GitHub Actions that matrix runs through `.github/ui-shards.json` and
+   `.github/ui-verification-pom.xml -Pshard` on the same packaged application.
 
 It excludes real LLM calls and the scheduled SQL Server and Oracle suites.
 
@@ -166,7 +177,7 @@ must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
-| `ci-cd.yml` | Call the canonical Maven command and publish its reports |
+| `ci-cd.yml` | Build one commit-bound application, run the core Maven `-Pci` lane, parallel UI shards and other required lanes, then gate all digest-bound evidence |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
 | `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |

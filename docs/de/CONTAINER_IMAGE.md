@@ -48,12 +48,18 @@ Ein Volume allein reicht nicht aus: Verweisen Sie HSQLDB auf eine Datei unterhal
 docker run -d --name taxonomy-analyzer \
   -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=production,hsqldb \
-  -e TAXONOMY_ADMIN_PASSWORD=replace-with-a-strong-password \
+  -e TAXONOMY_ADMIN_PASSWORD="$TAXONOMY_ADMIN_PASSWORD" \
   -e TAXONOMY_DATASOURCE_URL='jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true' \
   -e TAXONOMY_DDL_AUTO=update \
   -v taxonomy-data:/app/data \
   ghcr.io/carstenartur/taxonomy:latest
 ```
+
+Setzen Sie `TAXONOMY_ADMIN_PASSWORD` vor diesem Befehl in der Host-Umgebung
+auf ein einmaliges Secret mit mindestens 16 Zeichen. Der Produktionsschutz
+weist fehlende Werte und wörtliche `replace-with-...`-Platzhalter zurück.
+Dieses direkte `docker run -p 8080:8080` bietet nur HTTP und braucht für
+nichtlokalen Betrieb einen gesondert eingerichteten TLS-Reverse-Proxy.
 
 Port 8080 verwendet unverschlüsseltes HTTP. Nutzen Sie für jede nicht-lokale Bereitstellung einen TLS-terminierenden Reverse-Proxy.
 
@@ -109,12 +115,12 @@ Laufzeitvariablen:
 | Variable | Standard | Beschreibung |
 |---|---|---|
 | `TAXONOMY_ADMIN_PASSWORD` | außerhalb der Produktion leer; in Produktion erforderlich | Initiales lokales Administratorpasswort. Ein leerer Nicht-Produktionswert erzeugt eine eigentümergeschützte einmalige Zugangsdaten-Datei und protokolliert nur deren Pfad. |
-| `LLM_PROVIDER` | automatisch erkannt | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL` oder `LOCAL_ONNX` |
+| `LLM_PROVIDER` | automatisch erkannt | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI` oder `LOCAL_ONNX` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, … | leer | Provider-Zugangsdaten |
-| `TAXONOMY_EMBEDDING_ENABLED` | `true` | Semantische/KNN-Suche aktivieren |
+| `TAXONOMY_EMBEDDING_ENABLED` | `false` | Semantische/KNN-Suche aktivieren |
 | `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | profilabhängig | Modell-Download zur Laufzeit erlauben |
 | `TAXONOMY_DATASOURCE_URL` | In-Memory-HSQLDB | JDBC-URL; für persistente HSQLDB eine Datei-URL setzen |
-| `TAXONOMY_DDL_AUTO` | `create` | Hibernate-Verwaltung der Taxonomy-eigenen Tabellen; persistente Deployments verwenden normalerweise `update` |
+| `TAXONOMY_DDL_AUTO` | `create` | HSQLDB-Standard; persistentes HSQLDB verwendet `update`. PostgreSQL verwendet verwaltete Migrationen und `validate` |
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `false` | Einmalige Zustimmung zur geprüften Übernahme des früheren JGit-Schemas |
 | `JAVA_OPTS` | Dockerfile-Standard | JVM-Heap-, GC- und Stack-Einstellungen |
 
@@ -131,19 +137,63 @@ Der Produktions-Compose-Stack speichert veränderlichen Zustand unterhalb von `/
 | `/app/data/taxonomydb*` | Dateibasierter HSQLDB-Katalog, Benutzer sowie Git-Pack-/Ref-/Reflog-Daten |
 | `/app/data/lucene-index` | Hibernate-Search-/Lucene-Indizes |
 
-Die in `docker-compose.prod.yml` konfigurierten benannten Volumes überleben eine Container-Neuerstellung. Stoppen Sie Schreibzugriffe vor einem Dateisystem-Backup:
+Die in `docker-compose.prod.yml` konfigurierten benannten Volumes überleben
+eine Container-Neuerstellung. Stoppen Sie alle Schreiber der HSQLDB-Dateien,
+auch etwaige separat gestartete Taxonomy-Container. Die folgenden Befehle
+stoppen den Compose-Dienst und ermitteln dessen tatsächlich gemountetes
+Volume vor dem Dateisystem-Backup:
 
 ```bash
-docker compose -f docker-compose.prod.yml stop taxonomy
+# Im Compose-Projektverzeichnis das tatsächlich gemountete, projektpräfixierte
+# Volume ermitteln; ein bloßes "taxonomy-data" bezeichnet ein anderes Volume.
+app_container=$(docker compose -f docker-compose.prod.yml ps -q taxonomy)
+test -n "$app_container" || { echo 'Taxonomy-Container nicht gefunden' >&2; exit 1; }
+data_volume=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Name}}{{end}}{{end}}' "$app_container")
+test -n "$data_volume" || { echo 'Taxonomy-Datenvolume nicht gefunden' >&2; exit 1; }
+docker compose -f docker-compose.prod.yml stop taxonomy || exit 1
 docker run --rm \
-  -v taxonomy-data:/data:ro \
+  --mount "type=volume,src=$data_volume,dst=/data,readonly" \
   -v "$(pwd)":/backup \
   alpine \
-  tar czf /backup/taxonomy-backup.tar.gz -C /data .
+  tar czf /backup/taxonomy-backup.tar.gz -C /data . || {
+    docker compose -f docker-compose.prod.yml start taxonomy
+    exit 1
+  }
 docker compose -f docker-compose.prod.yml start taxonomy
 ```
 
-Ein Backup ist erst nach einem Restore-Test belastbar. Bei einem Upgrade des JGit-Core-Schemas behalten Sie es, bis Refs, Commit-Verlauf und Pack-BLOB-Prüfsummen verifiziert wurden.
+Schlägt die Archivierung fehl, starten Sie den angehaltenen Dienst vor der
+Fehlersuche erneut. Für einen Restore-Test entpacken Sie das Archiv auf einem
+getrennten Host in ein **neues, leeres Volume**:
+
+```bash
+if docker volume inspect taxonomy-restore-data >/dev/null 2>&1; then
+  echo 'Neuen, leeren Restore-Volume-Namen wählen' >&2; exit 1
+fi
+docker volume create taxonomy-restore-data
+docker run --rm \
+  --mount type=volume,src=taxonomy-restore-data,dst=/data \
+  -v "$(pwd)":/backup:ro \
+  alpine tar xzf /backup/taxonomy-backup.tar.gz -C /data
+```
+
+Erstellen Sie auf diesem separaten Host `restore-volume.override.yml` neben
+der Compose-Datei, damit das wiederhergestellte Volume genutzt wird:
+
+```yaml
+volumes:
+  taxonomy-data:
+    external: true
+    name: taxonomy-restore-data
+```
+
+Starten Sie `docker compose -f docker-compose.prod.yml -f restore-volume.override.yml
+-p taxonomy-restore up -d` mit unabhängiger Domain und Secrets, damit die
+Testinstanz nicht in die Quelle schreibt. Prüfen Sie Benutzer, Workspaces,
+Suche und Git-Historie. Behalten Sie bei einem JGit-Core-Schema-Upgrade das
+Backup, bis Refs, Commit-Verlauf und Pack-BLOB-Prüfsummen verifiziert sind.
+Spielen Sie kein Backup über eine laufende Datenbank und mischen Sie keine
+wiederhergestellten Datenbankdateien mit einem veralteten Index-Snapshot.
 
 ## 6. Health Checks
 
