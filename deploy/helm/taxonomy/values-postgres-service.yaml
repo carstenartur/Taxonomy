@@ -1,0 +1,30 @@
+# Layer onto the chart and your cluster-specific ingress values.
+# Provision the database Service, credentials and CA first; see DATABASE_PODS.md.
+existingSecret: taxonomy-secrets
+database:
+  type: postgres
+  url: "jdbc:postgresql://postgres.database.svc.cluster.local:5432/taxonomy?sslmode=verify-full&sslrootcert=/etc/taxonomy-db-ca/ca.crt"
+  username: taxonomy
+extraVolumes:
+  - name: database-ca
+    configMap:
+      name: taxonomy-database-ca
+extraVolumeMounts:
+  - name: database-ca
+    mountPath: /etc/taxonomy-db-ca
+    readOnly: true
+networkPolicy:
+  allowSameNamespaceEgress: false
+  # Namespace AND Pod selector intentionally belong to the same peer.
+  # Adapt labels to the actual database Pods; preserve other required egress rules.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -69,23 +69,7 @@ spec:
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           env:
-            {{- range $key, $value := .Values.config }}
-            - name: {{ $key }}
-              value: {{ $value | quote }}
-            {{- end }}
-            {{- if .Values.existingSecret }}
-            {{- range $envName, $secretSpec := .Values.secretEnv }}
-            - name: {{ $envName }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.existingSecret | quote }}
-                  key: {{ $secretSpec.key | quote }}
-                  optional: {{ $secretSpec.optional }}
-            {{- end }}
-            {{- end }}
-            {{- with .Values.extraEnv }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{- include "taxonomy.environment" . | nindent 12 }}
           {{- with .Values.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

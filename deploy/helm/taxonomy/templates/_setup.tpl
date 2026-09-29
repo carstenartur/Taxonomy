@@ -1,0 +1,146 @@
+{{/* One effective environment for both existing and guided installations. */}}
+{{- define "taxonomy.environment" -}}
+{{- $config := deepCopy .Values.config -}}
+{{- $secrets := deepCopy .Values.secretEnv -}}
+{{/* Defense in depth: retain this check when a caller skips JSON Schema validation. */}}
+{{- $credentialKey := "(?i)(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$" -}}
+{{- range $name, $_ := $config -}}
+{{- if regexMatch $credentialKey $name -}}{{- fail "Credentials in config require a Secret mapping; never put credential values in ordinary Helm values" -}}{{- end -}}
+{{- end -}}
+{{- range .Values.extraEnv -}}
+{{- if regexMatch $credentialKey (.name | default "") -}}
+{{- $source := .valueFrom | default dict -}}
+{{- if or (hasKey . "value") (empty (get $source "secretKeyRef")) -}}
+{{- fail "Credential environment variables require valueFrom.secretKeyRef; literal values and ConfigMap references are not allowed" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $authentication := .Values.authentication | default dict -}}
+{{- $mode := get $authentication "mode" | default "existing" -}}
+{{- $database := .Values.database | default dict -}}
+{{- $databaseType := get $database "type" | default "existing" -}}
+{{- if not (has $mode (list "existing" "local" "keycloak")) -}}
+{{- fail "authentication.mode must be existing, local or keycloak" -}}
+{{- end -}}
+{{- if not (has $databaseType (list "existing" "postgres" "mssql")) -}}
+{{- fail "database.type must be existing, postgres or mssql" -}}
+{{- end -}}
+{{- $httpsEndpoint := "(?i)^https://(\\[[0-9a-f:.]+\\]|([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.?)(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
+{{- $customUrl := get $config "CUSTOM_LLM_URL" | default "" | toString -}}
+{{- if $customUrl -}}
+{{- $loopbackEndpoint := "(?i)^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
+{{- if or (not (or (regexMatch $httpsEndpoint $customUrl) (regexMatch $loopbackEndpoint $customUrl))) (contains "\\" $customUrl) -}}
+{{- fail "config.CUSTOM_LLM_URL requires HTTPS (HTTP only on loopback) without credentials, query, fragment or whitespace; use a Secret for authentication" -}}
+{{- end -}}
+{{- end -}}
+{{- range .Values.extraEnv -}}
+{{- if eq (.name | default "") "CUSTOM_LLM_URL" -}}
+{{- fail "Configure CUSTOM_LLM_URL through config.CUSTOM_LLM_URL so its endpoint is validated" -}}
+{{- end -}}
+{{- end -}}
+{{- $profiles := list -}}
+{{- range splitList "," (get $config "SPRING_PROFILES_ACTIVE" | default "postgres,kubernetes") -}}
+{{- if trim . -}}{{- $profiles = append $profiles (trim .) -}}{{- end -}}
+{{- end -}}
+{{- $knownDatabaseProfiles := list "postgres" "mssql" "hsqldb" "oracle" -}}
+{{- if ne $databaseType "existing" -}}
+{{/* The explicit selection replaces database profiles only, not deployment/auth profiles. */}}
+{{- $otherProfiles := list -}}
+{{- range $profiles -}}
+{{- if not (has . $knownDatabaseProfiles) -}}{{- $otherProfiles = append $otherProfiles . -}}{{- end -}}
+{{- end -}}
+{{- $profiles = uniq (concat (list $databaseType) $otherProfiles) -}}
+{{- $_ := set $config "SPRING_PROFILES_ACTIVE" (join "," $profiles) -}}
+{{- range list "SPRING_DATASOURCE_DRIVER_CLASS_NAME" "SPRING_JPA_DATABASE_PLATFORM" "SPRING_PROFILES_INCLUDE" -}}
+{{- if hasKey $config . -}}{{- fail (printf "database.type conflicts with config.%s; use existing mode for manual overrides" .) -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $setting, $env := dict "url" "SPRING_DATASOURCE_URL" "username" "SPRING_DATASOURCE_USERNAME" -}}
+{{- $value := get $database $setting | default "" -}}
+{{- if $value -}}
+{{- if hasKey $config $env -}}{{- fail (printf "database.%s conflicts with config.%s; configure this setting in one place" $setting $env) -}}{{- end -}}
+{{- if and (eq $setting "url") (or (contains "@" $value) (regexMatch "(?i)(password|sslpassword|user(name)?|uid|pwd)\\s*=" $value)) -}}
+{{- fail "database.url must not contain credentials; use the selected Secret instead" -}}
+{{- end -}}
+{{- $_ := set $config $env $value -}}
+{{- $_ := unset $secrets $env -}}
+{{- end -}}
+{{- end -}}
+{{/* Secret contents cannot be inspected at chart-render time. Check visible URLs only. */}}
+{{- if or (ne $databaseType "existing") (not (empty (get $database "url"))) -}}
+{{- $url := get $config "SPRING_DATASOURCE_URL" | default "" | toString -}}
+{{- if $url -}}
+{{- $databaseProfiles := list -}}
+{{- range $profiles -}}
+{{- if has . $knownDatabaseProfiles -}}{{- $databaseProfiles = append $databaseProfiles . -}}{{- end -}}
+{{- end -}}
+{{- $databaseProfiles = uniq $databaseProfiles -}}
+{{- if ne (len $databaseProfiles) 1 -}}{{- fail "A guided database URL requires one database profile; select database.type explicitly" -}}{{- end -}}
+{{- $activeDatabase := first $databaseProfiles -}}
+{{- if not (or (and (eq $activeDatabase "postgres") (hasPrefix "jdbc:postgresql://" $url)) (and (eq $activeDatabase "mssql") (hasPrefix "jdbc:sqlserver://" $url))) -}}
+{{- fail "The JDBC URL does not match the database profile; select the matching database.type" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if ne $mode "existing" -}}
+{{- if empty .Values.existingSecret -}}{{- fail "Guided setup requires existingSecret; credentials are never generated by the chart" -}}{{- end -}}
+{{- if or (and (eq $mode "local") (has "keycloak" $profiles)) (and (eq $mode "keycloak") (has "local-user-management" $profiles)) -}}
+{{- fail "The selected authentication mode conflicts with config.SPRING_PROFILES_ACTIVE" -}}
+{{- end -}}
+{{- if eq $mode "local" -}}
+{{- $_ := set $config "SPRING_PROFILES_ACTIVE" (join "," (uniq (concat $profiles (list "production" "local-user-management")))) -}}
+{{- $_ := set $config "TAXONOMY_SECURITY_LOCAL_USERS_ENABLED" "true" -}}
+{{- if not (hasKey $secrets "TAXONOMY_ADMIN_PASSWORD") -}}{{- fail "Local login requires the TAXONOMY_ADMIN_PASSWORD Secret mapping" -}}{{- end -}}
+{{- else -}}
+{{/* Cluster endpoints require HTTPS even for loopback; CLI-only local development retains its loopback exception. */}}
+{{- range $name := list "KEYCLOAK_ISSUER_URI" "KEYCLOAK_JWK_SET_URI" -}}
+{{- $endpoint := get $config $name | default "" | toString -}}
+{{- if or (eq $name "KEYCLOAK_ISSUER_URI") (ne $endpoint "") -}}
+{{- if or (not (regexMatch $httpsEndpoint $endpoint)) (contains "\\" $endpoint) -}}
+{{- fail (printf "Guided Keycloak setup requires config.%s over HTTPS without credentials, query, fragment or whitespace" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if empty (get $config "KEYCLOAK_CLIENT_ID") -}}{{- fail "Keycloak requires config.KEYCLOAK_CLIENT_ID" -}}{{- end -}}
+{{- $_ := set $config "SPRING_PROFILES_ACTIVE" (join "," (uniq (concat $profiles (list "production" "keycloak")))) -}}
+{{- $_ := set $config "TAXONOMY_SECURITY_LOCAL_USERS_ENABLED" "false" -}}
+{{- $_ := unset $secrets "TAXONOMY_ADMIN_PASSWORD" -}}
+{{/* Reserve the removed bootstrap name too: it is no longer in the duplicate-check map. */}}
+{{- range .Values.extraEnv -}}
+{{- if eq (.name | default "") "TAXONOMY_ADMIN_PASSWORD" -}}
+{{- fail "Guided Keycloak setup must not receive TAXONOMY_ADMIN_PASSWORD through extraEnv, including Secret references" -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $secrets "KEYCLOAK_CLIENT_SECRET" (dict "key" (get $authentication "keycloakClientSecretKey" | default "KEYCLOAK_CLIENT_SECRET") "optional" false) -}}
+{{- if empty (get $config "KEYCLOAK_JWK_SET_URI") -}}
+{{- $_ := set $config "KEYCLOAK_JWK_SET_URI" (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" (get $config "KEYCLOAK_ISSUER_URI"))) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $name, $_ := $config -}}
+{{- if hasKey $secrets $name -}}{{- fail (printf "config.%s conflicts with a Secret mapping" $name) -}}{{- end -}}
+{{- end -}}
+{{- if or (ne $mode "existing") (ne $databaseType "existing") (not (empty (get $database "url"))) (not (empty (get $database "username"))) -}}
+{{- range .Values.extraEnv -}}
+{{- if or (hasKey $config .name) (hasKey $secrets .name) -}}{{- fail (printf "extraEnv duplicates managed setting %s" .name) -}}{{- end -}}
+{{- end -}}
+{{- if not (empty .Values.extraEnvFrom) -}}{{- fail "Guided setup cannot verify extraEnvFrom precedence; use explicit config/Secret mappings or existing mode" -}}{{- end -}}
+{{- end -}}
+{{- range $key, $value := $config }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- if .Values.existingSecret }}
+{{- range $envName, $secretSpec := $secrets }}
+- name: {{ $envName }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $.Values.existingSecret | quote }}
+      key: {{ $secretSpec.key | quote }}
+      optional: {{ $secretSpec.optional }}
+{{- end }}
+{{- end }}
+{{- with .Values.extraEnv }}
+{{- toYaml . | nindent 0 }}
+{{- end }}
+{{- end -}}

@@ -1,0 +1,17 @@
+# Optional guided values; never put passwords or API keys here.
+# Use with values-rancher-rke2.yaml after reviewing cluster-specific ingress/egress.
+existingSecret: taxonomy-secrets
+authentication:
+  mode: local
+  keycloakClientSecretKey: KEYCLOAK_CLIENT_SECRET
+database:
+  url: ""       # empty: SPRING_DATASOURCE_URL from existingSecret
+  username: ""  # empty: SPRING_DATASOURCE_USERNAME from existingSecret
+# To use central login instead:
+# authentication:
+#   mode: keycloak
+# config:
+#   KEYCLOAK_ISSUER_URI: https://identity.example.invalid/realms/taxonomy
+#   KEYCLOAK_CLIENT_ID: taxonomy-app
+#   TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH: realm_access.roles
+# The Secret must contain KEYCLOAK_CLIENT_SECRET; local ADMIN_PASSWORD is not mounted.

@@ -2,64 +2,157 @@ questions:
   - variable: existingSecret
     label: Existing credential Secret
     description: >-
-      Select a Secret in the target namespace containing SPRING_DATASOURCE_URL,
-      SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD and ADMIN_PASSWORD.
-      When the Prometheus ServiceMonitor is enabled, add a distinct ADMIN_TOKEN
-      key; never reuse the interactive ADMIN_PASSWORD value as the machine token.
+      Select a Secret in this namespace. By default it contains SPRING_DATASOURCE_URL,
+      SPRING_DATASOURCE_USERNAME and SPRING_DATASOURCE_PASSWORD. Local login also needs
+      ADMIN_PASSWORD; Keycloak uses KEYCLOAK_CLIENT_SECRET instead. Monitoring needs a
+      separate ADMIN_TOKEN. Never reuse the interactive password as the machine token.
+      Create credentials in Rancher's Secret management, not in ordinary Helm values.
     type: secret
     required: true
-    group: Required configuration
-
+    group: Database and credentials
+  - variable: database.type
+    label: Database engine
+    description: >-
+      existing preserves manually configured database profiles. postgres or mssql
+      selects the matching JDBC driver and dialect through the existing Spring profile.
+      Other deployment and login profiles are preserved. MSSQL remains a compatibility
+      profile, not production-certified. This chart connects to a database Service;
+      it does not install a database Pod or manage its storage and backups.
+    type: enum
+    options: [existing, postgres, mssql]
+    default: existing
+    group: Database and credentials
+  - variable: database.url
+    label: Database JDBC URL (optional override)
+    description: >-
+      Leave empty to use SPRING_DATASOURCE_URL from the Secret. For separate Pods use
+      a stable Service DNS name, not localhost or a Pod IP. Select the matching engine.
+      Do not embed credentials. Review TLS, DNS and network-policy egress/ingress.
+      See DATABASE_PODS.md for PostgreSQL and MSSQL examples across namespaces.
+    type: string
+    default: ""
+    group: Database and credentials
+  - variable: database.username
+    label: Database user (optional override)
+    description: Leave empty to use SPRING_DATASOURCE_USERNAME from the Secret. The password always stays in the Secret.
+    type: string
+    default: ""
+    group: Database and credentials
+  - variable: authentication.mode
+    label: Login and user management
+    description: >-
+      existing preserves explicit profile configuration. local enables the existing
+      local user-management page. keycloak selects central OIDC login; AD/LDAP must
+      be federated by Keycloak. Cluster permissions are separate from Taxonomy roles.
+    type: enum
+    default: existing
+    options: [existing, local, keycloak]
+    group: Authentication
+  - variable: config.KEYCLOAK_ISSUER_URI
+    label: Keycloak realm issuer (HTTPS)
+    type: string
+    show_if: "authentication.mode=keycloak"
+    group: Authentication
+  - variable: config.KEYCLOAK_CLIENT_ID
+    label: Keycloak client ID
+    type: string
+    show_if: "authentication.mode=keycloak"
+    group: Authentication
+  - variable: authentication.keycloakClientSecretKey
+    label: Key holding the client secret
+    description: Key in the selected credential Secret; this is not the secret value.
+    type: string
+    default: KEYCLOAK_CLIENT_SECRET
+    show_if: "authentication.mode=keycloak"
+    group: Authentication
+  - variable: config.TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH
+    label: Role claim path
+    description: The existing converter recognizes ROLE_USER, ROLE_ARCHITECT and ROLE_ADMIN. Verify a real administrator login before handover.
+    type: string
+    default: realm_access.roles
+    show_if: "authentication.mode=keycloak"
+    group: Authentication
+  - variable: config.LLM_PROVIDER
+    label: AI provider
+    description: Empty preserves provider auto-detection. API keys belong in the Secret. No test call or model download is performed by this form.
+    type: enum
+    default: ""
+    options: ["", GEMINI, OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI, LOCAL_ONNX]
+    group: AI configuration
+  - variable: config.CUSTOM_LLM_URL
+    label: Custom chat-completions endpoint
+    type: string
+    show_if: "config.LLM_PROVIDER=CUSTOM_OPENAI"
+    group: AI configuration
+  - variable: config.CUSTOM_LLM_MODEL
+    label: Custom model identifier
+    type: string
+    show_if: "config.LLM_PROVIDER=CUSTOM_OPENAI"
+    group: AI configuration
+  - variable: config.TAXONOMY_EMBEDDING_ENABLED
+    label: Enable local semantic embeddings
+    description: Independent of the chat provider. LOCAL_ONNX requires this to be true.
+    type: enum
+    options: ["false", "true"]
+    default: "false"
+    group: AI configuration
+  - variable: config.TAXONOMY_EMBEDDING_MODEL_DIR
+    label: Mounted model directory
+    description: Mount model.onnx, tokenizer.json and serving.properties. Configure the volume in the values editor.
+    type: string
+    group: AI configuration
+  - variable: config.TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD
+    label: Explicitly permit runtime model downloads
+    type: enum
+    options: ["false", "true"]
+    default: "false"
+    group: AI configuration
   - variable: upgrade.strategy
     label: Upgrade strategy
-    description: >-
-      Recreate stops the old Taxonomy pod before the new version performs
-      PostgreSQL migrations and is the supported safe default.
+    description: Recreate stops the old pod before database migrations. A Helm rollback does not undo database migrations.
     type: enum
     default: Recreate
-    options:
-      - Recreate
-      - RollingUpdate
+    options: [Recreate, RollingUpdate]
     required: true
     group: Upgrade safety
-
   - variable: upgrade.allowConcurrentApplicationVersions
     label: Confirm concurrent-version database compatibility
-    description: >-
-      Enable only when the selected release explicitly proves that old and new
-      Taxonomy versions may run while the database schema is being migrated.
+    description: Enable only when the release proves that both versions may share the database during migration.
     type: boolean
     default: false
     show_if: "upgrade.strategy=RollingUpdate"
     group: Upgrade safety
-
   - variable: persistence.enabled
     label: Persist /app/data
-    description: >-
-      Enable a PVC only for local-filesystem indexes or other deliberate local
-      data. PostgreSQL remains the authoritative application data store.
+    description: Enable for local-filesystem indexes or deliberate local data. The external database remains authoritative and needs its own storage.
     type: boolean
     default: false
     group: Storage
-
   - variable: persistence.storageClass
     label: Storage class
     type: storageclass
     show_if: "persistence.enabled=true"
     group: Storage
-
   - variable: persistence.size
     label: Persistent volume size
     type: string
     default: 10Gi
     show_if: "persistence.enabled=true"
     group: Storage
-
+  - variable: resources.requests.memory
+    label: Requested memory
+    type: string
+    default: 768Mi
+    group: Resources
+  - variable: resources.limits.memory
+    label: Memory limit
+    description: Size for the selected AI/model workload. JVM heap is only part of process memory.
+    type: string
+    default: 2Gi
+    group: Resources
   - variable: serviceMonitor.enabled
     label: Create Prometheus ServiceMonitor
-    description: >-
-      Requires Prometheus Operator CRDs and a distinct ADMIN_TOKEN key in the
-      selected credential Secret.
+    description: Requires Prometheus Operator CRDs and a distinct ADMIN_TOKEN key in the selected Secret.
     type: boolean
     default: false
     group: Observability
