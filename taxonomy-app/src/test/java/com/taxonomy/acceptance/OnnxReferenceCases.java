@@ -93,11 +93,15 @@ public final class OnnxReferenceCases {
     }
 
     public static boolean ready(JsonNode status) {
-        JsonNode stateValue = status.path("indexState");
-        String state = stateValue.isString() ? stateValue.stringValue() : "";
+        JsonNode indexState = status.path("indexState");
+        // This evaluator needs node retrieval, not successful relation indexing.
+        // Keep semanticReady and the model/count guards even in these usable states.
+        boolean nodeIndexReady = indexState.isString() && switch (indexState.stringValue()) {
+            case "READY", "PARTIAL", "INDEXING_RELATIONS" -> true;
+            default -> false;
+        };
         return flag(status, "enabled") && flag(status, "available") && flag(status, "modelAvailable")
-                && flag(status, "semanticReady")
-                && Set.of("INDEXING_RELATIONS", "READY", "PARTIAL").contains(state)
+                && flag(status, "semanticReady") && nodeIndexReady
                 && status.path("indexedNodesAtReadiness").isIntegralNumber()
                 && status.path("indexedNodesAtReadiness").asLong() > 0;
     }

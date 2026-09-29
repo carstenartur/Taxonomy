@@ -54,20 +54,51 @@ class OnnxReferenceCasesTest {
         status.put("indexState", "FAILED");
         assertFalse(OnnxReferenceCases.ready(status));
     }
+    @Test void usablePartialNodeIndexDoesNotWaitForRelationRecovery() {
+        assertTrue(OnnxReferenceCases.ready(readyStatus("PARTIAL")));
+    }
 
-    @Test void usableNodeIndexDoesNotWaitForUnrelatedRelationIndexing() {
-        var status = new tools.jackson.databind.ObjectMapper().createObjectNode()
-                .put("enabled", true).put("available", true).put("modelAvailable", true)
-                .put("semanticReady", true).put("indexedNodesAtReadiness", 3);
-        for (String state : List.of("INDEXING_RELATIONS", "READY", "PARTIAL")) {
-            status.put("indexState", state);
-            assertTrue(OnnxReferenceCases.ready(status), state);
+    @Test void nodeRetrievalCanStartWhileRelationsAreStillIndexing() {
+        assertTrue(OnnxReferenceCases.ready(readyStatus("INDEXING_RELATIONS")));
+    }
+
+    @Test void unavailableOrUnknownStatesCannotOverrideTheReadinessGuards() {
+        for (String state : List.of("DISABLED", "WAITING_FOR_TAXONOMY", "LOADING_MODEL",
+                "INDEXING_NODES", "FAILED", "UNKNOWN", "")) {
+            assertFalse(OnnxReferenceCases.ready(readyStatus(state)), state);
         }
-        status.put("indexedNodesAtReadiness", 0);
-        assertFalse(OnnxReferenceCases.ready(status));
-        status.put("indexedNodesAtReadiness", 3).put("semanticReady", false);
-        assertFalse(OnnxReferenceCases.ready(status));
-        status.put("semanticReady", true).put("indexState", "INDEXING_NODES");
-        assertFalse(OnnxReferenceCases.ready(status));
+        var missing = readyStatus("READY");
+        missing.remove("indexState");
+        assertFalse(OnnxReferenceCases.ready(missing));
+    }
+
+    @Test void partialReadinessStillRequiresEveryModelAndNodeGuard() {
+        for (String state : List.of("READY", "PARTIAL", "INDEXING_RELATIONS")) {
+            for (String field : List.of("enabled", "available", "modelAvailable", "semanticReady")) {
+                var status = readyStatus(state);
+                status.put(field, false);
+                assertFalse(OnnxReferenceCases.ready(status), state + ": " + field);
+                status.remove(field);
+                assertFalse(OnnxReferenceCases.ready(status), state + ": missing " + field);
+                status.put(field, "true");
+                assertFalse(OnnxReferenceCases.ready(status), state + ": nonboolean " + field);
+            }
+            for (long count : new long[]{0, -1}) {
+                assertFalse(OnnxReferenceCases.ready(readyStatus(state).put("indexedNodesAtReadiness", count)));
+            }
+            var status = readyStatus(state);
+            status.remove("indexedNodesAtReadiness");
+            assertFalse(OnnxReferenceCases.ready(status));
+            status.put("indexedNodesAtReadiness", "3");
+            assertFalse(OnnxReferenceCases.ready(status));
+            status.put("indexedNodesAtReadiness", 3.5);
+            assertFalse(OnnxReferenceCases.ready(status));
+        }
+    }
+
+    private static tools.jackson.databind.node.ObjectNode readyStatus(String state) {
+        return new tools.jackson.databind.ObjectMapper().createObjectNode()
+                .put("enabled", true).put("available", true).put("modelAvailable", true)
+                .put("semanticReady", true).put("indexState", state).put("indexedNodesAtReadiness", 3);
     }
 }

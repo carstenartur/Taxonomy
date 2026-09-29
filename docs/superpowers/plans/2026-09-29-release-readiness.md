@@ -91,6 +91,8 @@ publication. Language controls remain a reviewed proposal, not shipped settings.
   probe. Subsequent fixture-only changes do not alter application code.
 - [x] Correct the final-suite repository-provenance, Mockito setup and lineage
   response fixtures, retaining production constraints and result assertions.
+- [x] Integrate main's subsequently merged ONNX review follow-up (#1144), keeping
+  both sets of regressions and the compatibility mapper; review the merge.
 - [ ] Complete required CI/browser/scenario/ONNX/database gates on the final head.
 
 The authentic 1.3.0 → first-candidate probe found a release blocker: adding new

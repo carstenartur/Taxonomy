@@ -174,6 +174,44 @@ child-budget scoring; its existing persisted-analysis success assertions remain.
 These corrections require a new full CI run: the hundreds of context-load errors
 on the previous head are failures, not skipped or accepted checks.
 
+On `67e9e9e`, all three database profiles, all six browser shards, scenario,
+interoperability, JGit, architecture/reformulation, document-template, Kubernetes,
+security and both CodeQL languages pass. The Oracle lane executes 2,136 application
+Surefire tests with zero failures, errors or skips, including the corrected
+portfolio context sequence and real post-adoption lineage scenario.
+
+The unchanged application artifact `11023072410` from workflow `36547812597` also
+passes a fresh authentic 1.3 file-HSQLDB upgrade/restart probe. Its ZIP SHA-256 is
+`6280f5dc64fae4a98255a711f6babcdcf7e0980613698f37b62c4368b4e1a0c7`;
+the JAR SHA-256 is
+`ac6df15b8b70101cb86f553cf948d5d9ef5facca457265c279985e19ad9ffe1d`.
+The clean embedded merge `830aceb57f0c1d618b5c371568687493cfca41b1` has the published
+tree `d0d14264b4b7f353e05fdfada7dd4f277d78f729`. Historical reads preserve all 38
+relations and the original project/version; central mutations and mutating Copilot
+GETs are rejected; isolated writes and a MOCK job/snapshot survive restart.
+
+The first ONNX attempt on that head reaches its unchanged 60-minute limit after
+all functional tests pass: application Surefire 2,145/0/0/0, plus 4 embedding,
+5 REST, 9 pipeline and 9 Selenium tests with no failures, errors or skips.
+Artifact `11027310490` has ZIP SHA-256
+`03427ee59a27e4a143b9b48206e7a4e21224a6228a0c313ff52523fe47ff79da`.
+Its real retrieval report retains `MEASURED_WITH_REFERENCE_MISSES`, 2,572 indexed
+nodes, zero remote-provider calls and no runtime model downloads. The cancelled
+job is not a passing gate. Runtime comparison shows broadly distributed test
+slowdown, not a demonstrated ONNX or final-module hang. The complete core reactor
+and an unchanged ONNX retry are still running at this record's update.
+
+Main subsequently incorporates PR #1144 as `4113cd8`. Its stronger readiness and
+HTTP evaluator regressions, schema-2 canonical/projection evidence and malformed
+field checks are integrated here. The compatible DTO mapper and existing exact
+fingerprint/score-semantics regressions remain. Independent merge review reports
+no findings. All 23 combined evaluator-contract tests pass with zero skips under
+Temurin 21.0.8, JUnit 6.0.3 and the application's Jackson 3.1.6 libraries;
+compilation uses `--release 21 -Xlint:all -Werror`. These synthetic HTTP fixtures
+verify report contracts, not model quality. Only test/evaluation sources and evidence change; application code,
+timeouts and CI requirements remain unchanged. The merged head needs its own
+complete CI pass; preceding-head results are retained as historical evidence.
+
 ## Independent review and remaining gates
 
 A separate read-only whole-change review found no additional introduced correctness
