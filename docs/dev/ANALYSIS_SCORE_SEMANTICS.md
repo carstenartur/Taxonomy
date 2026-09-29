@@ -1,6 +1,6 @@
 # Analysis score semantics
 
-> **Current-version arithmetic, not validated necessity or probability semantics.** Read [Grouping and scoring](../en/TAXONOMY_SCORING.md) ([Deutsch](../de/TAXONOMY_SCORING.md)) for source-pinned behavior and the separate target design. Category allocation already changes provider values; product thresholding can already turn a positive reply into zero. The regular singleton-root category call also normalizes a positive root value to 100. These limitations are not fixed by adding typed score metadata.
+> **Current-version arithmetic, not validated necessity or probability semantics.** Read [Grouping and scoring](../en/TAXONOMY_SCORING.md) ([Deutsch](../de/TAXONOMY_SCORING.md)) for the separate catalogue target design. Child-category allocation changes provider values; product thresholding can turn a positive reply into zero. Root relevance now uses an independent prompt/parser path. Typed score metadata alone does not establish semantic necessity.
 
 Taxonomy uses more than one 0–100 scoring contract. Equal numeric values are not necessarily
 interchangeable.
@@ -9,7 +9,7 @@ interchangeable.
 
 | Kind | Meaning | Comparison contract |
 |---|---|---|
-| `ROOT_RELEVANCE` | Intended independent root relevance; ordinary singleton-root parsing currently normalizes positive values to 100 | Roots do not share a sum budget; do not mistake this implementation limit for preserved model relevance |
+| `ROOT_RELEVANCE` | Independent root relevance, preserving provider 0/20/100 without child-budget normalization | Roots do not share a sum budget; embedding similarity and generative relevance remain different kinds of evidence |
 | `HIERARCHICAL_RELEVANCE` | Category weight after parent-budget allocation | Used by generic ranking; not independently calibrated necessity or fulfilment |
 | `PRODUCT_SUITABILITY` | Independent suitability of one concrete `PRODUCT` against the requirement, after thresholding | Not defined by the prompt as a conditional probability; do not reinterpret it as a hierarchy share or proof of a relationship |
 

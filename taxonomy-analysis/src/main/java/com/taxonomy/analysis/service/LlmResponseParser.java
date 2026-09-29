@@ -137,6 +137,18 @@ public class LlmResponseParser {
     public LlmService.ScoreParseResult parseScoreParseResult(String text,
                                                               List<TaxonomyNode> nodes,
                                                               int parentScore) throws Exception {
+        return parseScoreParseResult(text, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
+    }
+
+    public LlmService.ScoreParseResult parseScoreParseResult(String text,
+                                                              List<TaxonomyNode> nodes,
+                                                              int parentScore,
+                                                              ScoreAssessmentKind kind) throws Exception {
+        Objects.requireNonNull(kind);
+        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE && (nodes.size() != 1
+                || !nodes.getFirst().getCode().equals(nodes.getFirst().getTaxonomyRoot()))) {
+            throw new IllegalArgumentException("Independent root relevance requires one taxonomy root");
+        }
         Map<String, Object> raw = parseChildAssessment(text,
                 nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
@@ -168,6 +180,10 @@ public class LlmResponseParser {
                     && !reason.isBlank()) {
                 reasons.put(code, reason);
             }
+        }
+
+        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE) {
+            return new LlmService.ScoreParseResult(scores, reasons, null);
         }
 
         int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();

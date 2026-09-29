@@ -179,6 +179,12 @@ public class LlmService {
         return providerConfig.getActiveProvider();
     }
 
+    /** Mock mode supplies explicit synthetic JSON independently of the selected transport. */
+    public boolean supportsGenerativeCompletion() {
+        return (providerConfig != null && providerConfig.isMockMode())
+                || getActiveProvider().completionCapability() == LlmProvider.CompletionCapability.GENERATIVE_TEXT;
+    }
+
     /** Delegates to {@link LlmProviderConfig#getAvailabilityLevel}. */
     public com.taxonomy.dto.AiAvailabilityLevel getAvailabilityLevel() {
         return providerConfig.getAvailabilityLevel();
@@ -238,6 +244,11 @@ public class LlmService {
      * @param parentScore the budget the child scores must sum to (used only in the fallback path)
      */
     private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore) {
+        return buildMockScores(nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
+    }
+
+    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore,
+                                             ScoreAssessmentKind kind) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
@@ -274,7 +285,7 @@ public class LlmService {
         // When every score came from the pre-computed JSON the distribution is already correct:
         // The bounded demo supplies complete sibling sets, including explicit zeros.
         // Return the JSON values directly — re-normalizing would distort them.
-        if (allFromJson) {
+        if (allFromJson || kind == ScoreAssessmentKind.ROOT_RELEVANCE) {
             recordSuccess();
             return new ScoreParseResult(scores, reasons, null);
         }
@@ -347,7 +358,7 @@ public class LlmService {
                 captureScoreContexts(List.of(root), scoreContexts);
                 // Score root independently (0-100) to gauge branch relevance
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(
-                        businessText, List.of(root), 100);
+                        businessText, List.of(root), 100, ScoreAssessmentKind.ROOT_RELEVANCE);
                 Map<String, Integer> rootScore = rootDetail.getScores();
                 allScores.putAll(rootScore);
                 if (rootDetail.getReasons() != null) {
@@ -496,7 +507,8 @@ public class LlmService {
                         progress);
 
                 // Score root independently (0-100) to gauge branch relevance
-                LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
+                LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100,
+                        ScoreAssessmentKind.ROOT_RELEVANCE);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.putAll(rootDetail.getScores());
                 if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
@@ -742,6 +754,13 @@ public class LlmService {
                 String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()));
     }
 
+    private String assessmentPrompt(String text, List<TaxonomyNode> nodes, int parentScore,
+                                    ScoreAssessmentKind kind) {
+        return kind == ScoreAssessmentKind.ROOT_RELEVANCE
+                ? promptTemplateService.renderRootPrompt(nodes.getFirst().getCode(), text, buildNodeListWithContext(nodes))
+                : categoryQuestionPrompt(text, nodes, parentScore);
+    }
+
     private LlmCallDetail callProductBatchDetailed(String businessText, List<TaxonomyNode> products) {
         if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
             return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
@@ -754,14 +773,20 @@ public class LlmService {
     }
 
     private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+        return callLlmPropagatingDetailed(businessText, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
+    }
+
+    private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes,
+                                                      int parentScore, ScoreAssessmentKind kind) {
         if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
             return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
-                    () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null));
-        String prompt = categoryQuestionPrompt(businessText, nodes, parentScore);
+                    () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null, kind));
+        String prompt = assessmentPrompt(businessText, nodes, parentScore, kind);
         return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
-                "CATEGORY", getActiveProviderName(), nodes.stream().map(TaxonomyNode::getCode).toList(), prompt,
+                kind == ScoreAssessmentKind.ROOT_RELEVANCE ? "ROOT_RELEVANCE" : "CATEGORY",
+                getActiveProviderName(), nodes.stream().map(TaxonomyNode::getCode).toList(), prompt,
                 () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
-                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt)));
+                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt, kind)));
     }
 
     private LlmCallDetail performProductBatchDetailed(
@@ -1141,7 +1166,8 @@ public class LlmService {
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
     private LlmCallDetail performLlmPropagatingDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore, String preparedPrompt) {
+            String businessText, List<TaxonomyNode> nodes, int parentScore, String preparedPrompt,
+            ScoreAssessmentKind kind) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setReasons(Map.of());
         detail.setProvider(getActiveProviderName());
@@ -1149,7 +1175,7 @@ public class LlmService {
         // ── Mock path ─────────────────────────────────────────────────────────
         if (providerConfig.isMockMode()) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
-            ScoreParseResult mock = buildMockScores(nodes, parentScore);
+            ScoreParseResult mock = buildMockScores(nodes, parentScore, kind);
             detail.setScores(mock.scores());
             detail.setReasons(mock.reasons());
             detail.setDiscrepancy(mock.discrepancy());
@@ -1175,8 +1201,9 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Integer> scores = normalizeToParent(
-                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
+            Map<String, Integer> similarityScores = localEmbeddingService.scoreNodes(businessText, nodes);
+            Map<String, Integer> scores = kind == ScoreAssessmentKind.ROOT_RELEVANCE
+                    ? similarityScores : normalizeToParent(similarityScores, parentScore);
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
@@ -1204,7 +1231,7 @@ public class LlmService {
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
         String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
-        String prompt = preparedPrompt != null ? preparedPrompt : categoryQuestionPrompt(businessText, nodes, parentScore);
+        String prompt = preparedPrompt != null ? preparedPrompt : assessmentPrompt(businessText, nodes, parentScore, kind);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
@@ -1241,7 +1268,7 @@ public class LlmService {
 
         if (rawText != null) {
             try {
-                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
+                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore, kind);
                 detail.setScores(parsed.scores());
                 detail.setReasons(parsed.reasons());
                 detail.setDiscrepancy(parsed.discrepancy());
@@ -1523,4 +1550,3 @@ public class LlmService {
         }
     }
 }
-

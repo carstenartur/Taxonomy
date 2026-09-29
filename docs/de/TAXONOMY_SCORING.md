@@ -1,12 +1,12 @@
 # Gruppierung und Bewertung der Teiltaxonomien
 
-> **Implementierungsstand:** Quellstand `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` aus PR #1118, nicht eine bereits ausgerollte Installation. Die separaten Parseränderungen aus #1113 sind in dieser Basis nicht enthalten. Die unten ausdrücklich als **verbindlicher Änderungsauftrag** bezeichneten Grenzen wurden am 23. September 2026 präzisiert; ihre Dokumentation ist kein Nachweis einer bereits durchgängigen Laufzeitsperre. Dieser Dokumentationsschritt verändert weder Code noch Scores, Katalogdaten oder historische Snapshots.
+> **Geltungsbereich:** Die Prüfung von Kataloghierarchie und Herkunft unten beruht auf dem Quellstand `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` aus PR #1118. Der verbindliche Änderungsauftrag für lokale Navigation und originale Elternbeziehungen bleibt eine offene Abnahme. Die Laufzeitbeschreibung unten berücksichtigt die separate Korrektur der unabhängigen Wurzelbewertung; sie bestätigt weder fachliche Modellqualität noch ändert sie historische Snapshots nachträglich.
 
 [English](../en/TAXONOMY_SCORING.md) · [Kontext und Navigation](../dev/hierarchy-context-and-navigation.md) · [Technischer Score-Datenvertrag](../dev/ANALYSIS_SCORE_SEMANTICS.md)
 
 ## Eine gemeinsame Ausführung, unterschiedliche fachliche Fragen
 
-Es gibt nicht acht verschiedene implementierte Rechenverfahren. Im regulären LLM-Pfad verwenden Kategorien denselben Elternbudget-Parser; die Prompts unterscheiden den fachlichen Blickwinkel. Nur ausdrücklich als `PRODUCT` klassifizierte Einträge erhalten die unabhängige Produktbewertung. Ein Blatt oder eine User Application ist nicht allein deshalb ein solches Produkt.
+Es gibt nicht acht verschiedene implementierte Rechenverfahren. Jede oberste Wurzel verwendet einen unabhängigen Relevanz-Prompt und -Parser. Kinderkategorien verwenden denselben Elternbudget-Parser; die Prompts unterscheiden den fachlichen Blickwinkel. Nur ausdrücklich als `PRODUCT` klassifizierte Einträge erhalten die unabhängige Produkteignung. Ein Blatt oder eine User Application ist nicht allein deshalb ein solches Produkt.
 
 | Seite | Fachliche Frage | Heutiger regulärer Bewertungsweg |
 |---|---|---|
@@ -55,7 +55,7 @@ Bei `S = P` bleiben Werte unverändert; ein vollständig mit null beantworteter 
 
 Die Normalisierung verteilt Gewichte. Sie beweist weder Erfüllung, Notwendigkeit, Wahrscheinlichkeit, Kostenanteil noch gegenseitigen Ausschluss. Mehrere Prozesse, Rollen, Dienste, Anwendungen oder Produkte können gleichzeitig erforderlich sein; ein kleiner Budgetanteil kann unverzichtbar sein.
 
-**Bekannter Wurzelfehler:** `analyzeAllTaxonomies` und `analyzeStreaming` senden jede Wurzel einzeln mit `P = 100` durch denselben Parser. Eine positive Einzelantwort `20` wird so `100`; `0` bleibt `0`. Das widerspricht der beabsichtigten unabhängigen Wurzelrelevanz und ist noch zu korrigieren. Mockwerte können davon abweichen.
+**Unabhängige Wurzeln:** `analyzeWithBudget` und `analyzeStreaming` bewerten jede Wurzel einzeln zwischen 0 und 100, ohne Summen-Prompt oder Kinderbudget-Normalisierung. Eine Wurzelantwort `20` bleibt `20`; `0` und `100` bleiben unterscheidbar. Der lokale ONNX-Pfad behält seinen Ähnlichkeitswert für die Wurzel ohne Budgetverteilung; Mock-Wurzeln behalten ihre begrenzten Demonstrationswerte. Ein positiver Wurzelwert wird erst zum Budget für ihre *Kinder*. Eine echte Kategorie mit nur einem Kind bleibt beim Kinderbudget-Vertrag.
 
 ## Heutige IP-Produktrechnung
 
@@ -70,7 +70,7 @@ Fehlt ein bewerteter direkter Elternwert, entsteht ein effektiver Ersatzwert `0`
 
 ## Eignung, Bedarf und Suchpriorität
 
-Gleich hohe Scores können gemeinsam benötigte Beiträge, Alternativen oder nur allgemein passende Kandidaten beschreiben. Erst Beitrag, Belege und Bedingungen begründen den Bedarf. Die zuschaltbare Beziehungssuche unterscheidet `REQUIRED`, `OPTIONAL` und `ALTERNATIVE`, ersetzt damit aber noch keinen vollständigen Produktvariantenentscheid.
+Gleich hohe Scores können gemeinsam benötigte Beiträge, Alternativen oder nur allgemein passende Kandidaten beschreiben. Erst Beitrag, Belege und Bedingungen begründen den Bedarf. Die anforderungsspezifische Beziehungssuche ist für generative Anbieter standardmäßig aktiv und unterscheidet `REQUIRED`, `OPTIONAL` und `ALTERNATIVE`; sie ersetzt keinen vollständigen Produktvariantenentscheid. `LOCAL_ONNX` liefert Embedding-Scores, aber keine generative Beziehungs-JSON-Antwort. Diese Phase bleibt ausdrücklich unbewertet und die Analyse partiell, ohne erfundenen negativen Befund oder Score-Rückfall.
 
 **Änderungsziel:** Gleicher Anforderungskontext und echte semantische Unterordnung erfordern konsistente Astrelevanz (`Kind <= Vater`); Widersprüche bleiben als Befund mit Originalbelegen sichtbar statt durch Kappen/Multiplizieren verborgen zu werden. Daraus folgt keine Summengleichheit der Geschwister. Lokale Navigationsgruppen bekommen höchstens eine getrennte Suchpriorität, keine fachliche Produktrelevanz. Ihre Einfügung darf Eignung und Bedarf eines Originaleintrags nicht ändern. Der Abstieg muss mehrere erforderliche Äste verfolgen können, ohne mehrere Wege je Eintrag zu benötigen. Eine ungeklärte IP-Anbindung darf relevante Einträge nicht unbemerkt ausschließen.
 

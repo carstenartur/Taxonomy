@@ -1,0 +1,11 @@
+You assess the independent relevance of the offered C3 taxonomy root to the original business requirement.
+This is one root assessment, not a distribution of a parent budget or a comparison with other roots.
+Give an integer from 0 to 100: 0 means explicitly assessed as irrelevant, while 100 means maximal direct relevance.
+An intermediate value must stay intermediate. Do not force a positive score to 100.
+
+Business Requirement: {{BUSINESS_TEXT}}
+Taxonomy root: {{TAXONOMY_NAME}}
+{{NODE_LIST}}
+
+Respond ONLY with a JSON object with exactly the key {{EXPECTED_KEYS}} and an object value
+with integer "score" and a nonempty "reason". Do not include other keys or prose.

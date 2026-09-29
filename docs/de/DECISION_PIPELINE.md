@@ -4,9 +4,11 @@
 > wie eine Geschäftsanforderung in bewertete Knoten, Architekturansichten
 > und exportierbare Diagramme umgewandelt wird.
 >
-> Dieses Dokument beschreibt **implementiertes Verhalten** zum Stand
-> 31.03.2026. Mit ⚠️ markierte Abschnitte beschreiben unvollständige
-> oder geplante Funktionen.
+> Die Standardanalyse verwendet inzwischen anforderungsspezifische
+> Beziehungssuche. Die folgenden Abschnitte zur scorebasierten Hypothese und
+> elfteiligen Propagierung beschreiben nur den ausdrücklich aktivierten
+> Altmodus (`taxonomy.analysis.relations.hierarchical.enabled=false`).
+> Historische Ergebnisse werden nicht automatisch neu berechnet.
 
 ---
 
@@ -61,8 +63,17 @@
 
 Wenn ein Benutzer eine Geschäftsanforderung über `POST /api/analyze` einreicht, werden die folgenden Phasen der Reihe nach ausgeführt:
 
+**Standard (`taxonomy.analysis.relations.hierarchical.enabled=true`):**
+
+1. `LlmService.analyzeWithBudget` bewertet jede Taxonomiewurzel mit eigenem Prompt unabhängig zwischen 0 und 100. Positive Wurzelwerte werden Budgets für Kinderkategorien; auch eine Kategorie mit nur einem Kind behält den Kinderbudget-Vertrag. Konkrete `PRODUCT`-Einträge erhalten eine getrennte Eignungsbewertung.
+2. `RequirementRelationSearchService.search` nutzt den ausgewählten **generativen** Anbieter für begrenzte Quellbeiträge, gerichtete Zielsuche und gesonderte Verifikation. Originalzitate, Bedingungen, Fragen und offene Arbeit stehen im `relationSearchReport`. Verifizierte Kanten bleiben nicht übernommene Vorschläge. Die Standardanalyse erzeugt keine Hypothesen aus Score-Produkten und schreibt in dieser Phase weder globale `relation_hypothesis`-Zeilen noch DSL-Beziehungen. Erschöpfte Grenzen lassen Teilergebnisse offen statt ein negatives Beziehungsurteil zu behaupten.
+3. Falls angefordert, projiziert `RequirementArchitectureViewService.buildFromEvidence` verifizierte erforderliche Beziehungen und bedingungslose zitierte Quellbeiträge innerhalb des Ansichtslimits. Optionale/alternative Befunde bleiben im Bericht; Seed-Propagierung oder kartesische Wirkungsableitung ersetzen keine fehlende Kante. `LOCAL_ONNX` liefert Embedding-Scores, jedoch keine Beziehungs-JSON-Antwort: `GENERATION_UNSUPPORTED` bleibt ausdrücklich im Bericht, der Lauf `PARTIAL`, ohne Beziehungsaufruf oder erfundenen Rückfall.
+4. Diagramme und Exporte dürfen für die Darstellung filtern. Die [Formatgrenzen](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) gelten weiterhin; ein Download ist keine Übernahme.
+
+Das folgende Schema und die detaillierten Phasen 2/3 gelten **nur** bei explizit deaktivierter anforderungsspezifischer Suche:
+
 ```
-Phase 1: LLM-Bewertung
+Phase 1: Wurzelrelevanz und Kinderbewertung
   └─ LlmService.analyzeWithBudget()
        └─ Erzeugt: Map<nodeCode, score 0–100>
 
@@ -110,7 +121,7 @@ Das LLM bewertet Taxonomie-Knoten nach einem Top-Down-Budget-Propagierungsmuster
 
 **Ausgabe:** `AnalysisResult` mit `Map<String, Integer>` nodeCode → Bewertung.
 
-**Was das LLM _nicht_ tut:** Das LLM wählt keine Anker aus, propagiert
+**Nur Altmodus — was das LLM _nicht_ tut:** Das LLM wählt keine Anker aus, propagiert
 keine Relevanz, erzeugt keine Wirkungsbeziehungen und entscheidet nicht,
 welche Knoten in der Architekturansicht erscheinen. Das sind alles
 deterministische Schritte _nach_ Abschluss der Bewertung.
@@ -118,6 +129,8 @@ deterministische Schritte _nach_ Abschluss der Bewertung.
 ---
 
 ## Phase 2 — Erzeugung von Beziehungshypothesen
+
+**Nur Altmodus.** Die standardmäßige anforderungsspezifische Suche ruft diesen Generator nicht auf.
 
 **Einstiegspunkt:** `AnalysisRelationGenerator.generate(Map<String, Integer> scores)`
 
@@ -144,6 +157,8 @@ vollständig regelbasiert über die Kompatibilitätsmatrix.
 ---
 
 ## Phase 3 — Aufbau der Architekturansicht
+
+**Nur Altmodus.** Die Standardansicht wird aus `relationSearchReport`-Befunden erstellt.
 
 **Einstiegspunkt:** `RequirementArchitectureViewService.build(scores, businessText, maxNodes, provisionalRelations)`
 
@@ -271,6 +286,10 @@ exportiert wird.
 
 ## Beziehungslebenszyklus
 
+Der folgende Lebenszyklus gilt für scorebasierte Altmodus-Hypothesen und separat
+angeforderte globale Vorschläge. Eine Standardanalyse speichert anforderungsspezifische
+Befunde im Analyseergebnis und startet nicht automatisch diesen globalen `PROVISIONAL`-Zyklus.
+
 ```
                     ┌──────────────────────┐
                     │  Analyse abschlossen │
@@ -312,6 +331,12 @@ Beziehungsvorschlag-Feature verwendet).
 ---
 
 ## Persistenzmodell
+
+Die folgende Tabelle beschreibt alte/globale Katalogobjekte. Die Portfolioanalyse
+speichert Snapshots mit eingefrorenem anforderungsspezifischem `relationSearchReport`;
+die In-Memory-Beschreibung von `SavedAnalysis` betrifft nur den Ad-hoc-Clientexport.
+Standardmäßige Beziehungsbefunde fügen keine globale Hypothese ein und ändern die
+aktive Workspace-DSL nicht.
 
 | Daten | Speicher | Tabelle/Ort | Lebensdauer |
 |-------|---------|-------------|-------------|
