@@ -12,9 +12,9 @@
       ]
     },
     {
-      "id": "landscape-special-and-primary-user",
+      "id": "forced-colors-special-and-primary-user",
       "scenarios": [
-        "role-state/landscape-user-firefox",
+        "role-state/forced-colors-architect-chromium",
         "special-modes/text-spacing-and-offline",
         "primary/primary-user-chromium"
       ]
@@ -43,10 +43,10 @@
       ]
     },
     {
-      "id": "desktop-user-and-forced-colors",
+      "id": "desktop-and-landscape-user",
       "scenarios": [
         "role-state/desktop-user-chromium",
-        "role-state/forced-colors-architect-chromium"
+        "role-state/landscape-user-firefox"
       ]
     }
   ]

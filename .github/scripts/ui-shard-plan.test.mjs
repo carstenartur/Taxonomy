@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { groupScenarios } from './ui-suite-plan.mjs';
 
 import {
   scenarioKey,
@@ -36,6 +37,22 @@ test('authoritative shard plan covers all eighteen browser scenarios exactly onc
   assert.doesNotThrow(() => validateShardPlan(plan, expected));
   assert.equal(expected.length, 18);
   assert.equal(plan.shards.length, 6);
+});
+
+test('CI runs successive user browser profiles against one application', () => {
+  const profiles = ['desktop-user-chromium', 'landscape-user-firefox'];
+  const shard = plan.shards.find(candidate =>
+    candidate.scenarios.includes(scenarioKey('role-state', profiles[0])));
+  for (const profile of profiles) {
+    assert.ok(shard.scenarios.includes(scenarioKey('role-state', profile)),
+      `Shared-draft regression requires ${profile} in the same CI shard`);
+  }
+  const scenarios = matrix.profiles
+    .filter(profile => shard.scenarios.includes(scenarioKey('role-state', profile.id)))
+    .map(profile => ({ suite: 'role-state', id: profile.id,
+      env: { TAXONOMY_ROLE: profile.role } }));
+  const group = groupScenarios(scenarios).find(candidate => candidate.id === 'role-state-user');
+  assert.deepEqual(group.scenarios.map(scenario => scenario.id), profiles);
 });
 
 test('shard selection is repository-defined and rejects unknown ids', () => {
