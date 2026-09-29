@@ -93,6 +93,9 @@ publication. Language controls remain a reviewed proposal, not shipped settings.
   response fixtures, retaining production constraints and result assertions.
 - [x] Integrate main's subsequently merged ONNX review follow-up (#1144), keeping
   both sets of regressions and the compatibility mapper; review the merge.
+- [x] Diagnose repeated ONNX job deadlines, including a complete Maven success
+  with only job-finalization time missing; retain all test and timeout requirements.
+- [ ] Verify the bounded two-worker Maven ONNX invocation through complete CI.
 - [ ] Complete required CI/browser/scenario/ONNX/database gates on the final head.
 
 The authentic 1.3.0 → first-candidate probe found a release blocker: adding new

@@ -212,6 +212,47 @@ verify report contracts, not model quality. Only test/evaluation sources and evi
 timeouts and CI requirements remain unchanged. The merged head needs its own
 complete CI pass; preceding-head results are retained as historical evidence.
 
+On `366e2de`, the complete CI/CD run `36557160979`, all three database profiles,
+six browser shards, scenario,
+interoperability, architecture/reformulation, JGit, document-template, Kubernetes,
+security and both CodeQL languages pass. The unchanged CI artifact `11028475035`
+from workflow `36557160979` passes fresh authentic 1.3 file-HSQLDB upgrade/restart
+under Temurin 21. Its ZIP SHA-256 is
+`a0a7451e88aef18b594dcfd55e4eec2083261e36b79a7ccfacdc0bb4488ec33d`,
+and its JAR SHA-256 is
+`c88050ac06b4bcbfc1520d0a8228b3b95998751bea7609c1b06e49cbe62c67b9`.
+Clean embedded merge `922d6c259fcfff5d6bf6dfff2fa97edc8cf2659b` has exact source
+tree `c274c7e1986eb9f9d040c362d94b00f25cdf0235`. Historical data and the same
+successful MOCK snapshot survive restart; the fresh runner exits 0 without a
+remaining process, port or writer lock. A preceding diagnostic clone with truncated
+runner output and a stale lock is not counted as passing acceptance; its separate
+normal JDBC shutdown was not needed for the fresh successful run.
+
+The ONNX job `109369087987` nevertheless ends cancelled at its 60-minute deadline.
+Its Maven reactor reports `BUILD SUCCESS` in 59:42, application Surefire reports
+2,157/0/0/0, the 18 ONNX integration tests pass, and the executed-test checker
+passes; those four suites record 4/5/9/9 executions. Evidence upload finishes
+seconds beyond the deadline. Artifact `11030935913` has ZIP SHA-256
+`1b11e9719ad06a957c8d51a9f90b1be340d1393b10716802713b5e03bf5b0c58`.
+This cancelled job is not waived or counted as a passing gate.
+
+The follow-up adds exactly two Maven reactor workers (`-T 2`) to the existing
+complete `verify -Ponnx` invocation. Independent libraries may overlap while
+application, coverage and build-policy modules retain their dependency order.
+Model provisioning remains a single root execution, and reports remain local to
+each module. This is a bounded opportunity for more time reserve, not a guaranteed
+speedup: the long application suite stays serial, and concurrent library JVMs may
+use more memory. Tests, reports, profile activation, execution checks, failure
+propagation and the 60-minute limit remain unchanged. Full new-head CI must verify
+both correctness and actual completion. The preceding core reactor and final
+artifact/browser-evidence aggregation are both successful before this follow-up
+is published.
+
+All four existing `OnnxProfileWiringTest` contracts pass locally under Temurin
+21.0.8/JUnit 6.0.3 with `--release 21 -Xlint:all -Werror`. An independent narrow
+review confirms that the workflow keeps its existing tests and gates; its wording
+correction distinguishes observed execution counts from the checker's minima.
+
 ## Independent review and remaining gates
 
 A separate read-only whole-change review found no additional introduced correctness
