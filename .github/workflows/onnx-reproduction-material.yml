@@ -9,21 +9,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fetch JUnit version already used by this project
+      - name: Fetch patched Jackson artifacts for isolated regression
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p reproduction
           cd reproduction
-          base=https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.0.3
-          file=junit-platform-console-standalone-6.0.3.jar
+          for artifact in jackson-core jackson-databind; do
+            base="https://repo.maven.apache.org/maven2/tools/jackson/core/$artifact/3.1.6"
+            file="$artifact-3.1.6.jar"
+            curl --fail --silent --show-error --location --max-time 90 "$base/$file" -o "$file"
+            curl --fail --silent --show-error --location --max-time 30 "$base/$file.sha512" -o checksum
+            printf '%s  %s\n' "$(cat checksum)" "$file" | sha512sum --check --strict
+          done
+          base=https://repo.maven.apache.org/maven2/tools/jackson/jackson-bom/3.1.6
+          file=jackson-bom-3.1.6.pom
           curl --fail --silent --show-error --location --max-time 90 "$base/$file" -o "$file"
           curl --fail --silent --show-error --location --max-time 30 "$base/$file.sha512" -o checksum
           printf '%s  %s\n' "$(cat checksum)" "$file" | sha512sum --check --strict
-          sha256sum "$file" > SHA256SUMS
+          rm checksum
+          sha256sum *.jar *.pom > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: junit-reproduction-6.0.3
+          name: jackson-security-reproduction-3.1.6
           path: reproduction/
           if-no-files-found: error
           retention-days: 2
