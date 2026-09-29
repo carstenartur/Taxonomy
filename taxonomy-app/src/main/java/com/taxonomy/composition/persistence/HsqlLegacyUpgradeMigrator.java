@@ -324,36 +324,64 @@ final class HsqlLegacyUpgradeMigrator {
 
     private static void ensureUnique(Connection connection, String table, String name,
                                      String columns) throws SQLException {
-        if (!indexExists(connection, table, name)) {
+        if (!uniqueKeyExists(connection, table, columns)) {
             execute(connection, "ALTER TABLE " + table + " ADD CONSTRAINT " + name
                     + " UNIQUE (" + columns + ")");
         }
     }
 
-    private static boolean indexExists(Connection connection, String table, String name)
+    private static boolean uniqueKeyExists(Connection connection, String table, String columns)
             throws SQLException {
+        Set<String> expected = Set.of(columnNames(columns));
+        Map<String, Set<String>> definitions = new HashMap<>();
         try (ResultSet indexes = connection.getMetaData().getIndexInfo(
                 null, "PUBLIC", table.toUpperCase(Locale.ROOT), true, false)) {
             while (indexes.next()) {
-                if (name.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) return true;
+                String name = indexes.getString("INDEX_NAME");
+                String column = indexes.getString("COLUMN_NAME");
+                if (name != null && column != null && !indexes.getBoolean("NON_UNIQUE")) {
+                    definitions.computeIfAbsent(name, ignored -> new HashSet<>())
+                            .add(column.toUpperCase(Locale.ROOT));
+                }
             }
         }
-        return false;
+        // Hibernate and the upgrade may use different names for the same key.
+        // Uniqueness applies to the column set, regardless of index ordering.
+        return definitions.values().stream().anyMatch(expected::equals);
     }
 
     private static void ensureCompositeForeignKey(Connection connection, String table,
                                                    String name, String columns,
                                                    String parent, String parentColumns)
             throws SQLException {
+        String[] childColumns = columnNames(columns);
+        String[] referencedColumns = columnNames(parentColumns);
+        Map<String, String> expected = new HashMap<>();
+        for (int i = 0; i < childColumns.length; i++) {
+            expected.put(childColumns[i], referencedColumns[i]);
+        }
+        Map<String, Map<String, String>> definitions = new HashMap<>();
         try (ResultSet keys = connection.getMetaData().getImportedKeys(null, "PUBLIC",
                 table.toUpperCase(Locale.ROOT))) {
             while (keys.next()) {
-                if (name.equalsIgnoreCase(keys.getString("FK_NAME"))) return;
+                if (parent.equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "PUBLIC".equalsIgnoreCase(keys.getString("PKTABLE_SCHEM"))) {
+                    definitions.computeIfAbsent(keys.getString("FK_NAME"), ignored -> new HashMap<>())
+                            .put(keys.getString("FKCOLUMN_NAME").toUpperCase(Locale.ROOT),
+                                    keys.getString("PKCOLUMN_NAME").toUpperCase(Locale.ROOT));
+                }
             }
         }
+        if (definitions.values().stream().anyMatch(expected::equals)) return;
         execute(connection, "ALTER TABLE " + table + " ADD CONSTRAINT " + name
                 + " FOREIGN KEY (" + columns + ") REFERENCES " + parent
                 + " (" + parentColumns + ")");
+    }
+
+    private static String[] columnNames(String columns) {
+        return java.util.Arrays.stream(columns.split(","))
+                .map(String::trim).map(column -> column.toUpperCase(Locale.ROOT))
+                .toArray(String[]::new);
     }
 
     private static void bindChild(Connection connection, String table, String parentColumn,

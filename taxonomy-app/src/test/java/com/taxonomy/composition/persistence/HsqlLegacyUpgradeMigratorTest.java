@@ -120,6 +120,35 @@ class HsqlLegacyUpgradeMigratorTest {
     }
 
     @Test
+    void reusesEquivalentHibernateKeysInsteadOfAddingDuplicateConstraints() throws Exception {
+        try (Connection connection = legacySchema()) {
+            String scope = new RepositoryTenantIdentity("primary", "WORKSPACE:w-1", "draft").scopeKey();
+            execute(connection, "ALTER TABLE project_requirement ADD COLUMN scope_key VARCHAR(1024)");
+            execute(connection, "ALTER TABLE arch_project ADD CONSTRAINT hibernate_project_tenant "
+                    + "UNIQUE (id, scope_key)");
+            execute(connection, "ALTER TABLE project_requirement ADD CONSTRAINT hibernate_requirement_tenant "
+                    + "UNIQUE (id, scope_key)");
+            execute(connection, "ALTER TABLE project_requirement ADD CONSTRAINT hibernate_requirement_project "
+                    + "FOREIGN KEY (project_id, scope_key) REFERENCES arch_project (id, scope_key)");
+            execute(connection, "INSERT INTO arch_project VALUES (2, 'workspace', '" + scope + "', 'w-1')");
+            execute(connection, "INSERT INTO project_requirement VALUES (10, 2, '" + scope + "')");
+
+            HsqlLegacyUpgradeMigrator.bindPortfolio(connection);
+            HsqlLegacyUpgradeMigrator.bindPortfolio(connection);
+
+            assertEquals(scope, scalar(connection, "SELECT scope_key FROM project_requirement WHERE id=10"));
+            var foreignKeys = new java.util.HashSet<String>();
+            try (ResultSet keys = connection.getMetaData().getImportedKeys(
+                    null, "PUBLIC", "PROJECT_REQUIREMENT")) {
+                while (keys.next()) foreignKeys.add(keys.getString("FK_NAME"));
+            }
+            assertEquals(java.util.Set.of("HIBERNATE_REQUIREMENT_PROJECT"), foreignKeys);
+            assertThrows(SQLException.class, () -> execute(connection,
+                    "UPDATE project_requirement SET scope_key='foreign-tenant' WHERE id=10"));
+        }
+    }
+
+    @Test
     void completedUpgradeRejectsCurrentVersionPointerToSiblingRequirement() throws Exception {
         try (Connection connection = legacySchema()) {
             execute(connection, "ALTER TABLE project_requirement ADD COLUMN current_version_id BIGINT");

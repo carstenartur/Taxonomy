@@ -41,7 +41,7 @@ acceptance. This record is **not a release approval**.
 | Preferences / working-draft component regression | 4/4 passed for 50→150, pending autosave, failed Preferences save and pending initial restore; wired into the Maven-owned UI contract command |
 | Full scenario acceptance on follow-up head `e8ec78a` | Workflow `36535134461` passed, including the real browser/playback scenario and independent Word/Visio export rendering |
 | Historical central portfolio reads | Baseline rejects explicit-central GET/HEAD; the initial broad read exception failed the Copilot-status regression. The positive allowlist now passes 8/8, including rejection of mutating status reads and unknown routes |
-| HSQLDB portfolio migration | 7/7 JUnit tests pass against the real HSQLDB driver: complete parent chain, immutable branch identity, inconsistent scope/parents, target-key collisions, distinct central branches and post-upgrade current-version constraint |
+| HSQLDB portfolio migration | 8/8 JUnit tests pass against the real HSQLDB driver: complete parent chain, immutable branch identity, inconsistent scope/parents, target-key collisions, distinct central branches, post-upgrade current-version constraint and pre-existing Hibernate constraints |
 | Integration with main `2806480` / merged PR #1141 | 14/14 ONNX reference and Jackson XML constraint tests pass; the readiness/fingerprint fixes and main's security regression/evidence are both retained |
 | Native ONNX pooling | Real native tensor/translator check passed; included in the 131 tests |
 | Release notes/delivery/image and Maven cache contracts | Passed |
@@ -123,6 +123,15 @@ job/item/snapshot before a successful restart. The exact current-version FK also
 rejects a sibling requirement's version after migration.
 No external-model quality, Docker volume restore or PostgreSQL upgrade is claimed
 by this local HSQLDB acceptance.
+
+The next CI candidate (`c0a8d3c`, JGit consumer workflow `36539231653`) exposed a
+different restart case: an already-current Hibernate-created schema contains the
+same unique key under a different constraint name. Adding it again fails in
+HSQLDB. A new real-driver regression reproduces this failure, then passes when
+the migration recognizes complete unique-column sets and foreign-key reference
+mappings independently of their names. It also verifies that the existing FK
+still rejects cross-tenant writes. This expands the migration suite from seven
+to eight tests; the full consumer workflow must pass on the corrected head.
 
 ## Independent review and remaining gates
 
