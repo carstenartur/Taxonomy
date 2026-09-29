@@ -4,8 +4,11 @@ import com.taxonomy.analysis.reformulation.NodeReformulationService;
 import com.taxonomy.reformulation.NodeSynthesisInput;
 import com.taxonomy.reformulation.ReformulationBaseline;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -52,18 +55,34 @@ class LlmTransportMeterTest {
             assertThat(e.toString()).doesNotContain(PROMPT, KEY, URL); });
     }
 
-    @Test void recordsGeminiRateLimitWithoutTurningItIntoSuccess() {
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void recordsGeminiRateLimitWithoutTurningItIntoSuccess(int maxRetries) {
         var http = new RestTemplate(); var server = MockRestServiceServer.bindTo(http).build();
-        server.expect(requestTo(URL + "?key=" + KEY)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        server.expect(ExpectedCount.times(maxRetries + 1), requestTo(URL + "?key=" + KEY))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
         var config = mock(LlmProviderConfig.class); when(config.getGeminiUrl()).thenReturn(URL + "?key=");
-        var gateway = new GeminiGateway(config, http, json, new LlmResponseParser(json), null, null, null);
+        AnalysisRuntimeSettings settings = (key, fallback) ->
+                "llm.retry.max".equals(key) ? maxRetries : fallback;
+        var gateway = new GeminiGateway(config, http, json, new LlmResponseParser(json), settings, null, null);
         var events = new ArrayList<LlmTransportMeter.Observation>();
         try (var ignored = LlmTransportMeter.open(events::add)) {
             assertThatThrownBy(() -> gateway.sendHttpRequest(PROMPT, KEY)).isInstanceOf(LlmRateLimitException.class);
         }
-        server.verify(); assertThat(events).hasSize(1);
-        assertThat(events.getFirst().statusCode()).isEqualTo(429);
-        assertThat(events.getFirst().usage().inputTokens()).isNull();
+        server.verify();
+        assertThat(events).as("Every physical 429 attempt is counted, including exhausted retries")
+                .hasSize(maxRetries + 1);
+        for (int attempt = 0; attempt < events.size(); attempt++) {
+            var event = events.get(attempt);
+            assertThat(event.retryIndex()).isEqualTo(attempt);
+            assertThat(event.invocationId()).isEqualTo(events.getFirst().invocationId());
+            assertThat(event.statusCode()).isEqualTo(429);
+            assertThat(event.outcome()).isEqualTo(LlmTransportMeter.Outcome.HTTP_ERROR);
+            assertThat(event.usage().inputTokens()).isNull();
+            assertThat(event.usage().outputTokens()).isNull();
+            assertThat(event.usage().totalTokens()).isNull();
+            assertThat(event.toString()).doesNotContain(PROMPT, KEY, URL);
+        }
     }
 
     @Test void preservesReportedGeminiTotalsWithoutInferringBillingOrAddingReasoningTwice() {

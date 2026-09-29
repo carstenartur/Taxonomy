@@ -48,3 +48,55 @@ were **not** executed locally. They are mandatory PR gates. Focused compilation 
 
 No external provider was called. Loopback replies are transport/concurrency fixtures,
 not a measurement of LLM semantic quality, external quotas or production capacity.
+
+## CI contract repair after the first PR run
+
+The commit-bound reports for head `c390f1b9838d33ccbe92548ed6f1683e648fabb7`
+show four failures in `taxonomy-analysis`: three legacy SSE admission expectations
+and one Gemini usage-meter expectation. The Oracle lane independently reports the
+same four failures (654 tests, four failures, zero errors). These stop the upstream
+reactor before later persistence suites; they are not four separate database bugs.
+
+- Duplicate SSE admission must preserve the original **QUEUED** run, not claim it
+  is RUNNING. The test also requires no execution timestamp and no provider calls.
+- Saturation is tested with an explicit four-place waiting queue, independently of
+  the worker limit. A separate test distinguishes the per-owner HTTP 429 from the
+  global HTTP 503 without scheduling excess work.
+- Cancelling queued work finishes immediately as CANCELLED. Its slot is reused
+  before the original worker executes; that late worker must not call the provider,
+  damage the replacement reservation or leak thread-local state.
+- Gemini metering covers retry budgets 0, 1 and 2, expecting respectively 1, 2 and 3
+  physical 429 responses. It checks bounded termination, one logical invocation,
+  monotonically increasing retry indices, error outcomes, unknown token counts and
+  transcript/credential privacy. Retry-After: 0 avoids an artificial test delay.
+
+No production source, admission limit, workflow, timeout, dependency, exclusion or
+failure gate is changed for this repair. No tests are removed or skipped.
+
+Verification before publication:
+
+- Re-executed all 39 existing Java policy/real-loopback checks against the exact
+  candidate artifact: all pass, compiled with Java 21 and `-Xlint:all -Werror`.
+- Executed six supplementary probes against that same unchanged artifact: global
+  and owner rejection, immediate queued cancellation/late-worker cleanup, and
+  Gemini 429 accounting for all three retry budgets: all pass. These probes are
+  not represented as execution of the edited MockMvc/JUnit classes.
+- Executed `node --test .github/scripts/analysis-queue.test.mjs
+  .github/scripts/analysis-live-progress.test.mjs`: 52 pass, zero skips/failures.
+- `./mvnw verify -DexcludedGroups="real-llm"` was attempted locally but stopped
+  before compilation because the Maven distribution download was unavailable.
+  The complete edited JUnit suites and full reactor therefore remain CI gates.
+
+Evidence was downloaded through the GitHub connector and independently hashed:
+
+| Evidence | Artifact ID | ZIP SHA-256 |
+| --- | --- | --- |
+| Core reports | 11033758344 | `799ea5e4e46dcb9aebb9097511851e5e70186d91eea16663a782127d0fd4c9b6` |
+| Source and usage reports | 11034350510 | `21918d1fa3e363c1d65eb6c321b0029de6704458ab5744d2ddca18296c2b300a` |
+| Candidate application | 11033871887 | `eb91dbd6c2c9c11d2fa987401a229d7be17b927e9c95e2cffbe48fcb5cd869c1` |
+
+The candidate JAR has SHA-256
+`58079d0cd53854db4dac1bba7fb44e90b940d4939069645346c018633a841f00`,
+matching its manifest; the embedded source tree is
+`76cc8b3c2cac28a9714965c55bc9789e4f3a0514`. All local network test requests
+were confined to loopback; no external LLM or paid quota was used.
