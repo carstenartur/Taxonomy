@@ -8,6 +8,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
@@ -26,6 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProjectRequirementListQueryCountTest {
 
     @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
     private ProjectPortfolioService projectService;
 
     @Autowired
@@ -34,7 +38,8 @@ class ProjectRequirementListQueryCountTest {
     @Test
     void listsOneHundredRequirementsWithConstantQueryCount() {
         WorkspaceContext context = new WorkspaceContext(
-                "scale-user", "ws-scale-" + shortId(), "draft");
+                "scale-user", "ws-scale-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
         var project = projectService.createProject(
                 new CreateProjectRequest(
                         "P-SCALE-" + shortId(),

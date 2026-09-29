@@ -86,7 +86,11 @@ publication. Language controls remain a reviewed proposal, not shipped settings.
   preserve repository provenance and final database constraints.
 - [x] Re-run the local upgrade, restart and restore probes with the corrected
   diagnostic overlay, including historical reads and new analysis/snapshot writes.
-- [ ] Repeat upgrade acceptance with the unchanged final CI application artifact.
+- [x] Repeat upgrade acceptance with the unchanged CI application artifact;
+  artifacts `11019914459` and `11020754924` pass the authentic 1.3 upgrade/restart
+  probe. Subsequent fixture-only changes do not alter application code.
+- [x] Correct the final-suite repository-provenance, Mockito setup and lineage
+  response fixtures, retaining production constraints and result assertions.
 - [ ] Complete required CI/browser/scenario/ONNX/database gates on the final head.
 
 The authentic 1.3.0 → first-candidate probe found a release blocker: adding new

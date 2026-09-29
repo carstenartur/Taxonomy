@@ -149,6 +149,28 @@ class HsqlLegacyUpgradeMigratorTest {
     }
 
     @Test
+    void rejectsBoundPortfolioRowsWithoutRepositoryCatalogueEntry() throws Exception {
+        try (Connection connection = legacySchema()) {
+            String scope = new RepositoryTenantIdentity("legacy-primary", "CENTRAL", "draft")
+                    .scopeKey();
+            execute(connection, "INSERT INTO arch_project VALUES (1, 'orphan', '" + scope + "', NULL)");
+
+            assertThrows(SQLException.class,
+                    () -> HsqlLegacyUpgradeMigrator.bindPortfolio(connection));
+            assertEquals(scope, scalar(connection, "SELECT scope_key FROM arch_project WHERE id=1"));
+            assertEquals("0", scalar(connection,
+                    "SELECT COUNT(*) FROM system_repository WHERE repository_id='legacy-primary'"));
+
+            execute(connection, "INSERT INTO system_repository VALUES ('legacy-primary', FALSE, 'draft')");
+            HsqlLegacyUpgradeMigrator.bindPortfolio(connection);
+            HsqlLegacyUpgradeMigrator.bindPortfolio(connection);
+            assertEquals(scope, scalar(connection, "SELECT scope_key FROM arch_project WHERE id=1"));
+            assertThrows(SQLException.class, () -> execute(connection,
+                    "DELETE FROM system_repository WHERE repository_id='legacy-primary'"));
+        }
+    }
+
+    @Test
     void completedUpgradeRejectsCurrentVersionPointerToSiblingRequirement() throws Exception {
         try (Connection connection = legacySchema()) {
             execute(connection, "ALTER TABLE project_requirement ADD COLUMN current_version_id BIGINT");

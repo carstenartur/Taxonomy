@@ -18,7 +18,6 @@ import org.springframework.test.web.client.response.MockRestResponseCreators;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,8 +34,6 @@ class AdoptedLineageRealReanalysisTest {
     @WithMockUser(username = "architect", roles = "ARCHITECT")
     @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
     static class Scenario extends ReformulationWorkflowFixture {
-        private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
-        private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+)");
         @Autowired org.springframework.web.client.RestTemplate transport;
         @Autowired ReformulationAdoptionService adoptions;
         @Autowired CopilotAutomationService copilot;
@@ -86,16 +83,7 @@ class AdoptedLineageRealReanalysisTest {
                             "questionProposals", List.of(), "preservedQuestionIds", questions.stream().distinct().toList(),
                             "uncoveredSourceRefs", List.of(), "conflictCandidates", List.of()));
                 } else {
-                    var match = KEYS.matcher(prompt);
-                    if (!match.find()) throw new AssertionError("Unexpected outbound model task: " + prompt.substring(0, Math.min(180, prompt.length())));
-                    var keys = Arrays.stream(match.group(1).split(",")).map(String::strip).toList();
-                    var budget = BUDGET.matcher(prompt);
-                    boolean categories = budget.find();
-                    var scores = new LinkedHashMap<String, Object>();
-                    for (int i = 0; i < keys.size(); i++) scores.put(keys.get(i),
-                            Map.of("score", categories && i == 0 ? Integer.parseInt(budget.group(1)) : 0,
-                                    "reason", "Transport-only deterministic analysis reply"));
-                    response = json.writeValueAsString(scores);
+                    response = json.writeValueAsString(AdoptedLineageScoreReply.scores(prompt));
                 }
                 return MockRestResponseCreators.withSuccess(json.writeValueAsString(Map.of("choices",
                         List.of(Map.of("message", Map.of("role", "assistant", "content", response))))),

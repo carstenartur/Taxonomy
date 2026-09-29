@@ -9,6 +9,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,12 +30,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProjectRequirementVersionConcurrencyTest {
 
     @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
     private ProjectPortfolioService projectService;
 
     @Test
     void allocatesMonotonicUniqueVersionNumbersUnderConcurrentWriters() throws Exception {
         WorkspaceContext context = new WorkspaceContext(
-                "version-writer", "ws-version-" + shortId(), "draft");
+                "version-writer", "ws-version-" + shortId(), "draft",
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
         var project = projectService.createProject(
                 new CreateProjectRequest(
                         "P-" + shortId(),

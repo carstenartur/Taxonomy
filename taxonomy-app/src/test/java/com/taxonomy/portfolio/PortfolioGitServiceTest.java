@@ -5,6 +5,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PortfolioGitServiceTest {
 
     @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
     private ProjectPortfolioService projectService;
 
     @Autowired
@@ -25,8 +29,11 @@ class PortfolioGitServiceTest {
 
     @Test
     void projectsRequirementsAndAllTextVersionsRoundTripThroughDsl() {
-        WorkspaceContext alice = new WorkspaceContext("alice", "git-roundtrip-alice", "draft");
-        WorkspaceContext bob = new WorkspaceContext("bob", "git-roundtrip-bob", "draft");
+        String repositoryId = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        WorkspaceContext alice = new WorkspaceContext("alice", "git-roundtrip-alice", "draft",
+                repositoryId);
+        WorkspaceContext bob = new WorkspaceContext("bob", "git-roundtrip-bob", "draft",
+                repositoryId);
 
         var project = projectService.createProject(
                 new CreateProjectRequest(

@@ -149,6 +149,31 @@ baseline adds exactly this package edge with count two; context boundaries,
 exceptions and all other counts stay unchanged. A full new-head ratchet/CI pass
 remains required.
 
+On `1abe54b`, the architecture ratchet, JGit consumer, scenario, document-template,
+interoperability and all six browser shards pass. The unchanged CI application
+artifact `11020754924` from workflow `36542271744` also passes the original 1.3
+file-HSQLDB upgrade/restart probe. Its JAR SHA-256 is
+`7457a8b9444881522fa964098e61a377a588438e2363bb108aea4d0f0f45c92f`;
+the embedded clean merge commit is `e12de0330fe25e191e711d05efa45dead2d02e93`,
+whose tree matches that branch head. Historical central reads preserve all 38
+relations and the project/version; isolated writes and a MOCK analysis persist a
+successful job/item/snapshot that is still retrievable after restart. The same
+local-runtime and database/provider limits above apply.
+
+The longer ONNX and database workflows expose three test-fixture defects in their
+shared preceding Surefire suite. Portfolio integration fixtures persist synthetic
+`legacy-primary` (or invented) repository IDs without catalogue rows. Their shared
+in-memory HSQLDB survives the context change, so the next pre-Hibernate migration
+correctly rejects the orphaned data. The fixtures now use actual repository
+catalogue identities; production migration and foreign keys are unchanged. A
+ninth real-HSQLDB regression confirms that an already encoded orphan scope still
+fails without being reassigned or inventing a repository. A nested Mockito
+configuration setup is also corrected. Finally, the post-adoption lineage
+scenario's HTTP fixture recognizes independent root assessment separately from
+child-budget scoring; its existing persisted-analysis success assertions remain.
+These corrections require a new full CI run: the hundreds of context-load errors
+on the previous head are failures, not skipped or accepted checks.
+
 ## Independent review and remaining gates
 
 A separate read-only whole-change review found no additional introduced correctness

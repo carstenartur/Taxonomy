@@ -127,7 +127,8 @@ class TaxonomySchemaMigrationConfigTest {
         }
         FlywayMigrationStrategy core = mock(FlywayMigrationStrategy.class);
         Flyway flyway = mock(Flyway.class);
-        when(flyway.getConfiguration()).thenReturn(configuration(dataSource));
+        Configuration configuration = configuration(dataSource);
+        when(flyway.getConfiguration()).thenReturn(configuration);
 
         new TaxonomySchemaMigrationConfig()
                 .taxonomyFlywayMigrationStrategy(core, false).migrate(flyway);
