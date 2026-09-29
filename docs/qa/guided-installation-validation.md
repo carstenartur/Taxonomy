@@ -1,5 +1,29 @@
 # Guided installation validation — 2026-09-28
 
+## Additional security-scan blocker: Jackson 3
+
+Security Scan #4111 (run `36517311486`, head `26bd8c2`) found
+`CVE-2026-68497` (HIGH) in `tools.jackson.core:jackson-databind:3.1.5`,
+alongside two MEDIUM findings (`CVE-2026-19032`, `CVE-2026-83557`).
+The PR was returned to draft to prevent an automatic merge while investigating.
+The fix updates the shared **Jackson 3 BOM from 3.1.5 to 3.1.6**, preserving
+Jackson 2's separately managed `2.22.2` line and keeping Jackson 3 modules aligned.
+No scanner exception, severity threshold or test gate is relaxed.
+
+Upstream lists 3.1.6 as patched for the XML datatype issue:
+[GHSA-q4xh-88c3-wmh7](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-q4xh-88c3-wmh7).
+The scan establishes a vulnerable dependency, not that a reachable Taxonomy
+endpoint has been shown to exploit this deserialization path.
+
+`JacksonXmlDatatypeLimitsTest` verifies the actual Maven-resolved implementation.
+It sets a numeric length limit of 32 and uses only 64-digit synthetic inputs for
+XML Duration and XMLGregorianCalendar; normal values remain positive controls.
+The same four-case helper reproduces two expected failures with the old 3.1.5
+CI dependency set. It never constructs a large resource-exhaustion payload.
+The updated dependency requires a fresh successful regression run, packaged
+Security Scan and full new-head CI before merge; old green builds do not suffice.
+
+
 ## Third review: configuration paths and verified non-reproductions — 2026-09-29
 
 Baseline: `2bc9426f2427f099ba9283a506a0afa39f83eb14`, source tree
