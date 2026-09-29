@@ -561,6 +561,38 @@
     </build>
 
     <profiles>
+        <!-- -Ponnx must provision both host test JVMs, not only Docker containers.
+             Keep the existing local-onnx-model profile for explicit offline runs. -->
+        <profile>
+            <id>onnx</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <environmentVariables>
+                                <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                                <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                            </environmentVariables>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <environmentVariables>
+                                <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                                <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                            </environmentVariables>
+                            <systemPropertyVariables>
+                                <runOnnxTests>${runOnnxTests}</runOnnxTests>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!-- Canonical CI must execute this check independently of mutable test selectors. -->
         <profile>
             <id>ci</id>

@@ -201,20 +201,32 @@ public class LocalEmbeddingService {
         java.nio.file.Path modelPath = java.nio.file.Path.of(localPath);
         log.info("Loading DJL model from local path: {}", modelPath.toAbsolutePath());
         try {
-            return Criteria.builder()
-                    .setTypes(String.class, float[].class)
-                    .optModelPath(modelPath)
-                    .optModelName("model")
-                    .optEngine("OnnxRuntime")
-                    .optArgument("includeTokenTypes", true)
-                    .optTranslatorFactory(new TextEmbeddingTranslatorFactory())
-                    .build()
-                    .loadModel();
+            return modelCriteria(modelPath).loadModel();
         } catch (Exception exception) {
             log.error("DJL Criteria.loadModel() failed for path '{}': {}",
                     modelPath.toAbsolutePath(), exception.getMessage(), exception);
             throw exception;
         }
+    }
+
+    /**
+     * Shared by query, node and relation embeddings. BGE v1.5 was trained with
+     * normalized CLS pooling; DJL's default mean pooling produces a different
+     * vector space even though both results have the expected 384 dimensions.
+     * Keep these model semantics explicit rather than relying on optional files
+     * in a writable or read-only model directory.
+     */
+    static Criteria<String, float[]> modelCriteria(java.nio.file.Path modelPath) {
+        return Criteria.builder()
+                .setTypes(String.class, float[].class)
+                .optModelPath(modelPath)
+                .optModelName("model")
+                .optEngine("OnnxRuntime")
+                .optArgument("includeTokenTypes", true)
+                .optArgument("pooling", "cls")
+                .optArgument("normalize", true)
+                .optTranslatorFactory(new TextEmbeddingTranslatorFactory())
+                .build();
     }
 
     private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
@@ -409,7 +421,10 @@ public class LocalEmbeddingService {
             float[] queryVector = embedQuery(queryText);
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
-                    .where(factory -> factory.knn(topK)
+                    // Lucene's approximate search uses k for graph exploration too.
+                    // A top-10 response must not restrict the search to 10 candidates:
+                    // a nearer vector can otherwise remain undiscovered.
+                    .where(factory -> factory.knn(semanticCandidateCount(topK))
                             .field("embedding")
                             .matching(queryVector))
                     .fetchHits(topK);
@@ -421,6 +436,21 @@ public class LocalEmbeddingService {
                     queryText, exception.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Keep ANN candidate exploration separate from the caller's result limit.
+     * Oversample small pages by ten, with a 100-candidate floor and a 1000-candidate
+     * ceiling on extra work. The API already bounds result pages; larger internal
+     * callers must still receive their requested count. Long arithmetic avoids
+     * overflow before applying the ceiling. This improves recall, not exactness.
+     */
+    static int semanticCandidateCount(int requestedResults) {
+        if (requestedResults <= 0) {
+            throw new IllegalArgumentException("Semantic result count must be positive");
+        }
+        long candidates = Math.min(1000L, Math.max(100L, 10L * requestedResults));
+        return (int) Math.max(requestedResults, candidates);
     }
 
     @Transactional(readOnly = true)
