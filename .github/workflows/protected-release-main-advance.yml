@@ -247,6 +247,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION: ${{ inputs.next_version }}
           TEMP_BRANCH: ${{ inputs.temp_branch }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -266,13 +267,33 @@ jobs:
             exit 1
           }
 
-          gh pr merge "$PR_NUMBER" --merge --match-head-commit "$EXPECTED_SHA"
+          # Refuse anything except the verified release + snapshot pair before
+          # asking GitHub to perform its protected, linear-history merge.
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-history \
+            --root . --release-commit "v${RELEASE_VERSION}" \
+            --expected-next-commit "$EXPECTED_SHA" \
+            --expected-base-commit "$EXPECTED_BASE_SHA" \
+            --main-commit "$EXPECTED_SHA"
+
+          gh pr merge "$PR_NUMBER" --rebase --match-head-commit "$EXPECTED_SHA"
+
+          merged_pr=$(gh pr view "$PR_NUMBER" --json state,headRefOid,mergeCommit)
+          merged_sha=$(jq -er --arg head "$EXPECTED_SHA" \
+            'select(.state == "MERGED" and .headRefOid == $head) | .mergeCommit.oid // empty' \
+            <<< "$merged_pr")
 
           git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
-          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main || {
-            echo "::error::Protected merge did not place $EXPECTED_SHA in main history"
+          test "$(git rev-parse origin/main)" = "$merged_sha" || {
+            echo "::error::main no longer matches the protected PR merge result"
             exit 1
           }
+          # GitHub rewrites commit IDs on rebase. Compare both complete trees
+          # and their exact common base; never retag the already-built release.
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-history \
+            --root . --release-commit "v${RELEASE_VERSION}" \
+            --expected-next-commit "$EXPECTED_SHA" \
+            --expected-base-commit "$EXPECTED_BASE_SHA" \
+            --main-commit "$merged_sha"
           git checkout --detach origin/main
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
             --root . --mode development --expected-version "$NEXT_VERSION"

@@ -222,9 +222,10 @@ advance_main_via_protected_pr() {
   gh run watch "$advance_run_id" --exit-status
 
   git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
-  if ! git merge-base --is-ancestor "$next_commit" origin/main; then
-    fail "Protected-main workflow completed without merging $next_commit into main"
-  fi
+  java -jar "$TOOLING_JAR" check-release-history \
+    --root . --release-commit "$RELEASE_COMMIT" \
+    --expected-next-commit "$next_commit" \
+    --expected-base-commit "$ORIGINAL_MAIN" --main-commit origin/main
   if [[ "$(remote_main_version)" != "$NEXT_VERSION" ]]; then
     fail "origin/main does not expose development version $NEXT_VERSION"
   fi
