@@ -4,111 +4,63 @@ on:
     branches: [verify/pr1142-review-regressions-20260928]
 permissions:
   contents: read
-  actions: read
 jobs:
   check:
-    name: Third review source contracts (${{ matrix.os }})
+    name: Jackson XML numeric-limit regression (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    env:
-      LANG: C.UTF-8
-      LC_ALL: C.UTF-8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {path: driver, persist-credentials: false}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 2bc9426f2427f099ba9283a506a0afa39f83eb14
+          ref: 26bd8c2ffe465167976cc991abda615a5c3eb314
           path: source
           persist-credentials: false
-      - name: Apply reviewed patch and require exact locally tested tree
+      - name: Apply exact security patch
         shell: bash
         working-directory: source
         run: |
           set -euo pipefail
-          mkdir ../baseline
-          git archive HEAD | tar -x -C ../baseline
-          cat ../driver/.github/qa/setup-review3.patch.gz.{1,2,3} | gzip -d >../setup-review3.patch
-          git apply --check ../setup-review3.patch
-          git apply --index ../setup-review3.patch
+          gzip -dc ../driver/.github/qa/setup-jackson-security.patch.gz >../jackson-security.patch
+          git apply --check ../jackson-security.patch
+          git apply --index ../jackson-security.patch
           git diff --cached --check
-          test "$(git write-tree)" = a0e7e166c5758e9c89fe0bd48e304a2d6eabd1ce
+          test "$(git write-tree)" = c84f418124eb6a5cac9dd088eaa7df90970a1abf
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: taxonomy-ui-application
-          path: source/target/review-runtime/application
-          run-id: 36466691181
-          github-token: ${{ github.token }}
-      - name: Verify actual sources and red-green contracts with real dependencies
+      - name: Verify identical bounded cases on vulnerable and patched releases
         shell: python
         working-directory: source
         run: |
-          import glob, hashlib, os, pathlib, shutil, subprocess, zipfile
-          jar = pathlib.Path('target/review-runtime/application/taxonomy-app-1.4.0-SNAPSHOT.jar')
-          assert hashlib.sha256(jar.read_bytes()).hexdigest() == '74a1f9587664cf650f2e879c4044d2b2fcfec82fbb7a920e1ae6cd67b02f33b5'
-          with zipfile.ZipFile(jar) as archive:
-              for entry in archive.infolist():
-                  if entry.filename.startswith('BOOT-INF/lib/') and entry.filename.endswith('.jar'):
-                      archive.extract(entry, 'target/review-runtime')
-          libraries = str(pathlib.Path('target/review-runtime/BOOT-INF/lib').resolve()) + '/*'
-          root = pathlib.Path.cwd()
-          def compile_sources(directory):
-              output = directory / 'target/review3-classes'
-              output.mkdir(parents=True, exist_ok=True)
-              sources = list(directory.glob('taxonomy-app/src/main/java/com/taxonomy/setup/*.java'))
-              sources += [directory / 'taxonomy-app/src/main/java/com/taxonomy/security/config/ProductionSecurityGuard.java']
-              sources += list(directory.glob('taxonomy-app/src/test/java/com/taxonomy/setup/Setup*Cases.java'))
-              subprocess.run(['javac', '-encoding', 'UTF-8', '-cp', libraries, '-d', str(output), *map(str, sources)], check=True)
-              return os.pathsep.join([str(output), str(directory / 'taxonomy-app/src/main/resources'), libraries])
-          baseline = root.parent / 'baseline'
-          for name in ['SetupReviewRegressionCases.java', 'SetupStartupRegressionCases.java']:
-              relative = pathlib.Path('taxonomy-app/src/test/java/com/taxonomy/setup') / name
-              shutil.copyfile(root / relative, baseline / relative)
-          red_cp = compile_sources(baseline)
-          for name, expected in [('SetupReviewRegressionCases', '107 cases, 17 failures'), ('SetupStartupRegressionCases', '31 cases, 3 failures')]:
-              completed = subprocess.run(['java', '-cp', red_cp, 'com.taxonomy.setup.' + name], capture_output=True, text=True, encoding='utf-8')
-              print(completed.stdout)
-              assert completed.returncode != 0 and expected in completed.stdout, name + ': baseline did not reproduce expected failures'
-          cp = compile_sources(root)
-          for case in ['SetupContractCases', 'SetupReviewRegressionCases', 'SetupSpringCases', 'SetupStartupRegressionCases']:
-              subprocess.run(['java', '-cp', cp, 'com.taxonomy.setup.' + case], check=True)
-          subprocess.run(['javac', '-encoding', 'UTF-8', '-d', 'target/review3-classes', 'deploy/native/PackageTaxonomy.java', 'deploy/native/PackageTaxonomyCases.java'], check=True)
-          subprocess.run(['java', '-cp', 'target/review3-classes', 'PackageTaxonomyCases'], check=True)
-      - name: Install repository-pinned Helm
-        if: runner.os == 'Linux'
-        working-directory: source
-        env: {HELM_VERSION: v3.21.0}
-        run: bash .github/scripts/install-helm.sh
-      - name: Verify Helm red-green and rendered Keycloak startup
-        if: runner.os == 'Linux'
-        working-directory: source
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp deploy/helm/taxonomy/verify-setup-security.sh ../baseline/deploy/helm/taxonomy/
-          if bash ../baseline/deploy/helm/taxonomy/verify-setup-security.sh >target/helm-red.log 2>&1; then
-            echo 'Unfixed baseline unexpectedly passed'; exit 1
-          fi
-          cat target/helm-red.log
-          grep -Fq '118 cases, 2 failures' target/helm-red.log
-          test "$(grep -c 'invalid configuration accepted' target/helm-red.log)" -eq 2
-          bash deploy/helm/taxonomy/verify-setup.sh
-          bash deploy/helm/taxonomy/verify-setup-security.sh
-          helm template taxonomy deploy/helm/taxonomy \
-            --set image.tag=sha-0123456789abcdef0123456789abcdef01234567 \
-            --set existingSecret=taxonomy-secrets --set authentication.mode=keycloak \
-            --set config.KEYCLOAK_ISSUER_URI=https://identity.example.invalid/realms/taxonomy \
-            --set config.KEYCLOAK_CLIENT_ID=taxonomy-app >target/keycloak-review.yaml
-          java -cp 'target/review3-classes:taxonomy-app/src/main/resources:target/review-runtime/BOOT-INF/lib/*' \
-            com.taxonomy.setup.SetupStartupRegressionCases target/keycloak-review.yaml
+          import hashlib, os, pathlib, subprocess, urllib.request
+          root = pathlib.Path('target/jackson-security')
+          root.mkdir(parents=True, exist_ok=True)
+          def artifact(path, destination):
+              url = 'https://repo.maven.apache.org/maven2/' + path
+              data = urllib.request.urlopen(url, timeout=60).read()
+              digest = urllib.request.urlopen(url + '.sha512', timeout=60).read().decode().split()[0]
+              assert hashlib.sha512(data).hexdigest() == digest, 'Maven Central checksum mismatch'
+              destination.write_bytes(data)
+              print(destination.name, hashlib.sha512(data).hexdigest())
+          for version, failures in [('3.1.5', 2), ('3.1.6', 0)]:
+              directory = root / version
+              directory.mkdir(parents=True, exist_ok=True)
+              for module in ['jackson-core', 'jackson-databind']:
+                  artifact(f'tools/jackson/core/{module}/{version}/{module}-{version}.jar', directory / (module + '.jar'))
+              artifact('com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar', directory / 'jackson-annotations.jar')
+              cp = str(directory) + '/*'
+              subprocess.run(['javac', '-encoding', 'UTF-8', '-cp', cp, '-d', str(directory), 'taxonomy-app/src/test/java/com/taxonomy/security/JacksonXmlDatatypeLimitsCases.java'], check=True)
+              result = subprocess.run(['java', '-cp', os.pathsep.join([str(directory), cp]), 'com.taxonomy.security.JacksonXmlDatatypeLimitsCases'], capture_output=True, text=True)
+              print('Jackson ' + version + ':\n' + result.stdout)
+              assert ('4 cases, ' + str(failures) + ' failures') in result.stdout, result.stderr
+              assert (result.returncode == 0) == (failures == 0), result.stderr
   publish-candidate:
-    name: Publish exactly verified source to staging only
+    name: Publish verified Jackson security candidate only
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -119,22 +71,19 @@ jobs:
         with: {path: driver, persist-credentials: false}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 2bc9426f2427f099ba9283a506a0afa39f83eb14
+          ref: 26bd8c2ffe465167976cc991abda615a5c3eb314
           path: source
-      - name: Commit verified code and documentation, not diagnostic files
+      - name: Publish source without diagnostic workflow
         working-directory: source
         shell: bash
         run: |
           set -euo pipefail
-          cat ../driver/.github/qa/setup-review3.patch.gz.{1,2,3} | gzip -d >../setup-review3.patch
-          git apply --check ../setup-review3.patch
-          git apply --index ../setup-review3.patch
+          gzip -dc ../driver/.github/qa/setup-jackson-security.patch.gz >../jackson-security.patch
+          git apply --index ../jackson-security.patch
           git diff --cached --check
-          test "$(git write-tree)" = a0e7e166c5758e9c89fe0bd48e304a2d6eabd1ce
+          test "$(git write-tree)" = c84f418124eb6a5cac9dd088eaa7df90970a1abf
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(setup): close bootstrap override and provider autodetection gaps' \
-            -m 'Reserve the local bootstrap environment name in guided Keycloak. Validate configured custom endpoints independently of provider selection and document model/Secret boundaries. Add Helm and real Spring preflight regressions; preserve the valid production/file-database matrix and active Keycloak guard.' \
-            -m 'Exact source tree verified on Linux and Windows. Red-green: 17 Java and 3 native failures before fixes; 2 Helm failures. Focused evidence does not replace the full PR reactor, integration and security checks.'
-          git push origin HEAD:refs/heads/verify/pr1142-third-review-candidate-20260929
+          git commit -m 'fix(security): upgrade Jackson 3 BOM to patched 3.1.6' -m 'Address CVE-2026-68497 and accompanying scanner findings. Add bounded XML datatype length regressions under Maven and document the scan blocker. Same 4 cases reproduce 2 failures on 3.1.5 and pass on 3.1.6 on Linux and Windows. Full packaged security scan and canonical PR CI remain required.'
+          git push origin HEAD:refs/heads/verify/pr1142-jackson-security-20260929
           git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
