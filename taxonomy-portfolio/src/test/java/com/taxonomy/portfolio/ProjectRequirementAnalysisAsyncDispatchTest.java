@@ -142,8 +142,11 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
 
     @Test
     void claimedPortfolioItemWaitsForTelemetryCapacityAndPersistsWithoutFailure() throws Exception {
-        var registry = new com.taxonomy.analysis.service.AnalysisProgressRegistry(
-                new org.springframework.core.env.StandardEnvironment());
+        var environment = new org.springframework.core.env.StandardEnvironment();
+        environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                "bounded-queue-test", java.util.Map.of("taxonomy.analysis.queue-capacity", 4,
+                        "taxonomy.analysis.queue-capacity-per-user", 4)));
+        var registry = new com.taxonomy.analysis.service.AnalysisProgressRegistry(environment);
         var architecture = org.mockito.Mockito.mock(
                 com.taxonomy.architecture.service.RequirementArchitectureViewService.class);
         var relations = org.mockito.Mockito.mock(com.taxonomy.analysis.service.AnalysisRelationGenerator.class);

@@ -36,7 +36,7 @@
                 cancelling = false;
                 if (error.status === 404 && !seen) {
                     // Registration can follow the first cancel request. Keep the intent;
-                    // only a later observed RUNNING state permits this rejected write to retry.
+                    // only a later observed QUEUED/RUNNING state permits this rejected write to retry.
                     cancelPending = true;
                     if (current() && options.onCancelling) options.onCancelling();
                 } else {
@@ -91,7 +91,7 @@
                     if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED', 'CANCELLING'].indexOf(data.status) >= 0) {
                         endCleanup(); return;
                     }
-                    if (data.status !== 'RUNNING') return;
+                    if (data.status !== 'RUNNING' && data.status !== 'QUEUED') return;
                     writing = true;
                     await options.api.cancelRun(id, {
                         workspaceId: initial.workspaceId, signal: cleanupRequest.signal
@@ -137,7 +137,7 @@
                 if (observedTerminal) {
                     cancelPending = false;
                     stop();
-                } else if (cancelPending && data.status === 'RUNNING') {
+                } else if (cancelPending && (data.status === 'RUNNING' || data.status === 'QUEUED')) {
                     cancelPending = false;
                     await cancel();
                 }
@@ -301,6 +301,9 @@
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
         var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
         duration.id = 'analysisElapsed';
+        var queueDuration = node('div');
+        queueDuration.id = 'analysisQueueWait';
+        queueDuration.hidden = true;
         var terminalDuration = null;
         function showDuration(millis) {
             var value = Number.isSafeInteger(millis) && millis >= 0 ? millis : null;
@@ -317,7 +320,7 @@
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, duration, resources, warning, button);
+        panel.append(title, state, queueDuration, duration, resources, warning, button);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -341,6 +344,8 @@
             } finally { entry.loading = false; }
         }
         var phases = {
+            QUEUED: ['Wartet auf einen freien Analyseplatz', 'Waiting for an analysis slot'],
+            WAITING_PROVIDER_CAPACITY: ['Warte auf freie LLM-Kapazität', 'Waiting for provider capacity'],
             PREPARING: ['Analyse vorbereiten', 'Preparing analysis'],
             LLM_PREPARING: ['LLM-Anfrage vorbereiten', 'Preparing LLM request'],
             WAITING_RATE_LIMIT: ['Warte auf das LLM-Ratenlimit', 'Waiting for LLM rate limit'],
@@ -388,14 +393,22 @@
                 var phase = phases[snapshot.phase];
                 title.textContent = phase ? text(phase[0], phase[1]) : snapshot.phase;
                 var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
-                var elapsedMillis = Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
+                var measuredExecution = Number.isSafeInteger(snapshot.executionMillis) && snapshot.executionMillis >= 0;
+                var elapsedMillis = measuredExecution ? snapshot.executionMillis : Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
                     ? snapshot.elapsedMillis : !isTerminal && Number.isFinite(snapshot.startedAt) && Number.isFinite(snapshot.serverTime)
                         ? Math.max(0, snapshot.serverTime - snapshot.startedAt) : null;
                 if (isTerminal) terminalDuration = elapsedMillis;
                 showDuration(elapsedMillis);
+                var hasQueueTime = Number.isSafeInteger(snapshot.queueWaitMillis) && snapshot.queueWaitMillis >= 0;
+                queueDuration.hidden = !hasQueueTime;
+                queueDuration.textContent = hasQueueTime ? text('Wartezeit vor Analysebeginn: ', 'Queue time before analysis: ')
+                    + Math.floor(snapshot.queueWaitMillis / 1000) + ' s' : '';
                 var elapsed = elapsedMillis === null ? '?' : Math.floor(elapsedMillis / 1000);
                 var quiet = Math.max(0, Math.floor((snapshot.serverTime - snapshot.lastActivityAt) / 1000));
-                state.textContent = snapshot.status + ' · ' + snapshot.evaluatedNodes
+                state.textContent = snapshot.status === 'QUEUED'
+                    ? text('Auftrag angenommen; wartet auf freien Analyseplatz. Noch keine LLM-Anfrage gestartet.',
+                        'Request accepted; waiting for an analysis slot. No LLM request started yet.')
+                    : snapshot.status + ' · ' + snapshot.evaluatedNodes
                     + text(' Knoten bewertet', ' nodes evaluated') + ' · ' + elapsed + ' s · '
                     + text('letzter Arbeitsschritt vor ', 'last activity ') + quiet + ' s'
                     + (snapshot.node ? ' · ' + snapshot.node : '')
@@ -410,7 +423,8 @@
                         ? text('Flüchtiger Speicher: Für große Analysen das Profil hsqldb-file verwenden.',
                             'Volatile storage: use the hsqldb-file profile for large analyses.') : '');
                 panel.className = 'alert mt-2 ' + (memory.warning || snapshot.stopReason ? 'alert-warning' : 'alert-info');
-                cancelState(snapshot.status !== 'RUNNING', snapshot.status === 'RUNNING'
+                var cancellable = snapshot.status === 'RUNNING' || snapshot.status === 'QUEUED';
+                cancelState(!cancellable, cancellable
                     ? text('Analyse abbrechen', 'Cancel analysis')
                     : snapshot.status === 'CANCELLING'
                         ? text('Abbruch angefordert', 'Cancellation requested')

@@ -4,20 +4,32 @@ import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AnalysisDurableAdmissionTest {
+    private static final int WAITING_CAPACITY = 4;
+
+    private static AnalysisProgressRegistry registry() {
+        var environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(new MapPropertySource("bounded-queue-test", Map.of(
+                "taxonomy.analysis.queue-capacity", WAITING_CAPACITY,
+                "taxonomy.analysis.queue-capacity-per-user", WAITING_CAPACITY)));
+        return new AnalysisProgressRegistry(environment);
+    }
+
     @Test void durableWorkWaitsForCapacityInsteadOfFailingItsClaim() throws Exception {
-        var registry = new AnalysisProgressRegistry(new StandardEnvironment());
+        var registry = registry();
         var scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
         var reservations = new ArrayList<AnalysisProgressRegistry.Reservation>();
         var started = new CountDownLatch(1);
         try (var executor = Executors.newSingleThreadExecutor()) {
             try {
-                for (int i = 0; i < AnalysisProgressRegistry.MAX_ACTIVE; i++) {
+                for (int i = 0; i < WAITING_CAPACITY; i++) {
                     reservations.add(registry.reserve(null, "alice", scope, null));
                 }
                 assertEquals(503, assertThrows(ResponseStatusException.class,
@@ -47,7 +59,7 @@ class AnalysisDurableAdmissionTest {
         }
     }
     @Test void interruptingCapacityWaitDoesNotAllocateOrLeakThreadControl() throws Exception {
-        var registry = new AnalysisProgressRegistry(new StandardEnvironment());
+        var registry = registry();
         var scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
         var reservations = new ArrayList<AnalysisProgressRegistry.Reservation>();
         var entered = new CountDownLatch(1);
@@ -67,7 +79,7 @@ class AnalysisDurableAdmissionTest {
             finally { stopped.countDown(); }
         });
         try {
-            for (int i = 0; i < AnalysisProgressRegistry.MAX_ACTIVE; i++) {
+            for (int i = 0; i < WAITING_CAPACITY; i++) {
                 reservations.add(registry.reserve(null, "alice", scope, null));
             }
             worker.start();
@@ -75,7 +87,7 @@ class AnalysisDurableAdmissionTest {
             worker.interrupt();
             assertTrue(stopped.await(5, TimeUnit.SECONDS));
             assertNull(outcome.get());
-            assertEquals(AnalysisProgressRegistry.MAX_ACTIVE, registry.recent("alice", scope, null, null).size());
+            assertEquals(WAITING_CAPACITY, registry.recent("alice", scope, null, null).size());
             assertTrue(registry.recent("alice", scope, 1L, 2L).isEmpty());
         } finally {
             worker.interrupt();

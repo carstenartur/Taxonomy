@@ -9,6 +9,7 @@ import java.util.Objects;
 /** Request/worker-scoped callbacks; no global prompt, result or credential retention. */
 public final class AnalysisRunControl implements AutoCloseable {
     interface Observer {
+        default void checkpoint() { }
         void phase(String phase, String node);
         long started(String provider, String node);
         default void prepared(long callId, String prompt) { }
@@ -52,6 +53,7 @@ public final class AnalysisRunControl implements AutoCloseable {
         AnalysisRunControl current = CURRENT.get();
         try {
             com.taxonomy.analysis.recovery.AnalysisCheckpointSession.checkpoint();
+            if (current != null) current.observer.checkpoint();
             if (Thread.currentThread().isInterrupted()
                     || (current != null && current.cancelled.getAsBoolean())) {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);

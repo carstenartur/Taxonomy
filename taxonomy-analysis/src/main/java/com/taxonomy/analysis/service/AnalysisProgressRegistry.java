@@ -24,11 +24,23 @@ public class AnalysisProgressRegistry {
     static final int MAX_ACTIVE = 4, MAX_RETAINED = 16, MAX_CALLS = 32, MAX_SCORES = 8192, MAX_TEXT = 8192;
     private static final long RETENTION_MILLIS = 10 * 60 * 1000;
     private final Map<String, Run> runs = new LinkedHashMap<>();
+    private final AnalysisAdmissionQueue admission;
+    private final long maximumQueueWaitMillis;
     private final AnalysisMemoryGuard.Policy policy;
     private final String databaseStorage;
     private final String indexStorage;
 
     public AnalysisProgressRegistry(Environment environment) {
+        int running = environment.getProperty("taxonomy.analysis.max-concurrent-jobs", Integer.class, MAX_ACTIVE);
+        int queued = environment.getProperty("taxonomy.analysis.queue-capacity", Integer.class, 16);
+        admission = new AnalysisAdmissionQueue(new AnalysisAdmissionQueue.Limits(running, queued,
+                environment.getProperty("taxonomy.analysis.max-concurrent-jobs-per-user", Integer.class, Math.min(2, running)),
+                environment.getProperty("taxonomy.analysis.queue-capacity-per-user", Integer.class, Math.min(8, queued))));
+        long queueSeconds = environment.getProperty("taxonomy.analysis.maximum-queue-wait-seconds", Long.class, 1800L);
+        if (queueSeconds < 1 || queueSeconds > 86_400) {
+            throw new IllegalArgumentException("taxonomy.analysis.maximum-queue-wait-seconds must be between 1 and 86400");
+        }
+        maximumQueueWaitMillis = queueSeconds * 1000L;
         policy = new AnalysisMemoryGuard.Policy(
                 environment.getProperty("taxonomy.analysis.runtime.warning-percent", Integer.class, 80),
                 environment.getProperty("taxonomy.analysis.runtime.stop-percent", Integer.class, 92),
@@ -65,7 +77,8 @@ public class AnalysisProgressRegistry {
                            int evaluatedNodes, boolean scoresTruncated, Map<String, Integer> rawScores,
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
                            String databaseStorage, String indexStorage, AnalysisProvenance provenance,
-                           Long finishedAt, long elapsedMillis) { }
+                           Long finishedAt, long elapsedMillis, Long executionStartedAt,
+                           long queueWaitMillis, long executionMillis) { }
 
     /** Immutable decision made at the run's cancellation/completion linearization point. */
     public record Terminal(String status, String stopReason) {
@@ -94,63 +107,91 @@ public class AnalysisProgressRegistry {
 
     public Handle open(String requestedId, String owner, WorkspaceContext context,
                        AnalysisProvenance provenance) {
-        return (provenance == null
+        Reservation reservation = provenance == null
                 ? reserve(requestedId, owner, context, null)
-                : awaitDurableAdmission(requestedId, owner, context, provenance)).open();
+                : awaitDurableAdmission(requestedId, owner, context, provenance);
+        try {
+            return reservation.open();
+        } catch (RuntimeException | Error failure) {
+            reservation.close();
+            throw failure;
+        }
     }
 
-    /**
-     * Durable portfolio work already has a bounded executor and a persisted claim.
-     * Back-pressure its existing worker instead of turning transient telemetry
-     * saturation into a permanent item failure. Waiting allocates no run or extra
-     * task and binds no thread-local control; request/SSE admission remains fail-fast.
-     */
+    /** Durable work retains its existing persisted job if the bounded live queue is full. */
     private synchronized Reservation awaitDurableAdmission(String requestedId, String owner,
             WorkspaceContext context, AnalysisProvenance provenance) {
         Scope.of(owner, context);
         String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);
+        long started = System.nanoTime();
         while (true) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
             }
-            if (runs.containsKey(id)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis ID already exists");
-            }
-            if (runs.values().stream().filter(Run::active).count() < MAX_ACTIVE) {
-                return reserve(id, owner, context, provenance);
-            }
             try {
-                wait();
-            } catch (InterruptedException interrupted) {
+                return reserve(id, owner, context, provenance);
+            } catch (ResponseStatusException full) {
+                if (full.getStatusCode().value() != 429 && full.getStatusCode().value() != 503) throw full;
+            }
+            if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) >= maximumQueueWaitMillis) {
+                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.TIME_LIMIT);
+            }
+            try { wait(250L); }
+            catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
             }
         }
     }
 
-    private synchronized void capacityReleased() {
-        notifyAll();
-    }
+    private synchronized void capacityReleased() { notifyAll(); }
 
-    /** Reserve admission on the request thread without binding its thread-local run control. */
+    /** Reserve a waiting place without claiming an execution permit or binding thread locals. */
     public synchronized Reservation reserve(String requestedId, String owner, WorkspaceContext context,
                                             AnalysisProvenance provenance) {
         Scope scope = Scope.of(owner, context);
         String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);
         reap();
         if (runs.containsKey(id)) throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis ID already exists");
-        if (runs.values().stream().filter(Run::active).count() >= MAX_ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analysis capacity reached; retry later");
+        AnalysisAdmissionQueue.Ticket ticket;
+        try { ticket = admission.reserve(owner); }
+        catch (AnalysisAdmissionQueue.CapacityException full) {
+            boolean ownerFull = full.reason() == AnalysisAdmissionQueue.Rejection.OWNER_QUEUE_FULL;
+            throw new ResponseStatusException(ownerFull ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.SERVICE_UNAVAILABLE,
+                    ownerFull ? "Your analysis waiting queue is full; retry after a queued run starts"
+                            : "Analysis waiting queue is full; retry after a queued run starts");
         }
+        // Keep terminal history bounded without ever evicting accepted waiting/running jobs.
         while (runs.size() >= MAX_RETAINED) {
             String oldest = runs.entrySet().stream().filter(e -> !e.getValue().active())
-                    .map(Map.Entry::getKey).findFirst().orElseThrow(() ->
-                            new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analysis capacity reached"));
+                    .map(Map.Entry::getKey).findFirst().orElse(null);
+            if (oldest == null) break;
             runs.remove(oldest);
         }
-        Run run = new Run(id, scope, provenance);
+        Run run = new Run(id, scope, provenance, ticket);
         runs.put(id, run);
         return new Reservation(run);
+    }
+
+    private synchronized void awaitWorkerAdmission(Run run) {
+        while ("QUEUED".equals(run.status)) {
+            try {
+                if (Thread.currentThread().isInterrupted() || run.cancelled) {
+                    throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
+                }
+                run.guard.check();
+                if (run.queueExpired()) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.TIME_LIMIT);
+                if (run.ticket.tryStart()) { run.startExecution(); return; }
+                wait(250L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                run.requestCancellation();
+            } catch (AnalysisStoppedException stopped) {
+                run.stopped(stopped.reason());
+                run.finish("PARTIAL");
+            }
+        }
+        capacityReleased();
     }
 
     public synchronized Snapshot snapshot(String id, String owner, WorkspaceContext context) {
@@ -159,10 +200,13 @@ public class AnalysisProgressRegistry {
 
     public synchronized Snapshot cancel(String id, String owner, WorkspaceContext context) {
         Run run = require(id, owner, context);
-        synchronized (run) {
-            run.requestCancellation();
-            return run.snapshot();
-        }
+        cancelRun(run);
+        return run.snapshot();
+    }
+
+    private synchronized void cancelRun(Run run) {
+        run.requestCancellation();
+        capacityReleased();
     }
 
     public synchronized CallDetail callDetail(String id, long callId, String owner, WorkspaceContext context) {
@@ -200,6 +244,12 @@ public class AnalysisProgressRegistry {
 
     private void reap() {
         long now = System.currentTimeMillis();
+        for (Run run : runs.values()) {
+            if (run.queueExpired()) {
+                run.stopped(AnalysisStoppedException.Reason.TIME_LIMIT);
+                run.finish("PARTIAL");
+            }
+        }
         runs.entrySet().removeIf(e -> !e.getValue().active() && now - e.getValue().finishedAt > RETENTION_MILLIS);
     }
 
@@ -214,29 +264,31 @@ public class AnalysisProgressRegistry {
         }
     }
 
-    /** A queued run counts toward capacity and can be cancelled before a worker claims it. */
+    /** A queued run owns only a waiting place and can be cancelled before a worker claims it. */
     public final class Reservation implements AutoCloseable {
         private final Run run;
         private boolean claimed, closed;
 
         private Reservation(Run run) { this.run = run; }
 
-        /** Attach control only on the thread that actually executes this run. */
+        /** Attach control only on the worker. Waiting never holds an execution permit. */
         public synchronized Handle open() {
             if (claimed || closed) throw new IllegalStateException("Analysis reservation is no longer available");
+            awaitWorkerAdmission(run);
             Handle handle = new Handle(run);
             claimed = true;
             return handle;
         }
 
         /** Retain a transport disconnect even if a provider consumes the thread interrupt. */
-        public void cancel() { run.requestCancellation(); }
+        public void cancel() { cancelRun(run); }
 
         /** Roll back an unclaimed admission if scheduling fails; never remove a worker-owned run. */
         @Override public synchronized void close() {
             if (claimed || closed) return;
             closed = true;
             synchronized (AnalysisProgressRegistry.this) {
+                run.ticket.close();
                 runs.remove(run.id, run);
                 capacityReleased();
             }
@@ -292,25 +344,51 @@ public class AnalysisProgressRegistry {
         final String id;
         final Scope scope;
         final AnalysisProvenance provenance;
+        final AnalysisAdmissionQueue.Ticket ticket;
         final long startedAt = System.currentTimeMillis();
         final long startedNanos = System.nanoTime();
-        long finishedElapsedMillis;
+        Long executionStartedAt;
+        long executionStartedNanos, frozenQueueMillis, finishedElapsedMillis;
         final AnalysisMemoryGuard guard = new AnalysisMemoryGuard(policy, AnalysisMemoryGuard::heapSample,
                 () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         final ArrayDeque<Call> calls = new ArrayDeque<>();
         final Map<String, Integer> scores = new LinkedHashMap<>();
-        volatile String status = "RUNNING";
+        volatile String status = "QUEUED";
         volatile boolean cancelled;
         volatile long finishedAt;
-        String phase = "PREPARING", node = "", stopReason;
+        String phase = "QUEUED", node = "", stopReason;
         long sequence = 1, lastActivityAt = startedAt, callSequence, omittedCalls;
         boolean scoresTruncated;
-        Run(String id, Scope scope, AnalysisProvenance provenance) { this.id = id; this.scope = scope; this.provenance = provenance; }
-        boolean active() { return "RUNNING".equals(status) || "CANCELLING".equals(status); }
+        Run(String id, Scope scope, AnalysisProvenance provenance, AnalysisAdmissionQueue.Ticket ticket) {
+            this.id = id; this.scope = scope; this.provenance = provenance; this.ticket = ticket;
+        }
+        boolean active() { return "QUEUED".equals(status) || "RUNNING".equals(status) || "CANCELLING".equals(status); }
+        boolean queueExpired() {
+            return "QUEUED".equals(status)
+                    && TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos) >= maximumQueueWaitMillis;
+        }
+        synchronized void startExecution() {
+            executionStartedAt = System.currentTimeMillis();
+            executionStartedNanos = System.nanoTime();
+            frozenQueueMillis = TimeUnit.NANOSECONDS.toMillis(Math.max(0L, executionStartedNanos - startedNanos));
+            status = "RUNNING";
+            phase("PREPARING", null);
+        }
         synchronized void requestCancellation() {
-            if (active()) { cancelled = true; status = "CANCELLING"; touch(); }
+            if (active()) {
+                boolean queued = "QUEUED".equals(status);
+                cancelled = true;
+                status = "CANCELLING";
+                touch();
+                if (queued) finish("CANCELLED");
+            }
         }
         void touch() { sequence++; lastActivityAt = System.currentTimeMillis(); }
+        @Override public synchronized void checkpoint() {
+            if (!active() && stopReason != null) {
+                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.valueOf(stopReason));
+            }
+        }
         @Override public synchronized void phase(String phase, String node) {
             this.phase = bounded(phase, 64);
             if (node != null) this.node = bounded(node, 256);
@@ -353,8 +431,6 @@ public class AnalysisProgressRegistry {
         }
         @Override public synchronized void stoppedAfterResponse(long id, LlmCallDetail detail,
                 long duration, AnalysisStoppedException.Reason reason) {
-            // The provider response is complete even when subsequent work must stop.
-            // Keep the same bounded evidence as a normal response and publish STOPPING atomically.
             completed(id, detail, duration);
             calls.stream().filter(call -> call.id == id).findFirst()
                     .ifPresent(call -> call.status = "STOPPED");
@@ -369,6 +445,7 @@ public class AnalysisProgressRegistry {
             phase("LLM_FAILED", null);
         }
         @Override public synchronized void stopped(AnalysisStoppedException.Reason reason) {
+            if (!active()) return;
             if (stopReason == null) stopReason = reason.name();
             long now = System.nanoTime();
             calls.stream().filter(call -> "STARTED".equals(call.status)).forEach(call -> {
@@ -380,7 +457,6 @@ public class AnalysisProgressRegistry {
         synchronized Terminal finish(String resultStatus) {
             if (!active()) return new Terminal(status, stopReason);
             // cancel() and finish() share the run monitor: a cancellation accepted first wins.
-            // Do not replace a resource-stop reason that the worker has already recorded.
             if (cancelled && stopReason == null) stopped(AnalysisStoppedException.Reason.CANCELLED);
             String terminalStatus = "CANCELLED".equals(stopReason) || "CANCELLED".equals(resultStatus) ? "CANCELLED"
                     : stopReason != null ? "PARTIAL"
@@ -390,17 +466,19 @@ public class AnalysisProgressRegistry {
             finishedAt = System.currentTimeMillis();
             finishedElapsedMillis = Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
             touch();
-            // reap() observes this volatile state without taking the run monitor.
-            // Publish the timestamp and terminal metadata before making the run inactive.
+            ticket.close();
+            // Publish timestamps and terminal metadata before making the run inactive.
             status = terminalStatus;
             return new Terminal(status, stopReason);
         }
         synchronized Snapshot snapshot() {
+            long elapsed = active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis;
+            long queued = executionStartedAt == null ? elapsed : frozenQueueMillis;
             return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,
                     System.currentTimeMillis(), scores.size(), scoresTruncated, Map.copyOf(scores),
                     calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),
                     databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
-                    active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis);
+                    elapsed, executionStartedAt, queued, executionStartedAt == null ? 0L : Math.max(0L, elapsed - queued));
         }
     }
 
