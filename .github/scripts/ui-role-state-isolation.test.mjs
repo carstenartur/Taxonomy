@@ -1,5 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+
+const draftSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js',
+  import.meta.url), 'utf8');
 
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 
@@ -64,11 +70,12 @@ function installHarness(options = {}) {
       async request(path, requestOptions) {
         calls.push({ request: path, options: requestOptions });
         if (options.remoteError) throw options.remoteError;
-        return { status: remoteStatus };
+        return { status: remoteStatus, json: async () => options.remoteDraft };
       }
     },
     TaxonomyAnalysisSession: {
-      state: () => ({ restoring, conflict, workspaceId: currentWorkspaceId }),
+      state: () => ({ restoring, conflict, workspaceId: currentWorkspaceId,
+        version: options.version ?? null }),
       async reload() {
         calls.push('reload');
         restoring = true;
@@ -87,6 +94,7 @@ function installHarness(options = {}) {
         if (options.workspaceIdAfterSave !== undefined) {
           currentWorkspaceId = options.workspaceIdAfterSave;
         }
+        return options.saveResult ?? true;
       }
     }
   };
@@ -141,7 +149,7 @@ function installHarness(options = {}) {
 }
 
 test(
-  'reloads the exact revision, deletes it and verifies uncached authoritative absence',
+  'reloads an absent draft and verifies its uncached authoritative absence',
   async () => {
     const harness = installHarness();
     try {
@@ -237,12 +245,12 @@ test('fails before mutation when the workspace changes between checks', async ()
   }
 });
 
-test('fails closed when optimistic deletion enters conflict state', async () => {
+test('fails closed when optimistic clearing enters conflict state', async () => {
   const harness = installHarness({ conflictAfterSave: true });
   try {
     await assert.rejects(
       () => isolateRoleStateScenario(harness.page, 1_000),
-      /could not delete the authoritative draft revision/);
+      /could not clear the authoritative draft revision/);
     assert.deepEqual(
       harness.calls.map(call => typeof call === 'string'
         ? call : Object.keys(call)[0]),
@@ -271,7 +279,7 @@ test('fails closed when remote cleanup verification finds a surviving draft', as
   try {
     await assert.rejects(
       () => isolateRoleStateScenario(harness.page, 1_000),
-      /returned HTTP 200, expected 204/);
+      /did not return the authoritative empty draft/);
     assert.equal(harness.calls.some(call => call === 'event:input'), false);
     assert.equal(harness.calls.some(call => call === 'view:list'), false);
   } finally {
@@ -306,6 +314,127 @@ test('fails closed when remote cleanup verification cannot be completed', async 
       /draft cleanup verification unavailable/);
     assert.equal(harness.calls.some(call => call === 'event:input'), false);
     assert.equal(harness.calls.some(call => call === 'view:list'), false);
+  } finally {
+    harness.restore();
+  }
+});
+
+function emptyDraft(overrides = {}) {
+  return {
+    workspaceId: 'workspace-42', version: 4,
+    payload: { draftState: 'EMPTY', businessText: '', scores: {},
+      architectureView: null, discrepancies: [], productCoverageGaps: [],
+      provisionalRelations: [] },
+    ...overrides
+  };
+}
+
+test('accepts the retained empty revision of an existing draft', async () => {
+  const harness = installHarness({ remoteStatus: 200, version: 4,
+    remoteDraft: emptyDraft() });
+  try {
+    await isolateRoleStateScenario(harness.page, 1_000);
+    assert.equal(harness.input.value, '');
+    assert.equal(harness.tree.dataset.viewRendered, 'list');
+  } finally {
+    harness.restore();
+  }
+});
+
+for (const [label, remoteDraft] of [
+  ['wrong workspace', emptyDraft({ workspaceId: 'workspace-other' })],
+  ['different revision', emptyDraft({ version: 5 })],
+  ['missing revision', emptyDraft({ version: null })],
+  ['missing payload', emptyDraft({ payload: null })],
+  ['active state', emptyDraft({ payload: { draftState: 'ACTIVE', businessText: '' } })],
+  ...Object.entries({ businessText: 'Previous requirement', scores: { BP: 90 },
+    architectureView: { nodes: ['BP'] }, discrepancies: ['old'],
+    productCoverageGaps: ['old'], provisionalRelations: ['old'] })
+    .map(([key, value]) => [key, emptyDraft({
+      payload: { ...emptyDraft().payload, [key]: value } })])
+]) {
+  test(`rejects retained draft with ${label}`, async () => {
+    const harness = installHarness({ remoteStatus: 200, version: 4, remoteDraft });
+    try {
+      await assert.rejects(() => isolateRoleStateScenario(harness.page, 1_000),
+        /did not return the authoritative empty draft/);
+      assert.equal(harness.calls.includes('event:input'), false);
+    } finally {
+      harness.restore();
+    }
+  });
+}
+
+test('rejects absence after saving a versioned draft', async () => {
+  const harness = installHarness({ version: 4 });
+  try {
+    await assert.rejects(() => isolateRoleStateScenario(harness.page, 1_000),
+      /lost the authoritative draft revision/);
+  } finally {
+    harness.restore();
+  }
+});
+
+test('rejects a failed save even if the remote draft appears empty', async () => {
+  const harness = installHarness({ saveResult: false });
+  try {
+    await assert.rejects(() => isolateRoleStateScenario(harness.page, 1_000),
+      /could not clear the authoritative draft revision/);
+    assert.equal(harness.calls.some(call => call.request), false);
+  } finally {
+    harness.restore();
+  }
+});
+
+test('isolates successive profiles using the production versioned draft writer', async () => {
+  const harness = installHarness();
+  let persisted = null;
+  const writes = [];
+  const runtime = { workspaceId: 'workspace-42', version: null, conflict: false,
+    restoring: false, saveInFlight: null, saveQueued: false };
+  const context = {
+    S: {}, runtime,
+    currentPayload: () => ({ businessText: harness.input.value,
+      draftState: harness.input.value ? 'ACTIVE' : 'EMPTY' }),
+    comparable: JSON.stringify,
+    meaningful: payload => Boolean(payload.businessText),
+    draftEndpoint: () => '/api/analysis-drafts/workspace-42',
+    jsonRequest: async (_url, options) => {
+      assert.equal(options.method, 'PUT');
+      const body = JSON.parse(options.body);
+      assert.equal(body.expectedVersion, persisted?.version ?? null);
+      persisted = { workspaceId: runtime.workspaceId,
+        version: (persisted?.version ?? -1) + 1, payload: body.payload };
+      writes.push(structuredClone(persisted));
+      return persisted;
+    }
+  };
+  try {
+    vm.runInNewContext(draftSource, {
+      window: { __TaxonomyAnalysisSessionContext: context, clearTimeout() {} },
+      document: { addEventListener() {}, dispatchEvent() {} },
+      CustomEvent: class {}, console
+    });
+    window.TaxonomyAnalysisSession.state = () => runtime;
+    window.TaxonomyAnalysisSession.saveNow = context.saveDraft;
+    window.TaxonomyAnalysisSession.reload = async () => {
+      runtime.version = persisted?.version ?? null;
+      runtime.lastSavedComparable = persisted ? JSON.stringify(persisted.payload) : null;
+    };
+    window.TaxonomyAnalysisSessionApi.request = async () => ({
+      status: persisted ? 200 : 204, json: async () => persisted
+    });
+    // A fresh profile has no row. A later profile restores the prior analysis.
+    await isolateRoleStateScenario(harness.page, 1_000);
+    assert.equal(persisted, null);
+    harness.input.value = 'Analysis saved by the first browser';
+    assert.equal(await context.saveDraft(), true);
+    assert.equal(persisted.payload.draftState, 'ACTIVE');
+    await isolateRoleStateScenario(harness.page, 1_000);
+    assert.equal(persisted.payload.draftState, 'EMPTY');
+    assert.equal(persisted.payload.businessText, '');
+    assert.equal(persisted.version, 1);
+    assert.equal(writes.length, 2);
   } finally {
     harness.restore();
   }

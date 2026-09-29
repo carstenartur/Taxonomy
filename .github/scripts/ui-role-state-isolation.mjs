@@ -42,8 +42,10 @@ async function authoritativeWorkspaceId(page) {
  *
  * The server's optimistic draft revision is authoritative. A fresh browser
  * runtime first loads that revision, checks that restoration ended conflict-free,
- * deletes the draft through the public session API and then performs an uncached
- * read through the public draft endpoint to prove that no remote state remains.
+ * clears the draft through the public session API and then performs an uncached
+ * read through the public draft endpoint. Existing drafts retain an EMPTY revision
+ * to prevent stale tabs from resurrecting discarded analysis state; only a
+ * workspace that never had a draft may still return 204.
  */
 export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_MS) {
   await waitForAnalysisSessionReady(page, timeout);
@@ -76,14 +78,14 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
       silent: true,
       reason: 'role-state-acceptance-isolation'
     });
-    await session.saveNow();
+    const saved = await session.saveNow();
 
     const state = session.state?.();
     const conflictMessage = document.querySelector(
       '#statusArea[data-analysis-session-message="conflict"]');
-    if (state?.conflict === true || conflictMessage) {
+    if (saved !== true || state?.conflict === true || conflictMessage) {
       throw new Error(
-        'Role-state isolation could not delete the authoritative draft revision');
+        'Role-state isolation could not clear the authoritative draft revision');
     }
     if (state?.workspaceId !== expectedWorkspaceId) {
       throw new Error(
@@ -98,9 +100,30 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
         cache: 'no-store'
       }
     );
-    if (response.status !== 204) {
+    if (response.status === 200) {
+      const draft = await response.json();
+      const payload = draft?.payload;
+      const hasEntries = value => value != null && Object.keys(value).length > 0;
+      if (draft?.workspaceId !== expectedWorkspaceId
+          || !Number.isSafeInteger(draft?.version) || draft.version < 0
+          || draft.version !== state?.version
+          || payload?.draftState !== 'EMPTY'
+          || payload.businessText !== ''
+          || hasEntries(payload.scores)
+          || payload.architectureView
+          || hasEntries(payload.discrepancies)
+          || hasEntries(payload.productCoverageGaps)
+          || hasEntries(payload.provisionalRelations)) {
+        throw new Error(
+          'Role-state isolation did not return the authoritative empty draft');
+      }
+    } else if (response.status === 204) {
+      if (state?.version !== null) {
+        throw new Error('Role-state isolation lost the authoritative draft revision');
+      }
+    } else {
       throw new Error(
-        `Role-state isolation verification returned HTTP ${response.status}, expected 204`);
+        `Role-state isolation verification returned HTTP ${response.status}, expected 200 or 204`);
     }
 
     const input = document.getElementById('businessText');
