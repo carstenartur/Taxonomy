@@ -1,5 +1,7 @@
 package com.taxonomy.acceptance;
 
+import com.taxonomy.dto.TaxonomyDataFingerprint;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -15,6 +17,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,7 +69,7 @@ public final class OnnxReferenceEvaluation {
         for (String file : List.of("report.json", "report.csv", "report.html")) Files.deleteIfExists(output.resolve(file));
         var report = new LinkedHashMap<String, Object>();
         var rows = new ArrayList<Map<String, Object>>();
-        report.put("schemaVersion", 1);
+        report.put("schemaVersion", 2);
         report.put("evidenceKind", "LOCAL_ONNX_EVALUATION_ATTEMPT");
         report.put("status", "ERROR");
         report.put("scope", "Retrieval only; no generated relations, reformulation or calibrated probabilities");
@@ -120,9 +123,15 @@ public final class OnnxReferenceEvaluation {
             } while (true);
             report.put("indexState", status.path("indexState").stringValue());
             report.put("indexedNodesAtReadiness", status.path("indexedNodesAtReadiness").asLong());
-            var catalogue = catalogue(get(origin, authorization, "/api/taxonomy"));
-            String catalogueHash = hash(JSON.writeValueAsBytes(catalogue));
+            JsonNode catalogueJson = get(origin, authorization, "/api/taxonomy");
+            // Validate bounded hierarchy/identities before binding the canonical DTO tree.
+            var catalogue = catalogue(catalogueJson);
+            String catalogueHash = catalogueFingerprint(catalogueJson);
+            String projectionHash = hash(JSON.writeValueAsBytes(catalogue));
             report.put("catalogueSha256", catalogueHash);
+            report.put("catalogueFingerprintAlgorithm", "TaxonomyDataFingerprint.sha256");
+            // Preserve the older text/translation check without calling it canonical.
+            report.put("catalogueProjectionSha256", projectionHash);
             if (catalogue.size() != status.path("indexedNodesAtReadiness").asLong()) {
                 throw new IOException("Catalogue and ready vector index disagree");
             }
@@ -168,7 +177,10 @@ public final class OnnxReferenceEvaluation {
                     write(output, report);
                 }
             }
-            if (!catalogueHash.equals(hash(JSON.writeValueAsBytes(catalogue(get(origin, authorization, "/api/taxonomy")))))) {
+            JsonNode finalCatalogueJson = get(origin, authorization, "/api/taxonomy");
+            var finalCatalogue = catalogue(finalCatalogueJson);
+            if (!catalogueHash.equals(catalogueFingerprint(finalCatalogueJson))
+                    || !projectionHash.equals(hash(JSON.writeValueAsBytes(finalCatalogue)))) {
                 throw new IOException("Catalogue changed during evaluation");
             }
             for (var entry : modelHashes.entrySet()) {
@@ -208,12 +220,21 @@ public final class OnnxReferenceEvaluation {
         return result;
     }
 
+    private static String catalogueFingerprint(JsonNode validatedRoots) {
+        return TaxonomyDataFingerprint.sha256(Arrays.asList(
+                JSON.treeToValue(validatedRoots, TaxonomyNodeDto[].class)));
+    }
+
     private static Map<String, Map<String, String>> catalogue(JsonNode roots) throws IOException {
         var result = new TreeMap<String, Map<String, String>>(); collect(roots, result, 0); return result;
     }
     private static void collect(JsonNode nodes, Map<String, Map<String, String>> result, int depth) throws IOException {
         if (!nodes.isArray() || depth > 64 || result.size() > 100_000) throw new IOException("Invalid catalogue shape");
         for (JsonNode node : nodes) {
+            if (!node.path("level").isIntegralNumber() || !node.path("level").canConvertToInt()
+                    || (node.hasNonNull("analysisRole") && !node.path("analysisRole").isString())) {
+                throw new IOException("Invalid canonical catalogue fields");
+            }
             String code = node.path("code").stringValue();
             var identity = new TreeMap<String, String>();
             for (String field : List.of("nameEn", "nameDe", "descriptionEn", "descriptionDe", "parentCode", "taxonomyRoot")) {
