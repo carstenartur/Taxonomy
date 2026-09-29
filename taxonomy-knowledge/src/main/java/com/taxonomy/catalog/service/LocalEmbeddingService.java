@@ -421,7 +421,10 @@ public class LocalEmbeddingService {
             float[] queryVector = embedQuery(queryText);
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
-                    .where(factory -> factory.knn(topK)
+                    // Lucene's approximate search uses k for graph exploration too.
+                    // A top-10 response must not restrict the search to 10 candidates:
+                    // a nearer vector can otherwise remain undiscovered.
+                    .where(factory -> factory.knn(semanticCandidateCount(topK))
                             .field("embedding")
                             .matching(queryVector))
                     .fetchHits(topK);
@@ -433,6 +436,21 @@ public class LocalEmbeddingService {
                     queryText, exception.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Keep ANN candidate exploration separate from the caller's result limit.
+     * Oversample small pages by ten, with a 100-candidate floor and a 1000-candidate
+     * ceiling on extra work. The API already bounds result pages; larger internal
+     * callers must still receive their requested count. Long arithmetic avoids
+     * overflow before applying the ceiling. This improves recall, not exactness.
+     */
+    static int semanticCandidateCount(int requestedResults) {
+        if (requestedResults <= 0) {
+            throw new IllegalArgumentException("Semantic result count must be positive");
+        }
+        long candidates = Math.min(1000L, Math.max(100L, 10L * requestedResults));
+        return (int) Math.max(requestedResults, candidates);
     }
 
     @Transactional(readOnly = true)
