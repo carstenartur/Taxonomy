@@ -94,7 +94,7 @@
         <springdoc.version>3.1.1</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
         <jackson-2-bom.version>2.22.2</jackson-2-bom.version>
-        <jackson-bom.version>3.1.5</jackson-bom.version>
+        <jackson-bom.version>3.1.6</jackson-bom.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
         <archunit.version>1.5.0</archunit.version>
@@ -217,6 +217,11 @@
                                 <bannedDependencies>
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
+                                        <!-- CVE-2026-68497: reject vulnerable databind even if the BOM is overridden. -->
+                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.6):jar:compile</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.6):jar:runtime</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.2):jar:compile</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.2):jar:runtime</exclude>
                                         <!-- Fixed floor is independent of overrides to tomcat.version. -->
                                         <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:compile</exclude>
                                         <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:runtime</exclude>

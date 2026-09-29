@@ -55,7 +55,7 @@ There is no response playback or parallel embedding/search implementation.
 
 `target/failsafe-reports/local-onnx-reference/` contains JSON, CSV and readable HTML.
 Reports record actual application JAR/source identity, model/tokenizer/config hashes,
-reference and canonical effective-catalogue fingerprints, query configuration,
+reference and catalogue-projection fingerprints, query configuration,
 attempted search count and timings. Dynamic timing is intentionally separate from
 stable case ordering and measurement values; new live runs are not promised to be
 byte-identical. No requirement text, auth headers, provider replies or secret values
@@ -63,7 +63,7 @@ are copied into the report. Unit-test negative reports use temporary directories
 Model provisioning/container startup failures before the evaluation method remain
 Failsafe errors rather than generated inference evidence.
 
-## Verification performed while implementing
+## Initial implementation verification (historical)
 
 Java 21 compilation with `-Xlint:all -Werror` passed for both helper classes against
 the application's actual Jackson 3.1.5 dependencies. A hand-computed metric probe
@@ -87,3 +87,39 @@ local Chromium policy. The workflow must supply exact-head execution evidence.
 Do not close #927 or merge based only on these supplementary checks. This slice
 does not implement generated relations, reformulation, alternative groups,
 hierarchical metrics, general resumable evaluation or the rest of the roadmap.
+
+
+## Verified CI checkpoint and dependency security correction (2026-09-29)
+
+The exact-head ONNX workflow `36521142846` at `41ae713da8eabd16a04d3f5f0b8484b6de3997b2`
+completed successfully. Artifact `11013912386` has SHA-256
+`53fe6a11f58c5f5cf9efcd900d9512b76c74ea9574cc14b980cbecf3df683ea4`.
+It contains 9 passing pipeline tests, 9 passing browser tests, 4 passing embedding
+tests and 5 passing REST tests, with no errors, failures or skips in those suites.
+The clean application identifies that exact source commit. All twelve searches
+ran: English semantic ranks are payroll 1, word processing 2 and email 1.
+German payroll and word processing still miss their references; email is rank 6.
+The overall report remains `MEASURED_WITH_REFERENCE_MISSES`. This is not evidence
+of general German-language quality.
+
+The independently failing Security Scan `36521142814`, job `109254054398`,
+blocks Jackson databind 3.1.5 for HIGH CVE-2026-68497. That is not another ONNX
+reference failure. Its SARIF artifact `11012891962` has SHA-256
+`f0fc8e9446f31bcd88d6542c17e1f96c7be1d8a6cfde0b5e1228766c97d52289`.
+The Jackson 3 BOM is upgraded to the fixed 3.1.6 patch family, with vulnerable
+3.x databind ranges blocked by Maven Enforcer independently of the BOM override.
+The separately managed Jackson 2 family is unchanged. No scanner exceptions,
+severity changes, disabled tests, query changes or altered ONNX thresholds.
+The upstream release notes identify the fix:
+https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1.6
+
+`JacksonXmlDatatypeConstraintsTest` exercises actual deserialization with a small
+64-character numeric limit, never a resource-exhaustion payload. The two guard
+tests fail with 3.1.5 and pass with 3.1.6; ordinary values pass both. All three new
+JUnit tests plus eight existing ONNX reference/report contracts pass on the patched
+Jackson jars (11 passed, none skipped). Compilation uses Java 21 with warnings as
+errors. These are focused tests, not a full Maven/application or new-head scan pass.
+The final full Maven command was attempted but the pinned Maven distribution could
+not be downloaded locally. Complete exact-head CI and security scanning remain
+required after the dependency change. The earlier successful ONNX evidence is not
+relabeled as a run of the later dependency patch.
