@@ -4,8 +4,10 @@ Give an integer from 0 to 100: 0 means explicitly assessed as irrelevant, while 
 An intermediate value must stay intermediate. Do not force a positive score to 100.
 
 Business Requirement: {{BUSINESS_TEXT}}
+
 Taxonomy root: {{TAXONOMY_NAME}}
 {{NODE_LIST}}
 
-Respond ONLY with a JSON object with exactly the key {{EXPECTED_KEYS}} and an object value
-with integer "score" and a nonempty "reason". Do not include other keys or prose.
+Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
+Each value must be an object with integer "score" and a nonempty "reason".
+Do not include other keys or prose.

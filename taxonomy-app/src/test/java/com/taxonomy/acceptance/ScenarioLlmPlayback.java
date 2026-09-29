@@ -11,7 +11,9 @@ import java.util.regex.Pattern;
 public final class ScenarioLlmPlayback {
     private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
     private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+)");
-    private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n(?=(?:[^\\r\\n]*Categories|Concrete Information Product candidates|Nodes to evaluate):\\r?\\n)", Pattern.DOTALL);
+    private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n(?=(?:(?:[^\\r\\n]*Categories|Concrete Information Product candidates|Nodes to evaluate):\\r?\\n|Taxonomy root: [^\\r\\n]+\\r?\\n))", Pattern.DOTALL);
+    private static final Set<String> ROOT_CODES = Set.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
+    private static final String ROOT_PROMPT = "You assess the independent relevance of the offered C3 taxonomy root";
     private final ObjectMapper json = new ObjectMapper();
     private final JsonNode fixture;
     private final ScenarioRelationPlayback relationPlayback;
@@ -63,7 +65,7 @@ public final class ScenarioLlmPlayback {
                 total += score;
             }
             require(!rule.path("excludedReason").asText().isBlank(), "Missing exclusion reason: " + id);
-            boolean independentRoot = keys.size() == 1 && Set.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA").contains(keys.getFirst());
+            boolean independentRoot = keys.size() == 1 && ROOT_CODES.contains(keys.getFirst());
             require(!task.equals("categories") || independentRoot || total == rule.path("parentScore").asInt(), "Budget mismatch: " + id);
             String signature = signature(task, rule.path("parentScore").asInt(-1), keys);
             require(rules.putIfAbsent(signature, rule.deepCopy()) == null, "Duplicate response scope: " + id);
@@ -118,8 +120,14 @@ public final class ScenarioLlmPlayback {
             List<String> keys = Arrays.stream(keyText.split(",")).map(String::strip).toList();
             require(new HashSet<>(keys).size() == keys.size(), "Duplicate requested keys");
             boolean products = prompt.contains("Score every candidate independently from 0 to 100");
-            int budget = products ? -1 : Integer.parseInt(unique(BUDGET, prompt, "category task and budget"));
-            require(!products || !BUDGET.matcher(prompt).find(), "Ambiguous task");
+            boolean root = prompt.startsWith(ROOT_PROMPT);
+            require(!(products && root), "Ambiguous task");
+            if (root) {
+                require(keys.size() == 1 && ROOT_CODES.contains(keys.getFirst()), "Unknown root question");
+                require(prompt.contains("\n" + keys.getFirst() + ": "), "Missing offered root node");
+            }
+            int budget = products ? -1 : root ? 100 : Integer.parseInt(unique(BUDGET, prompt, "category task and budget"));
+            require(!(products || root) || !BUDGET.matcher(prompt).find(), "Ambiguous task");
             JsonNode rule = rules.get(signature(products ? "products" : "categories", budget, keys));
             require(rule != null, "Unknown response scope: " + String.join(",", keys));
             var answer = json.createObjectNode();

@@ -135,6 +135,38 @@ async function saveDraftNow(page) {
   });
 }
 
+async function authoritativeDraft(page) {
+  return page.evaluate(async () => {
+    const workspaceId = window.TaxonomyAnalysisSession?.state?.().workspaceId;
+    if (!workspaceId) throw new Error('No resolved analysis workspace');
+    const response = await fetch(`/api/analysis-drafts/${encodeURIComponent(workspaceId)}`);
+    if (!response.ok) throw new Error(`Draft GET failed with HTTP ${response.status}`);
+    return response.json();
+  });
+}
+
+function assertDraftEvidence(draft, assert, expectedReason) {
+  const payload = draft?.payload || {};
+  assert(payload.businessText === 'QA preference preservation sentinel'
+      && payload.lastAnalyzedText === payload.businessText
+      && payload.lastAnalysisStatus === 'SUCCESS',
+  `Authoritative draft lost the completed text/status: ${JSON.stringify(payload)}`);
+  assert(payload.scores?.BP === 77 && payload.rawScores?.BP === 77
+      && payload.effectiveScores?.BP === 77 && payload.reasons?.BP === expectedReason,
+  `Authoritative draft lost score/reason evidence: ${JSON.stringify(payload)}`);
+  assert(payload.architectureView?.includedElements?.some(element => element.nodeCode === 'BP')
+      && payload.evaluatedNodes?.includes('BP'),
+  `Authoritative draft lost architecture/evaluated nodes: ${JSON.stringify(payload)}`);
+}
+
+async function assertVisibleArchitecture(page, assert) {
+  await page.locator('#architectureViewPanel').waitFor({ state: 'visible', timeout: 20_000 });
+  const visible = await page.locator('#architectureViewContent').innerText();
+  assert(visible.includes('QA preference preservation sentinel')
+      && visible.includes('Business Processes'),
+  `Restored architecture is missing from the visible UI: ${visible.slice(0, 500)}`);
+}
+
 async function installRequestGate(page, pattern, method) {
   let releaseRequest;
   let markSeen;
@@ -232,6 +264,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     state.currentView = 'summary';
     window._currentProvisionalRelations = [];
     window._taxonomyCurrentScores = state.currentScores;
+    window.TaxonomyScoring.renderArchitectureView(state.currentArchView);
   });
   assert(await saveDraftNow(page) === true,
     'Unable to persist the preference-preservation analysis draft');
@@ -240,8 +273,14 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
   const field = page.locator('#pref-max-arch-nodes');
   const originalLimit = Number(await field.inputValue());
   assert(Number.isFinite(originalLimit), 'Architecture-node preference is not numeric');
-  const changedLimit = originalLimit >= 1000 ? originalLimit - 1 : originalLimit + 1;
-  const failedLimit = originalLimit <= 998 ? originalLimit + 2 : originalLimit - 2;
+  // The reported sequence is specifically 50 → 150. Establish the starting
+  // value through the same visible Preferences control, even if another test
+  // changed this isolated application's initial runtime default.
+  if (originalLimit !== 50) await saveArchitectureLimit(page, 50);
+  assert(Number(await field.inputValue()) === 50,
+    'The issue #1100 browser scenario did not start from 50 nodes');
+  const changedLimit = 150;
+  const failedLimit = 149;
   let preferenceRestored = false;
 
   try {
@@ -268,6 +307,8 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
       autosaveGate.release();
       assert(await page.evaluate(async () => window.__taxonomyQaPendingDraftSave) === true,
         'The delayed analysis draft autosave did not complete successfully');
+      assertDraftEvidence(await authoritativeDraft(page), assert,
+        'QA preference preservation sentinel — autosave pending');
     } finally {
       await autosaveGate.dispose();
     }
@@ -281,6 +322,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     const afterArchitectureReturn = await page.evaluate(workingStateExpression());
     assert(afterArchitectureReturn === sentinelState,
       'Returning to Architecture after saving Preferences cleared or replaced the working state');
+    await assertVisibleArchitecture(page, assert);
 
     await navigateToPage(page, 'analyze');
     await page.locator('#tab-analyze').waitFor({ state: 'visible', timeout: 20_000 });
@@ -347,6 +389,8 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     const afterReload = await page.evaluate(workingStateExpression());
     assert(afterReload === sentinelState,
       'Pending initial restore produced an older, empty, or incomplete working draft');
+    assertDraftEvidence(await authoritativeDraft(page), assert,
+      'QA preference preservation sentinel — autosave pending');
     assert(await page.locator('[data-analysis-session-action="load-saved"]').count() === 0,
       'Reload offered an obsolete saved draft instead of restoring the current working draft');
 
@@ -354,6 +398,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     const afterReloadArchitecture = await page.evaluate(workingStateExpression());
     assert(afterReloadArchitecture === sentinelState,
       'Architecture navigation after pending restore replaced the restored working draft');
+    await assertVisibleArchitecture(page, assert);
 
     await navigateToPage(page, 'preferences');
     await waitForPreferenceLoad(page);
@@ -362,7 +407,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
 
     await axeState('preferences-state-preserved', '#tab-preferences');
     await saveState('preferences-state-preserved', '#tab-preferences');
-    passed('preferences remain isolated across autosave, failure, return and pending restore');
+    passed('Preferences 50→150 preserves visible architecture and authoritative draft across autosave, failure, return and pending restore');
   } finally {
     if (!preferenceRestored) {
       try {
@@ -378,6 +423,8 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     // Restore the exact browser working state that existed before this scenario
     // and persist it through the same draft API so the QA run leaves no sentinel.
     await page.evaluate(restoreWorkingStateExpression(), originalState);
+    await page.evaluate(() => window.TaxonomyScoring.renderArchitectureView(
+      window.TaxonomyState.currentArchView));
     const restoredDraft = await saveDraftNow(page);
     if (!restoredDraft) {
       console.warn('Could not persist the pre-QA analysis draft during cleanup');

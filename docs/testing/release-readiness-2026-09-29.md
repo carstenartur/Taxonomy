@@ -32,6 +32,9 @@ English/German documentation drift. This record is **not a release approval**.
 | Unsupported-provider use-case contract | New regression fails against baseline; corrected use-case contracts 10/10 |
 | ONNX reference review regressions | Three failures against old readiness/hash behavior; corrected reference helper tests 11/11 |
 | Combined focused JUnit selection | 131 tests passed, zero failures, errors, aborts or skips |
+| Rendered root prompt / scenario playback | New test reproduced `Missing requirement` twice before correction; 6/6 now pass across the authored corpora, full-source validation, adopted text and the existing child prompt |
+| Root flow after the prompt-format correction | 7/7 passed again; independent relevance and child budgets remain distinct |
+| Preferences / working-draft component regression | 4/4 passed for 50→150, pending autosave, failed Preferences save and pending initial restore; wired into the Maven-owned UI contract command |
 | Native ONNX pooling | Real native tensor/translator check passed; included in the 131 tests |
 | Release notes/delivery/image and Maven cache contracts | Passed |
 | Changed Markdown local file links | 370 checked across 43 Markdown files before adding this evidence record; no missing targets |
@@ -50,6 +53,23 @@ Changed classes and the new prompt resource took precedence over baseline classe
 JUnit 6.1.3 came from the installed dependency cache. This deliberately bounded
 compile/test harness is not Maven dependency resolution, a full reactor build or
 new end-to-end real-model retrieval evidence.
+
+The first candidate scenario workflow (`36532240413`, head `09e9270`) exposed a
+strict playback contract mismatch: the new root template did not have the source
+delimiter/key marker consumed by the scenario transport, which also required
+child-budget wording. The follow-up retains independent-root scoring, aligns the
+template's field boundaries and recognizes the root task explicitly in the test
+transport. Unknown source text, roots and response scopes still fail. The new
+`ScenarioRootPromptPlaybackTest` uses the production template rather than a copied
+prompt. Its local result is not a substitute for rerunning the full scenario lane.
+
+The Preferences component test executes the actual inline Preferences script and
+working-draft lifecycle with controlled HTTP responses. It is not browser evidence.
+The existing ADMIN browser workflow now uses the exact 50→150 transition and
+asserts both the visible architecture and the authoritative saved draft after
+autosave, navigation and reload. It still seeds an explicit completed-state fixture;
+the separate scenario lane exercises actual analysis completion. The strengthened
+browser workflow must pass before its coverage is counted as executed evidence.
 
 ## Independent review and remaining gates
 
