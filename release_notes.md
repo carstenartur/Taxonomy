@@ -8,6 +8,52 @@ The immutable `v1.3.1` Git tag remains release-ancestry evidence only. No GitHub
 
 ## Product highlights
 
+### Reviewed requirement reformulation
+
+The workbench can prepare a reformulation offer from a frozen requirement version,
+analysis snapshot and decision context. Bottom-up node reasoning and cross-taxonomy
+reconciliation retain original constraints, expose open questions and preserve
+answers, deferrals and manual edits. Adoption is explicit and creates a traceable
+new requirement version; preparing or exporting an offer does not replace the source.
+Historical revisions remain exportable in JSON, Markdown, HTML and DOCX without
+new inference. See [reformulation behavior and verification](docs/testing/requirement-reformulation.md).
+
+### Versioned planning information
+
+The architecture editor supports bounded requirement planning profiles for a target
+go-live year/date and references to standards or internal guidance. These reuse the
+existing workspace revision, review, undo and history contracts. ReqIF carries the
+versioned planning envelope; a standard reference is not a compliance certification,
+and a planned date is not evidence that a system is operational. See
+[planning profiles](docs/features/planning-profiles.md).
+
+### Local account administration and guided installation
+
+The opt-in `local-user-management` profile adds administrator forms for the existing
+local account service, with role checks, password replacement and last-administrator
+protection. Keycloak deployments continue to manage identities through their identity
+provider; disabling an account does not revoke already established browser sessions.
+See [local user management](docs/LOCAL_USER_MANAGEMENT.md).
+
+Guided Rancher/Helm values and a native installation/preflight foundation reuse the
+existing Spring configuration, deployment secrets and migration safeguards. Database,
+authentication and custom-provider settings are validated without adding a public
+first-run setup service. Native package production and target-platform acceptance
+remain distinct from successful configuration validation. See
+[installation scope and limits](docs/INSTALLATION_SETUP.md).
+
+### Independent root relevance and explicit provider limits
+
+Root assessments now retain their independent 0–100 relevance instead of converting
+every positive root to 100. Child categories still distribute their parent's budget,
+including a group with one child; concrete products retain their separate suitability
+semantics. Saved historical results are not rewritten.
+
+`LOCAL_ONNX` performs local embedding search and scoring. It cannot generate relation
+assessments: that part of an analysis remains explicitly unassessed/partial, with
+no unsupported completion call, repeated retry or inferred confirmed absence of
+relationships. A generative provider is required for generated relation evidence.
+
 ### Experimental Sparx EA XMI exchange
 
 The tool integration workflow now offers an experimental `sparx-xmi-2.1@1`
@@ -107,6 +153,12 @@ The local ONNX path has an explicit, fail-closed lifecycle:
 - stale or missing indexes are rebuilt through the controlled initializer;
 - real-model and browser tests cover startup, readiness, rebuild, and interaction behaviour;
 - graph and similar-node result counts are bounded before Hibernate Search or candidate arithmetic, and non-positive graph limits perform no embedding or search work.
+
+BGE embeddings explicitly use normalized CLS pooling. Semantic search separates
+bounded ANN candidate exploration from the number of returned hits. Existing vectors
+from the earlier pooling behavior require rebuilding through the LOCAL_ONNX
+initializer. The paired DE/EN reference evaluation keeps German reference misses
+visible; English-model success is not evidence of equivalent German retrieval quality.
 
 Custom OpenAI-compatible provider configuration and diagnostics also provide clearer validation and failure reporting.
 
@@ -270,6 +322,8 @@ A bounded set of existing Python release adapters and evidence generators remain
 11. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml`, verify `/taxonomy/actuator/health/readiness`, and exercise the prefixed login/password-replacement path.
 12. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
 13. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
+14. Follow the corrected [backup/restore procedure](docs/en/CONTAINER_IMAGE.md#5-persistence-and-backup), which resolves the actual Compose service volume. Restore acceptance must include users, workspace state, search and Git history.
+15. Use PostgreSQL's managed migration path for external production databases. MSSQL and Oracle remain compatibility profiles pending complete production qualification; switching a profile is not a cross-database data migration. Never use `ddl-auto=create` to upgrade an existing database.
 
 ## Verification boundary
 

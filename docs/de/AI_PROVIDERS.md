@@ -41,6 +41,13 @@ Der `LlmService` ist die zentrale Komponente für KI-Analysen. Er unterstützt a
 | **LOCAL_ONNX** | bge-small-en-v1.5 | lokale Embedding-Einstellungen | Nein |
 
 `CUSTOM_OPENAI` bindet ein generatives LLM über die OpenAI-kompatible Chat-Completions-Schnittstelle an. `LOCAL_ONNX` ist davon zu unterscheiden: Es liefert lokale Ähnlichkeitsbewertungen auf Basis von Embeddings und erzeugt keine textuellen LLM-Antworten.
+Embedding-Inferenz ist standardmäßig deaktiviert. Für `LOCAL_ONNX` sind
+`LLM_PROVIDER=LOCAL_ONNX` und `TAXONOMY_EMBEDDING_ENABLED=true` zu setzen;
+ein lesbares vorab geladenes Modellverzeichnis oder ein ausdrücklich
+zugelassener Laufzeitdownload ist ebenfalls nötig. Die automatische
+Vektorindizierung von Knoten/Relationen beim Start benötigt sowohl die
+Anbieterauswahl als auch aktivierte Embeddings. Sie ersetzt kein geprüftes
+Wiederherstellungsverfahren für andere Lucene-Indizes.
 
 ---
 
@@ -50,7 +57,7 @@ Mit `CUSTOM_OPENAI` kann Taxonomy einen selbst betriebenen oder anderweitig vom 
 
 ```bash
 export LLM_PROVIDER=CUSTOM_OPENAI
-export CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+export CUSTOM_LLM_URL=https://llm.example.internal/v1/chat/completions
 export CUSTOM_LLM_MODEL=architecture-model
 ```
 
@@ -60,7 +67,7 @@ Die Authentifizierung ist optional:
 export CUSTOM_LLM_API_KEY=geheimer-token
 ```
 
-Ohne API-Key sendet Taxonomy keinen `Authorization`-Header. Mit konfiguriertem Key wird Bearer-Authentifizierung verwendet. URL und Modell sind Pflichtangaben; die URL muss ein vollständiger `http://`- oder `https://`-Chat-Completions-Endpunkt sein.
+Ohne API-Key sendet Taxonomy keinen `Authorization`-Header. Mit konfiguriertem Key wird Bearer-Authentifizierung verwendet. URL und Modell sind Pflichtangaben. Geführte Helm-/Native-Prüfungen verlangen HTTPS für Nicht-Loopback-Ziele und weisen eingebettete Zugangsdaten, Query und Fragmente zurück. Serverzertifikat/CA-Vertrauen und Netzfreigaben sind einzurichten; ein Modellserver in einem anderen Pod/Container ist kein Loopback. HTTP ist dort nur für exakte lokale Loopback-Adressen zulässig.
 
 Der [Leitfaden für ein eigenes OpenAI-kompatibles LLM](../dev/custom-llm-de.md) enthält den JSON-Vertrag, Docker-Beispiele, Sicherheitshinweise und eine Fehlerbehebung.
 
@@ -94,7 +101,12 @@ Beispiel:
 }
 ```
 
-`availableProviders` enthält immer `LOCAL_ONNX`. Cloud-Anbieter werden bei vorhandenem API-Key ergänzt; `CUSTOM_OPENAI` erscheint bei vollständiger und gültiger URL-/Modellkonfiguration.
+`availableProviders` führt `LOCAL_ONNX` auch dann als auswählbaren Anbieter,
+wenn Embedding-Inferenz noch nicht aktiviert oder das Modell nicht verfügbar
+ist. Die Auswahl belegt keine Betriebsbereitschaft; prüfen Sie
+`GET /api/embedding/status` und eine echte lokale Bewertungs-/Suchprobe.
+Cloud-Anbieter werden bei vorhandenem API-Key ergänzt; `CUSTOM_OPENAI`
+erscheint bei vollständiger und gültiger URL-/Modellkonfiguration.
 
 ---
 

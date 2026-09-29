@@ -569,7 +569,7 @@ curl -u admin:password -X DELETE http://localhost:8080/api/admin/users/2
 
 ## Workspace-Verwaltung
 
-Alle Workspace-Endpunkte erfordern Authentifizierung (HTTP Basic). Jeder Benutzer erhält beim ersten Zugriff automatisch einen persönlichen Workspace.
+Alle Workspace-Endpunkte erfordern Authentifizierung. Beim ersten Zugriff entsteht ein automatischer Standard-Workspace. Für API-Aufrufe eines Tabs mit einem bestimmten Workspace senden Sie bei jeder Anfrage `X-Taxonomy-Workspace-Id: {workspaceId}`; ohne Pin gilt der aktive/standardmäßige Workspace des Benutzers, den eine weitere Sitzung wechseln kann. SSE-Transporte ohne eigene Header können `?workspaceId={workspaceId}` verwenden. Ein explizit leerer Workspace-Header wählt einen nur lesbaren zentralen Kontext; Workspace-gebundene Schreibzugriffe werden abgewiesen und `GET /api/workspace/current` antwortet dann mit 204.
 
 ### Aktuellen Workspace abrufen
 
@@ -740,7 +740,7 @@ curl -u alice:password http://localhost:8080/api/workspace/provisioning-status
 }
 ```
 
-**Arbeitsbereich bereitstellen (persönlichen Branch erstellen):**
+**Standard-Workspace bereitstellen (getrenntes Repository befüllen):**
 ```bash
 curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
 ```
@@ -749,10 +749,12 @@ curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
 ```json
 {
   "status": "READY",
-  "branch": "alice/workspace",
+  "branch": "draft",
   "baseBranch": "draft"
 }
 ```
+
+Der automatische Standard-Workspace beginnt auf `draft` im eigenen Repository `ws-{workspaceId}`. Ein separat erstellter Workspace beginnt normalerweise auf `main`. `alice/workspace/{workspaceId}` gilt nur für die alte gemeinsame Repository-Speicherung.
 
 **Repository-Topologie abfragen:**
 ```bash

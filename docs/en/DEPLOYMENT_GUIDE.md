@@ -8,7 +8,8 @@ This guide describes supported deployment modes and their persistence, security 
 |---|---|---|---|
 | Local Maven / `docker run -p 8080` | Development and evaluation | In-memory by default | Local only |
 | `docker-compose.prod.yml` | Small controlled production installation | File-backed HSQLDB and filesystem Lucene under `/app/data` | Supported baseline |
-| Production profile + PostgreSQL/SQL Server/Oracle | Multi-user or business-critical production | External database plus persistent Lucene storage | Recommended |
+| Production profile + PostgreSQL | Multi-user or business-critical production | Released database migrations plus persistent Lucene storage | Recommended |
+| SQL Server / Oracle profiles | Compatibility evaluation | External test database | Production migration, restart and restore contract pending |
 | Render Free | Public demonstration | Ephemeral; state resets across deploys | Demo only |
 
 ## 1. Local development and evaluation
@@ -107,7 +108,9 @@ For multi-user or business-critical use, activate the hardened production profil
 SPRING_PROFILES_ACTIVE=production,postgres
 ```
 
-Equivalent profiles exist for `mssql` and `oracle`.
+`mssql` and `oracle` profiles also configure JDBC and Hibernate, but their
+released migration, upgrade and restore contracts are not qualified for
+production. The example Compose files for them are evaluation fixtures.
 
 Example environment:
 
@@ -117,6 +120,7 @@ TAXONOMY_DATASOURCE_URL=jdbc:postgresql://db.example.internal:5432/taxonomy
 SPRING_DATASOURCE_USERNAME=taxonomy
 SPRING_DATASOURCE_PASSWORD=<secret>
 TAXONOMY_ADMIN_PASSWORD=<long-random-password>
+TAXONOMY_DDL_AUTO=validate
 TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
 TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
 ```
@@ -125,7 +129,12 @@ See [Database Setup](DATABASE_SETUP.md) for driver and integration-test details.
 
 ### Schema management
 
-The current production profile uses `ddl-auto=update` for compatibility. Before introducing incompatible schema changes or operating a regulated long-lived installation, add Flyway or Liquibase and move production to `ddl-auto=validate`.
+The generic `production` profile retains `ddl-auto=update` for the file-backed
+HSQLDB Compose baseline. With PostgreSQL, use `TAXONOMY_DDL_AUTO=validate`:
+the released JGit Core and Taxonomy application Flyway migrations run at
+startup before Hibernate validates the schema. Back up and test a restore
+before upgrading. A profile switch never migrates data from HSQLDB to
+PostgreSQL; see [Database Setup](DATABASE_SETUP.md#moving-from-hsqldb-to-postgresql).
 
 ## 4. Authentication and authorization
 
@@ -188,7 +197,8 @@ At minimum back up:
 - uploaded source/provenance content where applicable;
 - external Git remotes if used;
 - configuration and secret references;
-- optionally the Lucene index, although it can be rebuilt from authoritative data.
+- a consistent filesystem Lucene snapshot when enabled; a general full-index
+  rebuild on startup is not guaranteed.
 
 A backup is not accepted until it has been restored on a separate instance and the following have been verified:
 

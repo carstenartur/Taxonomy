@@ -1,5 +1,46 @@
 # 1.4.0 release notes — unreleased
 
+The [complete release scope](../../release_notes.md) is the authoritative release
+description. These notes summarize the user-visible changes; publication still
+requires the final candidate's release gates.
+
+## Requirements and architecture workflow
+
+- A project/requirement portfolio with immutable versions, recoverable analysis jobs,
+  evidence review, comparison, history and reports.
+- Reviewed reformulation offers with explicit answers/deferrals, protected manual
+  drafts, historical exports and explicit adoption as a new requirement version.
+- Versioned planning profiles for a go-live year/date and standard references,
+  carried through the existing editor/history and bounded ReqIF exchange.
+- Versioned Word templates, snapshot-based architecture views and deterministic
+  exports. Information Product overlay classifications remain provisional.
+- Isolated workspace repositories and tab-bound workspace selection; central shared
+  views are read-only until an editable workspace is selected.
+
+## Analysis, local search and operation
+
+Root relevance now keeps its independent 0–100 score. Child categories still
+allocate the parent budget; concrete products retain independent suitability scores.
+Paused analyses distinguish unassessed nodes from assessed zero relevance.
+
+Local ONNX search uses normalized CLS embeddings and a separate ANN exploration
+budget. Earlier vectors must be rebuilt through the controlled initializer. ONNX
+cannot generate relationship assessments: analyses retain explicit partial evidence
+instead of attempting unsupported completion calls. The English embedding model's
+German reference misses remain visible and do not constitute a German-quality pass.
+
+Optional local-user administration, guided Rancher/Helm configuration and the native
+setup foundation reuse existing authentication and configuration. Backup instructions
+now resolve the real Compose volume. PostgreSQL is the external production migration
+path; MSSQL/Oracle remain compatibility profiles pending complete qualification.
+Follow the [upgrade notes](../../release_notes.md#upgrade-notes) and test restore,
+search and Git history before production rollout.
+
+GUI language currently does not guarantee the language of generated AI reasons.
+Localized report labels do not translate stored reasons; the proposed independent
+language controls are [documented separately](../dev/ANALYSIS_LANGUAGE_POLICY.md)
+and are not part of this release change.
+
 ## Experimental Visio visual handoff (#965)
 
 The Architecture Workbench now downloads the selected immutable snapshot as a bundle containing `diagram.vsdx`, a versioned mapping profile and a checksum-bound loss manifest. Export performs no new analysis. Native VSDX downloads carry the same profile and handoff data embedded in the file.

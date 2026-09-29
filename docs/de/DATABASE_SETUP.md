@@ -1,6 +1,6 @@
 # Datenbank-Einrichtungshandbuch
 
-Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit verschiedenen Datenbank-Backends betreiben können. Standardmäßig verwendet die Anwendung eine eingebettete **HSQLDB**-Datenbank, die keine Einrichtung erfordert. Für Produktionsumgebungen können Sie auf PostgreSQL, Microsoft SQL Server, Oracle oder andere JDBC-kompatible Datenbanken umstellen.
+Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit verschiedenen Datenbank-Backends betreiben können. Standardmäßig verwendet die Anwendung eine eingebettete **HSQLDB**-Datenbank, die keine Einrichtung erfordert. Für den produktiven Betrieb mit externer Datenbank ist PostgreSQL mit den freigegebenen Flyway-Migrationen von JGit Core und Taxonomy vorgesehen. SQL Server und Oracle sind Kompatibilitäts-/Evaluierungsprofile; ihre vollständigen Migrations-, Upgrade- und Restore-Verträge sind nicht für Produktion abgenommen. JDBC-Treiber und Hibernate-Dialekt allein reichen nicht aus.
 
 ---
 
@@ -13,7 +13,7 @@ Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit versc
 - [Oracle Database](#oracle-database)
 - [Neue Datenbank hinzufügen](#neue-datenbank-hinzufügen)
 - [Gemeinsame Konfiguration](#gemeinsame-konfiguration)
-- [Migrationspfad: HSQLDB → Produktionsdatenbank](#migrationspfad-hsqldb--produktionsdatenbank)
+- [Wechsel von HSQLDB zu PostgreSQL](#wechsel-von-hsqldb-zu-postgresql)
 - [Weiterführende Dokumentation](#weiterführende-dokumentation)
 
 ---
@@ -63,6 +63,12 @@ docker compose -f docker-compose-postgres.yml up
 ```
 
 Dies startet einen PostgreSQL-16-Alpine-Container zusammen mit der Taxonomy-Anwendung. Die Daten werden in einem Docker-Volume (`postgres-data`) persistiert.
+Dies ist ein **flüchtiges Evaluierungsbeispiel**: Die Compose-Datei setzt
+`TAXONOMY_DDL_AUTO=create`; ein Neustart der Anwendung erstellt
+Hibernate-verwaltete Tabellen erneut und kann trotz persistentem Volume Daten
+löschen. Für dauerhafte Produktionsdaten sind `production,postgres` mit
+`TAXONOMY_DDL_AUTO=validate`, gesicherte PostgreSQL-Daten und die
+freigegebenen Migrationen zu verwenden.
 
 ```bash
 # Tear down and remove data
@@ -77,16 +83,17 @@ docker compose -f docker-compose-postgres.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | Nein | `jdbc:postgresql://localhost:5432/taxonomy` | JDBC-URL |
 | `SPRING_DATASOURCE_USERNAME` | Nein | `taxonomy` | PostgreSQL-Anmeldename |
 | `SPRING_DATASOURCE_PASSWORD` | Nein | `taxonomy` | PostgreSQL-Passwort |
-| `TAXONOMY_DDL_AUTO` | Nein | `create` | Schema-Strategie (siehe [Gemeinsame Konfiguration](#gemeinsame-konfiguration)) |
+| `TAXONOMY_DDL_AUTO` | Nein | Basis `create`; Produktion `update`; Kubernetes `validate` | Mit freigegebenen PostgreSQL-Migrationen `validate` verwenden; niemals `create` auf dauerhaften Daten. |
 
 ### Beispiel: Verbindung zu einem vorhandenen Server
 
 ```bash
-export SPRING_PROFILES_ACTIVE=postgres
+export SPRING_PROFILES_ACTIVE=production,postgres
 export TAXONOMY_DATASOURCE_URL="jdbc:postgresql://myserver.example.com:5432/taxonomy"
 export SPRING_DATASOURCE_USERNAME=taxonomy_user
-export SPRING_DATASOURCE_PASSWORD=SecurePassword123!
-export TAXONOMY_DDL_AUTO=update
+export SPRING_DATASOURCE_PASSWORD="$DATABASE_PASSWORD"
+export TAXONOMY_ADMIN_PASSWORD="$TAXONOMY_ADMIN_PASSWORD"
+export TAXONOMY_DDL_AUTO=validate
 
 java -jar taxonomy-app/target/taxonomy-app-*.jar
 ```
@@ -106,13 +113,7 @@ PostgreSQL verwendet standardmäßig UTF-8, sodass alle Zeichenkettenfelder ohne
 ### Integrationstests ausführen
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Postgres*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-postgres
 ```
 
 ---
@@ -124,7 +125,7 @@ PostgreSQL verwendet standardmäßig UTF-8, sodass alle Zeichenkettenfelder ohne
 - SQL Server 2019 oder höher (einschließlich Azure SQL Database)
 - Docker (für den Schnellstart) **oder** eine vorhandene SQL-Server-Instanz
 
-### Schnellstart mit Docker Compose
+### Schnellstart mit Docker Compose (nur Kompatibilitätstest)
 
 ```bash
 docker compose -f docker-compose-mssql.yml up
@@ -146,7 +147,7 @@ docker compose -f docker-compose-mssql.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | Nein | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | JDBC-URL |
 | `SPRING_DATASOURCE_USERNAME` | Nein | `sa` | SQL-Server-Anmeldename |
 | `SPRING_DATASOURCE_PASSWORD` | **Ja** | *(leer)* | SQL-Server-Passwort (muss Komplexitätsanforderungen erfüllen) |
-| `TAXONOMY_DDL_AUTO` | Nein | `create` | Schema-Strategie (siehe [Gemeinsame Konfiguration](#gemeinsame-konfiguration)) |
+| `TAXONOMY_DDL_AUTO` | Nein | Basis `create`; Produktion `update`; Kubernetes `validate` | Nur Kompatibilitätstest; die freigegebene PostgreSQL-Flyway-Strecke gilt hier nicht. Niemals `create` auf dauerhaften Daten. |
 
 ### Beispiel: Verbindung zu einem vorhandenen Server
 
@@ -172,20 +173,14 @@ Das Passwort muss mindestens 8 Zeichen lang sein und Zeichen aus mindestens drei
 
 | Problem | Symptom | Lösung |
 |---|---|---|
-| **TLS-Fehler** | `Could not establish secure connection` | Fügen Sie `encrypt=false;trustServerCertificate=true` zur JDBC-URL hinzu |
+| **TLS-Fehler** | `Could not establish secure connection` | Vertrauenswürdige CA und Serverzertifikat mit passendem Hostnamen konfigurieren; Zertifikatsprüfung für Produktion nicht abschalten. |
 | **Anmelde-Timeout** | `Login failed` oder Timeout | Das Profil setzt 60 Sekunden Wiederholungszeit; erhöhen Sie diese bei Bedarf |
 | **Veraltetes ntext** | `ntext`-Spalten im Schema | Stellen Sie sicher, dass Hibernate 7.x + `SQLServerDialect` verwendet werden |
 
 ### Integrationstests ausführen
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Mssql*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-mssql
 ```
 
 ---
@@ -197,7 +192,7 @@ Das Passwort muss mindestens 8 Zeichen lang sein und Zeichen aus mindestens drei
 - Oracle Database 23c Free oder Oracle Database 19c+ (einschließlich Oracle Cloud Autonomous Database)
 - Docker (für den Schnellstart) **oder** eine vorhandene Oracle-Instanz
 
-### Schnellstart mit Docker Compose
+### Schnellstart mit Docker Compose (nur Kompatibilitätstest)
 
 ```bash
 docker compose -f docker-compose-oracle.yml up
@@ -221,7 +216,7 @@ docker compose -f docker-compose-oracle.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | Nein | `jdbc:oracle:thin:@localhost:1521/taxonomy` | JDBC-URL |
 | `SPRING_DATASOURCE_USERNAME` | Nein | `taxonomy` | Oracle-Anmeldename |
 | `SPRING_DATASOURCE_PASSWORD` | Nein | `taxonomy` | Oracle-Passwort |
-| `TAXONOMY_DDL_AUTO` | Nein | `create` | Schema-Strategie (siehe [Gemeinsame Konfiguration](#gemeinsame-konfiguration)) |
+| `TAXONOMY_DDL_AUTO` | Nein | Basis `create`; Produktion `update`; Kubernetes `validate` | Nur Kompatibilitätstest; die freigegebene PostgreSQL-Flyway-Strecke gilt hier nicht. Niemals `create` auf dauerhaften Daten. |
 
 ### Beispiel: Verbindung zu einem vorhandenen Server
 
@@ -263,13 +258,7 @@ Für Oracle-Instanzen, die eine **SID** verwenden, nutzen Sie: `jdbc:oracle:thin
 ### Integrationstests ausführen
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Oracle*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-oracle
 ```
 
 ---
@@ -285,7 +274,7 @@ Um Unterstützung für ein neues Datenbank-Backend hinzuzufügen:
 5. **Integrationstest hinzufügen** — Erstellen Sie eine `*{Dbname}*IT.java`-Testklasse mit dem entsprechenden Testcontainers-Setup.
 6. **Diese Dokumentation aktualisieren** — Fügen Sie dieser Datei einen neuen Abschnitt mit Schnellstart, Umgebungsvariablen, Fehlerbehebung und Testanweisungen hinzu.
 
-Das Entity-Modell der Anwendung ist dank Hibernate datenbankunabhängig. Jede JDBC-kompatible Datenbank mit einem Hibernate-Dialekt sollte mit minimaler Konfiguration funktionieren.
+Das Entity-Modell allein qualifiziert kein neues Backend: Auch Migrationen der Storage-Bibliothek und der Anwendung sowie Persistenz, Upgrade und Restore müssen für die Datenbank geprüft sein.
 
 ---
 
@@ -295,11 +284,11 @@ Das Entity-Modell der Anwendung ist dank Hibernate datenbankunabhängig. Jede JD
 
 | Wert | Verhalten | Empfohlen für |
 |---|---|---|
-| `create` | Löscht und erstellt alle Tabellen bei jedem Start neu | Entwicklung, Tests, Docker-Compose-Demos |
-| `update` | Fügt neue Spalten/Tabellen hinzu, ohne bestehende Daten zu löschen | Staging, frühe Produktion |
+| `create` | Erstellt Hibernate-verwaltete Tabellen bei jedem Start neu und löscht den bisherigen Inhalt | Nur flüchtige Entwicklung/Tests, niemals bestehende Daten |
+| `update` | Hibernate versucht additive Änderungen; kein versioniertes Migrationsverfahren | Dateibasierter HSQLDB-Compose-Basisbetrieb, nicht PostgreSQL mit verwalteten Migrationen |
 | `validate` | Überprüft, ob das Schema mit dem Entity-Modell übereinstimmt; schlägt bei Abweichungen fehl | Produktion mit verwalteten Migrationen |
 
-> **Tipp:** Für Produktionsumgebungen sollten Sie Flyway oder Liquibase für Schema-Migrationen anstelle der automatischen Hibernate-DDL-Generierung in Betracht ziehen.
+> **PostgreSQL:** Freigegebene Flyway-Migrationen von JGit Core und Taxonomy laufen bereits beim Start. Verwenden Sie nach geprüfter Sicherung `TAXONOMY_DDL_AUTO=validate`. Das generische `production`-Profil verwendet weiterhin `update` für die dateibasierte HSQLDB-Basis; PostgreSQL benötigt die ausdrückliche Überschreibung. SQL Server und Oracle deaktivieren diesen Flyway-Pfad bis zur Abnahme.
 
 ### HikariCP-Verbindungspool
 
@@ -322,18 +311,29 @@ export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 
 ---
 
-## Migrationspfad: HSQLDB → Produktionsdatenbank
+## Wechsel von HSQLDB zu PostgreSQL
 
-Um von der Standard-HSQLDB auf eine Produktionsdatenbank zu migrieren:
+Das Profil `postgres` verbindet Taxonomy mit einer **anderen Datenbank**.
+Benutzer, Workspaces, Relationen, Hypothesen, Git-Packs/Refs und andere
+Datensätze werden dabei nicht aus HSQLDB kopiert. Das Projekt liefert kein
+automatisches datenbankübergreifendes Transferverfahren. Sichern und testen
+Sie die vollständige Quelldatenbank samt zugehörigem Index und Konfiguration.
+Qualifizieren Sie eine Übertragung auf einer isolierten Kopie und prüfen Sie
+Zeilen und Git-Historie, Anmeldung, Workspaces und repräsentative Suche vor
+einem kontrollierten Wechsel. Verwenden Sie `TAXONOMY_DDL_AUTO=create` niemals
+auf einer Datenbank mit zu erhaltenden Daten.
 
-1. **Datenbank wählen** — Wählen Sie PostgreSQL, MSSQL oder Oracle basierend auf Ihrer Infrastruktur.
-2. **Profil setzen** — `SPRING_PROFILES_ACTIVE={postgres|mssql|oracle}`
-3. **Verbindung konfigurieren** — Setzen Sie `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`.
-4. **Initiales Schema** — Verwenden Sie `TAXONOMY_DDL_AUTO=create` beim ersten Start, um alle Tabellen zu erstellen.
-5. **Auf update umstellen** — Wechseln Sie nach der Ersteinrichtung zu `TAXONOMY_DDL_AUTO=update`, um Daten über Neustarts hinweg zu erhalten.
-6. **Überprüfen** — Prüfen Sie den Health-Endpunkt (`GET /actuator/health`) und führen Sie eine Testanalyse durch.
+Für eine **neue, leere** PostgreSQL-Installation geben Sie Datenbank- und
+lokale Anmeldedaten sowie `SPRING_PROFILES_ACTIVE=production,postgres` an, setzen
+`TAXONOMY_DDL_AUTO=validate` und lassen die freigegebenen Flyway-Strecken
+von JGit Core und Taxonomy das Schema anlegen. Vor weiteren Upgrades ist eine
+Sicherung nötig; Helm verwendet sicherheitshalber `Recreate`, während
+Rolling-Kompatibilität release-spezifisch nachzuweisen ist. Siehe
+[JGit-Speicher](JGIT_STORAGE_HIBERNATE.md) und
+[Helm-Upgrade-Vertrag](../../deploy/helm/taxonomy/README.md#upgrade-safety-and-database-migrations).
 
-Eine leere Zieldatenbank importiert die mitgelieferte Taxonomie-Arbeitsmappe. Eine dateibasierte Quelldatenbank kann zusätzlich Benutzerrelationen, Workspaces, Hypothesen und JGit-Architekturhistorie enthalten; diese Datensätze müssen beim Wechsel des Datenbank-Backends explizit migriert werden.
+SQL-Server- und Oracle-Compose-Dateien sind Evaluierungsumgebungen, keine
+produktiven Migrationsziele und kein Ersatz für einen geprüften Datentransfer.
 
 ---
 

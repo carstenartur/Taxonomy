@@ -70,8 +70,10 @@ bereitgestellter Truststore erforderlich. Das Beispiel schaltet die Prüfung
 
 **Reifegradgrenze:** `application-mssql.properties` kennzeichnet MSSQL derzeit als
 Kompatibilitätsprofil, nicht als produktionszertifiziert. Dort bleibt
-`taxonomy.schema-migration.enabled=false`; die PostgreSQL-Migrationsstrecke darf
-nicht für MSSQL aktiviert werden. Die Chart-Voreinstellung `TAXONOMY_DDL_AUTO=validate`
+`spring.flyway.enabled=false`; die PostgreSQL-/JGit-Core-Flyway-Strecke darf
+nicht für MSSQL aktiviert werden. Die portablen JDBC-Vertragsmigrationen über
+`taxonomy.schema-migration.enabled` bleiben standardmäßig aktiv. Die
+Chart-Voreinstellung `TAXONOMY_DDL_AUTO=validate`
 bleibt erhalten. Eine leere MSSQL-Datenbank ist damit nicht automatisch vollständig
 initialisiert. Vor produktivem Einsatz müssen die MSSQL-spezifische Schemaanlage,
 PackStore-/Suchkompatibilität, Versionswechsel und Wiederherstellung für den

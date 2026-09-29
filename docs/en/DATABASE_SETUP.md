@@ -1,6 +1,6 @@
 # Database Setup Guide
 
-This guide explains how to run the Taxonomy Architecture Analyzer with different database backends. By default, the application uses an embedded **HSQLDB** database that requires no setup. For production deployments, you can switch to PostgreSQL, Microsoft SQL Server, Oracle, or other JDBC-compatible databases.
+This guide explains how to run the Taxonomy Architecture Analyzer with different database backends. By default, the application uses an embedded **HSQLDB** database that requires no setup. For persistent external-database production, use PostgreSQL with the released JGit Core and Taxonomy Flyway migrations. SQL Server and Oracle profiles are compatibility/evaluation paths; their complete migration, upgrade and restore contracts have not been qualified for production. A JDBC driver and Hibernate dialect alone do not establish support.
 
 ---
 
@@ -13,7 +13,7 @@ This guide explains how to run the Taxonomy Architecture Analyzer with different
 - [Oracle Database](#oracle-database)
 - [Adding a New Database](#adding-a-new-database)
 - [Common Configuration](#common-configuration)
-- [Migration Path: HSQLDB → Production Database](#migration-path-hsqldb--production-database)
+- [Moving from HSQLDB to PostgreSQL](#moving-from-hsqldb-to-postgresql)
 - [Related Documentation](#related-documentation)
 
 ---
@@ -44,7 +44,7 @@ The application ships with an embedded HSQLDB database. No installation or exter
 - Supports a file URL for persistent deployments; the pool keeps a connection open so `shutdown=true` cannot close HSQLDB during Spring startup
 - Reuses an existing persisted catalogue on restart; `TAXONOMY_INIT_RELOAD_EXISTING=true` performs an intentional destructive reload
 
-The in-memory default is ideal for development and tests. Production Docker defaults use file-backed HSQLDB and filesystem Lucene storage.
+The in-memory default is for development and tests. The small controlled production Compose baseline uses file-backed HSQLDB and filesystem Lucene; multi-user external production uses PostgreSQL.
 
 ---
 
@@ -63,6 +63,11 @@ docker compose -f docker-compose-postgres.yml up
 ```
 
 This starts a PostgreSQL 16 Alpine container alongside the Taxonomy application. Data is persisted in a Docker volume (`postgres-data`).
+This is a **disposable evaluation example**: its Compose file sets
+`TAXONOMY_DDL_AUTO=create`, so restarting the application recreates
+Hibernate-managed tables and can discard data despite the persistent volume.
+Use `production,postgres` with `TAXONOMY_DDL_AUTO=validate`, backed-up
+PostgreSQL and the released migrations for retained production data.
 
 ```bash
 # Tear down and remove data
@@ -77,16 +82,17 @@ docker compose -f docker-compose-postgres.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | No | `jdbc:postgresql://localhost:5432/taxonomy` | JDBC URL |
 | `SPRING_DATASOURCE_USERNAME` | No | `taxonomy` | PostgreSQL login |
 | `SPRING_DATASOURCE_PASSWORD` | No | `taxonomy` | PostgreSQL password |
-| `TAXONOMY_DDL_AUTO` | No | `create` | Schema strategy (see [Common Configuration](#common-configuration)) |
+| `TAXONOMY_DDL_AUTO` | No | base `create`; production `update`; Kubernetes `validate` | Use `validate` with released PostgreSQL migrations; never use `create` on persistent data. |
 
 ### Example: Connecting to an Existing Server
 
 ```bash
-export SPRING_PROFILES_ACTIVE=postgres
+export SPRING_PROFILES_ACTIVE=production,postgres
 export TAXONOMY_DATASOURCE_URL="jdbc:postgresql://myserver.example.com:5432/taxonomy"
 export SPRING_DATASOURCE_USERNAME=taxonomy_user
-export SPRING_DATASOURCE_PASSWORD=SecurePassword123!
-export TAXONOMY_DDL_AUTO=update
+export SPRING_DATASOURCE_PASSWORD="$DATABASE_PASSWORD"
+export TAXONOMY_ADMIN_PASSWORD="$TAXONOMY_ADMIN_PASSWORD"
+export TAXONOMY_DDL_AUTO=validate
 
 java -jar taxonomy-app/target/taxonomy-app-*.jar
 ```
@@ -106,13 +112,7 @@ PostgreSQL uses UTF-8 by default, so all string fields are stored correctly with
 ### Running Integration Tests
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Postgres*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-postgres
 ```
 
 ---
@@ -124,7 +124,7 @@ PostgreSQL uses UTF-8 by default, so all string fields are stored correctly with
 - SQL Server 2019 or later (including Azure SQL Database)
 - Docker (for Quick Start) **or** an existing SQL Server instance
 
-### Quick Start with Docker Compose
+### Quick Start with Docker Compose (compatibility test only)
 
 ```bash
 docker compose -f docker-compose-mssql.yml up
@@ -146,7 +146,7 @@ docker compose -f docker-compose-mssql.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | No | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | JDBC URL |
 | `SPRING_DATASOURCE_USERNAME` | No | `sa` | SQL Server login |
 | `SPRING_DATASOURCE_PASSWORD` | **Yes** | *(empty)* | SQL Server password (must meet complexity requirements) |
-| `TAXONOMY_DDL_AUTO` | No | `create` | Schema strategy (see [Common Configuration](#common-configuration)) |
+| `TAXONOMY_DDL_AUTO` | No | base `create`; production `update`; Kubernetes `validate` | Compatibility testing only; this profile does not have the released PostgreSQL Flyway migration path. Never use `create` on retained data. |
 
 ### Example: Connecting to an Existing Server
 
@@ -172,20 +172,14 @@ The password must be at least 8 characters and contain characters from at least 
 
 | Problem | Symptom | Fix |
 |---|---|---|
-| **TLS error** | `Could not establish secure connection` | Add `encrypt=false;trustServerCertificate=true` to JDBC URL |
+| **TLS error** | `Could not establish secure connection` | Configure a trusted CA/server certificate and matching hostname; do not disable certificate validation for production. |
 | **Login timeout** | `Login failed` or timeout | The profile sets 60s retry; increase if needed |
 | **Deprecated ntext** | `ntext` columns in schema | Verify Hibernate 7.x + `SQLServerDialect` are in use |
 
 ### Running Integration Tests
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Mssql*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-mssql
 ```
 
 ---
@@ -197,7 +191,7 @@ The password must be at least 8 characters and contain characters from at least 
 - Oracle Database 23c Free, or Oracle Database 19c+ (including Oracle Cloud Autonomous Database)
 - Docker (for Quick Start) **or** an existing Oracle instance
 
-### Quick Start with Docker Compose
+### Quick Start with Docker Compose (compatibility test only)
 
 ```bash
 docker compose -f docker-compose-oracle.yml up
@@ -221,7 +215,7 @@ docker compose -f docker-compose-oracle.yml down -v
 | `TAXONOMY_DATASOURCE_URL` | No | `jdbc:oracle:thin:@localhost:1521/taxonomy` | JDBC URL |
 | `SPRING_DATASOURCE_USERNAME` | No | `taxonomy` | Oracle login |
 | `SPRING_DATASOURCE_PASSWORD` | No | `taxonomy` | Oracle password |
-| `TAXONOMY_DDL_AUTO` | No | `create` | Schema strategy (see [Common Configuration](#common-configuration)) |
+| `TAXONOMY_DDL_AUTO` | No | base `create`; production `update`; Kubernetes `validate` | Compatibility testing only; this profile does not have the released PostgreSQL Flyway migration path. Never use `create` on retained data. |
 
 ### Example: Connecting to an Existing Server
 
@@ -263,13 +257,7 @@ For Oracle instances using a **SID**, use: `jdbc:oracle:thin:@localhost:1521:ORC
 ### Running Integration Tests
 
 ```bash
-./mvnw -B -pl taxonomy-app -am install -DskipTests
-./mvnw -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Oracle*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
+./mvnw -B verify -Pdatabase-oracle
 ```
 
 ---
@@ -285,7 +273,7 @@ To add support for a new database backend:
 5. **Add an integration test** — Create a `*{Dbname}*IT.java` test class with the appropriate Testcontainers setup.
 6. **Update this documentation** — Add a new section to this file with Quick Start, environment variables, troubleshooting, and test instructions.
 
-The application's entity model is database-agnostic thanks to Hibernate. Any JDBC-compatible database with a Hibernate dialect should work with minimal configuration.
+The entity model alone does not qualify a new backend: storage-library schema migrations, application migrations, persistence, upgrade and restore must also pass on that database.
 
 ---
 
@@ -295,11 +283,11 @@ The application's entity model is database-agnostic thanks to Hibernate. Any JDB
 
 | Value | Behavior | Recommended For |
 |---|---|---|
-| `create` | Drops and recreates all tables on every start | Development, testing, Docker Compose demos |
-| `update` | Adds new columns/tables without dropping existing data | Staging, early production |
+| `create` | Drops and recreates Hibernate-managed tables on every start | Disposable development/tests only; never retained data |
+| `update` | Hibernate attempts additive changes; it is not a versioned migration | File-backed HSQLDB Compose baseline; not the PostgreSQL managed-migration contract |
 | `validate` | Verifies schema matches entity model; fails on mismatch | Production with managed migrations |
 
-> **Tip:** For production, consider using Flyway or Liquibase for schema migrations instead of Hibernate DDL auto-generation.
+> **PostgreSQL:** JGit Core and Taxonomy application Flyway migrations are already released and run at startup. Use `TAXONOMY_DDL_AUTO=validate` after a verified backup. The generic `production` profile still defaults to `update` for the file-backed HSQLDB baseline; override it explicitly for PostgreSQL. SQL Server and Oracle disable this Flyway path pending qualification.
 
 ### HikariCP Connection Pool
 
@@ -322,18 +310,27 @@ export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 
 ---
 
-## Migration Path: HSQLDB → Production Database
+## Moving from HSQLDB to PostgreSQL
 
-To migrate from the default HSQLDB to a production database:
+Selecting `postgres` points the application at a **different database**; it
+never copies users, workspaces, relations, hypotheses, Git packs/refs or other
+records from HSQLDB. The project does not ship an automatic cross-database
+transfer procedure. Keep a tested backup of the complete source database and
+its associated index/configuration before considering a transfer. Qualify any
+conversion on an isolated copy, verify row and Git-history integrity, login,
+workspaces and representative search, and plan a controlled cutover. Do not
+set `TAXONOMY_DDL_AUTO=create` on either retained database.
 
-1. **Choose a database** — Select PostgreSQL, MSSQL, or Oracle based on your infrastructure.
-2. **Set the profile** — `SPRING_PROFILES_ACTIVE={postgres|mssql|oracle}`
-3. **Configure connection** — Set `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`.
-4. **Initial schema** — Use `TAXONOMY_DDL_AUTO=create` for the first run to create all tables.
-5. **Switch to update** — After the initial setup, switch to `TAXONOMY_DDL_AUTO=update` to preserve data across restarts.
-6. **Verify** — Check the health endpoint (`GET /actuator/health`) and run a test analysis.
+For a **fresh empty** PostgreSQL installation, provide database and local-login
+credentials and `SPRING_PROFILES_ACTIVE=production,postgres`, set
+`TAXONOMY_DDL_AUTO=validate`, and allow the released JGit Core and Taxonomy
+application Flyway streams to create the schema. Back up before subsequent
+upgrades; the safe Helm strategy is `Recreate`, and rolling compatibility is
+release-specific. See [JGit storage](JGIT_STORAGE_HIBERNATE.md) and the
+[Helm upgrade contract](../../deploy/helm/taxonomy/README.md#upgrade-safety-and-database-migrations).
 
-An empty target database imports the bundled taxonomy workbook. A file-backed source database may also contain user relations, workspaces, hypotheses, and JGit architecture history; migrate those records explicitly when moving to another database backend.
+SQL Server and Oracle Compose files remain evaluation fixtures, not a
+production migration destination or a substitute for a verified data transfer.
 
 ---
 

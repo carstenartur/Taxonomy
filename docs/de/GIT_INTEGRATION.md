@@ -141,16 +141,12 @@ Mit wachsendem Projekt existieren mehrere Branches nebeneinander — Feature-Bra
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-POST /api/dsl/branches
-{
-  "name": "feature/new-service",
-  "startPoint": "draft"
-}
+POST /api/dsl/branches?name=feature/new-service&fromBranch=draft
 ```
 
 </details>
 
-Der aktive Branch für die Materialisierung wird über die Einstellung `dsl.default-branch` konfiguriert (siehe [Einstellungen](PREFERENCES.md)).
+Der ausgewählte Arbeitsbereich und dessen aktueller Branch bestimmen den Arbeitskontext. Der historische Einstellungsschlüssel `dsl.default-branch` wählt keinen Repository-Branch mehr aus (siehe [Einstellungen](PREFERENCES.md)).
 
 ---
 
@@ -175,7 +171,7 @@ In einem realen Projekt wächst die Zeitleiste, während sich die Architektur we
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-GET /api/dsl/history?branch=draft&limit=20
+GET /api/dsl/history?branch=draft
 ```
 
 </details>
@@ -197,13 +193,13 @@ Klicken Sie auf **🔍 Vergleichen** in der Kontextleiste oder im Verlauf. Die V
 
 | Modus | Endpunkt | Ausgabe |
 |---|---|---|
-| **Semantisch** | `GET /api/dsl/diff?from={sha}&to={sha}` | Strukturiertes JSON mit hinzugefügten, entfernten und geänderten Elementen und Beziehungen |
-| **Unified-Text** | `GET /api/dsl/text-diff?from={sha}&to={sha}` | Standard-Unified-Diff-Format (Patch) |
+| **Semantisch** | `GET /api/dsl/diff/{beforeId}/{afterId}` | Strukturiertes JSON mit hinzugefügten, entfernten und geänderten Elementen und Beziehungen |
+| **Unified-Text** | `GET /api/dsl/diff/text/{beforeId}/{afterId}` | Standard-Unified-Diff-Format (Patch) |
 
 Sie können auch zwischen Branches vergleichen:
 
 ```
-GET /api/dsl/diff-branches?from=draft&to=main
+POST /api/workspace/compare?leftBranch=draft&rightBranch=main
 ```
 
 </details>
@@ -234,11 +230,7 @@ Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf d
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-POST /api/dsl/cherry-pick
-{
-  "commitId": "abc1234...",
-  "targetBranch": "draft"
-}
+POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft
 ```
 
 </details>
@@ -265,11 +257,7 @@ Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-POST /api/dsl/merge
-{
-  "fromBranch": "feature/new-service",
-  "intoBranch": "draft"
-}
+POST /api/dsl/merge?fromBranch=feature/new-service&intoBranch=draft
 ```
 
 </details>
@@ -320,7 +308,7 @@ Antwort:
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-GET /api/dsl/cherry-pick/preview?commitId=abc1234&branch=draft
+GET /api/dsl/cherry-pick/preview?commitId={fullCommitSha}&targetBranch=draft
 ```
 
 Antwort:
@@ -343,7 +331,7 @@ Antwort:
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-GET /api/dsl/operation/check?branch=draft
+GET /api/dsl/operation/check?branch=draft&operationType=merge
 ```
 
 </details>

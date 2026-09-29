@@ -10,7 +10,7 @@ Das Einstellungssystem bietet **zur Laufzeit konfigurierbare Optionen** für den
 - [Verwendung der Web-Oberfläche](#verwendung-der-web-oberfläche)
 - [Verfügbare Einstellungen](#verfügbare-einstellungen)
 - [LLM-Konfiguration](#llm-konfiguration)
-- [DSL- und Git-Konfiguration](#dsl--und-git-konfiguration)
+- [Repository- und Altschlüssel](#repository--und-altschlüssel)
 - [Größenbeschränkungen](#größenbeschränkungen)
 - [Diagramm-Konfiguration](#diagramm-konfiguration)
 - [Audit-Spur](#audit-spur)
@@ -44,8 +44,7 @@ Die folgende Tabelle verdeutlicht den Geltungsbereich für jede Einstellungskate
 | Kategorie | Geltungsbereich | Wer kann ändern | Betrifft |
 |---|---|---|---|
 | **LLM-Konfiguration** | ☁️ System | Nur Admin | Alle Analyseanfragen für alle Benutzer |
-| **DSL- und Git-Konfiguration** | ☁️ System | Nur Admin | Das gemeinsame DSL-Repository und alle Branches |
-| **Größenbeschränkungen** | ☁️ System | Nur Admin | Analyse-, Export- und Ansichtsoperationen aller Benutzer |
+| **Größenbeschränkungen** | ☁️ System | Nur Admin | Standardwerte und Grenzen für Ad-hoc-Analyseanfragen |
 | **Diagramm-Konfiguration** | ☁️ System | Nur Admin | Architekturdiagramm-Darstellung für alle Benutzer |
 
 > **Hinweis:** Benutzerspezifische und arbeitsbereichsspezifische Einstellungen werden derzeit nicht unterstützt. Wenn eine Einstellung für verschiedene Benutzer oder Teams unterschiedlich sein soll, muss sie auf der Ebene der Umgebungsvariablen über separate Bereitstellungsinstanzen konfiguriert werden (siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md)).
@@ -79,7 +78,7 @@ curl -u admin:password -X PUT \
 
 ## Verwendung der Web-Oberfläche
 
-Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfläche zur Verwaltung aller Anwendungseinstellungen. Dieser Tab ist nur für Benutzer mit Admin-Rechten sichtbar.
+Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfläche für die unterstützten Laufzeiteinstellungen. Dieser Tab ist nur für Benutzer mit Admin-Rechten sichtbar.
 
 ### Einstellungen öffnen
 
@@ -88,11 +87,13 @@ Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfl�
 
 ### Einstellungen bearbeiten
 
-Die Einstellungsseite ist in drei einklappbare Karten organisiert:
+Die Einstellungsseite hat drei Karten:
 
-1. **🤖 LLM-Konfiguration** — Steuerelemente für LLM-Anfragerate, Timeout, Server-Ratenbegrenzung und Mindest-Relevanzbewertung.
-2. **📂 JGit / DSL-Konfiguration** — Standard-Branch, Projektname, Auto-Speicher-Intervall, Remote-Git-URL, Token und Push-bei-Commit-Schalter.
-3. **📈 Größenbeschränkungen** — Maximale Geschäftstextlänge, Architekturknoten und Exportknoten.
+1. **🤖 LLM-Konfiguration** — Anfragerate, Timeout und eingehendes LLM-Kontingent.
+2. **📈 Größenbeschränkungen** — Maximale Ad-hoc-Geschäftstextlänge und Standardwert für Architekturknoten.
+3. **Diagramm-Konfiguration** — Auswahlrichtlinie für Architekturdiagramme.
+
+Repository-Branches, Remotes und Zugangsdaten werden im jeweiligen Repository-Kontext verwaltet. Historische `dsl.*`- und Mindest-Relevanzschlüssel können in gespeicherten Snapshots verbleiben, sind aber keine aktiven UI-Steuerelemente.
 
 Jede Karte zeigt den aktuellen Wert für jede Einstellung. Um eine Einstellung zu ändern:
 
@@ -106,7 +107,7 @@ Am unteren Rand der Einstellungsseite können Sie den Abschnitt **📋 Preferenc
 
 ### Auf Standardwerte zurücksetzen
 
-Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen. Dies erzeugt ebenfalls einen Git-Commit, sodass die vorherigen Werte aus der Historie wiederhergestellt werden können.
+Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen. Auch dabei entsteht ein Git-Commit. Frühere Werte sind in der Historie einsehbar; eine API zur Wiederherstellung anhand eines Commits gibt es nicht.
 
 ---
 
@@ -197,7 +198,7 @@ Um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen
 curl -u admin:password -X POST http://localhost:8080/api/preferences/reset
 ```
 
-Dies erzeugt einen neuen Commit in der Einstellungshistorie, sodass Sie jederzeit über die Git-Historie zu einem früheren Zustand zurückkehren können.
+Dadurch entsteht ein neuer Commit in der Einstellungshistorie. Die API bietet die Historie zur Prüfung, aber keinen Endpunkt zur Wiederherstellung anhand eines Commits.
 
 ---
 

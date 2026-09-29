@@ -179,10 +179,13 @@ Merge request:
 
 ```json
 {
-  "fromBranch": "alice-requirements",
-  "intoBranch": "integration"
+  "sourceBranch": "alice-requirements",
+  "targetBranch": "integration"
 }
 ```
+
+Both branches must be in the selected workspace repository. The endpoint also accepts
+`?source=alice-requirements&target=integration` with an optional JSON message.
 
 A successful semantic fallback creates a real two-parent merge commit when both branches are in the same repository.
 

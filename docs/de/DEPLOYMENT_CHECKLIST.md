@@ -5,10 +5,10 @@ Diese Checkliste ist ein Freigabe-Gate. Ein Haken erfordert einen beobachteten T
 ## Datenhaltung und Wiederherstellung
 
 - [ ] Keine In-Memory-Datenbank für persistente Produktion.
-- [ ] Dateibasierte HSQLDB oder externe Produktionsdatenbank konfiguriert.
+- [ ] Dateibasierte HSQLDB für kleine kontrollierte Installationen oder PostgreSQL mit freigegebenen Flyway-Migrationen und `TAXONOMY_DDL_AUTO=validate` für externe Produktion konfiguriert; MSSQL/Oracle bleiben Evaluierungsprofile.
 - [ ] Lucene-Verzeichnis liegt auf persistentem Speicher.
 - [ ] Benutzer, Workspace und Architekturänderung über Container-Neuerstellung erhalten.
-- [ ] Backup auf separater Instanz erfolgreich wiederhergestellt.
+- [ ] Datenbank-Backup einschließlich JGit-Packs/Refs und ggf. passender Lucene-Snapshot auf separater Instanz erfolgreich wiederhergestellt; bei Compose wurde das tatsächlich gemountete Projekt-Volume gesichert.
 
 ## Sicherheit
 

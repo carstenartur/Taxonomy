@@ -72,8 +72,9 @@ integration with existing enterprise Git infrastructure (Gitea, GitHub, GitLab).
 
 ## Workspace Provisioning Lifecycle
 
-When a new user accesses the application, their workspace goes through a
-provisioning lifecycle:
+When a new user accesses the application, workspace metadata is created. The
+automatic default is provisioned on first use; other workspaces can be prepared
+explicitly or retried after failure:
 
 ```
 Login / First Access
@@ -83,11 +84,11 @@ Workspace metadata created
     status: NOT_PROVISIONED
     │
     ▼
-User triggers "Prepare Workspace"
+Default first use or explicit "Prepare Workspace"
     status: PROVISIONING
     │
     ├── Success → status: READY
-    │     └── Personal branch created (e.g., alice/workspace)
+    │     └── Workspace repository seeded from the selected shared branch
     │
     └── Failure → status: FAILED
           └── Error message stored for retry
@@ -97,8 +98,8 @@ User triggers "Prepare Workspace"
 
 | Status | Description |
 |--------|-------------|
-| `NOT_PROVISIONED` | Workspace metadata exists, but no Git branch has been created yet |
-| `PROVISIONING` | Branch creation is in progress |
+| `NOT_PROVISIONED` | Workspace metadata exists, but its Git repository has not been seeded yet |
+| `PROVISIONING` | Repository provisioning is in progress |
 | `READY` | Workspace is fully provisioned and ready for use |
 | `FAILED` | Provisioning failed; see error message for details |
 
@@ -130,13 +131,16 @@ Returns the current provisioning state of the user's workspace.
 
 ### POST /api/workspace/provision
 
-Creates the user's personal branch from the shared repository.
+Seeds the isolated workspace repository from the selected shared branch.
+The automatic default workspace keeps `draft`; a newly created workspace normally
+uses `main` in its own repository. A `username/workspace/{workspaceId}` branch
+belongs to the legacy shared-repository implementation only.
 
 **Response:**
 ```json
 {
   "status": "READY",
-  "branch": "alice/workspace",
+  "branch": "draft",
   "baseBranch": "draft"
 }
 ```
@@ -261,11 +265,9 @@ DslGitRepositoryFactory
   └── evict(workspaceId) → cache cleanup on deletion
 
 Service Repository Routing:
-  All services resolve the correct repository via explicit
-  WorkspaceContext parameters passed from callers. Only the
-  DslOperationsFacade (the request/UI layer) calls
-  resolveCurrentContext() from SecurityContextHolder.
-  Backend services accept WorkspaceContext as a method parameter:
+  Repository-sensitive paths resolve an explicit repository and workspace
+  identity from the authenticated principal and an optional exact tab pin.
+  Legacy WorkspaceContext adapters map:
   - SHARED context → system repository ("taxonomy-dsl")
   - Workspace context → per-workspace repo ("ws-{id}")
   Factory mode (per-workspace repos) is the production default.
@@ -299,7 +301,8 @@ WorkspaceContextResolver
   Context resolution uses a two-step lookup:
   1. workspaceManager.findActiveWorkspace(username) → multi-workspace aware lookup
   2. If null: workspaceManager.findUserWorkspace(username) → legacy fallback
-  If neither returns a provisioned workspace, falls back to WorkspaceContext.SHARED.
+  A missing workspace can be represented as a central read context. Workspace-bound
+  writes fail closed; an explicit empty workspace pin selects central read only.
 ```
 
 ## Data Isolation Model

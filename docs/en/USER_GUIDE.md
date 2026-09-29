@@ -227,6 +227,12 @@ The same **Cancel** command is available directly next to **Analyze with AI** an
 
 A working draft is shared by the same user and workspace across browser tabs or devices. **New analysis** therefore creates an explicit empty revision rather than merely deleting local browser state. This makes the command repeatable and prevents an older tab from silently restoring discarded requirement text. A stale tab may still show a conflict when it tries to save old content; reload the current draft or use **File → New analysis** to establish a new empty state deliberately.
 
+### Recovering a paused ad-hoc Copilot analysis
+
+If a provider question fails, the run pauses and shows the affected question in the **Copilot** recovery dialog. Already completed answers and valid scores remain saved. Choose **Retry question and continue** to ask that question again, or **Leave area unassessed and continue** to keep its nodes open and proceed with the other work. A retry may cause another provider request; when the outcome is uncertain, the dialog warns that the provider may already have processed or billed the previous request. **Refresh status** reads the saved operation without repeating the question. After a reload, reopen the saved run in the same workspace and review its status before deciding.
+
+A partial result marks failed, skipped and dependent nodes **Unassessed**. Unknown is not a measured zero or evidence that a capability is irrelevant. Gap, pattern and recommendation conclusions remain open until the missing areas are assessed. **Cancel run** preserves completed results; **New analysis** clears the working draft as described above. This recovery dialog belongs to the ad-hoc analysis workspace; persisted project analysis jobs have their own job-centre retry workflow.
+
 The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
 
 > **Detail view** — the image below shows the full BP tree expanded to all levels. Click any node to see its score and justification.

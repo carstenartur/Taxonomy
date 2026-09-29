@@ -75,7 +75,7 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 | `DASHSCOPE_API_KEY` | `qwen.api.key` | empty | Alibaba DashScope/Qwen credential. |
 | `LLAMA_API_KEY` | `llama.api.key` | empty | Llama API credential. |
 | `MISTRAL_API_KEY` | `mistral.api.key` | empty | Mistral credential. |
-| `CUSTOM_LLM_URL` | `custom.llm.url` | empty | Full HTTP(S) OpenAI-compatible Chat Completions URL. It must contain a host, no embedded credentials, and end in `/chat/completions`. |
+| `CUSTOM_LLM_URL` | `custom.llm.url` | empty | Full OpenAI-compatible Chat Completions URL. Guided Helm/native checks require HTTPS except exact loopback HTTP; no embedded credentials, query, fragment or whitespace. |
 | `CUSTOM_LLM_MODEL` | `custom.llm.model` | empty | Model identifier sent unchanged to the custom endpoint; required with `CUSTOM_OPENAI`. |
 | `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | empty | Optional bearer token for the custom endpoint. Empty means no `Authorization` header. |
 | `TAXONOMY_LLM_RPM` | repository-backed preference `taxonomy.llm.rpm` | `5` | Outbound per-provider request budget per minute. |
@@ -251,7 +251,7 @@ TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES=50
 
 ```bash
 LLM_PROVIDER=CUSTOM_OPENAI
-CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+CUSTOM_LLM_URL=https://llm.example.internal/v1/chat/completions
 CUSTOM_LLM_MODEL=architecture-model
 TAXONOMY_AI_COST_POLICY=UNMETERED
 TAXONOMY_AI_AUTOPILOT_ENABLED=true
@@ -259,6 +259,9 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 For Docker Compose, copy `.env.example` to `.env`; the production Compose service forwards that file into the application container. For Helm, put non-secret values under `config`, credentials in the referenced Secret, and use `extraEnv` only for settings not promoted into the chart's default values.
+The server certificate and hostname must be trusted by the application. An
+HTTP URL for another container or Pod does not pass guided Helm/native setup;
+only an explicitly local loopback endpoint may use HTTP there.
 
 ## Disk-backed local analysis (`hsqldb-file`)
 

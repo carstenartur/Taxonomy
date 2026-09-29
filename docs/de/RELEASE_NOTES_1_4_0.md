@@ -1,5 +1,50 @@
 # Versionshinweise 1.4.0 — unveröffentlicht
 
+Die [vollständige Release-Beschreibung](../../release_notes.md) ist die verbindliche
+Umfangsbeschreibung. Diese Hinweise fassen die sichtbaren Änderungen zusammen;
+die Veröffentlichung setzt die Freigabeprüfungen des endgültigen Kandidaten voraus.
+
+## Anforderungen und Architektur
+
+- Projekt- und Anforderungsportfolio mit unveränderlichen Versionen, wiederaufnehmbaren
+  Analysen, Evidenzprüfung, Vergleich, Historie und Berichten.
+- Neuformulierungsangebote mit Antworten und Vertagungen, geschützten manuellen
+  Entwürfen, historischen Exporten und ausdrücklicher Übernahme als neue Version.
+- Versionierte Planungsprofile für ein geplantes Inbetriebnahmejahr/-datum und
+  Vorgabenbezüge, integriert in Editor, Historie und begrenzten ReqIF-Austausch.
+- Versionierte Word-Vorlagen, Architekturansichten aus Snapshots und deterministische
+  Exporte. Klassifizierungen im Information-Product-Overlay bleiben vorläufig.
+- Getrennte Workspace-Repositories und tabbezogene Auswahl; die zentrale gemeinsame
+  Ansicht bleibt bis zur Auswahl eines bearbeitbaren Workspace schreibgeschützt.
+
+## Analyse, lokale Suche und Betrieb
+
+Root-Relevanz behält jetzt ihren unabhängigen Wert von 0 bis 100. Unterkategorien
+verteilen weiterhin das Elternbudget; konkrete Produkte behalten ihre unabhängige
+Eignungsbewertung. Pausierte Analysen unterscheiden ungeprüfte Knoten von bestätigter
+Relevanz null.
+
+Die lokale ONNX-Suche verwendet normalisierte CLS-Vektoren und ein getrenntes
+ANN-Suchbudget. Ältere Vektoren müssen über die kontrollierte Initialisierung neu
+aufgebaut werden. ONNX kann keine Beziehungsbewertungen generieren: Die Analyse
+weist diesen Teil ausdrücklich als ungeprüft/teilweise aus und vermeidet nicht
+unterstützte Generierungsaufrufe. Deutsche Referenztreffer, die das englische
+Embedding-Modell verfehlt, bleiben sichtbar; ein bestandener englischer Test ist
+kein Nachweis gleichwertiger deutscher Suchqualität.
+
+Optionale lokale Benutzerverwaltung, geführte Rancher-/Helm-Konfiguration und die
+native Setup-Grundlage verwenden die vorhandene Authentifizierung und Konfiguration.
+Die Backup-Anleitung ermittelt jetzt das tatsächliche Compose-Volume. PostgreSQL
+ist der externe Produktionspfad mit verwalteten Migrationen; MSSQL/Oracle bleiben
+Kompatibilitätsprofile mit offener vollständiger Qualifizierung. Vor Produktivbetrieb
+die [Upgrade-Hinweise](../../release_notes.md#upgrade-notes) beachten und Wiederherstellung,
+Suche und Git-Historie prüfen.
+
+Die GUI-Sprache garantiert derzeit nicht die Sprache generierter KI-Begründungen.
+Lokalisierte Berichtstitel übersetzen gespeicherte Gründe nicht. Die vorgeschlagenen
+getrennten Sprachvorgaben sind [separat beschrieben](../dev/ANALYSIS_LANGUAGE_POLICY.md)
+und in dieser Release-Korrektur noch nicht implementiert.
+
 ## Experimentelle visuelle Visio-Übergabe (#965)
 
 Die Architecture Workbench lädt den ausgewählten unveränderlichen Snapshot als Paket mit `diagram.vsdx`, versioniertem Mapping-Profil und einem durch Prüfsummen gebundenen Verlustmanifest herunter. Der Export führt keine neue Analyse aus. Einzelne VSDX-Downloads enthalten dieselben Profil- und Übergabedaten zusätzlich eingebettet.
