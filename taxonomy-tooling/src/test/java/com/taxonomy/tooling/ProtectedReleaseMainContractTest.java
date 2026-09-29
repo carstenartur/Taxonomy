@@ -1,4 +1,4 @@
-package com.taxonomy.release;
+package com.taxonomy.tooling;
 
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +40,7 @@ class ProtectedReleaseMainContractTest {
     }
 
     @Test
-    void protectedAdvanceWorkflowUsesExactShaCanonicalCiAndNormalPullRequestMerge()
+    void protectedAdvanceWorkflowUsesExactShaCanonicalCiAndVerifiedRebaseMerge()
             throws Exception {
         String workflow = repositoryFile(
                 ".github/workflows/protected-release-main-advance.yml");
@@ -59,15 +59,20 @@ class ProtectedReleaseMainContractTest {
                 .contains("--event workflow_dispatch")
                 .contains("--commit \"$EXPECTED_SHA\"")
                 .contains("gh run watch \"$run_id\" --exit-status")
-                .contains("gh pr merge \"$PR_NUMBER\" --merge")
-                .contains("git merge-base --is-ancestor \"$EXPECTED_SHA\" origin/main")
+                .contains("gh pr merge \"$PR_NUMBER\" --rebase --match-head-commit \"$EXPECTED_SHA\"")
+                .contains("check-release-history")
+                .contains("--release-commit \"v${RELEASE_VERSION}\"")
+                .contains("--expected-next-commit \"$EXPECTED_SHA\"")
+                .contains("--expected-base-commit \"$EXPECTED_BASE_SHA\"")
+                .contains("--main-commit \"$merged_sha\"")
+                .contains("test \"$(git rev-parse origin/main)\" = \"$merged_sha\"")
                 .doesNotContain("bypass")
                 .doesNotContain("--admin");
 
         assertThat(workflow.indexOf("gh pr create"))
                 .isLessThan(workflow.indexOf("gh workflow run ci-cd.yml"));
         assertThat(workflow.indexOf("gh run watch \"$run_id\" --exit-status"))
-                .isLessThan(workflow.indexOf("gh pr merge \"$PR_NUMBER\" --merge"));
+                .isLessThan(workflow.indexOf("gh pr merge \"$PR_NUMBER\" --rebase"));
 
         assertThat(ci)
                 .contains("workflow_dispatch:")
