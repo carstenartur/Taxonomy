@@ -7,25 +7,23 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 979c0ed643d33eeb807469b5b39015a009cb41dc
-          persist-credentials: false
-      - name: Package exact source and existing pinned public model
+      - name: Fetch JUnit version already used by this project
         shell: bash
         run: |
           set -euo pipefail
-          bash .github/scripts/download-embedding-model.sh
           mkdir -p reproduction
-          git archive --format=tar.gz HEAD > reproduction/source-979c0ed.tar.gz
-          cp -R models/bge-small-en-v1.5 reproduction/model
-          git rev-parse HEAD HEAD^{tree} > reproduction/source-revision.txt
-          sha256sum reproduction/source-979c0ed.tar.gz reproduction/model/* > reproduction/SHA256SUMS
+          cd reproduction
+          base=https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.0.3
+          file=junit-platform-console-standalone-6.0.3.jar
+          curl --fail --silent --show-error --location --max-time 90 "$base/$file" -o "$file"
+          curl --fail --silent --show-error --location --max-time 30 "$base/$file.sha512" -o checksum
+          printf '%s  %s\n' "$(cat checksum)" "$file" | sha512sum --check --strict
+          sha256sum "$file" > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: onnx-reproduction-979c0ed
+          name: junit-reproduction-6.0.3
           path: reproduction/
           if-no-files-found: error
           retention-days: 2
