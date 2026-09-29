@@ -133,6 +133,22 @@ mappings independently of their names. It also verifies that the existing FK
 still rejects cross-tenant writes. This expands the migration suite from seven
 to eight tests; the full consumer workflow must pass on the corrected head.
 
+The consumer workflow passes on `370b288`. Its unchanged CI JAR (artifact
+`11019914459`, workflow `36540078358`) also passes the authentic 1.3 file-HSQLDB
+upgrade and restart probe, and the ADMIN Preferences browser shard passes the
+50→150 preservation scenario. The PR records the immutable artifact's digests
+and exact executed scope.
+
+The reformulation-usage lane on that head passes its functional usage and
+persistence tests but stops at the architecture ratchet: the new migration adds
+two class dependencies from application composition to the canonical workspace
+tenant value type. Targeted architectural review confirms this direction:
+`HsqlLegacyUpgradeMigrator` validates existing identities, and its `Tenant` helper
+uses `RepositoryTenantIdentity` to encode the same persisted contract. The
+baseline adds exactly this package edge with count two; context boundaries,
+exceptions and all other counts stay unchanged. A full new-head ratchet/CI pass
+remains required.
+
 ## Independent review and remaining gates
 
 A separate read-only whole-change review found no additional introduced correctness
