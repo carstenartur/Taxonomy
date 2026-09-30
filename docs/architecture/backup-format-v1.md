@@ -110,3 +110,11 @@ current ownership, login eligibility or access rights.
 This contract is preparatory. Backup, restore, Git transport, cross-database
 support and encryption must remain unavailable until the corresponding issue
 packages and real acceptance runs establish those capabilities.
+
+The identity mapping core proposes matches only for exact stable identity
+bindings. Explicit approval is required even for an exact match; unassigned
+source identities remain quarantined. The authorization coordinator rechecks
+capabilities, exact repository/workspace scope, selected-version access and
+account availability for job access and download. It has no default policy
+adapter and is not auto-registered. Persistent principal migration, login
+integration and the production permission adapter are still required by P02.

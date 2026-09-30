@@ -19,6 +19,11 @@ class BackupManifestSchemaTest {
             var base = (ObjectNode) json.readTree(fixtureInput);
             assertThat(schema.validate(base)).isEmpty();
             assertThat(json.readTree(codec.write(codec.read(json.writeValueAsBytes(base))))).isEqualTo(base);
+            var repeatedFeatures = base.deepCopy();
+            var features = repeatedFeatures.putArray("requiredFeatures");
+            for (int i = 0; i < 10001; i++) features.add("component-sha256");
+            assertThat(schema.validate(repeatedFeatures)).isNotEmpty();
+            assertThatThrownBy(() -> codec.read(json.writeValueAsBytes(repeatedFeatures))).isInstanceOf(IllegalArgumentException.class);
             for (String field : List.of("dependencies", "omissions")) {
                 for (var value : List.of("", "x".repeat(513), "x".repeat(8193))) {
                     var invalid = base.deepCopy(); invalid.putArray(field).add(value);

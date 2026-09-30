@@ -5,6 +5,7 @@ import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
@@ -30,10 +31,24 @@ public final class BackupManifestCodec {
     public BackupManifest read(byte[] bytes) {
         if (bytes == null || bytes.length > MAX_MANIFEST_BYTES) throw new IllegalArgumentException("Invalid manifest size");
         try {
-            return mapper.readValue(bytes, WireManifest.class).domain();
+            JsonNode document = mapper.readTree(bytes);
+            validateWireLimits(document);
+            return mapper.treeToValue(document, WireManifest.class).domain();
         } catch (RuntimeException failure) {
             // Do not echo package data: malformed input can contain secrets.
             throw new IllegalArgumentException("Invalid or unsupported backup manifest");
+        }
+    }
+
+    /** Count before binding to sets: duplicate input elements must not evade collection limits. */
+    private static void validateWireLimits(JsonNode value) {
+        if (value == null) throw new IllegalArgumentException("Missing manifest");
+        if (value.isString() && value.stringValue().codePointCount(0, value.stringValue().length()) > BackupLimits.MAX_TEXT_LENGTH) {
+            throw new IllegalArgumentException("Manifest string exceeds limit");
+        }
+        if (value.isContainer()) {
+            if (value.size() > BackupLimits.MAX_ITEMS) throw new IllegalArgumentException("Manifest collection exceeds limit");
+            for (var child : value) validateWireLimits(child);
         }
     }
 
@@ -141,7 +156,7 @@ public final class BackupManifestCodec {
         static WireManifest from(BackupManifest m) {
             return new WireManifest(m.formatVersion(), m.applicationVersion(), m.build(), m.backupId().value().toString(),
                     m.sourceInstallationId(), WireRequest.from(m.request()), m.captureStartedAt().toString(), m.captureCompletedAt().toString(),
-                    m.consistencyEvidence(), m.requiredFeatures(), m.components().stream().map(WireComponent::from).toList(),
+                    m.consistencyEvidence(), new TreeSet<>(m.requiredFeatures()), m.components().stream().map(WireComponent::from).toList(),
                     m.repositories(), m.entries(), m.dependencies(), m.omissions());
         }
     }
