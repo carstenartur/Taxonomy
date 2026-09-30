@@ -1,6 +1,7 @@
 package com.taxonomy.backup.snapshot;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.ArchiveProtectionProvider;
 import tools.jackson.databind.json.JsonMapper;
 import java.io.*;
 import java.nio.channels.Channels;
@@ -21,6 +22,7 @@ public final class BackupSnapshotCoordinator {
     private final Path root;
     private final CaptureLimits limits;
     private final Clock clock;
+    private final ArchiveProtectionProvider protection;
 
     @FunctionalInterface public interface Inventory { CapturePlan inspect(AuthorizedBackupRequest request) throws IOException; }
     public record CaptureComponent(int version, BackupCompleteness completeness, Set<BackupComponentId> dependencies) {
@@ -47,6 +49,13 @@ public final class BackupSnapshotCoordinator {
 
     public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
                                      Inventory inventory, List<BackupContributor> contributors, Path root, CaptureLimits limits, Clock clock) {
+        this(barrier, authorization, inventory, contributors, root, limits, clock, ArchiveProtectionProvider.unprotected());
+    }
+
+    public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
+                                     Inventory inventory, List<BackupContributor> contributors, Path root, CaptureLimits limits, Clock clock,
+                                     ArchiveProtectionProvider protection) {
+        this.protection = Objects.requireNonNull(protection);
         this.barrier = Objects.requireNonNull(barrier); this.authorization = Objects.requireNonNull(authorization);
         this.inventory = Objects.requireNonNull(inventory); this.root = root.toAbsolutePath().normalize();
         this.limits = Objects.requireNonNull(limits); this.clock = Objects.requireNonNull(clock);
@@ -55,8 +64,7 @@ public final class BackupSnapshotCoordinator {
 
     public CapturedBackup capture(AuthorizedBackupRequest creation) throws IOException {
         authorization.requireJobAccess(creation.principalId(), creation);
-        // Secret-bearing captures need the encrypted spool provided by the protection adapter.
-        if (creation.request().secrets() != SecretsSelection.EXCLUDE) throw new IllegalArgumentException("Encrypted staging is required for secrets");
+        if (creation.request().secrets() != SecretsSelection.EXCLUDE && !protection.encrypted()) throw new IllegalArgumentException("Encrypted staging is required for secrets");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture cancelled");
         Path staging = null;
         try {
@@ -80,7 +88,7 @@ public final class BackupSnapshotCoordinator {
                 staging = Files.getFileStore(root).supportsFileAttributeView("posix")
                         ? Files.createTempDirectory(root, ".capturing-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
                         : Files.createTempDirectory(root, ".capturing-");
-                var sink = new StagingSink(staging, maintenance, deadline);
+                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets());
                 var components = new ArrayList<BackupManifest.Component>();
                 for (var component : plan.components().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList()) {
                     sink.check(); int before = sink.entries.size();
@@ -101,7 +109,8 @@ public final class BackupSnapshotCoordinator {
                 byte[] document = new BackupManifestCodec().write(manifest);
                 if (document.length > limits.maxTotalBytes() - sink.total) throw new IOException("Capture byte limit exceeded");
                 try (var channel = FileChannel.open(staging.resolve("manifest.json"), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                    Channels.newOutputStream(channel).write(document); channel.force(true);
+                    try (var output = SpoolStreams.output(channel, protection, id, "manifest.json")) { output.write(document); }
+                    channel.force(true);
                 }
                 sink.check(); forceDirectory(staging);
                 Path destination = root.resolve("capture-" + id.value());
@@ -109,7 +118,7 @@ public final class BackupSnapshotCoordinator {
                 staging = destination; forceDirectory(root);
                 // An expired capture is discarded even if a filesystem move already completed.
                 maintenance.checkValid();
-                captured = CapturedBackup.open(destination, creation);
+                captured = CapturedBackup.open(destination, creation, protection);
             }
             return captured;
         } catch (IOException | RuntimeException | Error failure) {
@@ -130,12 +139,14 @@ public final class BackupSnapshotCoordinator {
         private final Path directory;
         private final BackupMaintenanceLease.Maintenance maintenance;
         private final long deadline;
+        private final BackupId id;
+        private final SecretsSelection secrets;
         private long validatedAt;
         private long total;
         private final List<BackupEntry> entries = new ArrayList<>();
         private final Set<String> paths = new HashSet<>();
-        StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline) {
-            this.directory = directory; this.maintenance = maintenance; this.deadline = deadline;
+        StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline, BackupId id, SecretsSelection secrets) {
+            this.directory = directory; this.maintenance = maintenance; this.deadline = deadline; this.id = id; this.secrets = secrets;
         }
         void check() throws IOException {
             budget();
@@ -152,16 +163,20 @@ public final class BackupSnapshotCoordinator {
         }
         @Override public BackupEntry write(String path, InputStream input) throws IOException {
             check();
+            if (path.startsWith("protected/") && secrets != SecretsSelection.INCLUDE_ENCRYPTED)
+                throw new IOException("Protected payload is outside the authorized selection");
             if (!paths.add(BackupPaths.collisionKey(path))) throw new IllegalArgumentException("Duplicate or colliding capture path");
             if (entries.size() >= limits.maxEntries()) throw new IOException("Capture entry limit exceeded");
             Path target = directory.resolve(path); Files.createDirectories(target.getParent());
             var digest = CapturedBackup.sha256(); long length = 0;
             try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                var output = Channels.newOutputStream(channel); byte[] buffer = new byte[64 * 1024];
-                for (int read; (read = input.read(buffer)) != -1;) {
-                    progress();
-                    if (read > limits.maxEntryBytes() - length || read > limits.maxTotalBytes() - total) throw new IOException("Capture byte limit exceeded");
-                    length += read; total += read; digest.update(buffer, 0, read); output.write(buffer, 0, read);
+                try (var output = SpoolStreams.output(channel, protection, id, path)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    for (int read; (read = input.read(buffer)) != -1;) {
+                        progress();
+                        if (read > limits.maxEntryBytes() - length || read > limits.maxTotalBytes() - total) throw new IOException("Capture byte limit exceeded");
+                        length += read; total += read; digest.update(buffer, 0, read); output.write(buffer, 0, read);
+                    }
                 }
                 channel.force(true);
             }

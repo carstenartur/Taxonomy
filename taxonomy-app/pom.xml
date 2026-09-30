@@ -12,6 +12,16 @@
     <name>Taxonomy Application</name>
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
+        <dependency>
+            <groupId>com.google.crypto.tink</groupId>
+            <artifactId>tink</artifactId>
+            <version>${tink.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>${commons-compress.version}</version>
+        </dependency>
         <!-- Independent grammar/semantic validation of generated exchange files. -->
         <dependency>
             <groupId>com.structurizr</groupId>

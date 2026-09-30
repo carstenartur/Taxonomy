@@ -1,6 +1,7 @@
 package com.taxonomy.backup.snapshot;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.ArchiveProtectionProvider;
 import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -16,8 +17,10 @@ public final class CapturedBackup implements AutoCloseable {
     private final BackupManifest manifest;
     private final SnapshotContext snapshot;
     private final Map<String, BackupEntry> entries;
+    private final ArchiveProtectionProvider protection;
 
-    private CapturedBackup(Path directory, BackupManifest manifest, AuthorizedBackupRequest authorization) {
+    private CapturedBackup(Path directory, BackupManifest manifest, AuthorizedBackupRequest authorization, ArchiveProtectionProvider protection) {
+        this.protection = protection;
         this.directory = directory; this.manifest = manifest;
         String evidence = manifest.consistencyEvidence();
         if (!evidence.startsWith(EVIDENCE_PREFIX)) throw new IllegalArgumentException("Unsupported capture evidence");
@@ -30,11 +33,18 @@ public final class CapturedBackup implements AutoCloseable {
 
     /** Internal recovery API; the job boundary must reauthorize before using this handle. */
     public static CapturedBackup open(Path directory, AuthorizedBackupRequest authorization) throws IOException {
+        return open(directory, authorization, ArchiveProtectionProvider.unprotected());
+    }
+
+    public static CapturedBackup open(Path directory, AuthorizedBackupRequest authorization, ArchiveProtectionProvider protection) throws IOException {
         Path root = directory.toAbsolutePath().normalize();
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || !root.toRealPath().equals(root))
             throw new IOException("Invalid capture directory");
+        BackupId id;
+        try { id = new BackupId(UUID.fromString(root.getFileName().toString().substring("capture-".length()))); }
+        catch (RuntimeException failure) { throw new IOException("Invalid capture identifier"); }
         BackupManifest manifest;
-        try (var input = Files.newInputStream(root.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) {
+        try (var input = SpoolStreams.input(root.resolve("manifest.json"), protection, id, "manifest.json")) {
             manifest = new BackupManifestCodec().read(input.readNBytes(BackupManifestCodec.MAX_MANIFEST_BYTES + 1));
         }
         if (!root.getFileName().toString().equals("capture-" + manifest.backupId().value())
@@ -43,7 +53,9 @@ public final class CapturedBackup implements AutoCloseable {
         for (var entry : manifest.entries()) {
             if (!paths.add(BackupPaths.collisionKey(entry.path()))) throw new IOException("Colliding capture path");
         }
-        var captured = new CapturedBackup(root, manifest, authorization);
+        if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED && !protection.encrypted())
+            throw new IOException("Encrypted staging is required for secrets");
+        var captured = new CapturedBackup(root, manifest, authorization, protection);
         // Never adopt extra files or symlinks left by a replaced/tampered staging directory.
         try (var files = Files.walk(root)) {
             var iterator = files.iterator(); int count = 0;
@@ -67,13 +79,13 @@ public final class CapturedBackup implements AutoCloseable {
     public InputStream openEntry(String path) throws IOException {
         BackupEntry entry = entries.get(BackupPaths.requireEntry(path));
         if (entry == null) throw new IOException("Entry is not part of the captured manifest");
-        return new VerifiedInput(Files.newInputStream(entryPath(entry), LinkOption.NOFOLLOW_LINKS), entry);
+        return new VerifiedInput(SpoolStreams.input(entryPath(entry), protection, manifest.backupId(), path), entry);
     }
 
     private Path entryPath(BackupEntry entry) throws IOException {
         Path file = directory.resolve(entry.path());
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().equals(file)
-                || Files.size(file) != entry.length()) throw new IOException("Capture entry length or path differs from its manifest");
+                || !protection.encrypted() && Files.size(file) != entry.length()) throw new IOException("Capture entry length or path differs from its manifest");
         return file;
     }
 
@@ -107,6 +119,7 @@ public final class CapturedBackup implements AutoCloseable {
             byte[] one = new byte[1]; return read(one, 0, 1) < 0 ? -1 : Byte.toUnsignedInt(one[0]);
         }
         @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture read cancelled");
             int read = in.read(bytes, offset, length);
             if (read > 0) {
                 count = Math.addExact(count, read);

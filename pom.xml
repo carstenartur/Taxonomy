@@ -89,6 +89,8 @@
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.8.0.202609011348-r</jgit.version>
         <jgit-storage-hibernate.version>0.11.3</jgit-storage-hibernate.version>
+        <tink.version>1.23.0</tink.version>
+        <commons-compress.version>1.28.0</commons-compress.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <svgpath.version>2.6.0</svgpath.version>
         <springdoc.version>3.1.1</springdoc.version>

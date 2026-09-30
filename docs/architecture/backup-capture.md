@@ -112,6 +112,8 @@ reauthorization are P04 responsibilities.
 
 Initial per-capture defaults are 10 GiB total, 2 GiB per entry, 10,000 entries and
 30 minutes. The manifest is independently bounded to 4 MiB. These are safety
-limits, not measured throughput claims. Secret-bearing staging fails closed
-until the standard streaming protection adapter is installed; plaintext temporary
-secrets are not supported.
+limits, not measured throughput claims. Secret-bearing staging requires an explicitly
+supplied standard streaming protection adapter; plaintext temporary secrets are
+not supported. P04 supplies Tink protection for both spool entries and the
+manifest, with the keyset kept outside the spool/archive. See the
+[archive protection decision](backup-archive-protection.md).
