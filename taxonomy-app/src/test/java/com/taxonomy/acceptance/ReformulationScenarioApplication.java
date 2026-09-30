@@ -15,6 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Authenticated HTTP commands and reads; never inserts analysis or proposal state. */
 public final class ReformulationScenarioApplication {
     private static final String PASSWORD = "Reformulation-Scenario-Test-2026!";
+    // These lifecycle scenarios need a complete analysed baseline, like ScenarioArchitectureAcceptanceTest.
+    // Production's 24-call limit and its partial/continuation contracts are unchanged.
+    private static final int RELATION_CALL_BUDGET = 256;
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final String base;
@@ -36,6 +39,7 @@ public final class ReformulationScenarioApplication {
                 "--spring.datasource.username=SA", "--spring.datasource.password=", "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--taxonomy.init.async=false", "--scenario.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
+                "--taxonomy.analysis.relations.hierarchical.max-calls=" + RELATION_CALL_BUDGET,
                 "--scenario.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),
                 "--custom.llm.url=" + ScenarioLlmConfiguration.URL, "--custom.llm.model=scenario-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
@@ -73,6 +77,17 @@ public final class ReformulationScenarioApplication {
         String snapshotId = completed.path("items").get(0).path("snapshotId").asText();
         var snapshot = request("GET", projectPath + "/snapshots/" + snapshotId, null, 200);
         save("snapshot.json", snapshot);
+        var relations = snapshot.at("/analysis/relationSearchReport");
+        assertThat(relations.path("maxCalls").asInt()).isEqualTo(RELATION_CALL_BUDGET);
+        assertThat(relations.path("totalCalls").asInt()).isBetween(1, RELATION_CALL_BUDGET);
+        assertThat(relations.path("warnings")).isEmpty();
+        assertThat(relations.path("stopReason").asText()).isEmpty();
+        assertThat(relations.at("/result/unfinished")).isEmpty();
+        var progress = relations.path("progress");
+        assertThat(progress.path("totalSearches").asInt()).isPositive();
+        assertThat(progress.path("completedSearches").asInt()).isEqualTo(progress.path("totalSearches").asInt());
+        assertThat(progress.path("pendingSearches").asInt()).isZero();
+        assertThat(progress.path("unresolvedSearches").asInt()).isZero();
         assertThat(snapshot.at("/analysis/scores/BP-1017").asInt()).isPositive();
         assertThat(snapshot.at("/analysis/architectureView/includedElements")).isNotEmpty();
         var before = request("GET", requirementPath, null, 200);

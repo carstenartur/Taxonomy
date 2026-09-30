@@ -176,7 +176,9 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             click(driver,By.cssSelector("#question-correction input[value='Not needed']"));submit(driver,wait,"correction");
             click(driver,By.cssSelector("#question-channel input[value='Other']"));
             driver.findElement(By.cssSelector("#question-channel [data-other-answer]")).sendKeys("Papierkarte mit späterer Eingabe");submit(driver,wait,"channel");
-            questionButton(driver,"channel","Noch offen / zurückstellen").click();wait.until(d->d.findElement(By.cssSelector("#question-channel")).getText().contains("Zurückgestellt"));
+            questionButton(driver,"channel","Noch offen / zurückstellen").click();
+            // Saving replaces the question while a wait poll may be reading its text.
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("question-channel"),"Zurückgestellt"));
             questionButton(driver,"correction","Nicht anwendbar").click();wait.until(d->d.findElement(By.cssSelector("[data-reformulation-status]")).getText().contains("Gespeichert"));
             assertThat(reformulations.get(project.id(),requirement.id(),proposal.id(),"architect",context).currentRevision().answers()).hasSize(9);
             assertThat(projects.getRequirement(project.id(),requirement.id(),"architect",context)).isEqualTo(before);

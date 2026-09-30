@@ -108,6 +108,16 @@
             <artifactId>hsqldb</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-sqlserver</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-oracle</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- JDBC drivers for external database support (PostgreSQL, MSSQL, Oracle) -->
         <dependency>
             <groupId>org.postgresql</groupId>

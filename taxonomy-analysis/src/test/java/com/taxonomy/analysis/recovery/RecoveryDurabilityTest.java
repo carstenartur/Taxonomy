@@ -3,6 +3,7 @@ package com.taxonomy.analysis.recovery;
 import org.junit.jupiter.api.Test;
 
 class RecoveryDurabilityTest {
+    @Test void skippedRelationDoesNotBlockIndependentPendingWork() { RecoveryDurabilityProbe.skippedRelationBudget(); }
     @Test void admissionFreezesCatalogueBeforeAnyProviderCall() { RecoveryDurabilityProbe.frozenAdmission(); }
     @Test void legacyRowsRequireMatchingContextAndRetainEvidence() { RecoveryDurabilityProbe.legacyCancellation(); }
     @Test void cancellationPersistsCompletedEvidenceBeforeReturning() { RecoveryDurabilityProbe.cancelledEvidence(); }

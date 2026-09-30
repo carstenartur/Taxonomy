@@ -96,6 +96,8 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `storage.indices.search` | knowledge | REBUILDABLE | `—` | Lucene and Hibernate Search indices rebuilt from captured primary records and Git |
 | `storage.schema-migrations` | application | REBUILDABLE | `—` | Run versioned target migrations; SQL schema and sequences are target-owned |
 | `storage.security.user-roles` | application | PORTABLE_PRIMARY | `—` | Join table user_roles included in explicit identity export; role mapping requires approval |
+| `storage.security.principals` | application | PORTABLE_PRIMARY | `app_principal`, `principal_binding`, `principal_installation` | Stable identities and verified provider bindings; historical unresolved owners remain disabled |
+| `storage.security.backup-grants` | application | PORTABLE_PRIMARY | `backup_capability_grant`, `backup_version_grant`, `principal_access_audit` | Explicit grants and stable-actor audit; target privileges require a separate decision |
 | `configuration.application` | application | PORTABLE_PRIMARY | `—` | Versioned non-secret business settings; operational endpoints require explicit target mapping |
 | `configuration.deployment` | application | EXTERNAL_DEPENDENCY | `—` | Deployment manifests, database credentials, hostnames, TLS and external file paths inventoried; not blindly applied |
 | `external.identity-providers` | application | EXTERNAL_DEPENDENCY | `—` | AD/OIDC/Keycloak provider backups remain operator-owned; issuer/subject bindings must be verified |

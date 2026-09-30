@@ -105,6 +105,37 @@ Full history preserves original commit IDs/authors, explicit reflogs and objects
 referenced only from durable application state. Historical authors never imply
 current ownership, login eligibility or access rights.
 
+## Stable identities and grants
+
+The application identity registry is migrated before Hibernate validates the
+existing schema. `principal_schema_history` versions this small JDBC-owned
+schema independently of the application ORM. Local accounts retain their scope
+only through a persisted local-installation/account-ID binding. OIDC browser
+and JWT authentication resolve the exact verified issuer and subject to the
+same opaque principal and scope; display names and email never select a scope.
+
+Legacy ownership without an associated local account is reserved as a disabled
+historical identity with no login binding or grants. Creating a same-named local
+account cannot acquire that ownership. Historical authors and existing source
+scope strings are not rewritten. Operators must resolve such ownership explicitly
+in a separately reviewed mapping; relinking a display name is insufficient.
+
+Current export and download are explicit initial grants. Revoking either is
+durable across later logins. History, installation, restore and secrets require
+separate grants. Membership and workspace ownership are checked against the
+persisted scope, and current account/binding status is rechecked at each backup
+access boundary. Selected-version grants bind the exact repository, workspace
+and commit. Administrative changes and their stable-actor audit commit together;
+local administrator authority is checked against current database roles.
+
+Restore mapping previews construct their target identity context from the server
+registry. The archive cannot supply target login eligibility, ownership or roles.
+Unresolved mappings remain unable to log in or receive permissions.
+
+The reviewed dependency additions are confined to application backup composition
+calling the existing workspace model, repositories and membership policy. No
+workspace-to-security or domain-to-framework dependency is introduced.
+
 ## Delivery state
 
 This contract is preparatory. Backup, restore, Git transport, cross-database

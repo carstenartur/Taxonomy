@@ -82,6 +82,39 @@ function snapshot(sequence = 1, status = 'RUNNING') {
         rawScores: { CP: 80 }, memory: { percent: 81, warning: true } };
 }
 
+test('shows fixed node totals and distinguishes direct assessments from pruned descendants', async () => {
+    const f = fixture(async () => response({ ...snapshot(), nodeProgress: {
+        total: 120, assessed: 28, excluded: 45, open: 47,
+        taxonomies: [{ root: 'BP', nameEn: 'Business processes', nameDe: 'Geschäftsprozesse',
+            total: 120, assessed: 28, excluded: 45, open: 47 }]
+    } }), 'workspace-a', true);
+    await f.step(0);
+    const text = f.elements.get('analysisLiveProgress').textContent;
+    assert.match(text, /73 of 120/);
+    assert.match(text, /28.*assessed.*45.*excluded.*47.*open/);
+    assert.match(text, /Business processes/);
+    f.monitor.stop();
+});
+
+test('keeps relation work visible during provider phases and separates budget from completion', async () => {
+    const f = fixture(async () => response({ ...snapshot(), relationProgress: {
+        totalSources: 40, assessedSources: 32, totalSearches: 80, completedSearches: 28,
+        unresolvedSearches: 4, pendingSearches: 48, calls: 24, maxCalls: 24, verifiedRelations: 12,
+        step: 'NAVIGATE', current: { sourceId: 'BP-1', targetRoot: 'IP', type: 'CONSUMES',
+            direction: 'OUTGOING', depth: 3, candidates: ['IP-2'] }, taxonomies: []
+    } }), 'workspace-a', true);
+    await f.step(0);
+    const text = f.elements.get('analysisLiveProgress').textContent;
+    assert.match(text, /28 of 80/);
+    assert.match(text, /Assessing relationships/);
+    assert.match(text, /BP-1.*IP/);
+    assert.match(text, /CONSUMES/);
+    assert.match(text, /24.*24/);
+    assert.match(text, /4.*unresolved/);
+    assert.doesNotMatch(text, /80 of 80/);
+    f.monitor.stop();
+});
+
 test('observes a started call and partial scores before completion; never starts work', async () => {
     const f = fixture(async () => response(snapshot()));
     await f.step(0);

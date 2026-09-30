@@ -2,6 +2,8 @@ package com.taxonomy.analysis.relations;
 
 import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
+import com.taxonomy.dto.RelationSearchProgress.Step;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import java.nio.charset.StandardCharsets;
@@ -25,14 +27,20 @@ public final class RequirementRelationSearch {
     }
     private final InputCatalogue catalogue;
     private final RelationCompatibilityMatrix rules;
-    private final RelationSearchProtocol protocol;
+    private final Function<String, String> completion;
+    private final String provider;
     private final Runnable checkpoint;
 
     public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
                                      Function<String, String> complete, Runnable checkpoint) {
+        this(catalogue, rules, complete, checkpoint, "unspecified");
+    }
+    public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
+                                     Function<String, String> complete, Runnable checkpoint, String provider) {
         this.catalogue = Objects.requireNonNull(catalogue);
         this.rules = Objects.requireNonNull(rules);
-        this.protocol = new RelationSearchProtocol(complete);
+        this.completion = Objects.requireNonNull(complete);
+        this.provider = Objects.requireNonNull(provider);
         this.checkpoint = Objects.requireNonNull(checkpoint);
     }
 
@@ -49,7 +57,11 @@ public final class RequirementRelationSearch {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
         Objects.requireNonNull(scores); Objects.requireNonNull(options);
         long start = System.nanoTime();
-        int extractionCalls = 0;
+        var previous = AnalysisCheckpointSession.previousRelations();
+        if (previous != null && !previous.originalSha256().equals(sha256(original)))
+            throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
+        Budget budget = new Budget(options);
+        RelationWorkPlan plan = null;
         List<SourceAssessment> sources = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
@@ -61,25 +73,32 @@ public final class RequirementRelationSearch {
             List<Node> offeredRoots = List.copyOf(catalogue.roots());
             ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());
             List<Node> roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();
-            List<Node> nodes = sourceNodes(scores, options.maxSources(), warnings);
+            List<Node> nodes = sourceNodes(scores, warnings);
+            plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
+            plan.restore(previous);
+            budget.plan = plan;
+            var protocol = new RelationSearchProtocol(budget::complete, provider);
             int size = options.limits().batchSize();
-            for (int i = 0; i < nodes.size(); i += size) {
+            for (int i = 0; i < nodes.size();) {
                 checkpoint.run();
-                if (extractionCalls >= options.limits().maxCalls()) {
-                    warnings.add("EXTRACTION_CALL_BUDGET: " + (nodes.size() - i) + " sources remain unassessed.");
-                    break;
-                }
-                var batch = nodes.subList(i, Math.min(i + size, nodes.size()));
-                extractionCalls++;
+                int length = Math.min(size, options.maxSources() - i % options.maxSources());
+                var batch = nodes.subList(i, Math.min(i + length, nodes.size()));
+                plan.sourceBatch(batch.stream().map(Node::id).toList());
                 try {
                     var assessments = protocol.contributions(original, batch);
                     sources.addAll(assessments);
-                    for (var assessment : assessments) if (!assessment.question().isBlank()) {
-                        warnings.add("SOURCE_UNRESOLVED " + assessment.node().id() + ": " + assessment.question());
+                    for (var assessment : assessments) {
+                        plan.assessed(assessment);
+                        if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
+                                + assessment.node().id() + ": " + assessment.question());
                     }
+                } catch (AnalysisCheckpointSession.DeferredException deferred) {
+                    warnings.add(deferred.getMessage() + ": " + (nodes.size() - i) + " sources remain unassessed.");
+                    break;
                 } catch (RelationSearchEngine.InvalidResponseException invalid) {
                     warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
                 }
+                i += batch.size();
             }
             List<List<Intent>> routesByContribution = new ArrayList<>();
             for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
@@ -87,10 +106,10 @@ public final class RequirementRelationSearch {
                 for (RelationType type : RelationType.values()) {
                     Set<String> allowed = rules.allowedTargetRoots(contribution.source().root(), type);
                     List<Node> outgoing = roots.stream().filter(n -> allowed.contains(n.root())).toList();
-                    if (!outgoing.isEmpty()) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, outgoing));
+                    for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
                     List<Node> incoming = roots.stream().filter(n -> rules.allowedTargetRoots(n.root(), type)
                             .contains(contribution.source().root())).toList();
-                    if (!incoming.isEmpty()) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, incoming));
+                    for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
                 }
                 if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
                         + ": the current root profile cannot route this contribution; not evidence of absence.");
@@ -106,27 +125,65 @@ public final class RequirementRelationSearch {
                 }
             }
             Limits l = options.limits();
+            plan.expect(intents);
             var engine = new RelationSearchEngine(node -> {
                 List<Node> children = catalogue.children(node);
                 if (children.stream().anyMatch(child -> !child.root().equals(node.root()))) {
                     throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
                 }
                 return children;
-            }, protocol::evaluate, checkpoint);
-            result = engine.search(original, intents, new Limits(l.maxCalls() - extractionCalls,
-                    l.maxDepth(), l.batchSize(), l.maxWorkItems()));
+            }, protocol::evaluate, checkpoint, plan, true);
+            result = engine.search(original, intents, l);
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult();
             stop = failureReason(interrupted.getCause());
         } catch (RuntimeException failure) {
             stop = failureReason(failure);
         }
-        return new RelationSearchReport(1, sha256(original), "relation-downwalk-v1/root-compatibility-profile/contribution-round-robin",
-                sources, result, extractionCalls + result.calls(), options.limits().maxCalls(),
-                (System.nanoTime() - start) / 1_000_000, warnings, stop);
+        if (previous != null) {
+            var retainedSources = new LinkedHashMap<String, SourceAssessment>();
+            previous.sources().forEach(source -> retainedSources.put(source.node().id(), source));
+            sources.forEach(source -> retainedSources.put(source.node().id(), source));
+            sources = new ArrayList<>(retainedSources.values());
+            var edges = new LinkedHashSet<>(previous.result().edges()); edges.addAll(result.edges());
+            var trace = new LinkedHashSet<>(previous.result().trace()); trace.addAll(result.trace());
+            result = new Result(List.copyOf(edges), result.unfinished(), List.copyOf(trace),
+                    result.calls(), result.visitedBatches(), result.durationMillis());
+        }
+        if (plan != null) plan.finish(warnings.isEmpty() && stop.isEmpty() && result.searchExhausted());
+        var progress = plan == null ? null : plan.snapshot();
+        var tasks = plan == null ? List.<com.taxonomy.dto.RelationSearchProgress.Task>of() : plan.tasks();
+        if (progress == null && previous != null && previous.progress() != null) {
+            var p = previous.progress(); tasks = previous.tasks();
+            progress = new com.taxonomy.dto.RelationSearchProgress(p.totalSources(), p.assessedSources(), p.totalSearches(),
+                    p.completedSearches(), p.unresolvedSearches(), p.pendingSearches(), budget.calls,
+                    options.limits().maxCalls(), p.verifiedRelations(), Step.PAUSED, null, p.taxonomies());
+        }
+        return new RelationSearchReport(2, sha256(original), "relation-downwalk-v2/complete-plan/resumable-exchanges",
+                sources, result, budget.calls, options.limits().maxCalls(),
+                (System.nanoTime() - start) / 1_000_000, warnings, stop,
+                progress, tasks);
     }
 
-    private List<Node> sourceNodes(Map<String, Integer> scores, int maxSources, List<String> warnings) {
+    private final class Budget {
+        private final Options options;
+        private int calls, newSources, newWork;
+        private RelationWorkPlan plan;
+        Budget(Options options) { this.options = options; }
+        String complete(Step step, List<String> nodes, String prompt) {
+            if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+            if (step == Step.SOURCES && newSources + nodes.size() > options.maxSources())
+                throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
+            if (step != Step.SOURCES && newWork >= options.limits().maxWorkItems())
+                throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
+            if (step == Step.SOURCES) newSources += nodes.size();
+            else newWork++;
+            calls++; plan.calls(calls);
+            return completion.apply(prompt);
+        }
+    }
+
+    private List<Node> sourceNodes(Map<String, Integer> scores, List<String> warnings) {
         List<Map.Entry<String,Integer>> positive = scores.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue() > 0)
                 .sorted(Map.Entry.<String,Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
@@ -136,17 +193,15 @@ public final class RequirementRelationSearch {
         List<Node> nodes = new ArrayList<>();
         Set<String> concreteRoots = new HashSet<>();
         Set<String> containerRoots = new TreeSet<>();
-        int missing = 0, skipped = 0;
+        int missing = 0;
         for (var entry : positive) {
             checkpoint.run();
-            if (nodes.size() >= maxSources) { skipped++; continue; }
             Node node = catalogue.find(entry.getKey());
             if (node == null) { missing++; continue; }
             if (node.container()) { containerRoots.add(node.root()); continue; }
             concreteRoots.add(node.root()); nodes.add(node);
         }
         if (missing > 0) warnings.add("MISSING_SOURCE: " + missing + " scored IDs are absent from the catalogue.");
-        if (skipped > 0) warnings.add("SOURCE_LIMIT: " + skipped + " scored IDs remain unassessed.");
         containerRoots.removeAll(concreteRoots);
         for (String root : containerRoots) warnings.add("ROOT_SOURCE_UNRESOLVED " + root
                 + ": identify a concrete required contribution below this catalogue container.");

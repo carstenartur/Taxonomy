@@ -217,6 +217,33 @@
         return String(i18n && i18n.getLocale ? i18n.getLocale() : document.documentElement.lang || '').startsWith('de');
     }
     function text(de, en) { return german() ? de : en; }
+    function countLabel(done, total) {
+        return done + text(' von ', ' of ') + total + text(' erledigt', ' complete');
+    }
+    function relationLabel(p) {
+        return text('Relationsprüfung: ', 'Relationship search: ')
+            + countLabel(p.completedSearches, p.totalSearches)
+            + ' · ' + p.unresolvedSearches + text(' ungeklärt', ' unresolved')
+            + ' · ' + p.pendingSearches + text(' offen', ' pending');
+    }
+    function currentRelation(p) {
+        var c = p.current;
+        if (!c) return '';
+        var steps = { SOURCES: ['Anforderungsbeitrag bestimmen', 'Identify requested contribution'],
+            NAVIGATE: ['Hierarchie durchsuchen', 'Search hierarchy'], VERIFY: ['Relationsvorschlag prüfen', 'Verify relationship proposal'] };
+        var phase = steps[p.step];
+        return c.sourceId + (c.targetRoot ? ' → ' + c.targetRoot : '')
+            + (c.type ? ' · ' + c.type : '')
+            + (c.direction ? ' · ' + (c.direction === 'INCOMING'
+                ? text('eingehend', 'incoming') : text('ausgehend', 'outgoing')) : '')
+            + (phase ? ' · ' + text(phase[0], phase[1]) : '')
+            + (p.step !== 'SOURCES' ? text(' · Tiefe ', ' · depth ') + c.depth : '');
+    }
+    function workSummary(snapshot) {
+        var r = snapshot.relationProgress, n = snapshot.nodeProgress;
+        if (r) return relationLabel(r) + (r.current ? ' · ' + currentRelation(r) : '');
+        return n ? text('Knotenbewertung: ', 'Node assessment: ') + countLabel(n.assessed + n.excluded, n.total) : '';
+    }
     function node(tag, value, className) {
         var element = document.createElement(tag);
         if (value !== undefined) element.textContent = value;
@@ -299,6 +326,56 @@
         panel.setAttribute('aria-live', 'polite');
         var title = node('strong', text('Analyse wird gestartet', 'Starting analysis'));
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
+        var work = node('div', undefined, 'mt-2');
+        work.id = 'analysisWorkProgress';
+        var expandedTaxonomies = false;
+        function renderWork(snapshot) {
+            work.replaceChildren();
+            var n = snapshot.nodeProgress, r = snapshot.relationProgress;
+            function bar(done, total) {
+                if (!(total > 0)) return;
+                var progress = node('progress', undefined, 'w-100');
+                progress.max = total; progress.value = done;
+                progress.setAttribute('aria-label', countLabel(done, total));
+                work.append(progress);
+            }
+            if (n) {
+                work.append(node('div', text('Knotenbewertung: ', 'Node assessment: ')
+                    + countLabel(n.assessed + n.excluded, n.total), 'fw-bold'));
+                if (!r) bar(n.assessed + n.excluded, n.total);
+                work.append(node('div', n.assessed + text(' direkt bewertet · ', ' directly assessed · ')
+                    + n.excluded + text(' durch übergeordnete Entscheidung ausgeschlossen · ', ' excluded by parent decision · ')
+                    + n.open + text(' offen', ' open')));
+                var details = node('details'); details.open = expandedTaxonomies;
+                details.append(node('summary', text('Fortschritt je Teiltaxonomie', 'Progress by taxonomy')));
+                (n.taxonomies || []).forEach(function (part) {
+                    details.append(node('div', (german() ? part.nameDe || part.nameEn : part.nameEn) + ' (' + part.root + '): '
+                        + countLabel(part.assessed + part.excluded, part.total) + ' · ' + part.assessed
+                        + text(' bewertet · ', ' assessed · ') + part.excluded + text(' ausgeschlossen · ', ' excluded · ')
+                        + part.open + text(' offen', ' open'), 'small'));
+                });
+                details.addEventListener('toggle', function () { expandedTaxonomies = details.open; });
+                work.append(details);
+            }
+            if (r) {
+                work.append(node('div', relationLabel(r), 'fw-bold mt-2'));
+                bar(r.completedSearches, r.totalSearches);
+                work.append(node('div', r.assessedSources + text(' von ', ' of ') + r.totalSources
+                    + text(' Ausgangsknoten geprüft · ', ' source contributions assessed · ')
+                    + r.verifiedRelations + text(' Relationsvorschläge bestätigt', ' relationship proposals verified')));
+                if (r.current) work.append(node('div', currentRelation(r)));
+                (r.taxonomies || []).forEach(function (part) {
+                    work.append(node('div', part.root + ': ' + countLabel(part.completed, part.total)
+                        + ' · ' + part.unresolved + text(' ungeklärt · ', ' unresolved · ')
+                        + part.pending + text(' offen', ' pending'), 'small'));
+                });
+                work.append(node('div', text('Aufrufbudget dieses Durchlaufs: ', 'Call budget for this execution: ')
+                    + r.calls + ' / ' + r.maxCalls, 'small'));
+                if (r.step === 'PAUSED') work.append(node('div', text(
+                    'Relationssuche unvollständig. Offene Aufträge und Abbruchgründe bleiben im Bericht erhalten.',
+                    'Relationship search incomplete. Open tasks and stop reasons remain recorded in the report.'), 'fw-bold'));
+            }
+        }
         var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
         duration.id = 'analysisElapsed';
         var queueDuration = node('div');
@@ -320,7 +397,7 @@
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, queueDuration, duration, resources, warning, button);
+        panel.append(title, state, work, queueDuration, duration, resources, warning, button);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -390,7 +467,10 @@
                     'Cancellation requested. An in-flight HTTP call may continue until its timeout.');
             },
             render: function (snapshot, monitor) {
+                renderWork(snapshot);
                 var phase = phases[snapshot.phase];
+                if (snapshot.relationProgress && ['SOURCES', 'NAVIGATE', 'VERIFY'].indexOf(snapshot.relationProgress.step) >= 0)
+                    phase = ['Relationen bewerten', 'Assessing relationships'];
                 title.textContent = phase ? text(phase[0], phase[1]) : snapshot.phase;
                 var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
                 var measuredExecution = Number.isSafeInteger(snapshot.executionMillis) && snapshot.executionMillis >= 0;
@@ -516,7 +596,7 @@
         active = monitor;
         return monitor;
     }
-    window.TaxonomyAnalysisProgress = { createMonitor: createMonitor, start: start };
+    window.TaxonomyAnalysisProgress = { createMonitor: createMonitor, start: start, workSummary: workSummary };
     if (typeof document !== 'undefined' && document.addEventListener) {
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
             document.addEventListener(name, function () {

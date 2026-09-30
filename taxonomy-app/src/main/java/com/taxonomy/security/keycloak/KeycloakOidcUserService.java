@@ -1,12 +1,14 @@
 package com.taxonomy.security.keycloak;
 
+import com.taxonomy.security.service.PrincipalIdentityService;
+
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
-import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Component;
 
@@ -32,6 +34,9 @@ public class KeycloakOidcUserService extends OidcUserService {
 
     /** The recognized application roles. */
     private static final Set<String> KNOWN_ROLES = Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    private final PrincipalIdentityService identities;
+
+    public KeycloakOidcUserService(PrincipalIdentityService identities) { this.identities = identities; }
 
     @Override
     public OidcUser loadUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
@@ -41,12 +46,10 @@ public class KeycloakOidcUserService extends OidcUserService {
         Set<GrantedAuthority> authorities = new HashSet<>(oidcUser.getAuthorities());
         authorities.addAll(extractRealmRoles(oidcUser));
 
-        return new DefaultOidcUser(
-                authorities,
-                oidcUser.getIdToken(),
-                oidcUser.getUserInfo(),
-                "preferred_username"
-        );
+        if (oidcUser.getIssuer() == null || oidcUser.getSubject() == null || oidcUser.getSubject().isBlank())
+            throw new OAuth2AuthenticationException(new OAuth2Error("invalid_token"));
+        var principal = identities.oidc(oidcUser.getIssuer().toString(), oidcUser.getSubject());
+        return new PrincipalOidcUser(authorities, oidcUser, principal);
     }
 
     /**

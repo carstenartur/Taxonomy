@@ -23,7 +23,11 @@ class KeycloakJwtAuthConverterTest {
 
     @BeforeEach
     void setUp() {
-        converter = new KeycloakJwtAuthConverter();
+        var identities = org.mockito.Mockito.mock(com.taxonomy.security.service.PrincipalIdentityService.class);
+        org.mockito.Mockito.when(identities.oidc(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new com.taxonomy.security.model.AppPrincipal(
+                        new com.taxonomy.backup.PrincipalId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111")), "verified-scope", true));
+        converter = new KeycloakJwtAuthConverter(identities);
         converter.setRoleClaimPath("realm_access.roles");
     }
 
@@ -64,18 +68,18 @@ class KeycloakJwtAuthConverterTest {
     }
 
     @Test
-    void usesPreferredUsernameAsPrincipalName() {
+    void usesVerifiedPrincipalScopeInsteadOfDisplayName() {
         Jwt jwt = buildJwt("carsten", List.of("ROLE_USER"));
 
         AbstractAuthenticationToken token = converter.convert(jwt);
 
-        assertEquals("carsten", token.getName());
+        assertEquals("verified-scope", token.getName());
     }
 
     @Test
-    void fallsBackToSubjectIfNoPreferredUsername() {
+    void usesVerifiedPrincipalScopeWithoutDisplayName() {
         Jwt jwt = Jwt.withTokenValue("token")
-                .header("alg", "RS256")
+                .header("alg", "RS256").issuer("https://idp.example")
                 .subject("550e8400-e29b-41d4-a716-446655440000")
                 .claim("realm_access", Map.of("roles", List.of("ROLE_USER")))
                 .issuedAt(Instant.now())
@@ -84,7 +88,7 @@ class KeycloakJwtAuthConverterTest {
 
         AbstractAuthenticationToken token = converter.convert(jwt);
 
-        assertEquals("550e8400-e29b-41d4-a716-446655440000", token.getName());
+        assertEquals("verified-scope", token.getName());
     }
 
     @Test
@@ -100,7 +104,7 @@ class KeycloakJwtAuthConverterTest {
     @Test
     void handlesMissingRealmAccess() {
         Jwt jwt = Jwt.withTokenValue("token")
-                .header("alg", "RS256")
+                .header("alg", "RS256").issuer("https://idp.example")
                 .subject("test-subject")
                 .claim("preferred_username", "carsten")
                 .issuedAt(Instant.now())
@@ -111,7 +115,7 @@ class KeycloakJwtAuthConverterTest {
 
         assertNotNull(token);
         assertTrue(token.getAuthorities().isEmpty());
-        assertEquals("carsten", token.getName());
+        assertEquals("verified-scope", token.getName());
     }
 
     @Test
@@ -131,7 +135,7 @@ class KeycloakJwtAuthConverterTest {
 
     private Jwt buildJwt(String preferredUsername, List<String> roles) {
         return Jwt.withTokenValue("token")
-                .header("alg", "RS256")
+                .header("alg", "RS256").issuer("https://idp.example")
                 .subject("test-subject-uuid")
                 .claim("preferred_username", preferredUsername)
                 .claim("realm_access", Map.of("roles", roles))

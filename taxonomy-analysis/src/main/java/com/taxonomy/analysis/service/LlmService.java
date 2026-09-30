@@ -329,6 +329,8 @@ public class LlmService {
      * @return an {@link AnalysisResult} with status SUCCESS, PARTIAL, or ERROR
      */
     public AnalysisResult analyzeWithBudget(String businessText) {
+        List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() ? taxonomyService.getFullTree() : null;
+        if (plannedTree != null) AnalysisRunControl.planNodes(plannedTree);
         Map<String, Integer> allScores = new HashMap<>();
         Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
@@ -401,7 +403,8 @@ public class LlmService {
         }
 
         // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = stop == null ? taxonomyService.getFullTree() : List.of();
+        List<TaxonomyNodeDto> rawTree = stop == null
+                ? plannedTree == null ? taxonomyService.getFullTree() : plannedTree : List.of();
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
             annotatedTree.add(taxonomyService.applyScores(rootDto, allScores));
@@ -491,6 +494,7 @@ public class LlmService {
      * @param callback     receives phase, scores, expanding, complete and error events
      */
     public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
+        if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(taxonomyService.getFullTree());
         Map<String, Integer> allScores = new HashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
@@ -766,10 +770,10 @@ public class LlmService {
             return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
                     () -> performProductBatchDetailed(businessText, products, null));
         String prompt = productQuestionPrompt(businessText, products);
-        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+        return AnalysisRunControl.assessment(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
                 "PRODUCT", getActiveProviderName(), products.stream().map(TaxonomyNode::getCode).toList(), prompt,
                 () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
-                        () -> performProductBatchDetailed(businessText, products, prompt)));
+                        () -> performProductBatchDetailed(businessText, products, prompt))));
     }
 
     private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
@@ -782,11 +786,11 @@ public class LlmService {
             return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
                     () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null, kind));
         String prompt = assessmentPrompt(businessText, nodes, parentScore, kind);
-        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+        return AnalysisRunControl.assessment(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
                 kind == ScoreAssessmentKind.ROOT_RELEVANCE ? "ROOT_RELEVANCE" : "CATEGORY",
                 getActiveProviderName(), nodes.stream().map(TaxonomyNode::getCode).toList(), prompt,
                 () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
-                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt, kind)));
+                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt, kind))));
     }
 
     private LlmCallDetail performProductBatchDetailed(

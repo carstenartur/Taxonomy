@@ -9,6 +9,9 @@ import java.util.Objects;
 /** Request/worker-scoped callbacks; no global prompt, result or credential retention. */
 public final class AnalysisRunControl implements AutoCloseable {
     interface Observer {
+        default void planNodes(java.util.List<com.taxonomy.dto.TaxonomyNodeDto> tree) { }
+        default void assessment(LlmCallDetail detail) { }
+        default void relations(com.taxonomy.dto.RelationSearchProgress progress) { }
         default void checkpoint() { }
         void phase(String phase, String node);
         long started(String provider, String node);
@@ -40,6 +43,23 @@ public final class AnalysisRunControl implements AutoCloseable {
     }
 
     public static boolean active() { return CURRENT.get() != null; }
+
+    public static void planNodes(java.util.List<com.taxonomy.dto.TaxonomyNodeDto> tree) {
+        var current = CURRENT.get();
+        if (current != null) current.observer.planNodes(tree);
+    }
+
+    /** Also publishes durable replay; the registry deduplicates by catalogue identity. */
+    public static LlmCallDetail assessment(LlmCallDetail detail) {
+        var current = CURRENT.get();
+        if (current != null) current.observer.assessment(detail);
+        return detail;
+    }
+
+    public static void relations(com.taxonomy.dto.RelationSearchProgress progress) {
+        var current = CURRENT.get();
+        if (current != null) current.observer.relations(progress);
+    }
 
     /** Records prepared request evidence, not proof that a provider received it. */
     static void preparedPrompt(String prompt) {

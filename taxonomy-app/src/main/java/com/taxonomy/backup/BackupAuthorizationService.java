@@ -5,8 +5,7 @@ import java.time.Clock;
 import java.util.*;
 
 /**
- * Shared start/status/download policy. Deliberately not auto-registered: a persistent identity
- * and capability adapter is required before any backup endpoint can be exposed.
+ * Shared start/status/download policy, registered with the persistent adapter when backup is enabled.
  */
 public final class BackupAuthorizationService {
     private final BackupAccessPolicy policy;

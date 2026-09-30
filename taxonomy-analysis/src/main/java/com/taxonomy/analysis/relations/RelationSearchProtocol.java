@@ -7,6 +7,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
 import java.util.function.Function;
+import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RelationSearchProgress.Step;
 import static com.taxonomy.dto.RelationSearchModel.*;
 
 /** Strict, versioned JSON boundary around the existing raw completion transport. */
@@ -22,10 +25,17 @@ public final class RelationSearchProtocol {
         a relationship from scores or generic term similarity. Do not distribute percentages.
         Return one JSON object only, without prose, markdown fences, extra fields or duplicate keys.
         """;
-    private final Function<String, String> complete;
+    @FunctionalInterface
+    public interface Completion { String complete(Step step, List<String> nodes, String prompt); }
+    private final Completion complete;
+    private final String provider;
 
     public RelationSearchProtocol(Function<String, String> complete) {
+        this((step, nodes, prompt) -> complete.apply(prompt), "unspecified");
+    }
+    public RelationSearchProtocol(Completion complete, String provider) {
         this.complete = Objects.requireNonNull(complete);
+        this.provider = Objects.requireNonNull(provider);
     }
 
     public List<SourceAssessment> contributions(String original, List<Node> nodes) {
@@ -43,8 +53,16 @@ public final class RelationSearchProtocol {
             for condition and question only. Keep separate read/write contributions, roles, conditions
             and alternatives distinct; never invent an implementation choice absent from the original.
             INPUT
-            """ + JSON.writeValueAsString(Map.of("original", original, "nodes", nodes));
-        JsonNode response = read(complete.apply(prompt));
+            """ + JSON.writeValueAsString(new TreeMap<>(Map.of("original", original, "nodes", nodes)));
+        List<Node> offeredNodes = nodes;
+        return exchange(Step.SOURCES, candidateIds, prompt,
+                raw -> parseContributions(original, offeredNodes, candidateIds, raw),
+                answers -> answers.stream().anyMatch(a -> !a.question().isBlank()));
+    }
+
+    private List<SourceAssessment> parseContributions(String original, List<Node> nodes,
+                                                      List<String> candidateIds, String raw) {
+        JsonNode response = read(raw);
         fields(response, "selections");
         JsonNode selections = array(response, "selections");
         Map<String, Node> offered = new LinkedHashMap<>();
@@ -106,9 +124,15 @@ public final class RelationSearchProtocol {
             No scores or confidence percentages. No invented IDs, edges, facts, or forced leaf selection.
             INPUT
             """ + JSON.writeValueAsString(query);
-        JsonNode response = read(complete.apply(prompt));
+        return exchange(query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE,
+                candidateIds, prompt, raw -> parseDecisions(query, candidateIds, raw),
+                answers -> answers.stream().anyMatch(d -> d.outcome() == Outcome.UNRESOLVED));
+    }
+
+    private List<Decision> parseDecisions(Query query, List<String> candidateIds, String raw) {
+        JsonNode response = read(raw);
         fields(response, "decisions");
-        return decodeChildren(candidateIds, array(response, "decisions"), "targetId", (id, item) -> {
+        List<Decision> decisions = decodeChildren(candidateIds, array(response, "decisions"), "targetId", (id, item) -> {
             fields(item, "targetId", "outcome", "contribution", "quote", "necessity", "condition",
                     "alternativeGroup", "rationale", "question");
             try {
@@ -121,6 +145,23 @@ public final class RelationSearchProtocol {
                 throw new RelationSearchEngine.InvalidResponseException("Unknown relation decision or necessity");
             }
         });
+        return RelationSearchEngine.validateResponse(query, decisions);
+    }
+
+    private <T> T exchange(Step step, List<String> nodes, String prompt, Function<String, T> decode,
+                           java.util.function.Predicate<T> unresolved) {
+        LlmCallDetail detail = AnalysisCheckpointSession.evaluateEvidence(step.name(), provider, nodes, prompt, () -> {
+            var answer = new LlmCallDetail(); answer.setProvider(provider); answer.setPrompt(prompt);
+            answer.setScores(Map.of());
+            String raw = complete.complete(step, nodes, prompt); answer.setRawResponse(raw);
+            try {
+                if (unresolved.test(decode.apply(raw))) answer.setError("RELATION_UNRESOLVED: review the retained response");
+            } catch (RelationSearchEngine.InvalidResponseException invalid) {
+                answer.setError("INVALID_RELATION_RESPONSE: " + invalid.getMessage());
+            }
+            return answer;
+        });
+        return decode.apply(detail.getRawResponse());
     }
 
     private static <T> List<T> decodeChildren(List<String> candidateIds, JsonNode array, String identityField,

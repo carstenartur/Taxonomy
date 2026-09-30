@@ -62,7 +62,7 @@
       "fromPackage": "com.taxonomy.analysis.relations",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
@@ -140,6 +140,27 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.repository",
+      "classDependencyCount": 4
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",
