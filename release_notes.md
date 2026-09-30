@@ -226,6 +226,13 @@ Taxonomy 1.4.1 includes the repository-scoped storage, context, and service foun
 
 ## Security and bounded runtime state
 
+Both managed Jackson lines include the Databind fixes for CVE-2026-91776 and
+CVE-2026-91777: Jackson 2.22.3 and 3.1.7. The fixes bound polymorphic type-id caching
+and address quadratic forward-reference resolution. Maven Enforcer rejects the
+affected compile/runtime dependencies even when a BOM version is overridden.
+See the upstream [2.22.3](https://github.com/FasterXML/jackson/wiki/Jackson-Release-2.22.3)
+and [3.1.7](https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1.7) release notes.
+
 ### Stable LLM quotas after authorization
 
 LLM-backed operations consume quota only after Spring Security has authenticated and authorized the request. Local accounts are keyed by a digest of the canonical authenticated username. Keycloak browser OIDC and bearer JWT access for the same account share the exact immutable issuer/subject identity; editable display names, forwarding headers, and peer addresses do not create fresh budgets.
