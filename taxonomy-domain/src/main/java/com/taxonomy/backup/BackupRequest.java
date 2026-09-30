@@ -17,7 +17,7 @@ public record BackupRequest(BackupProfile profile, BackupScope scope, BackupTime
             case REPOSITORY_HISTORY, INSTALLATION_FULL -> time instanceof BackupTime.History;
         };
         if (!validTime) throw new IllegalArgumentException("Profile and time selection disagree");
-        if (time instanceof BackupTime.SelectedVersion version && !version.commitsByRepository().keySet().equals(scope.repositoryIds())) {
+        if (time instanceof BackupTime.SelectedVersion version && !version.commitsByRepository().keySet().equals(scope.selectedRepositories())) {
             throw new IllegalArgumentException("Select exactly one commit for each selected repository");
         }
         if (profile.includesHistory() && gitRepresentation == GitRepresentation.NONE) {

@@ -48,7 +48,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint` | knowledge | REBUILDABLE | `relation_decision_projection_checkpoint` | Rebuild together with relation projection; never restore stale readiness |
 | `com.taxonomy.relations.model.RelationEvidence` | knowledge | PORTABLE_PRIMARY | `relation_evidence` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.relations.model.RelationHypothesis` | knowledge | PORTABLE_PRIMARY | `relation_hypothesis` | Explicit versioned records; preserve business IDs and map technical foreign keys |
-| `com.taxonomy.relations.model.RelationProjectionRecovery` | knowledge | REBUILDABLE | `relation_projection_recovery` | Reconcile projection against captured DSL; old worker claims are invalid |
+| `com.taxonomy.relations.model.RelationProjectionRecovery` | knowledge | PORTABLE_PRIMARY | `relation_projection_recovery` | Durable recovery journal with commit provenance and failure history; restore pending work without old worker claims |
 | `com.taxonomy.relations.model.RelationProposal` | knowledge | PORTABLE_PRIMARY | `relation_proposal` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.relations.model.RequirementCoverage` | knowledge | PORTABLE_PRIMARY | `requirement_coverage` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ArchitectureProject` | portfolio | PORTABLE_PRIMARY | `arch_project` | Explicit versioned records; preserve business IDs and map technical foreign keys |
@@ -80,7 +80,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `com.taxonomy.editor.persistence.EditorCheckpoint` | workspace | PORTABLE_PRIMARY | `editor_checkpoint` | History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads |
 | `com.taxonomy.editor.persistence.EditorOperation` | workspace | PORTABLE_PRIMARY | `editor_operation` | History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads |
 | `com.taxonomy.editor.persistence.EditorWorkspace` | workspace | PORTABLE_PRIMARY | `editor_workspace` | Explicit versioned records; preserve business IDs and map technical foreign keys |
-| `com.taxonomy.versioning.model.ArchitectureCommitIndex` | workspace | REBUILDABLE | `architecture_commit_index` | Rebuild using CommitIndexSearchRebuilder from captured Git commits |
+| `com.taxonomy.versioning.model.ArchitectureCommitIndex` | workspace | PORTABLE_PRIMARY | `architecture_commit_index` | Retain commit index until complete reconstruction for all retained contexts is proven; Lucene remains rebuildable |
 | `com.taxonomy.versioning.model.ContextHistoryRecord` | workspace | PORTABLE_PRIMARY | `context_history_record` | History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads |
 | `com.taxonomy.workspace.model.RepositoryMembership` | workspace | PORTABLE_PRIMARY | `repository_membership` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.workspace.model.SyncState` | workspace | PORTABLE_PRIMARY | `sync_state` | Explicit versioned records; preserve business IDs and map technical foreign keys |

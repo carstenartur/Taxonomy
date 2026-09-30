@@ -154,6 +154,12 @@
               "maxLength": 512
             },
             "maxItems": 10000
+          },
+          "maxProperties": 10000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -176,11 +182,25 @@
           ]
         },
         "commitsByRepository": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{40}$"
-          }
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "$ref": "#/$defs/repositoryKey"
+              },
+              "commit": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            },
+            "required": [
+              "repository",
+              "commit"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10000
         }
       },
       "required": [
@@ -280,9 +300,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
+          "$ref": "#/$defs/repositoryKey"
         },
         "archiveId": {
           "type": "string",
@@ -302,9 +320,7 @@
         "sourceRepositoryId": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
+              "$ref": "#/$defs/repositoryKey"
             },
             {
               "type": "null"
@@ -353,6 +369,12 @@
           "additionalProperties": {
             "type": "string",
             "pattern": "^[0-9a-f]{40}$"
+          },
+          "maxProperties": 10000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         },
         "symbolicHead": {
@@ -367,10 +389,6 @@
             }
           ]
         },
-        "semanticRevision": {
-          "type": "integer",
-          "minimum": 0
-        },
         "requiredCommits": {
           "type": "array",
           "items": {
@@ -378,13 +396,25 @@
             "pattern": "^[0-9a-f]{40}$"
           },
           "maxItems": 10000
+        },
+        "workingStates": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/workingState"
+          },
+          "maxProperties": 10000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
         }
       },
       "required": [
         "refs",
         "symbolicHead",
-        "semanticRevision",
-        "requiredCommits"
+        "requiredCommits",
+        "workingStates"
       ],
       "additionalProperties": false
     },
@@ -409,6 +439,63 @@
         "path",
         "length",
         "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "repositoryKey": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "workspaceId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryId",
+        "workspaceId"
+      ],
+      "additionalProperties": false
+    },
+    "workingState": {
+      "type": "object",
+      "properties": {
+        "semanticRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkpointCommit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkpointRevision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "semanticRevision",
+        "checkpointCommit",
+        "checkpointRevision"
       ],
       "additionalProperties": false
     }

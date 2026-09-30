@@ -16,7 +16,7 @@ class BackupManifestCodecTest {
     @Test void readsVersionOneFixtureAndRoundtripsDomainContract() throws Exception {
         var manifest = codec.read(fixture());
         assertThat(manifest.request().profile()).isEqualTo(BackupProfile.CURRENT_STATE);
-        assertThat(manifest.repositories().getFirst().captured().semanticRevision()).isEqualTo(7);
+        assertThat(manifest.repositories().getFirst().captured().workingStates().get("main").semanticRevision()).isEqualTo(7);
         assertThat(codec.read(codec.write(manifest))).isEqualTo(manifest);
         manifest.requireCompatible("1.4.0", Map.of(new BackupComponentId("workspace"), 1));
     }

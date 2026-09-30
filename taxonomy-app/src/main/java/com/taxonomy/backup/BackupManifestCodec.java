@@ -12,7 +12,7 @@ import java.util.*;
 
 /** Bounded explicit JSON binding. No class-name-based polymorphic deserialization. */
 public final class BackupManifestCodec {
-    public static final int MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
+    public static final int MAX_MANIFEST_BYTES = BackupLimits.MAX_MANIFEST_BYTES;
     private final JsonMapper mapper = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
                             .maxDocumentLength(MAX_MANIFEST_BYTES).maxNestingDepth(20)
@@ -40,6 +40,8 @@ public final class BackupManifestCodec {
     public byte[] write(BackupManifest manifest) {
         byte[] bytes = mapper.writeValueAsBytes(WireManifest.from(Objects.requireNonNull(manifest)));
         if (bytes.length > MAX_MANIFEST_BYTES) throw new IllegalArgumentException("Manifest exceeds size limit");
+        // A writer must never emit a document rejected by its own bounded reader (including token limits).
+        read(bytes);
         return bytes;
     }
 
@@ -76,21 +78,31 @@ public final class BackupManifestCodec {
         }
     }
 
-    public record WireTime(TimeKind kind, Map<String, String> commitsByRepository) {
+    public record WireSelectedCommit(BackupRepositoryKey repository, String commit) { }
+    public record WireTime(TimeKind kind, List<WireSelectedCommit> commitsByRepository) {
         BackupTime domain() {
             Objects.requireNonNull(commitsByRepository);
             if (kind != TimeKind.SELECTED_VERSION && !commitsByRepository.isEmpty()) throw new IllegalArgumentException("Unexpected selected commits");
             return switch (kind) {
                 case CURRENT -> new BackupTime.Current();
                 case HISTORY -> new BackupTime.History();
-                case SELECTED_VERSION -> new BackupTime.SelectedVersion(commitsByRepository);
+                case SELECTED_VERSION -> {
+                    var commits = new HashMap<BackupRepositoryKey, String>();
+                    for (var selected : commitsByRepository) {
+                        if (commits.put(Objects.requireNonNull(selected.repository()), Objects.requireNonNull(selected.commit())) != null) {
+                            throw new IllegalArgumentException("Duplicate selected repository");
+                        }
+                    }
+                    yield new BackupTime.SelectedVersion(commits);
+                }
             };
         }
         static WireTime from(BackupTime time) {
             return switch (time) {
-                case BackupTime.Current ignored -> new WireTime(TimeKind.CURRENT, Map.of());
-                case BackupTime.History ignored -> new WireTime(TimeKind.HISTORY, Map.of());
-                case BackupTime.SelectedVersion v -> new WireTime(TimeKind.SELECTED_VERSION, v.commitsByRepository());
+                case BackupTime.Current ignored -> new WireTime(TimeKind.CURRENT, List.of());
+                case BackupTime.History ignored -> new WireTime(TimeKind.HISTORY, List.of());
+                case BackupTime.SelectedVersion v -> new WireTime(TimeKind.SELECTED_VERSION, v.commitsByRepository().entrySet().stream()
+                        .map(e -> new WireSelectedCommit(e.getKey(), e.getValue())).toList());
             };
         }
     }

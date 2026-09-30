@@ -16,11 +16,11 @@ class BackupProfileTest {
                 BackupProfile.INSTALLATION_CURRENT, scope, new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE));
     }
     @Test void selectedVersionRequiresExactVersionsOfExactlySelectedRepositories() {
-        var version = new BackupTime.SelectedVersion(Map.of("repo-a", "a".repeat(40)));
+        var version = new BackupTime.SelectedVersion(Map.of(new BackupRepositoryKey("repo-a", "workspace-a"), "a".repeat(40)));
         assertDoesNotThrow(() -> new BackupRequest(BackupProfile.SELECTED_VERSION, scope, version, GitRepresentation.WORKTREE, SecretsSelection.EXCLUDE));
         assertThrows(IllegalArgumentException.class, () -> new BackupRequest(BackupProfile.SELECTED_VERSION, scope,
-                new BackupTime.SelectedVersion(Map.of("other", "a".repeat(40))), GitRepresentation.NONE, SecretsSelection.EXCLUDE));
-        assertThrows(IllegalArgumentException.class, () -> new BackupTime.SelectedVersion(Map.of("repo-a", "main")));
+                new BackupTime.SelectedVersion(Map.of(new BackupRepositoryKey("other", "workspace-a"), "a".repeat(40))), GitRepresentation.NONE, SecretsSelection.EXCLUDE));
+        assertThrows(IllegalArgumentException.class, () -> new BackupTime.SelectedVersion(Map.of(new BackupRepositoryKey("repo-a", "workspace-a"), "main")));
     }
     @Test void historyRequiresGitAndSecretsRequireFullInstallation() {
         assertThrows(IllegalArgumentException.class, () -> new BackupRequest(BackupProfile.REPOSITORY_HISTORY, scope,

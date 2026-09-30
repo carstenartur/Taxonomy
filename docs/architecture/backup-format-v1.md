@@ -36,7 +36,9 @@ build, backup UUID, source installation, request, UTC capture interval,
 consistency proof, mandatory features, components, repositories, entry hashes,
 external dependencies and declared omissions. Manifest size, nesting, JSON
 string lengths and collection counts must be bounded before constructing domain
-objects. Duplicate JSON fields are invalid. Polymorphic class loading is forbidden.
+objects. Metadata strings allow at most 512 Unicode code points; collections and
+maps at most 10,000 members, within the overall 4 MiB manifest limit. Writers
+verify that their output passes the bounded reader. Duplicate JSON fields are invalid. Polymorphic class loading is forbidden.
 
 | Path | Content |
 |---|---|
@@ -55,8 +57,11 @@ entry paths. A hash alone does not authenticate origin. The manifest is not
 self-hashed: the verified complete archive digest binds restore plans.
 
 Repository records use opaque archive paths unrelated to external repository
-names. They record the representation, source relationship, captured refs,
-symbolic HEAD, semantic revision, required orphan commits and exported/source
+names. A typed repository/workspace key distinguishes the central repository from
+each selected workspace repository. A workspace-only selection never captures the
+central repository implicitly. Selected versions identify one commit per such key.
+They record the representation, source relationship, captured refs,
+symbolic HEAD, per-branch semantic/checkpoint revisions, required orphan commits and exported/source
 heads. A source commit hash is provenance, not a promise that its ancestors exist
 in a snapshot export. A bare/worktree export must not contain hooks, active push
 configuration, credential helpers, alternates or references outside the archive.

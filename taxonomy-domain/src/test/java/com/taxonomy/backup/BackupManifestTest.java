@@ -12,10 +12,10 @@ class BackupManifestTest {
             new BackupScope.Workspace("repo-a", "workspace-a"), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
 
     private BackupManifest manifest(int format, Set<String> features, List<BackupManifest.Component> components, List<BackupEntry> entries) {
-        var captured = new SnapshotContext.RepositoryState(Map.of("refs/heads/main", "b".repeat(40)), "refs/heads/main", 7, Set.of());
+        var captured = new SnapshotContext.RepositoryState(Map.of("refs/heads/main", "b".repeat(40)), "refs/heads/main", Map.of("main", new SnapshotContext.WorkingState(7, "b".repeat(40), 5)), Set.of());
         return new BackupManifest(format, "1.4.0", "build-a", BackupId.create(), "source-installation", request,
                 Instant.EPOCH, Instant.EPOCH.plusSeconds(1), "writer-barrier:1", features, components,
-                List.of(new BackupManifest.Repository("repo-a", "opaque-a", GitRepresentation.NONE, captured, null, null, "b".repeat(40))),
+                List.of(new BackupManifest.Repository(new BackupRepositoryKey("repo-a", "workspace-a"), "opaque-a", GitRepresentation.NONE, captured, null, null, "b".repeat(40))),
                 entries, List.of(), List.of("operation-history"));
     }
     private BackupManifest.Component component(Set<BackupComponentId> dependencies) {
@@ -48,4 +48,16 @@ class BackupManifestTest {
         assertThrows(IllegalArgumentException.class, () -> new BackupEntry("data/ok", -1, "a".repeat(64)));
         assertThrows(IllegalArgumentException.class, () -> new BackupEntry("data/ok", 1, "short"));
     }
+    @Test void metadataMustObeyWireStringAndCollectionLimits() {
+        var m = manifest(1, BackupManifest.SUPPORTED_FEATURES, List.of(component(Set.of())), List.of(payload));
+        for (var bad : List.of(List.of(""), List.of("x".repeat(513)), Collections.nCopies(10001, "omission"))) {
+            assertThrows(IllegalArgumentException.class, () -> new BackupManifest(m.formatVersion(), m.applicationVersion(), m.build(), m.backupId(),
+                    m.sourceInstallationId(), m.request(), m.captureStartedAt(), m.captureCompletedAt(), m.consistencyEvidence(), m.requiredFeatures(),
+                    m.components(), m.repositories(), m.entries(), bad, List.of()));
+            assertThrows(IllegalArgumentException.class, () -> new BackupManifest(m.formatVersion(), m.applicationVersion(), m.build(), m.backupId(),
+                    m.sourceInstallationId(), m.request(), m.captureStartedAt(), m.captureCompletedAt(), m.consistencyEvidence(), m.requiredFeatures(),
+                    m.components(), m.repositories(), m.entries(), List.of(), bad));
+        }
+    }
+
 }

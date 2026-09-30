@@ -19,14 +19,16 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
             Objects.requireNonNull(id); Objects.requireNonNull(completeness);
             if (version < 1) throw new IllegalArgumentException("Invalid component version");
             entryPaths = List.copyOf(entryPaths); dependencies = Set.copyOf(dependencies);
+            BackupChecks.count(entryPaths.size()); BackupChecks.count(dependencies.size());
+            entryPaths.forEach(path -> BackupChecks.text(path, "entryPath"));
             if (new HashSet<>(entryPaths).size() != entryPaths.size()) throw new IllegalArgumentException("Duplicate component entry");
         }
     }
-    public record Repository(String id, String archiveId, GitRepresentation representation,
-                             SnapshotContext.RepositoryState captured, String sourceRepositoryId,
+    public record Repository(BackupRepositoryKey id, String archiveId, GitRepresentation representation,
+                             SnapshotContext.RepositoryState captured, BackupRepositoryKey sourceRepositoryId,
                              String exportedHead, String sourceCommit) {
         public Repository {
-            BackupChecks.text(id, "repositoryId");
+            Objects.requireNonNull(id);
             if (!BackupChecks.text(archiveId, "archiveId").matches("[a-zA-Z0-9-]{1,128}")) throw new IllegalArgumentException("Invalid opaque archive ID");
             Objects.requireNonNull(representation); Objects.requireNonNull(captured);
             if (exportedHead != null) BackupChecks.hash(exportedHead, 40, "exportedHead");
@@ -43,6 +45,9 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
         if (!SUPPORTED_FEATURES.containsAll(requiredFeatures)) throw new IllegalArgumentException("Unknown required feature");
         components = List.copyOf(components); repositories = List.copyOf(repositories); entries = List.copyOf(entries);
         dependencies = List.copyOf(dependencies); omissions = List.copyOf(omissions);
+        for (var items : List.of(requiredFeatures, components, repositories, entries, dependencies, omissions)) BackupChecks.count(items.size());
+        dependencies.forEach(value -> BackupChecks.text(value, "dependency"));
+        omissions.forEach(value -> BackupChecks.text(value, "omission"));
         var ids = new HashSet<BackupComponentId>();
         for (var c : components) if (!ids.add(c.id())) throw new IllegalArgumentException("Duplicate component");
         var paths = new HashSet<String>();
@@ -62,12 +67,12 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
             }
             if (resolved.size() == before) throw new IllegalArgumentException("Cyclic component dependencies");
         }
-        var repos = new HashSet<String>(); var archiveIds = new HashSet<String>();
+        var repos = new HashSet<BackupRepositoryKey>(); var archiveIds = new HashSet<String>();
         for (var r : repositories) {
             if (!repos.add(r.id()) || !archiveIds.add(r.archiveId())) throw new IllegalArgumentException("Duplicate repository");
             if (request.profile().includesHistory() && r.representation() == GitRepresentation.NONE) throw new IllegalArgumentException("Missing history representation");
         }
-        if (!(request.scope() instanceof BackupScope.Installation) && !repos.equals(request.scope().repositoryIds())) {
+        if (!(request.scope() instanceof BackupScope.Installation) && !repos.equals(request.scope().selectedRepositories())) {
             throw new IllegalArgumentException("Manifest repositories differ from selected scope");
         }
     }
