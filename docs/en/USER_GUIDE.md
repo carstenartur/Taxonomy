@@ -648,7 +648,7 @@ The primary page contains the complete selected graph; a second page shows a non
 
 Dense diagrams add native relationship detail pages with at most six endpoints and six relationships each. Compact `R…` relationship and `N…` node keys map back to canonical IDs in Shape Data; each detail caption identifies source → target and the full type where it fits. Captions stay upright, and opaque nodes cover crossing strokes. Long display labels may wrap or end with an ellipsis; the complete saved label remains in `taxonomy.label` and truncation is recorded. The manifest reports detail counts and covered key ranges if page, shape, connector or package-byte capacity is exhausted. The complete overview remains available; use native Shape Data or the report inventory for remaining relationships. Detail pages and connectors remain editable.
 
-VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.0 release notes](RELEASE_NOTES_1_4_0.md).
+VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.1 release notes](RELEASE_NOTES_1_4_1.md).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

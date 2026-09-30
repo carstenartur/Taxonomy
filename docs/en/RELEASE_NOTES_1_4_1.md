@@ -1,10 +1,19 @@
-# 1.4.0 release notes — unreleased
+# 1.4.1 release notes
 
-Version 1.4.0 was not published. These notes describe that historical candidate; [current release notes](RELEASE_NOTES_1_4_1.md) cover 1.4.1.
-
-The [complete release scope](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md) is the authoritative release
+The [complete release scope](../../release_notes.md) is the authoritative release
 description. These notes summarize the user-visible changes; publication still
 requires the final candidate's release gates.
+
+## Multi-user execution and complete progress
+
+Bounded analysis and provider admission show waiting states and separate queue time
+from execution time. The limits apply per application instance; multiple replicas
+do not share a global quota. See [multi-user analysis](MULTIUSER_ANALYSIS.md).
+
+The live view reports assessed, excluded and open nodes against the complete total,
+both overall and per taxonomy. Relationship search reports its full task total,
+completed/unresolved/pending work and current search step. Continuation preserves
+valid evidence and reuses saved responses without repeating successful provider calls.
 
 ## Requirements and architecture workflow
 
@@ -38,7 +47,7 @@ path; MSSQL/Oracle remain compatibility profiles pending complete qualification.
 Existing file-backed HSQLDB installations now prepare repository and portfolio
 tenancy before Hibernate startup. The upgrade preserves recorded identities and
 rejects ambiguous provenance instead of leaving populated tables unmigrated.
-Follow the [upgrade notes](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md#upgrade-notes) and test restore,
+Follow the [upgrade notes](../../release_notes.md#upgrade-notes) and test restore,
 search and Git history before production rollout.
 
 GUI language currently does not guarantee the language of generated AI reasons.

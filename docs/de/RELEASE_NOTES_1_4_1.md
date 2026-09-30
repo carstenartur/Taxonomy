@@ -1,10 +1,20 @@
-# Versionshinweise 1.4.0 — unveröffentlicht
+# Versionshinweise 1.4.1
 
-Version 1.4.0 wurde nicht veröffentlicht. Diese Hinweise beschreiben den damaligen Kandidaten; die [aktuellen Versionshinweise](RELEASE_NOTES_1_4_1.md) gelten für 1.4.1.
-
-Die [vollständige Release-Beschreibung](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md) ist die verbindliche
+Die [vollständige Release-Beschreibung](../../release_notes.md) ist die verbindliche
 Umfangsbeschreibung. Diese Hinweise fassen die sichtbaren Änderungen zusammen;
 die Veröffentlichung setzt die Freigabeprüfungen des endgültigen Kandidaten voraus.
+
+## Mehrbenutzerbetrieb und vollständiger Fortschritt
+
+Begrenzte Analyse- und Provider-Kapazitäten zeigen Wartezustände und trennen
+Wartezeit von Ausführungszeit. Die Grenzen gelten je Anwendungsinstanz; mehrere
+Replikate teilen keine globale Quote. Siehe [Mehrbenutzer-Analyse](MULTIUSER_ANALYSIS.md).
+
+Die Live-Ansicht zeigt bewertete, ausgeschlossene und offene Knoten bezogen auf die
+vollständige Gesamtzahl, insgesamt und je Teiltaxonomie. Die Beziehungssuche zeigt
+alle Suchaufträge, erledigte/ungeklärte/offene Arbeit und den aktuellen Suchschritt.
+Eine Fortsetzung erhält gültige Nachweise und verwendet gespeicherte Antworten,
+ohne erfolgreiche Provider-Aufrufe zu wiederholen.
 
 ## Anforderungen und Architektur
 
@@ -43,7 +53,7 @@ dateibasierte HSQLDB-Installationen bereiten Repository- und Portfolio-Zuordnung
 jetzt vor dem Hibernate-Start vor. Das Upgrade erhält gespeicherte Zuordnungen und
 bricht bei uneindeutiger Herkunft ab, statt befüllte Tabellen unmigriert zu lassen.
 Vor Produktivbetrieb
-die [Upgrade-Hinweise](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md#upgrade-notes) beachten und Wiederherstellung,
+die [Upgrade-Hinweise](../../release_notes.md#upgrade-notes) beachten und Wiederherstellung,
 Suche und Git-Historie prüfen.
 
 Die GUI-Sprache garantiert derzeit nicht die Sprache generierter KI-Begründungen.
