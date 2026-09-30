@@ -80,3 +80,25 @@ skipped relation answers; owner/workspace isolation; old JSON compatibility.
   final Java sources. `git diff --check` passed.
 - Local Java 21 used Mockito's startup agent because self-attachment is unavailable
   in this execution environment. No project test skip or weakened rule was added.
+
+## PR #1153 CI correction
+
+- CI exposed four reformulation scenario failures shared by the core, scenario
+  and database lanes. The complete relation plan needs 32 calls for these authored
+  fixtures; the default 24-call budget correctly returned PARTIAL with eight
+  unfinished searches before the reformulation assertions could run. Both
+  authored scenarios reproduced this failure locally.
+- Give the reformulation lifecycle fixture the same explicit 256-call test budget
+  as ScenarioArchitectureAcceptanceTest. Keep the production default, SUCCESS
+  requirement and budget/continuation contracts intact. Also assert that the saved
+  relation report has a positive plan, every task completed, no pending or unresolved
+  tasks, no unfinished search batches, and no warnings or stop reason.
+- Focused Java 21 verification: 59 relation integration tests, 17 fixture playback
+  tests, both authored scenarios and the full restart/export lifecycle passed.
+  All four scenario snapshots, including the browser prerequisite, record 48/48
+  completed tasks after 32 calls. The browser scenario then failed to start Chrome
+  because this local environment denies its socket creation; browser acceptance
+  therefore still requires CI. No browser assertion or test was skipped in code.
+- The required Maven verification also deliberately rejects draft pull requests.
+  Publish this correction with the pull request ready for review so that the new
+  commit can satisfy that existing gate.
