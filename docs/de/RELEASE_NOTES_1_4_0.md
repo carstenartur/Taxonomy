@@ -1,6 +1,6 @@
 # Versionshinweise 1.4.0 — unveröffentlicht
 
-Version 1.4.0 wurde nicht veröffentlicht. Diese Hinweise beschreiben den damaligen Kandidaten; die [aktuellen Versionshinweise](RELEASE_NOTES_1_4_1.md) gelten für 1.4.1.
+Version 1.4.0 wurde nicht veröffentlicht. Diese Hinweise beschreiben den damaligen Kandidaten; die [aktuellen Versionshinweise](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/de/RELEASE_NOTES_1_4_1.md) gelten für 1.4.1.
 
 Die [vollständige Release-Beschreibung](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md) ist die verbindliche
 Umfangsbeschreibung. Diese Hinweise fassen die sichtbaren Änderungen zusammen;

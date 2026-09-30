@@ -1,6 +1,6 @@
 # 1.4.0 release notes — unreleased
 
-Version 1.4.0 was not published. These notes describe that historical candidate; [current release notes](RELEASE_NOTES_1_4_1.md) cover 1.4.1.
+Version 1.4.0 was not published. These notes describe that historical candidate; [current release notes](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/en/RELEASE_NOTES_1_4_1.md) cover 1.4.1.
 
 The [complete release scope](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md) is the authoritative release
 description. These notes summarize the user-visible changes; publication still

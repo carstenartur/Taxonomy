@@ -1,6 +1,6 @@
 # 1.4.1 release notes
 
-The [complete release scope](../../release_notes.md) is the authoritative release
+The [complete release scope](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/release_notes.md) is the authoritative release
 description. These notes summarize the user-visible changes; publication still
 requires the final candidate's release gates.
 
@@ -8,7 +8,7 @@ requires the final candidate's release gates.
 
 Bounded analysis and provider admission show waiting states and separate queue time
 from execution time. The limits apply per application instance; multiple replicas
-do not share a global quota. See [multi-user analysis](MULTIUSER_ANALYSIS.md).
+do not share a global quota. See [multi-user analysis](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/en/MULTIUSER_ANALYSIS.md).
 
 The live view reports assessed, excluded and open nodes against the complete total,
 both overall and per taxonomy. Relationship search reports its full task total,
@@ -47,12 +47,12 @@ path; MSSQL/Oracle remain compatibility profiles pending complete qualification.
 Existing file-backed HSQLDB installations now prepare repository and portfolio
 tenancy before Hibernate startup. The upgrade preserves recorded identities and
 rejects ambiguous provenance instead of leaving populated tables unmigrated.
-Follow the [upgrade notes](../../release_notes.md#upgrade-notes) and test restore,
+Follow the [upgrade notes](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/release_notes.md#upgrade-notes) and test restore,
 search and Git history before production rollout.
 
 GUI language currently does not guarantee the language of generated AI reasons.
 Localized report labels do not translate stored reasons; the proposed independent
-language controls are [documented separately](../dev/ANALYSIS_LANGUAGE_POLICY.md)
+language controls are [documented separately](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/dev/ANALYSIS_LANGUAGE_POLICY.md)
 and are not part of this release change.
 
 ## Experimental Visio visual handoff (#965)
@@ -65,4 +65,4 @@ Every generated package undergoes OPC/reference and pinned Visio schema validati
 
 **Microsoft Visio desktop open/edit/save/reopen certification remains pending.** The format remains an experimental bounded visual handoff; no production-ready editing or universal Visio compatibility claim is made. External edits do not update Taxonomy. For semantic architecture interchange, use ArchiMate Exchange with authorized JSON evidence, subject to its separate #967 acceptance.
 
-See the [user guide](USER_GUIDE.md) for download instructions and [profile/limits and desktop acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) for exact scope and remaining evidence. The POI preview is supplementary and has observed glyph/arrowhead rendering limitations.
+See the [user guide](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/en/USER_GUIDE.md) for download instructions and [profile/limits and desktop acceptance procedure](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/dev/VISIO_HANDOFF_PROFILE.md) for exact scope and remaining evidence. The POI preview is supplementary and has observed glyph/arrowhead rendering limitations.
