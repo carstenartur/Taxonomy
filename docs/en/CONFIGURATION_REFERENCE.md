@@ -45,6 +45,15 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_BACKUP_ENABLED` | `taxonomy.backup.enabled` | `false` | Enables the portable-backup writer boundary. All instances sharing a database must use the same setting. Public export/restore is not yet released. |
 | `TAXONOMY_BACKUP_WRITER_LEASE_SECONDS` | `taxonomy.backup.writer-lease-seconds` | `300` | Maximum lifetime of a runtime write section, in seconds (1–1800). Expired writers are rejected before commit. |
 | `TAXONOMY_BACKUP_STARTUP_WAIT_SECONDS` | `taxonomy.backup.startup-wait-seconds` | `30` | Maximum seconds to wait for startup maintenance ownership. Failed startup leaves its hold in place for explicit operator recovery. |
+| `TAXONOMY_BACKUP_DIRECTORY` | `taxonomy.backup.directory` | `./data/backups` | Durable private shared volume for all instances; atomic rename must be supported. |
+| `TAXONOMY_BACKUP_KEYSET_FILE` | `taxonomy.backup.keyset-file` | `empty / leer` | Read-only external Tink Streaming AEAD keyset mount, outside the backup directory. Empty disables secret exports. |
+| `TAXONOMY_BACKUP_HEAVY_CONCURRENCY` | `taxonomy.backup.jobs.heavy-concurrency` | `1` | Installation-wide concurrent history/installation jobs (1–8). |
+| `TAXONOMY_BACKUP_CURRENT_CONCURRENCY` | `taxonomy.backup.jobs.current-concurrency` | `2` | Installation-wide concurrent current/selected-state jobs (1–32). |
+| `TAXONOMY_BACKUP_QUEUE_CAPACITY` | `taxonomy.backup.jobs.queue-capacity` | `64` | Maximum queued jobs (1–1000); one active export per principal. |
+| `TAXONOMY_BACKUP_JOB_LEASE_SECONDS` | `taxonomy.backup.jobs.lease-seconds` | `30` | Database-clock worker lease (1–1800 seconds); expired owners cannot publish. |
+| `TAXONOMY_BACKUP_RETENTION_HOURS` | `taxonomy.backup.jobs.retention-hours` | `24` | Retention of completed jobs and artifacts, at most 720 hours. |
+| `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB retained artifact quota; expired files count until deletion succeeds. |
+| `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporary quota, reserving 24 GiB per worker. Failed jobs retain reservations until cleanup. Minimum 24 GiB. |
 
 ## Database and Hibernate Search
 

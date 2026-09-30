@@ -65,7 +65,7 @@ public class BackupBarrierConfiguration {
             if (guarded == null) throw new IllegalStateException("Backup writer boundary was not installed");
             guarded.finishStartup();
         }
-        @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE; }
+        @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE - 100; }
         @Override public void destroy() { if (coordination != null) coordination.close(); }
     }
 }

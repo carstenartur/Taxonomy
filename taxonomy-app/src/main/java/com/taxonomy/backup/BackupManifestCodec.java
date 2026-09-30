@@ -60,6 +60,40 @@ public final class BackupManifestCodec {
         return bytes;
     }
 
+    public static final int MAX_REQUEST_BYTES = 64 * 1024;
+    public static final int MAX_AUTHORIZATION_BYTES = MAX_REQUEST_BYTES + 2048;
+
+    public BackupRequest readRequest(byte[] bytes) {
+        try { return readDocument(bytes, MAX_REQUEST_BYTES, WireRequest.class).domain(); }
+        catch (RuntimeException failure) { throw new IllegalArgumentException("Invalid backup request document"); }
+    }
+    public byte[] writeRequest(BackupRequest request) {
+        byte[] bytes = mapper.writeValueAsBytes(WireRequest.from(request)); readRequest(bytes); return bytes;
+    }
+    public WireRequest requestView(BackupRequest request) { return WireRequest.from(request); }
+    public byte[] writeAuthorization(AuthorizedBackupRequest authorization) {
+        byte[] bytes = mapper.writeValueAsBytes(new WireAuthorization(WireRequest.from(authorization.request()),
+                authorization.principalId().value().toString(), authorization.decisionId(), authorization.authorizedAt().toString(), authorization.capabilities()));
+        readAuthorization(bytes); return bytes;
+    }
+    public AuthorizedBackupRequest readAuthorization(byte[] bytes) {
+        var wire = readDocument(bytes, MAX_AUTHORIZATION_BYTES, WireAuthorization.class);
+        try {
+            return new AuthorizedBackupRequest(wire.request().domain(), new PrincipalId(UUID.fromString(wire.principalId())),
+                    wire.decisionId(), Instant.parse(wire.authorizedAt()), wire.capabilities());
+        } catch (RuntimeException failure) { throw new IllegalArgumentException("Invalid backup authorization record"); }
+    }
+    private <T> T readDocument(byte[] bytes, int limit, Class<T> type) {
+        if (bytes == null || bytes.length > limit) throw new IllegalArgumentException("Backup request size limit exceeded");
+        try {
+            var document = mapper.readTree(bytes);
+            if (document == null || !document.isObject()) throw new IllegalArgumentException("Object required");
+            validateWireLimits(document); return mapper.treeToValue(document, type);
+        } catch (RuntimeException failure) { throw new IllegalArgumentException("Invalid backup request document"); }
+    }
+    private record WireAuthorization(WireRequest request, String principalId, String decisionId,
+                                     String authorizedAt, Set<BackupCapability> capabilities) { }
+
     public enum ScopeKind { WORKSPACE, REPOSITORIES, INSTALLATION }
     public enum TimeKind { CURRENT, SELECTED_VERSION, HISTORY }
 

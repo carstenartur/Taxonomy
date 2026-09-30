@@ -2,6 +2,7 @@ package com.taxonomy.backup.snapshot;
 
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.ArchiveProtectionProvider;
+import com.taxonomy.backup.archive.ArchiveProgress;
 import tools.jackson.databind.json.JsonMapper;
 import java.io.*;
 import java.nio.channels.Channels;
@@ -63,6 +64,11 @@ public final class BackupSnapshotCoordinator {
     }
 
     public CapturedBackup capture(AuthorizedBackupRequest creation) throws IOException {
+        return capture(creation, ArchiveProgress.NONE);
+    }
+
+    public CapturedBackup capture(AuthorizedBackupRequest creation, ArchiveProgress progress) throws IOException {
+        Objects.requireNonNull(progress).check(0);
         authorization.requireJobAccess(creation.principalId(), creation);
         if (creation.request().secrets() != SecretsSelection.EXCLUDE && !protection.encrypted()) throw new IllegalArgumentException("Encrypted staging is required for secrets");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture cancelled");
@@ -88,7 +94,7 @@ public final class BackupSnapshotCoordinator {
                 staging = Files.getFileStore(root).supportsFileAttributeView("posix")
                         ? Files.createTempDirectory(root, ".capturing-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
                         : Files.createTempDirectory(root, ".capturing-");
-                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets());
+                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);
                 var components = new ArrayList<BackupManifest.Component>();
                 for (var component : plan.components().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList()) {
                     sink.check(); int before = sink.entries.size();
@@ -141,12 +147,13 @@ public final class BackupSnapshotCoordinator {
         private final long deadline;
         private final BackupId id;
         private final SecretsSelection secrets;
+        private final ArchiveProgress observer;
         private long validatedAt;
         private long total;
         private final List<BackupEntry> entries = new ArrayList<>();
         private final Set<String> paths = new HashSet<>();
-        StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline, BackupId id, SecretsSelection secrets) {
-            this.directory = directory; this.maintenance = maintenance; this.deadline = deadline; this.id = id; this.secrets = secrets;
+        StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline, BackupId id, SecretsSelection secrets, ArchiveProgress observer) {
+            this.directory = directory; this.maintenance = maintenance; this.deadline = deadline; this.id = id; this.secrets = secrets; this.observer = observer;
         }
         void check() throws IOException {
             budget();
@@ -156,6 +163,7 @@ public final class BackupSnapshotCoordinator {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture cancelled");
             long now = System.nanoTime();
             if (now - deadline >= 0) throw new IOException("Capture runtime limit exceeded");
+            observer.check(total);
         }
         private void progress() throws IOException {
             budget();

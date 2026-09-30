@@ -24,6 +24,9 @@ public class AuthorizationRulesConfigurer {
                 .permitAll();
         auth.requestMatchers("/login/oauth2/**", "/oauth2/**").permitAll();
         auth.requestMatchers("/change-password").authenticated();
+        auth.requestMatchers(HttpMethod.GET, "/backup-jobs", "/api/backups/jobs", "/api/backups/jobs/*", "/api/backups/jobs/*/download").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/backups/jobs", "/api/backups/jobs/*/cancel").authenticated();
+        auth.requestMatchers("/api/backups/**").denyAll();
         auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
 
         if (swaggerPublic) {

@@ -1,8 +1,8 @@
 # ADR: streaming protection for portable backup archives
 
-Status: accepted for the P04 archive implementation in issue #1146. Public jobs,
-key-provider composition and restore activation are separate parts of the same
-implementation; this ADR does not declare the complete product released.
+Status: accepted for P04 in issue #1146. The archive, durable jobs and deployment
+key-provider composition are implemented. Module capture adapters and restore
+activation are later packages; this ADR does not declare the complete product released.
 
 ## Decision
 
@@ -34,8 +34,13 @@ Deployment key management must keep the keyset outside backup/download storage,
 with separate retention and recovery access. An unavailable key means encrypted
 archives cannot be restored; an archive cannot supply its own replacement key.
 
-Production composition should use a secret store/KMS or an independently
-protected deployment secret. If an operator explicitly provisions a keyset file,
+Production composition accepts an independently protected deployment secret
+mount through `TAXONOMY_BACKUP_KEYSET_FILE`, or a trusted
+`ArchiveProtectionProvider` bean supplied by a secret-store/KMS adapter. The file
+loader accepts at most 64 KiB, supports operator-managed mount symlinks, and
+rejects keys resolved inside the backup volume. An absent setting selects
+unprotected, secrets-excluding exports; a configured but invalid/unavailable
+key fails startup without generating a replacement. If an operator explicitly provisions a keyset file,
 it must be separately access-controlled and backed up outside the archive, never
 passed as a URL/query value or printed. Rotation retains the old decryption keys
 until all dependent archives expire; new encryption uses the primary key. The

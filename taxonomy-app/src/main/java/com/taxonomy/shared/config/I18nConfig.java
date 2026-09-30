@@ -20,6 +20,7 @@ public class I18nConfig {
             "messages_document_template_detail",
             "messages_webdav_credentials",
             "messages_security",
+            "messages_backup",
             "messages_user_management",
             "messages_jgit_storage",
             "messages_observability",

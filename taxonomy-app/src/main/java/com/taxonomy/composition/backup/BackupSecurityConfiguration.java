@@ -22,4 +22,7 @@ public class BackupSecurityConfiguration {
     @Bean BackupAuthorizationService backupAuthorizationService(BackupAccessPolicy policy) {
         return new BackupAuthorizationService(policy, Clock.systemUTC());
     }
+    @Bean com.taxonomy.backup.web.BackupPrincipalResolver backupPrincipalResolver(PrincipalIdentityService identities) {
+        return identities::require;
+    }
 }

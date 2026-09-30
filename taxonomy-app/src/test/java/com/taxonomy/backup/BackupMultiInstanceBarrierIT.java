@@ -58,6 +58,20 @@ class BackupMultiInstanceBarrierIT {
         assertThat(raw.queryForObject("select revision from primary_record", Integer.class)).isEqualTo(3);
     }
 
+    @Test void writerRegistrationWaitsForTheGateTransactionToActuallyCommit() throws Exception {
+        try (var held = database.getConnection(); var workers = Executors.newSingleThreadExecutor()) {
+            held.setAutoCommit(false);
+            try (var statement = held.createStatement()) {
+                statement.executeUpdate("update backup_barrier_state set generation=generation where barrier_id='global'");
+            }
+            var entered = workers.submit(() -> { try (var section = second.enter(scope)) { return section.generation(); } });
+            try {
+                assertThatThrownBy(() -> entered.get(150, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            } finally { held.commit(); }
+            assertThat(entered.get(5, TimeUnit.SECONDS)).isPositive();
+        }
+    }
+
     @Test void expiredWorkerCannotCommitBufferedChangesAfterCaptureTakesOver() throws Exception {
         try (Connection stale = firstData.getConnection()) {
             stale.setAutoCommit(false);

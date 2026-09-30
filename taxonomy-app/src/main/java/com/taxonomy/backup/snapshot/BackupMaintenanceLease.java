@@ -53,7 +53,7 @@ public final class BackupMaintenanceLease implements BackupWriteBarrier {
     public static void initialize(DataSource database) {
         Flyway.configure().dataSource(database).table("backup_schema_history")
                 .baselineOnMigrate(true).baselineVersion("0").locations("classpath:db/backup-java-migrations")
-                .javaMigrations(new V1__WriterBarrier()).load().migrate();
+                .javaMigrations(new V1__WriterBarrier(), new com.taxonomy.backup.jobs.JdbcBackupJobStore.V2__ExportJobs()).load().migrate();
     }
 
     public static final class V1__WriterBarrier extends BaseJavaMigration {
@@ -63,6 +63,11 @@ public final class BackupMaintenanceLease implements BackupWriteBarrier {
             update(connection, "insert into backup_barrier_state values ('global', 1, null, 0, 0)");
             update(connection, "create table backup_writer_lease (writer_id varchar(36) primary key, generation numeric(19,0) not null, expires_at numeric(19,0) not null)");
         }
+    }
+
+    /** Exposes only the typed transient job store; callers cannot obtain the unfenced coordination datasource. */
+    public com.taxonomy.backup.jobs.JdbcBackupJobStore jobs(com.taxonomy.backup.jobs.BackupJobLimits limits) {
+        return new com.taxonomy.backup.jobs.JdbcBackupJobStore(database, limits);
     }
 
     @Override public Section enter(BackupScope scope) {
@@ -269,6 +274,9 @@ public final class BackupMaintenanceLease implements BackupWriteBarrier {
     private record Gate(long generation, String owner, long expires, int phase) { }
 
     private Gate lock(Connection connection) throws SQLException {
+        // SELECT FOR UPDATE alone does not acquire an exclusive row lock in HSQLDB MVCC.
+        // Keep this write in the caller's transaction, including the final business commit fence.
+        update(connection, "update backup_barrier_state set generation=generation where barrier_id='global'");
         try (var query = connection.prepareStatement(gateSql)) {
             query.setQueryTimeout(5);
             try (var row = query.executeQuery()) {
@@ -299,6 +307,7 @@ public final class BackupMaintenanceLease implements BackupWriteBarrier {
 
     private <T> T transaction(SqlAction<T> action) {
         try (var connection = database.getConnection()) {
+            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             connection.setAutoCommit(false);
             try {
                 T result = action.run(connection); connection.commit(); return result;

@@ -107,6 +107,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `runtime.sessions-caches-browser` | application | TRANSIENT | `—` | No browser-only edits, HTTP sessions, remember-me tokens, caches or executing LLM calls |
 
 | `runtime.backup-barrier` | application | TRANSIENT | `backup_barrier_state`, `backup_writer_lease` | Live process coordination only; never reactivate leases during restore |
+| `runtime.backup-jobs` | application | TRANSIENT | `backup_job_queue`, `backup_job`, private spool/archive files | Never reactivate export claims or download receipts during restore |
 
 ## Capture boundary
 

@@ -43,5 +43,6 @@ final class ArchiveIO {
             }
         }
         void advance(long count) throws IOException { bytes = Math.addExact(bytes, count); check(); }
+        void report(long count) throws IOException { bytes = count; check(); }
     }
 }

@@ -45,6 +45,15 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_BACKUP_ENABLED` | `taxonomy.backup.enabled` | `false` | Aktiviert die Schreibgrenze für portable Sicherungen. Alle Instanzen derselben Datenbank müssen denselben Wert verwenden. Öffentlicher Export/Restore ist noch nicht freigegeben. |
 | `TAXONOMY_BACKUP_WRITER_LEASE_SECONDS` | `taxonomy.backup.writer-lease-seconds` | `300` | Maximale Laufzeit eines Schreibabschnitts in Sekunden (1–1800). Abgelaufene Writer werden vor dem Commit abgewiesen. |
 | `TAXONOMY_BACKUP_STARTUP_WAIT_SECONDS` | `taxonomy.backup.startup-wait-seconds` | `30` | Maximale Wartezeit auf die Startsperre in Sekunden. Ein fehlgeschlagener Start behält die Sperre bis zur ausdrücklichen Operator-Wiederherstellung. |
+| `TAXONOMY_BACKUP_DIRECTORY` | `taxonomy.backup.directory` | `./data/backups` | Dauerhaftes privates gemeinsames Volume für alle Instanzen; atomare Umbenennung muss unterstützt sein. |
+| `TAXONOMY_BACKUP_KEYSET_FILE` | `taxonomy.backup.keyset-file` | `empty / leer` | Extern eingebundene schreibgeschützte Tink-Streaming-AEAD-Schlüsseldatei außerhalb des Sicherungsverzeichnisses. Leer deaktiviert Secrets-Exporte. |
+| `TAXONOMY_BACKUP_HEAVY_CONCURRENCY` | `taxonomy.backup.jobs.heavy-concurrency` | `1` | Installationsweit gleichzeitige Historien-/Installationsaufträge (1–8). |
+| `TAXONOMY_BACKUP_CURRENT_CONCURRENCY` | `taxonomy.backup.jobs.current-concurrency` | `2` | Installationsweit gleichzeitige Stand-/Versionsaufträge (1–32). |
+| `TAXONOMY_BACKUP_QUEUE_CAPACITY` | `taxonomy.backup.jobs.queue-capacity` | `64` | Maximale Anzahl wartender Aufträge (1–1000); ein aktiver Export je Principal. |
+| `TAXONOMY_BACKUP_JOB_LEASE_SECONDS` | `taxonomy.backup.jobs.lease-seconds` | `30` | Worker-Lease nach Datenbankzeit (1–1800 Sekunden); abgelaufene Eigentümer dürfen nicht veröffentlichen. |
+| `TAXONOMY_BACKUP_RETENTION_HOURS` | `taxonomy.backup.jobs.retention-hours` | `24` | Aufbewahrung abgeschlossener Aufträge und Archive, höchstens 720 Stunden. |
+| `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB Kontingent für aufbewahrte Archive; abgelaufene Dateien zählen bis zur erfolgreichen Löschung. |
+| `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporäres Kontingent, 24 GiB reserviert je Worker. Fehlgeschlagene Aufträge behalten die Reservierung bis zur Bereinigung. Mindestens 24 GiB. |
 
 ## Datenbank und Suche
 

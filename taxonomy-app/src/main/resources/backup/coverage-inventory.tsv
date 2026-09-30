@@ -82,3 +82,4 @@ external.secret-stores	application	EXTERNAL_DEPENDENCY	Encryption and remote cre
 external.object-storage	application	EXTERNAL_DEPENDENCY	Referenced blobs must be copied or declared a blocking external prerequisite
 runtime.sessions-caches-browser	application	TRANSIENT	No browser-only edits, HTTP sessions, remember-me tokens, caches or executing LLM calls
 runtime.backup-barrier	application	TRANSIENT	backup_barrier_state and backup_writer_lease coordinate live processes only; restore starts a fresh fenced generation and never reactivates leases
+runtime.backup-jobs	application	TRANSIENT	backup_job_queue and backup_job are bounded export control metadata; restore never reactivates queued jobs, worker claims, download receipts or private staging files

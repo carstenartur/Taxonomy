@@ -21,6 +21,10 @@ public final class BackupArchiveWriter {
     }
     public PublishedArchive write(CapturedBackup captured, Path target) throws IOException { return write(captured, target, ArchiveProgress.NONE); }
     public PublishedArchive write(CapturedBackup captured, Path target, ArchiveProgress progress) throws IOException {
+        return write(captured, target, progress, () -> { });
+    }
+    @FunctionalInterface public interface VerificationStarting { void start() throws IOException; }
+    public PublishedArchive write(CapturedBackup captured, Path target, ArchiveProgress progress, VerificationStarting verification) throws IOException {
         var manifest = captured.manifest(); var guard = new ArchiveIO.Guard(limits, progress); guard.check();
         if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED && !protection.encrypted())
             throw new IOException("Secret-bearing archives require authenticated encryption");
@@ -61,8 +65,9 @@ public final class BackupArchiveWriter {
                 channel.force(true);
             }
             var versions = manifest.components().stream().collect(Collectors.toMap(BackupManifest.Component::id, BackupManifest.Component::version));
+            verification.start(); guard.report(0);
             String digest;
-            try (var verified = new BackupArchiveReader(protection, limits, manifest.applicationVersion(), versions).verify(temporary, ignored -> guard.check())) {
+            try (var verified = new BackupArchiveReader(protection, limits, manifest.applicationVersion(), versions).verify(temporary, guard::report)) {
                 if (!verified.manifest().equals(manifest)) throw new IOException("Archive manifest changed during writing");
                 digest = verified.archiveSha256();
             }
