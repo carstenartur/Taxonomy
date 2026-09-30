@@ -87,6 +87,40 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 
 Das eingehende Kontingent wird nach der Autorisierung geprüft. Lokale Benutzer werden über den kanonischen Benutzernamen zugeordnet; Keycloak-Browser- und Bearer-Zugriffe verwenden das unveränderliche Paar `iss`/`sub` und teilen daher auch nach einer Änderung von `preferred_username` dasselbe Budget. Forwarding-Header und Peer-Adressen sind keine Kontingentidentitäten; abgewiesene Aufrufe erzeugen keinen Zustand. Die begrenzten In-Memory-Zähler laufen bei Inaktivität ab und liefern HTTP `429` mit `Retry-After` und `Cache-Control: no-store`. Sie gelten je Anwendungsinstanz; für ein clusterweites Budget bei mehreren Replikaten ist deshalb ein verteilter äußerer Begrenzer erforderlich. Der gleiche Pfadvertrag gilt am Root-Kontext und unter einem Präfix wie `/taxonomy`.
 
+## Zulassung von Mehrbenutzer-Analysen
+
+Diese Werte sind Server-Startparameter, keine im Repository gespeicherten
+Preferences. Ausführungsplätze und Warteplätze sind getrennt; wartende Vorgänge
+haben den Status `QUEUED`, nicht `RUNNING`. Die HTTP-Grenzen gelten **je
+konfiguriertem Provider**, nicht als gemeinsames globales Kontingent aller
+Provider. Jeder physische Wiederholungsversuch wird mitgezählt. Alle Grenzen
+sind **prozesslokal**, nicht clusterweit über mehrere Rancher-Pods verteilt.
+
+| Variable | Spring-Eigenschaft / Geltungsbereich | Standard | Bedeutung |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_MAX_CONCURRENT_JOBS` | `taxonomy.analysis.max-concurrent-jobs` | `4` | Gleichzeitig ausgeführte Vollanalysen über die gemeinsame Registry; 1–64. |
+| `TAXONOMY_ANALYSIS_QUEUE_CAPACITY` | `taxonomy.analysis.queue-capacity` | `16` | Live-Warteplätze unabhängig von den Ausführungsplätzen; 1–10000. Nicht die gesamte persistierte Portfolio-Warteschlange. |
+| `TAXONOMY_ANALYSIS_MAX_CONCURRENT_JOBS_PER_USER` | `taxonomy.analysis.max-concurrent-jobs-per-user` | `min(2, globale Ausführungsgrenze)`; Profil: `2` | Gleichzeitige Analysen je Benutzername; mindestens 1 und höchstens die globale Ausführungsgrenze. |
+| `TAXONOMY_ANALYSIS_QUEUE_CAPACITY_PER_USER` | `taxonomy.analysis.queue-capacity-per-user` | `min(8, globale Wartekapazität)`; Profil: `8` | Live-Warteplätze je Benutzername; mindestens 1 und höchstens die globale Wartekapazität. |
+| `TAXONOMY_ANALYSIS_MAXIMUM_QUEUE_WAIT_SECONDS` | `taxonomy.analysis.maximum-queue-wait-seconds` | `1800` | Maximale Wartezeit bei der Live-Zulassung in Sekunden; 1–86400. Die bestehende Laufzeitgrenze kann einen Vorgang früher stoppen. |
+| `TAXONOMY_LLM_MAX_CONCURRENT_REQUESTS` | `taxonomy.llm.max-concurrent-requests` | `4` | Gleichzeitige physische HTTP-Anfragen je Provider; 1–64. Unabhängig von Requests pro Minute. |
+| `TAXONOMY_LLM_REQUEST_QUEUE_CAPACITY` | `taxonomy.llm.request-queue-capacity` | `64` | Wartende physische HTTP-Versuche je Provider; 1–10000. Gilt auch für interaktive Aufrufe und nicht nur für Vollanalysen. |
+| `TAXONOMY_LLM_MAXIMUM_QUEUE_WAIT_SECONDS` | `taxonomy.llm.maximum-queue-wait-seconds` | `120` | Maximale Wartezeit auf die Provider-Zulassung in Sekunden; 1–86400. Nicht der Timeout für die HTTP-Antwort. |
+
+Das optionale Profil `multiuser-analysis` enthält ausdrückliche Aliase für diese
+Variablen und erhöht den Portfolio-Worker-Standard von `1` auf `4`. Das Profil zu
+den bestehenden Speicher- und Sicherheitsprofilen hinzufügen, nicht an deren
+Stelle setzen. Ohne dieses Profil berechnet die Registry die benutzerbezogenen
+Standardwerte aus den globalen Grenzen; mit dem Profil sind sie fest `2` und `8`.
+Bei niedrigeren globalen Grenzen daher auch die benutzerbezogenen Werte senken.
+Ungültige Kombinationen stoppen den Start, statt die Begrenzung zu deaktivieren.
+Providerbezogene Eigenschaften überschreiben diese Vorgaben über
+`taxonomy.llm.providers.<provider-kleinbuchstaben>.<eigenschaftssuffix>`, etwa
+`taxonomy.llm.providers.custom_openai.max-concurrent-requests=2`.
+
+[Mehrbenutzer-Analyse](MULTIUSER_ANALYSIS.md) beschreibt Abbruch, Warteanzeige,
+bestehende Executor-Warteschlangen und die Grenze einer ausführenden Instanz.
+
 ## Anforderungsbezogene Beziehungssuche
 
 Diese Phase ist standardmäßig aktiv und nutzt den ausgewählten generativen
@@ -170,7 +204,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_PORTFOLIO_MAX_IMPORT_CHARACTERS` | `taxonomy.portfolio.max-import-characters` | `500000`, mindestens `1` | Gesamttext je geprüftem Import. |
 | `TAXONOMY_PORTFOLIO_MAX_ANALYSIS_BATCH` | `taxonomy.portfolio.max-analysis-batch` | `100`, mindestens `1` | Anforderungen je persistiertem Analysejob. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_CLAIM_TIMEOUT_SECONDS` | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900`, mindestens `60` | Frist bis zur Claim-Wiederherstellung. |
-| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `taxonomy.portfolio.analysis-worker-concurrency` | `1`, mindestens `1` | Parallele Portfolio-Worker. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `taxonomy.portfolio.analysis-worker-concurrency` | `1`, mindestens `1` | Parallele Portfolio-Worker; das optionale Profil `multiuser-analysis` verwendet standardmäßig `4`. Provider-Kontingente und gemeinsame Live-Zulassungsgrenzen gelten weiterhin. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `taxonomy.portfolio.analysis-worker-queue-capacity` | `100`, mindestens `0` | In-Memory-Dispatch-Queue; Jobs bleiben persistiert. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, mindestens `0` | Worker-Auslaufzeit. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, mindestens `1` | Altersgrenze der Stale-Snapshot-Metrik. |
@@ -296,7 +330,7 @@ die Heap-Belegung, garantiert aber nicht, dass jeder Speichermangel verhindert w
 | `TAXONOMY_ANALYSIS_RUNTIME_PRESSURE_SECONDS` | `taxonomy.analysis.runtime.pressure-seconds` | `5` |
 | `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
 
-Die Warnschwelle muss unter der Stoppschwelle liegen; diese darf höchstens 98 Prozent betragen. Mindestens 1 MiB Reserve, eine nichtnegative Drucktoleranz und eine positive Laufzeitgrenze sind erforderlich. Die Grenzen werden vor Aufrufen und während Ratenlimit- oder Wiederholungswartezeiten geprüft. Laufende HTTP-Aufrufe behalten ihr konfiguriertes Timeout. Eine Heap-Stichprobe garantiert weder Sicherheit für nativen Speicher noch für einzelne große Allokationen. Bereits abgeschlossene Bewertungen bleiben beim Stopp des nächsten Schritts erhalten. Die Live-Diagnose ist prozesslokal und strikt nach Benutzer, Workspace, Repository und Branch getrennt. Sie ist auf vier aktive und 16 vorgehaltene Läufe begrenzt; abgeschlossene Läufe bleiben höchstens zehn Minuten verfügbar. Höchstens 32 Aufrufvorschauen und 8192 Bewertungseinträge werden gehalten. Prompt- und Antwortvorschauen sind jeweils auf 8192 Zeichen begrenzt und werden separat nachgeladen; ausgelassene Einträge werden gezählt. Dauerhafte Portfolio-Jobs und die semantische Historie bleiben davon getrennt und unverändert.
+Die Warnschwelle muss unter der Stoppschwelle liegen; diese darf höchstens 98 Prozent betragen. Mindestens 1 MiB Reserve, eine nichtnegative Drucktoleranz und eine positive Laufzeitgrenze sind erforderlich. Die Grenzen werden vor Aufrufen und während Ratenlimit- oder Wiederholungswartezeiten geprüft. Laufende HTTP-Aufrufe behalten ihr konfiguriertes Timeout. Eine Heap-Stichprobe garantiert weder Sicherheit für nativen Speicher noch für einzelne große Allokationen. Bereits abgeschlossene Bewertungen bleiben beim Stopp des nächsten Schritts erhalten. Die Live-Diagnose ist prozesslokal und strikt nach Benutzer, Workspace, Repository und Branch getrennt. Für Ausführungs- und Warteplätze gelten die oben beschriebenen konfigurierbaren Grenzen; abgeschlossene Läufe bleiben höchstens zehn Minuten verfügbar. Höchstens 32 Aufrufvorschauen und 8192 Bewertungseinträge werden gehalten. Prompt- und Antwortvorschauen sind jeweils auf 8192 Zeichen begrenzt und werden separat nachgeladen; ausgelassene Einträge werden gezählt. Dauerhafte Portfolio-Jobs und die semantische Historie bleiben davon getrennt und unverändert.
 
 ### Laufzeit der Streaming-Verbindung
 

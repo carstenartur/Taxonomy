@@ -87,6 +87,38 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 
 The incoming quota runs after authorization. Local users are keyed by canonical username; Keycloak browser and bearer access use the immutable `iss`/`sub` pair and therefore share one budget even when `preferred_username` changes. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.
 
+## Multi-user analysis admission
+
+These are server-startup settings, not repository-backed Preferences. Analysis
+permits and waiting places are separate; waiting operations are `QUEUED`, not
+`RUNNING`. The HTTP limits below apply **per configured provider**, not to a
+single global pool across all providers. They include every physical retry.
+All limits are **process-local**, not cluster-wide across multiple Rancher pods.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_MAX_CONCURRENT_JOBS` | `taxonomy.analysis.max-concurrent-jobs` | `4` | Simultaneously executing full analyses admitted through the shared registry; 1–64. |
+| `TAXONOMY_ANALYSIS_QUEUE_CAPACITY` | `taxonomy.analysis.queue-capacity` | `16` | Live waiting places, independent of execution permits; 1–10000. Not the total persisted portfolio backlog. |
+| `TAXONOMY_ANALYSIS_MAX_CONCURRENT_JOBS_PER_USER` | `taxonomy.analysis.max-concurrent-jobs-per-user` | `min(2, global running limit)`; profile: `2` | Simultaneous analyses per username; at least 1 and no greater than the global running limit. |
+| `TAXONOMY_ANALYSIS_QUEUE_CAPACITY_PER_USER` | `taxonomy.analysis.queue-capacity-per-user` | `min(8, global queue capacity)`; profile: `8` | Live waiting places per username; at least 1 and no greater than the global queue capacity. |
+| `TAXONOMY_ANALYSIS_MAXIMUM_QUEUE_WAIT_SECONDS` | `taxonomy.analysis.maximum-queue-wait-seconds` | `1800` | Maximum live-admission wait in seconds; 1–86400. The existing operation deadline may stop a run earlier. |
+| `TAXONOMY_LLM_MAX_CONCURRENT_REQUESTS` | `taxonomy.llm.max-concurrent-requests` | `4` | Simultaneous physical HTTP requests per provider; 1–64. Independent of requests per minute. |
+| `TAXONOMY_LLM_REQUEST_QUEUE_CAPACITY` | `taxonomy.llm.request-queue-capacity` | `64` | Waiting physical HTTP attempts per provider; 1–10000. Applies to interactive requests as well as full analyses. |
+| `TAXONOMY_LLM_MAXIMUM_QUEUE_WAIT_SECONDS` | `taxonomy.llm.maximum-queue-wait-seconds` | `120` | Maximum wait for provider admission in seconds; 1–86400. This is not the HTTP response timeout. |
+
+The optional `multiuser-analysis` profile supplies explicit aliases for these
+variables and raises the portfolio-worker default from `1` to `4`. Add the profile
+to the existing storage/security profiles, rather than replacing them. Without it,
+the registry computes the per-user defaults from the global limits; with it, the
+per-user defaults are fixed at `2` and `8`, so also lower them when lowering their
+global limits. Invalid combinations fail startup rather than disabling limits.
+Provider-specific property overrides use
+`taxonomy.llm.providers.<lowercase-provider>.<property-suffix>`, for example
+`taxonomy.llm.providers.custom_openai.max-concurrent-requests=2`.
+
+See [Multi-user analysis](MULTIUSER_ANALYSIS.md) for cancellation, waiting-state
+presentation, existing executor queues, and the single-executing-instance boundary.
+
 ## Requirement-scoped relationship search
 
 This phase is enabled by default and uses the selected generative provider. An explicit
@@ -169,7 +201,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `TAXONOMY_PORTFOLIO_MAX_IMPORT_CHARACTERS` | `taxonomy.portfolio.max-import-characters` | `500000`, minimum `1` | Maximum total text characters in one reviewed import. |
 | `TAXONOMY_PORTFOLIO_MAX_ANALYSIS_BATCH` | `taxonomy.portfolio.max-analysis-batch` | `100`, minimum `1` | Maximum requirements in one persisted portfolio analysis job. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_CLAIM_TIMEOUT_SECONDS` | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900`, minimum effective `60` | Age after which an unfinished item claim can be recovered/retried. |
-| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `taxonomy.portfolio.analysis-worker-concurrency` | `1`, minimum `1` | Parallel portfolio analysis worker threads. Provider quotas usually limit safe growth. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `taxonomy.portfolio.analysis-worker-concurrency` | `1`, minimum `1` | Parallel portfolio analysis worker threads; the optional `multiuser-analysis` profile defaults to `4`. Provider quotas and the shared live-admission limits still apply. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `taxonomy.portfolio.analysis-worker-queue-capacity` | `100`, minimum effective `0` | In-memory dispatch queue. Persisted jobs survive rejection and can be resubmitted. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, minimum effective `0` | Grace period for worker termination. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, minimum effective `1` | Age threshold used by portfolio stale-snapshot metrics; a snapshot for an old requirement version is stale regardless of age. |
@@ -295,7 +327,7 @@ backing reduces heap residency but is not a guarantee against out-of-memory erro
 | `TAXONOMY_ANALYSIS_RUNTIME_PRESSURE_SECONDS` | `taxonomy.analysis.runtime.pressure-seconds` | `5` |
 | `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
 
-Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, limited to 4 active and 16 retained runs (10-minute terminal retention), 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.
+Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, uses the configurable execution and waiting limits above, with 10-minute terminal retention, 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.
 
 ### Streaming transport lifetime
 

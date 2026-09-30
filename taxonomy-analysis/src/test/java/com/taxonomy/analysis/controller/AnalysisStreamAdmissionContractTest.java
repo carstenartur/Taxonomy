@@ -12,12 +12,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.MessageSource;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -40,6 +42,10 @@ class AnalysisStreamAdmissionContractTest {
     private MockMvc mvc;
 
     @BeforeEach void setup() {
+        setupWithQueueLimits(16, 8);
+    }
+
+    private void setupWithQueueLimits(int queueCapacity, int perUserCapacity) {
         var taxonomy = mock(TaxonomyService.class);
         when(taxonomy.isInitialized()).thenReturn(true);
         var resolver = mock(WorkspaceResolver.class);
@@ -48,7 +54,11 @@ class AnalysisStreamAdmissionContractTest {
         var controller = new AnalysisApiController(taxonomy, executor, new ObjectMapper(), full, streaming,
                 mock(AnalyzeNodeChildrenUseCase.class), mock(JustifyLeafUseCase.class), new AnalysisSseEventMapper(),
                 mock(RepositoryStateService.class), resolver, mock(MessageSource.class));
-        registry = new AnalysisProgressRegistry(new StandardEnvironment());
+        var environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(new MapPropertySource("test-admission", Map.of(
+                "taxonomy.analysis.queue-capacity", queueCapacity,
+                "taxonomy.analysis.queue-capacity-per-user", perUserCapacity)));
+        registry = new AnalysisProgressRegistry(environment);
         ReflectionTestUtils.setField(controller, "analysisProgressRegistry", registry);
         doAnswer(call -> { queued.set(call.getArgument(0)); return null; }).when(executor).execute(any());
         mvc = MockMvcBuilders.standaloneSetup(controller,
@@ -104,12 +114,17 @@ class AnalysisStreamAdmissionContractTest {
                 .andExpect(status().isConflict()).andExpect(request().asyncNotStarted());
         verify(executor, times(1)).execute(any());
         assertSame(accepted, queued.get());
-        assertEquals("RUNNING", registry.snapshot(ID, "alice", SCOPE).status());
+        var original = registry.snapshot(ID, "alice", SCOPE);
+        assertEquals("QUEUED", original.status());
+        assertNull(original.executionStartedAt());
+        assertTrue(original.calls().isEmpty());
         assertFalse(AnalysisRunControl.active(), "Admission must not bind the HTTP thread's run control");
         verifyNoInteractions(streaming);
     }
 
     @Test void queuedSseReservationsCountTowardCapacityBeforeAnyWorkerStarts() throws Exception {
+        // Queue capacity is independent of active-worker capacity. Test an explicit bound.
+        setupWithQueueLimits(4, 4);
         for (int i = 0; i < 4; i++) {
             mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", UUID.randomUUID().toString())
                             .param("businessText", "communications"))
@@ -119,7 +134,27 @@ class AnalysisStreamAdmissionContractTest {
                         .param("businessText", "communications"))
                 .andExpect(status().isServiceUnavailable()).andExpect(request().asyncNotStarted());
         verify(executor, times(4)).execute(any());
-        assertEquals(4, registry.recent("alice", SCOPE, null, null).size());
+        var accepted = registry.recent("alice", SCOPE, null, null);
+        assertEquals(4, accepted.size());
+        assertTrue(accepted.stream().allMatch(run -> "QUEUED".equals(run.status())
+                && run.executionStartedAt() == null && run.calls().isEmpty()));
+        assertFalse(AnalysisRunControl.active());
+        verifyNoInteractions(streaming);
+    }
+
+    @Test void ownerQueueLimitRejectsBeforeTheGlobalQueueIsFull() throws Exception {
+        setupWithQueueLimits(16, 2);
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(get("/api/analyze-stream")
+                            .header("X-Analysis-Operation-Id", UUID.randomUUID().toString())
+                            .param("businessText", "communications"))
+                    .andExpect(request().asyncStarted());
+        }
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(status().isTooManyRequests()).andExpect(request().asyncNotStarted());
+        verify(executor, times(2)).execute(any());
+        assertEquals(2, registry.recent("alice", SCOPE, null, null).size());
         assertFalse(AnalysisRunControl.active());
         verifyNoInteractions(streaming);
     }
@@ -139,16 +174,24 @@ class AnalysisStreamAdmissionContractTest {
     }
 
     @Test void cancellationOfQueuedReservationIsObservedByWorkerWithoutLeakingThreadContext() throws Exception {
+        setupWithQueueLimits(1, 1);
         var request = mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
                         .param("businessText", "communications"))
                 .andExpect(request().asyncStarted()).andReturn();
         assertFalse(AnalysisRunControl.active());
-        assertEquals("CANCELLING", registry.cancel(ID, "alice", SCOPE).status());
+        Runnable cancelledWorker = queued.get();
+        assertEquals("CANCELLED", registry.cancel(ID, "alice", SCOPE).status());
+        assertNull(registry.snapshot(ID, "alice", SCOPE).executionStartedAt());
+        // The cancelled reservation releases capacity before its late worker executes.
+        String replacementId = UUID.randomUUID().toString();
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", replacementId)
+                        .param("businessText", "communications"))
+                .andExpect(request().asyncStarted());
         var workerFailure = new AtomicReference<Throwable>();
         Thread worker = Thread.ofPlatform().start(() -> {
             try {
                 assertFalse(AnalysisRunControl.active());
-                queued.get().run();
+                cancelledWorker.run();
                 assertFalse(AnalysisRunControl.active(), "Worker must release its thread-local control");
             } catch (Throwable failure) { workerFailure.set(failure); }
         });
@@ -157,6 +200,8 @@ class AnalysisStreamAdmissionContractTest {
         assertNull(workerFailure.get());
         mvc.perform(asyncDispatch(request)).andExpect(status().isOk());
         assertEquals("CANCELLED", registry.snapshot(ID, "alice", SCOPE).status());
+        assertEquals("QUEUED", registry.snapshot(replacementId, "alice", SCOPE).status());
+        assertEquals("CANCELLED", registry.cancel(replacementId, "alice", SCOPE).status());
         verifyNoInteractions(streaming);
     }
 }

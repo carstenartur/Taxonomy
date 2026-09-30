@@ -10,7 +10,6 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
-
 import java.net.SocketTimeoutException;
 import java.util.*;
 
@@ -18,20 +17,17 @@ import java.util.*;
 public class OpenAiCompatibleGateway implements LlmGateway {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleGateway.class);
-    private static final long THROTTLE_BUFFER_MS = 50L;
 
     private final LlmProvider provider;
     private final String url;
     private final String model;
-    private final int defaultRpm;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final LlmResponseParser responseParser;
     private final AnalysisRuntimeSettings preferencesService;
     private final SimpleClientHttpRequestFactory llmRequestFactory;
     private final LlmRecordReplayService recordReplayService;
-
-    private final ArrayDeque<Long> callTimestamps = new ArrayDeque<>();
+    private final LlmRequestAdmission requestAdmission;
 
     public OpenAiCompatibleGateway(LlmProvider provider,
                                     String url,
@@ -46,22 +42,20 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         this.provider = provider;
         this.url = url;
         this.model = model;
-        this.defaultRpm = defaultRpm;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.responseParser = responseParser;
         this.preferencesService = preferencesService;
         this.llmRequestFactory = llmRequestFactory;
         this.recordReplayService = recordReplayService;
+        this.requestAdmission = new LlmRequestAdmission(provider, defaultRpm, preferencesService);
     }
 
-    @Override
-    public String providerName() {
-        return provider.name();
-    }
+    void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }
 
-    @Override
-    public String extractResponseText(String rawResponseBody) {
+    @Override public String providerName() { return provider.name(); }
+
+    @Override public String extractResponseText(String rawResponseBody) {
         return responseParser.extractOpenAiText(rawResponseBody);
     }
 
@@ -83,7 +77,6 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         }
 
         validateConfiguration();
-        throttle();
         applyCurrentTimeout();
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -102,21 +95,22 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
         try {
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
-            int maxRetries = preferencesService != null
-                    ? preferencesService.getInt("llm.retry.max", 2) : 2;
+            int maxRetries = Math.max(0, Math.min(6, preferencesService != null
+                    ? preferencesService.getInt("llm.retry.max", 2) : 2));
             int attempt = 0;
 
             while (true) {
                 ResponseEntity<String> response;
                 try {
-                    AnalysisRunControl.phase("LLM_REQUEST", null);
-                    response = LlmTransportMeter.exchange(usageInvocation, provider.name(), attempt,
-                            objectMapper, () -> restTemplate.exchange(url, HttpMethod.POST, entity, String.class));
+                    response = sendAttempt(usageInvocation, attempt, entity);
                 } catch (HttpClientErrorException exception) {
                     int status = exception.getStatusCode().value();
                     if (status == 429) {
-                        throw new LlmRateLimitException(
-                                provider + " rate limit (HTTP 429)", exception);
+                        if (requestAdmission.retryRateLimit(exception, objectMapper, attempt, maxRetries)) {
+                            attempt++;
+                            continue;
+                        }
+                        throw new LlmRateLimitException(provider + " rate limit (HTTP 429)", exception);
                     }
                     if (status == 401 || status == 403) {
                         String authenticationMessage = provider == LlmProvider.CUSTOM_OPENAI
@@ -125,16 +119,14 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                                 + "set or correct it only when the endpoint requires a bearer token."
                                 : provider + " endpoint rejected its configured API key (HTTP " + status + ").";
                         throw new LlmProviderException(
-                                LlmProviderException.Reason.AUTHENTICATION,
-                                authenticationMessage, exception);
+                                LlmProviderException.Reason.AUTHENTICATION, authenticationMessage, exception);
                     }
                     throw new LlmProviderException(
                             LlmProviderException.Reason.REQUEST_REJECTED,
                             provider + " endpoint rejected the request (HTTP " + status + ")", exception);
                 } catch (HttpServerErrorException exception) {
                     if (attempt < maxRetries) {
-                        attempt++;
-                        long backoffMs = 1000L * (1L << (attempt - 1));
+                        long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);
                         log.warn("{} API server error {} — retry {}/{} after {}ms",
                                 provider, exception.getStatusCode(), attempt, maxRetries, backoffMs);
                         AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
@@ -142,15 +134,13 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                     }
                     throw new LlmProviderException(
                             LlmProviderException.Reason.REQUEST_REJECTED,
-                            provider + " endpoint returned a server error "
-                                    + exception.getStatusCode(), exception);
+                            provider + " endpoint returned a server error " + exception.getStatusCode(), exception);
                 } catch (ResourceAccessException exception) {
                     if (exception.getCause() instanceof SocketTimeoutException) {
                         int timeoutSeconds = preferencesService != null
                                 ? preferencesService.getInt("llm.timeout.seconds", 60) : 60;
                         if (attempt < maxRetries) {
-                            attempt++;
-                            long backoffMs = 1000L * (1L << (attempt - 1));
+                            long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);
                             log.warn("{} API read timeout after {}s — retry {}/{} after {}ms",
                                     provider, timeoutSeconds, attempt, maxRetries, backoffMs);
                             AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
@@ -158,16 +148,14 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                         }
                         throw new LlmTimeoutException(
                                 provider + " API call timed out after " + timeoutSeconds + "s. "
-                                        + "You can increase the timeout in Preferences → llm.timeout.seconds.",
-                                exception);
+                                        + "You can increase the timeout in Preferences → llm.timeout.seconds.", exception);
                     }
                     String endpointMessage = provider == LlmProvider.CUSTOM_OPENAI
                             ? "CUSTOM_OPENAI endpoint is unreachable. Check CUSTOM_LLM_URL, service "
                             + "availability, DNS and network policy."
                             : provider + " endpoint is unreachable.";
                     throw new LlmProviderException(
-                            LlmProviderException.Reason.ENDPOINT_UNREACHABLE,
-                            endpointMessage, exception);
+                            LlmProviderException.Reason.ENDPOINT_UNREACHABLE, endpointMessage, exception);
                 }
 
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -192,40 +180,25 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         }
     }
 
+    private ResponseEntity<String> sendAttempt(String invocation, int attempt, HttpEntity<String> entity) {
+        return requestAdmission.execute(() -> {
+            AnalysisRunControl.phase("LLM_REQUEST", null);
+            return LlmTransportMeter.exchange(invocation, provider.name(), attempt, objectMapper,
+                    () -> restTemplate.exchange(url, HttpMethod.POST, entity, String.class));
+        });
+    }
+
     private void validateConfiguration() {
         if (provider != LlmProvider.CUSTOM_OPENAI) return;
         LlmProviderConfig.CustomOpenAiConfigurationStatus status =
                 LlmProviderConfig.validateCustomOpenAiConfiguration(url, model);
         if (!status.valid()) {
-            throw new LlmProviderException(
-                    LlmProviderException.Reason.CONFIGURATION, status.message());
+            throw new LlmProviderException(LlmProviderException.Reason.CONFIGURATION, status.message());
         }
     }
 
-    void throttle() {
-        if (preferencesService == null) return;
-        while (true) {
-            AnalysisRunControl.checkpoint();
-            int rpm = preferencesService.getInt("llm.rpm." + provider.name().toLowerCase(Locale.ROOT), defaultRpm);
-            if (rpm <= 0) return;
-            long sleepMs;
-            synchronized (callTimestamps) {
-                long now = System.currentTimeMillis();
-                long windowStart = now - 60_000L;
-                while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
-                    callTimestamps.pollFirst();
-                }
-                if (callTimestamps.size() < rpm) {
-                    callTimestamps.addLast(now);
-                    return;
-                }
-                sleepMs = Math.max(1L, callTimestamps.peekFirst() + 60_000L - now + THROTTLE_BUFFER_MS);
-            }
-            // Never hold the window lock while waiting: every analysis must remain cancellable.
-            // Recheck capacity after waking instead of reserving cancelled calls or allowing a burst.
-            AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
-        }
-    }
+    /** Kept for direct throttle contracts; production admission surrounds every HTTP attempt. */
+    void throttle() { requestAdmission.execute(() -> null); }
 
     private void applyCurrentTimeout() {
         if (preferencesService == null || llmRequestFactory == null) return;
