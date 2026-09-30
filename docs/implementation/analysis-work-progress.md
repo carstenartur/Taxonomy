@@ -102,3 +102,14 @@ skipped relation answers; owner/workspace isolation; old JSON compatibility.
 - The required Maven verification also deliberately rejects draft pull requests.
   Publish this correction with the pull request ready for review so that the new
   commit can satisfy that existing gate.
+- CI then passed all 26 scenario/browser tests with no skips and independently
+  verified Word/Visio exports; the SQL Server lane also passed. Oracle confirmed
+  the four original scenarios pass, but exposed a separate stale-element race in
+  ReformulationBrowserTest while the deferred-answer save replaces its question.
+  Use Selenium's locator-based text condition for that wait: it re-finds the
+  element after a stale read, preserving the same required text and 20-second
+  timeout. Test compilation passed; real-browser verification remains in CI.
+- One CI packaging job timed out resolving SBOM dependencies before compilation.
+  The identical local packaging command passed all 16 modules in 1:36, producing
+  the same 294-component aggregate SBOM as the previous successful CI build.
+  No dependency, SBOM or workflow policy has been relaxed.
