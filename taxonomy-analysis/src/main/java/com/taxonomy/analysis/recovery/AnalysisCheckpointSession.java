@@ -18,6 +18,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Checkpoint prepare(Question question);
         void finish(Question question, String state, LlmCallDetail detail);
         void checkActive();
+        default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }
     }
     private static final ThreadLocal<AnalysisCheckpointSession> CURRENT = new ThreadLocal<>();
     private final AnalysisCheckpointSession previous;
@@ -27,6 +28,52 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         this.store = Objects.requireNonNull(store); previous = CURRENT.get(); CURRENT.set(this);
     }
     public static boolean active() { return CURRENT.get() != null; }
+    public static com.taxonomy.dto.RelationSearchReport previousRelations() {
+        var current = CURRENT.get();
+        return current == null ? null : current.store.previousRelations();
+    }
+    /** No provider request was made; the existing question remains ready for explicit continuation. */
+    public static final class DeferredException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        public DeferredException(String reason) { super(reason); }
+    }
+    public static boolean isRelationQuestion(String key) { return key != null && key.startsWith("R"); }
+
+    /** Relation evidence uses the same scoped journal without fabricating node scores. */
+    public static LlmCallDetail evaluateEvidence(String kind, String provider, List<String> nodes,
+                                                String input, Supplier<LlmCallDetail> operation) {
+        var current = CURRENT.get();
+        if (current == null) return operation.get();
+        current.store.checkActive();
+        // 252-bit namespace-separated identity fits the existing 64-character schema.
+        String key = "R" + digest(kind, provider, String.join("\n", nodes), input).substring(1);
+        Question question = new Question(key, digest(provider, input), provider, nodes, input);
+        Checkpoint saved = current.store.prepare(question);
+        if ("SUCCESS".equals(saved.state())) return copy(saved.detail());
+        if ("SKIPPED".equals(saved.state())) {
+            var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);
+            skipped.setError("RELATION_LEFT_OPEN"); return skipped;
+        }
+        if (!"ATTEMPT".equals(saved.state())) throw paused();
+        LlmCallDetail result;
+        try { result = Objects.requireNonNull(operation.get()); }
+        catch (DeferredException deferred) {
+            var ready = new LlmCallDetail(); ready.setProvider(provider); ready.setScores(Map.of());
+            ready.setError(deferred.getMessage()); current.store.finish(question, "READY", ready);
+            throw deferred;
+        } catch (AnalysisStoppedException stopped) { throw stopped; }
+        catch (RuntimeException failed) {
+            result = new LlmCallDetail(); result.setProvider(provider); result.setPrompt(input);
+            result.setScores(Map.of()); result.setError("RELATION_FAILURE: " + failed.getClass().getSimpleName());
+        }
+        if (result.getError() != null && !result.getError().isBlank()
+                || result.getRawResponse() == null || result.getRawResponse().isBlank()) {
+            current.store.finish(question, "FAILED", copy(result)); throw paused();
+        }
+        current.store.finish(question, "SUCCESS", copy(result));
+        current.store.checkActive();
+        return copy(result);
+    }
     public static void checkpoint() {
         var current = CURRENT.get();
         if (current != null) current.store.checkActive();

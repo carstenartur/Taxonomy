@@ -35,10 +35,126 @@ public final class RequirementRelationSearchContract {
         check(types(write).equals(Set.of("CONSUMES", "PRODUCES")), "write has an independently justified production edge");
         check(!read.originalSha256().equals(write.originalSha256()), "original identity retained");
     }
+    public static void testPlanIncludesEverySourceBeyondTheExecutionLimit() {
+        var nodes = new LinkedHashMap<String, Node>();
+        var scores = new LinkedHashMap<String, Integer>();
+        for (int i = 0; i < 40; i++) {
+            String id = "process-" + i;
+            nodes.put(id, new Node(id, "BP", id, "process", false)); scores.put(id, 1);
+        }
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return nodes.get(id); }
+            public List<Node> roots() { return List.of(ROOT); }
+            public List<Node> children(Node node) { return List.of(TARGET); }
+        };
+        var report = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
+                RequirementRelationSearchContract::answer, () -> {}).search(READ, scores,
+                new RequirementRelationSearch.Options(new Limits(0, 8, 10, 128), 32));
+        var json = JSON.valueToTree(report);
+        check(json.path("progress").path("totalSources").asInt() == 40, "all positive concrete sources must be planned");
+        check(json.path("progress").path("totalSearches").asInt() == 40, "one task per source/target taxonomy");
+        check(json.path("tasks").size() == 40, "the complete task plan survives budget exhaustion");
+        check(json.path("progress").path("completedSearches").asInt() == 0, "budget consumption is not completion");
+    }
+    public static void testAllRelationTypesMustFinishBeforeSourceTaxonomyTaskCompletes() {
+        var report = session(RequirementRelationSearchContract::answer).search(READ, Map.of("process", 1), OPTIONS);
+        var progress = JSON.valueToTree(report).path("progress");
+        check(progress.path("totalSearches").asInt() == 1, "CONSUMES and PRODUCES belong to one taxonomy task");
+        check(progress.path("completedSearches").asInt() == 1, "all type searches completed");
+        check(progress.path("verifiedRelations").asInt() == 1, "edge count differs from task and call counts");
+        var limited = session(RequirementRelationSearchContract::answer).search(READ, Map.of("process", 1),
+                new RequirementRelationSearch.Options(new Limits(3, 8, 10, 128), 16));
+        check(JSON.valueToTree(limited).path("progress").path("completedSearches").asInt() == 0,
+                "navigation without verification cannot complete the task");
+    }
+    public static void testContinuationReusesValidatedRelationsAndOnlyBudgetsNewWork() {
+        assertContinuation(new Limits(3, 8, 10, 128), 3, 2);
+    }
+    public static void testWorkLimitContinuationAdvancesBeyondReplayedQueries() {
+        assertContinuation(new Limits(30, 8, 10, 2), 3, 2);
+    }
+    private static void assertContinuation(Limits limits, int firstCalls, int remainingCalls) {
+        var entries = new LinkedHashMap<String, com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint>();
+        var store = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store() {
+            public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(
+                    com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question q) {
+                var old = entries.get(q.key());
+                if (old != null && !"READY".equals(old.state())) return old;
+                return new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(q, "ATTEMPT", null);
+            }
+            public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question q,
+                               String state, com.taxonomy.dto.LlmCallDetail detail) {
+                entries.put(q.key(), new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(q, state, detail));
+            }
+            public void checkActive() { }
+        };
+        var sent = new HashSet<String>();
+        var opts = new RequirementRelationSearch.Options(limits, 16);
+        try (var checkpoint = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(store)) {
+            var first = session(prompt -> { check(sent.add(prompt), "successful remote request repeated"); return answer(prompt); })
+                    .search(READ, Map.of("process", 1), opts);
+            check(!first.isSearchExhausted() && sent.size() == firstCalls, "first execution stops at budget");
+        }
+        try (var checkpoint = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(store)) {
+            var second = session(prompt -> { check(sent.add(prompt), "successful remote request repeated"); return answer(prompt); })
+                    .search(READ, Map.of("process", 1), opts);
+            check(second.isSearchExhausted(), "continuation must reach work beyond the previous budget");
+            check(second.totalCalls() == remainingCalls && sent.size() == firstCalls + remainingCalls, "only new assessments consume the next budget");
+            check(second.result().edges().size() == 1, "verified evidence retained after replay");
+        }
+    }
     public static void testUnscoredTargetAndNavigationRootsAreNotConflated() {
         var report = session(RequirementRelationSearchContract::answer).search(READ, Map.of("process", 10), OPTIONS);
         check(report.result().edges().size() == 1 && report.result().edges().getFirst().targetId().equals("evidence"), "unscored concrete target");
         check(report.result().trace().stream().anyMatch(t -> t.targetId().equals("IP") && t.outcome() == Outcome.DESCEND), "navigation retained separately");
+    }
+    public static void testLaterExtractionFailurePreservesEarlierVerifiedEvidence() {
+        class Journal implements com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store {
+            final Map<String, com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint> entries = new HashMap<>();
+            RelationSearchReport previous;
+            public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(
+                    com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question q) {
+                var saved = entries.get(q.key());
+                return saved != null && !"READY".equals(saved.state()) ? saved
+                        : new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(q, "ATTEMPT", null);
+            }
+            public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question q,
+                               String state, com.taxonomy.dto.LlmCallDetail detail) {
+                entries.put(q.key(), new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(q, state, detail));
+            }
+            public void checkActive() { }
+            public RelationSearchReport previousRelations() { return previous; }
+        }
+        var journal = new Journal();
+        var next = new Node("process-next", "BP", "Later process", "process", false);
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return "process-next".equals(id) ? next : SOURCE; }
+            public List<Node> roots() { return List.of(ROOT); }
+            public List<Node> children(Node n) { return n.equals(ROOT) ? List.of(TARGET) : List.of(); }
+        };
+        var options = new RequirementRelationSearch.Options(new Limits(30, 8, 10, 128), 1);
+        var scores = Map.of("process", 10, "process-next", 1);
+        try (var checkpoint = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            journal.previous = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
+                    RequirementRelationSearchContract::answer, () -> {}).search(READ, scores, options);
+        }
+        check(journal.previous.result().edges().size() == 1 && journal.previous.progress().completedSearches() == 1,
+                "First execution completes the admitted source while retaining the later source in its plan");
+        try (var checkpoint = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            var stopped = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
+                    prompt -> { throw new IllegalStateException("later source unavailable"); }, () -> {}).search(READ, scores, options);
+            check(!stopped.stopReason().isBlank(), "Later extraction is interrupted");
+            check(stopped.result().edges().equals(journal.previous.result().edges()), "Verified evidence disappeared during later extraction failure");
+            check(stopped.progress().completedSearches() == 1 && stopped.progress().verifiedRelations() == 1,
+                    "Completed tasks and verified counts must survive an interrupted continuation");
+            var cancelled = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
+                    prompt -> { throw new AssertionError("cancelled work cannot call the provider"); }, () -> {
+                        throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                                com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
+                    }).search(READ, scores, options);
+            check(cancelled.tasks().equals(journal.previous.tasks()) && cancelled.progress().completedSearches() == 1,
+                    "Cancellation before rebuilding the plan must retain its known tasks and denominator");
+        }
     }
     public static void testTotalBudgetIncludesExtractionAndVerification() {
         AtomicInteger raw = new AtomicInteger();
@@ -81,6 +197,12 @@ public final class RequirementRelationSearchContract {
         var r = session(RequirementRelationSearchContract::answer).search(WRITE, Map.of("process", 5), OPTIONS);
         var copy = JSON.readValue(JSON.writeValueAsString(r), RelationSearchReport.class);
         check(!copy.result().edges().isEmpty() && copy.result().edges().equals(r.result().edges()) && copy.sources().equals(r.sources()), "typed JSON snapshot roundtrip");
+        check(copy.progress().equals(r.progress()) && copy.tasks().equals(r.tasks()), "progress and complete task plan survive restore");
+        var legacy = (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(r);
+        legacy.remove("progress"); legacy.remove("tasks"); legacy.put("schemaVersion", 1);
+        var old = JSON.treeToValue(legacy, RelationSearchReport.class);
+        check(old.progress() == null && old.tasks().isEmpty() && old.result().edges().equals(r.result().edges()),
+                "existing reports without progress remain readable");
     }
     static RequirementRelationSearch session(java.util.function.Function<String,String> completion) {
         return new RequirementRelationSearch(catalogue(), new RelationCompatibilityMatrix(), completion, () -> { });

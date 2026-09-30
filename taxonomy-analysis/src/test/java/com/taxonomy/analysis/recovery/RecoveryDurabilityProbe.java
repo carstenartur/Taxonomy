@@ -93,6 +93,25 @@ public final class RecoveryDurabilityProbe {
         journal.store().cancel(ID, SCOPE);
         check(durable.equals(journal.run.resultJson), "Repeated cancellation rewrites the accepted result");
     }
+    public static void skippedRelationBudget() {
+        var journal = new Journal(); journal.run.inputHash = "same";
+        journal.question("Rskipped", "SKIPPED", "BP", 0);
+        journal.question("Rpending", "READY", "IP", 0);
+        var result = new AnalysisResult(Map.of("BP", 70, "CP", 0, "IP", 0), List.of(node("BP"), node("CP"), node("IP")));
+        result.setStatus("PARTIAL");
+        result.setRelationSearchReport(new RelationSearchReport(2, "original", "policy", List.of(),
+                new RelationSearchModel.Result(List.of(), List.of(new RelationSearchModel.Unfinished("BP", "CONSUMES",
+                        RelationSearchModel.Direction.OUTGOING, List.of("IP"), "CALL_BUDGET", "")), List.of(), 1, 0, 0),
+                1, 1, 0, List.of(), ""));
+        journal.store().complete(journal.claim(), result, result.getTree());
+        check("STOPPED".equals(journal.run.state), "A skipped question must not disguise budget-limited pending work as complete");
+        check(result.getAnalysisCoverage().nodes().get("BP").state() == AnalysisCoverage.State.RELEVANT,
+                "A skipped relation question must not change node assessment coverage");
+        var request = new AnalysisRequest(); request.setContinuationId(ID); request.setContinuationAction("CONTINUE");
+        request.setContinuationVersion(journal.run.version);
+        journal.store().begin(request, SCOPE, "same", result.getTree());
+        check("SKIPPED".equals(journal.questions.getFirst().state), "Continuation must preserve the explicit skip");
+    }
     public static void lateCompletion() {
         var journal = new Journal(); journal.question("good", "SUCCESS", "BP", 70);
         journal.question("pending", "ATTEMPT", "IP", 0);

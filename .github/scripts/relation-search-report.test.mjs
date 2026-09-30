@@ -11,6 +11,15 @@ const base = () => ({ totalCalls: 5, maxCalls: 24, searchExhausted: false, sourc
 const edge = necessity => ({ type: 'CONSUMES', direction: 'OUTGOING', contribution: { source: { id: 'reader' }, text: 'Read only', quote: 'Read evidence.', condition: 'authorized role' }, target: { id: 'evidence' }, evidence: { necessity, contribution: 'existing record', quote: 'Read evidence.', rationale: 'Read, not write', condition: 'if requested', alternativeGroup: 'channel' } });
 test('absent report leaves legacy view unchanged', () => assert.equal(render(null), ''));
 test('evaluation budget is visible', () => { const html = render(base()); assert.match(html, /relation.search.budget 5 24/); assert.match(html, /<details/); assert.match(html, /<summary/); });
+test('final report retains the complete task denominator and makes open work inspectable', () => {
+  const r = base(); r.progress = { completedSearches: 28, totalSearches: 80, unresolvedSearches: 4, pendingSearches: 48 };
+  r.tasks = [{ sourceId: '<BP-1>', targetRoot: 'IP', state: 'PENDING' }, { sourceId: 'BP-2', targetRoot: 'CR', state: 'COMPLETED' }];
+  const html = render(r);
+  assert.match(html, /relation.search.progress 28 80 4 48/);
+  assert.match(html, /&lt;BP-1&gt;/);
+  assert.match(html, /relation.search.task.pending/);
+  assert.doesNotMatch(html, /<BP-1>/);
+});
 test('partial is not presented as complete', () => { assert.match(render(base()), /relation.search.partial/); const r = base(); r.searchExhausted = true; assert.match(render(r), /relation.search.exhausted/); });
 test('unresolved questions are shown with source and reason', () => { const r = base(); r.result.unfinished = [{ sourceId: 'reader', reason: 'UNRESOLVED', question: 'Which channel?' }]; assert.match(render(r), /reader/); assert.match(render(r), /Which channel\?/); });
 test('optional and alternative evidence is visible without adoption controls', () => { const r = base(); r.result.edges = [edge('OPTIONAL'), edge('ALTERNATIVE')]; const html = render(r); assert.match(html, /OPTIONAL/); assert.match(html, /ALTERNATIVE/); assert.match(html, /channel/); assert.match(html, /authorized role/); assert.doesNotMatch(html, /<button|onclick=/); });

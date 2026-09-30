@@ -56,8 +56,12 @@ public class RequirementRelationSearchService {
             public List<Node> roots() { return scalars(catalogue.getRootNodes()); }
             public List<Node> children(Node node) { return scalars(catalogue.getChildrenOf(node.id())); }
         };
-        return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint)
+        return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint, llm.getActiveProviderName())
                 .search(original, scores, options());
+    }
+
+    public String recoveryPolicyFingerprint() {
+        return "relation-downwalk-v2/complete-plan/resumable-exchanges/" + enabled + "/" + options();
     }
 
     private String complete(String prompt) {

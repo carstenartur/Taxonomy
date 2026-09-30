@@ -73,7 +73,8 @@ class LlmServiceBranchCoverageTest {
             assertThat(result.getScores()).containsEntry("BP", 80).doesNotContainKey("CP");
             assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
             assertThat(result.getTree()).isEmpty();
-            verify(taxonomyService, never()).getFullTree();
+            // The initial decision plan is known before evaluation; cancellation must not allocate another tree.
+            verify(taxonomyService, org.mockito.Mockito.times(1)).getFullTree();
             verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
             run.finish(result.getStatus());
             assertThat(registry.snapshot(run.id(), "alice", scope).status()).isEqualTo("CANCELLED");

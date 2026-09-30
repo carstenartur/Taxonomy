@@ -11,6 +11,28 @@ import static org.assertj.core.api.Assertions.*;
 class AnalysisProgressRegistryTest {
     private final AnalysisProgressRegistry registry = new AnalysisProgressRegistry(new StandardEnvironment());
     private final WorkspaceContext scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
+    @Test void completedCountSurvivesPreviewEvictionAndRepeatedAnswers() {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            var scores = new java.util.LinkedHashMap<String, Integer>();
+            for (int i = 0; i < 9000; i++) scores.put("CP-" + i, 1);
+            var answer = detail("CP", "prompt", "response");
+            answer.setScores(scores);
+            AnalysisRunControl.call("MOCK", "CP", () -> answer);
+            AnalysisRunControl.call("MOCK", "CP", () -> answer);
+            var snapshot = registry.snapshot(handle.id(), "alice", scope);
+            assertThat(snapshot.rawScores()).hasSize(8192);
+            assertThat(snapshot.evaluatedNodes()).isEqualTo(9000);
+        }
+    }
+    @Test void failedFallbackZerosDoNotCompleteAssessments() {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            var answer = detail("CP", "prompt", "");
+            answer.setScores(Map.of("CP", 0));
+            answer.setError("Invalid JSON");
+            AnalysisRunControl.call("MOCK", "CP", () -> answer);
+            assertThat(registry.snapshot(handle.id(), "alice", scope).evaluatedNodes()).isZero();
+        }
+    }
     @Test void progressIsVisibleBeforeTheProviderReturns() {
         try(var handle=registry.open(null,"alice",scope,null)) {
             AnalysisRunControl.call("MOCK","CP", () -> {

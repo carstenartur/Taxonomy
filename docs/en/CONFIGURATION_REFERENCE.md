@@ -132,11 +132,11 @@ explicitly report unfinished work; they do not certify that no relationship exis
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Enables requirement-scoped relationship discovery instead of score-only inference. Original requirements and active architecture are not automatically adopted or overwritten. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximum logical evaluation attempts in this phase, 0–10000. Zero is supported and leaves sources explicitly unassessed. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximum new model evaluations per execution, 0–10000. Saved successful responses do not consume the budget. Zero is supported and leaves sources explicitly unassessed. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Navigation depth limit, 0–100. A depth-limited branch remains unfinished rather than becoming a negative finding. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Offered source or sibling candidates per evaluation, 1–100. It is not a total-run call budget. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximum admitted search work items, 1–100000. Includes navigation and verification work; deferred work is reported. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximum concrete positively scored source nodes considered for contribution extraction, 1–256. Omitted sources are reported. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximum new navigation/verification work items per execution, 1–100000. Saved successful responses do not consume this limit; deferred work can be continued. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximum newly extracted positive concrete sources per execution, 1–256. All eligible sources remain in the plan; explicit continuation reuses saved answers and advances to pending sources. |
 
 ## LLM record/replay tooling
 
