@@ -3,6 +3,20 @@
   "edges": [
     {
       "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.controller",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
@@ -143,6 +157,20 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
@@ -158,20 +186,6 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.backup",
-      "toContext": "workspace",
-      "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.composition.architecture",
-      "toContext": "workspace",
-      "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 2
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 2
@@ -839,6 +853,13 @@
       "fromPackage": "com.taxonomy.export.service",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
       "classDependencyCount": 1
     },
     {
