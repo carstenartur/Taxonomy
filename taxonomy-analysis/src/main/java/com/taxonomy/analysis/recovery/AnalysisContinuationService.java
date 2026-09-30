@@ -17,6 +17,8 @@ public class AnalysisContinuationService {
     private final LlmService llm;
     private final WorkspaceManager workspaces;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.relations.RequirementRelationSearchService relations;
     public AnalysisContinuationService(AnalysisContinuationStore store, TaxonomyService catalogue,
             LlmService llm, WorkspaceManager workspaces, ObjectMapper mapper) {
         this.store = store; this.catalogue = catalogue; this.llm = llm; this.workspaces = workspaces; this.mapper = mapper;
@@ -46,7 +48,8 @@ public class AnalysisContinuationService {
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
         return AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
                 Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
-                llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree));
+                llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree),
+                relations == null ? "" : relations.recoveryPolicyFingerprint());
     }
     private void authorize(String username, WorkspaceContext scope) {
         if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)
@@ -65,6 +68,9 @@ public class AnalysisContinuationService {
             session = claim.completedResult() != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
                 public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) {
                     return store.prepare(claim, q);
+                }
+                public RelationSearchReport previousRelations() {
+                    return claim.previousRelations();
                 }
                 public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) {
                     store.finish(claim, q, state, detail);

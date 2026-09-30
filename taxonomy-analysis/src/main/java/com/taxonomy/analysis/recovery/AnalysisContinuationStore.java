@@ -22,7 +22,9 @@ public class AnalysisContinuationStore {
     private final EntityManager em;
     private final ObjectMapper mapper;
     public AnalysisContinuationStore(EntityManager em, ObjectMapper mapper) { this.em = em; this.mapper = mapper; }
-    public record Claim(String id, String token, AnalysisResult completedResult) { }
+    public record Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations) {
+        public Claim(String id, String token, AnalysisResult completedResult) { this(id, token, completedResult, null); }
+    }
     public record Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request) { }
 
     @Transactional
@@ -73,7 +75,8 @@ public class AnalysisContinuationStore {
         run.state = "RUNNING"; run.claimToken = UUID.randomUUID().toString();
         run.claimUntil = System.currentTimeMillis() + CLAIM_MILLIS; run.updatedAt = System.currentTimeMillis();
         em.flush();
-        return new Claim(id, run.claimToken, null);
+        var previous = readResult(run);
+        return new Claim(id, run.claimToken, null, previous == null ? null : previous.getRelationSearchReport());
     }
 
     @Transactional
@@ -151,6 +154,8 @@ public class AnalysisContinuationStore {
             return previous; // Cancellation already committed the canonical result; late workers cannot rewrite it.
         }
         if (previous != null && previous.getTree() != null) tree = previous.getTree();
+        if (previous != null && result.getRelationSearchReport() == null)
+            result.setRelationSearchReport(previous.getRelationSearchReport());
         for (var question : questions(run)) if ("ATTEMPT".equals(question.state)) {
             question.state = "FAILED";
             question.error = "OUTCOME_UNCERTAIN: interrupted call; the provider may have processed it";
@@ -162,14 +167,23 @@ public class AnalysisContinuationStore {
             // Runtime guards use these typed-reason prefixes at the existing result boundary.
             // A prior skipped question must not disguise unfinished independent work as complete.
             run.state = "STOPPED";
+        } else if (questions(run).stream().anyMatch(q -> "READY".equals(q.state))
+                || relationBudgetStopped(result.getRelationSearchReport())) {
+            run.state = "STOPPED";
         } else if (open.stream().anyMatch(AnalysisRecoveryView.OpenQuestion::skipped)) {
             run.state = "COMPLETED_WITH_GAPS"; result.setStatus("PARTIAL");
         } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "STOPPED";
         Map<String, String> missing = new LinkedHashMap<>();
-        for (var question : open) for (String node : question.nodes()) missing.put(node,
+        for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key()))
+            for (String node : question.nodes()) missing.put(node,
                 (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key());
         // This is evidence metadata, never a new official catalogue node or an invented score.
         result.setTree(tree);
+        if (previous != null && result.getArchitectureView() == null && previous.getArchitectureView() != null) {
+            // A cooperative pause skips projection. Keep the last accepted view until projection can run again.
+            result.setArchitectureView(previous.getArchitectureView());
+            result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
+        }
         String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
                 ? "INTERRUPTED:" + run.state : null;
         result.setAnalysisCoverage(AnalysisCoverage.derive(tree, result.getRawScores(), result.getScores(), missing, interruption));
@@ -189,6 +203,13 @@ public class AnalysisContinuationStore {
         writeResult(run, result); em.flush();
         result.setRecovery(view(run));
         return result;
+    }
+
+    private static boolean relationBudgetStopped(RelationSearchReport report) {
+        if (report == null) return false;
+        var reasons = Set.of("CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
+        return report.result().unfinished().stream().anyMatch(item -> reasons.contains(item.reason()))
+                || report.warnings().stream().anyMatch(warning -> reasons.stream().anyMatch(warning::startsWith));
     }
 
     @Transactional
@@ -219,7 +240,8 @@ public class AnalysisContinuationStore {
             // The run lock serializes this snapshot with finish(). An accepted cancellation
             // includes every earlier committed success and admits no later provider answer.
             for (var question : questions(run)) {
-                if ("SUCCESS".equals(question.state) && question.detailJson != null) {
+                if ("SUCCESS".equals(question.state) && question.detailJson != null
+                        && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey)) {
                     var detail = mapper.readValue(question.detailJson, LlmCallDetail.class);
                     raw.putAll(detail.getScores());
                     if (detail.getReasons() != null) reasons.putAll(detail.getReasons());

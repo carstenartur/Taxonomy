@@ -8,14 +8,23 @@ import static com.taxonomy.dto.RelationSearchModel.*;
 public record RelationSearchReport(int schemaVersion, String originalSha256, String policy,
                                    List<SourceAssessment> sources, Result result,
                                    int totalCalls, int maxCalls, long durationMillis, List<String> warnings,
-                                   String stopReason) {
+                                   String stopReason, RelationSearchProgress progress,
+                                   List<RelationSearchProgress.Task> tasks) {
+    public RelationSearchReport(int schemaVersion, String originalSha256, String policy,
+            List<SourceAssessment> sources, Result result, int totalCalls, int maxCalls,
+            long durationMillis, List<String> warnings, String stopReason) {
+        this(schemaVersion, originalSha256, policy, sources, result, totalCalls, maxCalls,
+                durationMillis, warnings, stopReason, null, List.of());
+    }
     public RelationSearchReport {
         Objects.requireNonNull(originalSha256); Objects.requireNonNull(policy); Objects.requireNonNull(result);
         sources = List.copyOf(sources); warnings = List.copyOf(warnings);
+        tasks = tasks == null ? List.of() : List.copyOf(tasks);
         stopReason = stopReason == null ? "" : stopReason;
     }
     /** Exhausted only under the declared pruning policy, not proof of architectural completeness. */
     public boolean isSearchExhausted() {
-        return warnings.isEmpty() && stopReason.isEmpty() && result.searchExhausted();
+        return warnings.isEmpty() && stopReason.isEmpty() && result.searchExhausted()
+                && (progress == null || progress.completedSearches() == progress.totalSearches());
     }
 }

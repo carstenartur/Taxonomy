@@ -37,14 +37,39 @@ unchanged. Optional SMS is retained in evidence, not promoted to a required edge
 Source-only role contributions are visible but never selected for impact analysis.
 This proves software behavior, not real-provider architectural quality.
 
-`max-calls` covers contribution extraction, navigation and separate verification
-**evaluation attempts** in this additional phase. It does not include the earlier
+`max-calls` covers **new evaluation attempts per execution** for contribution
+extraction, navigation and separate verification. Validated durable answers are
+replayed without consuming this budget or contacting the provider. It does not include the earlier
 node-scoring phase or turn a provider's internal HTTP retries into separate model
 evaluations. The existing prompt budget is checked for every prepared request;
 there is no new cumulative token/dollar budget or calibrated cost prediction.
 Zero calls is supported and leaves work explicitly unassessed. Other bounds are
 validated on startup. The application run's cancellation/memory/time checkpoints
 remain active and partial evidence survives a stop.
+
+The source limit also bounds **new source extraction per execution**, not the
+complete plan. Before the first extraction, every eligible positive concrete
+source is paired with every target taxonomy supported by the compatibility rules.
+The live display and saved report retain that fixed denominator, including pending
+tasks beyond the current budgets. A task completes only after all of its required
+contribution/type/direction searches finish, or an explicit source rejection makes
+them unnecessary. Unresolved and interrupted work never counts as completed.
+
+The normal resumable analysis uses the existing question journal for validated
+relation exchanges as well as scoring. Budget exhaustion leaves an execution
+stopped; explicit continuation reuses successful answers and admits new work.
+Invalid or unresolved replies offer the existing retry / leave-open decision.
+Catalogue, requirement, provider and policy changes invalidate reuse. No automatic
+paid retry is introduced. The work-item limit counts only new navigation and
+verification evaluations per execution; replay never consumes it. The structural
+depth limit remains an explicit policy boundary: continuing unchanged cannot
+resolve a depth-limited branch. Changing that policy requires a new analysis.
+
+Node progress is measured independently from the bounded preview buffer: direct
+assessments, descendants excluded by a successful parent decision, and open nodes
+are separate counts, overall and per taxonomy. Relationship progress separately
+shows completed source/target tasks, current direction/type and hierarchy depth,
+verified proposals, and call budget. A spent call budget is not 100% completion.
 
 ## Flow and guarantees
 

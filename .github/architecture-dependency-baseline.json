@@ -62,7 +62,7 @@
       "fromPackage": "com.taxonomy.analysis.relations",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",

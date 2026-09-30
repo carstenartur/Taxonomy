@@ -135,11 +135,11 @@ sie sind kein Nachweis, dass keine Beziehung existiert.
 | Variable | Spring-Eigenschaft / Geltungsbereich | Standard | Bedeutung |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Aktiviert anforderungsbezogene Beziehungssuche statt reiner Score-Ableitung. Originalanforderung und aktive Architektur werden nicht automatisch übernommen oder überschrieben. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximale logische Prüfversuche dieser Phase, 0–10000. Null ist zulässig und lässt Quellen ausdrücklich unbewertet. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximale neue Modellprüfungen je Durchlauf, 0–10000. Gespeicherte erfolgreiche Antworten verbrauchen kein Budget. Null ist zulässig und lässt Quellen ausdrücklich unbewertet. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Maximale Navigationstiefe, 0–100. Ein dadurch begrenzter Zweig bleibt unerledigt statt als irrelevant zu gelten. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Angebotene Quell- oder Geschwisterkandidaten pro Prüfung, 1–100. Kein Aufrufbudget für den gesamten Lauf. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximale zugelassene Suchaufgaben, 1–100000. Umfasst Navigation und Verifikation; zurückgestellte Arbeit wird ausgewiesen. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximale konkrete positiv bewertete Quellknoten für die Beitragsextraktion, 1–256. Ausgelassene Quellen werden gemeldet. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximale neue Navigations-/Verifikationsaufgaben je Durchlauf, 1–100000. Gespeicherte erfolgreiche Antworten verbrauchen dieses Limit nicht; offene Arbeit kann fortgesetzt werden. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximale neu extrahierte positive konkrete Quellen je Durchlauf, 1–256. Alle geeigneten Quellen bleiben im Prüfplan; ausdrückliches Fortsetzen verwendet gespeicherte Antworten erneut und bearbeitet offene Quellen. |
 
 ## LLM Record/Replay
 

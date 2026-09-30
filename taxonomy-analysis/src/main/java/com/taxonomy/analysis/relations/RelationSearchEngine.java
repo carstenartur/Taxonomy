@@ -9,11 +9,26 @@ public final class RelationSearchEngine {
     private final Catalogue catalogue;
     private final Evaluator evaluator;
     private final Runnable checkpoint;
+    private final Observer observer;
+    private final boolean externalBudget;
+
+    public interface Observer {
+        default void started(Query query, int depth) { }
+        default void finished(Intent intent, boolean complete) { }
+        default void verified(Edge edge) { }
+    }
 
     public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint) {
+        this(catalogue, evaluator, checkpoint, new Observer() { }, false);
+    }
+
+    public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
+                                Observer observer, boolean externalBudget) {
         this.catalogue = Objects.requireNonNull(catalogue);
         this.evaluator = Objects.requireNonNull(evaluator);
         this.checkpoint = Objects.requireNonNull(checkpoint);
+        this.observer = Objects.requireNonNull(observer);
+        this.externalBudget = externalBudget;
     }
 
     /** Malformed provider output is distinct from a negative semantic decision. */
@@ -53,6 +68,8 @@ public final class RelationSearchEngine {
         private int visited;
         private List<Intent> seeds = List.of();
         private int nextSeed;
+        private Intent activeSeed;
+        private int unfinishedAtSeed;
 
         Run(String original, Limits limits) { this.original = original; this.limits = limits; }
 
@@ -67,7 +84,9 @@ public final class RelationSearchEngine {
             seeds = intents;
             while (!queue.isEmpty() || nextSeed < seeds.size()) {
                 if (queue.isEmpty()) {
+                    finishSeed();
                     Intent seed = seeds.get(nextSeed++);
+                    activeSeed = seed; unfinishedAtSeed = unfinished.size();
                     enqueue(seed.contribution(), seed.type(), seed.direction(), Phase.NAVIGATE,
                             seed.roots(), null, 0, Set.of());
                     if (queue.isEmpty()) continue;
@@ -76,13 +95,16 @@ public final class RelationSearchEngine {
                 Query q = work.query();
                 try { checkpoint.run(); }
                 catch (RuntimeException stopped) { interrupt(work, stopped); }
-                if (calls >= limits.maxCalls()) {
+                if (!externalBudget && calls >= limits.maxCalls()) {
                     issue(q, "CALL_BUDGET", ""); drain("CALL_BUDGET"); break;
                 }
                 calls++;
                 List<Decision> decisions;
                 try {
+                    observer.started(q, work.depth());
                     decisions = validate(q, evaluator.evaluate(q));
+                } catch (com.taxonomy.analysis.recovery.AnalysisCheckpointSession.DeferredException deferred) {
+                    issue(q, deferred.getMessage(), ""); drain(deferred.getMessage()); break;
                 } catch (InvalidResponseException invalid) {
                     issue(q, "INVALID_RESPONSE", invalid.getMessage());
                     continue;
@@ -102,12 +124,21 @@ public final class RelationSearchEngine {
                                 q.type(), q.direction(), List.of(node.id()), "UNRESOLVED", decision.question()));
                         case MATCH -> enqueue(q.contribution(), q.type(), q.direction(), Phase.VERIFY,
                                 List.of(node), decision, work.depth(), work.path());
-                        case VERIFIED -> edges.add(new Edge(q.contribution(), node, q.type(), q.direction(), decision));
+                        case VERIFIED -> {
+                            Edge edge = new Edge(q.contribution(), node, q.type(), q.direction(), decision);
+                            if (edges.add(edge)) observer.verified(edge);
+                        }
                         case DESCEND -> descend(work, node);
                     }
                 }
             }
+            finishSeed();
             return snapshot();
+        }
+
+        private void finishSeed() {
+            if (activeSeed != null) observer.finished(activeSeed, unfinished.size() == unfinishedAtSeed);
+            activeSeed = null;
         }
 
         private void descend(Work work, Node node) {
@@ -146,7 +177,7 @@ public final class RelationSearchEngine {
                              List<Node> candidates, Decision proposal, int depth, Set<String> path) {
             for (Query query : queries(contribution, type, direction, phase, candidates, proposal)) {
                 if (scheduled.contains(query)) continue;
-                if (scheduled.size() >= limits.maxWorkItems()) { issue(query, "WORK_LIMIT", ""); continue; }
+                if (!externalBudget && scheduled.size() >= limits.maxWorkItems()) { issue(query, "WORK_LIMIT", ""); continue; }
                 scheduled.add(query);
                 Work work = new Work(query, depth, path);
                 // Finish an admitted branch before admitting unrelated source roots.
@@ -170,37 +201,11 @@ public final class RelationSearchEngine {
         }
 
         private List<Decision> validate(Query q, List<Decision> response) {
-            if (response == null || response.size() != q.candidates().size()) invalid("Every offered candidate requires exactly one decision");
-            Map<String, Decision> byId = new HashMap<>();
-            for (Decision d : response) {
-                if (d == null || d.targetId() == null || d.outcome() == null || blank(d.rationale())
-                        || byId.putIfAbsent(d.targetId(), d) != null) invalid("Missing or duplicate decision fields");
-            }
-            List<Decision> result = new ArrayList<>();
-            for (Node node : q.candidates()) {
-                Decision d = byId.get(node.id());
-                if (d == null) invalid("Response contains an unknown or missing target ID");
-                if ((q.phase() == Phase.NAVIGATE && d.outcome() == Outcome.VERIFIED)
-                        || (q.phase() == Phase.VERIFY && (d.outcome() == Outcome.DESCEND || d.outcome() == Outcome.MATCH))) {
-                    invalid("Decision is not permitted in this phase");
-                }
-                if (d.outcome() == Outcome.UNRESOLVED && blank(d.question())) invalid("Unresolved decision requires a question");
-                if (d.outcome() == Outcome.MATCH || d.outcome() == Outcome.VERIFIED) {
-                    if (node.container() || node.id().equals(q.contribution().source().id())) invalid("Not a concrete distinct endpoint");
-                    if (blank(d.contribution()) || blank(d.quote()) || !original.contains(d.quote()) || d.necessity() == null) {
-                        invalid("Positive relation requires a scoped contribution and exact original evidence");
-                    }
-                    if (d.necessity() == Necessity.ALTERNATIVE && blank(d.alternativeGroup())) invalid("Alternative requires an explicit choice group");
-                    if (d.necessity() == Necessity.OPTIONAL && blank(d.condition())) invalid("Optional relation requires an explicit condition");
-                    if (q.phase() == Phase.VERIFY && !sameClaim(q.proposal(), d)) invalid("Verification must not replace the proposed claim");
-                }
-                result.add(d);
-            }
-            return List.copyOf(result);
+            return validateResponse(q, response);
         }
 
         private void interrupt(Work current, RuntimeException stopped) {
-            issue(current.query(), "INTERRUPTED", ""); drain("INTERRUPTED");
+            issue(current.query(), "INTERRUPTED", ""); drain("INTERRUPTED"); finishSeed();
             throw new InterruptedSearchException(stopped, snapshot());
         }
         private void drain(String reason) {
@@ -221,6 +226,37 @@ public final class RelationSearchEngine {
             return new Result(List.copyOf(edges), unfinished, trace, calls, visited,
                     (System.nanoTime() - started) / 1_000_000);
         }
+    }
+
+    /** Shared with the protocol so durable answers are validated before they are committed. */
+    static List<Decision> validateResponse(Query q, List<Decision> response) {
+        if (response == null || response.size() != q.candidates().size()) invalid("Every offered candidate requires exactly one decision");
+        Map<String, Decision> byId = new HashMap<>();
+        for (Decision d : response) {
+            if (d == null || d.targetId() == null || d.outcome() == null || blank(d.rationale())
+                    || byId.putIfAbsent(d.targetId(), d) != null) invalid("Missing or duplicate decision fields");
+        }
+        List<Decision> result = new ArrayList<>();
+        for (Node node : q.candidates()) {
+            Decision d = byId.get(node.id());
+            if (d == null) invalid("Response contains an unknown or missing target ID");
+            if ((q.phase() == Phase.NAVIGATE && d.outcome() == Outcome.VERIFIED)
+                    || (q.phase() == Phase.VERIFY && (d.outcome() == Outcome.DESCEND || d.outcome() == Outcome.MATCH))) {
+                invalid("Decision is not permitted in this phase");
+            }
+            if (d.outcome() == Outcome.UNRESOLVED && blank(d.question())) invalid("Unresolved decision requires a question");
+            if (d.outcome() == Outcome.MATCH || d.outcome() == Outcome.VERIFIED) {
+                if (node.container() || node.id().equals(q.contribution().source().id())) invalid("Not a concrete distinct endpoint");
+                if (blank(d.contribution()) || blank(d.quote()) || !q.original().contains(d.quote()) || d.necessity() == null) {
+                    invalid("Positive relation requires a scoped contribution and exact original evidence");
+                }
+                if (d.necessity() == Necessity.ALTERNATIVE && blank(d.alternativeGroup())) invalid("Alternative requires an explicit choice group");
+                if (d.necessity() == Necessity.OPTIONAL && blank(d.condition())) invalid("Optional relation requires an explicit condition");
+                if (q.phase() == Phase.VERIFY && !sameClaim(q.proposal(), d)) invalid("Verification must not replace the proposed claim");
+            }
+            result.add(d);
+        }
+        return List.copyOf(result);
     }
 
     private static void validateCandidates(List<Node> candidates) {

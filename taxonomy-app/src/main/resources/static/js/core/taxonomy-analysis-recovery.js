@@ -3,7 +3,7 @@
     'use strict';
     var C = window.__TaxonomyAnalysisSessionContext;
     if (!C || !window.TaxonomyRecoveryViewport) throw new Error('Recovery requires session and viewport modules');
-    var S = C.S, busy = false, decisionBusy = false, poll = null, reading = false;
+    var S = C.S, busy = false, decisionBusy = false, poll = null, reading = false, liveWork = '';
     var generation = C.runtime.analysisGeneration || 0;
     var STORAGE = 'taxonomy.recovery.active.v1';
     function text(de, en) { return C.language() === 'de' ? de : en; }
@@ -18,6 +18,7 @@
     function stopped() { return S.analysisRecovery?.state === 'CANCELLED' || current()?.followupState === 'CANCELLED'; }
     function setBusy(value) {
         busy = value;
+        if (!value) liveWork = '';
         ['copilotBtn', 'analyzeBtn'].forEach(function (id) {
             var b = document.getElementById(id);
             if (b) { b.disabled = value; b.setAttribute('aria-busy', String(value)); }
@@ -77,6 +78,7 @@
         if (c?.followupState === 'CANCELLED') label = text('Abgebrochen – gültige Ergebnisse erhalten', 'Cancelled – valid results retained');
         if (c?.followupState === 'COMPLETED') label = text('Copilot abgeschlossen', 'Copilot complete');
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
+        if (busy && liveWork) return liveWork;
         return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' questions complete')
             + (r.currentNode && r.state === 'RUNNING' ? ' · ' + r.currentNode : '');
     }
@@ -395,6 +397,7 @@
     document.addEventListener('taxonomy:analysis-progress', function (event) {
         if (!busy || !inScope(current()) || stopped()) return;
         var snapshot = event.detail;
+        liveWork = window.TaxonomyAnalysisProgress?.workSummary?.(snapshot) || '';
         if (snapshot?.node) S.analysisRecovery.currentNode = snapshot.node;
         update();
     });

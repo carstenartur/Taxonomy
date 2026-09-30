@@ -78,7 +78,9 @@ public class AnalysisProgressRegistry {
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
                            String databaseStorage, String indexStorage, AnalysisProvenance provenance,
                            Long finishedAt, long elapsedMillis, Long executionStartedAt,
-                           long queueWaitMillis, long executionMillis) { }
+                           long queueWaitMillis, long executionMillis,
+                           com.taxonomy.dto.AnalysisNodeProgress nodeProgress,
+                           com.taxonomy.dto.RelationSearchProgress relationProgress) { }
 
     /** Immutable decision made at the run's cancellation/completion linearization point. */
     public record Terminal(String status, String stopReason) {
@@ -353,6 +355,8 @@ public class AnalysisProgressRegistry {
                 () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         final ArrayDeque<Call> calls = new ArrayDeque<>();
         final Map<String, Integer> scores = new LinkedHashMap<>();
+        final AnalysisNodeTracker nodeTracker = new AnalysisNodeTracker();
+        com.taxonomy.dto.RelationSearchProgress relationProgress;
         volatile String status = "QUEUED";
         volatile boolean cancelled;
         volatile long finishedAt;
@@ -384,6 +388,15 @@ public class AnalysisProgressRegistry {
             }
         }
         void touch() { sequence++; lastActivityAt = System.currentTimeMillis(); }
+        @Override public synchronized void planNodes(List<com.taxonomy.dto.TaxonomyNodeDto> tree) {
+            nodeTracker.plan(tree); touch();
+        }
+        @Override public synchronized void assessment(LlmCallDetail detail) {
+            nodeTracker.accept(detail); touch();
+        }
+        @Override public synchronized void relations(com.taxonomy.dto.RelationSearchProgress progress) {
+            relationProgress = progress; touch();
+        }
         @Override public synchronized void checkpoint() {
             if (!active() && stopReason != null) {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.valueOf(stopReason));
@@ -411,6 +424,7 @@ public class AnalysisProgressRegistry {
             touch();
         }
         @Override public synchronized void completed(long id, LlmCallDetail detail, long duration) {
+            nodeTracker.accept(detail);
             Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
             if (call != null) {
                 call.status = detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED";
@@ -422,7 +436,8 @@ public class AnalysisProgressRegistry {
                 call.response = bounded(detail.getRawResponse(), MAX_TEXT);
                 call.truncated = call.promptLength > MAX_TEXT || call.responseLength > MAX_TEXT;
             }
-            if (detail.getScores() != null) detail.getScores().forEach((code, score) -> {
+            if ((detail.getError() == null || detail.getError().isBlank()) && detail.getScores() != null)
+                detail.getScores().forEach((code, score) -> {
                 if (code == null || score == null) return;
                 if (scores.containsKey(code) || scores.size() < MAX_SCORES) scores.put(code, score);
                 else scoresTruncated = true;
@@ -475,10 +490,11 @@ public class AnalysisProgressRegistry {
             long elapsed = active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis;
             long queued = executionStartedAt == null ? elapsed : frozenQueueMillis;
             return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,
-                    System.currentTimeMillis(), scores.size(), scoresTruncated, Map.copyOf(scores),
+                    System.currentTimeMillis(), nodeTracker.assessed(), scoresTruncated, Map.copyOf(scores),
                     calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),
                     databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
-                    elapsed, executionStartedAt, queued, executionStartedAt == null ? 0L : Math.max(0L, elapsed - queued));
+                    elapsed, executionStartedAt, queued, executionStartedAt == null ? 0L : Math.max(0L, elapsed - queued),
+                    nodeTracker.snapshot(), relationProgress);
         }
     }
 

@@ -1233,6 +1233,11 @@
             + escapeHtml(t('relation.search.budget', report.totalCalls, report.maxCalls)) + '</summary>';
         html += '<p class="small mt-2">' + escapeHtml(t(report.searchExhausted
             ? 'relation.search.exhausted' : 'relation.search.partial')) + '</p>';
+        if (report.progress) {
+            var p = report.progress;
+            html += '<p class="fw-bold">' + escapeHtml(t('relation.search.progress', p.completedSearches,
+                p.totalSearches, p.unresolvedSearches, p.pendingSearches)) + '</p>';
+        }
         function section(label, items, format) {
             if (!Array.isArray(items) || !items.length) return;
             html += '<h6 class="mt-2">' + escapeHtml(t(label)) + '</h6>';
@@ -1243,6 +1248,12 @@
                 + escapeHtml(t('relation.search.omitted', 30, items.length)) + '</p>';
         }
         var warnings = Array.isArray(report.warnings) ? report.warnings.slice() : [];
+        var tasks = Array.isArray(report.tasks) ? report.tasks : [];
+        var states = { PENDING: 'pending', RUNNING: 'running', COMPLETED: 'completed', UNRESOLVED: 'unresolved' };
+        section('relation.search.tasks', tasks.filter(function (task) { return task.state !== 'COMPLETED'; }), function (task) {
+            return escapeHtml(task.sourceId + ' → ' + task.targetRoot) + ' · '
+                + escapeHtml(t('relation.search.task.' + (states[task.state] || 'unresolved')));
+        });
         if (report.stopReason) warnings.push(report.stopReason);
         section('relation.search.warnings', warnings, function (warning) { return escapeHtml(warning); });
         section('relation.search.questions', result.unfinished, function (item) {
