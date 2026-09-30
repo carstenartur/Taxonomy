@@ -48,6 +48,23 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
         if (!profile.includesHistory()) return List.of("portfolio: non-current requirement/analysis/reformulation versions, original text, change reasons and adoption ancestry are excluded", "portfolio: worker ownership, error diagnostics and automatic execution are excluded");
         return List.of("portfolio: worker ownership, error diagnostics and automatic execution are excluded");
     }
+    /** Uses the same version selection as the business export; never infers ownership from business IDs. */
+    public List<BackupSourceReference> sourceReferences(SnapshotContext snapshot) throws IOException {
+        var scope=new BackupRowScope(snapshot);
+        var result=new ArrayList<BackupSourceReference>();
+        rows.visit(query(scope,"select t.id,t.source_artifact_id,t.source_version_id,t.source_fragment_ids from project_req_version t",
+                scope.tenants("t.scope_key"),"exists (select 1 from project_requirement r where r.id=t.requirement_id and r.scope_key=t.scope_key and r.current_version_id=t.id)","t.id"),
+                r -> new BackupSourceReference(reference(r,"portfolio.requirement-version","id"),
+                        reference(r,"application.source-artifact","source_artifact_id"),
+                        reference(r,"application.source-version","source_version_id"),fragmentReferences(text(r,"source_fragment_ids"))),
+                ref -> {
+                    if (ref.artifact()!=null || ref.version()!=null || !ref.fragments().isEmpty()) {
+                        if (result.size()>=100_000) throw new IOException("Source dependency limit exceeded");
+                        result.add(ref);
+                    }
+                });
+        return List.copyOf(result);
+    }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
         if (!scope.selectedVersion()) validateScopeClosure(scope);

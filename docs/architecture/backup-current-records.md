@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the first P05 adapters. They are not yet a complete
-capture source: knowledge, source files, identities, templates, architecture,
+capture source: knowledge, identities, templates, architecture,
 integration and Git inventory are required before production jobs can activate.
 
 Each module constructs explicit version-1 records. An NDJSON dataset starts with
@@ -66,3 +66,30 @@ They verify authorized current and history contents, selected-version exclusion,
 dependency failures and UTC conversion for both zoned and unzoned columns.
 This evidence is not a substitute for the later four-database restore matrix or
 the complete Git/file/browser acceptance gates.
+
+Source capture uses the explicit artifact/version/fragment references of the
+selected requirement versions. A legacy source link has only a business key,
+without repository identity, so it cannot grant access in a scoped export.
+Installation exports retain such links in a separate legacy namespace; restore
+must not bind them to whichever tenant happens to use the same requirement key.
+Current installation capture retains latest source versions plus current
+business dependencies. Historical versions and their legacy links require a
+history profile. Fragment parent chains must be complete, acyclic and belong to
+the same version; artifact/version/fragment contradictions fail before output.
+
+Retained originals and extracted text stream from a configured, operator-owned
+content root into independently hashed entries. Paths never enter portable
+records. An original's recorded SHA-256 must match the streamed bytes. Missing,
+changed, non-regular or escaping files fail capture. Secure directory handles
+prevent symlink traversal where the provider supports them. Other providers
+check canonical paths and file identities; the configured root must remain
+stable and private throughout the maintenance window. These checks have local
+Linux evidence; native Windows acceptance remains part of P12.
+
+A source whose upload was never retained is explicitly `NOT_RETAINED`; its
+metadata/fragments are preserved, with no fabricated original. Files are written
+before their referencing DTOs, so no nested entry can bypass archive entry
+limits. SQL batches use at most 200 dependency IDs; the closure is capped at
+100,000 identifiers per category. File bytes and DTO text are streamed, not held
+in the dependency map. Selected-version source closure must be supplied from
+selected Git evidence during capture composition, not from today's database.

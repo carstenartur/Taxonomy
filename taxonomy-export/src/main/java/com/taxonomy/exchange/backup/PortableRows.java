@@ -24,6 +24,7 @@ public final class PortableRows {
 
     public PortableRows(DataSource database) { this.database = Objects.requireNonNull(database); }
     @FunctionalInterface public interface Mapper<T extends Record> { T read(ResultSet row) throws SQLException, IOException; }
+    @FunctionalInterface public interface Visitor<T extends Record> { void accept(T record) throws IOException; }
     public record Header(int schemaVersion, String kind, BackupProfile profile) { }
     public record Query(String sql, List<?> parameters) {
         public Query { Objects.requireNonNull(sql); parameters = List.copyOf(parameters); }
@@ -41,6 +42,37 @@ public final class PortableRows {
                 }
             } finally { connection.rollback(); }
         } catch (SQLException failure) { throw new IOException("Portable dependency verification failed"); }
+    }
+
+    /** Dependency discovery retains only the identifiers requested by the caller. */
+    public <T extends Record> void visit(Query query, Mapper<T> mapper, Visitor<T> visitor) throws IOException {
+        if (query == null) return;
+        try (var connection = database.getConnection()) {
+            connection.setReadOnly(true); connection.setAutoCommit(false);
+            try (var statement = connection.prepareStatement(query.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                statement.setFetchSize(64); statement.setQueryTimeout(60);
+                for (int i=0;i<query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));
+                try (var result=statement.executeQuery()) {
+                    long count=0;
+                    while (result.next()) {
+                        cancelled();
+                        if (++count > MAX_ROWS) throw new IOException("Portable row limit exceeded");
+                        T record=mapper.read(result);
+                        if (record!=null) visitor.accept(record);
+                    }
+                }
+            } finally { connection.rollback(); }
+        } catch (SQLException failure) { throw new IOException("Portable dependency capture failed"); }
+    }
+
+    /** Batches bound SQL parameter counts without holding DTO payloads in memory. */
+    public <T extends Record> void writeBatches(ComponentSink sink, String component, String kind, BackupProfile profile,
+                                               Iterable<Query> queries, Mapper<T> mapper) throws IOException {
+        if (!component.matches("[a-z][a-z0-9-]{0,63}") || !kind.matches("[a-z][a-z0-9-]{0,63}"))
+            throw new IllegalArgumentException("Invalid dataset name");
+        try (var input=new BatchInput<>(new Header(1,kind,profile),queries.iterator(),mapper)) {
+            sink.write("data/"+component+"/"+kind+".ndjson",input);
+        }
     }
 
     public <T extends Record> void write(ComponentSink sink, String component, String kind, BackupProfile profile,
@@ -125,6 +157,65 @@ public final class PortableRows {
     private static void cancelled() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Portable capture cancelled");
     }
+    private final class BatchInput<T extends Record> extends InputStream {
+        private final Iterator<Query> queries;
+        private final Mapper<T> mapper;
+        private byte[] current;
+        private int position;
+        private long count;
+        private Connection connection;
+        private PreparedStatement statement;
+        private ResultSet rows;
+        BatchInput(Header header, Iterator<Query> queries, Mapper<T> mapper) throws IOException {
+            this.current=line(header); this.queries=queries; this.mapper=mapper;
+        }
+        @Override public int read() throws IOException { return availableRecord() ? current[position++] & 255 : -1; }
+        @Override public int read(byte[] buffer,int offset,int length) throws IOException {
+            Objects.checkFromIndexSize(offset,length,buffer.length);
+            if (length==0) return 0;
+            if (!availableRecord()) return -1;
+            int copy=Math.min(length,current.length-position);
+            System.arraycopy(current,position,buffer,offset,copy); position+=copy; return copy;
+        }
+        private boolean availableRecord() throws IOException {
+            cancelled();
+            while (position==current.length) {
+                try {
+                    if (rows==null || !rows.next()) {
+                        closeBatch();
+                        if (!queries.hasNext()) return false;
+                        Query query=queries.next();
+                        connection=database.getConnection(); connection.setReadOnly(true); connection.setAutoCommit(false);
+                        statement=connection.prepareStatement(query.sql(),ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY);
+                        statement.setFetchSize(64); statement.setQueryTimeout(60);
+                        for (int i=0;i<query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));
+                        rows=statement.executeQuery();
+                        if (!rows.next()) continue;
+                    }
+                    if (++count>MAX_ROWS) throw new IOException("Portable row limit exceeded");
+                    T record=mapper.read(rows);
+                    if (record==null) continue;
+                    current=line(record); position=0;
+                } catch (SQLException failure) { throw new IOException("Portable dataset capture failed"); }
+            }
+            return true;
+        }
+        private void closeBatch() throws SQLException {
+            try { if (rows!=null) rows.close(); }
+            finally { rows=null;
+                try { if (statement!=null) statement.close(); }
+                finally { statement=null;
+                    if (connection!=null) {
+                        try { connection.rollback(); } finally { connection.close(); connection=null; }
+                    }
+                }
+            }
+        }
+        @Override public void close() throws IOException {
+            try { closeBatch(); } catch (SQLException failure) { throw new IOException("Portable capture cleanup failed"); }
+        }
+    }
+
     private static final class RecordInput<T extends Record> extends InputStream {
         private final ResultSet rows;
         private final Mapper<T> mapper;
