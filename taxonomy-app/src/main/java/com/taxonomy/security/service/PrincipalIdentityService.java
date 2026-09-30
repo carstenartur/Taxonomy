@@ -59,7 +59,9 @@ public final class PrincipalIdentityService {
         return transaction.execute(status -> {
             lockRegistry();
             var id = PrincipalId.create();
-            return resolve(binding, id, "@principal:" + id.value());
+            // Legacy workspace branches embed the scope in a Git ref. Keep the
+            // opaque namespace portable to native Git and Windows path rules.
+            return resolve(binding, id, "principal-" + id.value());
         });
     }
 

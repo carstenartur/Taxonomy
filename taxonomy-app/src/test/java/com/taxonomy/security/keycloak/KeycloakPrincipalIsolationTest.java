@@ -65,6 +65,20 @@ class KeycloakPrincipalIsolationTest {
                 .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
     }
 
+    @Test void opaqueLoginScopeCanProvisionTheExistingUsernameBasedGitWorkspace() throws Exception {
+        var converter = new KeycloakJwtAuthConverter(identities);
+        converter.setRoleClaimPath("realm_access.roles");
+        String scope = converter.convert(jwt("https://idp.example", "person-1", "alice")).getName();
+        try (var repository = new com.taxonomy.workspace.storage.DslGitRepository()) {
+            String initial = repository.commitDsl("draft", "element E { title: \"Initial\" }", "system", "initial");
+            String branch = scope + "/workspace/owned";
+            // The in-memory ref store accepts some names that native Git cannot clone.
+            assertThat(org.eclipse.jgit.lib.Repository.isValidRefName("refs/heads/" + branch)).isTrue();
+            repository.createBranchAtCommit(branch, initial);
+            assertThat(repository.getHeadCommit(branch)).isEqualTo(initial);
+        }
+    }
+
     private Jwt jwt(String issuer, String subject, String displayName) {
         return Jwt.withTokenValue("verified-token").header("alg", "RS256").issuer(issuer).subject(subject)
                 .claim("preferred_username", displayName).build();
