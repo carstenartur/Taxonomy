@@ -58,6 +58,20 @@ class ArchitectureContextDependencyRatchetTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void sharedDomainPortsAreNotMistakenForApplicationImplementations() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        var imported = new ClassFileImporter().importClasses(
+                com.taxonomy.backup.BackupWriteBarrier.class,
+                com.taxonomy.backup.BackupScope.class,
+                com.taxonomy.backup.snapshot.BackupMaintenanceLease.class);
+        assertThat(contextFor(imported.get(com.taxonomy.backup.BackupWriteBarrier.class), policy)).isNull();
+        assertThat(contextFor(imported.get(com.taxonomy.backup.BackupScope.class), policy)).isNull();
+        assertThat(contextFor(imported.get(com.taxonomy.backup.snapshot.BackupMaintenanceLease.class), policy).id())
+                .isEqualTo("app-composition");
+    }
+
+    @Test
     void managedContextDependenciesMatchReviewedBaseline() throws Exception {
         Path repositoryRoot = findRepositoryRoot();
         ContextPolicy policy = readAndValidateContextPolicy(
@@ -341,6 +355,13 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     private static ContextDefinition contextFor(JavaClass javaClass, ContextPolicy policy) {
+        // Pure shared types are already owned and checked by taxonomy-domain. Package
+        // names alone cannot distinguish its ports from application adapters using
+        // the same namespace. Never exempt an implementation in a managed module.
+        String topLevel = javaClass.getName().split("\\$", 2)[0];
+        Path sharedSource = findRepositoryRoot().resolve("taxonomy-domain/src/main/java")
+                .resolve(topLevel.replace('.', '/') + ".java");
+        if (Files.isRegularFile(sharedSource)) return null;
         ContextDefinition packageContext = contextFor(javaClass.getPackageName(), policy.contexts());
         if (packageContext != null || !"com.taxonomy".equals(javaClass.getPackageName())) {
             return packageContext;

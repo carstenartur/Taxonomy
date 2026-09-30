@@ -1,5 +1,7 @@
 package com.taxonomy.backup;
 
+import com.taxonomy.composition.backup.PersistentBackupAccessPolicy;
+
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.model.*;

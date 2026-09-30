@@ -1,4 +1,10 @@
-package com.taxonomy.backup;
+package com.taxonomy.composition.backup;
+
+import com.taxonomy.backup.BackupAccessPolicy;
+import com.taxonomy.backup.BackupCapability;
+import com.taxonomy.backup.BackupRepositoryKey;
+import com.taxonomy.backup.BackupScope;
+import com.taxonomy.backup.PrincipalId;
 
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;

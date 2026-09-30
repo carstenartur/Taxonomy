@@ -143,21 +143,21 @@
     },
     {
       "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.backup",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.backup",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.repository",
       "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.backup",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 2

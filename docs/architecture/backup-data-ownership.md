@@ -106,6 +106,8 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `external.object-storage` | application | EXTERNAL_DEPENDENCY | `—` | Referenced blobs must be copied or declared a blocking external prerequisite |
 | `runtime.sessions-caches-browser` | application | TRANSIENT | `—` | No browser-only edits, HTTP sessions, remember-me tokens, caches or executing LLM calls |
 
+| `runtime.backup-barrier` | application | TRANSIENT | `backup_barrier_state`, `backup_writer_lease` | Live process coordination only; never reactivate leases during restore |
+
 ## Capture boundary
 
 The write barrier must cover editor operations/checkpoints, workspace catalogue

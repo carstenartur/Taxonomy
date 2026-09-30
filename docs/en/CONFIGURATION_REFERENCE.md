@@ -42,6 +42,9 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `taxonomy.jgit-storage.legacy-adoption` | `false` | One-start opt-in for the fail-closed legacy JGit schema adoption path. Requires backup and preflight; reset to `false` afterwards. |
 | `TAXONOMY_GIT_BOOTSTRAP` | `taxonomy.git.bootstrap` | `true` | Creates the initial `draft` commit after catalogue readiness when the system repository is empty. |
 | `TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED` | `taxonomy.features.multi-repository-api.enabled` | `false` | Enables the currently opt-in `/api/repositories` management surface. It does not weaken repository membership checks. |
+| `TAXONOMY_BACKUP_ENABLED` | `taxonomy.backup.enabled` | `false` | Enables the portable-backup writer boundary. All instances sharing a database must use the same setting. Public export/restore is not yet released. |
+| `TAXONOMY_BACKUP_WRITER_LEASE_SECONDS` | `taxonomy.backup.writer-lease-seconds` | `300` | Maximum lifetime of a runtime write section, in seconds (1–1800). Expired writers are rejected before commit. |
+| `TAXONOMY_BACKUP_STARTUP_WAIT_SECONDS` | `taxonomy.backup.startup-wait-seconds` | `30` | Maximum seconds to wait for startup maintenance ownership. Failed startup leaves its hold in place for explicit operator recovery. |
 
 ## Database and Hibernate Search
 

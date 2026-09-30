@@ -42,6 +42,9 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `taxonomy.jgit-storage.legacy-adoption` | `false` | Einmalige, fail-closed Altschema-Adoption nach Backup und Preflight. |
 | `TAXONOMY_GIT_BOOTSTRAP` | `taxonomy.git.bootstrap` | `true` | Erzeugt bei leerem Systemrepository den ersten `draft`-Commit. |
 | `TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED` | `taxonomy.features.multi-repository-api.enabled` | `false` | Aktiviert die opt-in `/api/repositories`-Oberfläche. |
+| `TAXONOMY_BACKUP_ENABLED` | `taxonomy.backup.enabled` | `false` | Aktiviert die Schreibgrenze für portable Sicherungen. Alle Instanzen derselben Datenbank müssen denselben Wert verwenden. Öffentlicher Export/Restore ist noch nicht freigegeben. |
+| `TAXONOMY_BACKUP_WRITER_LEASE_SECONDS` | `taxonomy.backup.writer-lease-seconds` | `300` | Maximale Laufzeit eines Schreibabschnitts in Sekunden (1–1800). Abgelaufene Writer werden vor dem Commit abgewiesen. |
+| `TAXONOMY_BACKUP_STARTUP_WAIT_SECONDS` | `taxonomy.backup.startup-wait-seconds` | `30` | Maximale Wartezeit auf die Startsperre in Sekunden. Ein fehlgeschlagener Start behält die Sperre bis zur ausdrücklichen Operator-Wiederherstellung. |
 
 ## Datenbank und Suche
 
