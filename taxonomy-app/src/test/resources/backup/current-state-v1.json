@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "applicationVersion": "1.4.0",
+  "build": "fixture",
+  "backupId": "00000000-0000-0000-0000-000000000001",
+  "sourceInstallationId": "installation-a",
+  "request": {
+    "profile": "CURRENT_STATE",
+    "scope": { "kind": "WORKSPACE", "repositoryId": "repo-a", "workspaceId": "workspace-a", "workspacesByRepository": {} },
+    "time": { "kind": "CURRENT", "commitsByRepository": {} },
+    "gitRepresentation": "NONE",
+    "secrets": "EXCLUDE"
+  },
+  "captureStartedAt": "2026-09-30T07:00:00Z",
+  "captureCompletedAt": "2026-09-30T07:00:01Z",
+  "consistencyEvidence": "writer-barrier:1",
+  "requiredFeatures": ["component-sha256", "explicit-scope", "writer-barrier-v1"],
+  "components": [{ "id": "workspace", "version": 1, "completeness": "COMPLETE", "entryPaths": ["data/workspace/current.ndjson"], "dependencies": [] }],
+  "repositories": [{
+    "id": "repo-a", "archiveId": "opaque-a", "representation": "NONE",
+    "captured": { "refs": { "refs/heads/main": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, "symbolicHead": "refs/heads/main", "semanticRevision": 7, "requiredCommits": [] },
+    "sourceRepositoryId": null, "exportedHead": null, "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }],
+  "entries": [{ "path": "data/workspace/current.ndjson", "length": 3, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+  "dependencies": [],
+  "omissions": ["operation-history"]
+}

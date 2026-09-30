@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:taxonomy:backup:manifest:1",
+  "title": "Taxonomy portable backup manifest v1",
+  "type": "object",
+  "properties": {
+    "formatVersion": {
+      "const": 1
+    },
+    "applicationVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "build": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "backupId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sourceInstallationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "request": {
+      "$ref": "#/$defs/request"
+    },
+    "captureStartedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "captureCompletedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consistencyEvidence": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "requiredFeatures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "maxItems": 10000
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      },
+      "maxItems": 10000
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/repository"
+      },
+      "maxItems": 10000
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      },
+      "maxItems": 10000
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "maxItems": 10000
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "maxItems": 10000
+    }
+  },
+  "required": [
+    "formatVersion",
+    "applicationVersion",
+    "build",
+    "backupId",
+    "sourceInstallationId",
+    "request",
+    "captureStartedAt",
+    "captureCompletedAt",
+    "consistencyEvidence",
+    "requiredFeatures",
+    "components",
+    "repositories",
+    "entries",
+    "dependencies",
+    "omissions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "WORKSPACE",
+            "REPOSITORIES",
+            "INSTALLATION"
+          ]
+        },
+        "repositoryId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspaceId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspacesByRepository": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "maxItems": 10000
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "repositoryId",
+        "workspaceId",
+        "workspacesByRepository"
+      ],
+      "additionalProperties": false
+    },
+    "time": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "CURRENT",
+            "SELECTED_VERSION",
+            "HISTORY"
+          ]
+        },
+        "commitsByRepository": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "commitsByRepository"
+      ],
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "enum": [
+            "CURRENT_STATE",
+            "SELECTED_VERSION",
+            "REPOSITORY_HISTORY",
+            "INSTALLATION_CURRENT",
+            "INSTALLATION_FULL"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "time": {
+          "$ref": "#/$defs/time"
+        },
+        "gitRepresentation": {
+          "enum": [
+            "NONE",
+            "BUNDLE",
+            "BARE",
+            "WORKTREE"
+          ]
+        },
+        "secrets": {
+          "enum": [
+            "EXCLUDE",
+            "INCLUDE_ENCRYPTED"
+          ]
+        }
+      },
+      "required": [
+        "profile",
+        "scope",
+        "time",
+        "gitRepresentation",
+        "secrets"
+      ],
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "completeness": {
+          "enum": [
+            "COMPLETE",
+            "DEPENDENT",
+            "OMITTED"
+          ]
+        },
+        "entryPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "maxItems": 10000
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "completeness",
+        "entryPaths",
+        "dependencies"
+      ],
+      "additionalProperties": false
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "archiveId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9-]{1,128}$"
+        },
+        "representation": {
+          "enum": [
+            "NONE",
+            "BUNDLE",
+            "BARE",
+            "WORKTREE"
+          ]
+        },
+        "captured": {
+          "$ref": "#/$defs/repositoryState"
+        },
+        "sourceRepositoryId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exportedHead": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceCommit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "archiveId",
+        "representation",
+        "captured",
+        "sourceRepositoryId",
+        "exportedHead",
+        "sourceCommit"
+      ],
+      "additionalProperties": false
+    },
+    "repositoryState": {
+      "type": "object",
+      "properties": {
+        "refs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        },
+        "symbolicHead": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "semanticRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredCommits": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "refs",
+        "symbolicHead",
+        "semanticRevision",
+        "requiredCommits"
+      ],
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "length",
+        "sha256"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
