@@ -51,7 +51,7 @@ class AnalysisScopeFlowTest {
                 case 1 -> "BP"; case 2 -> "BP-1"; case 3 -> "BP-2";
                 default -> throw new AssertionError("Unexpected provider call");
             };
-            return "{\"scores\":{\"" + code + "\":20},\"reasons\":{\"" + code + "\":\"independent relevance\"}}";
+            return "{\"" + code + "\":{\"score\":20,\"reason\":\"independent relevance\"}}";
         }
         @Override public String extractResponseText(String response) { return response; }
         @Override public String providerName() { return "OPENAI"; }
