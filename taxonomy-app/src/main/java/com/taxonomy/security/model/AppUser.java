@@ -23,6 +23,9 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "principal_id", length = 36, unique = true, updatable = false)
+    private String principalId = java.util.UUID.randomUUID().toString();
+
     @Column(nullable = false, unique = true)
     private String username;
 
@@ -57,6 +60,11 @@ public class AppUser {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public String getPrincipalId() { return principalId; }
+    public void setPrincipalId(String principalId) {
+        this.principalId = java.util.UUID.fromString(principalId).toString();
+    }
 
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }

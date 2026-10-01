@@ -51,7 +51,7 @@ class ParallelCiEvidenceContractTest {
 
         String application = workflow.substring(applicationStart, coreStart);
         assertThat(application)
-                .contains("./mvnw -B -ntp -DskipTests package")
+                .contains("run: bash .github/scripts/package-ui-application.sh")
                 .contains("run: bash .github/scripts/stage-ui-application.sh")
                 .contains("name: taxonomy-ui-application");
 

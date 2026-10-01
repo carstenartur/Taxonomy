@@ -1,0 +1,85 @@
+# Category	Owner	Rule	Rationale
+com.taxonomy.analysis.recovery.AnalysisContinuationRun	analysis	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint	analysis	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.analysis.session.AnalysisWorkingDraft	analysis	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.provenance.model.RequirementSourceLink	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.provenance.model.SourceArtifact	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.provenance.model.SourceFragment	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.provenance.model.SourceVersion	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.security.model.AppRole	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.security.model.AppUser	application	PORTABLE_PRIMARY	Current identity metadata is portable; password hashes only in authorized encrypted DR; no sessions
+com.taxonomy.security.webdav.WebDavApplicationCredential	application	TRANSIENT	Revocable application login tokens must be issued again on target
+com.taxonomy.architecture.model.ArchitectureDslDocument	architecture	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.ExternalIdentityMappingEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationCheckpointEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationConnectionEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationEventEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationOperationEntity	interop	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.interop.persistence.IntegrationPublicationEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationPublishAttemptEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.interop.persistence.IntegrationPublishItemEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.catalog.model.TaxonomyNode	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.catalog.model.TaxonomyRelation	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.relations.model.RelationDecisionProjection	knowledge	REBUILDABLE	Rebuild using RelationBranchProjectionRebuildService from captured DSL
+com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint	knowledge	REBUILDABLE	Rebuild together with relation projection; never restore stale readiness
+com.taxonomy.relations.model.RelationEvidence	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.relations.model.RelationHypothesis	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.relations.model.RelationProjectionRecovery	knowledge	PORTABLE_PRIMARY	Durable recovery journal with commit provenance and failure history; restore pending work without old worker claims
+com.taxonomy.relations.model.RelationProposal	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.relations.model.RequirementCoverage	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ArchitectureProject	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProductCatalogEntry	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProductTaxonomyCoverage	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProjectConflict	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProjectRequirement	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProjectRequirementVersion	portfolio	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
+com.taxonomy.portfolio.model.ProjectSolution	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.RequirementAnalysisJob	portfolio	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.portfolio.model.RequirementAnalysisJobItem	portfolio	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.portfolio.model.RequirementAnalysisSnapshot	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.RequirementElementMapping	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.RequirementRelationMapping	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.RequirementSolutionLink	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.SolutionDefinition	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.SolutionProductCandidate	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.SolutionTaxonomyCoverage	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationAdoption	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationAdoptionPreview	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationNodeCheckpoint	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationPortableEvidence	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationProposal	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationRecoveryLease	portfolio	TRANSIENT	Worker lease only; restore resumable runs without live claims
+com.taxonomy.portfolio.reformulation.ReformulationRevision	portfolio	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
+com.taxonomy.portfolio.reformulation.ReformulationRun	portfolio	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.portfolio.reformulation.ReformulationUsageAttempt	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.reformulation.ReformulationUsageSession	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.editor.persistence.EditorCheckpoint	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
+com.taxonomy.editor.persistence.EditorOperation	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
+com.taxonomy.editor.persistence.EditorWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY	Retain commit index until complete reconstruction for all retained contexts is proven; Lucene remains rebuildable
+com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
+com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.SyncState	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.SystemRepository	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.UserWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild workspace projection from captured DSL and Git; old readiness is invalid
+storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
+storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default
+storage.git.document-templates	templates	GIT_PRIMARY	Template manifests and all OOXML/blob parts from document-template Git repository
+storage.git.portfolio	portfolio	GIT_PRIMARY	Portable portfolio Git files plus module-owned durable records; same repository only once
+storage.files.source-content	application	PORTABLE_PRIMARY	All referenced source bytes and fragments by content digest; dangling file references fail capture
+storage.files.catalogue	knowledge	PORTABLE_PRIMARY	Exact imported catalogue and relevant source data; do not assume the shipped Excel is identical
+storage.indices.search	knowledge	REBUILDABLE	Lucene and Hibernate Search indices rebuilt from captured primary records and Git
+storage.schema-migrations	application	REBUILDABLE	Run versioned target migrations; SQL schema and sequences are target-owned
+storage.security.user-roles	application	PORTABLE_PRIMARY	Join table user_roles included in explicit identity export; role mapping requires approval
+storage.security.principals	application	PORTABLE_PRIMARY	app_principal, principal_binding and principal_installation preserve stable provider identities and explicit legacy scope mappings; never infer target rights from display names
+storage.security.backup-grants	application	PORTABLE_PRIMARY	backup_capability_grant, backup_version_grant and principal_access_audit preserve source permissions and stable-actor provenance; target grants require explicit approval
+configuration.application	application	PORTABLE_PRIMARY	Versioned non-secret business settings; operational endpoints require explicit target mapping
+configuration.deployment	application	EXTERNAL_DEPENDENCY	Deployment manifests, database credentials, hostnames, TLS and external file paths inventoried; not blindly applied
+external.identity-providers	application	EXTERNAL_DEPENDENCY	AD/OIDC/Keycloak provider backups remain operator-owned; issuer/subject bindings must be verified
+external.git-servers	workspace	EXTERNAL_DEPENDENCY	Local fetched state is not a full server backup; declare observed refs and capture time
+external.secret-stores	application	EXTERNAL_DEPENDENCY	Encryption and remote credentials supplied out of band; key custody outside archive
+external.object-storage	application	EXTERNAL_DEPENDENCY	Referenced blobs must be copied or declared a blocking external prerequisite
+runtime.sessions-caches-browser	application	TRANSIENT	No browser-only edits, HTTP sessions, remember-me tokens, caches or executing LLM calls
+runtime.backup-barrier	application	TRANSIENT	backup_barrier_state and backup_writer_lease coordinate live processes only; restore starts a fresh fenced generation and never reactivates leases
+runtime.backup-jobs	application	TRANSIENT	backup_job_queue and backup_job are bounded export control metadata; restore never reactivates queued jobs, worker claims, download receipts or private staging files

@@ -11,7 +11,11 @@ import java.nio.file.Files;
 import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = { "taxonomy.features.multi-repository-api.enabled=true", "embedding.enabled=false", "taxonomy.admin-password=Scenario-Acceptance-2026!", "taxonomy.security.require-password-change=false" })
+// Hibernate's fixture reset must not recycle usernames inside another test's durable identity registry.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.datasource.url=jdbc:hsqldb:mem:scenario-publication-fixture",
+        "taxonomy.features.multi-repository-api.enabled=true", "embedding.enabled=false",
+        "taxonomy.admin-password=Scenario-Acceptance-2026!", "taxonomy.security.require-password-change=false" })
 @Import(PublicationScenarioConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ScenarioPublicationFixtureTest {

@@ -1,9 +1,10 @@
 package com.taxonomy.security.service;
 
 import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.repository.UserRepository;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -23,9 +24,11 @@ import java.util.stream.Collectors;
 public class DatabaseUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
+    private final PrincipalIdentityService identities;
 
-    public DatabaseUserDetailsService(UserRepository userRepository) {
+    public DatabaseUserDetailsService(UserRepository userRepository, PrincipalIdentityService identities) {
         this.userRepository = userRepository;
+        this.identities = identities;
     }
 
     @Override
@@ -33,15 +36,12 @@ public class DatabaseUserDetailsService implements UserDetailsService {
         AppUser user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
-        return User.builder()
-                .username(user.getUsername())
-                .password(user.getPasswordHash())
-                .disabled(!user.isEnabled())
-                .authorities(
+        PrincipalId principal = user.isEnabled() ? identities.local(user.getId()).id()
+                : new PrincipalId(java.util.UUID.fromString(user.getPrincipalId()));
+        return new PrincipalUserDetails(principal, user.getUsername(), user.getPasswordHash(), user.isEnabled(),
                         user.getRoles().stream()
                                 .map(role -> new SimpleGrantedAuthority(role.getName()))
                                 .collect(Collectors.toSet())
-                )
-                .build();
+                );
     }
 }
