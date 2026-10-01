@@ -593,6 +593,12 @@ sink receipt and revokes escaped producer/output handles. No plaintext temporary
 object database or complete bundle buffer is required by this generator. Provider
 caches and source-document projection remain separate memory costs.
 
+An isolated-JVM test streams 192 MiB of deterministic pseudorandom file content
+with a 96 MiB heap. The resulting bundle itself exceeds that heap, and native Git
+clones it, checks all objects and verifies the file length and single root commit.
+Only this test's source port is synthetic, so it measures generator allocation,
+not storage-provider or whole-application memory.
+
 The source view, authorization and writer fence must remain live through writing,
 including empty/unborn stands. Tests use native Git to clone, verify, inspect, diff
 and extend the exported repository; they check modes, nested Unicode paths and the
