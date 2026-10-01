@@ -53,7 +53,7 @@ public final class IdentityBackupContributor implements BackupDataContributor {
         if (!found.containsAll(requested)) throw new IOException("A referenced source principal is missing");
         var installation = new ArrayList<InstallationRecord>();
         rows.visit(new Query("select installation_id from principal_installation where registry_key='local'", List.of()),
-                r -> new InstallationRecord(UUID.fromString(text(r, "installation_id")).toString()), installation::add);
+                r -> new InstallationRecord(canonicalUuid(r, "installation_id", "Invalid source installation ID").toString()), installation::add);
         if (installation.size() != 1) throw new IOException("Missing source identity installation");
         verifyDependencies(selection, profile, sink);
 
@@ -152,8 +152,19 @@ public final class IdentityBackupContributor implements BackupDataContributor {
         return queries;
     }
     private static PrincipalId principal(ResultSet row, String column) throws SQLException, IOException {
-        try { return new PrincipalId(UUID.fromString(text(row, column))); }
-        catch (IllegalArgumentException | NullPointerException invalid) { throw new IOException("Invalid source principal ID"); }
+        return new PrincipalId(canonicalUuid(row, column, "Invalid source principal ID"));
+    }
+    private static UUID canonicalUuid(ResultSet row, String column, String diagnostic) throws SQLException, IOException {
+        String source = text(row, column);
+        try {
+            UUID id = UUID.fromString(source);
+            // UUID.fromString accepts abbreviations and uppercase text. Normalizing distinct stored keys
+            // would merge source identities in the archive, so require the storage contract verbatim.
+            if (id.toString().equals(source)) return id;
+        } catch (IllegalArgumentException | NullPointerException invalid) {
+            // Raw database values and parser diagnostics must not escape into job errors.
+        }
+        throw new IOException(diagnostic);
     }
     private static boolean flag(ResultSet row, String column) throws SQLException, IOException {
         int value = row.getInt(column);

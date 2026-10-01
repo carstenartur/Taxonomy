@@ -189,6 +189,12 @@ no invented ownership scope or provider binding. Capture performs no registratio
 or source writes. Registered historical principals remain distinct from local
 accounts that happen to have the same display name.
 
+Principal and source-installation UUIDs must use the canonical stored spelling.
+Abbreviations and uppercase aliases are rejected instead of normalizing distinct
+database keys into the same exported identity. Principal/account keys and the
+installation ID are checked before identity datasets are written; invalid values
+produce fixed diagnostics without exposing database contents.
+
 Normal identity files live below `identities/`. Password hashes are queried and
 written only for the authorized `INCLUDE_ENCRYPTED` full-installation selection,
 under `protected/identities/password-hashes.ndjson`. The existing coordinator

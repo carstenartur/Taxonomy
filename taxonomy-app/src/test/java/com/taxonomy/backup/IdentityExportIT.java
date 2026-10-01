@@ -8,6 +8,9 @@ import com.taxonomy.security.service.PrincipalIdentityService;
 import org.hibernate.cfg.Configuration;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -95,6 +98,53 @@ class IdentityExportIT {
                     .write(snapshot(fixture.alice, BackupProfile.SELECTED_VERSION, SecretsSelection.EXCLUDE), output);
             assertThat(output.text()).contains(fixture.retired.value().toString(), "retired-owner", "EXPLICIT_MAPPING")
                     .doesNotContain("ROLE_ADMIN", "BOB-PRIVATE", "ALICE-HASH", "HISTORICAL-AUDIT", "external-subject");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "1-1-1-1-1,00000001-0001-0001-0001-000000000001",
+            "ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB,abcdefab-cdef-abcd-efab-cdefabcdefab"
+    })
+    void differentStoredOwnersCannotCollapseIntoTheSameExportedPrincipal(String sourceId, String canonicalId) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.jdbc.update("insert into app_principal values (?,?,0)", canonicalId, "canonical-owner");
+            fixture.jdbc.update("insert into app_principal values (?,?,0)", sourceId, "noncanonical-owner");
+            var output = new CurrentStateExportIT.Contents();
+            assertThatThrownBy(() -> fixture.installationContributor().write(
+                    snapshot(fixture.alice, BackupProfile.INSTALLATION_CURRENT, SecretsSelection.EXCLUDE), output))
+                    .isInstanceOf(java.io.IOException.class).hasMessage("Invalid source principal ID").hasNoCause();
+            assertThat(output.entries).isEmpty();
+            assertThat(fixture.jdbc.queryForList("select principal_id from app_principal where scope_key in (?,?)", String.class,
+                    "canonical-owner", "noncanonical-owner")).containsExactlyInAnyOrder(sourceId, canonicalId);
+        }
+    }
+
+    @Test void malformedPendingAccountIsRejectedBeforeWritingIdentityDatasets() throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.jdbc.update("update app_user set principal_id=? where username='pending'", "INVALID-SOURCE-ID");
+            var output = new CurrentStateExportIT.Contents();
+            assertThatThrownBy(() -> fixture.installationContributor().write(
+                    snapshot(fixture.alice, BackupProfile.INSTALLATION_CURRENT, SecretsSelection.EXCLUDE), output))
+                    .isInstanceOf(java.io.IOException.class).hasMessage("Invalid source principal ID").hasNoCause();
+            assertThat(output.entries).isEmpty();
+            assertThat(fixture.jdbc.queryForObject("select principal_id from app_user where username='pending'", String.class))
+                    .isEqualTo("INVALID-SOURCE-ID");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1-1-1-1-1", "ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB", "INVALID-SOURCE-ID"})
+    void malformedInstallationIdentityCannotBeSilentlyNormalized(String sourceId) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.jdbc.update("update principal_installation set installation_id=? where registry_key='local'", sourceId);
+            var output = new CurrentStateExportIT.Contents();
+            assertThatThrownBy(() -> fixture.installationContributor().write(
+                    snapshot(fixture.alice, BackupProfile.INSTALLATION_CURRENT, SecretsSelection.EXCLUDE), output))
+                    .isInstanceOf(java.io.IOException.class).hasMessage("Invalid source installation ID").hasNoCause();
+            assertThat(output.entries).isEmpty();
+            assertThat(fixture.jdbc.queryForObject("select installation_id from principal_installation where registry_key='local'", String.class))
+                    .isEqualTo(sourceId);
         }
     }
 
