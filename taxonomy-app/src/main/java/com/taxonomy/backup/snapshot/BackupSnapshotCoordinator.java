@@ -80,11 +80,16 @@ public final class BackupSnapshotCoordinator {
                 Instant started = clock.instant(); long deadline = System.nanoTime() + limits.maxDuration().toNanos();
                 BackupId id = BackupId.create(); CapturePlan plan = inventory.inspect(creation);
                 var versions = new HashMap<BackupComponentId, Integer>();
-                for (var component : plan.components().entrySet()) {
+                var omissions = new LinkedHashSet<>(plan.omissions());
+                var plannedComponents = plan.components().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList();
+                for (var component : plannedComponents) {
                     var adapter = contributors.get(component.getKey());
                     if (adapter == null || adapter.schemaVersion() != component.getValue().version())
                         throw new IllegalStateException("Missing or unsupported capture component: " + component.getKey().value());
                     versions.put(component.getKey(), component.getValue().version());
+                    if (adapter instanceof BackupDataContributor data)
+                        omissions.addAll(data.omissions(creation.request().profile()));
                 }
                 versions.put(PROOF, 1);
                 var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),
@@ -96,7 +101,7 @@ public final class BackupSnapshotCoordinator {
                         : Files.createTempDirectory(root, ".capturing-");
                 var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);
                 var components = new ArrayList<BackupManifest.Component>();
-                for (var component : plan.components().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList()) {
+                for (var component : plannedComponents) {
                     sink.check(); int before = sink.entries.size();
                     contributors.get(component.getKey()).write(snapshot, sink);
                     var definition = component.getValue();
@@ -111,7 +116,7 @@ public final class BackupSnapshotCoordinator {
                 components.add(new BackupManifest.Component(PROOF, 1, BackupCompleteness.COMPLETE, List.of(proofEntry.path()), Set.of()));
                 var manifest = new BackupManifest(BackupManifest.FORMAT_VERSION, plan.applicationVersion(), plan.build(), id, plan.sourceInstallationId(),
                         creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), BackupManifest.SUPPORTED_FEATURES,
-                        components, plan.repositories(), sink.entries, plan.dependencies(), plan.omissions());
+                        components, plan.repositories(), sink.entries, plan.dependencies(), List.copyOf(omissions));
                 byte[] document = new BackupManifestCodec().write(manifest);
                 if (document.length > limits.maxTotalBytes() - sink.total) throw new IOException("Capture byte limit exceeded");
                 try (var channel = FileChannel.open(staging.resolve("manifest.json"), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
@@ -169,6 +174,7 @@ public final class BackupSnapshotCoordinator {
             budget();
             if (System.nanoTime() - validatedAt >= Duration.ofMillis(100).toNanos()) check();
         }
+        @Override public void checkpoint() throws IOException { progress(); }
         @Override public BackupEntry write(String path, InputStream input) throws IOException {
             check();
             if (path.startsWith("protected/") && secrets != SecretsSelection.INCLUDE_ENCRYPTED)

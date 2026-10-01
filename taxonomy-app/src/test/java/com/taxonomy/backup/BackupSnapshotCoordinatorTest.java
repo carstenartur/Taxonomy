@@ -8,6 +8,8 @@ import com.taxonomy.backup.snapshot.GuardedBackupDataSource;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -112,6 +114,21 @@ class BackupSnapshotCoordinatorTest {
         assertEmpty();
     }
 
+    @Test void cancellationDuringPreflightIsObservedBeforeAnyEntryIsWritten() {
+        var checks = new java.util.concurrent.atomic.AtomicInteger();
+        try {
+            assertThatThrownBy(() -> coordinator((snapshot, sink) -> {
+                for (int i = 0; i < 100; i++) sink.checkpoint();
+                fail("Cancelled preflight must not reach entry writing");
+            }).capture(authorization.authorize(actor, request), bytes -> {
+                if (checks.incrementAndGet() == 10) throw new InterruptedIOException("Cancelled");
+            })).isInstanceOf(InterruptedIOException.class);
+        } finally { Thread.interrupted(); }
+        assertEmpty();
+        assertThat(raw.queryForObject("select phase from backup_barrier_state", Integer.class)).isZero();
+        assertThatCode(() -> secondNode.update("update evidence set revision=5")).doesNotThrowAnyException();
+    }
+
     @Test void undeclaredComponentsDuplicatePathsAndPathEscapesCannotProduceACapture() {
         var missing = new BackupSnapshotCoordinator(barrier, authorization, ignored -> plan(), List.of(), directory, CaptureLimits.defaults(), Clock.systemUTC());
         assertThatThrownBy(() -> missing.capture(authorization.authorize(actor, request))).hasMessageContaining("component");
@@ -133,6 +150,82 @@ class BackupSnapshotCoordinatorTest {
                 try (var input = captured.openEntry("data/records/current.ndjson")) { input.transferTo(OutputStream.nullOutputStream()); }
             }).isInstanceOf(IOException.class).hasMessageContaining("digest");
         }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = BackupProfile.class, names = {"CURRENT_STATE", "INSTALLATION_CURRENT"})
+    void retainedManifestIncludesSelectedAdaptersProfileOmissionsAndReviewedExclusions(BackupProfile profile) throws Exception {
+        var events = new ArrayList<String>();
+        var adapter = dataContributor(COMPONENT, selected -> {
+            assertThat(selected).isEqualTo(profile);
+            events.add("omissions");
+            return List.of("shared omission", "adapter: " + selected);
+        }, (snapshot, sink) -> {
+            events.add("write");
+            write(sink, "data/records/current.ndjson", "current");
+        });
+        var inventory = new BackupInventory(List.of(
+                new BackupInventory.Category("records", COMPONENT, BackupStorageRule.PORTABLE_PRIMARY, "Current records"),
+                new BackupInventory.Category("lease", COMPONENT, BackupStorageRule.TRANSIENT, "Never reactivate workers")));
+        var composition = new CompositeBackupDataContributor(COMPONENT, 1, inventory, List.of(adapter));
+        var firstId = new BackupComponentId("a-records");
+        var first = dataContributor(firstId, selected -> {
+            assertThat(selected).isEqualTo(profile); events.add("first omissions");
+            return List.of("first adapter omission");
+        }, (snapshot, sink) -> {
+            events.add("first write"); write(sink, "data/a-records/current.ndjson", "first");
+        });
+        var unselected = dataContributor(new BackupComponentId("unselected"), ignored -> {
+            throw new AssertionError("Unselected component metadata was inspected");
+        }, (snapshot, sink) -> fail("Unselected component was captured"));
+        CapturePlan source = plan();
+        var components = new HashMap<>(source.components());
+        components.put(firstId, new CaptureComponent(1, BackupCompleteness.COMPLETE, Set.of()));
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization,
+                ignored -> new CapturePlan(source.applicationVersion(), source.build(), source.sourceInstallationId(), source.repositories(),
+                        components, source.dependencies(), List.of("plan omission", "shared omission")),
+                List.of(unselected, composition, first), directory, CaptureLimits.defaults(), Clock.systemUTC());
+        var selectedRequest = new BackupRequest(profile, profile.isInstallation() ? new BackupScope.Installation() : request.scope(),
+                new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
+        var creation = authorization.authorize(actor, selectedRequest);
+        try (var captured = coordinator.capture(creation)) {
+            assertThat(captured.manifest().omissions()).containsExactly("plan omission", "shared omission",
+                    "first adapter omission", "lease: excluded (TRANSIENT); Never reactivate workers", "adapter: " + profile);
+            try (var reopened = CapturedBackup.open(captured.directory(), creation)) {
+                assertThat(reopened.manifest().omissions()).isEqualTo(captured.manifest().omissions());
+            }
+        }
+        assertThat(events).containsExactly("first omissions", "omissions", "first write", "write");
+        assertEmpty();
+    }
+
+    @Test void unavailableOmissionMetadataAbortsBeforeSourceCaptureAndReleasesTheLease() {
+        var firstId = new BackupComponentId("a-records");
+        var first = dataContributor(firstId, profile -> List.of("first adapter omission"),
+                (snapshot, sink) -> fail("Earlier component must not write before later metadata is collected"));
+        var adapter = dataContributor(COMPONENT, profile -> { throw new IllegalStateException("Omissions unavailable"); },
+                (snapshot, sink) -> fail("Sources must not be captured with missing omission metadata"));
+        CapturePlan source = plan();
+        var components = new HashMap<>(source.components());
+        components.put(firstId, new CaptureComponent(1, BackupCompleteness.COMPLETE, Set.of()));
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, ignored -> new CapturePlan(source.applicationVersion(),
+                source.build(), source.sourceInstallationId(), source.repositories(), components, source.dependencies(), source.omissions()),
+                List.of(adapter, first), directory, CaptureLimits.defaults(), Clock.systemUTC());
+        assertThatThrownBy(() -> coordinator.capture(authorization.authorize(actor, request)))
+                .isInstanceOf(IllegalStateException.class).hasMessage("Omissions unavailable");
+        assertEmpty();
+        assertThatCode(() -> secondNode.update("update evidence set revision=5")).doesNotThrowAnyException();
+    }
+
+    private static BackupDataContributor dataContributor(BackupComponentId id,
+            java.util.function.Function<BackupProfile, List<String>> omissions, Write action) {
+        return new BackupDataContributor() {
+            @Override public BackupComponentId componentId() { return id; }
+            @Override public int schemaVersion() { return 1; }
+            @Override public Set<String> categories() { return Set.of("records"); }
+            @Override public List<String> omissions(BackupProfile profile) { return omissions.apply(profile); }
+            @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException { action.run(snapshot, sink); }
+        };
     }
 
     private BackupSnapshotCoordinator coordinator(Write action) {
