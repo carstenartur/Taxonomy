@@ -97,6 +97,17 @@ legacy two-key `requirement` form, without treating one-key architecture
 requirements as portfolio parents. A regression exercises the real portfolio
 exporter and verifies history removal and source immutability.
 
+`PortablePortfolioGitService.exportCurrentState` reads only each saved requirement
+version through its exact version, requirement and tenant key. It does not load all
+requirement versions or contribute reformulation ancestry before filtering them.
+The owner serializer writes the portable current version number, omits original text
+and change reasons, and retains current solution/product decisions. An older version
+can be the saved current version. A missing pointer yields requirement metadata
+without an invented body; an unresolved nonnull pointer fails instead of selecting
+the newest historical version. Ordinary collaboration export still retains history.
+This owner API returns one document; the change does not establish total-document
+size limits or register a complete production capture source.
+
 The existing collaboration `materialize` operation is not a backup restore
 implementation: importing a lone selected version can create local version 1
 even when its source number is higher. P08 must preserve or explicitly map

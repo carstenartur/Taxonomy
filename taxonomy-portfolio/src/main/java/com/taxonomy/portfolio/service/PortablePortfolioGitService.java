@@ -42,7 +42,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     /** Shareable working state; ordinary collaboration exports continue to retain their declared history. */
     @Transactional(readOnly = true)
     public String exportCurrentState(String username, WorkspaceContext context) {
-        return com.taxonomy.portfolio.backup.PortfolioStandDocument.project(exportPortfolio(username, context));
+        return decisionContributor.contributeTo(exportCurrentPortfolio(username, context), username, context);
     }
 
     private static final String CURRENT_VERSION_NUMBER = "currentVersionNumber";

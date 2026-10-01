@@ -56,6 +56,27 @@ class PortfolioGitServiceTest {
     }
 
     @Test
+    void currentStateFollowsAnOlderSavedVersionWithoutChangingTheFullHistory() {
+        String repositoryId = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var source = new WorkspaceContext("alice", "older-current-source", "draft", repositoryId);
+        var project = projectService.createProject(new CreateProjectRequest(
+                "P-OLDER", "Saved current portfolio", null, null, null, null, null, null), "alice", source);
+        var requirement = projectService.createRequirement(project.id(), new CreateRequirementRequest(
+                "REQ-OLDER", "Saved requirement", "Chosen older body", null, 80, null, null, null, "alice", "Initial", null), "alice", source);
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest(
+                "Later private body", "Private later reason", null), "alice", source);
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest(
+                "Chosen older body", "Select existing version", null), "alice", source);
+        String full = portfolioGitService.exportPortfolio("alice", source);
+
+        assertThat(portablePortfolioGitService.exportCurrentState("alice", source))
+                .contains("currentVersionNumber: 1", "requirementVersion P-OLDER REQ-OLDER 1", "Chosen older body")
+                .doesNotContain("requirementVersion P-OLDER REQ-OLDER 2", "Later private body", "Private later reason");
+        assertThat(portfolioGitService.exportPortfolio("alice", source)).isEqualTo(full)
+                .contains("requirementVersion P-OLDER REQ-OLDER 2", "Later private body");
+    }
+
+    @Test
     void projectsRequirementsAndAllTextVersionsRoundTripThroughDsl() {
         String repositoryId = systemRepositoryService.getPrimaryRepository().getRepositoryId();
         WorkspaceContext alice = new WorkspaceContext("alice", "git-roundtrip-alice", "draft",
