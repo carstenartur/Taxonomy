@@ -60,4 +60,34 @@ class BackupCaptureScopeTest {
         return new SnapshotContext.RepositoryState(Map.of("refs/heads/main", commit), "refs/heads/main",
                 Map.of("main", new SnapshotContext.WorkingState(revision, commit, 1), "feature", new SnapshotContext.WorkingState(revision + 1, commit, 1)), Set.of(commit));
     }
+
+    @Test void exportedHeadsAreImmutableAndBoundToCapturedArchiveIdentitiesAndGitRepresentation() {
+        var key = new BackupRepositoryKey("repo", "private");
+        var request = new BackupRequest(BackupProfile.CURRENT_STATE, new BackupScope.Workspace("repo", "private"), new BackupTime.Current(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);
+        var auth = new AuthorizedBackupRequest(request, PrincipalId.create(), "decision", Instant.EPOCH, Set.of(BackupCapability.EXPORT_CURRENT));
+        var states = Map.of(key, state('a', 1)); var ids = Map.of(key, "opaque"); var heads = new HashMap<>(Map.of(key, "b".repeat(40)));
+        var snapshot = new SnapshotContext(BackupId.create(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), ids, heads);
+        heads.clear(); assertEquals(Map.of(key, "b".repeat(40)), snapshot.exportedHeads());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.exportedHeads().clear());
+        for (var invalid : List.of(Map.of(key, "short"), Map.of(key, "B".repeat(40)), Map.of(new BackupRepositoryKey("foreign", null), "b".repeat(40)))) {
+            assertThrows(IllegalArgumentException.class, () -> new SnapshotContext(snapshot.backupId(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), ids, invalid));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new SnapshotContext(snapshot.backupId(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), Map.of(), snapshot.exportedHeads()));
+        var noGit = new AuthorizedBackupRequest(new BackupRequest(request.profile(), request.scope(), request.time(), GitRepresentation.NONE, SecretsSelection.EXCLUDE),
+                auth.principalId(), "decision", Instant.EPOCH, auth.capabilities());
+        assertThrows(IllegalArgumentException.class, () -> new SnapshotContext(snapshot.backupId(), noGit, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), ids, snapshot.exportedHeads()));
+        assertTrue(new SnapshotContext(snapshot.backupId(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of()).exportedHeads().isEmpty());
+        assertTrue(new SnapshotContext(snapshot.backupId(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), ids).exportedHeads().isEmpty());
+    }
+
+    @Test void aGeneralGitCaptureCanHaveAnUnbornRepositoryWithoutAnExportedHead() {
+        var central = new BackupRepositoryKey("repo", null); var unborn = new BackupRepositoryKey("repo", "private");
+        var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Repositories(Map.of("repo", Set.of("private"))),
+                new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);
+        var auth = new AuthorizedBackupRequest(request, PrincipalId.create(), "decision", Instant.EPOCH, Set.of(BackupCapability.EXPORT_CURRENT, BackupCapability.EXPORT_HISTORY));
+        var snapshot = new SnapshotContext(BackupId.create(), auth, Instant.EPOCH, Instant.EPOCH, 1,
+                Map.of(central, state('a', 1), unborn, new SnapshotContext.RepositoryState(Map.of(), null, Map.of(), Set.of())), Map.of(),
+                Map.of(central, "central", unborn, "private"), Map.of(central, "a".repeat(40)));
+        assertEquals(Set.of(central), snapshot.exportedHeads().keySet());
+    }
 }

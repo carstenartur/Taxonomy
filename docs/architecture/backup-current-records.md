@@ -559,8 +559,8 @@ so a cooperating inventory reader observes cancellation, time limits and lease
 renewal during discovery. A swallowed checkpoint failure also poisons capture. The
 application-private staging directory is removed if discovery fails.
 
-This component deliberately refuses bundle, bare, worktree and history requests;
-they require the P06 Git adapter. It claims only the logical Git inventory category,
+This component also supports standalone bundles as described below. It refuses
+bare, worktree and history requests; they require further P06 adapters. It claims only the logical Git inventory category,
 not the remaining workspace records, external-server inventory, portfolio ownership
 or complete application closure. It is not registered as a production capture source.
 Integration tests cover current and selected file payloads through encrypted staging,
@@ -607,3 +607,39 @@ real portfolio projector, encrypted capture, durable reopening and verified arch
 reading after source sessions close. This generator does not yet register a
 production bundle contributor or complete manifest/reference closure. Full history,
 bare/worktree output, native Windows and restore acceptance remain separate work.
+
+### Manifest-bound stand bundles
+
+`GitStandBackupContributor` composes the generator for `CURRENT_STATE`,
+`SELECTED_VERSION` and `INSTALLATION_CURRENT` requests with `BUNDLE` representation.
+Inventory opens the authorized repository closure under the writer fence, projects
+the effective stand and records its synthetic head in the existing manifest
+`exportedHead` field. `sourceCommit` retains the original source commit when one
+exists; an unborn source has no invented provenance. The synthetic commit uses the
+server's authorization timestamp consistently across discovery and writing. The
+manifest's capture interval continues to describe the actual fenced capture.
+
+`SnapshotContext` carries immutable exported heads together with the opaque archive
+IDs. The coordinator passes the inventory's heads to contributors, and durable
+reopening reconstructs them from the verified manifest. Head values must belong to
+captured archive identities and require a Git representation. General history
+contexts may omit a head for an unborn repository; this stand contributor requires
+one synthetic head for every selected bundle repository, including empty stands.
+
+Before writing a bundle or accepting architecture document references, the
+contributor rechecks source refs/revisions and recomputes the projected stand head.
+A changed head aborts capture even if the source's revision counters did not change.
+The generator additionally verifies bytes while streaming. Logical file/byte
+budgets apply across the complete selected closure in every pass.
+
+Each repository writes only `repositories/<archive-id>/stand.bundle`. The manifest
+already binds identity, representation, synthetic head, original source evidence
+and the payload receipt; no parallel bundle NDJSON index or loose file copies are
+emitted. `NONE` retains the existing schema-1 file dataset unchanged. An empty
+installation closure emits no Git bundle payloads.
+
+Integration tests now use the real contributor with the portfolio projector and
+encrypted staging for all three supported profiles, reopen capture after source
+closure, verify the archive and clone its bundle. A same-revision saved-body change
+must leave no published or partial capture. These adapters remain unregistered
+until complete owner/reference closure and production inventory are implemented.

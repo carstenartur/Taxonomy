@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.*;
@@ -23,6 +24,107 @@ class GitStandBackupContributorTest {
     private static final BackupCheckpoint CHECK = () -> { };
     private static final GitStandBackupSource.Limits LIMITS = new GitStandBackupSource.Limits(new GitTreeCapture.Limits(100, 1_000_000, 2_000_000), 100_000);
     private static final String DSL = "architecture.taxdsl", METADATA = "data/workspace/git-stands.ndjson";
+
+    @Test void bundleInventoryPinsASyntheticHeadAndOriginalCurrentCommit() throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            String original = f.commit(Map.of(DSL, bytes("CURRENT embedded-secret")));
+            var auth = authorized(new BackupRequest(BackupProfile.CURRENT_STATE, scope(), new BackupTime.Current(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE));
+            var contributor = new GitStandBackupContributor(f.source(), LIMITS); var plan = inspect(contributor, auth);
+            assertThat(plan).hasSize(1); var repository = plan.getFirst();
+            assertThat(repository.representation()).isEqualTo(GitRepresentation.BUNDLE);
+            assertThat(repository.sourceCommit()).isEqualTo(original);
+            try (var stand = f.source().open(auth, WORKSPACE, LIMITS, CHECK)) {
+                assertThat(repository.exportedHead()).isEqualTo(GitStandBundle.capture(stand, auth.authorizedAt(), CHECK).head()).isNotEqualTo(original);
+            }
+            assertThat(inspect(contributor, auth).getFirst().exportedHead()).isEqualTo(repository.exportedHead());
+        }
+    }
+
+    @ParameterizedTest @EnumSource(value = BackupProfile.class, names = {"CURRENT_STATE", "SELECTED_VERSION", "INSTALLATION_CURRENT"})
+    void bundlesUseOnlyManifestIdentitiesAndHeadsForTheCompleteSelectedClosure(BackupProfile profile) throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            String central = f.commit("central-a", Map.of(DSL, bytes("CENTRAL embedded-secret")));
+            String selected = f.commit(Map.of(DSL, bytes("SELECTED embedded-secret"))), today = f.commit(Map.of(DSL, bytes("TODAY")));
+            f.saved(WORKSPACE, "draft", "SAVED-DRAFT embedded-secret", 3, today, 1, null);
+            var keys = Set.of(CENTRAL, WORKSPACE);
+            var auth = authorized(new BackupRequest(profile, profile == BackupProfile.INSTALLATION_CURRENT ? new BackupScope.Installation() : both().request().scope(),
+                    profile == BackupProfile.SELECTED_VERSION ? new BackupTime.SelectedVersion(Map.of(CENTRAL, central, WORKSPACE, selected)) : new BackupTime.Current(),
+                    GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE));
+            var contributor = new GitStandBackupContributor(f.source(), LIMITS); var plan = contributor.inspect(auth, keys, CHECK); var context = snapshot(auth, plan);
+            assertThat(plan).hasSize(2).allSatisfy(repository -> {
+                assertThat(repository.representation()).isEqualTo(GitRepresentation.BUNDLE);
+                assertThat(repository.exportedHead()).matches("[0-9a-f]{40}");
+                assertThat(repository.sourceCommit()).isEqualTo(repository.id().equals(CENTRAL) ? central : profile == BackupProfile.SELECTED_VERSION ? selected : today);
+            });
+            var output = new Contents(); contributor.write(context, output);
+            assertThat(output.entries).containsOnlyKeys(plan.stream().map(repository -> "repositories/" + repository.archiveId() + "/stand.bundle").toList());
+            for (var repository : plan) {
+                String header = new String(output.entries.get("repositories/" + repository.archiveId() + "/stand.bundle"), StandardCharsets.UTF_8).split("\n\n", 2)[0];
+                assertThat(header).contains(repository.exportedHead() + " refs/heads/stand", repository.exportedHead() + " HEAD");
+            }
+            var expected = new ArrayList<>(List.of(new BackupDocumentReference(CENTRAL, central, DSL, hash(bytes("CENTRAL embedded-secret")))));
+            if (profile == BackupProfile.SELECTED_VERSION) expected.add(new BackupDocumentReference(WORKSPACE, selected, DSL, hash(bytes("SELECTED embedded-secret"))));
+            assertThat(contributor.documents(context, CHECK)).containsExactlyInAnyOrderElementsOf(expected);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"missing", "wrong"})
+    void bundleWritesAndDocumentProofsRequireTheExactInventoriedExportedHeads(String problem) throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            f.commit(Map.of(DSL, bytes("CURRENT"))); var auth = bundleCurrent(); var contributor = new GitStandBackupContributor(f.source(), LIMITS);
+            var context = snapshot(auth, inspect(contributor, auth));
+            var wrong = new SnapshotContext(context.backupId(), auth, context.startedAt(), context.completedAt(), 1,
+                    context.repositories(), context.componentVersions(), context.repositoryArchiveIds(), problem.equals("missing") ? Map.of() : Map.of(WORKSPACE, "0".repeat(40)));
+            var output = new Contents(); assertThatThrownBy(() -> contributor.write(wrong, output)).isInstanceOf(IOException.class); assertThat(output.entries).isEmpty();
+            assertThatThrownBy(() -> contributor.documents(wrong, CHECK)).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"saved-body", "projection"})
+    void changedBundleContentsFailEvenWhenSourceRefsAndRevisionNumbersStayTheSame(String change) throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            String head = f.commit(Map.of(DSL, bytes("COMMITTED"))); f.saved(WORKSPACE, "draft", "SAVED-FIRST", 3, head, 1, null);
+            var suffix = new AtomicReference<>(""); var source = f.source(document -> document + suffix.get());
+            var contributor = new GitStandBackupContributor(source, LIMITS); var auth = bundleCurrent(); var context = snapshot(auth, inspect(contributor, auth));
+            if (change.equals("saved-body")) f.sql("update editor_workspace set dsl='1:SAVED-SECOND'"); else suffix.set(" PROJECTED-DIFFERENTLY");
+            try (var stand = source.open(auth, WORKSPACE, LIMITS, CHECK)) { assertThat(stand.state()).isEqualTo(context.repositories().get(WORKSPACE)); }
+            var output = new Contents(); assertThatThrownBy(() -> contributor.write(context, output)).isInstanceOf(IOException.class).hasMessageContaining("exported head changed");
+            assertThat(output.entries).isEmpty();
+            assertThatThrownBy(() -> contributor.documents(context, CHECK)).isInstanceOf(IOException.class).hasMessageContaining("exported head changed");
+        }
+    }
+
+    @Test void anUnbornBundleHasAnExplicitSyntheticHeadWithoutInventingSourceProvenance() throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            f.commit(Map.of(DSL, bytes("OTHER-BRANCH"))); f.sql("update user_workspace set current_branch='unborn'");
+            var contributor = new GitStandBackupContributor(f.source(), LIMITS); var auth = bundleCurrent(); var plan = inspect(contributor, auth);
+            assertThat(plan.getFirst().sourceCommit()).isNull(); assertThat(plan.getFirst().exportedHead()).matches("[0-9a-f]{40}");
+            assertThat(plan.getFirst().captured().requiredCommits()).isEmpty(); var output = new Contents(); contributor.write(snapshot(auth, plan), output);
+            assertThat(output.entries).containsOnlyKeys("repositories/" + plan.getFirst().archiveId() + "/stand.bundle");
+            assertThat(contributor.documents(snapshot(auth, plan), CHECK)).isEmpty();
+        }
+    }
+
+    @Test void anEmptyInstallationBundleClosureDoesNotInventAnIndexOrRepository() throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            var auth = authorized(new BackupRequest(BackupProfile.INSTALLATION_CURRENT, new BackupScope.Installation(), new BackupTime.Current(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE));
+            var contributor = new GitStandBackupContributor(f.source(), LIMITS); var plan = contributor.inspect(auth, Set.of(), CHECK); var output = new Contents();
+            contributor.write(snapshot(auth, plan), output); assertThat(output.entries).isEmpty(); assertThat(contributor.documents(snapshot(auth, plan), CHECK)).isEmpty();
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"count", "bytes"})
+    void bundleClosureBudgetsApplyToInventoryPayloadsAndDocumentProofs(String dimension) throws Exception {
+        try (var f = new GitStandBackupSourceTest.Fixture()) {
+            f.commit("central-a", Map.of("file.bin", bytes("one"))); f.commit(Map.of("file.bin", bytes("two")));
+            var auth = authorized(new BackupRequest(BackupProfile.CURRENT_STATE, both().request().scope(), new BackupTime.Current(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE));
+            var contributor = new GitStandBackupContributor(f.source(), LIMITS); var context = snapshot(auth, inspect(contributor, auth));
+            var small = new GitStandBackupContributor(f.source(), new GitStandBackupSource.Limits(new GitTreeCapture.Limits(dimension.equals("count") ? 1 : 100, 1_000_000, dimension.equals("bytes") ? 5 : 2_000_000), 100_000));
+            assertThatThrownBy(() -> small.inspect(auth, auth.request().scope().selectedRepositories(), CHECK)).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> small.write(context, new Contents())).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> small.documents(context, CHECK)).isInstanceOf(IOException.class);
+        }
+    }
 
     @Test void capturesExplicitCentralAndPrivateFilesWithManifestIdsAndUnsupersededDocumentProof() throws Exception {
         try (var f = new GitStandBackupSourceTest.Fixture()) {
@@ -101,7 +203,7 @@ class GitStandBackupContributorTest {
         }
     }
 
-    @ParameterizedTest @EnumSource(value = GitRepresentation.class, names = "NONE", mode = EnumSource.Mode.EXCLUDE)
+    @ParameterizedTest @EnumSource(value = GitRepresentation.class, names = {"NONE", "BUNDLE"}, mode = EnumSource.Mode.EXCLUDE)
     void cannotSilentlyReplaceRequestedGitRepresentationsWithFileOnlyPayloads(GitRepresentation representation) throws Exception {
         try (var f = new GitStandBackupSourceTest.Fixture()) {
             var contributor = new GitStandBackupContributor(f.source(), LIMITS);
@@ -173,10 +275,12 @@ class GitStandBackupContributorTest {
     private static SnapshotContext snapshot(AuthorizedBackupRequest auth, List<BackupManifest.Repository> plan) {
         return new SnapshotContext(BackupId.create(), auth, Instant.EPOCH, Instant.EPOCH, 1,
                 plan.stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), Map.of(new BackupComponentId("workspace"), 1),
-                plan.stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)));
+                plan.stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),
+                plan.stream().filter(repository -> repository.exportedHead() != null).collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));
     }
     private static BackupScope scope() { return new BackupScope.Workspace(WORKSPACE.repositoryId(), WORKSPACE.workspaceId()); }
     private static AuthorizedBackupRequest current() { return authorized(new BackupRequest(BackupProfile.CURRENT_STATE, scope(), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE)); }
+    private static AuthorizedBackupRequest bundleCurrent() { return authorized(new BackupRequest(BackupProfile.CURRENT_STATE, scope(), new BackupTime.Current(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE)); }
     private static AuthorizedBackupRequest both() { return authorized(new BackupRequest(BackupProfile.CURRENT_STATE, new BackupScope.Repositories(Map.of("repo-a", Set.of("private-a"))), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE)); }
     private static AuthorizedBackupRequest authorized(BackupRequest request) { return new AuthorizedBackupRequest(request, PrincipalId.create(), "checked", Instant.now(), EnumSet.allOf(BackupCapability.class)); }
     private static byte[] bytes(String value) { return value.getBytes(StandardCharsets.UTF_8); }

@@ -107,7 +107,9 @@ public final class BackupSnapshotCoordinator {
                 versions.put(PROOF, 1);
                 var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),
                         plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions,
-                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)));
+                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),
+                        plan.repositories().stream().filter(repository -> repository.exportedHead() != null)
+                                .collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));
                 var components = new ArrayList<BackupManifest.Component>();
                 for (var component : plannedComponents) {
                     sink.check(); int before = sink.entries.size();

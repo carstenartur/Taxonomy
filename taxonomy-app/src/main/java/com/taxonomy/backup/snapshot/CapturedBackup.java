@@ -28,7 +28,9 @@ public final class CapturedBackup implements AutoCloseable {
         this.snapshot = new SnapshotContext(manifest.backupId(), authorization, manifest.captureStartedAt(), manifest.captureCompletedAt(), generation,
                 manifest.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)),
                 manifest.components().stream().collect(Collectors.toMap(BackupManifest.Component::id, BackupManifest.Component::version)),
-                manifest.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)));
+                manifest.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),
+                manifest.repositories().stream().filter(repository -> repository.exportedHead() != null)
+                        .collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));
         this.entries = manifest.entries().stream().collect(Collectors.toUnmodifiableMap(BackupEntry::path, e -> e));
     }
 
