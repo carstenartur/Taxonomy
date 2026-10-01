@@ -88,10 +88,22 @@ snapshots and decisions, solution/product decisions and reformulation work.
 Current snapshots must belong to the current requirement version; obsolete
 snapshot pointers become absent in stand exports. Full history keeps the
 original pointers. Cross-tenant project/solution/product/requirement links and
-missing current versions fail dependency verification before record output.
+missing current versions fail dependency verification.
 Reformulation adoption ancestry, former originals and change reasons require a
 history profile. Current reformulation drafts retain their active revision;
 frozen inherited history is excluded and cannot authorize resumed execution.
+
+All 25 portfolio datasets recheck the exact captured repository/workspace tenant
+before constructing a record. Joined datasets project their owning tenant for
+this check without adding fields to the portable schema. Source and analysis
+dependency discovery applies the same check. Project/solution/product/requirement
+links, conflict participants, current-version pointers and the parents used by
+dependency discovery additionally require exact full tenant equality, including
+the branch, even in installation captures. Case-insensitive SQL matches cannot
+substitute a differently spelled tenant or branch. A mismatch aborts capture and
+requires the coordinator to discard partial staging. These checks harden the
+existing selection; complete portfolio reference closure is still required for
+production composition.
 
 A current Git tree can itself contain historical `requirementVersion` and
 `reformulationEvidence` blocks. `PortfolioStandDocument` therefore selects the

@@ -66,11 +66,14 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
     public List<BackupSourceReference> sourceReferences(SnapshotContext snapshot) throws IOException {
         var scope=new BackupRowScope(snapshot);
         var result=new ArrayList<BackupSourceReference>();
-        rows.visit(query(scope,"select t.id,t.source_artifact_id,t.source_version_id,t.source_fragment_ids from project_req_version t",
+        rows.visit(query(scope,"select t.id,t.scope_key,owner.scope_key as requirement_scope,t.source_artifact_id,t.source_version_id,t.source_fragment_ids from project_req_version t left join project_requirement owner on owner.id=t.requirement_id",
                 scope.tenants("t.scope_key"),"exists (select 1 from project_requirement r where r.id=t.requirement_id and r.scope_key=t.scope_key and r.current_version_id=t.id)","t.id"),
-                r -> new BackupSourceReference(reference(r,"portfolio.requirement-version","id"),
-                        reference(r,"application.source-artifact","source_artifact_id"),
-                        reference(r,"application.source-version","source_version_id"),fragmentReferences(text(r,"source_fragment_ids"))),
+                scoped(scope, r -> {
+                    requireSameTenant(r, "requirement_scope");
+                    return new BackupSourceReference(reference(r,"portfolio.requirement-version","id"),
+                            reference(r,"application.source-artifact","source_artifact_id"),
+                            reference(r,"application.source-version","source_version_id"),fragmentReferences(text(r,"source_fragment_ids")));
+                }),
                 ref -> {
                     if (ref.artifact()!=null || ref.version()!=null || !ref.fragments().isEmpty()) {
                         if (result.size()>=100_000) throw new IOException("Source dependency limit exceeded");
@@ -89,14 +92,21 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                 + " and (p.id is null or r.id is null or v.id is null or p.scope_key<>s.scope_key or r.scope_key<>s.scope_key "
                 + "or r.project_id<>s.project_id or v.requirement_id<>s.requirement_id or v.scope_key<>s.scope_key)", tenant.parameters()));
         var result = new ArrayList<BackupAnalysisReference>();
-        rows.visit(new Query("select s.id,s.project_id,s.requirement_id,s.requirement_version_id,s.analysis_session_id,"
+        rows.visit(new Query("select s.id,s.scope_key,p.scope_key as project_scope,r.scope_key as requirement_scope,v.scope_key as version_scope,"
+                + "s.project_id,s.requirement_id,s.requirement_version_id,s.analysis_session_id,"
                 + "p.repository_id,p.workspace_id,r.current_version_id,r.current_snapshot_id from req_analysis_snapshot s "
-                + "join arch_project p on p.id=s.project_id join project_requirement r on r.id=s.requirement_id where "
-                + tenant.sql() + " order by s.id", tenant.parameters()), r -> new BackupAnalysisReference(
-                reference(r,"portfolio.analysis-snapshot","id"), reference(r,"portfolio.project","project_id"),
-                reference(r,"portfolio.requirement","requirement_id"), new BackupRepositoryKey(text(r,"repository_id"),text(r,"workspace_id")),
-                text(r,"analysis_session_id"), scope.history() || Objects.equals(text(r,"id"),text(r,"current_snapshot_id"))
-                        && Objects.equals(number(r,"requirement_version_id"),number(r,"current_version_id"))), ref -> {
+                + "join arch_project p on p.id=s.project_id join project_requirement r on r.id=s.requirement_id "
+                + "join project_req_version v on v.id=s.requirement_version_id where "
+                + tenant.sql() + " order by s.id", tenant.parameters()), scoped(scope, r -> {
+                    requireSameTenant(r, "project_scope");
+                    requireSameTenant(r, "requirement_scope");
+                    requireSameTenant(r, "version_scope");
+                    return new BackupAnalysisReference(
+                            reference(r,"portfolio.analysis-snapshot","id"), reference(r,"portfolio.project","project_id"),
+                            reference(r,"portfolio.requirement","requirement_id"), new BackupRepositoryKey(text(r,"repository_id"),text(r,"workspace_id")),
+                            text(r,"analysis_session_id"), scope.history() || Objects.equals(text(r,"id"),text(r,"current_snapshot_id"))
+                                    && Objects.equals(number(r,"requirement_version_id"),number(r,"current_version_id")));
+                }), ref -> {
                     if (result.size() >= 100_000) throw new IOException("Analysis dependency limit exceeded");
                     result.add(ref);
                 });
@@ -106,7 +116,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
         if (!scope.selectedVersion()) validateScopeClosure(scope);
         var includedRuns = new HashSet<String>();
-        rows.write(sink,"portfolio","project",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.owner_username,t.project_key,t.title,t.description,t.status,t.target_architecture,t.target_date,t.budget_amount,t.budget_currency,t.created_at,t.updated_at from arch_project t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"project",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.owner_username,t.project_key,t.title,t.description,t.status,t.target_architecture,t.target_date,t.budget_amount,t.budget_currency,t.created_at,t.updated_at from arch_project t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
             return new ProjectRecord(reference(r,"portfolio.project","id"),
                     text(r,"scope_key"),
                     text(r,"repository_id"),
@@ -125,7 +135,8 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","requirement",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_key,t.title,t.status,t.priority,t.criticality,t.requirement_type,t.review_status,t.owner_username,t.current_version_id,(case when "+historyOr(scope)+"exists (select 1 from req_analysis_snapshot valid_snapshot where valid_snapshot.id=t.current_snapshot_id and valid_snapshot.scope_key=t.scope_key and valid_snapshot.requirement_id=t.id and valid_snapshot.requirement_version_id=t.current_version_id) then t.current_snapshot_id else null end) as current_snapshot_id,t.created_at,t.updated_at from project_requirement t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"requirement",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_key,t.title,t.status,t.priority,t.criticality,t.requirement_type,t.review_status,t.owner_username,t.current_version_id,(select v.scope_key from project_req_version v where v.id=t.current_version_id and v.requirement_id=t.id) as current_version_scope,(case when "+historyOr(scope)+"exists (select 1 from req_analysis_snapshot valid_snapshot where valid_snapshot.id=t.current_snapshot_id and valid_snapshot.scope_key=t.scope_key and valid_snapshot.requirement_id=t.id and valid_snapshot.requirement_version_id=t.current_version_id) then t.current_snapshot_id else null end) as current_snapshot_id,t.created_at,t.updated_at from project_requirement t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
+            if (number(r,"current_version_id") != null) requireSameTenant(r, "current_version_scope");
             return new ProjectRequirementRecord(reference(r,"portfolio.requirement","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.project","project_id"),
@@ -142,7 +153,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","requirement-version",profile,query(scope,"select t.id,t.scope_key,t.requirement_id,t.version_number,t.requirement_text,t.content_hash,t.change_reason,t.created_by,t.created_at,t.source_artifact_id,t.source_version_id,t.source_fragment_ids,t.section_ref,t.page_number,t.original_text from project_req_version t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.id)","t.id"),r -> {
+        write(scope,sink,"requirement-version",profile,query(scope,"select t.id,t.scope_key,t.requirement_id,t.version_number,t.requirement_text,t.content_hash,t.change_reason,t.created_by,t.created_at,t.source_artifact_id,t.source_version_id,t.source_fragment_ids,t.section_ref,t.page_number,t.original_text from project_req_version t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.id)","t.id"),r -> {
             return new ProjectRequirementVersionRecord(reference(r,"portfolio.requirement-version","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.requirement","requirement_id"),
@@ -159,7 +170,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     number(r,"page_number"),
                     scope.history() ? text(r,"original_text") : null);
         });
-        rows.write(sink,"portfolio","analysis-job",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.status,t.idempotency_key,t.provider,t.max_architecture_nodes,t.requested_by,t.workspace_id,t.created_at,t.started_at,t.completed_at,t.total_items,t.successful_items,t.partial_items,t.failed_items from req_analysis_job t",scope.tenants("t.scope_key"),"(t.status in ('PENDING','RUNNING') or exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.job_id=t.id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id))","t.id"),r -> {
+        write(scope,sink,"analysis-job",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.status,t.idempotency_key,t.provider,t.max_architecture_nodes,t.requested_by,t.workspace_id,t.created_at,t.started_at,t.completed_at,t.total_items,t.successful_items,t.partial_items,t.failed_items from req_analysis_job t",scope.tenants("t.scope_key"),"(t.status in ('PENDING','RUNNING') or exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.job_id=t.id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id))","t.id"),r -> {
             return new RequirementAnalysisJobRecord(reference(r,"portfolio.analysis-job","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.project","project_id"),
@@ -177,7 +188,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     r.getInt("partial_items"),
                     r.getInt("failed_items"));
         });
-        rows.write(sink,"portfolio","analysis-snapshot",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_id,t.requirement_version_id,t.job_id,t.status,t.analysis_session_id,t.provider,t.model_name,t.prompt_fingerprint,t.taxonomy_fingerprint,t.workspace_id,t.branch_name,t.commit_sha,t.created_by,t.created_at,t.duration_ms,t.warning_count,t.analysis_payload,t.gap_payload,t.pattern_payload,t.recommendation_payload from req_analysis_snapshot t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.requirement_version_id and current_requirement.current_snapshot_id=t.id)","t.id"),r -> {
+        write(scope,sink,"analysis-snapshot",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_id,t.requirement_version_id,t.job_id,t.status,t.analysis_session_id,t.provider,t.model_name,t.prompt_fingerprint,t.taxonomy_fingerprint,t.workspace_id,t.branch_name,t.commit_sha,t.created_by,t.created_at,t.duration_ms,t.warning_count,t.analysis_payload,t.gap_payload,t.pattern_payload,t.recommendation_payload from req_analysis_snapshot t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.requirement_version_id and current_requirement.current_snapshot_id=t.id)","t.id"),r -> {
             return new RequirementAnalysisSnapshotRecord(reference(r,"portfolio.analysis-snapshot","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.project","project_id"),
@@ -202,7 +213,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"pattern_payload"),
                     text(r,"recommendation_payload"));
         });
-        rows.write(sink,"portfolio","analysis-item",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.job_id,t.requirement_id,t.requirement_version_id,t.status,(case when "+historyOr(scope)+"exists (select 1 from project_requirement current_requirement where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_snapshot_id=t.snapshot_id and current_requirement.current_version_id=t.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.attempt,t.started_at,t.completed_at from req_analysis_item t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement join req_analysis_job job on job.id=t.job_id and job.scope_key=t.scope_key where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_version_id=t.requirement_version_id and (t.snapshot_id=current_requirement.current_snapshot_id or job.status in ('PENDING','RUNNING')))","t.id"),r -> {
+        write(scope,sink,"analysis-item",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.job_id,t.requirement_id,t.requirement_version_id,t.status,(case when "+historyOr(scope)+"exists (select 1 from project_requirement current_requirement where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_snapshot_id=t.snapshot_id and current_requirement.current_version_id=t.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.attempt,t.started_at,t.completed_at from req_analysis_item t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement join req_analysis_job job on job.id=t.job_id and job.scope_key=t.scope_key where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_version_id=t.requirement_version_id and (t.snapshot_id=current_requirement.current_snapshot_id or job.status in ('PENDING','RUNNING')))","t.id"),r -> {
             return new RequirementAnalysisJobItemRecord(reference(r,"portfolio.analysis-item","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.project","project_id"),
@@ -215,7 +226,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"started_at"),
                     instant(r,"completed_at"));
         });
-        rows.write(sink,"portfolio","element-decision",profile,query(scope,"select t.id,t.scope_key,t.snapshot_id,t.node_code,t.node_title,t.taxonomy_root,t.direct_score,t.relevance,t.confidence,t.mapping_origin,t.hierarchy_path,t.presence_reason,t.selected_for_impact,t.review_status,t.action_status,t.action_evidence,t.decision_by,t.decision_at,t.decision_comment from req_element_mapping t",scope.tenants("t.scope_key"),"exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)","t.id"),r -> {
+        write(scope,sink,"element-decision",profile,query(scope,"select t.id,t.scope_key,t.snapshot_id,t.node_code,t.node_title,t.taxonomy_root,t.direct_score,t.relevance,t.confidence,t.mapping_origin,t.hierarchy_path,t.presence_reason,t.selected_for_impact,t.review_status,t.action_status,t.action_evidence,t.decision_by,t.decision_at,t.decision_comment from req_element_mapping t",scope.tenants("t.scope_key"),"exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)","t.id"),r -> {
             return new RequirementElementMappingRecord(reference(r,"portfolio.element-decision","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.analysis-snapshot","snapshot_id"),
@@ -236,7 +247,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"decision_at"),
                     text(r,"decision_comment"));
         });
-        rows.write(sink,"portfolio","relation-decision",profile,query(scope,"select t.id,t.scope_key,t.snapshot_id,t.source_code,t.target_code,t.relation_type,t.relation_origin,t.relation_category,t.relevance,t.confidence,t.presence_reason,t.review_status,t.decision_by,t.decision_at,t.decision_comment from req_relation_mapping t",scope.tenants("t.scope_key"),"exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)","t.id"),r -> {
+        write(scope,sink,"relation-decision",profile,query(scope,"select t.id,t.scope_key,t.snapshot_id,t.source_code,t.target_code,t.relation_type,t.relation_origin,t.relation_category,t.relevance,t.confidence,t.presence_reason,t.review_status,t.decision_by,t.decision_at,t.decision_comment from req_relation_mapping t",scope.tenants("t.scope_key"),"exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)","t.id"),r -> {
             return new RequirementRelationMappingRecord(reference(r,"portfolio.relation-decision","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.analysis-snapshot","snapshot_id"),
@@ -253,7 +264,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"decision_at"),
                     text(r,"decision_comment"));
         });
-        rows.write(sink,"portfolio","solution",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.solution_key,t.title,t.description,t.solution_type,t.operating_model,t.lifecycle_status,t.maturity_level,t.owner_username,t.responsible_organization,t.cost_amount,t.cost_currency,t.risk_notes,t.lead_time_days,t.extension_attributes,t.created_at,t.updated_at from solution_definition t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"solution",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.solution_key,t.title,t.description,t.solution_type,t.operating_model,t.lifecycle_status,t.maturity_level,t.owner_username,t.responsible_organization,t.cost_amount,t.cost_currency,t.risk_notes,t.lead_time_days,t.extension_attributes,t.created_at,t.updated_at from solution_definition t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
             return new SolutionDefinitionRecord(reference(r,"portfolio.solution","id"),
                     text(r,"scope_key"),
                     text(r,"repository_id"),
@@ -277,7 +288,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","product",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.product_key,t.manufacturer,t.product_family,t.product_name,t.edition_version,t.product_status,t.end_of_support,t.license_model,t.operating_model,t.supported_platforms,t.security_features,t.compliance_features,t.cost_amount,t.cost_currency,t.cost_basis,t.source_reference,t.verified_at,t.created_by,t.created_at,t.updated_at from product_catalog t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"product",profile,query(scope,"select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.product_key,t.manufacturer,t.product_family,t.product_name,t.edition_version,t.product_status,t.end_of_support,t.license_model,t.operating_model,t.supported_platforms,t.security_features,t.compliance_features,t.cost_amount,t.cost_currency,t.cost_basis,t.source_reference,t.verified_at,t.created_by,t.created_at,t.updated_at from product_catalog t",scope.tenants("t.scope_key"),"1=1","t.id"),r -> {
             return new ProductCatalogEntryRecord(reference(r,"portfolio.product","id"),
                     text(r,"scope_key"),
                     text(r,"repository_id"),
@@ -305,7 +316,8 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","project-solution",profile,query(scope,"select t.id,t.project_id,t.solution_id,t.status,t.action_status,t.priority,t.rationale,t.created_by,t.created_at,t.updated_at from project_solution t join arch_project parent on parent.id=t.project_id join solution_definition solution on solution.id=t.solution_id and solution.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"project-solution",profile,query(scope,"select parent.scope_key,solution.scope_key as solution_scope,t.id,t.project_id,t.solution_id,t.status,t.action_status,t.priority,t.rationale,t.created_by,t.created_at,t.updated_at from project_solution t join arch_project parent on parent.id=t.project_id join solution_definition solution on solution.id=t.solution_id and solution.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+            requireSameTenant(r, "solution_scope");
             return new ProjectSolutionRecord(reference(r,"portfolio.project-solution","id"),
                     reference(r,"portfolio.project","project_id"),
                     reference(r,"portfolio.solution","solution_id"),
@@ -317,7 +329,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","product-coverage",profile,query(scope,"select t.id,t.product_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from product_taxonomy t join product_catalog parent on parent.id=t.product_id",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"product-coverage",profile,query(scope,"select parent.scope_key,t.id,t.product_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from product_taxonomy t join product_catalog parent on parent.id=t.product_id",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
             return new ProductTaxonomyCoverageRecord(reference(r,"portfolio.product-coverage","id"),
                     reference(r,"portfolio.product","product_id"),
                     text(r,"node_code"),
@@ -327,7 +339,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"updated_by"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","solution-coverage",profile,query(scope,"select t.id,t.solution_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from solution_taxonomy t join solution_definition parent on parent.id=t.solution_id",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"solution-coverage",profile,query(scope,"select parent.scope_key,t.id,t.solution_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from solution_taxonomy t join solution_definition parent on parent.id=t.solution_id",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
             return new SolutionTaxonomyCoverageRecord(reference(r,"portfolio.solution-coverage","id"),
                     reference(r,"portfolio.solution","solution_id"),
                     text(r,"node_code"),
@@ -337,7 +349,8 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"updated_by"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","requirement-solution",profile,query(scope,"select t.id,t.project_solution_id,t.requirement_id,(case when "+historyOr(scope)+"exists (select 1 from req_analysis_snapshot valid_snapshot join project_requirement req on req.id=valid_snapshot.requirement_id and req.scope_key=valid_snapshot.scope_key where valid_snapshot.id=t.snapshot_id and req.id=t.requirement_id and req.current_snapshot_id=valid_snapshot.id and req.current_version_id=valid_snapshot.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.coverage_percent,t.solution_role,t.review_status,t.evidence,t.updated_by,t.updated_at from req_solution_link t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join project_requirement requirement on requirement.id=t.requirement_id and requirement.project_id=parent.id and requirement.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"requirement-solution",profile,query(scope,"select parent.scope_key,requirement.scope_key as requirement_scope,t.id,t.project_solution_id,t.requirement_id,(case when "+historyOr(scope)+"exists (select 1 from req_analysis_snapshot valid_snapshot join project_requirement req on req.id=valid_snapshot.requirement_id and req.scope_key=valid_snapshot.scope_key where valid_snapshot.id=t.snapshot_id and req.id=t.requirement_id and req.current_snapshot_id=valid_snapshot.id and req.current_version_id=valid_snapshot.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.coverage_percent,t.solution_role,t.review_status,t.evidence,t.updated_by,t.updated_at from req_solution_link t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join project_requirement requirement on requirement.id=t.requirement_id and requirement.project_id=parent.id and requirement.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+            requireSameTenant(r, "requirement_scope");
             return new RequirementSolutionLinkRecord(reference(r,"portfolio.requirement-solution","id"),
                     reference(r,"portfolio.project-solution","project_solution_id"),
                     reference(r,"portfolio.requirement","requirement_id"),
@@ -349,7 +362,8 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"updated_by"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","solution-product",profile,query(scope,"select t.id,t.project_solution_id,t.product_id,t.coverage_percent,t.hard_exclusions,t.strengths,t.weaknesses,t.open_evidence,t.confidence,t.review_status,t.selection_status,t.updated_by,t.updated_at from solution_product t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join product_catalog product on product.id=t.product_id and product.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"solution-product",profile,query(scope,"select parent.scope_key,product.scope_key as product_scope,t.id,t.project_solution_id,t.product_id,t.coverage_percent,t.hard_exclusions,t.strengths,t.weaknesses,t.open_evidence,t.confidence,t.review_status,t.selection_status,t.updated_by,t.updated_at from solution_product t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join product_catalog product on product.id=t.product_id and product.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+            requireSameTenant(r, "product_scope");
             return new SolutionProductCandidateRecord(reference(r,"portfolio.solution-product","id"),
                     reference(r,"portfolio.project-solution","project_solution_id"),
                     reference(r,"portfolio.product","product_id"),
@@ -364,7 +378,9 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"updated_by"),
                     instant(r,"updated_at"));
         });
-        rows.write(sink,"portfolio","conflict",profile,query(scope,"select t.id,t.project_id,t.requirement_a_id,t.requirement_b_id,t.conflict_type,t.status,t.fingerprint,t.title,t.evidence,t.confidence,t.resolution_note,t.detected_at,t.reviewed_by,t.reviewed_at from project_conflict t join arch_project parent on parent.id=t.project_id join project_requirement ra on ra.id=t.requirement_a_id and ra.project_id=parent.id and ra.scope_key=parent.scope_key join project_requirement rb on rb.id=t.requirement_b_id and rb.project_id=parent.id and rb.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"conflict",profile,query(scope,"select parent.scope_key,ra.scope_key as requirement_a_scope,rb.scope_key as requirement_b_scope,t.id,t.project_id,t.requirement_a_id,t.requirement_b_id,t.conflict_type,t.status,t.fingerprint,t.title,t.evidence,t.confidence,t.resolution_note,t.detected_at,t.reviewed_by,t.reviewed_at from project_conflict t join arch_project parent on parent.id=t.project_id join project_requirement ra on ra.id=t.requirement_a_id and ra.project_id=parent.id and ra.scope_key=parent.scope_key join project_requirement rb on rb.id=t.requirement_b_id and rb.project_id=parent.id and rb.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+            requireSameTenant(r, "requirement_a_scope");
+            requireSameTenant(r, "requirement_b_scope");
             return new ProjectConflictRecord(reference(r,"portfolio.conflict","id"),
                     reference(r,"portfolio.project","project_id"),
                     reference(r,"portfolio.requirement","requirement_a_id"),
@@ -380,7 +396,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"reviewed_by"),
                     instant(r,"reviewed_at"));
         });
-        rows.write(sink,"portfolio","reformulation-proposal",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_id,t.source_version_id,t.snapshot_id,t.baseline_payload,t.created_by,t.created_at,t.current_revision from reformulation_proposal t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.project_id=t.project_id and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.source_version_id and current_requirement.current_snapshot_id=t.snapshot_id)","t.id"),r -> {
+        write(scope,sink,"reformulation-proposal",profile,query(scope,"select t.id,t.scope_key,t.project_id,t.requirement_id,t.source_version_id,t.snapshot_id,t.baseline_payload,t.created_by,t.created_at,t.current_revision from reformulation_proposal t",scope.tenants("t.scope_key"),"exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.project_id=t.project_id and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.source_version_id and current_requirement.current_snapshot_id=t.snapshot_id)","t.id"),r -> {
             return new ReformulationProposalRecord(reference(r,"portfolio.reformulation-proposal","id"),
                     text(r,"scope_key"),
                     reference(r,"portfolio.project","project_id"),
@@ -392,14 +408,14 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     r.getLong("current_revision"));
         });
-        rows.write(sink,"portfolio","reformulation-revision",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.revision_number,t.revision_payload from reformulation_revision t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id) and exists (select 1 from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and proposal.current_revision=t.revision_number)","t.id"),r -> {
+        write(scope,sink,"reformulation-revision",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.revision_number,t.revision_payload from reformulation_revision t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id) and exists (select 1 from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and proposal.current_revision=t.revision_number)","t.id"),r -> {
             return new ReformulationRevisionRecord(reference(r,"portfolio.reformulation-revision","id"),
                     reference(r,"portfolio.reformulation-proposal","proposal_id"),
                     text(r,"scope_key"),
                     r.getLong("revision_number"),
                     scope.history() ? text(r,"revision_payload") : currentRevision(text(r,"revision_payload")));
         });
-        rows.write(sink,"portfolio","reformulation-run",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.run_payload,t.cancelled_by,t.cancelled_at,(select proposal.current_revision from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key) as selected_revision from reformulation_run t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.id"),r -> {
+        write(scope,sink,"reformulation-run",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.run_payload,t.cancelled_by,t.cancelled_at,(select proposal.current_revision from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key) as selected_revision from reformulation_run t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.id"),r -> {
             String runId = text(r,"id");
             if (!scope.history() && !currentRun(text(r,"run_payload"),r.getLong("selected_revision"))) return null;
             if (includedRuns.size() >= 100_000) throw new IOException("Reformulation run selection limit exceeded");
@@ -411,7 +427,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"cancelled_by"),
                     instant(r,"cancelled_at"));
         });
-        rows.write(sink,"portfolio","reformulation-checkpoint",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.run_id,t.task_kind,t.input_fingerprint,t.result_payload,t.created_at from reformulation_node_checkpoint t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.id"),r -> {
+        write(scope,sink,"reformulation-checkpoint",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.run_id,t.task_kind,t.input_fingerprint,t.result_payload,t.created_at from reformulation_node_checkpoint t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.id"),r -> {
             if (!scope.history() && !includedRuns.contains(text(r,"run_id"))) return null;
             return new ReformulationNodeCheckpointRecord(reference(r,"portfolio.reformulation-checkpoint","id"),
                     reference(r,"portfolio.reformulation-proposal","proposal_id"),
@@ -422,7 +438,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"result_payload"),
                     instant(r,"created_at"));
         });
-        rows.write(sink,"portfolio","reformulation-usage-session",profile,query(scope,"select t.run_id,t.proposal_id,t.scope_key,t.created_at,t.from_first_attempt,t.schema_version from reformulation_usage_session t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.run_id"),r -> {
+        write(scope,sink,"reformulation-usage-session",profile,query(scope,"select t.run_id,t.proposal_id,t.scope_key,t.created_at,t.from_first_attempt,t.schema_version from reformulation_usage_session t",scope.tenants("t.scope_key"),"exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)","t.run_id"),r -> {
             if (!scope.history() && !includedRuns.contains(text(r,"run_id"))) return null;
             return new ReformulationUsageSessionRecord(reference(r,"portfolio.reformulation-usage-session","run_id"),
                     reference(r,"portfolio.reformulation-run","run_id"),
@@ -432,7 +448,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     r.getBoolean("from_first_attempt"),
                     r.getInt("schema_version"));
         });
-        rows.write(sink,"portfolio","reformulation-usage-attempt",profile,query(scope,"select t.id,t.run_id,t.invocation_id,t.provider,t.source_kind,t.retry_index,t.started_at,t.completed_at,t.status_code,t.outcome,t.duration_millis,t.input_tokens,t.output_tokens,t.total_tokens,t.cached_input_tokens,t.reasoning_tokens,t.invalid_usage from reformulation_usage_attempt t join reformulation_run run on run.id=t.run_id",scope.tenants("run.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"reformulation-usage-attempt",profile,query(scope,"select run.scope_key,t.id,t.run_id,t.invocation_id,t.provider,t.source_kind,t.retry_index,t.started_at,t.completed_at,t.status_code,t.outcome,t.duration_millis,t.input_tokens,t.output_tokens,t.total_tokens,t.cached_input_tokens,t.reasoning_tokens,t.invalid_usage from reformulation_usage_attempt t join reformulation_run run on run.id=t.run_id",scope.tenants("run.scope_key"),"1=1","t.id"),r -> {
             if (!scope.history() && !includedRuns.contains(text(r,"run_id"))) return null;
             return new ReformulationUsageAttemptRecord(reference(r,"portfolio.reformulation-usage-attempt","id"),
                     reference(r,"portfolio.reformulation-run","run_id"),
@@ -452,7 +468,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     number(r,"reasoning_tokens"),
                     (Boolean) r.getObject("invalid_usage"));
         });
-        rows.write(sink,"portfolio","reformulation-preview",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.content_hash,t.preview_payload,t.created_at from reformulation_adoption_preview t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
+        write(scope,sink,"reformulation-preview",profile,query(scope,"select t.id,t.proposal_id,t.scope_key,t.content_hash,t.preview_payload,t.created_at from reformulation_adoption_preview t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
             return new ReformulationAdoptionPreviewRecord(reference(r,"portfolio.reformulation-preview","id"),
                     reference(r,"portfolio.reformulation-proposal","proposal_id"),
                     text(r,"scope_key"),
@@ -460,7 +476,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"preview_payload"),
                     instant(r,"created_at"));
         });
-        rows.write(sink,"portfolio","reformulation-adoption",profile,query(scope,"select t.id,t.proposal_id,t.preview_id,t.scope_key,t.command_hash,t.requirement_id,t.target_version_id,t.receipt_payload,t.created_at from reformulation_adoption t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
+        write(scope,sink,"reformulation-adoption",profile,query(scope,"select t.id,t.proposal_id,t.preview_id,t.scope_key,t.command_hash,t.requirement_id,t.target_version_id,t.receipt_payload,t.created_at from reformulation_adoption t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
             return new ReformulationAdoptionRecord(reference(r,"portfolio.reformulation-adoption","id"),
                     reference(r,"portfolio.reformulation-proposal","proposal_id"),
                     reference(r,"portfolio.reformulation-preview","preview_id"),
@@ -471,7 +487,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"receipt_payload"),
                     instant(r,"created_at"));
         });
-        rows.write(sink,"portfolio","reformulation-evidence",profile,query(scope,"select t.id,t.scope_key,t.project_key,t.requirement_key,t.target_version_number,t.schema_version,t.evidence_hash,t.target_text_hash,t.evidence_payload,t.created_at from reformulation_portable_evidence t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
+        write(scope,sink,"reformulation-evidence",profile,query(scope,"select t.id,t.scope_key,t.project_key,t.requirement_key,t.target_version_number,t.schema_version,t.evidence_hash,t.target_text_hash,t.evidence_payload,t.created_at from reformulation_portable_evidence t",scope.tenants("t.scope_key"),"1=0","t.id"),r -> {
             return new ReformulationPortableEvidenceRecord(reference(r,"portfolio.reformulation-evidence","id"),
                     text(r,"scope_key"),
                     text(r,"project_key"),
@@ -497,6 +513,25 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                 +" and r.current_version_id is not null and not exists (select 1 from project_req_version v where v.id=r.current_version_id and v.requirement_id=r.id and v.scope_key=r.scope_key)",requirementTenant.parameters()));
     }
     private static String historyOr(BackupRowScope scope) { return scope.history() ? "1=1 or " : ""; }
+    private <T extends Record> void write(BackupRowScope scope, ComponentSink sink, String kind, BackupProfile profile,
+                                         Query query, PortableRows.Mapper<T> mapper) throws IOException {
+        rows.write(sink, "portfolio", kind, profile, query, scoped(scope, mapper));
+    }
+    /** SQL is only the first filter: database collations cannot widen the captured tenant. */
+    private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope, PortableRows.Mapper<T> mapper) {
+        return row -> {
+            String tenant = text(row, "scope_key");
+            boolean included = false;
+            try { included = tenant != null && scope.includesTenant(tenant); }
+            catch (IllegalArgumentException malformed) { /* Source identity details do not enter capture errors. */ }
+            if (!included) throw new IOException("Portable selection contains an invalid or different portfolio tenant");
+            return mapper.read(row);
+        };
+    }
+    private static void requireSameTenant(ResultSet row, String linkedColumn) throws SQLException, IOException {
+        if (!Objects.equals(text(row, "scope_key"), text(row, linkedColumn)))
+            throw new IOException("Portable selection has a missing or cross-tenant dependency");
+    }
     private static Query query(BackupRowScope scope,String select,Query tenant,String current,String order) {
         if (scope.selectedVersion()) return null;
         return new Query(select+" where "+tenant.sql()+(scope.history()?"":" and ("+current+")")+" order by "+order,tenant.parameters());
