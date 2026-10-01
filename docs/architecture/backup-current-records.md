@@ -4,6 +4,30 @@ This document describes the P05 adapters. They are not yet a complete capture
 source: integration records, retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
+`CompositeBackupDataContributor` checks the declared adapter coverage against
+the reviewed inventory for one component before accessing a source. Every owned
+`PORTABLE_PRIMARY`, `GIT_PRIMARY` and `EXTERNAL_DEPENDENCY` category requires exactly
+one adapter. Unknown categories, claims on another owner's data, duplicate claims,
+missing adapters and component/schema mismatches are rejected. `REBUILDABLE` and
+`TRANSIENT` entries are excluded explicitly, with their inventory rationale carried
+into the component's omissions alongside each adapter's profile-specific omissions.
+The delegate list and reported categories are immutable; adapter declarations must
+remain stable for the lifetime of the assembly.
+
+The assembly requires the same component schema in the captured snapshot, calls
+its adapters in the supplied order with the original snapshot and sink, and checks
+cancellation before, between and after them. Any adapter or sink failure propagates;
+the capture coordinator must discard partial staging. In particular, unsupported
+history profiles remain unsupported rather than becoming successful partial exports.
+
+`ApplicationBackupComponent` explicitly assembles source records/files, identities,
+preferences and business configuration. All 16 required application categories are
+checked against the packaged inventory. Construction does not inspect live sources
+or provision storage. This factory is not a production capture bean. Declared
+coverage does not establish stable source fencing, Git/reference closure, external
+availability or complete manifest propagation; the remaining module adapters and
+capture coordinator still have to supply those guarantees.
+
 Each module constructs explicit version-1 records. An NDJSON dataset starts with
 `schemaVersion`, `kind` and `profile`, followed by one record per line. Jackson
 receives these records, never persistence entities or polymorphic archive types.
