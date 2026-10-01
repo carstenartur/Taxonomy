@@ -286,6 +286,33 @@ local accounts, roles and administrative grants require installation scope.
 Historical access audit requires `INSTALLATION_FULL`. Source grants describe the
 source installation and never authorize target access automatically.
 
+Workspace and portfolio contributors expose `principalScopes(snapshot, checkpoint)`
+for ownership references in the same records they export. Workspace selection
+includes user-owned repository metadata, memberships, selected workspace owners
+and synchronization principals. Portfolio selection includes project, requirement
+and solution owners across the selected saved branches. Historical author/creator
+labels are not treated as ownership. Selected-version discovery does not query
+present-day ownership tables. Installation discovery can enumerate all such owners;
+the installation identity exporter still inventories its registry directly.
+
+`PrincipalScopeBackupSelector` resolves these module-owned references only through
+the persisted `app_principal.scope_key` compatibility mapping. It never looks up
+login usernames, email or display names and never registers an account or binding.
+Disabled historical principals remain valid source evidence without acquiring
+rights. A missing, ambiguous or noncanonical mapping fails before identity output.
+SQL matching is rechecked with exact Java scope/repository/tenant comparisons, so
+case-insensitive collations cannot select a different owner.
+
+The shared `PrincipalScopeCapture` limits discovery to 100,000 distinct scopes of
+at most 255 characters; the application resolver has the same aggregate ceiling,
+which can be lowered, and uses batches of 200 SQL parameters. Discovery and lookup
+observe the capture checkpoint, including empty selections. Cancellation remains
+visible if JDBC or selector cleanup fails, and private source diagnostics are
+discarded. Results are immutable. Composition supplies these selectors under the
+existing writer fence; no production capture bean is enabled here. This closes the
+workspace/portfolio ownership references, not every application's identity edge or
+the separate verified LEGACY-to-STABLE login migration.
+
 Accounts created since identity migration may not have logged in yet. Their
 stable account ID and metadata remain portable as `PENDING_LOCAL_ACCOUNT`, with
 no invented ownership scope or provider binding. Capture performs no registration

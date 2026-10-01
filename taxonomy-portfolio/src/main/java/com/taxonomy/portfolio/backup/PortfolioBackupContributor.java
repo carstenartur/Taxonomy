@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.backup;
 import com.taxonomy.backup.*;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.exchange.backup.PrincipalScopeCapture;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.workspace.backup.BackupRowScope;
 import javax.sql.DataSource;
@@ -15,6 +16,19 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 public final class PortfolioBackupContributor implements BackupDataContributor {
     private final PortableRows rows;
     public PortfolioBackupContributor(DataSource database) { rows = new PortableRows(database); }
+    /** The same current ownership rows as the record export; creator/author labels remain historical metadata. */
+    public Set<String> principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
+        if (!scope.selectedVersion()) {
+            var tenant = scope.tenants("scope_key");
+            for (String table : List.of("arch_project", "project_requirement", "solution_definition"))
+                queries.add(new Query("select scope_key,owner_username from " + table + " where " + tenant.sql() + " order by id", tenant.parameters()));
+        }
+        return new PrincipalScopeCapture(rows).capture(queries, row -> {
+            if (!scope.includesTenant(text(row, "scope_key"))) throw new IOException("Principal reference belongs to a different portfolio tenant");
+            return new PrincipalScopeCapture.Scope(text(row, "owner_username"));
+        }, checkpoint);
+    }
     @Override public BackupComponentId componentId() { return new BackupComponentId("portfolio"); }
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() { return Set.of(

@@ -1,6 +1,10 @@
 package com.taxonomy.backup;
 
 import com.taxonomy.security.backup.IdentityBackupContributor;
+import com.taxonomy.security.backup.PrincipalScopeBackupSelector;
+import com.taxonomy.workspace.backup.WorkspaceBackupContributor;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import com.taxonomy.portfolio.backup.PortfolioBackupContributor;
 import com.taxonomy.security.model.AppRole;
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
@@ -21,6 +25,115 @@ import static org.assertj.core.api.Assertions.*;
 
 class IdentityExportIT {
     private static final Instant NOW = Instant.parse("2026-10-01T00:00:00Z");
+
+    @Test void moduleOwnershipReferencesResolveThroughPersistedPrincipalScopesWithoutCapturingUnrelatedUsers() throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f); var output = new CurrentStateExportIT.Contents();
+            var before = f.jdbc.queryForList("select principal_id,scope_key,enabled from app_principal order by principal_id");
+            new IdentityBackupContributor(f.database, ownershipSelector(f)).write(snapshot(f.alice, BackupProfile.CURRENT_STATE, SecretsSelection.EXCLUDE), output);
+            assertThat(output.text()).contains(f.alice.value().toString(), f.retired.value().toString(), f.external.value().toString(), "EXPLICIT_MAPPING")
+                    .doesNotContain(f.bob.value().toString(), "BOB-PRIVATE", "PENDING-ACCOUNT", "ALICE-HASH", "ROLE_ADMIN");
+            assertThat(f.jdbc.queryForList("select principal_id,scope_key,enabled from app_principal order by principal_id")).isEqualTo(before);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"system_repository", "repository_membership", "user_workspace", "sync_state", "arch_project", "project_requirement", "solution_definition"})
+    void anUnmappedOwnerInAnyCapturedRecordFamilyAbortsBeforeIdentityOutput(String table) throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f);
+            String column = table.equals("system_repository") ? "owner_id" : Set.of("arch_project", "project_requirement", "solution_definition").contains(table) ? "owner_username" : "username";
+            f.jdbc.update("update " + table + " set " + column + "='PRIVATE-UNMAPPED'");
+            var output = new CurrentStateExportIT.Contents();
+            assertThatThrownBy(() -> new IdentityBackupContributor(f.database, ownershipSelector(f)).write(snapshot(f.alice, BackupProfile.CURRENT_STATE, SecretsSelection.EXCLUDE), output))
+                    .isInstanceOf(java.io.IOException.class).hasMessageNotContaining("PRIVATE").hasNoCause().hasNoSuppressedExceptions();
+            assertThat(output.entries).isEmpty();
+            assertThat(f.jdbc.queryForObject("select count(*) from app_principal", Integer.class)).isEqualTo(4);
+        }
+    }
+
+    @Test void selectedVersionIdentityDiscoveryNeverQueriesPresentDayOwnershipTables() throws Exception {
+        try (var f = new Fixture()) { // Deliberately no workspace or portfolio tables.
+            var output = new CurrentStateExportIT.Contents();
+            new IdentityBackupContributor(f.database, ownershipSelector(f)).write(snapshot(f.alice, BackupProfile.SELECTED_VERSION, SecretsSelection.EXCLUDE), output);
+            assertThat(output.text()).contains(f.alice.value().toString()).doesNotContain(f.retired.value().toString(), f.external.value().toString(), f.bob.value().toString());
+        }
+    }
+
+    @Test void onlyUserRepositoryOwnersArePrincipalReferencesAndSavedBranchesKeepTheirOwnOwners() throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f); var context = snapshot(f.alice, BackupProfile.CURRENT_STATE, SecretsSelection.EXCLUDE);
+            f.jdbc.update("update system_repository set owner_type='SYSTEM',owner_id='NOT-A-PERSON' where repository_id='repo'");
+            var workspace = new WorkspaceBackupContributor(f.database, text -> text);
+            assertThat(workspace.principalScopes(context, () -> { })).containsExactlyInAnyOrder("alice", "retired-owner");
+            f.jdbc.update("update system_repository set owner_type=null,owner_id='legacy-owner' where repository_id='repo'");
+            assertThat(workspace.principalScopes(context, () -> { })).containsExactlyInAnyOrder("alice", "retired-owner", "legacy-owner");
+            String otherBranch = new RepositoryTenantIdentity("repo", "WORKSPACE:workspace", "feature").scopeKey();
+            f.jdbc.update("insert into arch_project values (3,?,'branch-owner')", otherBranch);
+            assertThat(new PortfolioBackupContributor(f.database).principalScopes(context, () -> { })).contains("branch-owner").doesNotContain("bob");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"repository", "workspace", "portfolio"})
+    void ownershipReadersRejectCaseAliasedForeignRowsEvenIfSqlCollationMatches(String kind) throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f); var context = snapshot(f.alice, BackupProfile.CURRENT_STATE, SecretsSelection.EXCLUDE);
+            if (kind.equals("portfolio")) {
+                f.jdbc.execute("alter table arch_project alter column scope_key varchar_ignorecase(512)");
+                f.jdbc.update("update arch_project set scope_key=? where id=1", new RepositoryTenantIdentity("Repo", "WORKSPACE:workspace", "draft").scopeKey());
+                assertThatThrownBy(() -> new PortfolioBackupContributor(f.database).principalScopes(context, () -> { })).isInstanceOf(java.io.IOException.class);
+            } else {
+                String table = kind.equals("repository") ? "system_repository" : "user_workspace", column = kind.equals("repository") ? "repository_id" : "source_repository_id";
+                f.jdbc.execute("alter table " + table + " alter column " + column + " varchar_ignorecase(255)");
+                f.jdbc.update("update " + table + " set " + column + "='Repo' where " + column + "='repo'");
+                assertThatThrownBy(() -> new WorkspaceBackupContributor(f.database, text -> text).principalScopes(context, () -> { })).isInstanceOf(java.io.IOException.class);
+            }
+        }
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.EnumSource(value = BackupProfile.class, names = {"INSTALLATION_CURRENT", "INSTALLATION_FULL"})
+    void installationOwnershipDiscoveryIncludesEveryPersistedOwnerWithoutGrantingAuthority(BackupProfile profile) throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f);
+            assertThat(ownershipSelector(f).select(snapshot(f.alice, profile, SecretsSelection.EXCLUDE), () -> { }))
+                    .containsExactlyInAnyOrder(f.alice, f.bob, f.external, f.retired);
+            assertThat(f.jdbc.queryForObject("select enabled from app_principal where principal_id=?", Integer.class, f.retired.value().toString())).isZero();
+        }
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.EnumSource(value = BackupProfile.class, names = {"CURRENT_STATE", "INSTALLATION_CURRENT"})
+    void aCaseAliasedSynchronizationChildCannotBorrowTheSelectedParentsWorkspaceIdentity(BackupProfile profile) throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f); f.jdbc.execute("alter table sync_state alter column workspace_id varchar_ignorecase(255)");
+            f.jdbc.execute("alter table user_workspace alter column workspace_id varchar_ignorecase(255)");
+            f.jdbc.update("update sync_state set workspace_id='Workspace',username='PRIVATE-ALIASED-OWNER' where id=1");
+            assertThat(f.jdbc.queryForObject("select count(*) from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where s.id=1 and w.workspace_id='workspace'", Integer.class)).isEqualTo(1);
+            assertThatThrownBy(() -> new WorkspaceBackupContributor(f.database, text -> text).principalScopes(snapshot(f.alice, profile, SecretsSelection.EXCLUDE), () -> { }))
+                    .isInstanceOf(java.io.IOException.class).hasMessageNotContaining("PRIVATE").hasNoCause().hasNoSuppressedExceptions();
+        }
+    }
+
+    private static PrincipalScopeBackupSelector ownershipSelector(Fixture f) {
+        var workspace = new WorkspaceBackupContributor(f.database, text -> text); var portfolio = new PortfolioBackupContributor(f.database);
+        return new PrincipalScopeBackupSelector(f.database, List.of(workspace::principalScopes, portfolio::principalScopes));
+    }
+    private static void ownershipTables(Fixture f) {
+        f.jdbc.execute("create table system_repository(repository_id varchar(255),owner_type varchar(50),owner_id varchar(255))");
+        f.jdbc.execute("create table user_workspace(workspace_id varchar(255),source_repository_id varchar(255),username varchar(255))");
+        f.jdbc.execute("create table repository_membership(id integer,repository_id varchar(255),username varchar(255))");
+        f.jdbc.execute("create table sync_state(id integer,workspace_id varchar(255),username varchar(255))");
+        for (String table : List.of("arch_project", "project_requirement", "solution_definition"))
+            f.jdbc.execute("create table " + table + "(id integer,scope_key varchar(512),owner_username varchar(255))");
+        f.jdbc.update("insert into system_repository values ('repo','USER','alice'),('foreign','USER','bob')");
+        f.jdbc.update("insert into user_workspace values ('workspace','repo','retired-owner'),('private-other','repo','bob')");
+        f.jdbc.update("insert into repository_membership values (1,'repo','alice'),(2,'foreign','bob')");
+        f.jdbc.update("insert into sync_state values (1,'workspace','retired-owner'),(2,'private-other','bob')");
+        String selected = new RepositoryTenantIdentity("repo", "WORKSPACE:workspace", "draft").scopeKey();
+        String foreign = new RepositoryTenantIdentity("repo", "WORKSPACE:private-other", "draft").scopeKey();
+        String external = f.jdbc.queryForObject("select scope_key from app_principal where principal_id=?", String.class, f.external.value().toString());
+        for (String table : List.of("arch_project", "project_requirement", "solution_definition")) {
+            f.jdbc.update("insert into " + table + " values (1,?,?),(2,?,'bob')", selected, external, foreign);
+        }
+    }
 
     @Test void scopedExportIncludesOnlyReferencedIdentitiesWithoutAdministrativeStateOrHashes() throws Exception {
         try (var fixture = new Fixture()) {

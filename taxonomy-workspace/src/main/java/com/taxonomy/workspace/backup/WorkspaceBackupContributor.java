@@ -3,6 +3,7 @@ package com.taxonomy.workspace.backup;
 import com.taxonomy.backup.*;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.exchange.backup.PrincipalScopeCapture;
 import com.taxonomy.workspace.model.*;
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -19,6 +20,32 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         rows = new PortableRows(database); this.projector = Objects.requireNonNull(projector);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("workspace"); }
+    /** Ownership references only; audit/Git author labels never become login or ownership mappings. */
+    public Set<String> principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
+        if (!scope.selectedVersion()) {
+            var repositories = scope.repositoryIds("repository_id"); var workspaces = scope.repositories("source_repository_id", "workspace_id");
+            var sync = scope.repositories("w.source_repository_id", "w.workspace_id");
+            queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where "
+                    + repositories.sql() + " and (owner_type='USER' or owner_type is null) order by repository_id", repositories.parameters()));
+            queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where "
+                    + repositories.sql() + " order by id", repositories.parameters()));
+            queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
+                    + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
+            queries.add(new Query("select w.source_repository_id as repository_id,w.workspace_id,s.workspace_id as linked_workspace_id,0 as repository_only,s.username as principal_scope from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where "
+                    + sync.sql() + " order by s.id", sync.parameters()));
+        }
+        var repositoryIds = snapshot.repositories().keySet().stream().map(BackupRepositoryKey::repositoryId).collect(java.util.stream.Collectors.toSet());
+        return new PrincipalScopeCapture(rows).capture(queries, row -> {
+            String repository = text(row, "repository_id"), workspace = text(row, "workspace_id");
+            if (!Objects.equals(workspace, text(row, "linked_workspace_id")))
+                throw new IOException("Principal reference belongs to a different workspace");
+            if (!scope.installation() && !(row.getInt("repository_only") == 1 ? repositoryIds.contains(repository)
+                    : snapshot.repositories().containsKey(new BackupRepositoryKey(repository, workspace))))
+                throw new IOException("Principal reference belongs to a different repository scope");
+            return new PrincipalScopeCapture.Scope(text(row, "principal_scope"));
+        }, checkpoint);
+    }
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
