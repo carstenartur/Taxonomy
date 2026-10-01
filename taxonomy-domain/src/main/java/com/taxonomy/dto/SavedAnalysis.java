@@ -21,6 +21,10 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    private AnalysisScope analysisScope = AnalysisScope.full();
+    public AnalysisScope getAnalysisScope() { return analysisScope; }
+    public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
+
     /** Format version — {@code 1} for legacy, {@code 2} for provenance support. */
     private int version = 2;
 

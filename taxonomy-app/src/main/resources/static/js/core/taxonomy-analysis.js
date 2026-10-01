@@ -35,6 +35,12 @@
     }
 
     function warnAboutOpenAssessments(contentId) {
+        if (window.TaxonomyAnalysisScope?.restrictsGlobalAnalysis(window.TaxonomyState?.lastAnalysisScope)) {
+            var scopeMessage = t('analysis.scope.global.required');
+            if (contentId === 'copilotContent') renderPartialCopilot(scopeMessage);
+            else showPanelError(contentId, scopeMessage);
+            return true;
+        }
         var recovery = window.TaxonomyAnalysisRecovery;
         if (!recovery?.hasOpenEvaluations() && !window.TaxonomyState?.analysisCoverage?.failedOrBlockedNodes) return false;
         var message = recovery?.partialResultMessage?.() || t('relation.search.partial');

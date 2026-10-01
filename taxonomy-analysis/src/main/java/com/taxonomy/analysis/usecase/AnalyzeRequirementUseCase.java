@@ -80,8 +80,12 @@ public class AnalyzeRequirementUseCase {
             promptBudgetPolicy.requireWithinBudget(
                     command.businessText(), command.provider());
 
-            AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
-            if (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage())) {
+            AnalysisResult result = command.analysisScope().legacyFull()
+                    ? llmService.analyzeWithBudget(command.businessText())
+                    : llmService.analyzeWithBudget(command.businessText(), command.analysisScope());
+            result.setAnalysisScope(command.analysisScope());
+            if (command.analysisScope().includesRelations()
+                    && (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage()))) {
                 try {
                     AnalysisRunControl.phase("RELATIONS", null);
                     enrichWithRelationHypotheses(command, result, persistHypotheses);

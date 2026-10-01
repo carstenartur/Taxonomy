@@ -43,5 +43,33 @@ public final class RecoveryCatalogueExchangeProbe {
             check(!body.path("scores").has("IP"), "Unassessed scope became a zero score");
         }
     }
+    public static void selectedScopeRoundTrip() throws Exception {
+        var catalogue = new TaxonomyService(null, null, null) {
+            @Override public TaxonomyNode getNodeByCode(String code) {
+                var node = new TaxonomyNode(); node.setCode(code); return node;
+            }
+        };
+        var service = new SavedAnalysisService(MAPPER, catalogue);
+        var facade = new ExportFacade(null,null,null,null,null,null,null,null,null,service);
+        var controller = new ExportApiController(facade,null);
+        var field = ExportApiController.class.getDeclaredField("recoveryObjectMapper");
+        field.setAccessible(true); field.set(controller, MAPPER);
+        var selected = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        var saved = new SavedAnalysis(); saved.setVersion(3); saved.setRequirement("requirement"); saved.setProvider("MOCK");
+        saved.setScores(Map.of("BP",70)); saved.setRawScores(Map.of("BP",70)); saved.setAnalysisStatus("SUCCESS");
+        saved.setAnalysisScope(selected);
+        saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", new AnalysisCoverage.NodeAssessment(
+                AnalysisCoverage.State.RELEVANT,70,70,AnalysisCoverage.Descendants.COMPLETE,null)),1,0,0));
+        var exported = controller.exportScores(MAPPER.convertValue(saved, new tools.jackson.core.type.TypeReference<Map<String,Object>>() {}));
+        check(exported.getStatusCode().value() == 200, "Selected evidence export failed");
+        var exportedBody = MAPPER.valueToTree(exported.getBody());
+        check(MAPPER.treeToValue(exportedBody.path("analysisScope"), AnalysisScope.class).equals(selected), "Export lost selected scope");
+        var imported = controller.importScores(MAPPER.writeValueAsString(exported.getBody()));
+        check(imported.getStatusCode().value() == 200, "Selected evidence import failed");
+        var importedBody = MAPPER.valueToTree(imported.getBody());
+        check(MAPPER.treeToValue(importedBody.path("analysisScope"), AnalysisScope.class).equals(selected), "Import lost selected scope");
+        check(importedBody.path("analysisCoverage").path("nodes").size() == 1
+                && importedBody.path("analysisCoverage").path("nodes").has("BP"), "Exchange broadened assessment coverage");
+    }
     public static void main(String[] args) throws Exception { verify(args[0], Boolean.parseBoolean(args[1]), Boolean.parseBoolean(args[2])); System.out.println("PASS " + String.join(" ",args)); }
 }

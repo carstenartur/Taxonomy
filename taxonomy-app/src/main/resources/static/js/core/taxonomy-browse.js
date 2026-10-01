@@ -141,6 +141,8 @@
                         document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
                         S.analysisRecovery = null;
                         S.analysisCoverage = data.analysisCoverage || null;
+                        S.lastAnalysisScope = data.analysisScope || null;
+                        window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
                         if (window.TaxonomyScoring?.applyLocalRawScores) {
                             window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
                         } else S.currentScores = data.scores || {};
@@ -674,6 +676,7 @@
                 if (!data) return; // 503 branch already handled
                 setStartupBanner(false);
                 S.taxonomyData = data;
+                window.TaxonomyAnalysisScope?.render(data);
                 populateTreeRootSelect(data);
                 renderView(data, null);
                 // Populate Graph Explorer node suggestions
@@ -2232,6 +2235,8 @@
             return;
         }
 
+        S.lastAnalysisScope = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         SC().applyLocalRawScores({}, true);
@@ -2299,6 +2304,8 @@
         }
 
         SC().applyLocalRawScores(scores, true);
+        S.lastAnalysisScope = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.currentReasons = reasons;
         window._taxonomyCurrentScores = S.currentScores;
 

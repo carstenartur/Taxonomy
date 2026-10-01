@@ -28,6 +28,12 @@ public class AnalysisContinuationService {
         AnalysisRequest frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
         var tree = catalogue.getFullTree();
+        try {
+            frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode)
+                    .collect(java.util.stream.Collectors.toSet()));
+        } catch (IllegalArgumentException invalid) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+        }
         return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree));
     }
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
@@ -46,10 +52,14 @@ public class AnalysisContinuationService {
         authorize(username, scope); return store.detail(id, key, scope);
     }
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
-        return AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
+        String legacy = AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
                 Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
                 llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree),
                 relations == null ? "" : relations.recoveryPolicyFingerprint());
+        // Preserve existing durable identities while freezing additional semantic inputs.
+        return request.getAnalysisScope().legacyFull() ? legacy
+                : AnalysisCheckpointSession.digest(legacy, "analysis-scope-v1",
+                        mapper.writeValueAsString(request.getAnalysisScope()));
     }
     private void authorize(String username, WorkspaceContext scope) {
         if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)

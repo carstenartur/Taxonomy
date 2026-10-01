@@ -252,6 +252,22 @@
                             </label>
                         </div>
                         <div id="aiProviderInfo" class="mt-1 text-muted small d-none"></div>
+                        <details class="mt-3">
+                            <summary class="fw-semibold" th:text="#{analysis.scope.title}">Automatic analysis scope</summary>
+                            <p class="small text-muted mt-2" th:text="#{analysis.scope.hint}">Applies to automatic analysis and Copilot. Turn off Interactive Mode to run automatic analysis.</p>
+                            <fieldset class="mb-2">
+                                <legend class="fs-6" th:text="#{analysis.scope.roots}">Taxonomies to assess</legend>
+                                <div id="analysisTaxonomyRoots"></div>
+                                <button id="analysisSelectAll" class="btn btn-sm btn-outline-secondary" type="button" th:text="#{analysis.scope.all}">All taxonomies</button>
+                            </fieldset>
+                            <label for="analysisMode" class="form-label" th:text="#{analysis.scope.mode}">Analysis steps</label>
+                            <select id="analysisMode" class="form-select form-select-sm" aria-describedby="analysisScopeTargets">
+                                <option value="FULL" th:text="#{analysis.scope.full}">Node assessment and relation search</option>
+                                <option value="TAXONOMIES_ONLY" th:text="#{analysis.scope.nodes.only}">Node assessment only</option>
+                            </select>
+                            <p id="analysisScopeTargets" class="small text-muted mt-2 mb-0" th:text="#{analysis.scope.targets}">Relation search uses the selected assessments as sources and searches all compatible taxonomies for targets. Node-only mode skips relations and the architecture view.</p>
+                        </details>
+                        <p id="analysisScopeEvidence" class="small mt-2 mb-0" hidden></p>
                     </div>
                 </div>
 
@@ -1518,6 +1534,7 @@
 <script th:src="@{/js/shared/taxonomy-dsl-editor.js}"></script>
 <script type="module" th:src="@{/js/shared/taxonomy-dsl-codemirror.mjs}"></script>
 <script th:src="@{/js/shared/taxonomy-about.js}"></script>
+<script th:src="@{/js/core/taxonomy-analysis-scope.js}"></script>
 <script th:src="@{/js/core/taxonomy-scoring.js}"></script>
 <script th:src="@{/js/core/taxonomy-browse.js}"></script>
 <script th:src="@{/js/shared/taxonomy-document-import.js}"></script>

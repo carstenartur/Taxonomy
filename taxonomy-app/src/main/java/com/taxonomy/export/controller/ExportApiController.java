@@ -234,6 +234,13 @@ public class ExportApiController {
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        if (body.get("analysisScope") != null) {
+            try {
+                exported.setAnalysisScope(recoveryObjectMapper.convertValue(body.get("analysisScope"), com.taxonomy.dto.AnalysisScope.class));
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
         if (body.get("analysisCoverage") != null) {
             try {
                 var coverage = recoveryObjectMapper.convertValue(body.get("analysisCoverage"), com.taxonomy.dto.AnalysisCoverage.class);
@@ -273,6 +280,7 @@ public class ExportApiController {
             result.put("provider", saved.getProvider());
             result.put("warnings", warnings);
             result.put("analysisCoverage", saved.getAnalysisCoverage());
+            result.put("analysisScope", saved.getAnalysisScope());
             result.put("rawScores", saved.getRawScores());
             result.put("analysisStatus", saved.getAnalysisCoverage() != null && saved.getAnalysisCoverage().hasOpenEvaluations()
                     ? "PARTIAL" : saved.getAnalysisStatus());

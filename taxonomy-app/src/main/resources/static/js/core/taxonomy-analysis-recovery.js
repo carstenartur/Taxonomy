@@ -77,6 +77,7 @@
         if (c?.followupState === 'PAUSED') label = text('Copilot-Folgeschritt fehlgeschlagen', 'Copilot follow-up failed');
         if (c?.followupState === 'CANCELLED') label = text('Abgebrochen – gültige Ergebnisse erhalten', 'Cancelled – valid results retained');
         if (c?.followupState === 'COMPLETED') label = text('Copilot abgeschlossen', 'Copilot complete');
+        if (c?.followupState === 'COMPLETED_SCOPED') label = text('Gewählte Analyse abgeschlossen', 'Selected analysis complete');
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
         if (busy && liveWork) return liveWork;
         return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' questions complete')
@@ -93,6 +94,8 @@
         S.analysisRecovery = result.recovery || S.analysisRecovery;
         context.pauseReason = ['PAUSED', 'STOPPED'].includes(S.analysisRecovery?.state) ? result.errorMessage : null;
         S.analysisCoverage = result.analysisCoverage || null;
+        S.lastAnalysisScope = result.analysisScope || context.request.analysisScope || null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
         S.currentRawScores = result.rawScores || {};
         S.currentEffectiveScores = result.effectiveScores || result.scores || {};
@@ -184,6 +187,13 @@
     async function followups() {
         var c = current();
         if (!inScope(c) || busy || stopped()) return;
+        if (window.TaxonomyAnalysisScope?.restrictsGlobalAnalysis(S.lastAnalysisScope || c.request.analysisScope)) {
+            c.followupState = 'COMPLETED_SCOPED';
+            window.TaxonomyAnalysis.renderPartialCopilot?.(text(
+                'Der gewählte Analyseumfang ist abgeschlossen. Globale Lücken, Muster und Empfehlungen benötigen eine vollständige Analyse mit Relationssuche.',
+                'The selected analysis scope is complete. Global gaps, patterns and recommendations require a complete analysis with relation search.'));
+            update(); await save(); return;
+        }
         if ((S.analysisCoverage?.failedOrBlockedNodes || 0) > 0) {
             // Existing gap/recommendation algorithms infer absence from missing scores. They
             // cannot safely make global claims with missing inputs; keep the useful architecture.
@@ -253,7 +263,7 @@
         } else if (!busy && r.state === 'COMPLETED' && !stopped()) {
             options.push({ id: 'analysisRecoveryRetryStage', label: text('Copilot fortsetzen', 'Continue Copilot'), handler: followups });
         }
-        if (!stopped() && (r.state !== 'COMPLETED' || c.followupState !== 'COMPLETED'))
+        if (!stopped() && (r.state !== 'COMPLETED' || !['COMPLETED', 'COMPLETED_SCOPED'].includes(c.followupState)))
             options.push({ id: 'analysisRecoveryCancelDialog', shortLabel: text('Abbrechen', 'Cancel'), label: text('Lauf abbrechen', 'Cancel run'), handler: cancel });
         if (c.observationError || r.state === 'RUNNING') options.push({ id: 'analysisRecoveryRefresh', shortLabel: text('Aktualisieren', 'Refresh'), label: text('Status aktualisieren', 'Refresh status'), handler: refresh });
         ui.open('Copilot', message(), function (body, el) {
@@ -348,9 +358,12 @@
         if (!ready?.ready || !ready.workspaceId || !crypto?.randomUUID) {
             window.TaxonomyBrowse?.showStatus('warning', text('Analyse ist noch nicht bereit.', 'Analysis is not ready.')); return;
         }
+        var scope;
+        try { scope = window.TaxonomyAnalysisScope?.read(); }
+        catch (invalidScope) { window.TaxonomyBrowse?.showStatus('warning', invalidScope.message); return; }
         generation = C.runtime.analysisGeneration || 0;
         S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId,
-            request: { businessText: input(), includeArchitectureView: true,
+            request: { businessText: input(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
         run('START');

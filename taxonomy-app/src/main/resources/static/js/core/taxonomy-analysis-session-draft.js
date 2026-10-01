@@ -223,6 +223,8 @@
         }
         S.currentScores = null;
         S.analysisCoverage = null;
+        S.lastAnalysisScope = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.analysisRecovery = null;
         S.recoveryContext = null;
         S.lastAnalysisProvider = null;
@@ -275,6 +277,7 @@
             S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
             S.currentScores = S.currentEffectiveScores;
             S.analysisCoverage = payload.analysisCoverage || null;
+            S.lastAnalysisScope = payload.analysisScope || null;
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;

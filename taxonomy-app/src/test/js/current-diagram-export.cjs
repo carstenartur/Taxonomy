@@ -29,7 +29,7 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
     const context={window,document,TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
         fetch:(url,options)=>{requests.push({url,options});return pending;},alert(message){alerts.push(message);},Element:class {}};
     vm.runInNewContext(source,context);
-    return {elements,requests,alerts,state,resolve,reject,downloads,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
+    return {elements,requests,alerts,state,resolve,reject,downloads,window,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
 }
 test('exports a frozen copy of the current architecture with visible busy state',async()=>{
     const f=fixture();const original=JSON.stringify(f.state);const pending=f.run();await Promise.resolve();
@@ -269,4 +269,20 @@ test('main Export SVG and PNG handlers request full-model exports rather than vi
     assert.match(browse,/btnId === 'exportPng'[\s\S]*?TaxonomyExport\.exportPng\(\)/);
     assert.doesNotMatch(browse,/btnId === 'exportSvg'[\s\S]{0,180}?exportSvg\('taxonomyTree'\)/);
     assert.doesNotMatch(browse,/btnId === 'exportPng'[\s\S]{0,180}?exportPng\('taxonomyTree'\)/);
+});
+
+
+test('JSON export carries frozen evidence scope independently of next-run controls',async()=>{
+    const f=fixture();
+    const evidence={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+    f.state.lastAnalysisScope=evidence;
+    f.window.TaxonomyAnalysisScope={read:()=>{throw new Error('Export must not read next-run controls');}};
+    f.api.exportJson({BP:80},{},'original','MOCK');
+    assert.equal(f.requests[0].url,'/api/scores/export');
+    const body=JSON.parse(f.requests[0].options.body);
+    assert.deepEqual(body.analysisScope,evidence);
+    f.resolve({ok:true,json:async()=>body});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(f.downloads.length,1);
+    assert.deepEqual(f.state.lastAnalysisScope,evidence);
 });

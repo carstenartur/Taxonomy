@@ -35,7 +35,7 @@ public class StreamRequirementAnalysisUseCase {
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
                     command.businessText(), command.provider());
-            llmService.analyzeStreaming(command.businessText(), new AnalysisEventCallback() {
+            AnalysisEventCallback callback = new AnalysisEventCallback() {
                 @Override
                 public void onPhase(String message, int progressPercent) {
                     handler.handle(new AnalysisStreamEvent.Phase(message, progressPercent));
@@ -80,7 +80,9 @@ public class StreamRequirementAnalysisUseCase {
                             status, errorMessage, partialScores, warnings, discrepancies,
                             productCoverageGaps, partialReasons, elapsedMillis(startedNanos)));
                 }
-            });
+            };
+            if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);
+            else llmService.analyzeStreaming(command.businessText(), command.analysisScope(), callback);
         } finally {
             try {
                 llmService.clearRequestProvider();

@@ -2,6 +2,10 @@ package com.taxonomy.dto;
 
 public class AnalysisRequest {
 
+    private AnalysisScope analysisScope = AnalysisScope.full();
+    public AnalysisScope getAnalysisScope() { return analysisScope; }
+    public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
+
     private String businessText;
     private boolean includeArchitectureView;
     // Null means "use the live server-side runtime preference". Keeping this

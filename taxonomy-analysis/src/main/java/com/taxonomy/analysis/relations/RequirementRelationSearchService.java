@@ -52,9 +52,14 @@ public class RequirementRelationSearchService {
                             + "all relationships remain unassessed.");
         }
         var adapter = new RequirementRelationSearch.InputCatalogue() {
+            private final Map<String, List<Node>> children = new HashMap<>();
             public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }
             public List<Node> roots() { return scalars(catalogue.getRootNodes()); }
-            public List<Node> children(Node node) { return scalars(catalogue.getChildrenOf(node.id())); }
+            public List<Node> children(Node node) {
+                // Retain only successfully materialized immutable scalars, including
+                // empty lists. This adapter and its cache belong to one search.
+                return children.computeIfAbsent(node.id(), id -> scalars(catalogue.getChildrenOf(id)));
+            }
         };
         return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint, llm.getActiveProviderName())
                 .search(original, scores, options());
