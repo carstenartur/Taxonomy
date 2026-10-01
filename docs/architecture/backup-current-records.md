@@ -1,8 +1,9 @@
 # Current records and embedded history
 
-This document describes the first P05 adapters. They are not yet a complete
-capture source: knowledge, identities, templates, architecture,
-integration and Git inventory are required before production jobs can activate.
+This document describes the P05 adapters. They are not yet a complete capture
+source: identities, preferences/configuration, architecture, integration,
+retained catalogue inputs and Git inventory are required before production jobs
+can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
 Each module constructs explicit version-1 records. An NDJSON dataset starts with
 `schemaVersion`, `kind` and `profile`, followed by one record per line. Jackson
@@ -103,3 +104,37 @@ limits. SQL batches use at most 200 dependency IDs; the closure is capped at
 100,000 identifiers per category. File bytes and DTO text are streamed, not held
 in the dependency map. Selected-version source closure must be supplied from
 selected Git evidence during capture composition, not from today's database.
+
+## Administrative document templates
+
+The template library owns `TemplateBackupContributor` and the read-only capture
+port on `DocumentTemplateGitRepository`. `INSTALLATION_CURRENT` captures one
+immutable main-branch tree, including every manifest and OOXML/binary part. It
+does not call bootstrap, materialize a worktree or write source refs. Advancing
+the source HEAD after capture cannot change the selected blob identities.
+
+The global template repository is administered separately from user workspaces.
+Workspace and selected-version exports record `OUTSIDE_SCOPE` without reading
+its HEAD or content. The current-tree adapter rejects `INSTALLATION_FULL` until
+auxiliary Git-history capture is composed; it cannot claim complete history.
+
+Before payload output, capture verifies the whole tree layout, regular file
+modes, portable Linux/Windows paths and directory case collisions. Each template
+manifest must be bounded, unambiguous JSON and match its package's part count,
+byte length and SHA-256. Source paths are retained below
+`data/templates/current/`; `data/templates/inventory.json` links immutable source
+object IDs to the independently hashed archive entries. No earlier package
+content enters a current-state capture.
+
+Only bounded path/object metadata is retained for the tree. Payload checksums
+and export bytes stream with an 8 KiB verification buffer. Limits match template
+ingestion: 2,048 parts, 25 MiB per part and 100 MiB per package, plus a 1 MiB
+manifest limit and the capture-wide limits. Contributors call
+`ComponentSink.checkpoint()` during discovery so cancellation, runtime budgets
+and the maintenance lease remain active before the first output entry.
+
+Real in-memory Git regressions verify binary preservation, source immutability,
+history exclusion, out-of-scope non-access, empty repositories and rejection of
+corrupt packages, ambiguous manifests, symlinks and unsafe paths. The shared
+capture test checks that cancellation during preflight releases the barrier and
+leaves no completed staging artifact. Native Windows checkout remains P12 work.

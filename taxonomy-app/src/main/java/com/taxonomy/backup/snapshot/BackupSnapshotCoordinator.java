@@ -169,6 +169,7 @@ public final class BackupSnapshotCoordinator {
             budget();
             if (System.nanoTime() - validatedAt >= Duration.ofMillis(100).toNanos()) check();
         }
+        @Override public void checkpoint() throws IOException { progress(); }
         @Override public BackupEntry write(String path, InputStream input) throws IOException {
             check();
             if (path.startsWith("protected/") && secrets != SecretsSelection.INCLUDE_ENCRYPTED)

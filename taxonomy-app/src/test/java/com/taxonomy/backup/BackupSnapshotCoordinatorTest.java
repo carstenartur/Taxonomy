@@ -112,6 +112,21 @@ class BackupSnapshotCoordinatorTest {
         assertEmpty();
     }
 
+    @Test void cancellationDuringPreflightIsObservedBeforeAnyEntryIsWritten() {
+        var checks = new java.util.concurrent.atomic.AtomicInteger();
+        try {
+            assertThatThrownBy(() -> coordinator((snapshot, sink) -> {
+                for (int i = 0; i < 100; i++) sink.checkpoint();
+                fail("Cancelled preflight must not reach entry writing");
+            }).capture(authorization.authorize(actor, request), bytes -> {
+                if (checks.incrementAndGet() == 10) throw new InterruptedIOException("Cancelled");
+            })).isInstanceOf(InterruptedIOException.class);
+        } finally { Thread.interrupted(); }
+        assertEmpty();
+        assertThat(raw.queryForObject("select phase from backup_barrier_state", Integer.class)).isZero();
+        assertThatCode(() -> secondNode.update("update evidence set revision=5")).doesNotThrowAnyException();
+    }
+
     @Test void undeclaredComponentsDuplicatePathsAndPathEscapesCannotProduceACapture() {
         var missing = new BackupSnapshotCoordinator(barrier, authorization, ignored -> plan(), List.of(), directory, CaptureLimits.defaults(), Clock.systemUTC());
         assertThatThrownBy(() -> missing.capture(authorization.authorize(actor, request))).hasMessageContaining("component");

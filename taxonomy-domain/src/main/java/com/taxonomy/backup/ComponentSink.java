@@ -8,4 +8,9 @@ import java.io.InputStream;
 public interface ComponentSink {
     /** The caller owns and closes input. The sink rejects duplicate or unsafe paths. */
     BackupEntry write(String path, InputStream input) throws IOException;
+
+    /** Contributors call this regularly while inspecting data before their first write. */
+    default void checkpoint() throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("Capture interrupted");
+    }
 }
