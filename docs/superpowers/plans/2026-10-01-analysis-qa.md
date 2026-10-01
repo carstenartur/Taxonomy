@@ -33,7 +33,17 @@ three red/green regressions fixed it. The broad Java run also exposed a legacy S
 regression and an invalid null-request recovery fixture; both were corrected, and the
 45 targeted follow-up tests passed.
 
-An execution-environment replacement then discarded local task files and commits before
-the application/quality stages completed. The implementation is being restored from
-retained patches; a new verification pass and remote checkpoint are required.
-Authoritative completion evidence is recorded in `docs/testing/analysis-qa-2026-10-01.md`.
+An execution-environment replacement discarded local task files and commits before
+the application/quality stages completed. The implementation has been restored from
+retained patches and secured in draft PR #1160. Fresh verification passed 712 UI
+contracts and 3,784 Java tests through portfolio. The restored scope fixture required
+the existing child-assessment response format; four focused tests confirmed the fix.
+
+The application architecture ratchet exposed a new controller-to-catalogue-entity
+dependency. The controller now consumes scalar root codes from TaxonomyService;
+the architecture baseline is unchanged. All 22 controller tests and 38 application
+follow-up tests (architecture ratchet, catalogue fingerprints, recovery exchange) pass.
+All six browser shards passed on the preceding code checkpoint. The canonical CI
+rerun verifies the final correction; the local environment cannot run Docker browser
+scenarios. Evidence and remaining findings are recorded in
+`docs/testing/analysis-qa-2026-10-01.md` and the PR check list.

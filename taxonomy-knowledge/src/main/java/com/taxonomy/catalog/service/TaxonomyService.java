@@ -748,6 +748,14 @@ public class TaxonomyService {
         return repository.findByParentIsNullOrderByCodeAsc();
     }
 
+    /** Scalar catalogue boundary for validating a root selection without exposing entities. */
+    @Transactional(readOnly = true)
+    public Set<String> getRootCodes() {
+        return getRootNodes().stream()
+                .map(TaxonomyNode::getCode)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getChildrenOf(String parentCode) {
         return repository.findByParentCodeOrderByNameEnAsc(parentCode);

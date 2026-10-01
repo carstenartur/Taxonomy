@@ -108,8 +108,7 @@ class AnalysisApiControllerTest {
 
     @Test
     void analyzeCarriesSelectedScopeInTypedCommand() throws Exception {
-        var root = new com.taxonomy.catalog.model.TaxonomyNode(); root.setCode("BP");
-        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
+        when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("BP"));
         when(analyzeRequirementUseCase.analyze(any())).thenReturn(new AnalyzeRequirementResult(new AnalysisResult()));
         mockMvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
                 "{\"businessText\":\"requirement\",\"analysisScope\":{\"taxonomyRoots\":[\"BP\"],\"mode\":\"TAXONOMIES_ONLY\"}}"))
@@ -144,8 +143,7 @@ class AnalysisApiControllerTest {
         mockMvc.perform(get("/api/analyze-stream").param("businessText", "requirement").param("taxonomyRoots", "UNKNOWN"))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(streamRequirementAnalysisUseCase, repositoryStateService);
-        var root = new com.taxonomy.catalog.model.TaxonomyNode(); root.setCode("BP");
-        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
+        when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("BP"));
         mockMvc.perform(get("/api/analyze-stream").param("businessText", "requirement")
                 .param("taxonomyRoots", "BP").param("analysisMode", "TAXONOMIES_ONLY")).andExpect(status().isOk());
         var captor = ArgumentCaptor.forClass(StreamRequirementAnalysisCommand.class);

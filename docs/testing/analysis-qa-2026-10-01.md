@@ -1,7 +1,8 @@
 # QA: Analyseumfang, Relationen und Ressourcenverbrauch
 
-Stand: 1. Oktober 2026. Basis: `d6ecb6b16699270fc476ca2fe1e6e21d5e4a816c`.
+Stand: 2. Oktober 2026. Basis: `d6ecb6b16699270fc476ca2fe1e6e21d5e4a816c`.
 Branch: `refactor/analysis-scope-performance`.
+Review: [PR #1160](https://github.com/carstenartur/Taxonomy/pull/1160).
 
 ## Ergebnis und Reichweite
 
@@ -62,6 +63,7 @@ automatische Oberfläche verwendet weiterhin den vollständigen POST-Anwendungsf
 | Fortschritt scannt alle Aufgaben erneut | Inkrementelle Zähler je Zielwurzel, Index je Quelle | Restore, Abschluss, ungelöste Aufgaben und Neubewertung |
 | Gefilterte Vorfahren hinterlassen ungültige Export-Eltern | Nächster überlebender Vorfahr, Zyklenschutz, keine Quellmutation | Fünf Regressionen mit tatsächlicher ArchiMate-/Visio-Validierung |
 | Scope überlebt Ersatz durch manuelle/interaktive Bewertung | Ergebnisumfang und Label zurücksetzen, nächste Auswahl behalten | Drei zusätzlich im Review reproduzierte Regressionen |
+| Scope-Validierung führt eine neue Controller-Abhängigkeit auf Katalog-Entities ein | Skalare Wurzelkennungen über `TaxonomyService.getRootCodes()` | 22 Controller-Tests und 23 Architektur-Ratchet-Tests; Baseline unverändert |
 
 ## Relationslauf: Messwerte und Wartezeit
 
@@ -155,28 +157,52 @@ Eviction aktiver Repositories riskant; ein Leak ist damit noch nicht bewiesen.
 
 ## Verifikation und Grenzen
 
-Die erste Ausführung bestätigte 712 UI-Vertragstests und alle Java-Module bis
-einschließlich Portfolio. Ein unabhängiges Review bestätigte die Änderungen und
-die Korrektur der drei Scope-Lebenszyklusfälle. Die 45 gezielten Java-Nachtests für
-SSE-Reihenfolge, Recovery und Scope waren grün.
+Ein unabhängiges Review prüfte Verhalten, Recovery, Scope-Lebenszyklus,
+Relationsoptimierungen und Export. Die dabei reproduzierten drei veralteten
+Scope-Anzeigen wurden mit Regressionstests behoben. Anschließend wurde der Stand
+nach einem Verlust der Ausführungsumgebung aus protokollierten Patches
+wiederhergestellt und remote gesichert. Die Nachweise der neuen Ausführung sind:
 
-Der Build scheiterte danach beim Nachladen eines Maven-Plugins an einer veralteten
-Proxy-Verbindung. Eine Ersetzung der Ausführungsumgebung verwarf lokale Dateien
-und Commits. Der Stand wurde deshalb aus den protokollierten Patches rekonstruiert.
-**Maßgeblich für den wiederhergestellten Branch ist die folgende neue Verifikation:**
+| Prüfung | Ergebnis |
+|---|---|
+| UI-Verträge, wiederhergestellter Stand | 712 Tests, keine Fehler oder übersprungenen Tests |
+| Breite lokale Java-Wiederholung bis einschließlich Portfolio | 3.784 Tests, keine Fehler oder übersprungenen Tests; Details unten |
+| Scope-Antwortformat | 4 Tests grün nach Korrektur der Testattrappe auf den bestehenden Child-Assessment-Vertrag |
+| Controller nach Korrektur der Architekturgrenze | 22 Tests grün |
+| Architektur-Ratchet, Katalog-Fingerprint und Recovery-Austausch nach derselben Korrektur | 38 Tests grün: 23 + 9 + 6 |
+| CI am Zwischenstand `b028019f` | Alle sechs Browser-Shards, UI-Verträge, Interoperabilität, Observability-Budget, Kubernetes-Smoke, Security-Scan und CodeQL erfolgreich |
+| Kanonischer Anwendungstest am Zwischenstand `b028019f` | 2.259 Tests, genau ein Fehler: neue Controller/Entity-Abhängigkeit; anschließend wie oben korrigiert und gezielt nachgeprüft |
 
-- Erneute Verifikation: läuft; Ergebnisse werden vor Abschluss ergänzt.
+Die 3.784 lokalen Tests verteilen sich auf Tooling 161, Domain 208, DSL 332,
+Extension API 2, Export 382, Workspace 757, Templates 127, Interop 133,
+Knowledge 475, Architecture 167, Analysis 696 und Portfolio 344. Die 8
+deterministischen Relations-Performance-Tests sind in Analysis enthalten.
+Die letzten 60 gezielten Tests prüfen die nach diesem breiten Lauf vorgenommene
+Korrektur der Controller-Grenze; sie sind kein zusätzlicher vollständiger Reactor-Lauf.
 
-Projektbefehle:
+Der lokale Anwendungslauf ist **nicht vollständig grün**: Ein Browser-Szenario
+benötigt hier nicht verfügbares Docker. Außerdem fand er die inzwischen behobene
+Architekturabhängigkeit. Der Lauf wurde zur gezielten Korrektur beendet. Lokale
+Chromium-Downloads lieferten keine nutzbare Browserdatei; die Browsernachweise
+oben stammen aus GitHub Actions. Qualitätsgrenzen, Architektur-Baselines und
+Produktionskonfiguration wurden nicht abgeschwächt.
+
+Der erneute vollständige CI-Lauf nach der letzten Korrektur ist in der
+[PR-Prüfliste](https://github.com/carstenartur/Taxonomy/pull/1160/checks) maßgeblich.
+Die obigen Zwischenstands-Ergebnisse ersetzen diesen Abschlusslauf nicht.
+Ein Draft-Merge-Gate bleibt absichtlich rot, solange der PR ein Entwurf ist.
+
+Projektbefehle für vollständige CI beziehungsweise UI-Verträge:
 
 ```bash
-./mvnw verify -Pquality -Dtaxonomy.ui.skip=true
+./mvnw -B verify -Pci
 cd .github
 npm ci
 npm run verify:ui-contracts
 ```
 
-Lokal: Java 21 und Mockito-Premain-Agent, da dynamisches Agent-Attachment nicht
-funktioniert. Produktionskonfiguration und Coverage-Schwellen werden nicht
-abgesenkt. Vollständige CI mit Browsern, ONNX und optionalen Datenbankcontainern ist
-damit nicht behauptet. Es wurden keine kostenpflichtigen Provideraufrufe ausgeführt.
+Lokal wurden Java 21 und ein Mockito-Premain-Agent verwendet, da dynamisches
+Agent-Attachment hier nicht funktioniert. Die Java-Module liefen in getrennten
+Maven-Aufrufen mit vorhandenen Reactor-Abhängigkeiten; die gezielten Nachtests
+verwendeten explizite Testselektoren. Es wurden keine kostenpflichtigen
+Provideraufrufe ausgeführt und keine reale Modellqualität oder Providerlatenz gemessen.

@@ -377,9 +377,7 @@ public class AnalysisApiController {
         AnalysisScope scope = AnalysisScope.orDefault(requested);
         if (!scope.taxonomyRoots().isEmpty()) {
             try {
-                scope.validateRoots(taxonomyService.getRootNodes().stream()
-                        .map(com.taxonomy.catalog.model.TaxonomyNode::getCode)
-                        .collect(java.util.stream.Collectors.toSet()));
+                scope.validateRoots(taxonomyService.getRootCodes());
             } catch (IllegalArgumentException invalid) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
             }
