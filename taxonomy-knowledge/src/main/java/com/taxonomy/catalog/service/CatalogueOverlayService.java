@@ -1,6 +1,8 @@
 package com.taxonomy.catalog.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,12 +12,10 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.InputStream;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -108,7 +108,8 @@ public class CatalogueOverlayService {
                 hierarchyStats.maxDirectChildren(),
                 hierarchyStats.maxDepth(),
                 overlay.sha256(),
-                overlay.definition().getMappingVersion());
+                overlay.definition().getMappingVersion(),
+                enabled ? SourceUse.applied(overlay.input()) : SourceUse.notUsed());
 
         log.info("Catalogue overlay applied: {} patches, {} products, {} product families, "
                         + "max direct children {}, max depth {}, digest {}.",
@@ -176,24 +177,16 @@ public class CatalogueOverlayService {
     }
 
     private LoadedOverlay readOverlay() {
-        Resource resource = resourceLoader.getResource(overlayResource);
-        if (!resource.exists()) {
-            throw new IllegalStateException("Configured taxonomy catalogue overlay does not exist: "
-                    + overlayResource);
-        }
-        try (InputStream input = resource.getInputStream()) {
-            byte[] bytes = input.readAllBytes();
-            OverlayDefinition definition = objectMapper.readValue(bytes, OverlayDefinition.class);
-            validateDefinition(definition);
-            String sha256 = HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(bytes));
-            return new LoadedOverlay(definition, sha256);
-        } catch (IllegalStateException exception) {
-            throw exception;
+        CatalogueSourceBytes bytes;
+        OverlayDefinition definition;
+        try {
+            bytes = CatalogueSourceBytes.capture(() -> resourceLoader.getResource(overlayResource).getInputStream());
+            try (InputStream input = bytes.openStream()) { definition = objectMapper.readValue(input, OverlayDefinition.class); }
         } catch (Exception exception) {
-            throw new IllegalStateException(
-                    "Cannot load taxonomy catalogue overlay '" + overlayResource + "'", exception);
+            throw new IllegalStateException("Cannot load taxonomy catalogue overlay");
         }
+        validateDefinition(definition);
+        return new LoadedOverlay(definition, bytes.sha256(), bytes);
     }
 
     private void validateDefinition(OverlayDefinition definition) {
@@ -529,14 +522,14 @@ public class CatalogueOverlayService {
 
     private enum VisitState { VISITING, VISITED }
 
-    private record LoadedOverlay(OverlayDefinition definition, String sha256) {
+    private record LoadedOverlay(OverlayDefinition definition, String sha256, CatalogueSourceBytes input) {
         static LoadedOverlay disabled(String resource) {
             OverlayDefinition definition = new OverlayDefinition();
             definition.setSchemaVersion(SUPPORTED_SCHEMA_VERSION);
             definition.setMode(SUPPORTED_MODE);
             definition.setMappingVersion("disabled");
             definition.setBaseCatalogue(resource);
-            return new LoadedOverlay(definition, null);
+            return new LoadedOverlay(definition, null, null);
         }
     }
 
@@ -549,7 +542,8 @@ public class CatalogueOverlayService {
             int maxDirectChildren,
             int maxDepth,
             String overlaySha256,
-            String mappingVersion) {}
+            String mappingVersion,
+            SourceUse sourceUse) {}
 
     public record OverlayMetadata(
             boolean enabled,

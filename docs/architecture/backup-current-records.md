@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: complete reference closure, retained catalogue inputs and Git inventory are required before production jobs
+source: complete reference closure, Git inventory and production composition are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
 `CompositeBackupDataContributor` checks the declared adapter coverage against
@@ -135,6 +135,67 @@ limits. SQL batches use at most 200 dependency IDs; the closure is capped at
 100,000 identifiers per category. File bytes and DTO text are streamed, not held
 in the dependency map. Selected-version source closure must be supplied from
 selected Git evidence during capture composition, not from today's database.
+
+## Retained base-catalogue inputs
+
+`CatalogueSourceJournal` retains the exact workbook, overlay and optional relation
+CSV bytes consumed by catalogue initialization. The parser uses the same immutable
+capture that is stored with the materialized nodes and relations in their existing
+transaction. A failed initialization or forced reload rolls back both the records
+and their source evidence. Resource locations and transport diagnostics are absent
+from the journal. Each input is bounded to 64 MiB and addressed by SHA-256.
+
+Immutable blobs and revisions are separate from the versioned current pointer.
+Identical input/use tuples reuse the current revision; changed inputs create a new
+one. Reusing persisted nodes does not reopen the workbook or relation CSV. It keeps
+their prior provenance and records the overlay actually applied during that start.
+Pre-retention inputs remain `NOT_RETAINED`; a configured or shipped file cannot
+replace a missing original. Disabling the overlay records `NOT_USED`. An absent
+optional CSV is `NOT_USED`, an unreadable one is `NOT_RETAINED`, and an available
+input whose optional parser fails is `PARSE_FAILED`. Cancellation aborts the whole
+transaction, including cancellation during resource close.
+
+`CatalogueSourceBackupContributor` owns the three journal categories and
+`storage.files.catalogue`. Its version-1 datasets describe the current pointer,
+selected revisions and retained blob entries. Source IDs require target mapping;
+optimistic locking state never becomes portable authority.
+
+| Profile | Catalogue input policy |
+| --- | --- |
+| Current state / installation current | Active revision and scalar use/digest/length provenance; originals marked `HISTORY_REQUIRED`; no raw files or old revisions |
+| Selected version | No present-day journal reads; selected Git/source composition must supply version-specific evidence |
+| Repository history | Only explicitly authorized whole input revisions and their original bytes |
+| Installation full | All retained revisions and their deduplicated original bytes |
+
+Even an active workbook or overlay can contain superseded content. Raw inputs
+therefore require history. Current materialized nodes remain the responsibility of
+`KnowledgeBackupContributor`. Scoped selection must prove authority over every
+whole input revision, including its file contents; referencing one catalogue node
+does not authorize a global workbook. No production selector or capture bean is
+registered by this adapter. Framework/DSL/APQC sources remain with their actual
+source or Git owners rather than being attributed to the base workbook.
+
+Capture checks selected references, availability, bounded lengths and raw SHA-256
+before the first output entry. The output pass must reproduce the exact checked
+state, revision and blob metadata; changed, added or missing selected records abort
+capture. It streams and verifies each raw file again under
+`files/catalogue/<sha256>.bin`, checks the sink receipt, and honors cancellation
+throughout. The caller must hold the stable fenced capture lease and discard all
+staging on failure. Metadata uses batches of at most 200 IDs and a 100,000-identity
+limit; raw streams use an 8 KiB verification buffer. Current profiles do not read
+excluded raw payloads. Source rows are never modified by capture. Capture failures
+discard private driver diagnostics, including errors suppressed during cleanup,
+while preserving cancellation.
+
+The independent catalogue migration runs before Hibernate validation in the
+existing HSQL/Postgres Flyway startup path. Its DDL also defines SQL Server and
+Oracle binary/number types; their evaluation profiles continue to use the existing
+Hibernate-managed schema path. Real HSQL tests cover migration, rerun, constraints,
+loader rollback, provenance preservation, public catalogue views and corrupt or
+unauthorized exports. Reconstructing the journal object verifies persisted state;
+it is not a physical database restart test. Cross-database restore and native
+Windows acceptance remain P08/P12 work. Catalogue initialization retains the
+existing single-instance startup contract.
 
 ## Administrative document templates
 

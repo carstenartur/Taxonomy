@@ -7,6 +7,10 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -19,7 +23,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.scheduling.annotation.Async;
@@ -30,6 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -73,6 +78,9 @@ public class TaxonomyService {
 
     @Autowired
     private CatalogueOverlayService catalogueOverlayService;
+
+    @Autowired
+    private CatalogueSourceJournal catalogueSourceJournal;
 
     /** Exact catalogue resource used both for loading and report provenance. */
     @Value("${taxonomy.catalogue.resource:classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx}")
@@ -224,6 +232,7 @@ public class TaxonomyService {
             CatalogueOverlayService.OverlayApplicationResult overlayResult =
                     catalogueOverlayService.applyAndValidate(
                             persistedNodeMap, persistedUuidToCode, catalogueResource);
+            catalogueSourceJournal.reconcileOverlay(overlayResult.sourceUse());
             entityManager.flush();
             entityManager.clear();
             log.info("Reconciled {} persisted taxonomy nodes with catalogue overlay {}; "
@@ -245,7 +254,8 @@ public class TaxonomyService {
             entityManager.clear();
         }
 
-        Resource resource = resourceLoader.getResource(catalogueResource);
+        CatalogueSourceBytes workbookInput = CatalogueSourceBytes.capture(
+                () -> resourceLoader.getResource(catalogueResource).getInputStream());
 
         // Global node map: code → entity (across all sheets)
         Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
@@ -273,7 +283,7 @@ public class TaxonomyService {
         List<String[]> rawRelations = new ArrayList<>();
         boolean hasExcelRelations = false;
 
-        try (InputStream is = resource.getInputStream();
+        try (InputStream is = workbookInput.openStream();
              Workbook workbook = new XSSFWorkbook(is)) {
 
             // 2. Read every sheet and collect raw rows
@@ -312,12 +322,14 @@ public class TaxonomyService {
                 nodeMap.size(), SHEET_PREFIXES.size());
 
         // 4c. Load relations using managed entity proxies (via codeToId)
+        SourceUse relationsInput = SourceUse.notUsed();
         if (hasExcelRelations) {
             persistRawRelations(rawRelations, codeToId);
         } else {
             log.info("No 'Relations' sheet found in workbook — trying CSV fallback.");
-            loadRelationsFromCsv(codeToId);
+            relationsInput = loadRelationsFromCsv(codeToId);
         }
+        catalogueSourceJournal.initialize(workbookInput, overlayResult.sourceUse(), relationsInput);
 
         // 4d. Help GC by releasing the large in-memory maps
         nodeMap.clear();
@@ -476,18 +488,29 @@ public class TaxonomyService {
     }
 
     /** Load relations from the CSV fallback file when no Relations sheet is present in the workbook. */
-    private void loadRelationsFromCsv(Map<String, Long> codeToId) {
-        ClassPathResource csvResource = new ClassPathResource("data/relations.csv");
-        if (!csvResource.exists()) {
-            log.warn("CSV fallback 'data/relations.csv' not found — no relations loaded.");
-            return;
+    private SourceUse loadRelationsFromCsv(Map<String, Long> codeToId) throws IOException {
+        CatalogueSourceBytes bytes;
+        try {
+            Resource csvResource = resourceLoader.getResource("classpath:data/relations.csv");
+            if (!csvResource.exists()) {
+                log.warn("CSV fallback not found — no relations loaded.");
+                return SourceUse.notUsed();
+            }
+            bytes = CatalogueSourceBytes.capture(csvResource::getInputStream);
+        } catch (InterruptedIOException failure) {
+            Thread.currentThread().interrupt(); throw new InterruptedIOException("Catalogue source capture interrupted");
+        } catch (IOException | RuntimeException failure) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Catalogue source capture interrupted");
+            log.error("Cannot read optional relations CSV — no relations loaded and original input is unavailable.");
+            return new SourceUse(null, Use.NOT_RETAINED);
         }
         List<com.taxonomy.dto.RelationSeedRow> seedRows;
-        try {
-            seedRows = RelationSeedParser.parse(csvResource.getInputStream());
-        } catch (Exception e) {
-            log.error("Failed to parse relations from CSV fallback", e);
-            return;
+        try (InputStream input = bytes.openStream()) {
+            seedRows = RelationSeedParser.parse(input);
+        } catch (IOException | RuntimeException failure) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Catalogue source capture interrupted");
+            log.error("Failed to parse captured relations CSV — no relations loaded.");
+            return SourceUse.rejected(bytes);
         }
 
         List<TaxonomyRelation> relations = new ArrayList<>(seedRows.size());
@@ -513,6 +536,7 @@ public class TaxonomyService {
         }
         relationRepository.saveAll(relations);
         log.info("CSV relations loaded: {} relations.", relations.size());
+        return SourceUse.applied(bytes);
     }
 
     /** Read one sheet and populate nodeMap and uuidToCode. */

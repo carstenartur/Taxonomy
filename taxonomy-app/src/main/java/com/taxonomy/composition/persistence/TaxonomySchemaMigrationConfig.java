@@ -78,6 +78,7 @@ public class TaxonomySchemaMigrationConfig {
             // without the web/security configuration. The AppUser schema contract
             // must still be complete before Hibernate validates it.
             com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(configuration.getDataSource());
+            CatalogueSourceSchemaMigration.migrate(configuration.getDataSource());
         };
     }
 

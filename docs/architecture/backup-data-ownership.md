@@ -92,7 +92,10 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `storage.git.document-templates` | templates | GIT_PRIMARY | `—` | Template manifests and all OOXML/blob parts from document-template Git repository |
 | `storage.git.portfolio` | portfolio | GIT_PRIMARY | `—` | Portable portfolio Git files plus module-owned durable records; same repository only once |
 | `storage.files.source-content` | application | PORTABLE_PRIMARY | `—` | All referenced source bytes and fragments by content digest; dangling file references fail capture |
-| `storage.files.catalogue` | knowledge | PORTABLE_PRIMARY | `—` | Exact imported catalogue and relevant source data; do not assume the shipped Excel is identical |
+| `storage.files.catalogue` | knowledge | PORTABLE_PRIMARY | `—` | Exact retained catalogue inputs; originals require history, never infer missing originals from configured resources |
+| `com.taxonomy.catalog.provenance.CatalogueSourceBlob` | knowledge | PORTABLE_PRIMARY | `catalogue_source_blob` | Immutable retained bytes with verified digest and length; raw inputs require history |
+| `com.taxonomy.catalog.provenance.CatalogueSourceRevision` | knowledge | PORTABLE_PRIMARY | `catalogue_source_revision` | Exact input-use provenance; current metadata only, older revisions require history |
+| `com.taxonomy.catalog.provenance.CatalogueSourceState` | knowledge | PORTABLE_PRIMARY | `catalogue_source_state` | Current revision pointer; target owns optimistic locking state |
 | `storage.indices.search` | knowledge | REBUILDABLE | `—` | Lucene and Hibernate Search indices rebuilt from captured primary records and Git |
 | `storage.schema-migrations` | application | REBUILDABLE | `—` | Run versioned target migrations; SQL schema and sequences are target-owned |
 | `storage.security.user-roles` | application | PORTABLE_PRIMARY | `—` | Join table user_roles included in explicit identity export; role mapping requires approval |
@@ -142,4 +145,4 @@ The portfolio owner supplies an identity-only `BackupAnalysisReference` domain p
 
 Current recovery includes only pending work with `REBUILD_FROM_CAPTURE`, without former HEAD or automatic execution. Full history retains completed recovery provenance; diagnostic messages are never portable. Global legacy coverage has no repository authority, stays in its own installation namespace, and includes earlier requirement text only in full history.
 
-The single reviewed forward dependency `knowledge/com.taxonomy.catalog.backup -> workspace/com.taxonomy.workspace.backup` reuses the existing exact scope predicate. Cycle and context rules are unchanged. Original imported catalogue input bytes require a separate retained-input adapter; materialized records are not proof that shipped Excel matches the imported input. This adapter alone does not complete P05 or enable production capture.
+The single reviewed forward dependency `knowledge/com.taxonomy.catalog.backup -> workspace/com.taxonomy.workspace.backup` reuses the existing exact scope predicate. Cycle and context rules are unchanged. `CatalogueSourceBackupContributor` separately captures retained input evidence as described in `backup-current-records.md`; materialized records are not proof that shipped Excel matches the imported input. Neither adapter alone completes P05 or enables production capture.
