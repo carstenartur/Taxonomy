@@ -159,13 +159,13 @@ public final class JdbcBackupJobStore {
     }
 
     public Optional<BackupJob> find(BackupJobId id) {
-        return transaction(c -> select(c, "select * from backup_job where job_id=?", id.value().toString()).stream().findFirst());
+        return readOnly(c -> select(c, "select * from backup_job where job_id=?", id.value().toString()).stream().findFirst());
     }
     public List<BackupJob> list(PrincipalId actor) {
-        return transaction(c -> select(c, "select * from backup_job where principal_id=? order by enqueue_order desc", actor.value().toString()));
+        return readOnly(c -> select(c, "select * from backup_job where principal_id=? order by enqueue_order desc", actor.value().toString()));
     }
     public List<BackupJob> expiredArtifacts() {
-        return transaction(c -> select(c, "select * from backup_job where job_state in ('READY','FAILED','CANCELLED') and expires_at<=?", now(c)));
+        return readOnly(c -> select(c, "select * from backup_job where job_state in ('READY','FAILED','CANCELLED') and expires_at<=?", now(c)));
     }
     public void removeExpired(BackupJobId id) {
         transaction(c -> {
@@ -177,7 +177,7 @@ public final class JdbcBackupJobStore {
     public BackupJobLimits limits() { return limits; }
 
     public boolean retained(BackupJobId id) {
-        return transaction(c -> scalar(c, "select count(*) from backup_job where job_id=? and job_state='READY' and expires_at>?",
+        return readOnly(c -> scalar(c, "select count(*) from backup_job where job_id=? and job_state='READY' and expires_at>?",
                 id.value().toString(), now(c)) == 1);
     }
 
@@ -186,7 +186,7 @@ public final class JdbcBackupJobStore {
         public String directoryName() { return owner == null ? null : id.value() + "-" + owner + "-" + attempt + ".taxbackup"; }
     }
     public List<Cleanup> cleanupCandidates() {
-        return transaction(c -> {
+        return readOnly(c -> {
             long now = now(c); var result = new ArrayList<Cleanup>();
             try (var query = c.prepareStatement("select job_id, owner_id, attempt, expires_at from backup_job where "
                     + "(storage_pending=1 and job_state in ('FAILED','CANCELLED')) or (job_state in ('READY','FAILED','CANCELLED') and expires_at<=?)")) {
@@ -269,6 +269,16 @@ public final class JdbcBackupJobStore {
     private static void bind(PreparedStatement statement, Object[] values) throws SQLException {
         statement.setQueryTimeout(5); for (int i = 0; i < values.length; i++) statement.setObject(i + 1, values[i]);
     }
+    /** Keep GET-backed queries outside the queue's mutating callback and transaction paths. */
+    private <T> T readOnly(SqlQuery<T> query) {
+        try (var connection = database.getConnection()) {
+            connection.setReadOnly(true);
+            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            connection.setAutoCommit(false);
+            try { return query.read(connection); }
+            finally { connection.rollback(); }
+        } catch (SQLException failure) { throw databaseFailure(failure); }
+    }
     private <T> T transaction(SqlWork<T> action) {
         try (var connection = database.getConnection()) {
             connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
@@ -278,5 +288,6 @@ public final class JdbcBackupJobStore {
         } catch (SQLException failure) { throw databaseFailure(failure); }
     }
     private static IllegalStateException databaseFailure(SQLException cause) { return new IllegalStateException("Backup job storage unavailable"); }
+    @FunctionalInterface private interface SqlQuery<T> { T read(Connection c) throws SQLException; }
     @FunctionalInterface private interface SqlWork<T> { T run(Connection c) throws SQLException; }
 }
