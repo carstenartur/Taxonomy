@@ -566,3 +566,38 @@ or complete application closure. It is not registered as a production capture so
 Integration tests cover current and selected file payloads through encrypted staging,
 archive publication and verified reading after source handles close. They do not
 establish restore compatibility or a physical database restart.
+
+### Stand bundle generator
+
+`GitStandBundle` creates a self-contained Git bundle from an opened projected stand.
+Its private object reader exposes only new blob/tree objects and one parentless
+commit. The exported branch is `stand`, with a matching `HEAD`; the fixed synthetic
+author is `Taxonomy Export <backup@taxonomy.invalid>`. Callers supply the timestamp.
+Source commits, authors, branches and saved revisions remain separate provenance;
+no source ancestry, reflogs, configuration, hooks or alternate object stores are
+accessible to the bundle writer. The source repository is never written.
+
+Blob IDs are computed from verified projected bytes with collision-detecting Git
+SHA-1. Equal Git IDs may share storage only when their type, length and SHA-256 agree.
+Canonical directory ordering uses JGit's Git-path comparator. Tree metadata is
+limited to 4 MiB per directory and 16 MiB in total, including the root commit; those
+limits can be lowered. Directory entries reserve this budget before allocation.
+The existing source limits still bound paths, file counts and logical byte totals.
+
+Pinned JGit serializes the bundle and pack directly through the generated-entry
+sink. Delta compression, object/delta reuse, bitmaps and parallel pack workers are
+disabled. Blob loaders push verified source bytes on the capture thread and refuse
+eager or pull-stream access. The shared generated-entry guard observes actual
+length/SHA-256, requires exactly one synchronous completed producer, checks the
+sink receipt and revokes escaped producer/output handles. No plaintext temporary
+object database or complete bundle buffer is required by this generator. Provider
+caches and source-document projection remain separate memory costs.
+
+The source view, authorization and writer fence must remain live through writing,
+including empty/unborn stands. Tests use native Git to clone, verify, inspect, diff
+and extend the exported repository; they check modes, nested Unicode paths and the
+absence of original commits and unprojected blobs. Application integration uses the
+real portfolio projector, encrypted capture, durable reopening and verified archive
+reading after source sessions close. This generator does not yet register a
+production bundle contributor or complete manifest/reference closure. Full history,
+bare/worktree output, native Windows and restore acceptance remain separate work.

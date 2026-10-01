@@ -133,7 +133,7 @@ public final class GitStandBackupSource {
                 return GitTreeCapture.writeGenerated(new BackupEntry(path, file.length(), file.sha256()), sink, output -> copy(file, output, sink::checkpoint));
             } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
         }
-        private void check(BackupCheckpoint checkpoint) throws IOException {
+        void check(BackupCheckpoint checkpoint) throws IOException {
             if (!active.get()) throw failure("Git stand capture session is closed");
             checkpoint.check();
             if (!active.get()) throw failure("Git stand capture session is closed");

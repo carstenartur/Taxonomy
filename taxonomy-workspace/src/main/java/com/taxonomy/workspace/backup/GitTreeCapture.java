@@ -18,6 +18,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Read-only evidence for one exact Git tree. Selection and stand-document projection are caller-owned. */
 public final class GitTreeCapture {
@@ -98,15 +99,43 @@ public final class GitTreeCapture {
     }
 
     static BackupEntry writeGenerated(BackupEntry expected, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+        return writeGenerated(expected.path(), expected, sink, producer);
+    }
+
+    /** Generated Git containers have an unknown compressed length until their single streaming pass completes. */
+    static BackupEntry writeGenerated(String path, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+        return writeGenerated(path, null, sink, producer);
+    }
+
+    private static BackupEntry writeGenerated(String path, BackupEntry expected, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+        var active = new AtomicBoolean(true);
         try {
             var owner = Thread.currentThread(); var invocations = new AtomicInteger(); boolean[] complete = {false};
-            var receipt = sink.writeGenerated(expected.path(), output -> {
-                if (invocations.incrementAndGet() != 1 || Thread.currentThread() != owner) throw failure("Invalid Git capture producer invocation");
-                producer.write(output); complete[0] = true;
+            var digest = sha256(); long[] count = {0};
+            BackupCheckpoint check = () -> {
+                if (!active.get() || complete[0] || Thread.currentThread() != owner) throw failure("Invalid Git capture producer lifetime");
+                sink.checkpoint();
+            };
+            var receipt = sink.writeGenerated(path, output -> {
+                if (invocations.incrementAndGet() != 1) throw failure("Invalid Git capture producer invocation");
+                check.check();
+                producer.write(new OutputStream() {
+                    @Override public void write(int value) throws IOException { write(new byte[]{(byte) value}); }
+                    @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                        check.check(); Objects.checkFromIndexSize(offset, length, bytes.length);
+                        long total = Math.addExact(count[0], length); output.write(bytes, offset, length);
+                        digest.update(bytes, offset, length); count[0] = total; check.check();
+                    }
+                    @Override public void flush() throws IOException { check.check(); output.flush(); check.check(); }
+                });
+                check.check(); complete[0] = true;
             });
-            if (invocations.get() != 1 || !complete[0] || !expected.equals(receipt)) throw failure("Git capture sink receipt mismatch");
+            var observed = new BackupEntry(path, count[0], HexFormat.of().formatHex(digest.digest()));
+            if (invocations.get() != 1 || !complete[0] || !observed.equals(receipt) || expected != null && !expected.equals(observed))
+                throw failure("Git capture sink receipt mismatch");
             return receipt;
         } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+        finally { active.set(false); }
     }
 
     private void requireMember(File file) throws IOException {
