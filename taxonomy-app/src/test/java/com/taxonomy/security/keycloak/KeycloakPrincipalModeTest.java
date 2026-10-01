@@ -21,6 +21,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.List;
+import java.util.HashMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -101,22 +103,53 @@ class KeycloakPrincipalModeTest {
                 .run(c -> assertThat(c).hasFailed());
     }
 
+    @Test void browserLoginOnlyAcceptsKnownStringRealmRolesAndKeepsOidcAuthorities() {
+        var service = new KeycloakOidcUserService(identities, KeycloakPrincipalMode.STABLE);
+        var user = service.loadUser(browserRequest(Map.of("realm_access", Map.of("roles",
+                List.of("ROLE_ADMIN", "ROLE_ARCHITECT", "ROLE_USER", "ROLE_ADMIN", "offline_access", 42)))));
+        assertThat(user.getAuthorities()).extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .containsExactlyInAnyOrder("OIDC_USER", "SCOPE_openid", "ROLE_ADMIN", "ROLE_ARCHITECT", "ROLE_USER");
+        assertThat(user).isInstanceOf(StablePrincipal.class);
+        for (Map<String, Object> realm : List.of(Map.<String, Object>of(), Map.<String, Object>of("roles", "ROLE_ADMIN"))) {
+            var withoutRoles = service.loadUser(browserRequest(Map.of("realm_access", realm)));
+            assertThat(withoutRoles.getAuthorities()).extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                    .containsExactlyInAnyOrder("OIDC_USER", "SCOPE_openid");
+            assertThat(withoutRoles.getName()).isEqualTo(user.getName());
+        }
+    }
+
+    @Test void stableBrowserLoginRejectsATokenWithoutIssuerBeforeCreatingAnIdentity() {
+        var claims = new HashMap<String, Object>();
+        claims.put("iss", null);
+        assertThatThrownBy(() -> new KeycloakOidcUserService(identities, KeycloakPrincipalMode.STABLE)
+                .loadUser(browserRequest(claims)))
+                .isInstanceOf(org.springframework.security.oauth2.core.OAuth2AuthenticationException.class)
+                .satisfies(error -> assertThat(((org.springframework.security.oauth2.core.OAuth2AuthenticationException) error)
+                        .getError().getErrorCode()).isEqualTo("invalid_token"));
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding", Integer.class)).isZero();
+    }
+
     private static Jwt jwt() {
         return Jwt.withTokenValue("verified-token").header("alg", "RS256").issuer("https://idp.example")
                 .subject("existing-account-id").claim("preferred_username", "alice").build();
     }
 
     private static OidcUserRequest browserRequest() {
+        return browserRequest(Map.of());
+    }
+
+    private static OidcUserRequest browserRequest(Map<String, Object> overrides) {
         var registration = ClientRegistration.withRegistrationId("test").clientId("taxonomy")
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE).redirectUri("https://app.example/login")
                 .authorizationUri("https://idp.example/auth").tokenUri("https://idp.example/token")
                 .jwkSetUri("https://idp.example/keys").issuerUri("https://idp.example")
                 .scope("openid").userNameAttributeName("preferred_username").build();
         Instant now = Instant.now();
-        var token = new OidcIdToken("verified-token", now, now.plusSeconds(300),
-                Map.of("iss", "https://idp.example", "sub", "existing-account-id", "preferred_username", "alice"));
+        var claims = new HashMap<String, Object>(Map.of("iss", "https://idp.example", "sub", "existing-account-id", "preferred_username", "alice"));
+        overrides.forEach((key, value) -> { if (value == null) claims.remove(key); else claims.put(key, value); });
+        var token = new OidcIdToken("verified-token", now, now.plusSeconds(300), claims);
         return new OidcUserRequest(registration,
-                new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "access", now, now.plusSeconds(300)), token);
+                new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "access", now, now.plusSeconds(300), java.util.Set.of("openid")), token);
     }
 
     @Configuration(proxyBeanMethods = false)

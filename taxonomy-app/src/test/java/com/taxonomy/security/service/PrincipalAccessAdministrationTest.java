@@ -68,4 +68,51 @@ class PrincipalAccessAdministrationTest {
         administration.setVersionAccess(administrator, target, repository, "a".repeat(40), false);
         assertThat(identities.hasVersionAccess(target, repository, "a".repeat(40))).isFalse();
     }
+
+    @Test void invalidVersionSelectorsCannotCreateGrantsOrAuditDecisions() {
+        var repository = new BackupRepositoryKey("repo", null);
+        for (String commit : new String[]{null, "main", "a".repeat(39), "A".repeat(40)}) {
+            assertThatIllegalArgumentException().isThrownBy(() -> administration.setVersionAccess(administrator, target, repository, commit, true));
+        }
+        for (var oversized : List.of(new BackupRepositoryKey("r".repeat(256), null),
+                new BackupRepositoryKey("repo", "w".repeat(256)))) {
+            assertThatIllegalArgumentException().isThrownBy(() -> administration.setVersionAccess(administrator, target, oversized, "a".repeat(40), true));
+        }
+        assertThat(jdbc.queryForObject("select count(*) from backup_version_grant", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        administration.setVersionAccess(administrator, target, repository, "a".repeat(40), true);
+        assertThat(identities.hasVersionAccess(target, repository, "a".repeat(40))).isTrue();
+        assertThat(identities.hasVersionAccess(target, new BackupRepositoryKey("repo", "private"), "a".repeat(40))).isFalse();
+    }
+
+    @Test void disabledTargetsCannotReceiveCapabilitiesOrVersionAccess() {
+        var existingGrants = jdbc.queryForList("select principal_id,capability from backup_capability_grant");
+        jdbc.update("update app_user set enabled=false where id=2");
+        assertThatThrownBy(() -> administration.setCapability(administrator, target, BackupCapability.EXPORT_HISTORY, true))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> administration.setVersionAccess(administrator, target, new BackupRepositoryKey("repo", null), "a".repeat(40), true))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(jdbc.queryForList("select principal_id,capability from backup_capability_grant"))
+                .containsExactlyInAnyOrderElementsOf(existingGrants);
+        assertThat(jdbc.queryForObject("select count(*) from backup_version_grant", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+    }
+
+    @Test void stableOidcGrantAdministrationRequiresCurrentAdminAuthorityAndAuditsTheIssuerIdentity() {
+        var external = identities.oidc("https://idp.example", "operator-id");
+        var jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("verified-token").header("alg", "RS256")
+                .issuer("https://idp.example").subject("operator-id").claim("preferred_username", "operator").build();
+        var reader = new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(jwt,
+                List.of(new SimpleGrantedAuthority("ROLE_USER")), external);
+        assertThatThrownBy(() -> administration.setCapability(reader, target, BackupCapability.EXPORT_HISTORY, true))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        var admin = new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(jwt,
+                List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_ADMIN")), external);
+        administration.setCapability(admin, target, BackupCapability.EXPORT_HISTORY, true);
+        assertThat(identities.hasCapability(target, BackupCapability.EXPORT_HISTORY)).isTrue();
+        assertThat(jdbc.queryForObject("select actor_principal from principal_access_audit", String.class))
+                .isEqualTo(identities.require(admin).value().toString())
+                .isNotEqualTo(identities.require(administrator).value().toString());
+    }
 }
