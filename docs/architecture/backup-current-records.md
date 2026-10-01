@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: preferences/configuration, integration,
+source: deployment configuration, integration,
 retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
@@ -200,3 +200,30 @@ references, installation current versus full audit, pending accounts, protected
 hash separation, broken audit actors and source immutability. The protected-entry
 test verifies routing; archive encryption is covered by the separate archive
 tests, not claimed from inspecting plaintext DTO output.
+
+## Current administrative preferences
+
+`PreferencesBackupContributor` supplies the application's `storage.git.preferences`
+category for `INSTALLATION_CURRENT`. It pins the main ref once and reads only the
+single regular `preferences.json` blob from that commit. It never initializes an
+empty repository, consults the mutable runtime cache, rewrites source refs or reads
+older values, authors or messages. An empty source is explicitly `UNINITIALIZED`.
+Scoped and selected-version exports report `OUTSIDE_SCOPE` without inspecting the
+administrative repository. The adapter rejects `INSTALLATION_FULL` until P06
+composes authorized auxiliary Git-history capture.
+
+`data/application/preferences.json` contains typed version-1 settings and the
+captured source commit. Remote URLs and tokens are excluded entirely, including
+credentials hidden in URL user-info or query strings; only their presence and the
+source push preference are recorded. Restore requires manual review and new target
+connection configuration. This metadata never enables automatic pushes or analysis.
+Values absent from the persisted document remain null; source deployment defaults
+still belong to the configuration/dependency inventory and are not invented here.
+
+Unknown keys, invalid typed values, duplicate properties, trailing JSON and invalid
+UTF-8 reject the capture before output. Provider/parser diagnostics are redacted
+without attaching a cause that could contain secret values. Input is limited to
+1 MiB, commit/tree metadata to 64 KiB each and portable text settings to 4,096
+characters. Reads use an 8 KiB buffer with capture checkpoints. Real in-memory Git
+tests cover current/history separation, secret exclusion, ref movement, empty and
+malformed repositories, wrong file modes, bounded input and cancellation.
