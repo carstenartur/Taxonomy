@@ -7,6 +7,8 @@ import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryF
 import io.github.carstenartur.jgit.storage.hibernate.config.CoreEntities;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -174,6 +176,29 @@ class ExistingGitBackupRepositoriesTest {
                     if (calls.incrementAndGet() == 2) source.close();
                 })).isInstanceOf(IOException.class);
             }
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void routingCleanupPreservesCancellationForCurrentAndSelectedVersions(boolean selected) throws Exception {
+        try (var f = new Fixture()) {
+            f.repository("a", "central-a", "draft"); var key = new BackupRepositoryKey("a", null); boolean[] connected = {false};
+            var database = new org.springframework.jdbc.datasource.DelegatingDataSource(f.database) {
+                @Override public java.sql.Connection getConnection() throws java.sql.SQLException {
+                    var connection = super.getConnection(); connected[0] = true;
+                    return (java.sql.Connection) java.lang.reflect.Proxy.newProxyInstance(java.sql.Connection.class.getClassLoader(), new Class<?>[]{java.sql.Connection.class}, (ignored, method, args) -> {
+                        if (method.getName().equals("rollback")) throw new java.sql.SQLException("PRIVATE-ROUTING-CREDENTIALS");
+                        try { return method.invoke(connection, args); } catch (java.lang.reflect.InvocationTargetException problem) { throw problem.getCause(); }
+                    });
+                }
+            };
+            var sources = new ExistingGitBackupRepositories(database, f.persistence.factory);
+            var auth = selected ? authorized(new BackupRequest(BackupProfile.SELECTED_VERSION, scope(key), new BackupTime.SelectedVersion(Map.of(key, "a".repeat(40))), GitRepresentation.NONE, SecretsSelection.EXCLUDE)) : current(key);
+            try {
+                assertThatThrownBy(() -> sources.open(auth, key, () -> { if (connected[0]) throw new InterruptedIOException("PRIVATE-CANCEL"); }))
+                        .isInstanceOf(InterruptedIOException.class).hasNoCause().hasMessageNotContaining("PRIVATE");
+                assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            } finally { Thread.interrupted(); }
         }
     }
 

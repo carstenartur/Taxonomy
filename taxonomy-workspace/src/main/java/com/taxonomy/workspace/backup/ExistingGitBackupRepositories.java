@@ -57,7 +57,7 @@ public final class ExistingGitBackupRepositories {
                 : "select w.current_branch from user_workspace w join system_repository r on r.repository_id=w.source_repository_id where r.repository_id=? and w.workspace_id=?";
         try (var connection = database.getConnection()) {
             connection.setReadOnly(true); connection.setAutoCommit(false);
-            try (var statement = connection.prepareStatement(sql)) {
+            try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {
                 statement.setMaxRows(2); statement.setQueryTimeout(60); statement.setString(1, key.repositoryId());
                 if (!central) statement.setString(2, key.workspaceId());
                 checkpoint.check();
@@ -71,7 +71,7 @@ public final class ExistingGitBackupRepositories {
                         throw failure("Captured repository has no valid current branch");
                     checkpoint.check(); return new Route(storage, branch);
                 }
-            } finally { connection.rollback(); }
+            }
         } catch (SQLException problem) { throw sanitized(problem); }
     }
 
@@ -114,4 +114,5 @@ public final class ExistingGitBackupRepositories {
     }
     private record Route(String storage, String branch) { }
     private record Access(RepositoryName storage, String decision, AtomicBoolean active) { }
+    @FunctionalInterface private interface Rollback extends AutoCloseable { @Override void close() throws SQLException; }
 }

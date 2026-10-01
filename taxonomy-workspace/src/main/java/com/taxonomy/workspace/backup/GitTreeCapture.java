@@ -93,10 +93,16 @@ public final class GitTreeCapture {
         try {
             requireMember(file);
             var expected = new BackupEntry(path, file.length(), file.sha256());
+            return writeGenerated(expected, sink, output -> copy(file, output, sink::checkpoint));
+        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+    }
+
+    static BackupEntry writeGenerated(BackupEntry expected, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+        try {
             var owner = Thread.currentThread(); var invocations = new AtomicInteger(); boolean[] complete = {false};
-            var receipt = sink.writeGenerated(path, output -> {
+            var receipt = sink.writeGenerated(expected.path(), output -> {
                 if (invocations.incrementAndGet() != 1 || Thread.currentThread() != owner) throw failure("Invalid Git capture producer invocation");
-                copy(file, output, sink::checkpoint); complete[0] = true;
+                producer.write(output); complete[0] = true;
             });
             if (invocations.get() != 1 || !complete[0] || !expected.equals(receipt)) throw failure("Git capture sink receipt mismatch");
             return receipt;

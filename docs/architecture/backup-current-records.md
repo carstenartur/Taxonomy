@@ -480,3 +480,40 @@ cancellation preserves interruption. The raw tree reader deliberately does not
 project embedded TaxDSL history or overlay saved editor state. These remain required
 in the stand-export composition before raw evidence can become a current-profile
 payload. No production contributor or capture source is registered by these ports.
+
+### Current and selected Git file views
+
+`GitStandBackupSource` composes that existing-only reader with the durable editor
+overlay and a module-composed `BackupDocumentProjector`. Current workspace reads
+select exactly the repository/workspace/current-branch tuple from `editor_workspace`;
+they validate the persisted scope hash, body envelope, revisions and checkpoint.
+They do not read operation/checkpoint history or seed an editor workspace. Central
+repositories have no private editor overlay. Selected-version reads do not query
+the current editor state or use today's branch.
+
+The saved current document supersedes `architecture.taxdsl` in the selected Git
+tree, including a saved draft on an unborn branch. Every `.taxdsl` file is projected
+to remove embedded portfolio history before its effective checksum is recorded.
+Non-document files keep their exact bytes and regular/executable modes. A saved
+document with different raw content removes the old committed document from the
+architecture component's proof selector, preventing a second copy of superseded
+content through materialized database documents. An unchanged saved document can
+retain the original proof, but both output paths still use the stand projection.
+
+The view retains bounded file metadata rather than all projected document bodies.
+Each copy rereads and projects one bounded, strictly decoded UTF-8 document and
+rechecks its length and SHA-256; saved copies also recheck semantic revision and
+checkpoint evidence. Other files use the streaming tree copy. Effective file count,
+byte limits and portable path collisions are checked after overlay/projection.
+Closing the view revokes further copies, including copies interrupted by a callback.
+The caller must hold the writer fence and fresh authorization until all copies finish.
+The application document limit is at most 16 MiB; this is separate from total-file
+limits and does not imply a total process heap bound for JGit or its storage provider.
+
+Pending checkpoints and an editor checkpoint that differs from the captured Git head
+are refused with a recovery/reconciliation message. Capture does not resume a writer,
+invent a commit, or silently choose one side. Other branches' saved drafts remain
+separate workspace records; they are not relabeled as the current branch. The source
+refs/revisions and required commits exposed by this port describe capture evidence,
+not the later exported synthetic Git repository. Inventory assembly, complete
+reference closure and Git representations still precede production activation.
