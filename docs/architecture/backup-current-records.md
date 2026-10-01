@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: identities, preferences/configuration, architecture, integration,
+source: identities, preferences/configuration, integration,
 retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
@@ -138,3 +138,33 @@ history exclusion, out-of-scope non-access, empty repositories and rejection of
 corrupt packages, ambiguous manifests, symlinks and unsafe paths. The shared
 capture test checks that cancellation during preflight releases the barrier and
 leaves no completed staging artifact. Native Windows checkout remains P12 work.
+
+## Parsed architecture documents
+
+`ArchitectureDslDocument` predates repository/workspace ownership columns.
+Its branch and path cannot authorize a scoped read. The architecture adapter
+therefore accepts `BackupDocumentReference` evidence from the captured Git
+inventory: exact repository/workspace, commit, path and content SHA-256. The
+repository must belong to the capture; current evidence must identify a branch
+head, selected-version evidence the requested commit, and history evidence a
+captured ref or required commit. The composition must establish reachability
+and omit committed content superseded by a saved working copy.
+
+Only matching payloads are exported as `architecture.document` records, with
+their captured Git references. Current/selected payloads also pass the shared
+stand projector to remove embedded portfolio history. Repeated materializations
+of the same proven content collapse to the latest source record. Global branch,
+namespace and parse-event metadata are not evidence of ownership and do not
+enter scoped records. Restore can derive DSL metadata from the selected content.
+
+`INSTALLATION_FULL` preserves every original row and its metadata as
+`architecture.legacy-document`, explicitly `INSTALLATION_ONLY`, without assigning
+it to a guessed repository. Other profiles declare unattributed legacy records
+unavailable. This is a conservative adapter boundary, not an ownership migration:
+uncommitted legacy imports without provable scope still need classification
+before a current capture can claim complete coverage. Git inventory composition
+and the complete application capture source remain unfinished.
+
+The real HSQL/Hibernate regressions cover identical paths across workspaces,
+false commit attribution with different bytes, selected commits, history,
+installation legacy preservation, embedded-history removal and source immutability.
