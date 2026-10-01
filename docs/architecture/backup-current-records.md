@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: integration records, retained catalogue inputs and Git inventory are required before production jobs
+source: complete reference closure, retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
 `CompositeBackupDataContributor` checks the declared adapter coverage against
@@ -312,3 +312,70 @@ diagnostics and preserved interruption semantics. Checkpoints run before every
 property read. Tests resolve the real packaged application and Keycloak defaults,
 apply environment overrides, reject malformed/unbounded values and indirect secret
 references, check scope exclusion, and verify cancellation without source changes.
+
+## Interoperability journals
+
+`IntegrationBackupContributor` owns eight typed datasets: connections, identity
+mappings, checkpoints, operations, events, publications, publish items and publish
+attempts. It declares the eight corresponding inventory categories and a version-1
+execution policy. It is not registered as a production capture bean.
+
+A server-owned `BackupIntegrationScope.Selector` supplies exact repository,
+workspace and branch tuples under the capture lease. Their routing hash agrees
+with `RepositoryContext.repositoryWorkspaceScopeKey`; the embedded internal-state
+workspace key agrees with `WorkspaceOverlayScope`, which is a different identity.
+Actor names do not determine ownership. A repository alone cannot resolve a hashed
+scope or authorize another private workspace. Installation capture requires a
+matching tuple for every stored connection. Unresolved ownership fails capture.
+
+Before any dataset reaches the sink, relational checks validate both ends of
+selected parent/child edges, connection pointers, publication ancestry and attempt
+ownership. A read-only typed pass then checks embedded contexts, review/operation
+identities and source evidence. Publication plan items must agree with their stored
+children, including order, keys and intents. Completion receipts must resolve to
+those children without duplicates or missing entries; COMMON checkpoints must
+match the stored completed publication. These are structural source checks, not
+proof of remote effects or validation of a target's authority. Source fingerprints
+are retained as provenance; projected current payloads require new baselines and
+fingerprints before any target execution.
+
+The two read passes require the caller's stable, fenced capture interval. Queries
+batch up to 200 scope hashes and stream records with regular cancellation/fence
+checkpoints. Publication evidence checks retain only one publication's bounded
+item/receipt identities (at most 1,024); they use a separate read cursor while the
+parent dataset cursor is open. Source rows, revisions, claims and Git state are
+never modified. Any late fence, storage or size failure still requires the capture
+coordinator to discard staging.
+
+Current profiles preserve every unfinished preview, including previews which do
+not reserve the connection's active-operation pointer. They retain live mapping
+metadata and pending publication candidates, conflict work, targets and intents.
+Original transport input, mapping baselines, change-before payloads, completed or
+cancelled work, removed mappings, checkpoints, event history, dispatch requests,
+receipts and attempts require a history profile. Publication operation documents
+are remote-before observations duplicated by the real journal; current exports
+omit those duplicate payloads and take saved work from the publication records.
+Contradictory terminal publication/operation markers fail rather than silently
+losing pending work. History profiles retain authorized typed evidence across all
+eight datasets. Runtime lease owner, lease deadline, lease epoch and row versions
+are absent from both profiles.
+
+Selected-version capture writes empty datasets and an `OUTSIDE_SCOPE` policy
+without selecting scopes or reading live journals. Present-day unversioned records
+cannot establish the state of a selected Git commit. Omissions for all profiles
+are exposed through the standard manifest metadata path.
+
+Persisted JSON binds only to explicit contract records. Duplicate/unknown fields,
+trailing content, enum ordinals, scalar coercions and unsupported schemas are
+rejected, with bounded document size and nesting. Parse and timestamp diagnostics
+do not echo source values or attach source-bearing causes. Optional legacy fields
+remain optional. Nested receipt instants use UTC ISO-8601 without losing fractional
+precision.
+
+Restores must map source database identities, principals, projects, requirements
+and repository references, recompute baselines and obtain fresh target review.
+`automaticExecutionEnabled` is false and outgoing work is marked
+`MANUAL_REVIEW_REQUIRED`; exporting this policy does not implement enforcement in
+an importer. Complete portfolio/principal/Git/document dependency closure, durable
+catalogue originals, production assembly and restore/activation remain required
+before the feature can be enabled.
