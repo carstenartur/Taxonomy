@@ -62,6 +62,15 @@ and portfolio use this public scope reader; analysis also uses the existing
 workspace tenant value type. These three forward dependency edges are recorded
 in the architecture baseline. The cycle rule is unchanged.
 
+Workspace record capture rechecks the selected repository/workspace keys with
+exact Java comparisons before constructing each DTO, even when the database
+collation ignores case. Synchronization, editor-operation and checkpoint joins
+also require exact equality of the persisted child and parent identifiers,
+including installation captures. A mismatch aborts capture rather than exporting
+a row through a similarly spelled parent. These checks preserve the existing
+repository-wide metadata/membership selection and version-1 record schema;
+central commit-index rows retain their explicit null workspace identity.
+
 | Profile | Workspace, analysis and portfolio payload policy |
 | --- | --- |
 | Current state / installation current | Current editor source, current requirement version, its active analysis and decisions, current saved draft, relevant unfinished work; no inverse journal bodies or earlier versions |
