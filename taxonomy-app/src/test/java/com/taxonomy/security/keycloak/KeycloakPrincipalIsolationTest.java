@@ -65,6 +65,14 @@ class KeycloakPrincipalIsolationTest {
                 .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
     }
 
+    @Test void missingSubjectIsRejectedEvenWithAValidIssuerAndDisplayName() {
+        var converter = new KeycloakJwtAuthConverter(identities);
+        converter.setRoleClaimPath("realm_access.roles");
+        assertThatThrownBy(() -> converter.convert(Jwt.withTokenValue("token").header("alg", "RS256")
+                .issuer("https://idp.example").claim("preferred_username", "alice").build()))
+                .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
+    }
+
     @Test void opaqueLoginScopeCanProvisionTheExistingUsernameBasedGitWorkspace() throws Exception {
         var converter = new KeycloakJwtAuthConverter(identities);
         converter.setRoleClaimPath("realm_access.roles");

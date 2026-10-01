@@ -32,7 +32,7 @@
       "attributes": {
         "post.logout.redirect.uris": "http://taxonomy.test:8080/*"
       },
-      "defaultClientScopes": ["profile", "email", "roles"],
+      "defaultClientScopes": ["basic", "profile", "email", "roles"],
       "protocolMappers": [
         {
           "name": "preferred username",
@@ -79,7 +79,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["profile"],
+      "defaultClientScopes": ["basic", "profile"],
       "protocolMappers": [
         {
           "name": "preferred username",
@@ -110,7 +110,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["profile"],
+      "defaultClientScopes": ["basic", "profile"],
       "protocolMappers": [
         {
           "name": "preferred username",
