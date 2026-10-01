@@ -38,6 +38,21 @@ import static org.mockito.Mockito.when;
 
 class TaxonomySchemaMigrationConfigTest {
 
+    @Test
+    void minimalApplicationMigrationAlsoUpgradesStableAccountIdentityWithoutSecurityConfiguration() throws Exception {
+        DataSource database = nonPostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(database);
+        var flyway = Flyway.configure().dataSource(database).load();
+        new TaxonomySchemaMigrationConfig().taxonomyFlywayMigrationStrategy(core -> {
+            jdbc.execute("create table app_user(id bigint primary key, username varchar(255), enabled boolean)");
+            jdbc.update("insert into app_user values(1, 'legacy', true)");
+        }, false).migrate(flyway);
+
+        String principal = jdbc.queryForObject("select principal_id from app_user where id=1", String.class);
+        assertThat(new com.taxonomy.security.service.PrincipalIdentityService(database).local(1L).id().value().toString())
+                .isEqualTo(principal);
+    }
+
     private static final Set<String> LEGACY_TABLES = Set.of(
             "app_user",
             "architecture_dsl_document",

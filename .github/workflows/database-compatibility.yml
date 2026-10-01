@@ -47,6 +47,9 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Install verified Helm 3.21.0
+        run: bash .github/scripts/install-helm.sh
+
       - name: Verify Docker availability
         run: docker info
 

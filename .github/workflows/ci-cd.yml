@@ -38,7 +38,7 @@ jobs:
             ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-
             ${{ runner.os }}-taxonomy-maven-build-cache-app-v2-
       - name: Package commit-bound UI application
-        run: ./mvnw -B -ntp -DskipTests package
+        run: bash .github/scripts/package-ui-application.sh
       - name: Stage commit-bound UI application
         run: bash .github/scripts/stage-ui-application.sh
       - name: Upload commit-bound UI application

@@ -89,12 +89,15 @@
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.8.0.202609011348-r</jgit.version>
         <jgit-storage-hibernate.version>0.11.3</jgit-storage-hibernate.version>
+        <tink.version>1.23.0</tink.version>
+        <commons-compress.version>1.28.0</commons-compress.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <svgpath.version>2.6.0</svgpath.version>
         <springdoc.version>3.1.1</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <jackson-2-bom.version>2.22.2</jackson-2-bom.version>
-        <jackson-bom.version>3.1.6</jackson-bom.version>
+        <!-- Patched databind families for CVE-2026-91776 and CVE-2026-91777. -->
+        <jackson-2-bom.version>2.22.3</jackson-2-bom.version>
+        <jackson-bom.version>3.1.7</jackson-bom.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
         <archunit.version>1.5.1</archunit.version>

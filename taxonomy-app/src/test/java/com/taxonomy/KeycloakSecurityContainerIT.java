@@ -77,6 +77,7 @@ class KeycloakSecurityContainerIT {
     private String unsupportedRoleToken;
     private String missingRoleClaimToken;
     private String malformedRoleClaimToken;
+    private final Map<String, String> identityScopes = new LinkedHashMap<>();
 
     @BeforeAll
     void startIdentityProviderAndApplication() throws Exception {
@@ -250,7 +251,8 @@ class KeycloakSecurityContainerIT {
         loginBrowser("architect", "architect");
 
         JsonNode account = browserJson("/api/account/me");
-        assertThat(account.get("username").asText()).isEqualTo("architect");
+        assertThat(account.get("username").asText())
+                .isEqualTo(identityScopes.get(identityKey(architectToken)));
         assertThat(jsonStringSet(account.get("roles")))
                 .containsExactlyInAnyOrder("USER", "ARCHITECT");
 
@@ -379,6 +381,7 @@ class KeycloakSecurityContainerIT {
                         ContainerTestUtils.TEST_ADMIN_PASSWORD)
                 .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
                 .withEnv("SPRING_PROFILES_ACTIVE", "keycloak")
+                .withEnv("TAXONOMY_KEYCLOAK_PRINCIPAL_MODE", "STABLE")
                 .withEnv("KEYCLOAK_ISSUER_URI", ISSUER)
                 .withEnv("KEYCLOAK_JWK_SET_URI",
                         ISSUER + "/protocol/openid-connect/certs")
@@ -418,8 +421,26 @@ class KeycloakSecurityContainerIT {
                 "GET", "/api/account/me", token, null, null, Map.of());
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode account = MAPPER.readTree(response.body());
-        assertThat(account.get("username").asText()).isEqualTo(username);
+        assertThat(jwtClaims(token).get("preferred_username").asText()).isEqualTo(username);
+        String scope = account.get("username").asText();
+        assertThat(scope).startsWith("principal-").isNotEqualTo(username);
+        String identity = identityKey(token);
+        String existing = identityScopes.putIfAbsent(identity, scope);
+        if (existing != null) {
+            assertThat(scope).as("one verified issuer/subject across clients").isEqualTo(existing);
+        }
+        assertThat(identityScopes.entrySet().stream()
+                .filter(entry -> !entry.getKey().equals(identity)).map(Map.Entry::getValue))
+                .doesNotContain(scope);
         assertThat(jsonStringSet(account.get("roles"))).isEqualTo(expectedRoles);
+    }
+
+    private String identityKey(String token) throws Exception {
+        JsonNode claims = jwtClaims(token);
+        assertThat(claims.path("iss").asText()).isEqualTo(ISSUER);
+        assertThat(claims.path("sub").asText())
+                .as("the Keycloak basic scope supplies the subject identity").isNotBlank();
+        return claims.get("iss").asText() + "\u0000" + claims.get("sub").asText();
     }
 
     private void assertNoApplicationRoles(String token, String expectedUsername)
@@ -488,7 +509,9 @@ class KeycloakSecurityContainerIT {
                         "Keycloak token request failed for client '%s' and user '%s': HTTP %s: %s",
                         clientId, username, response.statusCode(), response.body())
                 .isEqualTo(200);
-        return MAPPER.readTree(response.body()).get("access_token").asText();
+        String token = MAPPER.readTree(response.body()).get("access_token").asText();
+        identityKey(token);
+        return token;
     }
 
     private JsonNode jwtClaims(String token) throws Exception {

@@ -24,7 +24,8 @@ concurrency:
 jobs:
   reference:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # A cold full reactor can consume nearly an hour before the ONNX integration tests start.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -36,6 +37,9 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      - name: Install verified Helm 3.21.0
+        run: bash .github/scripts/install-helm.sh
+
       - name: Verify Docker availability
         run: docker info
       - name: Run Maven-owned ONNX suite

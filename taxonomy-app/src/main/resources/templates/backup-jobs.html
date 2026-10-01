@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title th:text="#{backup.title}">Backup jobs</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#backupJobs" th:text="#{backup.skip}">Skip to backup jobs</a>
+<nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{backup.navigation}">
+    <div class="container-fluid gap-2"><a class="navbar-brand" th:href="@{/(lang=${#locale.language})}">Taxonomy</a>
+        <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}" th:text="#{backup.back}">Back to application</a></div>
+</nav>
+<main class="container py-3" id="backupJobs" tabindex="-1">
+    <h1 class="h2" th:text="#{backup.title}">Backup jobs</h1>
+    <p th:text="#{backup.intro}">Follow your exports and download verified archives before they expire.</p>
+    <p class="small text-body-secondary" th:text="#{backup.scope}">Only your recent authorized jobs are shown. Updates pause while this page is hidden.</p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <button id="backupRefresh" type="button" class="btn btn-outline-primary" th:text="#{backup.refresh}">Refresh</button>
+        <button id="backupPrevious" type="button" class="btn btn-outline-secondary" th:text="#{backup.previous}">Previous</button>
+        <button id="backupNext" type="button" class="btn btn-outline-secondary" th:text="#{backup.next}">Next</button>
+        <span id="backupPage" class="align-self-center" aria-live="polite"></span>
+    </div>
+    <p id="backupNotice" role="status" aria-live="polite"></p>
+    <ul id="backupJobList" class="list-unstyled row g-3"></ul>
+</main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/api/taxonomy-api-client.js}"></script>
+<script th:src="@{/js/api/backup-api.js}"></script>
+<script th:src="@{/js/backup/backup-jobs.js}"></script>
+</body>
+</html>

@@ -26,6 +26,9 @@ class DatabaseUserDetailsServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private PrincipalIdentityService identities;
+
     @InjectMocks
     private DatabaseUserDetailsService service;
 
@@ -39,6 +42,8 @@ class DatabaseUserDetailsServiceTest {
         user.setPasswordHash("hashed-password-123");
         user.setEnabled(true);
         user.setRoles(Set.of(new AppRole("ROLE_USER")));
+        lenient().when(identities.local(1L)).thenAnswer(ignored -> new com.taxonomy.security.model.AppPrincipal(
+                new com.taxonomy.backup.PrincipalId(java.util.UUID.fromString(user.getPrincipalId())), user.getUsername(), true));
     }
 
     @Test

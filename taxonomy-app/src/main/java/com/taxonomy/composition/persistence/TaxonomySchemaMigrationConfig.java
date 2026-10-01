@@ -74,6 +74,10 @@ public class TaxonomySchemaMigrationConfig {
             if (contractMigrationEnabled) {
                 HsqlLegacyUpgradeMigrator.migrate(configuration.getDataSource());
             }
+            // Minimal validate-startup applications import this persistence owner
+            // without the web/security configuration. The AppUser schema contract
+            // must still be complete before Hibernate validates it.
+            com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(configuration.getDataSource());
         };
     }
 

@@ -4,6 +4,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -26,6 +27,33 @@ class PortfolioGitServiceTest {
 
     @Autowired
     private PortfolioGitService portfolioGitService;
+
+    @Autowired
+    private PortablePortfolioGitService portablePortfolioGitService;
+
+    @Test
+    void currentStateExportsCanonicalPortfolioWithoutHistoryOrSourceMutation() {
+        String repositoryId = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var source = new WorkspaceContext("alice", "stand-source", "draft", repositoryId);
+        var project = projectService.createProject(new CreateProjectRequest(
+                "P-STAND", "Current portfolio", null, null, null, null, null, null), "alice", source);
+        var requirement = projectService.createRequirement(project.id(), new CreateRequirementRequest(
+                "REQ-STAND", "Current requirement", "Private superseded requirement",
+                null, 80, null, null, null, "alice", "Initial version", null), "alice", source);
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest(
+                "Selected current requirement", "Private adoption reason", null), "alice", source);
+        String original = portfolioGitService.exportPortfolio("alice", source);
+
+        String current = portablePortfolioGitService.exportCurrentState("alice", source);
+
+        assertThat(current)
+                .contains("projectRequirement P-STAND REQ-STAND", "currentVersionNumber: 2",
+                        "requirementVersion P-STAND REQ-STAND 2", "requirement P-STAND__REQ-STAND",
+                        "Selected current requirement")
+                .doesNotContain("requirementVersion P-STAND REQ-STAND 1", "Private superseded requirement",
+                        "Private adoption reason", "originalText:", "changeReason:", "currentVersionId:");
+        assertThat(portfolioGitService.exportPortfolio("alice", source)).isEqualTo(original);
+    }
 
     @Test
     void projectsRequirementsAndAllTextVersionsRoundTripThroughDsl() {
