@@ -247,7 +247,8 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         return storageName;
     }
 
-    private static String workspaceRepositoryName(String workspaceId) {
+    /** Shared storage identity convention; computing a name never opens or seeds a repository. */
+    public static String workspaceRepositoryName(String workspaceId) {
         return WORKSPACE_REPO_PREFIX + requireText(workspaceId, "workspaceId");
     }
 

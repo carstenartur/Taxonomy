@@ -437,6 +437,46 @@ Restores must map source database identities, principals, projects, requirements
 and repository references, recompute baselines and obtain fresh target review.
 `automaticExecutionEnabled` is false and outgoing work is marked
 `MANUAL_REVIEW_REQUIRED`; exporting this policy does not implement enforcement in
-an importer. Complete portfolio/principal/Git/document dependency closure, durable
-catalogue originals, production assembly and restore/activation remain required
+an importer. Complete portfolio/principal/Git/document dependency closure, trusted
+catalogue input selection, production assembly and restore/activation remain required
 before the feature can be enabled.
+
+## Read-only Git tree evidence
+
+`ExistingGitBackupRepositories` opens only persisted logical repositories. Central
+storage names come from the exact catalogue row; a workspace must join its selected
+source repository and uses the same naming function as normal workspace storage.
+No call to a provisioning or compatibility-seeding factory is made. The storage
+library's secured existing-only facade permits discovery and reads, and rejects ref
+mutations. Closing the capture session revokes reads through previously returned
+tree handles without closing the shared Hibernate session factory. The coordinator
+still owns the write fence, complete scope selection and fresh authorization checks.
+
+Current stand reads resolve only the catalogue's current/default branch. An unborn
+branch is explicitly empty and never falls back to another branch or the primary
+repository. Selected-version reads use exactly the authorized commit ID and expose
+no live branch. This stand port refuses history profiles; its result is not a claim
+of full repository, reflog or database-reference closure.
+
+`GitTreeCapture` records an immutable commit/tree and bounded file metadata with
+path, object ID, regular/executable mode, byte length and SHA-256. It follows no
+parents or live refs. Git object hashes are verified with collision detection;
+commit and tree metadata, file counts, nesting and streamed payload bytes have
+explicit bounds. Portable UTF-8 paths and case collisions are checked. Symlinks,
+submodules and standard/legacy Git LFS pointers are refused because their external
+contents have not been retained. No source configuration, hooks or credentials are
+read or executed.
+
+Metadata sizes are checked before opening an object because JGit may eagerly load
+small objects. Each private reader uses an 8 KiB streaming threshold without changing
+source repository settings. Application copy buffers are bounded; JGit's delta
+reconstruction and provider caches have additional allocations, so this is not an
+8 KiB total-heap guarantee or the later full Git performance qualification.
+
+Copies recheck source lengths and hashes, use bounded buffers and checkpoint during
+streaming. A generated-entry copy also verifies that its producer ran exactly once
+and that the sink receipt agrees. Source errors do not expose provider diagnostics;
+cancellation preserves interruption. The raw tree reader deliberately does not
+project embedded TaxDSL history or overlay saved editor state. These remain required
+in the stand-export composition before raw evidence can become a current-profile
+payload. No production contributor or capture source is registered by these ports.
