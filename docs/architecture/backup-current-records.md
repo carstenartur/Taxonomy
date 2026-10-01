@@ -1,8 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: deployment configuration, integration,
-retained catalogue inputs and Git inventory are required before production jobs
+source: integration records, retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
 Each module constructs explicit version-1 records. An NDJSON dataset starts with
@@ -233,3 +232,51 @@ without attaching a cause that could contain secret values. Input is limited to
 characters. Reads use an 8 KiB buffer with capture checkpoints. Real in-memory Git
 tests cover current/history separation, secret exclusion, ref movement, empty and
 malformed repositories, wrong file modes, bounded input and cancellation.
+
+## Business configuration and external prerequisites
+
+`ApplicationConfigurationBackupContributor` writes `configuration/application.json`
+for both installation profiles. Its explicit version-1 records preserve resolved
+deployment values for preference defaults, product analysis, portfolio limits,
+document limits, three business feature switches, context/draft limits and report
+time zone. These are deployment values **before** the persisted preferences above,
+not a dump of mutable runtime state. Missing values remain null; capture does not
+invent defaults from annotations or activate features on the target.
+
+The adapter reads only fixed, reviewed property names. It does not enumerate the
+environment or inspect endpoint, path, credential, keyset or provider values, even
+to check whether they are configured. Placeholder resolution is restricted to
+the selected property and its documented environment alias. References to other
+properties fail before lookup, including nested references and references with
+defaults; a secret cannot be interpolated into an otherwise portable label.
+Spring's preliminary lookup of an entire allowed `NAME:default` expression is
+declined without querying a source; only the actual approved name is looked up.
+Other operational settings remain the target operator's responsibility. All scoped
+profiles produce `OUTSIDE_SCOPE` without reading deployment properties.
+Configuration history is not retained by this source.
+
+The inventory identifies four external prerequisite groups: deployment, identity
+providers, secret stores and object storage. Their status is explicitly
+`NOT_CAPTURED_OPERATOR_VERIFICATION_REQUIRED`; it does not assert that a provider
+is configured, available or backed up. The operator must verify the applicable
+database/network/TLS/path and provider configuration, encryption-key custody,
+remote credentials and referenced-content closure. These prerequisites must be
+carried into the manifest and restore plan by the complete capture composition.
+Retained catalogue originals still need their own adapter and source evidence.
+
+Restore policy is `MANUAL_TARGET_REVIEW`, with automatic outgoing execution
+`DISABLED_UNTIL_APPROVED`. The later restore implementation must enforce these
+requirements; exporting this metadata does not implement activation. Property
+sources supplied by composition must remain stable for the capture interval.
+No production capture bean is enabled by this adapter.
+
+Each raw/resolved property is bounded to 4,096 characters. Scalar conversion uses
+Spring's deployed conventions, including padded/hexadecimal numbers and Boolean
+aliases such as `on` and `no`. Present but blank typed values are rejected rather
+than silently becoming absent. Integers and longs keep their typed range; decimal
+values use plain decimal text with at most 32 significant digits and scale magnitude
+32. Malformed values or provider failures abort before output, with redacted
+diagnostics and preserved interruption semantics. Checkpoints run before every
+property read. Tests resolve the real packaged application and Keycloak defaults,
+apply environment overrides, reject malformed/unbounded values and indirect secret
+references, check scope exclusion, and verify cancellation without source changes.
