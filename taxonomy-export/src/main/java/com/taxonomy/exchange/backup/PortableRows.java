@@ -70,8 +70,16 @@ public final class PortableRows {
                                                Iterable<Query> queries, Mapper<T> mapper) throws IOException {
         if (!component.matches("[a-z][a-z0-9-]{0,63}") || !kind.matches("[a-z][a-z0-9-]{0,63}"))
             throw new IllegalArgumentException("Invalid dataset name");
+        writeBatchesAtPath(sink, "data/"+component+"/"+kind+".ndjson", kind, profile, queries, mapper);
+    }
+
+    /** Typed datasets may also live in the identity and protected archive namespaces. */
+    public <T extends Record> void writeBatchesAtPath(ComponentSink sink, String path, String kind, BackupProfile profile,
+                                                     Iterable<Query> queries, Mapper<T> mapper) throws IOException {
+        new BackupEntry(path, 0, "0".repeat(64));
+        if (!kind.matches("[a-z][a-z0-9-]{0,63}")) throw new IllegalArgumentException("Invalid dataset name");
         try (var input=new BatchInput<>(new Header(1,kind,profile),queries.iterator(),mapper)) {
-            sink.write("data/"+component+"/"+kind+".ndjson",input);
+            sink.write(path,input);
         }
     }
 

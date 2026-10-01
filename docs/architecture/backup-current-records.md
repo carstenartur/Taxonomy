@@ -1,7 +1,7 @@
 # Current records and embedded history
 
 This document describes the P05 adapters. They are not yet a complete capture
-source: identities, preferences/configuration, integration,
+source: preferences/configuration, integration,
 retained catalogue inputs and Git inventory are required before production jobs
 can activate. The knowledge adapter is described in `backup-data-ownership.md`.
 
@@ -168,3 +168,35 @@ and the complete application capture source remain unfinished.
 The real HSQL/Hibernate regressions cover identical paths across workspaces,
 false commit attribution with different bytes, selected commits, history,
 installation legacy preservation, embedded-history removal and source immutability.
+
+## Identity records and protected local credentials
+
+`IdentityBackupContributor` supplies the application component's identities,
+provider bindings, local accounts, roles, joins, backup grants and access audit.
+Application composition must combine it with the source-content and settings
+adapters under one `application` component; production capture is still disabled.
+
+Scoped exports contain only the requesting principal and principal IDs supplied
+by the authorized record closure. Missing identities fail before dataset output.
+Scoped identity metadata and provider tuples support explicit target mapping;
+local accounts, roles and administrative grants require installation scope.
+Historical access audit requires `INSTALLATION_FULL`. Source grants describe the
+source installation and never authorize target access automatically.
+
+Accounts created since identity migration may not have logged in yet. Their
+stable account ID and metadata remain portable as `PENDING_LOCAL_ACCOUNT`, with
+no invented ownership scope or provider binding. Capture performs no registration
+or source writes. Registered historical principals remain distinct from local
+accounts that happen to have the same display name.
+
+Normal identity files live below `identities/`. Password hashes are queried and
+written only for the authorized `INCLUDE_ENCRYPTED` full-installation selection,
+under `protected/identities/password-hashes.ndjson`. The existing coordinator
+requires encrypted staging for that selection, and the archive writer enforces
+authenticated protection. Sessions, bearer tokens and live authority are absent.
+
+Real HSQL/Hibernate and identity-migration tests cover scoped exclusion, missing
+references, installation current versus full audit, pending accounts, protected
+hash separation, broken audit actors and source immutability. The protected-entry
+test verifies routing; archive encryption is covered by the separate archive
+tests, not claimed from inspecting plaintext DTO output.
