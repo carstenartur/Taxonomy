@@ -53,11 +53,13 @@ class BackupSnapshotCoordinatorTest {
         var creation = authorization.authorize(actor, request);
         var coordinator = coordinator((snapshot, sink) -> {
             assertThat(snapshot.fencingGeneration()).isPositive();
+            assertThat(snapshot.repositoryArchiveIds()).containsExactlyEntriesOf(Map.of(repository, "opaque-repo"));
             assertThatThrownBy(() -> secondNode.update("update evidence set revision=2")).hasMessageContaining("maintenance");
             write(sink, "data/records/current.ndjson", raw.queryForObject("select revision from evidence", String.class) + "\n");
         });
         try (var captured = coordinator.capture(creation)) {
             assertThat(captured.snapshot().authorization().principalId()).isEqualTo(actor);
+            assertThat(captured.snapshot().repositoryArchiveIds()).containsExactlyEntriesOf(Map.of(repository, "opaque-repo"));
             assertThat(captured.manifest().consistencyEvidence()).contains("writer-barrier-v1", "installation");
             assertThat(captured.manifest().components()).extracting(BackupManifest.Component::id).contains(COMPONENT);
             assertThat(captured.manifest().entries()).extracting(BackupEntry::path).contains("verification/capture.json");
@@ -128,6 +130,30 @@ class BackupSnapshotCoordinatorTest {
         assertEmpty();
         assertThat(raw.queryForObject("select phase from backup_barrier_state", Integer.class)).isZero();
         assertThatCode(() -> secondNode.update("update evidence set revision=5")).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void inventoryReceivesTheSameCancellationBoundaryAndCannotSwallowFailure(boolean swallow) {
+        var calls = new java.util.concurrent.atomic.AtomicInteger(); boolean[] inspecting = {false}; boolean[] invoked = {false};
+        Inventory discovery = new Inventory() {
+            @Override public CapturePlan inspect(AuthorizedBackupRequest ignored) { return plan(); }
+            @Override public CapturePlan inspect(AuthorizedBackupRequest ignored, BackupCheckpoint checkpoint) throws IOException {
+                invoked[0] = true; inspecting[0] = true;
+                try { for (int i = 0; i < 20; i++) checkpoint.check(); }
+                catch (IOException failure) { if (!swallow) throw failure; }
+                finally { inspecting[0] = false; }
+                return plan();
+            }
+        };
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, discovery,
+                List.of(contributor((snapshot, sink) -> write(sink, "data/records/should-not-publish", "payload"))), directory, CaptureLimits.defaults(), Clock.systemUTC());
+        try {
+            assertThatThrownBy(() -> { try (var ignored = coordinator.capture(authorization.authorize(actor, request), bytes -> {
+                if (inspecting[0] && calls.incrementAndGet() == 3) throw new InterruptedIOException("Inventory cancelled");
+            })) { } }).isInstanceOf(IOException.class);
+            assertThat(invoked[0]).isTrue(); assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally { Thread.interrupted(); }
+        assertEmpty(); assertThat(raw.queryForObject("select phase from backup_barrier_state", Integer.class)).isZero();
     }
 
     @Test void undeclaredComponentsDuplicatePathsAndPathEscapesCannotProduceACapture() {

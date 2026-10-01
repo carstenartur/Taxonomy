@@ -76,6 +76,30 @@ class BackupManifestTest {
         }
     }
 
+    @Test void opaqueRepositoryIdsCannotAliasOnCaseInsensitiveFilesystems() {
+        var m = manifest(1, Set.of(), List.of(component(Set.of())), List.of(payload));
+        var original = m.repositories().getFirst(); var other = new BackupRepositoryKey("repo-a", "workspace-b");
+        var scope = new BackupScope.Repositories(Map.of("repo-a", Set.of("workspace-a", "workspace-b")));
+        var selection = new BackupRequest(BackupProfile.CURRENT_STATE, scope, new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
+        var central = new BackupManifest.Repository(new BackupRepositoryKey("repo-a", null), "central", GitRepresentation.NONE, original.captured(), null, null, null);
+        var duplicate = new BackupManifest.Repository(other, original.archiveId().toUpperCase(Locale.ROOT), GitRepresentation.NONE, original.captured(), null, null, null);
+        assertThrows(IllegalArgumentException.class, () -> new BackupManifest(m.formatVersion(), m.applicationVersion(), m.build(), m.backupId(), m.sourceInstallationId(), selection,
+                m.captureStartedAt(), m.captureCompletedAt(), m.consistencyEvidence(), m.requiredFeatures(), m.components(), List.of(central, original, duplicate), m.entries(), m.dependencies(), m.omissions()));
+    }
+
+    @Test void opaqueRepositoryIdsRejectReservedDeviceSegmentsEvenForAnEmptyRepository() {
+        var state = new SnapshotContext.RepositoryState(Map.of(), null, Map.of(), Set.of());
+        var key = new BackupRepositoryKey("repo", null);
+        for (var id : List.of("CON", "con", "PrN", "aux", "NUL", "COM1", "com9", "LPT1", "lpt9")) {
+            assertThrows(IllegalArgumentException.class, () -> new BackupManifest.Repository(key, id,
+                    GitRepresentation.NONE, state, null, null, null), id);
+        }
+        for (var id : List.of("COM0", "com10", "LPT0", "lpt10", "con-backup")) {
+            assertDoesNotThrow(() -> new BackupManifest.Repository(key, id,
+                    GitRepresentation.NONE, state, null, null, null), id);
+        }
+    }
+
     private void assertRepositoryRepresentations(BackupRequest selection) {
         var m = manifest(1, Set.of(), List.of(component(Set.of())), List.of(payload));
         var repository = m.repositories().getFirst();

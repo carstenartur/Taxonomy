@@ -25,7 +25,13 @@ public final class BackupSnapshotCoordinator {
     private final Clock clock;
     private final ArchiveProtectionProvider protection;
 
-    @FunctionalInterface public interface Inventory { CapturePlan inspect(AuthorizedBackupRequest request) throws IOException; }
+    @FunctionalInterface public interface Inventory {
+        CapturePlan inspect(AuthorizedBackupRequest request) throws IOException;
+        /** Override for discovery that performs substantial I/O; keep the capture fence and budgets live. */
+        default CapturePlan inspect(AuthorizedBackupRequest request, BackupCheckpoint checkpoint) throws IOException {
+            checkpoint.check(); var plan = inspect(request); checkpoint.check(); return plan;
+        }
+    }
     public record CaptureComponent(int version, BackupCompleteness completeness, Set<BackupComponentId> dependencies) {
         public CaptureComponent { new BackupManifest.Component(PROOF, version, completeness, List.of(), dependencies); dependencies = Set.copyOf(dependencies); }
     }
@@ -78,7 +84,14 @@ public final class BackupSnapshotCoordinator {
             try (var maintenance = barrier.acquire(creation.request().scope(), limits.waitForWriters())) {
                 authorization.requireJobAccess(creation.principalId(), creation);
                 Instant started = clock.instant(); long deadline = System.nanoTime() + limits.maxDuration().toNanos();
-                BackupId id = BackupId.create(); CapturePlan plan = inventory.inspect(creation);
+                BackupId id = BackupId.create();
+                Files.createDirectories(root);
+                if (!root.toRealPath().equals(root)) throw new IOException("Capture root must not traverse symlinks");
+                staging = Files.getFileStore(root).supportsFileAttributeView("posix")
+                        ? Files.createTempDirectory(root, ".capturing-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+                        : Files.createTempDirectory(root, ".capturing-");
+                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);
+                sink.check(); CapturePlan plan = inventory.inspect(creation, sink::checkpoint); sink.check();
                 var versions = new HashMap<BackupComponentId, Integer>();
                 var omissions = new LinkedHashSet<>(plan.omissions());
                 var plannedComponents = plan.components().entrySet().stream()
@@ -93,13 +106,8 @@ public final class BackupSnapshotCoordinator {
                 }
                 versions.put(PROOF, 1);
                 var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),
-                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions);
-                Files.createDirectories(root);
-                if (!root.toRealPath().equals(root)) throw new IOException("Capture root must not traverse symlinks");
-                staging = Files.getFileStore(root).supportsFileAttributeView("posix")
-                        ? Files.createTempDirectory(root, ".capturing-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
-                        : Files.createTempDirectory(root, ".capturing-");
-                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);
+                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions,
+                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)));
                 var components = new ArrayList<BackupManifest.Component>();
                 for (var component : plannedComponents) {
                     sink.check(); int before = sink.entries.size();

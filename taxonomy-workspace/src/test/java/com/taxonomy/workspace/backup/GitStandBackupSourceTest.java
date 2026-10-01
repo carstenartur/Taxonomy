@@ -273,7 +273,7 @@ class GitStandBackupSourceTest {
         @Override public BackupEntry write(String path, InputStream input) throws IOException { input.transferTo(bytes); return new BackupEntry(path, bytes.size(), hash(bytes.toByteArray())); }
         @Override public BackupEntry writeGenerated(String path, EntryWriter producer) throws IOException { producer.write(bytes); return new BackupEntry(path, bytes.size(), hash(bytes.toByteArray())); }
     }
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final JDBCDataSource database = new JDBCDataSource(); final EditorPersistenceFixture persistence; final ExistingGitBackupRepositories repositories;
         Fixture() throws Exception {
             String url = "jdbc:hsqldb:mem:git-stand-" + UUID.randomUUID() + ";hsqldb.tx=mvcc"; database.setUrl(url); database.setUser("SA"); database.setPassword(""); persistence = new EditorPersistenceFixture(url);

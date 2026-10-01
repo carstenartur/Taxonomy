@@ -82,7 +82,7 @@ class GitStandExportIT {
     private static BackupScope scope() { return new BackupScope.Workspace(KEY.repositoryId(), KEY.workspaceId()); }
     private static AuthorizedBackupRequest current() { return authorized(new BackupRequest(BackupProfile.CURRENT_STATE, scope(), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE)); }
     private static AuthorizedBackupRequest authorized(BackupRequest request) { return new AuthorizedBackupRequest(request, PrincipalId.create(), "test-decision", Instant.now(), EnumSet.allOf(BackupCapability.class)); }
-    private static String document(String current, String history) {
+    static String document(String current, String history) {
         return """
                 project P {
                   title: "Current project";
@@ -106,7 +106,7 @@ class GitStandExportIT {
                 }
                 """.formatted(history, current);
     }
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final JDBCDataSource database = new JDBCDataSource(); final EditorPersistenceFixture persistence; final JdbcTemplate jdbc; final GitStandBackupSource source;
         Fixture() {
             String url = "jdbc:hsqldb:mem:git-stand-export-" + UUID.randomUUID() + ";hsqldb.tx=mvcc"; database.setUrl(url); database.setUser("SA"); database.setPassword("");

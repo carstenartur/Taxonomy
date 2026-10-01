@@ -27,6 +27,34 @@ class BackupCaptureScopeTest {
     @Test void workspaceOnlySelectionDoesNotImplicitlyCaptureCentralRepository() {
         assertEquals(Set.of(new BackupRepositoryKey("repo", "w1")), new BackupScope.Workspace("repo", "w1").selectedRepositories());
     }
+    @Test void manifestArchiveIdsMustMatchTheCapturedRepositorySetAndRemainOpaquePortableAndUnique() {
+        var a = new BackupRepositoryKey("repo", null); var b = new BackupRepositoryKey("repo", "private");
+        var request = new BackupRequest(BackupProfile.CURRENT_STATE, new BackupScope.Repositories(Map.of("repo", Set.of("private"))), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
+        var auth = new AuthorizedBackupRequest(request, PrincipalId.create(), "decision", Instant.EPOCH, Set.of(BackupCapability.EXPORT_CURRENT));
+        var states = Map.of(a, state('a', 1), b, state('b', 2));
+        var ids = new HashMap<>(Map.of(a, "opaque-a", b, "opaque-b"));
+        var snapshot = new SnapshotContext(BackupId.create(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), ids);
+        ids.clear(); assertEquals(Map.of(a, "opaque-a", b, "opaque-b"), snapshot.repositoryArchiveIds());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.repositoryArchiveIds().clear());
+        for (var invalid : List.of(Map.of(a, "opaque-a"), Map.of(a, "same", b, "same"), Map.of(a, "same", b, "SAME"), Map.of(a, "unsafe/path", b, "safe"),
+                Map.of(a, "a".repeat(129), b, "safe"), Map.of(a, "safe", new BackupRepositoryKey("foreign", null), "other"))) {
+            assertThrows(IllegalArgumentException.class, () -> new SnapshotContext(snapshot.backupId(), auth, Instant.EPOCH, Instant.EPOCH, 1, states, Map.of(), invalid));
+        }
+    }
+    @Test void repositoryArchiveIdsRejectReservedDeviceSegmentsBeforeAnyPayloadIsWritten() {
+        var key = new BackupRepositoryKey("repo", "private");
+        var request = new BackupRequest(BackupProfile.CURRENT_STATE, new BackupScope.Workspace("repo", "private"),
+                new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
+        var auth = new AuthorizedBackupRequest(request, PrincipalId.create(), "decision", Instant.EPOCH, Set.of(BackupCapability.EXPORT_CURRENT));
+        for (var id : List.of("CON", "con", "PrN", "aux", "NUL", "COM1", "com9", "LPT1", "lpt9")) {
+            assertThrows(IllegalArgumentException.class, () -> new SnapshotContext(BackupId.create(), auth,
+                    Instant.EPOCH, Instant.EPOCH, 1, Map.of(key, state('a', 1)), Map.of(), Map.of(key, id)), id);
+        }
+        for (var id : List.of("COM0", "com10", "LPT0", "lpt10", "con-backup")) {
+            assertDoesNotThrow(() -> new SnapshotContext(BackupId.create(), auth,
+                    Instant.EPOCH, Instant.EPOCH, 1, Map.of(key, state('a', 1)), Map.of(), Map.of(key, id)), id);
+        }
+    }
     private SnapshotContext.RepositoryState state(char head, long revision) {
         String commit = String.valueOf(head).repeat(40);
         return new SnapshotContext.RepositoryState(Map.of("refs/heads/main", commit), "refs/heads/main",

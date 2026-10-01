@@ -517,3 +517,41 @@ separate workspace records; they are not relabeled as the current branch. The so
 refs/revisions and required commits exposed by this port describe capture evidence,
 not the later exported synthetic Git repository. Inventory assembly, complete
 reference closure and Git representations still precede production activation.
+
+### Stand files in an archive
+
+`GitStandBackupContributor` supplies the file-only (`GitRepresentation.NONE`) path
+for current, selected-version and installation-current profiles. Fenced inspection
+returns one manifest repository with an opaque archive ID for each explicitly
+selected key. `SnapshotContext` carries that exact mapping to contributors and
+reconstructs it when reopening a durable capture. Nonempty mappings must cover the
+captured repository set exactly, use portable IDs and have no case-insensitive
+collisions. Older evidence-only contexts may omit this mapping; file writers refuse
+to invent archive IDs for them.
+
+Before writing or selecting architecture document proofs, the contributor reopens
+each existing source and compares its current/selected refs and saved revisions to
+the captured state. This requires the same held writer fence and deterministic
+document projector across inspection and writing. Raw database changes that bypass
+the fence without advancing revisions are outside this cross-session check; source
+bytes are verified within each opened view. It streams projected files to
+`files/workspace-git/<archive-id>/<sha256>` and writes
+`data/workspace/git-stands.ndjson` with a version/profile header, explicit repository
+records and file-path/mode/entry records. Equal bytes within one repository share a
+payload while retaining each logical path and mode. Checksums and producer receipts
+cover the data and metadata; total logical file count and bytes are limited across
+the entire selected closure. The typed metadata is bounded by those counts and the
+repository limit; document bodies are not collected in a payload list.
+
+The snapshot coordinator passes its existing checkpoint into inventory inspection,
+so a cooperating inventory reader observes cancellation, time limits and lease
+renewal during discovery. A swallowed checkpoint failure also poisons capture. The
+application-private staging directory is removed if discovery fails.
+
+This component deliberately refuses bundle, bare, worktree and history requests;
+they require the P06 Git adapter. It claims only the logical Git inventory category,
+not the remaining workspace records, external-server inventory, portfolio ownership
+or complete application closure. It is not registered as a production capture source.
+Integration tests cover current and selected file payloads through encrypted staging,
+archive publication and verified reading after source handles close. They do not
+establish restore compatibility or a physical database restart.
