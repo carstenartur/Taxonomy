@@ -102,6 +102,21 @@ SHA-256. The coordinator retains only bounded buffers and entry metadata. It
 records repository/ref/semantic-revision evidence and does not create a source
 backup commit.
 
+`ComponentSink.writeGenerated` accepts synchronous output producers such as Git
+pack/bundle writers. It uses the same staging, hashing, limits and encryption path
+as input-stream entries, with no producer thread, complete-entry heap buffer or
+separate plaintext temporary file. Large writes are checked in at most 64 KiB
+chunks. Input streams remain caller-owned; the sink owns the durable channel and
+encryption finalization even when the producer closes its callback stream.
+
+The generated stream is valid only during its callback. Nested entry writes and
+foreign-thread use are rejected. An entry failure prevents publication even when
+producer or contributor code catches it, including path, byte-limit and finalization
+failures. Long preparation between stream operations must call `checkpoint()`;
+runtime enforcement remains cooperative. Isolated heap probes exercise both input
+and generated 192 MiB encrypted exports with a 96 MiB heap. This port is a prerequisite
+for Git output; Git inventory and representation adapters remain separate work.
+
 The complete manifest and capture proof are written and flushed before an atomic
 directory rename. The maintenance generation is checked again before returning
 `CapturedBackup`; failure or cancellation removes both partial and newly renamed

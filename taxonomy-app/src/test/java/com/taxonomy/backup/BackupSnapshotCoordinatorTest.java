@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -215,6 +216,247 @@ class BackupSnapshotCoordinatorTest {
                 .isInstanceOf(IllegalStateException.class).hasMessage("Omissions unavailable");
         assertEmpty();
         assertThatCode(() -> secondNode.update("update evidence set revision=5")).doesNotThrowAnyException();
+    }
+
+    @Test void generatedBytesAreHashedOnTheCaptureThreadAndEscapedStreamsCannotChangeThem() throws Exception {
+        byte[] bytes = new byte[262144]; new Random(19).nextBytes(bytes);
+        byte[] expected = new byte[200001]; expected[0] = (byte) 165; System.arraycopy(bytes, 3, expected, 1, 200000);
+        var owner = Thread.currentThread(); var escaped = new OutputStream[1]; var receipt = new BackupEntry[1];
+        String path = "data/records/generated.pack";
+        var creation = authorization.authorize(actor, request);
+        try (var captured = coordinator((snapshot, sink) -> receipt[0] = sink.writeGenerated(path, output -> {
+            assertThat(Thread.currentThread()).isSameAs(owner); escaped[0] = output;
+            assertThatThrownBy(() -> secondNode.update("update evidence set revision=8")).hasMessageContaining("maintenance");
+            output.write(165); output.write(bytes, 3, 200000); output.write(bytes, 0, 0); output.flush(); output.close();
+        })).capture(creation)) {
+            assertThat(receipt[0]).isEqualTo(new BackupEntry(path, expected.length,
+                    HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(expected))));
+            assertThat(captured.manifest().entries()).contains(receipt[0]);
+            assertThatThrownBy(() -> escaped[0].write(42)).isInstanceOf(IOException.class);
+            try (var reopened = CapturedBackup.open(captured.directory(), creation); var input = reopened.openEntry(path)) {
+                assertThat(input.readAllBytes()).isEqualTo(expected);
+            }
+        }
+        assertEmpty();
+    }
+
+    @Test void aSwallowedGeneratedByteLimitFailurePoisonsTheCapture() {
+        var producerRan = new boolean[1]; var swallowed = new IOException[1];
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, ignored -> plan(),
+                List.of(contributor((snapshot, sink) -> sink.writeGenerated("data/records/large.pack", output -> {
+                    producerRan[0] = true;
+                    try { output.write(new byte[65]); } catch (IOException failure) { swallowed[0] = failure; }
+                }))), directory, new CaptureLimits(4096, 64, 20, Duration.ofSeconds(5), Duration.ofSeconds(2)), Clock.systemUTC());
+        var failure = catchThrowable(() -> coordinator.capture(authorization.authorize(actor, request)));
+        assertThat(producerRan[0]).isTrue(); assertThat(swallowed[0]).hasMessageContaining("limit");
+        assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
+        assertThatCode(() -> secondNode.update("update evidence set revision=3")).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void generatedAndInputEntriesShareTotalByteAndEntryBudgets(boolean entryCount) {
+        var limits = new CaptureLimits(entryCount ? 16384 : 1536, 1024, entryCount ? 1 : 20, Duration.ofSeconds(5), Duration.ofSeconds(2));
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, ignored -> plan(),
+                List.of(contributor((snapshot, sink) -> {
+                    sink.write("data/records/first", new ByteArrayInputStream(new byte[1024]));
+                    sink.writeGenerated("data/records/second", output -> output.write(new byte[1024]));
+                })), directory, limits, Clock.systemUTC());
+        assertThatThrownBy(() -> coordinator.capture(authorization.authorize(actor, request))).isInstanceOf(IOException.class).hasMessageContaining("limit");
+        assertEmpty();
+    }
+
+    @Test void failedGeneratedProducerCannotPublishPartialBytes() {
+        assertThatThrownBy(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/partial", output -> {
+            output.write(new byte[]{1, 2, 3}); throw new IOException("Producer failed");
+        })).capture(authorization.authorize(actor, request))).isInstanceOf(IOException.class).hasMessage("Producer failed");
+        assertEmpty(); assertThatCode(() -> secondNode.update("update evidence set revision=3")).doesNotThrowAnyException();
+    }
+
+    @Test void swallowedGeneratedCancellationStillAbortsAndPreservesInterruption() {
+        try {
+            assertThatThrownBy(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/cancelled", output -> {
+                output.write(1); Thread.currentThread().interrupt();
+                try { output.write(2); } catch (IOException ignored) { }
+            })).capture(authorization.authorize(actor, request))).isInstanceOf(InterruptedIOException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally { Thread.interrupted(); }
+        assertEmpty(); assertThat(raw.queryForObject("select phase from backup_barrier_state", Integer.class)).isZero();
+    }
+
+    @Test void generatedCaptureCannotPublishAfterItsLeaseWasFenced() {
+        assertThatThrownBy(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/fenced", output -> {
+            output.write(1); raw.update("update backup_barrier_state set expires_at=0");
+            secondNode.update("update evidence set revision=4"); output.write(2);
+        })).capture(authorization.authorize(actor, request))).hasStackTraceContaining("fenced");
+        assertEmpty();
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void generatedProducerCannotHideNestedEntriesFromEntryLimits(boolean inputEntry) {
+        var nested = new IOException[1];
+        var failure = catchThrowable(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/outer", output -> {
+            output.write(1);
+            try {
+                if (inputEntry) sink.write("data/records/inner", new ByteArrayInputStream(new byte[]{2}));
+                else sink.writeGenerated("data/records/inner", inner -> inner.write(2));
+            }
+            catch (IOException rejected) { nested[0] = rejected; }
+        })).capture(authorization.authorize(actor, request)));
+        assertThat(nested[0]).hasMessageContaining("nested"); assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
+    }
+
+    enum ForeignCall { OUTPUT_WRITE, OUTPUT_FLUSH, OUTPUT_CLOSE, SINK_INPUT, SINK_GENERATED, CHECKPOINT }
+    @ParameterizedTest @EnumSource(ForeignCall.class)
+    void generatedOutputRejectsForeignThreadsAndPoisonsTheCapture(ForeignCall call) {
+        var foreign = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var failure = catchThrowable(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/thread", output -> {
+            var worker = Thread.ofPlatform().daemon().start(() -> {
+                try {
+                    switch (call) {
+                        case OUTPUT_WRITE -> output.write(1);
+                        case OUTPUT_FLUSH -> output.flush();
+                        case OUTPUT_CLOSE -> output.close();
+                        case SINK_INPUT -> sink.write("data/records/foreign", new ByteArrayInputStream(new byte[]{1}));
+                        case SINK_GENERATED -> sink.writeGenerated("data/records/foreign", target -> target.write(1));
+                        case CHECKPOINT -> sink.checkpoint();
+                    }
+                } catch (Throwable rejected) { foreign.set(rejected); }
+            });
+            try { worker.join(5000); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new InterruptedIOException(); }
+            assertThat(worker.isAlive()).isFalse();
+        })).capture(authorization.authorize(actor, request)));
+        assertThat(foreign.get()).isInstanceOf(IOException.class); assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
+    }
+
+    @Test void generatedPathsAndProtectedNamespacesAreCheckedBeforeCallingTheProducer() {
+        for (String path : List.of("../escape", "protected/credentials")) {
+            var called = new boolean[1];
+            var failure = catchThrowable(() -> coordinator((snapshot, sink) -> sink.writeGenerated(path, output -> called[0] = true))
+                    .capture(authorization.authorize(actor, request)));
+            assertThat(called[0]).isFalse();
+            assertThat(failure).isInstanceOf(path.startsWith("protected/") ? IOException.class : IllegalArgumentException.class);
+        }
+        assertEmpty();
+    }
+
+    @Test void generatedAndInputEntriesSharePathCollisionChecks() {
+        var called = new boolean[1];
+        assertThatThrownBy(() -> coordinator((snapshot, sink) -> {
+            write(sink, "data/records/File", "one");
+            sink.writeGenerated("data/records/file", output -> called[0] = true);
+        }).capture(authorization.authorize(actor, request))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("path");
+        assertThat(called[0]).isFalse(); assertEmpty();
+    }
+
+    @Test void generatedProtectedEntriesStayEncryptedInEveryDurableSpoolFile() throws Exception {
+        com.google.crypto.tink.streamingaead.StreamingAeadConfig.register();
+        var protection = new com.taxonomy.backup.archive.TinkArchiveProtection(com.google.crypto.tink.KeysetHandle.generateNew(
+                com.google.crypto.tink.streamingaead.PredefinedStreamingAeadParameters.AES256_GCM_HKDF_1MB));
+        var secret = "GENERATED-SECRET-" + UUID.randomUUID(); var path = "protected/generated.pack";
+        var request = new BackupRequest(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation(), new BackupTime.History(),
+                GitRepresentation.BUNDLE, SecretsSelection.INCLUDE_ENCRYPTED);
+        var creation = authorization.authorize(actor, request); var base = plan();
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, ignored -> new CapturePlan(base.applicationVersion(), base.build(),
+                base.sourceInstallationId(), List.of(), base.components(), base.dependencies(), base.omissions()),
+                List.of(contributor((snapshot, sink) -> sink.writeGenerated(path, output -> output.write(secret.getBytes(UTF_8))))),
+                directory, CaptureLimits.defaults(), Clock.systemUTC(), protection);
+        try (var captured = coordinator.capture(creation)) {
+            try (var files = Files.walk(captured.directory())) {
+                for (var file : files.filter(Files::isRegularFile).toList()) assertThat(new String(Files.readAllBytes(file), UTF_8)).doesNotContain(secret);
+            }
+            try (var reopened = CapturedBackup.open(captured.directory(), creation, protection); var input = reopened.openEntry(path)) {
+                assertThat(new String(input.readAllBytes(), UTF_8)).isEqualTo(secret);
+            }
+        }
+        assertEmpty();
+    }
+
+    @Test void anInputOnlySinkRefusesGeneratedEntriesBeforeCallingTheProducer() {
+        ComponentSink sink = (path, input) -> { throw new AssertionError("Must not buffer generated output into a legacy sink"); };
+        assertThatThrownBy(() -> sink.writeGenerated("data/records/unsupported", output -> fail("Producer must not be called")))
+                .isInstanceOf(IOException.class).hasMessageContaining("generated");
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void returnedGeneratedStreamsAreInvalidatedEvenWhenTheProducerDidNotCloseThem(boolean flush) {
+        var escaped = new OutputStream[1]; var rejected = new IOException[1];
+        var failure = catchThrowable(() -> coordinator((snapshot, sink) -> {
+            sink.writeGenerated("data/records/closed-scope", output -> { escaped[0] = output; output.write(1); });
+            try { if (flush) escaped[0].flush(); else escaped[0].write(2); }
+            catch (IOException closed) { rejected[0] = closed; }
+        }).capture(authorization.authorize(actor, request)));
+        assertThat(rejected[0]).isNotNull(); assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
+    }
+
+    @Test void aSingleLargeGeneratedWriteCanBeCancelledBeforeAllItsBytesAreWritten() {
+        byte[] bytes = new byte[1024 * 1024]; long[] observed = { 0 };
+        try {
+            assertThatThrownBy(() -> coordinator((snapshot, sink) -> sink.writeGenerated("data/records/large", output -> {
+                try { output.write(bytes); } catch (IOException ignored) { }
+            })).capture(authorization.authorize(actor, request), count -> {
+                if (count > 0) { observed[0] = count; throw new InterruptedIOException("Stop generated content"); }
+            })).isInstanceOf(InterruptedIOException.class);
+            assertThat(observed[0]).isPositive().isLessThan(bytes.length); assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally { Thread.interrupted(); }
+        assertEmpty();
+    }
+
+    enum SwallowedEntryFailure { PRODUCER_IO, PRODUCER_RUNTIME, PRODUCER_ERROR, INVALID_PATH, DUPLICATE_PATH, PROTECTED_PATH, SPOOL_CLOSE }
+    @ParameterizedTest @EnumSource(SwallowedEntryFailure.class)
+    void swallowedFailuresAtAnyEntryBoundaryPreventLaterPublication(SwallowedEntryFailure kind) {
+        var caught = new Throwable[2]; String ordinary = "data/records/rejected";
+        var protection = new com.taxonomy.backup.archive.ArchiveProtectionProvider() {
+            public boolean encrypted() { return false; }
+            public InputStream unprotect(InputStream input, byte[] context) { return input; }
+            public java.nio.channels.SeekableByteChannel open(java.nio.channels.SeekableByteChannel input, byte[] context) { return input; }
+            public OutputStream protect(OutputStream output, byte[] context) {
+                if (kind != SwallowedEntryFailure.SPOOL_CLOSE || !new String(context, UTF_8).endsWith(ordinary)) return output;
+                return new FilterOutputStream(output) {
+                    @Override public void close() throws IOException { super.close(); throw new IOException("Spool finalization failed"); }
+                };
+            }
+        };
+        var coordinator = new BackupSnapshotCoordinator(barrier, authorization, ignored -> plan(), List.of(contributor((snapshot, sink) -> {
+            if (kind == SwallowedEntryFailure.DUPLICATE_PATH) write(sink, ordinary, "existing");
+            String path = kind == SwallowedEntryFailure.INVALID_PATH ? "../escape" : kind == SwallowedEntryFailure.PROTECTED_PATH ? "protected/rejected" : ordinary;
+            caught[0] = catchThrowable(() -> sink.writeGenerated(path, output -> {
+                output.write(1);
+                switch (kind) {
+                    case PRODUCER_IO -> throw new IOException("Producer failed");
+                    case PRODUCER_RUNTIME -> throw new IllegalStateException("Producer failed");
+                    case PRODUCER_ERROR -> throw new AssertionError("Producer failed");
+                    default -> { }
+                }
+            }));
+            caught[1] = catchThrowable(sink::checkpoint);
+        })), directory, CaptureLimits.defaults(), Clock.systemUTC(), protection);
+        var failure = catchThrowable(() -> coordinator.capture(authorization.authorize(actor, request)));
+        assertThat(caught[0]).isNotNull(); assertThat(caught[1]).isInstanceOf(IOException.class);
+        assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
+    }
+
+    enum ProgressBoundary { PRODUCER_END, FINAL_PUBLICATION }
+    @ParameterizedTest @EnumSource(ProgressBoundary.class)
+    void progressCallbacksCannotUseExpiredStreamsOrHideTheirFailure(ProgressBoundary boundary) {
+        var escaped = new OutputStream[1]; var completed = new boolean[1]; var attempted = new boolean[1]; var rejected = new IOException[1];
+        var coordinator = coordinator((snapshot, sink) -> sink.writeGenerated("data/records/generated", output -> {
+            escaped[0] = output; output.write(1); completed[0] = true;
+        }));
+        var failure = catchThrowable(() -> {
+            try (var captured = coordinator.capture(authorization.authorize(actor, request), bytes -> {
+                if (attempted[0] || !completed[0]) return;
+                if (boundary == ProgressBoundary.FINAL_PUBLICATION) {
+                    try (var files = Files.walk(directory)) {
+                        if (files.noneMatch(file -> file.getFileName().toString().equals("manifest.json"))) return;
+                    }
+                }
+                attempted[0] = true;
+                try { escaped[0].write(2); } catch (IOException closed) { rejected[0] = closed; }
+            })) { assertThat(captured.manifest()).isNotNull(); }
+        });
+        assertThat(attempted[0]).isTrue(); assertThat(rejected[0]).isNotNull();
+        assertThat(failure).isInstanceOf(IOException.class); assertEmpty();
     }
 
     private static BackupDataContributor dataContributor(BackupComponentId id,
