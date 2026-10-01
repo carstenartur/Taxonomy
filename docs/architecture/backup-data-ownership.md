@@ -133,3 +133,13 @@ matters; binary values are archive entries with SHA-256 and length. UTC timestam
 use ISO-8601 `Z`. Null and empty text are distinct on the wire; Oracle adapters
 must preserve that distinction explicitly for fields where it is meaningful.
 No database family is declared supported until its real roundtrip passes.
+
+## Knowledge current-record adapter
+
+`KnowledgeBackupContributor` owns seven explicit bounded datasets: materialized catalogue nodes, scoped relations, analysis hypotheses and their evidence, current review decisions, projection recovery, and installation-only legacy coverage. Scoped nodes comprise captured-document selections, relation/proposal/hypothesis endpoints and a validated parent closure. Installation exports retain every materialized catalogue node. Missing endpoints, missing/cyclic/inconsistent parent identities and missing or foreign analysis dependencies fail before output. Embeddings, counts, readiness and diagnostic messages remain excluded.
+
+The portfolio owner supplies an identity-only `BackupAnalysisReference` domain port. Repository/workspace, project, requirement, session and active version must match; old snapshots are recognized without reading their payloads. Current unlinked hypotheses require selection proof from the captured Git/working document. Rejected review decisions remain current decisions. Full history retains earlier scoped evidence; selected-version exports never consult present-day unversioned records.
+
+Current recovery includes only pending work with `REBUILD_FROM_CAPTURE`, without former HEAD or automatic execution. Full history retains completed recovery provenance; diagnostic messages are never portable. Global legacy coverage has no repository authority, stays in its own installation namespace, and includes earlier requirement text only in full history.
+
+The single reviewed forward dependency `knowledge/com.taxonomy.catalog.backup -> workspace/com.taxonomy.workspace.backup` reuses the existing exact scope predicate. Cycle and context rules are unchanged. Original imported catalogue input bytes require a separate retained-input adapter; materialized records are not proof that shipped Excel matches the imported input. This adapter alone does not complete P05 or enable production capture.

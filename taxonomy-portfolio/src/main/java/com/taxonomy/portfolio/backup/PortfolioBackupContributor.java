@@ -65,6 +65,29 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                 });
         return List.copyOf(result);
     }
+    /** The identity closure includes old snapshots so the consumer can distinguish stale from foreign links. */
+    public List<BackupAnalysisReference> analysisReferences(SnapshotContext snapshot) throws IOException {
+        var scope = new BackupRowScope(snapshot);
+        if (scope.selectedVersion()) return List.of();
+        var tenant = scope.tenants("s.scope_key");
+        rows.requireEmpty(new Query("select 1 from req_analysis_snapshot s left join arch_project p on p.id=s.project_id "
+                + "left join project_requirement r on r.id=s.requirement_id left join project_req_version v on v.id=s.requirement_version_id where " + tenant.sql()
+                + " and (p.id is null or r.id is null or v.id is null or p.scope_key<>s.scope_key or r.scope_key<>s.scope_key "
+                + "or r.project_id<>s.project_id or v.requirement_id<>s.requirement_id or v.scope_key<>s.scope_key)", tenant.parameters()));
+        var result = new ArrayList<BackupAnalysisReference>();
+        rows.visit(new Query("select s.id,s.project_id,s.requirement_id,s.requirement_version_id,s.analysis_session_id,"
+                + "p.repository_id,p.workspace_id,r.current_version_id,r.current_snapshot_id from req_analysis_snapshot s "
+                + "join arch_project p on p.id=s.project_id join project_requirement r on r.id=s.requirement_id where "
+                + tenant.sql() + " order by s.id", tenant.parameters()), r -> new BackupAnalysisReference(
+                reference(r,"portfolio.analysis-snapshot","id"), reference(r,"portfolio.project","project_id"),
+                reference(r,"portfolio.requirement","requirement_id"), new BackupRepositoryKey(text(r,"repository_id"),text(r,"workspace_id")),
+                text(r,"analysis_session_id"), scope.history() || Objects.equals(text(r,"id"),text(r,"current_snapshot_id"))
+                        && Objects.equals(number(r,"requirement_version_id"),number(r,"current_version_id"))), ref -> {
+                    if (result.size() >= 100_000) throw new IOException("Analysis dependency limit exceeded");
+                    result.add(ref);
+                });
+        return List.copyOf(result);
+    }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
         if (!scope.selectedVersion()) validateScopeClosure(scope);

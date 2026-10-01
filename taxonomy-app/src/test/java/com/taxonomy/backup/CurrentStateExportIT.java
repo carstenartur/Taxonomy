@@ -221,6 +221,9 @@ class CurrentStateExportIT {
         final org.hibernate.SessionFactory factory;
         final JdbcTemplate jdbc;
         Fixture(Class<?>... additionalEntities) {
+            this(configuration -> { }, additionalEntities);
+        }
+        Fixture(java.util.function.Consumer<Configuration> customize, Class<?>... additionalEntities) {
             database.setUrl("jdbc:hsqldb:mem:current-export-" + UUID.randomUUID()); database.setUser("sa");
             var configuration = new Configuration().setProperty("hibernate.hbm2ddl.auto", "create-drop")
                     .setProperty("hibernate.search.enabled", "false");
@@ -237,6 +240,7 @@ class CurrentStateExportIT {
                 }
             } catch (Exception failure) { throw new AssertionError(failure); }
             for (Class<?> type : additionalEntities) configuration.addAnnotatedClass(type);
+            customize.accept(configuration);
             factory = configuration.buildSessionFactory(); jdbc = new JdbcTemplate(database);
         }
         void editor(String id, String repository, String workspace, String text) {

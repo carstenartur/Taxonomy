@@ -752,6 +752,13 @@
     },
     {
       "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.catalog.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.catalog.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
