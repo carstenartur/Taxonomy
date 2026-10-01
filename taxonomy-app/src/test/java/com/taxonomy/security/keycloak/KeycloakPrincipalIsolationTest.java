@@ -30,7 +30,7 @@ class KeycloakPrincipalIsolationTest {
     }
 
     @Test void equalDisplayNamesAtDifferentIssuersNeverShareAScope() {
-        var converter = new KeycloakJwtAuthConverter(identities);
+        var converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
         String first = converter.convert(jwt("https://first.example", "person-1", "alice")).getName();
         String other = converter.convert(jwt("https://other.example", "person-1", "alice")).getName();
@@ -40,7 +40,7 @@ class KeycloakPrincipalIsolationTest {
 
     @Test void browserAndBearerLoginUseTheSameVerifiedIdentity() {
         String issuer = "https://idp.example";
-        var converter = new KeycloakJwtAuthConverter(identities);
+        var converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
         var registration = ClientRegistration.withRegistrationId("test").clientId("taxonomy")
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE).redirectUri("https://app.example/login")
@@ -51,14 +51,14 @@ class KeycloakPrincipalIsolationTest {
                 Map.of("iss", issuer, "sub", "person-1", "preferred_username", "alice"));
         var request = new OidcUserRequest(registration,
                 new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "access", now, now.plusSeconds(300)), token);
-        var user = new KeycloakOidcUserService(identities).loadUser(request);
+        var user = new KeycloakOidcUserService(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE).loadUser(request);
         assertThat(user.getName()).isEqualTo(converter.convert(jwt(issuer, "person-1", "alice")).getName());
         assertThat(user.getName()).isNotEqualTo("alice");
         assertThat(user.getPreferredUsername()).isEqualTo("alice");
     }
 
     @Test void missingProviderIdentityIsRejectedInsteadOfUsingDisplayName() {
-        var converter = new KeycloakJwtAuthConverter(identities);
+        var converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
         assertThatThrownBy(() -> converter.convert(Jwt.withTokenValue("token").header("alg", "RS256")
                 .subject("person-1").claim("preferred_username", "alice").build()))
@@ -66,7 +66,7 @@ class KeycloakPrincipalIsolationTest {
     }
 
     @Test void missingSubjectIsRejectedEvenWithAValidIssuerAndDisplayName() {
-        var converter = new KeycloakJwtAuthConverter(identities);
+        var converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
         assertThatThrownBy(() -> converter.convert(Jwt.withTokenValue("token").header("alg", "RS256")
                 .issuer("https://idp.example").claim("preferred_username", "alice").build()))
@@ -74,7 +74,7 @@ class KeycloakPrincipalIsolationTest {
     }
 
     @Test void opaqueLoginScopeCanProvisionTheExistingUsernameBasedGitWorkspace() throws Exception {
-        var converter = new KeycloakJwtAuthConverter(identities);
+        var converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
         String scope = converter.convert(jwt("https://idp.example", "person-1", "alice")).getName();
         try (var repository = new com.taxonomy.workspace.storage.DslGitRepository()) {

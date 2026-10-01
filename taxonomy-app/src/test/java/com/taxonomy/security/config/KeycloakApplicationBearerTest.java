@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Exercises all servlet filters and database composition with a verified token. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"embedding.enabled=false", "llm.mock=true", "taxonomy.security.swagger-public=false",
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"taxonomy.keycloak.principal-mode=STABLE", "embedding.enabled=false", "llm.mock=true", "taxonomy.security.swagger-public=false",
         "spring.datasource.url=jdbc:hsqldb:mem:real-keycloak-bearer", "spring.jpa.hibernate.ddl-auto=create"})
 @ActiveProfiles("keycloak") @DirtiesContext
 class KeycloakApplicationBearerTest {

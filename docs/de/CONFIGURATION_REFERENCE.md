@@ -244,6 +244,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `KEYCLOAK_JWK_SET_URI` | Resource Server | lokale Zertifikats-URL | Expliziter JWK-Endpunkt. |
 | `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Basis der Kontoverwaltungsweiterleitung. |
 | `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Realm der Kontoverwaltung. |
+| `TAXONOMY_KEYCLOAK_PRINCIPAL_MODE` | `taxonomy.keycloak.principal-mode` | `LEGACY` | `LEGACY` erhält bisherige OIDC-Eigentumszuordnungen; `STABLE` aktiviert ausdrücklich Issuer/Subject-Identitäten und ist für portable Backups erforderlich. Bestehende Installationen müssen bis zur Umsetzung einer verifizierten Eigentümermigration in `LEGACY` bleiben; den Modus nach dem Anlegen von Daten nicht wechseln. |
 | `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | JWT-Pfad für die festen Rollen `ROLE_USER`, `ROLE_ARCHITECT`, `ROLE_ADMIN`; kein konfigurierbares Präfix. |
 
 ## DSL und externe Repositories

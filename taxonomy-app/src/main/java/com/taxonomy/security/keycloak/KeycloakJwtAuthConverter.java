@@ -10,6 +10,7 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -29,8 +30,9 @@ import java.util.stream.Collectors;
  * This converter extracts those roles and maps them to Spring
  * {@link GrantedAuthority} instances, preserving the existing
  * three-role model (ROLE_USER, ROLE_ARCHITECT, ROLE_ADMIN).
- * The principal name is an explicitly stored scope key resolved from issuer and
- * subject. Display claims never select an existing workspace or membership.
+ * Stable mode resolves issuer and subject to a persisted scope key. The default
+ * legacy mode preserves existing username-based ownership until verified migration
+ * is available; its tokens cannot be used as stable backup identities.
  */
 @Component
 @Profile("keycloak")
@@ -39,8 +41,12 @@ public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenti
     /** The recognized application roles. */
     private static final Set<String> KNOWN_ROLES = Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
     private final PrincipalIdentityService identities;
+    private final KeycloakPrincipalMode mode;
 
-    public KeycloakJwtAuthConverter(PrincipalIdentityService identities) { this.identities = identities; }
+    public KeycloakJwtAuthConverter(PrincipalIdentityService identities, KeycloakPrincipalMode mode) {
+        this.identities = identities;
+        this.mode = java.util.Objects.requireNonNull(mode);
+    }
 
     @Value("${taxonomy.keycloak.role-claim-path:realm_access.roles}")
     private String roleClaimPath;
@@ -54,6 +60,11 @@ public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenti
     public AbstractAuthenticationToken convert(Jwt jwt) {
         Collection<GrantedAuthority> authorities = extractAuthorities(jwt);
 
+        if (mode == KeycloakPrincipalMode.LEGACY) {
+            String username = jwt.getClaimAsString("preferred_username");
+            if (username == null || username.isBlank()) username = jwt.getSubject();
+            return new JwtAuthenticationToken(jwt, authorities, username);
+        }
         if (jwt.getIssuer() == null || jwt.getSubject() == null || jwt.getSubject().isBlank())
             throw new BadCredentialsException("Verified issuer and subject are required");
         var principal = identities.oidc(jwt.getIssuer().toString(), jwt.getSubject());

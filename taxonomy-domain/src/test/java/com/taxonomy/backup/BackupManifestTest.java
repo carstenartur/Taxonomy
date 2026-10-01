@@ -60,4 +60,36 @@ class BackupManifestTest {
         }
     }
 
+    @Test void repositoryRepresentationMustMatchTheCurrentStateRequest() {
+        for (var requested : GitRepresentation.values()) {
+            var selection = new BackupRequest(BackupProfile.CURRENT_STATE, request.scope(),
+                    new BackupTime.Current(), requested, SecretsSelection.EXCLUDE);
+            assertRepositoryRepresentations(selection);
+        }
+    }
+
+    @Test void historyCannotSubstituteAnotherSelectedGitRepresentation() {
+        for (var requested : List.of(GitRepresentation.BUNDLE, GitRepresentation.BARE, GitRepresentation.WORKTREE)) {
+            var selection = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, request.scope(),
+                    new BackupTime.History(), requested, SecretsSelection.EXCLUDE);
+            assertRepositoryRepresentations(selection);
+        }
+    }
+
+    private void assertRepositoryRepresentations(BackupRequest selection) {
+        var m = manifest(1, Set.of(), List.of(component(Set.of())), List.of(payload));
+        var repository = m.repositories().getFirst();
+        for (var representation : GitRepresentation.values()) {
+            org.junit.jupiter.api.function.Executable create = () -> new BackupManifest(m.formatVersion(),
+                    m.applicationVersion(), m.build(), m.backupId(), m.sourceInstallationId(), selection,
+                    m.captureStartedAt(), m.captureCompletedAt(), m.consistencyEvidence(), m.requiredFeatures(),
+                    m.components(), List.of(new BackupManifest.Repository(repository.id(), repository.archiveId(),
+                            representation, repository.captured(), null, null, repository.sourceCommit())),
+                    m.entries(), m.dependencies(), m.omissions());
+            String description = "requested " + selection.gitRepresentation() + ", captured " + representation;
+            if (representation == selection.gitRepresentation()) assertDoesNotThrow(create, description);
+            else assertThrows(IllegalArgumentException.class, create, description);
+        }
+    }
+
 }

@@ -70,6 +70,7 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
         var repos = new HashSet<BackupRepositoryKey>(); var archiveIds = new HashSet<String>();
         for (var r : repositories) {
             if (!repos.add(r.id()) || !archiveIds.add(r.archiveId())) throw new IllegalArgumentException("Duplicate repository");
+            if (r.representation() != request.gitRepresentation()) throw new IllegalArgumentException("Repository Git representation differs from the request");
             if (request.profile().includesHistory() && r.representation() == GitRepresentation.NONE) throw new IllegalArgumentException("Missing history representation");
         }
         if (!(request.scope() instanceof BackupScope.Installation) && !repos.equals(request.scope().selectedRepositories())) {

@@ -88,8 +88,8 @@ class KeycloakStablePrincipalHttpTest {
             var db = new JDBCDataSource(); db.setUrl("jdbc:hsqldb:mem:bearer-http-" + UUID.randomUUID()); db.setUser("sa");
             PrincipalSchemaMigration.migrate(db); return new PrincipalIdentityService(db);
         }
-        @Bean KeycloakJwtAuthConverter converter(PrincipalIdentityService identities) { return new KeycloakJwtAuthConverter(identities); }
-        @Bean KeycloakOidcUserService oidc(PrincipalIdentityService identities) { return new KeycloakOidcUserService(identities); }
+        @Bean KeycloakJwtAuthConverter converter(PrincipalIdentityService identities) { return new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE); }
+        @Bean KeycloakOidcUserService oidc(PrincipalIdentityService identities) { return new KeycloakOidcUserService(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE); }
         @Bean AuthorizationRulesConfigurer rules() { return new AuthorizationRulesConfigurer(); }
         @Bean AccountContextController account(Environment environment) { return new AccountContextController(environment); }
         @Bean JwtDecoder decoder() { return NimbusJwtDecoder.withSecretKey(new SecretKeySpec(KEY, "HmacSHA256")).macAlgorithm(MacAlgorithm.HS256).build(); }

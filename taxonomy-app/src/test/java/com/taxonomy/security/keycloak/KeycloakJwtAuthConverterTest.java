@@ -27,7 +27,7 @@ class KeycloakJwtAuthConverterTest {
         org.mockito.Mockito.when(identities.oidc(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(new com.taxonomy.security.model.AppPrincipal(
                         new com.taxonomy.backup.PrincipalId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111")), "verified-scope", true));
-        converter = new KeycloakJwtAuthConverter(identities);
+        converter = new KeycloakJwtAuthConverter(identities, com.taxonomy.security.keycloak.KeycloakPrincipalMode.STABLE);
         converter.setRoleClaimPath("realm_access.roles");
     }
 

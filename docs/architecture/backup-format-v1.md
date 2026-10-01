@@ -110,9 +110,23 @@ current ownership, login eligibility or access rights.
 The application identity registry is migrated before Hibernate validates the
 existing schema. `principal_schema_history` versions this small JDBC-owned
 schema independently of the application ORM. Local accounts retain their scope
-only through a persisted local-installation/account-ID binding. OIDC browser
-and JWT authentication resolve the exact verified issuer and subject to the
-same opaque principal and scope; display names and email never select a scope.
+only through a persisted local-installation/account-ID binding.
+
+OIDC identity rollout is explicit: `taxonomy.keycloak.principal-mode=LEGACY`
+is the default for both browser and JWT authentication, preserving pre-upgrade
+username-based access to existing private workspaces and repository memberships.
+Legacy login tokens carry no stable backup identity and cannot authorize backups.
+Enabling portable backups in the Keycloak profile while using `LEGACY` fails
+startup. `STABLE` opts into resolving the exact verified issuer and subject to
+the same opaque principal and scope; display names and email never select a
+stable scope. The real-Keycloak stable-identity acceptance tests opt in explicitly.
+
+Existing OIDC installations must remain in `LEGACY` until an operator-reviewed
+issuer/subject-to-owner migration is available and performed. That migration is
+not part of this checkpoint. Do not enable `STABLE` on an existing installation
+or toggle identity modes after users have created data: the namespaces differ.
+The opt-in is currently suitable for new isolated installations and acceptance
+tests. It does not enable the still-incomplete production capture composition.
 
 Legacy ownership without an associated local account is reserved as a disabled
 historical identity with no login binding or grants. Creating a same-named local
@@ -138,14 +152,19 @@ workspace-to-security or domain-to-framework dependency is introduced.
 
 ## Delivery state
 
-This contract is preparatory. Backup, restore, Git transport, cross-database
-support and encryption must remain unavailable until the corresponding issue
-packages and real acceptance runs establish those capabilities.
+This checkpoint implements the format, principal registry, local login
+integration, authorization adapter, fenced capture, encrypted streaming archive
+infrastructure and durable jobs. Complete production capture composition is
+still absent and backup jobs remain disabled by default. Restore, Git transport
+and cross-database restore support remain unavailable pending their issue
+packages and real acceptance runs.
 
 The identity mapping core proposes matches only for exact stable identity
 bindings. Explicit approval is required even for an exact match; unassigned
 source identities remain quarantined. The authorization coordinator rechecks
 capabilities, exact repository/workspace scope, selected-version access and
-account availability for job access and download. It has no default policy
-adapter and is not auto-registered. Persistent principal migration, login
-integration and the production permission adapter are still required by P02.
+account availability for job access and download through the registered
+application policy adapter. Stable OIDC login is explicitly opt-in; verified
+migration of existing external owners remains required before an existing
+installation may change from LEGACY to STABLE. Restore mapping approval and
+activation are later delivery work, not enabled by the preview service.

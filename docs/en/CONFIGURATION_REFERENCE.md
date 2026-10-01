@@ -241,6 +241,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `KEYCLOAK_JWK_SET_URI` | resource-server JWK endpoint | local realm certificates URI | Explicit key endpoint, useful when internal and public Keycloak routes differ. |
 | `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL used for account-console redirects. |
 | `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Realm segment used by account-console redirects. |
+| `TAXONOMY_KEYCLOAK_PRINCIPAL_MODE` | `taxonomy.keycloak.principal-mode` | `LEGACY` | `LEGACY` preserves existing OIDC ownership; `STABLE` explicitly enables issuer/subject identities and is required for portable backups. Existing installations must keep `LEGACY` until verified owner migration is delivered; do not toggle modes after data is created. |
 | `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | Dot-separated JWT claim path. Values are filtered to the fixed application roles `ROLE_USER`, `ROLE_ARCHITECT` and `ROLE_ADMIN`; no configurable prefix transformation exists. |
 
 ## DSL, repositories and external Git

@@ -14,7 +14,8 @@
     function paint(job) {
         var row = rows.get(job.id); if (!row) return;
         row.title.textContent = t('profile.' + job.profile);
-        row.state.textContent = t('state.' + job.state);
+        var stateText = t('state.' + job.state);
+        if (row.state.textContent !== stateText) row.state.textContent = stateText;
         row.progress.textContent = t('processed') + ': ' + new Intl.NumberFormat(i18n.getLocale()).format(job.progressBytes) + ' B';
         row.expiry.textContent = t('expires') + ': ' + new Date(job.expiresAt).toLocaleString(i18n.getLocale());
         row.error.textContent = job.failure === 'NONE' ? '' : t('failure.' + job.failure);

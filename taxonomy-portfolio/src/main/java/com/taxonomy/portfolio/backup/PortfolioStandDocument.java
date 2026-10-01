@@ -77,7 +77,8 @@ public final class PortfolioStandDocument {
     }
     private static boolean portfolioRequirement(BlockAst block) {
         // A one-key architecture requirement is a different DSL type from project + requirement.
-        return block.getKind().equals("requirement") && block.getHeaderTokens().size()!=1;
+        return block.getKind().equals("projectRequirement")
+                || (block.getKind().equals("requirement") && block.getHeaderTokens().size()!=1);
     }
     private record RequirementKey(String project,String requirement) { }
 }

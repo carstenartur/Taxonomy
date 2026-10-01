@@ -381,6 +381,7 @@ class KeycloakSecurityContainerIT {
                         ContainerTestUtils.TEST_ADMIN_PASSWORD)
                 .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
                 .withEnv("SPRING_PROFILES_ACTIVE", "keycloak")
+                .withEnv("TAXONOMY_KEYCLOAK_PRINCIPAL_MODE", "STABLE")
                 .withEnv("KEYCLOAK_ISSUER_URI", ISSUER)
                 .withEnv("KEYCLOAK_JWK_SET_URI",
                         ISSUER + "/protocol/openid-connect/certs")

@@ -60,6 +60,16 @@ selectors, duplicate properties and unsupported syntax fail closed instead of
 silently discarding content. This projection changes only exported stand
 documents; the existing collaboration/history export remains unchanged.
 
+The projection recognizes canonical `projectRequirement` blocks as well as the
+legacy two-key `requirement` form, without treating one-key architecture
+requirements as portfolio parents. A regression exercises the real portfolio
+exporter and verifies history removal and source immutability.
+
+The existing collaboration `materialize` operation is not a backup restore
+implementation: importing a lone selected version can create local version 1
+even when its source number is higher. P08 must preserve or explicitly map
+source version identities and references. No restore roundtrip is claimed here.
+
 Tests use real HSQL/Hibernate state with two repositories, private workspaces,
 identical business keys, stale analyses, deleted text, drafts and decisions.
 They verify authorized current and history contents, selected-version exclusion,
