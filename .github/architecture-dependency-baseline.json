@@ -172,6 +172,27 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "preferences",
+      "toPackage": "com.taxonomy.preferences.backup",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "preferences",
+      "toPackage": "com.taxonomy.preferences.storage",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "provenance",
+      "toPackage": "com.taxonomy.provenance.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 3
