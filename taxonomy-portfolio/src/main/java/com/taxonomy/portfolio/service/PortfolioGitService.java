@@ -95,10 +95,19 @@ public class PortfolioGitService {
     /** Return a standalone deterministic DSL document for the current workspace portfolio. */
     @Transactional(readOnly = true)
     public String exportPortfolio(String username, WorkspaceContext context) {
+        return exportPortfolio(username, context, VersionSelection.HISTORY);
+    }
+
+    /** Current owner projection: exact saved version only, without loading historical bodies. */
+    protected String exportCurrentPortfolio(String username, WorkspaceContext context) {
+        return exportPortfolio(username, context, VersionSelection.CURRENT);
+    }
+
+    private String exportPortfolio(String username, WorkspaceContext context, VersionSelection selection) {
         DocumentAst document = new DocumentAst(
                 new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
                         "portfolio", GENERATED),
-                portfolioBlocks(username, context));
+                portfolioBlocks(username, context, selection));
         return serializer.serialize(document);
     }
 
@@ -345,6 +354,10 @@ public class PortfolioGitService {
     }
 
     private List<BlockAst> portfolioBlocks(String username, WorkspaceContext context) {
+        return portfolioBlocks(username, context, VersionSelection.HISTORY);
+    }
+
+    private List<BlockAst> portfolioBlocks(String username, WorkspaceContext context, VersionSelection selection) {
         List<BlockAst> result = new ArrayList<>();
         String scopeKey = PortfolioScope.key(username, context);
         List<ArchitectureProject> projects = projectRepository
@@ -371,6 +384,11 @@ public class PortfolioGitService {
             Map<Long, List<RequirementElementMapping>> mappingsByRequirement =
                     mappingsByRequirement(project.getId(), scopeKey);
             for (ProjectRequirement requirement : requirements) {
+                List<ProjectRequirementVersion> versions = versions(requirement, scopeKey, selection);
+                ProjectRequirementVersion current = versions.stream()
+                        .filter(version -> Objects.equals(version.getId(), requirement.getCurrentVersionId()))
+                        .findFirst()
+                        .orElse(versions.isEmpty() ? null : versions.getLast());
                 result.add(block(REQUIREMENT_BLOCK,
                         List.of(project.getProjectKey(), requirement.getRequirementKey()), properties(
                                 "title", requirement.getTitle(),
@@ -380,22 +398,18 @@ public class PortfolioGitService {
                                 "requirementType", name(requirement.getRequirementType()),
                                 "reviewStatus", name(requirement.getReviewStatus()),
                                 "owner", requirement.getOwnerUsername(),
-                                "currentVersionId", string(requirement.getCurrentVersionId()),
+                                "currentVersionId", selection == VersionSelection.HISTORY ? string(requirement.getCurrentVersionId()) : null,
+                                "currentVersionNumber", selection == VersionSelection.CURRENT && current != null ? string(current.getVersionNumber()) : null,
                                 "currentSnapshotId", requirement.getCurrentAnalysisSnapshotId(),
                                 MANAGED_PROPERTY, "true")));
 
-                List<ProjectRequirementVersion> versions = versionRepository
-                        .findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
-                                requirement.getId(), scopeKey).stream()
-                        .sorted(Comparator.comparingInt(ProjectRequirementVersion::getVersionNumber))
-                        .toList();
                 for (ProjectRequirementVersion version : versions) {
                     result.add(block(VERSION_BLOCK,
                             List.of(project.getProjectKey(), requirement.getRequirementKey(),
                                     Integer.toString(version.getVersionNumber())), properties(
                                     "text", version.getText(),
                                     "contentHash", version.getContentHash(),
-                                    "changeReason", version.getChangeReason(),
+                                    "changeReason", selection == VersionSelection.HISTORY ? version.getChangeReason() : null,
                                     "createdBy", version.getCreatedBy(),
                                     "createdAt", string(version.getCreatedAt()),
                                     "sourceArtifactId", string(version.getSourceArtifactId()),
@@ -403,14 +417,10 @@ public class PortfolioGitService {
                                     "sourceFragmentIds", version.getSourceFragmentIdsJson(),
                                     "sectionReference", version.getSectionReference(),
                                     "pageNumber", string(version.getPageNumber()),
-                                    "originalText", version.getOriginalText(),
+                                    "originalText", selection == VersionSelection.HISTORY ? version.getOriginalText() : null,
                                     MANAGED_PROPERTY, "true")));
                 }
 
-                ProjectRequirementVersion current = versions.stream()
-                        .filter(version -> Objects.equals(version.getId(), requirement.getCurrentVersionId()))
-                        .findFirst()
-                        .orElse(versions.isEmpty() ? null : versions.getLast());
                 if (current == null) continue;
                 String canonicalId = canonicalRequirementId(
                         project.getProjectKey(), requirement.getRequirementKey());
@@ -445,6 +455,19 @@ public class PortfolioGitService {
             }
         }
         return result;
+    }
+
+    private enum VersionSelection { CURRENT, HISTORY }
+
+    private List<ProjectRequirementVersion> versions(ProjectRequirement requirement, String scopeKey, VersionSelection selection) {
+        if (selection == VersionSelection.CURRENT) {
+            if (requirement.getCurrentVersionId() == null) return List.of();
+            return List.of(versionRepository.findByIdAndRequirementIdAndScopeKey(
+                    requirement.getCurrentVersionId(), requirement.getId(), scopeKey)
+                    .orElseThrow(() -> PortfolioException.conflict("Current requirement version is unavailable in its tenant")));
+        }
+        return versionRepository.findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(requirement.getId(), scopeKey).stream()
+                .sorted(Comparator.comparingInt(ProjectRequirementVersion::getVersionNumber)).toList();
     }
 
     private Map<Long, List<RequirementElementMapping>> mappingsByRequirement(

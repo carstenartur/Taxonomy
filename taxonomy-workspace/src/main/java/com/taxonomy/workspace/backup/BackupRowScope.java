@@ -12,6 +12,13 @@ public final class BackupRowScope {
     public boolean selectedVersion() { return snapshot.authorization().request().profile() == BackupProfile.SELECTED_VERSION; }
     public boolean history() { return snapshot.authorization().request().profile().includesHistory(); }
     public boolean installation() { return snapshot.authorization().request().profile().isInstallation(); }
+    public boolean includesRepository(String repositoryId) {
+        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -> key.repositoryId().equals(repositoryId));
+    }
+    public boolean includesWorkspace(String repositoryId, String workspaceId) {
+        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -> key.repositoryId().equals(repositoryId)
+                && Objects.equals(key.workspaceId(), workspaceId));
+    }
     public Query repositories(String repositoryColumn, String workspaceColumn) {
         column(repositoryColumn); column(workspaceColumn);
         if (installation()) return new Query("1=1", List.of());

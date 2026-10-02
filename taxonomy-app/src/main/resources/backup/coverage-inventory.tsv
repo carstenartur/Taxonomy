@@ -68,7 +68,10 @@ storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or
 storage.git.document-templates	templates	GIT_PRIMARY	Template manifests and all OOXML/blob parts from document-template Git repository
 storage.git.portfolio	portfolio	GIT_PRIMARY	Portable portfolio Git files plus module-owned durable records; same repository only once
 storage.files.source-content	application	PORTABLE_PRIMARY	All referenced source bytes and fragments by content digest; dangling file references fail capture
-storage.files.catalogue	knowledge	PORTABLE_PRIMARY	Exact imported catalogue and relevant source data; do not assume the shipped Excel is identical
+storage.files.catalogue	knowledge	PORTABLE_PRIMARY	Exact retained catalogue inputs; original input bytes require history, never infer missing originals from configured resources
+com.taxonomy.catalog.provenance.CatalogueSourceBlob	knowledge	PORTABLE_PRIMARY	Immutable retained input bytes with verified length and digest; raw inputs require history
+com.taxonomy.catalog.provenance.CatalogueSourceRevision	knowledge	PORTABLE_PRIMARY	Exact input-use provenance; current metadata without historical raw inputs, older revisions require history
+com.taxonomy.catalog.provenance.CatalogueSourceState	knowledge	PORTABLE_PRIMARY	Current source revision pointer, never preserve optimistic locking state as target authority
 storage.indices.search	knowledge	REBUILDABLE	Lucene and Hibernate Search indices rebuilt from captured primary records and Git
 storage.schema-migrations	application	REBUILDABLE	Run versioned target migrations; SQL schema and sequences are target-owned
 storage.security.user-roles	application	PORTABLE_PRIMARY	Join table user_roles included in explicit identity export; role mapping requires approval

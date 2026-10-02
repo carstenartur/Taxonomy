@@ -29,7 +29,7 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
                              String exportedHead, String sourceCommit) {
         public Repository {
             Objects.requireNonNull(id);
-            if (!BackupChecks.text(archiveId, "archiveId").matches("[a-zA-Z0-9-]{1,128}")) throw new IllegalArgumentException("Invalid opaque archive ID");
+            BackupChecks.archiveId(archiveId);
             Objects.requireNonNull(representation); Objects.requireNonNull(captured);
             if (exportedHead != null) BackupChecks.hash(exportedHead, 40, "exportedHead");
             if (sourceCommit != null) BackupChecks.hash(sourceCommit, 40, "sourceCommit");
@@ -69,7 +69,7 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
         }
         var repos = new HashSet<BackupRepositoryKey>(); var archiveIds = new HashSet<String>();
         for (var r : repositories) {
-            if (!repos.add(r.id()) || !archiveIds.add(r.archiveId())) throw new IllegalArgumentException("Duplicate repository");
+            if (!repos.add(r.id()) || !archiveIds.add(r.archiveId().toLowerCase(Locale.ROOT))) throw new IllegalArgumentException("Duplicate repository");
             if (r.representation() != request.gitRepresentation()) throw new IllegalArgumentException("Repository Git representation differs from the request");
             if (request.profile().includesHistory() && r.representation() == GitRepresentation.NONE) throw new IllegalArgumentException("Missing history representation");
         }

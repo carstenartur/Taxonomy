@@ -25,7 +25,13 @@ public final class BackupSnapshotCoordinator {
     private final Clock clock;
     private final ArchiveProtectionProvider protection;
 
-    @FunctionalInterface public interface Inventory { CapturePlan inspect(AuthorizedBackupRequest request) throws IOException; }
+    @FunctionalInterface public interface Inventory {
+        CapturePlan inspect(AuthorizedBackupRequest request) throws IOException;
+        /** Override for discovery that performs substantial I/O; keep the capture fence and budgets live. */
+        default CapturePlan inspect(AuthorizedBackupRequest request, BackupCheckpoint checkpoint) throws IOException {
+            checkpoint.check(); var plan = inspect(request); checkpoint.check(); return plan;
+        }
+    }
     public record CaptureComponent(int version, BackupCompleteness completeness, Set<BackupComponentId> dependencies) {
         public CaptureComponent { new BackupManifest.Component(PROOF, version, completeness, List.of(), dependencies); dependencies = Set.copyOf(dependencies); }
     }
@@ -78,25 +84,34 @@ public final class BackupSnapshotCoordinator {
             try (var maintenance = barrier.acquire(creation.request().scope(), limits.waitForWriters())) {
                 authorization.requireJobAccess(creation.principalId(), creation);
                 Instant started = clock.instant(); long deadline = System.nanoTime() + limits.maxDuration().toNanos();
-                BackupId id = BackupId.create(); CapturePlan plan = inventory.inspect(creation);
-                var versions = new HashMap<BackupComponentId, Integer>();
-                for (var component : plan.components().entrySet()) {
-                    var adapter = contributors.get(component.getKey());
-                    if (adapter == null || adapter.schemaVersion() != component.getValue().version())
-                        throw new IllegalStateException("Missing or unsupported capture component: " + component.getKey().value());
-                    versions.put(component.getKey(), component.getValue().version());
-                }
-                versions.put(PROOF, 1);
-                var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),
-                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions);
+                BackupId id = BackupId.create();
                 Files.createDirectories(root);
                 if (!root.toRealPath().equals(root)) throw new IOException("Capture root must not traverse symlinks");
                 staging = Files.getFileStore(root).supportsFileAttributeView("posix")
                         ? Files.createTempDirectory(root, ".capturing-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
                         : Files.createTempDirectory(root, ".capturing-");
                 var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);
+                sink.check(); CapturePlan plan = inventory.inspect(creation, sink::checkpoint); sink.check();
+                var versions = new HashMap<BackupComponentId, Integer>();
+                var omissions = new LinkedHashSet<>(plan.omissions());
+                var plannedComponents = plan.components().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList();
+                for (var component : plannedComponents) {
+                    var adapter = contributors.get(component.getKey());
+                    if (adapter == null || adapter.schemaVersion() != component.getValue().version())
+                        throw new IllegalStateException("Missing or unsupported capture component: " + component.getKey().value());
+                    versions.put(component.getKey(), component.getValue().version());
+                    if (adapter instanceof BackupDataContributor data)
+                        omissions.addAll(data.omissions(creation.request().profile()));
+                }
+                versions.put(PROOF, 1);
+                var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),
+                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions,
+                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),
+                        plan.repositories().stream().filter(repository -> repository.exportedHead() != null)
+                                .collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));
                 var components = new ArrayList<BackupManifest.Component>();
-                for (var component : plan.components().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList()) {
+                for (var component : plannedComponents) {
                     sink.check(); int before = sink.entries.size();
                     contributors.get(component.getKey()).write(snapshot, sink);
                     var definition = component.getValue();
@@ -111,7 +126,7 @@ public final class BackupSnapshotCoordinator {
                 components.add(new BackupManifest.Component(PROOF, 1, BackupCompleteness.COMPLETE, List.of(proofEntry.path()), Set.of()));
                 var manifest = new BackupManifest(BackupManifest.FORMAT_VERSION, plan.applicationVersion(), plan.build(), id, plan.sourceInstallationId(),
                         creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), BackupManifest.SUPPORTED_FEATURES,
-                        components, plan.repositories(), sink.entries, plan.dependencies(), plan.omissions());
+                        components, plan.repositories(), sink.entries, plan.dependencies(), List.copyOf(omissions));
                 byte[] document = new BackupManifestCodec().write(manifest);
                 if (document.length > limits.maxTotalBytes() - sink.total) throw new IOException("Capture byte limit exceeded");
                 try (var channel = FileChannel.open(staging.resolve("manifest.json"), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
@@ -150,6 +165,9 @@ public final class BackupSnapshotCoordinator {
         private final ArchiveProgress observer;
         private long validatedAt;
         private long total;
+        private final Thread captureThread = Thread.currentThread();
+        private volatile boolean entryFailed;
+        private boolean entryOpen;
         private final List<BackupEntry> entries = new ArrayList<>();
         private final Set<String> paths = new HashSet<>();
         StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline, BackupId id, SecretsSelection secrets, ArchiveProgress observer) {
@@ -159,38 +177,116 @@ public final class BackupSnapshotCoordinator {
             budget();
             maintenance.renew(); validatedAt = System.nanoTime();
         }
-        private void budget() throws IOException {
+        private void requireCaptureThread() throws IOException {
+            if (Thread.currentThread() != captureThread) {
+                entryFailed = true; throw new IOException("Capture writes require the capture thread");
+            }
+        }
+        private void checkBudgetState() throws IOException {
+            requireCaptureThread();
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture cancelled");
+            if (entryFailed) throw new IOException("A capture entry previously failed");
             long now = System.nanoTime();
             if (now - deadline >= 0) throw new IOException("Capture runtime limit exceeded");
+        }
+        private void budget() throws IOException {
+            checkBudgetState();
             observer.check(total);
+            checkBudgetState();
         }
         private void progress() throws IOException {
             budget();
             if (System.nanoTime() - validatedAt >= Duration.ofMillis(100).toNanos()) check();
         }
+        @Override public void checkpoint() throws IOException {
+            try { progress(); }
+            catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }
+        }
         @Override public BackupEntry write(String path, InputStream input) throws IOException {
-            check();
-            if (path.startsWith("protected/") && secrets != SecretsSelection.INCLUDE_ENCRYPTED)
-                throw new IOException("Protected payload is outside the authorized selection");
-            if (!paths.add(BackupPaths.collisionKey(path))) throw new IllegalArgumentException("Duplicate or colliding capture path");
-            if (entries.size() >= limits.maxEntries()) throw new IOException("Capture entry limit exceeded");
-            Path target = directory.resolve(path); Files.createDirectories(target.getParent());
-            var digest = CapturedBackup.sha256(); long length = 0;
-            try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-                try (var output = SpoolStreams.output(channel, protection, id, path)) {
-                    byte[] buffer = new byte[64 * 1024];
-                    for (int read; (read = input.read(buffer)) != -1;) {
-                        progress();
-                        if (read > limits.maxEntryBytes() - length || read > limits.maxTotalBytes() - total) throw new IOException("Capture byte limit exceeded");
-                        length += read; total += read; digest.update(buffer, 0, read); output.write(buffer, 0, read);
-                    }
+            return writeGenerated(path, output -> {
+                byte[] buffer = new byte[64 * 1024];
+                for (int read; (read = input.read(buffer)) != -1;) {
+                    if (read == 0) {
+                        int single = input.read(); if (single < 0) break; output.write(single);
+                    } else output.write(buffer, 0, read);
                 }
-                channel.force(true);
+            });
+        }
+        @Override public BackupEntry writeGenerated(String path, ComponentSink.EntryWriter producer) throws IOException {
+            boolean entered = false;
+            try {
+                check();
+                if (entryOpen) throw new IOException("Capture cannot open nested entries");
+                entryOpen = true; entered = true;
+                Objects.requireNonNull(producer);
+                if (path.startsWith("protected/") && secrets != SecretsSelection.INCLUDE_ENCRYPTED)
+                    throw new IOException("Protected payload is outside the authorized selection");
+                if (!paths.add(BackupPaths.collisionKey(path))) throw new IllegalArgumentException("Duplicate or colliding capture path");
+                if (entries.size() >= limits.maxEntries()) throw new IOException("Capture entry limit exceeded");
+                Path target = directory.resolve(path); Files.createDirectories(target.getParent());
+                var digest = CapturedBackup.sha256(); EntryOutput entryOutput;
+                try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                    try (var output = SpoolStreams.output(channel, protection, id, path)) {
+                        entryOutput = new EntryOutput(output, digest);
+                        try { producer.write(entryOutput); }
+                        finally { entryOutput.invalidate(); }
+                        check();
+                    }
+                    channel.force(true);
+                }
+                check();
+                for (Path parent = target.getParent(); parent.startsWith(directory); parent = parent.getParent()) forceDirectory(parent);
+                var entry = new BackupEntry(path, entryOutput.length, HexFormat.of().formatHex(digest.digest()));
+                entries.add(entry); return entry;
+            } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }
+            finally { if (entered) entryOpen = false; }
+        }
+        private void poison(Throwable failure) {
+            entryFailed = true;
+            if (failure instanceof InterruptedIOException) Thread.currentThread().interrupt();
+        }
+        /** Callback-scoped view; only the sink owns encryption finalization and the durable channel. */
+        private final class EntryOutput extends OutputStream {
+            private final OutputStream delegate;
+            private final java.security.MessageDigest digest;
+            private long length;
+            private volatile boolean closed;
+            EntryOutput(OutputStream delegate, java.security.MessageDigest digest) { this.delegate = delegate; this.digest = digest; }
+            private void active() throws IOException {
+                requireCaptureThread();
+                if (closed) throw new IOException("Generated entry stream is closed");
+                progress();
             }
-            check();
-            for (Path parent = target.getParent(); parent.startsWith(directory); parent = parent.getParent()) forceDirectory(parent);
-            var entry = new BackupEntry(path, length, HexFormat.of().formatHex(digest.digest())); entries.add(entry); return entry;
+            @Override public void write(int value) throws IOException { write(new byte[]{(byte) value}, 0, 1); }
+            @Override public void write(byte[] bytes) throws IOException {
+                try { write(bytes, 0, bytes.length); }
+                catch (RuntimeException | Error failure) { poison(failure); throw failure; }
+            }
+            @Override public void write(byte[] bytes, int offset, int count) throws IOException {
+                try {
+                    active(); Objects.checkFromIndexSize(offset, count, bytes.length);
+                    if (count > limits.maxEntryBytes() - length || count > limits.maxTotalBytes() - total)
+                        throw new IOException("Capture byte limit exceeded");
+                    for (int position = offset, remaining = count; remaining > 0;) {
+                        progress(); int chunk = Math.min(remaining, 64 * 1024);
+                        delegate.write(bytes, position, chunk); digest.update(bytes, position, chunk);
+                        length += chunk; total += chunk; position += chunk; remaining -= chunk;
+                        progress();
+                    }
+                } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }
+            }
+            @Override public void flush() throws IOException {
+                try { active(); delegate.flush(); progress(); }
+                catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }
+            }
+            @Override public void close() throws IOException {
+                try {
+                    requireCaptureThread();
+                    if (!closed) { active(); delegate.flush(); progress(); }
+                } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }
+                finally { closed = true; }
+            }
+            void invalidate() { closed = true; }
         }
     }
 }

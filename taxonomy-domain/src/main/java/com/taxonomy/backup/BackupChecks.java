@@ -19,4 +19,9 @@ final class BackupChecks {
         if (!value.matches("[0-9a-f]{" + length + "}")) throw new IllegalArgumentException("Invalid " + name);
         return value;
     }
+    static String archiveId(String value) {
+        if (!text(value, "archiveId").matches("[a-zA-Z0-9-]{1,128}")
+                || value.matches("(?i)CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]")) throw new IllegalArgumentException("Invalid opaque archive ID");
+        return value;
+    }
 }

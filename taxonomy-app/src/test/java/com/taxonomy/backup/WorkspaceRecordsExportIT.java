@@ -6,6 +6,8 @@ import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.workspace.backup.WorkspaceBackupContributor;
 import com.taxonomy.workspace.model.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -15,6 +17,65 @@ import static com.taxonomy.backup.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
+    @ParameterizedTest @CsvSource({
+            "system_repository,repository_id", "repository_membership,repository_id",
+            "user_workspace,source_repository_id", "user_workspace,workspace_id",
+            "editor_workspace,repository_id", "editor_workspace,workspace_id",
+            "architecture_commit_index,repository_id", "architecture_commit_index,workspace_id"})
+    void caseInsensitiveSqlCannotExportRowsOutsideTheExactCapturedKeys(String table, String column) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            String selected = column.equals("workspace_id") ? "private-a" : "repo-a";
+            fixture.jdbc.update("update " + table + " set " + column + "=?", selected.toUpperCase(java.util.Locale.ROOT));
+            assertThat(fixture.jdbc.queryForObject("select count(*) from " + table + " where " + column + "=?", Integer.class, selected)).isEqualTo(1);
+            assertThatThrownBy(() -> new WorkspaceBackupContributor(fixture.database, dsl -> dsl).write(
+                    snapshot(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Workspace("repo-a", "private-a")), new Contents()))
+                    .isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"sync_state,user_workspace,workspace_id,CURRENT_STATE",
+            "sync_state,user_workspace,workspace_id,INSTALLATION_CURRENT",
+            "editor_operation,editor_workspace,scope_id,REPOSITORY_HISTORY",
+            "editor_operation,editor_workspace,scope_id,INSTALLATION_FULL",
+            "editor_checkpoint,editor_workspace,scope_id,REPOSITORY_HISTORY",
+            "editor_checkpoint,editor_workspace,scope_id,INSTALLATION_FULL"})
+    void caseAliasedChildrenCannotBorrowTheirParentsCapturedScope(String child, String parent, String column, BackupProfile profile) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            fixture.jdbc.update("update " + child + " set " + column + "=upper(" + column + ")");
+            assertThat(fixture.jdbc.queryForObject("select count(*) from " + child + " c join " + parent + " p on p." + column + "=c." + column, Integer.class)).isEqualTo(1);
+            BackupScope scope = profile.isInstallation() ? new BackupScope.Installation() : new BackupScope.Workspace("repo-a", "private-a");
+            assertThatThrownBy(() -> new WorkspaceBackupContributor(fixture.database, dsl -> dsl).write(snapshot(profile, scope), new Contents()))
+                    .isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    private static Fixture caseInsensitiveFixture() {
+        return new Fixture(configuration -> new org.springframework.jdbc.core.JdbcTemplate(
+                (javax.sql.DataSource) configuration.getProperties().get("hibernate.connection.datasource"))
+                .execute("SET DATABASE SQL IGNORECASE TRUE"));
+    }
+
+    @Test void aCentralCaptureKeepsCentralCommitEvidenceAndExcludesPrivateWorkspaceBodies() throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            try (var em = fixture.factory.createEntityManager()) {
+                var tx = em.getTransaction(); tx.begin();
+                var commit = em.createQuery("from ArchitectureCommitIndex", ArchitectureCommitIndex.class).getSingleResult();
+                commit.setWorkspaceId(null); commit.setMessage("CENTRAL-HISTORY"); tx.commit();
+            }
+            var output = new Contents();
+            new WorkspaceBackupContributor(fixture.database, dsl -> dsl).write(snapshot(BackupProfile.REPOSITORY_HISTORY,
+                    new BackupScope.Repositories(java.util.Map.of("repo-a", java.util.Set.of()))), output);
+            assertThat(records(output, "commit-index")).hasSize(1);
+            assertThat(records(output, "commit-index").getFirst().path("workspaceId").isNull()).isTrue();
+            for (String dataset : List.of("workspaces", "synchronization", "working-states", "operations", "checkpoints"))
+                assertThat(records(output, dataset)).as(dataset).isEmpty();
+            assertThat(output.text()).contains("CENTRAL-HISTORY").doesNotContain("CURRENT-ALICE", "JOURNAL-OLD-ALICE", "CHECKPOINT-OLD-ALICE");
+        }
+    }
+
     @Test void scopedProfilesPreserveOwnershipAndCurrentWorkWhileSeparatingJournalHistory() throws Exception {
         try (var fixture = new Fixture()) {
             graph(fixture, "repo-a", "private-a", "ALICE");

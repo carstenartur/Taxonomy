@@ -3,6 +3,7 @@ package com.taxonomy.workspace.backup;
 import com.taxonomy.backup.*;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.exchange.backup.PrincipalScopeCapture;
 import com.taxonomy.workspace.model.*;
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -19,6 +20,32 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         rows = new PortableRows(database); this.projector = Objects.requireNonNull(projector);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("workspace"); }
+    /** Ownership references only; audit/Git author labels never become login or ownership mappings. */
+    public Set<String> principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
+        if (!scope.selectedVersion()) {
+            var repositories = scope.repositoryIds("repository_id"); var workspaces = scope.repositories("source_repository_id", "workspace_id");
+            var sync = scope.repositories("w.source_repository_id", "w.workspace_id");
+            queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where "
+                    + repositories.sql() + " and (owner_type='USER' or owner_type is null) order by repository_id", repositories.parameters()));
+            queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where "
+                    + repositories.sql() + " order by id", repositories.parameters()));
+            queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
+                    + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
+            queries.add(new Query("select w.source_repository_id as repository_id,w.workspace_id,s.workspace_id as linked_workspace_id,0 as repository_only,s.username as principal_scope from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where "
+                    + sync.sql() + " order by s.id", sync.parameters()));
+        }
+        var repositoryIds = snapshot.repositories().keySet().stream().map(BackupRepositoryKey::repositoryId).collect(java.util.stream.Collectors.toSet());
+        return new PrincipalScopeCapture(rows).capture(queries, row -> {
+            String repository = text(row, "repository_id"), workspace = text(row, "workspace_id");
+            if (!Objects.equals(workspace, text(row, "linked_workspace_id")))
+                throw new IOException("Principal reference belongs to a different workspace");
+            if (!scope.installation() && !(row.getInt("repository_only") == 1 ? repositoryIds.contains(repository)
+                    : snapshot.repositories().containsKey(new BackupRepositoryKey(repository, workspace))))
+                throw new IOException("Principal reference belongs to a different repository scope");
+            return new PrincipalScopeCapture.Scope(text(row, "principal_scope"));
+        }, checkpoint);
+    }
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
@@ -39,39 +66,53 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
         var repositories = scope.repositoryIds("repository_id");
         write(sink, "repositories", profile, query(scope, false, "select repository_id,slug,display_name,description,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,upstream_repository_id,upstream_branch,fork_point_commit,last_fetch_at,last_push_at,last_fetch_commit,primary_repo,created_by,created_at,updated_at from system_repository", repositories, "repository_id"),
-                r -> new RepositoryRecord(text(r,"repository_id"),text(r,"slug"),text(r,"display_name"),text(r,"description"),
+                scoped(scope,"repository_id",null,r -> new RepositoryRecord(text(r,"repository_id"),text(r,"slug"),text(r,"display_name"),text(r,"description"),
                         enumeration(r,"visibility",RepositoryVisibility.class),enumeration(r,"lifecycle_state",RepositoryLifecycleState.class),
                         enumeration(r,"owner_type",RepositoryOwnerType.class),text(r,"owner_id"),enumeration(r,"topology_mode",RepositoryTopologyMode.class),
                         text(r,"default_branch"),text(r,"upstream_repository_id"),text(r,"upstream_branch"),text(r,"fork_point_commit"),
                         instant(r,"last_fetch_at"),instant(r,"last_push_at"),text(r,"last_fetch_commit"),r.getBoolean("primary_repo"),
-                        text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at")));
+                        text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"))));
         var workspaces = scope.repositories("source_repository_id", "workspace_id");
         write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username,display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default from user_workspace",workspaces,"workspace_id"),
-                r -> new WorkspaceRecord(text(r,"workspace_id"),text(r,"username"),text(r,"display_name"),text(r,"current_branch"),text(r,"base_branch"),r.getBoolean("shared"),
+                scoped(scope,"source_repository_id","workspace_id",r -> new WorkspaceRecord(text(r,"workspace_id"),text(r,"username"),text(r,"display_name"),text(r,"current_branch"),text(r,"base_branch"),r.getBoolean("shared"),
                         instant(r,"created_at"),instant(r,"last_accessed_at"),enumeration(r,"provisioning_status",WorkspaceProvisioningStatus.class),
                         enumeration(r,"topology_mode",RepositoryTopologyMode.class),text(r,"source_repository_id"),text(r,"source_branch"),
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
-                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default")));
+                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"))));
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",repositories,"id"),
-                r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at")));
+                scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
-        write(sink,"synchronization",profile,query(scope,false,"select s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
-                r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
-                        text(r,"last_published_commit_id"),instant(r,"last_publish_timestamp"),text(r,"sync_status"),r.getInt("unpublished_commit_count"),instant(r,"created_at"),instant(r,"updated_at")));
+        write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
+                scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
+                        text(r,"last_published_commit_id"),instant(r,"last_publish_timestamp"),text(r,"sync_status"),r.getInt("unpublished_commit_count"),instant(r,"created_at"),instant(r,"updated_at")))));
         var editors = scope.repositories("repository_id","workspace_id");
         write(sink,"working-states",profile,query(scope,false,"select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace",editors,"scope_id"),
-                r -> new WorkingStateRecord(reference(r,"workspace.editor","scope_id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),document(scope,unframe(text(r,"dsl"))),r.getLong("semantic_revision"),text(r,"checkpoint_commit"),r.getLong("checkpoint_revision"),text(r,"pending_checkpoint")));
+                scoped(scope,"repository_id","workspace_id",r -> new WorkingStateRecord(reference(r,"workspace.editor","scope_id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),document(scope,unframe(text(r,"dsl"))),r.getLong("semantic_revision"),text(r,"checkpoint_commit"),r.getLong("checkpoint_revision"),text(r,"pending_checkpoint"))));
         var editorHistory = scope.repositories("w.repository_id","w.workspace_id");
-        write(sink,"operations",profile,query(scope,true,"select o.id,o.scope_id,o.command_id,o.actor,o.occurred_at,o.rationale,o.correlation_id,o.causation_id,o.kind,o.target_operation_id,o.previous_revision,o.semantic_revision,o.fingerprint,o.body_version,o.before_dsl,o.after_dsl,o.affected_ids from editor_operation o join editor_workspace w on w.scope_id=o.scope_id",editorHistory,"o.id"),
-                r -> new OperationRecord(reference(r,"workspace.operation","id"),reference(r,"workspace.editor","scope_id"),text(r,"command_id"),text(r,"actor"),text(r,"occurred_at"),text(r,"rationale"),text(r,"correlation_id"),text(r,"causation_id"),text(r,"kind"),text(r,"target_operation_id"),r.getLong("previous_revision"),r.getLong("semantic_revision"),text(r,"fingerprint"),r.getInt("body_version"),unframe(text(r,"before_dsl")),unframe(text(r,"after_dsl")),unframe(text(r,"affected_ids"))));
-        write(sink,"checkpoints",profile,query(scope,true,"select c.id,c.scope_id,c.command_id,c.actor,c.occurred_at,c.rationale,c.fingerprint,c.from_revision,c.semantic_revision,c.expected_commit,c.dsl,c.commit_id,c.completed,c.commit_created,c.failure_code,c.origin from editor_checkpoint c join editor_workspace w on w.scope_id=c.scope_id",editorHistory,"c.id"),
-                r -> new CheckpointRecord(reference(r,"workspace.checkpoint","id"),reference(r,"workspace.editor","scope_id"),text(r,"command_id"),text(r,"actor"),text(r,"occurred_at"),text(r,"rationale"),text(r,"fingerprint"),r.getLong("from_revision"),r.getLong("semantic_revision"),text(r,"expected_commit"),unframe(text(r,"dsl")),text(r,"commit_id"),r.getBoolean("completed"),r.getBoolean("commit_created"),text(r,"failure_code"),text(r,"origin")));
+        write(sink,"operations",profile,query(scope,true,"select w.repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,w.scope_id as captured_editor_id,o.id,o.scope_id,o.command_id,o.actor,o.occurred_at,o.rationale,o.correlation_id,o.causation_id,o.kind,o.target_operation_id,o.previous_revision,o.semantic_revision,o.fingerprint,o.body_version,o.before_dsl,o.after_dsl,o.affected_ids from editor_operation o join editor_workspace w on w.scope_id=o.scope_id",editorHistory,"o.id"),
+                scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_editor_id","scope_id",r -> new OperationRecord(reference(r,"workspace.operation","id"),reference(r,"workspace.editor","scope_id"),text(r,"command_id"),text(r,"actor"),text(r,"occurred_at"),text(r,"rationale"),text(r,"correlation_id"),text(r,"causation_id"),text(r,"kind"),text(r,"target_operation_id"),r.getLong("previous_revision"),r.getLong("semantic_revision"),text(r,"fingerprint"),r.getInt("body_version"),unframe(text(r,"before_dsl")),unframe(text(r,"after_dsl")),unframe(text(r,"affected_ids"))))));
+        write(sink,"checkpoints",profile,query(scope,true,"select w.repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,w.scope_id as captured_editor_id,c.id,c.scope_id,c.command_id,c.actor,c.occurred_at,c.rationale,c.fingerprint,c.from_revision,c.semantic_revision,c.expected_commit,c.dsl,c.commit_id,c.completed,c.commit_created,c.failure_code,c.origin from editor_checkpoint c join editor_workspace w on w.scope_id=c.scope_id",editorHistory,"c.id"),
+                scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_editor_id","scope_id",r -> new CheckpointRecord(reference(r,"workspace.checkpoint","id"),reference(r,"workspace.editor","scope_id"),text(r,"command_id"),text(r,"actor"),text(r,"occurred_at"),text(r,"rationale"),text(r,"fingerprint"),r.getLong("from_revision"),r.getLong("semantic_revision"),text(r,"expected_commit"),unframe(text(r,"dsl")),text(r,"commit_id"),r.getBoolean("completed"),r.getBoolean("commit_created"),text(r,"failure_code"),text(r,"origin")))));
         write(sink,"commit-index",profile,query(scope,true,"select id,repository_id,workspace_id,workspace_scope_key,commit_id,author,commit_timestamp,message,changed_files,tokenized_change_text,affected_element_ids,affected_relation_ids,branch,indexed_at from architecture_commit_index",editors,"id"),
-                r -> new CommitIndexRecord(reference(r,"workspace.commit-index","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"workspace_scope_key"),text(r,"commit_id"),text(r,"author"),instant(r,"commit_timestamp"),text(r,"message"),text(r,"changed_files"),text(r,"tokenized_change_text"),text(r,"affected_element_ids"),text(r,"affected_relation_ids"),text(r,"branch"),instant(r,"indexed_at")));
+                scoped(scope,"repository_id","workspace_id",r -> new CommitIndexRecord(reference(r,"workspace.commit-index","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"workspace_scope_key"),text(r,"commit_id"),text(r,"author"),instant(r,"commit_timestamp"),text(r,"message"),text(r,"changed_files"),text(r,"tokenized_change_text"),text(r,"affected_element_ids"),text(r,"affected_relation_ids"),text(r,"branch"),instant(r,"indexed_at"))));
         write(sink,"context-history",profile,profile == BackupProfile.INSTALLATION_FULL ? new Query("select id,username,from_context_id,to_context_id,from_branch,to_branch,from_commit_id,to_commit_id,reason,origin_context_id,created_at from context_history_record order by id",List.of()) : null,
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
     }
     private <T extends Record> void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper<T> mapper) throws IOException { rows.write(sink,"workspace",kind,profile,query,mapper); }
+    private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper<T> mapper) {
+        return row -> {
+            String repository = text(row,repositoryColumn);
+            if (!(workspaceColumn == null ? scope.includesRepository(repository) : scope.includesWorkspace(repository,text(row,workspaceColumn))))
+                throw new IOException("Workspace record belongs to a different captured scope");
+            return mapper.read(row);
+        };
+    }
+    private static <T extends Record> PortableRows.Mapper<T> linked(String parentColumn,String childColumn,PortableRows.Mapper<T> mapper) {
+        return row -> {
+            if (!Objects.equals(text(row,parentColumn),text(row,childColumn))) throw new IOException("Workspace record has an inconsistent parent link");
+            return mapper.read(row);
+        };
+    }
     private String document(BackupRowScope scope,String dsl) { return scope.history() ? dsl : projector.currentState(dsl); }
     private static Query query(BackupRowScope scope,boolean history,String select,Query predicate,String order) {
         return scope.selectedVersion() || history && !scope.history() ? null : new Query(select + " where " + predicate.sql() + " order by " + order,predicate.parameters());

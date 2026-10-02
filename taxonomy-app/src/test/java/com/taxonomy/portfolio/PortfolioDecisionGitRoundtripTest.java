@@ -42,6 +42,7 @@ class PortfolioDecisionGitRoundtripTest {
     @Autowired private SolutionPortfolioService solutionService;
     @Autowired private ProductCatalogService productService;
     @Autowired private PortfolioGitService portfolioGitService;
+    @Autowired private com.taxonomy.portfolio.service.PortablePortfolioGitService portablePortfolioGitService;
     @Autowired private com.taxonomy.portfolio.service.PortfolioReportService reports;
     @Autowired private com.taxonomy.portfolio.repository.ProjectSolutionRepository projectSolutions;
     @Autowired private com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository requirementLinks;
@@ -150,6 +151,12 @@ class PortfolioDecisionGitRoundtripTest {
                 ReviewStatus.CONFIRMED, "Reviewed source link", "alice", Instant.now()));
 
         String dsl = portfolioGitService.exportPortfolio("alice", alice);
+
+        assertThat(portablePortfolioGitService.exportCurrentState("alice", alice))
+                .contains("solutionDefinition " + solutionKey, "projectSolutionDecision " + projectKey + " " + solutionKey,
+                        "productDefinition " + productKey, "solutionProductDecision " + projectKey + " " + solutionKey + " " + productKey,
+                        "A second line verifies multiline requirement preservation.")
+                .doesNotContain("currentVersionId:", "changeReason:", "originalText:", "reformulationEvidence");
 
         assertThat(dsl)
                 .contains("solutionDefinition " + solutionKey)

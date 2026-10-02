@@ -5,6 +5,7 @@ import com.google.crypto.tink.streamingaead.PredefinedStreamingAeadParameters;
 import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.snapshot.*;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import org.apache.commons.compress.archivers.zip.*;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,92 @@ class BackupArchiveValidationTest {
         try (var zip = ZipFile.builder().setPath(archive).get()) {
             assertThat(zip.getEntry(DATA).getExtraField(new ZipShort(0x0001))).isNotNull();
         }
+    }
+
+    enum EntryRead { SINGLE, BULK, SKIP, CLOSE, CATALOGUE_CAPTURE }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(EntryRead.class)
+    void verifiedEntryReadsCannotInvokeTheCompletedWorkersProgressCallback(EntryRead operation) throws Exception {
+        Path archive = root.resolve("read-only.taxbackup");
+        String payload = "saved current work\n";
+        try (var capture = capture(plain, false, payload)) {
+            new BackupArchiveWriter(plain, ArchiveLimits.defaults()).write(capture, archive);
+        }
+        var progress = new java.util.concurrent.atomic.AtomicLong();
+        var callbacks = new java.util.concurrent.atomic.AtomicInteger();
+        try (var verified = reader(plain).verify(archive, bytes -> { progress.set(bytes); callbacks.incrementAndGet(); })) {
+            int completedCallbacks = callbacks.get();
+            assertThat(progress.get()).isGreaterThan(Files.size(archive));
+            if (operation == EntryRead.CATALOGUE_CAPTURE) {
+                var source = CatalogueSourceBytes.capture(() -> verified.openEntry(DATA));
+                try (var input = source.openStream()) { assertThat(new String(input.readAllBytes(), UTF_8)).isEqualTo(payload); }
+            } else {
+                try (var input = verified.openEntry(DATA)) {
+                    switch (operation) {
+                        case SINGLE -> assertThat(input.read()).isEqualTo('s');
+                        case BULK -> assertThat(new String(input.readAllBytes(), UTF_8)).isEqualTo(payload);
+                        case SKIP -> assertThat(input.skip(payload.length())).isEqualTo(payload.length());
+                        case CLOSE -> { /* Closing an unread entry must still verify its contents. */ }
+                        default -> throw new AssertionError(operation);
+                    }
+                }
+            }
+            assertThat(callbacks).as("entry reads cannot update the completed worker's progress").hasValue(completedCallbacks);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void verificationChecksProgressDuringPayloadReadsAndStopsWithoutDraining(boolean interrupted) throws Exception {
+        Path archive = root.resolve("cancel-verification.taxbackup");
+        String payload = "x".repeat(256 * 1024);
+        long metadataBytes;
+        try (var capture = capture(plain, false, payload)) {
+            metadataBytes = new BackupManifestCodec().write(capture.manifest()).length;
+            for (var entry : capture.manifest().entries()) {
+                if (entry.path().equals(DATA)) break;
+                metadataBytes += entry.length();
+            }
+            new BackupArchiveWriter(plain, ArchiveLimits.defaults()).write(capture, archive);
+        }
+        long beforePayload = Files.size(archive) + metadataBytes;
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var bytesRead = new java.util.concurrent.atomic.AtomicLong();
+        var readsAfterStop = new java.util.concurrent.atomic.AtomicInteger();
+        ArchiveProtectionProvider measured = new ArchiveProtectionProvider() {
+            public boolean encrypted() { return false; }
+            public OutputStream protect(OutputStream output, byte[] context) { return output; }
+            public InputStream unprotect(InputStream input, byte[] context) { return input; }
+            public java.nio.channels.SeekableByteChannel open(java.nio.channels.SeekableByteChannel input, byte[] context) {
+                return new java.nio.channels.SeekableByteChannel() {
+                    public int read(java.nio.ByteBuffer buffer) throws IOException {
+                        if (stopped.get()) readsAfterStop.incrementAndGet();
+                        int count = input.read(buffer); if (count > 0) bytesRead.addAndGet(count); return count;
+                    }
+                    public int write(java.nio.ByteBuffer buffer) { throw new UnsupportedOperationException(); }
+                    public long position() throws IOException { return input.position(); }
+                    public java.nio.channels.SeekableByteChannel position(long value) throws IOException { input.position(value); return this; }
+                    public long size() throws IOException { return input.size(); }
+                    public java.nio.channels.SeekableByteChannel truncate(long value) { throw new UnsupportedOperationException(); }
+                    public boolean isOpen() { return input.isOpen(); }
+                    public void close() throws IOException { input.close(); }
+                };
+            }
+        };
+        try {
+            assertThatThrownBy(() -> reader(measured).verify(archive, bytes -> {
+                if (bytes > beforePayload) {
+                    stopped.set(true);
+                    if (interrupted) throw new InterruptedIOException("verification stopped");
+                    throw new IOException("verification stopped");
+                }
+            })).isInstanceOf(IOException.class).hasMessage("verification stopped");
+            assertThat(stopped).isTrue();
+            assertThat(bytesRead.get()).as("worker checks must happen before the payload is fully read").isLessThan(payload.length() / 2);
+            assertThat(readsAfterStop).as("failed verification must not drain the remaining payload").hasValue(0);
+            assertThat(Thread.currentThread().isInterrupted()).isEqualTo(interrupted);
+        } finally { Thread.interrupted(); }
     }
 
     @Test void rejectsUnsafeCollidingSymlinkAndUndeclaredEntries() throws Exception {
@@ -189,12 +276,14 @@ class BackupArchiveValidationTest {
         }
     }
 
-    @Test void encryptedArchiveLargerThanTheChildHeapUsesBoundedStreams() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void encryptedArchiveLargerThanTheChildHeapUsesBoundedStreams(boolean generated) throws Exception {
         Path log = root.resolve("streaming.log");
         String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
         Path arguments = root.resolve("probe.args");
         Files.writeString(arguments, "-Xmx96m\n-cp\n" + javaArgument(System.getProperty("java.class.path"))
-                + "\n" + getClass().getName() + "\n" + javaArgument(root.resolve("large").toString()) + "\n");
+                + "\n" + getClass().getName() + "\n" + javaArgument(root.resolve("large").toString()) + "\n" + generated + "\n");
         var child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", executable).toString(), "@" + arguments)
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
@@ -212,7 +301,7 @@ class BackupArchiveValidationTest {
     public static void main(String[] args) throws Exception {
         var test = new BackupArchiveValidationTest(); test.root = Path.of(args[0]); Files.createDirectories(test.root);
         long length = 192L << 20; var protection = test.encryption(); Path archive = test.root.resolve("large.taxbackup");
-        try (var capture = test.capture(protection, true, () -> new InputStream() {
+        Source inputSource = () -> new InputStream() {
             long remaining = length;
             public int read() { if (remaining == 0) return -1; remaining--; return 42; }
             public int read(byte[] buffer, int offset, int requested) {
@@ -220,7 +309,15 @@ class BackupArchiveValidationTest {
                 if (requested > 65536) throw new AssertionError("Unbounded source read");
                 int count = (int) Math.min(remaining, requested); Arrays.fill(buffer, offset, offset + count, (byte) 42); remaining -= count; return count;
             }
-        })) { new BackupArchiveWriter(protection, ArchiveLimits.defaults()).write(capture, archive); }
+        };
+        boolean generated = args.length > 1 && Boolean.parseBoolean(args[1]);
+        ComponentSink.EntryWriter producer = output -> {
+            byte[] buffer = new byte[65536]; Arrays.fill(buffer, (byte) 42);
+            for (long remaining = length; remaining > 0; remaining -= buffer.length) output.write(buffer, 0, (int) Math.min(remaining, buffer.length));
+        };
+        try (var capture = test.capture(protection, true, generated ? null : inputSource, generated ? producer : null)) {
+            new BackupArchiveWriter(protection, ArchiveLimits.defaults()).write(capture, archive);
+        }
         try (var verified = test.reader(protection).verify(archive); var input = verified.openEntry("protected/local-passwords.ndjson")) {
             if (input.transferTo(OutputStream.nullOutputStream()) != length) throw new AssertionError("Incomplete large export");
         }
@@ -239,6 +336,9 @@ class BackupArchiveValidationTest {
     }
     @FunctionalInterface private interface Source { InputStream open() throws IOException; }
     private CapturedBackup capture(ArchiveProtectionProvider protection, boolean secrets, Source source) throws Exception {
+        return capture(protection, secrets, source, null);
+    }
+    private CapturedBackup capture(ArchiveProtectionProvider protection, boolean secrets, Source source, ComponentSink.EntryWriter producer) throws Exception {
         var database = new JDBCDataSource(); database.setUrl("jdbc:hsqldb:mem:archive-" + UUID.randomUUID()); database.setUser("sa");
         BackupMaintenanceLease.initialize(database);
         var barrier = new BackupMaintenanceLease(database, Duration.ofSeconds(30));
@@ -259,7 +359,9 @@ class BackupArchiveValidationTest {
             public BackupComponentId componentId() { return RECORDS; }
             public int schemaVersion() { return 1; }
             public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
-                try (var input = source.open()) { sink.write(secrets ? "protected/local-passwords.ndjson" : DATA, input); }
+                String path = secrets ? "protected/local-passwords.ndjson" : DATA;
+                if (producer != null) sink.writeGenerated(path, producer);
+                else try (var input = source.open()) { sink.write(path, input); }
             }
         };
         return new BackupSnapshotCoordinator(barrier, auth, ignored -> plan, List.of(contributor), root.resolve("spool"),

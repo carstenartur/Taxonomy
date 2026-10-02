@@ -7,6 +7,10 @@ import com.taxonomy.portfolio.model.*;
 import com.taxonomy.portfolio.reformulation.*;
 import com.taxonomy.workspace.model.RepositoryTenantIdentity;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +24,130 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Actual persisted relationships, including historical and foreign records with the same business keys. */
 class PortfolioRecordsExportIT {
+    @ParameterizedTest @ValueSource(strings = {"arch_project", "project_requirement", "project_req_version",
+            "req_analysis_job", "req_analysis_snapshot", "req_analysis_item", "req_element_mapping", "req_relation_mapping",
+            "solution_definition", "product_catalog", "reformulation_proposal", "reformulation_revision", "reformulation_run",
+            "reformulation_node_checkpoint", "reformulation_usage_session", "reformulation_adoption_preview",
+            "reformulation_adoption", "reformulation_portable_evidence"})
+    void caseInsensitiveSqlCannotExportRowsOutsideTheExactCapturedTenant(String table) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            String selected = tenant("private-a", "draft");
+            fixture.jdbc.update("update " + table + " set scope_key=?", tenant("PRIVATE-A", "draft"));
+            assertThat(fixture.jdbc.queryForObject("select count(*) from " + table + " where scope_key like ?", Integer.class, selected))
+                    .as("SQL really includes the differently spelled workspace").isPositive();
+            assertThatThrownBy(() -> new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.REPOSITORY_HISTORY,
+                    new BackupScope.Workspace("repo-a", "private-a")), new Contents())).isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"solution,CURRENT_STATE", "solution,INSTALLATION_FULL",
+            "product,CURRENT_STATE", "product,INSTALLATION_FULL", "requirement,CURRENT_STATE", "requirement,INSTALLATION_FULL",
+            "conflict,CURRENT_STATE", "conflict,INSTALLATION_FULL", "current-version,CURRENT_STATE", "current-version,INSTALLATION_FULL"})
+    void tenantClosureRequiresTheExactBranchEvenInsideAnAuthorizedWorkspace(String link, BackupProfile profile) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            String alias = tenant("private-a", "DRAFT");
+            String join = switch (link) {
+                case "solution" -> {
+                    fixture.jdbc.update("update solution_definition set scope_key=?", alias);
+                    yield "project_solution d join arch_project p on p.id=d.project_id join solution_definition c on c.id=d.solution_id and c.scope_key=p.scope_key";
+                }
+                case "product" -> {
+                    fixture.jdbc.update("update product_catalog set scope_key=?", alias);
+                    yield "solution_product d join project_solution s on s.id=d.project_solution_id join arch_project p on p.id=s.project_id join product_catalog c on c.id=d.product_id and c.scope_key=p.scope_key";
+                }
+                case "requirement" -> {
+                    fixture.jdbc.update("update project_requirement set scope_key=? where requirement_key='R-SAME'", alias);
+                    fixture.jdbc.update("update project_req_version set scope_key=?", alias);
+                    yield "req_solution_link d join project_solution s on s.id=d.project_solution_id join arch_project p on p.id=s.project_id join project_requirement c on c.id=d.requirement_id and c.project_id=p.id and c.scope_key=p.scope_key";
+                }
+                case "conflict" -> {
+                    fixture.jdbc.update("update project_requirement set scope_key=? where requirement_key='R-CONFLICT'", alias);
+                    yield "project_conflict d join arch_project p on p.id=d.project_id join project_requirement c on c.id=d.requirement_b_id and c.project_id=p.id and c.scope_key=p.scope_key";
+                }
+                default -> {
+                    fixture.jdbc.update("update project_req_version set scope_key=? where version_number=2", alias);
+                    yield "project_requirement p join project_req_version c on c.id=p.current_version_id and c.requirement_id=p.id and c.scope_key=p.scope_key";
+                }
+            };
+            assertThat(fixture.jdbc.queryForObject("select count(*) from " + join, Integer.class)).isEqualTo(1);
+            BackupScope scope = profile.isInstallation() ? new BackupScope.Installation() : new BackupScope.Workspace("repo-a", "private-a");
+            assertThatThrownBy(() -> new PortfolioBackupContributor(fixture.database).write(snapshot(profile, scope), new Contents()))
+                    .isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"CURRENT_STATE,true", "CURRENT_STATE,false", "REPOSITORY_HISTORY,true", "REPOSITORY_HISTORY,false"})
+    void sourceDiscoveryRejectsBothForeignTenantsAndCaseAliasedRequirementBranches(BackupProfile profile, boolean foreignTenant) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            fixture.requirement("repo-a", "private-a", "OLD", "CURRENT");
+            fixture.jdbc.update("update project_req_version set source_artifact_id=11,source_version_id=12,source_fragment_ids='[13]'");
+            String selected = tenant("private-a", "draft");
+            var contributor = new PortfolioBackupContributor(fixture.database);
+            var snapshot = snapshot(profile, new BackupScope.Workspace("repo-a", "private-a"));
+            if (foreignTenant) {
+                fixture.jdbc.update("update project_req_version set scope_key=?", tenant("PRIVATE-A", "draft"));
+                assertThat(fixture.jdbc.queryForObject("select count(*) from project_req_version where scope_key like ?", Integer.class, selected)).isEqualTo(2);
+            } else {
+                fixture.jdbc.update("update project_requirement set scope_key=?", tenant("private-a", "DRAFT"));
+                assertThat(fixture.jdbc.queryForObject("select count(*) from project_req_version v join project_requirement r on r.id=v.requirement_id and r.scope_key=v.scope_key", Integer.class)).isEqualTo(2);
+            }
+            assertThatThrownBy(() -> contributor.sourceReferences(snapshot)).isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    @Test void malformedSelectedTenantFailsWithASanitizedCaptureError() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            fixture.jdbc.update("update reformulation_portable_evidence set scope_key=?", tenant("private-a", "draft") + "TRAILING");
+            assertThatThrownBy(() -> new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.REPOSITORY_HISTORY,
+                    new BackupScope.Workspace("repo-a", "private-a")), new Contents()))
+                    .isInstanceOf(java.io.IOException.class).hasMessageNotContaining("TRAILING");
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"req_analysis_snapshot,PRIVATE-A,draft", "arch_project,private-a,DRAFT",
+            "project_requirement,private-a,DRAFT", "project_req_version,private-a,DRAFT"})
+    void analysisDiscoveryCannotBorrowCaseAliasedTenantEvidence(String table, String workspace, String branch) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            fixture.requirement("repo-a", "private-a", "OLD", "CURRENT");
+            fixture.jdbc.update("update " + table + " set scope_key=?", tenant(workspace, branch));
+            assertThat(fixture.jdbc.queryForObject("select count(*) from req_analysis_snapshot s join arch_project p on p.id=s.project_id and p.scope_key=s.scope_key "
+                    + "join project_requirement r on r.id=s.requirement_id and r.scope_key=s.scope_key join project_req_version v on v.id=s.requirement_version_id and v.scope_key=s.scope_key", Integer.class)).isEqualTo(1);
+            assertThatThrownBy(() -> new PortfolioBackupContributor(fixture.database).analysisReferences(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a", "private-a")))).isInstanceOf(java.io.IOException.class);
+        }
+    }
+
+    @ParameterizedTest @EnumSource(value = BackupProfile.class, names = {"INSTALLATION_CURRENT", "INSTALLATION_FULL"})
+    void exactTenantChecksPreserveValidInstallationGraphsAndProfileOmissions(BackupProfile profile) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            graph(fixture, "repo-b", "private-b", "BOB");
+            var contributor = new PortfolioBackupContributor(fixture.database);
+            var snapshot = snapshot(profile, new BackupScope.Installation());
+            var output = new Contents(); contributor.write(snapshot, output);
+            assertThat(output.entries).hasSize(25);
+            assertThat(records(output, "project")).hasSize(2);
+            assertThat(output.text()).contains("CURRENT-ALICE", "CURRENT-BOB");
+            assertThat(records(output, "requirement-version")).hasSize(profile.includesHistory() ? 4 : 2);
+            assertThat(contributor.analysisReferences(snapshot)).hasSize(2);
+            assertThat(contributor.sourceReferences(snapshot)).isEmpty();
+            if (!profile.includesHistory()) assertThat(output.text()).doesNotContain("OLD-ALICE", "OLD-BOB", "FROZEN-ALICE", "FROZEN-BOB");
+        }
+    }
+
+    private static Fixture caseInsensitiveFixture() {
+        return new Fixture(configuration -> new org.springframework.jdbc.core.JdbcTemplate(
+                (javax.sql.DataSource) configuration.getProperties().get("hibernate.connection.datasource"))
+                .execute("SET DATABASE SQL IGNORECASE TRUE"));
+    }
+
+    private static String tenant(String workspace, String branch) {
+        return new RepositoryTenantIdentity("repo-a", "WORKSPACE:" + workspace, branch).scopeKey();
+    }
+
     @Test void exportsTheCompleteBusinessGraphWithStableReferencesAndExactTenantIsolation() throws Exception {
         try (var fixture = new Fixture()) {
             graph(fixture, "repo-a", "private-a", "ALICE");

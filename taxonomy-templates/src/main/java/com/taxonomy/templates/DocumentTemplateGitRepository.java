@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.backup.BackupCheckpoint;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -315,6 +317,24 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         return head == null ? null : head.name();
     }
 
+    /** Read-only capture: retain object identities, never materialize the repository's payload in memory. */
+    public CapturedTree captureCurrentTree(BackupCheckpoint checkpoint) throws IOException {
+        checkpoint.check();
+        return TemplateBackupCapture.capture(repository, headObjectId(), checkpoint);
+    }
+
+    /** The caller closes this immutable blob stream; moving HEAD does not change its bytes. */
+    public InputStream openCapturedFile(CapturedFile file) throws IOException {
+        ObjectLoader loader = repository.open(ObjectId.fromString(file.objectId()), Constants.OBJ_BLOB);
+        if (loader.getSize() != file.length()) throw new IOException("Captured template blob size changed");
+        return loader.openStream();
+    }
+
+    public record CapturedFile(String path, String objectId, long length) { }
+    public record CapturedTree(String commitId, List<CapturedFile> files) {
+        public CapturedTree { files = List.copyOf(files); }
+    }
+
     private String currentTemplateVersion(String templateId, ObjectId head)
             throws IOException {
         if (head == null) {
@@ -484,7 +504,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         }
     }
 
-    private static void validateStoredManifest(
+    static void validateStoredManifest(
             String expectedTemplateId,
             TemplateManifest manifest,
             Map<String, byte[]> parts) throws IOException {

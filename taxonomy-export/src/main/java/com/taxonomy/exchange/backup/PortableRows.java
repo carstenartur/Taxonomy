@@ -3,6 +3,10 @@ package com.taxonomy.exchange.backup;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.taxonomy.backup.*;
 
 import javax.sql.DataSource;
@@ -17,6 +21,11 @@ public final class PortableRows {
     public static final int MAX_RECORD_BYTES = 16 * 1024 * 1024;
     private static final long MAX_ROWS = 1_000_000;
     private static final JsonMapper JSON = JsonMapper.builder()
+            .addModule(new SimpleModule().addSerializer(Instant.class, new JsonSerializer<Instant>() {
+                @Override public void serialize(Instant value, JsonGenerator output, SerializerProvider provider) throws IOException {
+                    output.writeString(value.toString());
+                }
+            }))
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     static { JSON.getFactory().setStreamReadConstraints(StreamReadConstraints.builder()
             .maxNestingDepth(100).maxStringLength(MAX_RECORD_BYTES).maxNumberLength(100).build()); }
@@ -70,8 +79,16 @@ public final class PortableRows {
                                                Iterable<Query> queries, Mapper<T> mapper) throws IOException {
         if (!component.matches("[a-z][a-z0-9-]{0,63}") || !kind.matches("[a-z][a-z0-9-]{0,63}"))
             throw new IllegalArgumentException("Invalid dataset name");
+        writeBatchesAtPath(sink, "data/"+component+"/"+kind+".ndjson", kind, profile, queries, mapper);
+    }
+
+    /** Typed datasets may also live in the identity and protected archive namespaces. */
+    public <T extends Record> void writeBatchesAtPath(ComponentSink sink, String path, String kind, BackupProfile profile,
+                                                     Iterable<Query> queries, Mapper<T> mapper) throws IOException {
+        new BackupEntry(path, 0, "0".repeat(64));
+        if (!kind.matches("[a-z][a-z0-9-]{0,63}")) throw new IllegalArgumentException("Invalid dataset name");
         try (var input=new BatchInput<>(new Header(1,kind,profile),queries.iterator(),mapper)) {
-            sink.write("data/"+component+"/"+kind+".ndjson",input);
+            sink.write(path,input);
         }
     }
 
