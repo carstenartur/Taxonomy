@@ -234,3 +234,296 @@ test('manual scores explicitly replace an earlier failed AI authority', () => {
   assert.equal(harness.context.S.lastAnalysisProvider, 'MANUAL');
   assert.equal(harness.context.S.lastAnalysisStatus, 'SUCCESS');
 });
+
+const browseSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js', import.meta.url), 'utf8');
+const sessionCoreSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8');
+const sessionUiSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js', import.meta.url), 'utf8');
+
+// Load the complete browser module and dispatch its registered input listener.
+// Controlled timers make completion before the 300 ms stale check deterministic.
+const sessionProjectsSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js', import.meta.url), 'utf8');
+const scoringSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
+
+function createStatusHarness({ session = false, observers = false } = {}) {
+  class Element {
+    constructor() {
+      this.dataset = {};
+      this.children = [];
+      this.listeners = new Map();
+      this.classList = mutableClassList();
+      this.classList.toggle = (name, enabled) => enabled
+        ? this.classList.add(name) : this.classList.remove(name);
+      this.value = '';
+      this.textContent = '';
+      this.markup = '';
+    }
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(listener);
+    }
+    dispatch(type) { (this.listeners.get(type) || []).forEach(listener => listener()); }
+    setAttribute() {}
+    appendChild(child) { this.children.push(child); }
+    replaceChildren(...children) { this.markup = ''; this.children = children; }
+    set innerHTML(value) {
+      this.markup = value;
+      this.children = [];
+      if (value.includes('class="alert ')) {
+        const alert = new Element();
+        alert.className = value.match(/class="([^"]+)"/)[1];
+        this.children.push(alert);
+      }
+    }
+    get innerHTML() { return this.markup; }
+    get firstChild() { return this.children[0] || null; }
+    querySelector(selector) {
+      for (const child of this.children) {
+        if (selector === '.alert' && child.className?.split(' ').includes('alert')) return child;
+        if (selector === '.btn-warning' && child.className?.split(' ').includes('btn-warning')) return child;
+        const action = selector.match(/^\[data-analysis-session-action="([^"]+)"\]$/);
+        if (action && child.dataset.analysisSessionAction === action[1]) return child;
+        const found = child.querySelector(selector);
+        if (found) return found;
+      }
+      return null;
+    }
+  }
+  const elements = Object.fromEntries(['analyzeBtn', 'expandAll', 'collapseAll',
+    'businessText', 'statusArea', 'a11yStatus', 'a11yAlert'].map(id => [id, new Element()]));
+  const listeners = new Map();
+  const document = {
+    readyState: 'loading', documentElement: { lang: 'en' }, body: new Element(),
+    getElementById: id => elements[id] || null,
+    querySelectorAll: () => [], createElement: () => new Element(),
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    }
+  };
+  const mutations = [];
+  class MutationObserver {
+    constructor(callback) { this.callback = callback; }
+    observe(target) { mutations.push({ target, callback: this.callback }); }
+  }
+  const timers = new Map();
+  let serial = 0;
+  const setTimeout = (callback, delay) => {
+    const id = ++serial;
+    timers.set(id, { callback, delay });
+    return id;
+  };
+  const clearTimeout = id => timers.delete(id);
+  const state = { currentScores: { IP: 80 }, lastAnalyzedText: 'Original requirement' };
+  const window = { TaxonomyState: state, setTimeout, clearTimeout,
+    setInterval() {}, addEventListener() {},
+    requestAnimationFrame: callback => callback(), location: { search: '' } };
+  const sandbox = vm.createContext({ window, document, URLSearchParams, MutationObserver,
+    TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => value },
+    fetch: () => new Promise(() => {}), setInterval: () => {},
+    setTimeout, clearTimeout, requestAnimationFrame: callback => callback() });
+  vm.runInContext(browseSource, sandbox, { filename: 'taxonomy-browse.js' });
+  if (session) {
+    vm.runInContext(sessionCoreSource, sandbox, { filename: 'taxonomy-analysis-session-core.js' });
+    vm.runInContext(sessionUiSource, sandbox, { filename: 'taxonomy-analysis-session-ui.js' });
+  }
+  (listeners.get('DOMContentLoaded') || []).forEach(listener => listener());
+  if (observers) {
+    window.__TaxonomyAnalysisSessionContext.queueSave = () => {};
+    vm.runInContext(sessionProjectsSource, sandbox, { filename: 'taxonomy-analysis-session-projects.js' });
+    window.__TaxonomyAnalysisSessionContext.installObservers();
+  }
+  return {
+    elements, state, window,
+    edit(value) { elements.businessText.value = value; elements.businessText.dispatch('input'); },
+    rejectPreflight() {
+      vm.runInContext(scoringSource, sandbox, { filename: 'taxonomy-scoring.js' });
+      window.TaxonomyScoring.runAnalysis();
+    },
+    notifyStatusMutation() {
+      const observer = mutations.find(entry => entry.target === elements.statusArea);
+      assert.ok(observer, 'Actual status MutationObserver must be installed');
+      observer.callback();
+    },
+    runModernCheck() { this.runInputCheck(340); },
+    runInputCheck(delay = 300) {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      assert.ok(entry, 'The real input handler must schedule its stale check');
+      timers.delete(entry[0]);
+      entry[1].callback();
+    }
+  };
+}
+
+for (const [kind, message] of [['success', 'Analysis complete'],
+  ['warning', 'Partial analysis: provider unavailable'], ['danger', 'Analysis failed']]) {
+  test(`delayed input check preserves newer ${kind} feedback after analysis completes`, () => {
+    const h = createStatusHarness({ session: true });
+    h.edit('Updated requirement');
+    h.window.__TaxonomyAnalysisSessionContext.showStaleActions();
+    h.state.lastAnalyzedText = h.elements.businessText.value;
+    h.window.TaxonomyBrowse.showStatus(kind, message);
+    const completion = h.elements.statusArea.innerHTML;
+
+    h.runInputCheck();
+
+    assert.equal(h.elements.statusArea.innerHTML, completion);
+    assert.match(completion, new RegExp(message));
+    assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, undefined);
+    assert.equal(h.elements.businessText.classList.contains('stale-results'), false);
+    assert.equal(h.elements[kind === 'danger' ? 'a11yAlert' : 'a11yStatus'].textContent, message);
+  });
+}
+
+test('no-session input callback preserves completed feedback', () => {
+  const h = createStatusHarness();
+  h.edit('Updated requirement');
+  h.state.lastAnalyzedText = h.elements.businessText.value;
+  h.window.TaxonomyBrowse.showStatus('success', 'Analysis complete');
+  h.runInputCheck();
+  assert.match(h.elements.statusArea.innerHTML, /Analysis complete/);
+});
+
+test('legacy stale warning retains reset control and clears when text is reverted', () => {
+  const h = createStatusHarness();
+  h.edit('Updated requirement');
+  h.runInputCheck();
+  assert.equal(h.elements.businessText.classList.contains('stale-results'), true);
+  assert.match(h.elements.statusArea.innerHTML, /browse.stale.warning/);
+  const reset = h.elements.statusArea.querySelector('.btn-warning');
+  assert.ok(reset);
+  assert.equal(reset.listeners.get('click').length, 1);
+
+  h.edit('Original requirement');
+  h.runInputCheck();
+
+  assert.equal(h.elements.statusArea.innerHTML, '');
+  assert.equal(h.elements.statusArea.children.length, 0);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, undefined);
+  assert.equal(h.elements.businessText.classList.contains('stale-results'), false);
+});
+
+test('pending legacy input callback retains existing modern stale actions', () => {
+  const h = createStatusHarness({ session: true });
+  h.edit('Updated requirement');
+  h.window.__TaxonomyAnalysisSessionContext.showStaleActions();
+  const discardEdit = h.elements.statusArea.querySelector('[data-analysis-session-action="discard-edit"]');
+  const discardAnalysis = h.elements.statusArea.querySelector('[data-analysis-session-action="discard-analysis"]');
+  assert.ok(discardEdit);
+  assert.ok(discardAnalysis);
+
+  h.runInputCheck();
+
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-edit"]'), discardEdit);
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-analysis"]'), discardAnalysis);
+  assert.equal(discardEdit.listeners.get('click').length, 1);
+});
+
+test('pending input callback clears modern stale feedback after a genuine text revert', () => {
+  const h = createStatusHarness({ session: true });
+  h.edit('Updated requirement');
+  h.window.__TaxonomyAnalysisSessionContext.showStaleActions();
+  h.edit('Original requirement');
+  h.runInputCheck();
+  assert.equal(h.elements.statusArea.children.length, 0);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, undefined);
+});
+
+test('matching-text input check preserves modern non-stale action feedback', () => {
+  const h = createStatusHarness({ session: true });
+  h.edit('Original requirement');
+  h.window.__TaxonomyAnalysisSessionContext.showActionAlert('danger', 'Draft conflict',
+    'Choose a version', [{ id: 'reload', label: 'Reload', handler() {} }], 'conflict');
+  const reload = h.elements.statusArea.querySelector('[data-analysis-session-action="reload"]');
+  h.runInputCheck();
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="reload"]'), reload);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'conflict');
+});
+
+test('explicit browse clear removes previous session status ownership', () => {
+  const h = createStatusHarness({ session: true });
+  h.edit('Updated requirement');
+  h.window.__TaxonomyAnalysisSessionContext.showStaleActions();
+  h.window.TaxonomyBrowse.clearStatus();
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, undefined);
+  assert.equal(h.elements.statusArea.children.length, 0);
+});
+
+
+for (const kind of ['warning', 'danger']) {
+  for (const session of [false, true]) {
+    test(`legacy mismatch callback preserves newer ${kind} feedback with session=${session}`, () => {
+      const h = createStatusHarness({ session });
+      h.edit('Updated requirement');
+      h.window.TaxonomyBrowse.showStatus(kind, 'Newer preflight explanation');
+      const feedback = h.elements.statusArea.innerHTML;
+      h.runInputCheck();
+      assert.equal(h.elements.statusArea.innerHTML, feedback);
+      assert.equal(h.state.lastAnalyzedText, 'Original requirement');
+      assert.equal(h.state.currentScores.IP, 80);
+      assert.equal(h.elements.businessText.classList.contains('stale-results'), true);
+      assert.equal(h.elements[kind === 'danger' ? 'a11yAlert' : 'a11yStatus'].textContent,
+        'Newer preflight explanation');
+    });
+  }
+  test(`modern stale timer and status observer requeue preserve newer ${kind} feedback`, () => {
+    const h = createStatusHarness({ session: true, observers: true });
+    h.edit('Updated requirement');
+    h.window.TaxonomyBrowse.showStatus(kind, 'Newer preflight explanation');
+    const feedback = h.elements.statusArea.innerHTML;
+    h.notifyStatusMutation();
+    h.runInputCheck();
+    h.runModernCheck();
+    assert.equal(h.elements.statusArea.innerHTML, feedback);
+    assert.equal(h.state.lastAnalyzedText, 'Original requirement');
+    // A further observer delivery must not grant stale UI fresh ownership.
+    h.notifyStatusMutation();
+    h.runModernCheck();
+    assert.equal(h.elements.statusArea.innerHTML, feedback);
+  });
+}
+
+test('actual analysis preflight rejection keeps its reason through both registered stale checks', () => {
+  const h = createStatusHarness({ session: true, observers: true });
+  h.edit('Updated requirement');
+  h.rejectPreflight();
+  assert.match(h.elements.statusArea.innerHTML, /scoring.lifecycle.not.ready/);
+  h.notifyStatusMutation();
+  h.runInputCheck();
+  h.runModernCheck();
+  assert.match(h.elements.statusArea.innerHTML, /scoring.lifecycle.not.ready/);
+  assert.equal(h.state.lastAnalyzedText, 'Original requirement');
+  assert.equal(h.state.currentScores.IP, 80);
+});
+
+test('a new edit releases previous feedback to legacy and modern stale actions', () => {
+  const h = createStatusHarness({ session: true, observers: true });
+  h.edit('Updated requirement');
+  h.window.TaxonomyBrowse.showStatus('warning', 'Preflight rejected');
+  h.edit('Another requirement');
+  h.runInputCheck();
+  assert.match(h.elements.statusArea.innerHTML, /browse.stale.warning/);
+  h.runModernCheck();
+  assert.ok(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-edit"]'));
+  assert.ok(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-analysis"]'));
+  h.edit('Original requirement');
+  h.runInputCheck();
+  h.runModernCheck();
+  assert.equal(h.elements.statusArea.children.length, 0);
+});
+
+test('modern non-stale action feedback published for edited text survives observer requeue', () => {
+  const h = createStatusHarness({ session: true, observers: true });
+  h.edit('Updated requirement');
+  h.window.__TaxonomyAnalysisSessionContext.showActionAlert('danger', 'New action feedback', '',
+    [{ id: 'reload', label: 'Reload', handler() {} }], 'conflict');
+  const reload = h.elements.statusArea.querySelector('[data-analysis-session-action="reload"]');
+  h.notifyStatusMutation();
+  h.runInputCheck();
+  h.runModernCheck();
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="reload"]'), reload);
+});

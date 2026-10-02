@@ -45,8 +45,10 @@ public final class RecoveryCatalogueExchangeProbe {
     }
     public static void selectedScopeRoundTrip() throws Exception {
         var catalogue = new TaxonomyService(null, null, null) {
+            @Override public Set<String> getRootCodes() { return Set.of("BP"); }
             @Override public TaxonomyNode getNodeByCode(String code) {
-                var node = new TaxonomyNode(); node.setCode(code); return node;
+                if (!"BP".equals(code)) return null;
+                var node = new TaxonomyNode(); node.setCode(code); node.setTaxonomyRoot("BP"); return node;
             }
         };
         var service = new SavedAnalysisService(MAPPER, catalogue);

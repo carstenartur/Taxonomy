@@ -266,11 +266,15 @@
                         businessTextEl.classList.remove('stale-results');
                         return;
                     }
+                    const statusArea = document.getElementById('statusArea');
                     if (S.lastAnalyzedText !== null && businessTextEl.value !== S.lastAnalyzedText) {
                         businessTextEl.classList.add('stale-results');
+                        if (!canShowStaleStatus()) return;
+                        // Keep the session's existing stale action controls and listeners.
+                        if (statusArea && statusArea.dataset.analysisSessionMessage === 'stale') return;
                         showStatus('warning', t('browse.stale.warning'));
-                        const statusArea = document.getElementById('statusArea');
                         if (statusArea) {
+                            statusArea.dataset.analysisSessionMessage = 'stale';
                             const alertEl = statusArea.querySelector('.alert');
                             if (alertEl && !alertEl.querySelector('.btn-warning')) {
                                 const resetBtn = document.createElement('button');
@@ -282,7 +286,8 @@
                         }
                     } else {
                         businessTextEl.classList.remove('stale-results');
-                        clearStatus();
+                        // This delayed check owns stale feedback, not newer analysis results.
+                        if (statusArea && statusArea.dataset.analysisSessionMessage === 'stale') clearStatus();
                     }
                 }, 300);
             });
@@ -1667,16 +1672,41 @@
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
+    let latestStatusFeedback = null;
+
+    function rememberStatusFeedback() {
+        const area = document.getElementById('statusArea');
+        const input = document.getElementById('businessText');
+        latestStatusFeedback = area && input ? { node: area.firstChild, text: input.value } : null;
+    }
+
+    function canShowStaleStatus() {
+        const area = document.getElementById('statusArea');
+        const input = document.getElementById('businessText');
+        // Feedback belongs to the text for which it was published. Observer requeues
+        // cannot make it older; a subsequent text edit allows stale actions again.
+        return !latestStatusFeedback || !area || !input
+            || area.dataset.analysisSessionMessage === 'stale'
+            || area.firstChild !== latestStatusFeedback.node
+            || input.value !== latestStatusFeedback.text;
+    }
+
     function showStatus(type, msg) {
-        document.getElementById('statusArea').innerHTML =
+        const statusArea = document.getElementById('statusArea');
+        delete statusArea.dataset.analysisSessionMessage;
+        statusArea.innerHTML =
             '<div class="alert alert-' + type + ' py-2">' + escapeHtml(msg) + '</div>';
+        rememberStatusFeedback();
         // Announce status to screen readers (WCAG 4.1.3)
         if (type === 'danger') { announceAlert(msg); }
         else { announceStatus(msg); }
     }
 
     function clearStatus() {
-        document.getElementById('statusArea').innerHTML = '';
+        const statusArea = document.getElementById('statusArea');
+        delete statusArea.dataset.analysisSessionMessage;
+        statusArea.innerHTML = '';
+        latestStatusFeedback = null;
     }
 
     function resetStaleResults() {
@@ -2333,6 +2363,8 @@
         switchView: switchView,
         showStatus: showStatus,
         clearStatus: clearStatus,
+        rememberStatusFeedback: rememberStatusFeedback,
+        canShowStaleStatus: canShowStaleStatus,
         escapeHtml: escapeHtml,
         updateExportGroupVisibility: updateExportGroupVisibility,
         ensureNodeRendered: ensureNodeRendered,

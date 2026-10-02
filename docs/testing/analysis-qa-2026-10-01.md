@@ -31,7 +31,7 @@ Interaktive Einzelbewertungen und manuelle Bewertungen behalten ihren Ablauf.
 }
 ```
 
-- Fehlender Scope oder leere API-Wurzelliste bedeutet weiterhin alle Taxonomien;
+- Fehlender Anfrage-Scope oder leere API-Wurzelliste bedeutet weiterhin alle Taxonomien;
   fehlender Modus bedeutet `FULL`. Explizit alle Browser-Checkboxen abzuwählen
   ist ungültig und startet keinen Auftrag.
 - Unbekannte, leere und null-Wurzelkennungen werden vor der Aufnahme abgelehnt.
@@ -63,9 +63,11 @@ automatische Oberfläche verwendet weiterhin den vollständigen POST-Anwendungsf
 | Fortschritt scannt alle Aufgaben erneut | Inkrementelle Zähler je Zielwurzel, Index je Quelle | Restore, Abschluss, ungelöste Aufgaben und Neubewertung |
 | Gefilterte Vorfahren hinterlassen ungültige Export-Eltern | Nächster überlebender Vorfahr, Zyklenschutz, keine Quellmutation | Fünf Regressionen mit tatsächlicher ArchiMate-/Visio-Validierung |
 | Scope überlebt Ersatz durch manuelle/interaktive Bewertung | Ergebnisumfang und Label zurücksetzen, nächste Auswahl behalten | Drei zusätzlich im Review reproduzierte Regressionen |
+| Gespeicherte manuelle/ältere Evidenz erhält erfundenen FULL-Scope; widersprüchliche Scope-Angaben werden akzeptiert | Optionalen Scope erhalten und ausgewählte Wurzeln mit allen enthaltenen Bewertungs-/Coverage-Kennungen an gemeinsamer Austauschgrenze prüfen | 23 zuvor fehlschlagende Verhaltensfälle, tatsächlicher Browser-Import/Reexport, realer Katalogtest; keine Präfix-Annahme |
 | Scope-Validierung führt eine neue Controller-Abhängigkeit auf Katalog-Entities ein | Skalare Wurzelkennungen über `TaxonomyService.getRootCodes()` | 22 Controller-Tests und 23 Architektur-Ratchet-Tests; Baseline unverändert |
 | Verborgener DSL-Editor lädt und parst beim Analyse-Start den gesamten Katalog | Editor erst beim Öffnen initialisieren, Instanz und Entwurf beim Seitenwechsel erhalten | Reproduktion auch auf Basisstand; echte Browserprüfungen für Speicher, Direktlink, Tastatur und Wiederbesuch |
 | Editor-Validierung erkennt den verborgenen Seitenzustand nicht zuverlässig | Seitenaktivität explizit übergeben; von `pagehide`/`pageshow` getrennt halten | Vier Regressionen und reale Hide-/Reveal-Prüfung; laufende Anfragen abbrechen, beim Zurückkehren einmal neu validieren |
+| Verzögerte Eingabeprüfungen löschen neuere Abschlussmeldungen oder überschreiben frühe Ablehnungsgründe | Gemeinsame Zuordnung von Meldungsknoten und Eingabetext; beide Veraltet-Prüfungen erhalten neuere Rückmeldungen | Tatsächlich registrierte Timer, wiederholter Status-Observer, echte Preflight-Ablehnung sowie unveränderte Firefox-Abnahme |
 
 ### Browser-Speicher beim ersten Suchlauf
 
@@ -96,6 +98,53 @@ behebt diesen Übergang, ohne die getrennte Browser-Lebenszyklussperre aufzuhebe
 Die Abnahme berücksichtigt einen verzögerten ersten Export und prüft die
 Validierung des tatsächlich geladenen Dokuments statt einer möglichen frühen
 Leer-Validierung. Unbearbeitete Dokumente und lokale Entwürfe bleiben erhalten.
+
+### Integrität gespeicherter Analyseumfänge
+
+Das abschließende Review fand zwei Fehler im JSON-Austausch: Der Austausch-DTO
+verwandelte einen absichtlich fehlenden Umfang in FULL; die bisherige Prüfung
+akzeptierte außerdem unbekannte Wurzeln und Bewertungen außerhalb des angegebenen
+Umfangs. Gespeicherte Provenienz bleibt jetzt nullable. Die Standardwerte für
+neue automatische Anfragen und Ergebnisse bleiben unverändert.
+
+Export und Import validieren die tatsächlich angegebenen Wurzeln und die
+enthaltenen effektiven/raw Bewertungen sowie Coverage-Knoten zentral gegen den
+Katalog. Die Prüfung gilt auch ohne Version-3-Coverage. Zugehörigkeit folgt der
+Katalogidentität, nicht einem vermeintlichen Code-Präfix. Teilbewertungen bleiben
+zulässig; ungescopte ältere Dateien behalten ihre Warnungen für unbekannte Codes.
+Die bestehende Version-2-Exportauswahl der Felder bleibt erhalten.
+
+Ein zusätzlicher Regressionstest zeigte doppelte Datenbankzugriffe in der ersten
+Korrektur. Ausgewählte Scope-Evidenz löst jede enthaltene Katalogkennung nun pro
+Austauschoperation nur einmal auf; nachgewiesene Identitäten werden nicht erneut
+für Coverage oder Warnungen geladen. Die unabhängige Prüfung bestätigte beide
+Verträge und die auf validierte Importe begrenzten Warnungsaufrufer.
+
+### Abschlussmeldungen und verzögerte Eingabeprüfungen
+
+Auf `550b80eb` fand der Firefox-Shard einen weiteren Fehler: Die Analyse war
+erfolgreich abgeschlossen, aber eine bereits geplante Eingabeprüfung löschte
+anschließend die sichtbare Abschlussmeldung. Die Reproduktion verwendet den
+tatsächlich registrierten Eingabehandler. Die Prüfung entfernt jetzt nur eine
+eigene Veraltet-Meldung, wenn der Text wieder zur vorhandenen Analyse passt.
+
+Das unabhängige Review reproduzierte außerdem das Überschreiben einer neueren
+Warnung oder Fehlermeldung, wenn die nächste Analyse schon vor dem Start abgelehnt
+wird. Dann bleiben die alten Bewertungen und ihr abweichender Text bestehen.
+Sowohl die ältere Eingabeprüfung als auch die moderne Session-Prüfung verwenden
+deshalb dieselbe Zuordnung von veröffentlichtem Meldungsknoten und Eingabetext.
+Auch ein erneutes Scheduling durch den Status-Observer erhält die Rückmeldung.
+Eine tatsächliche nächste Textänderung gibt die Veraltet-Aktionen wieder frei;
+bei Rückkehr zum analysierten Text verschwinden weiterhin nur veraltete Hinweise.
+
+Die erste Korrektur bestand 728 UI-Verträge; die endgültige, nach Review ergänzte
+Korrektur besteht 737. Zwei unveränderte Firefox-Abnahmen auf demselben Server,
+jeweils mit neuem Browserkontext, bestehen jeweils alle elf Prüfungen ohne
+Konsolen-, externen Request- oder HTTP-Fehler. Lokal musste wegen des gesperrten
+User-Namespace die Firefox-Content-Sandbox deaktiviert werden. Diese Anpassung
+betrifft ausschließlich den lokalen Nachweis; CI und Produktionskonfiguration
+bleiben unverändert. Die Prüfung wartet weder länger noch wiederholt sie einen
+fehlgeschlagenen Analyseversuch.
 
 ## Relationslauf: Messwerte und Wartezeit
 
@@ -209,6 +258,11 @@ wiederhergestellt und remote gesichert. Die Nachweise der neuen Ausführung sind
 | Lokale Selenium-Abnahme derselben Budget-Szenarien, Chromium/Driver 149.0.7827.55 | Alle sieben Testmethoden grün; 309 Treffer: 1.610.842 Heap-Bytes, 1.000 Treffer: 4.479.905 Heap-Bytes, bei unverändert 25.165.824 Bytes Limit |
 | Browser-Lebenszyklus und langsamer Export | Echte en/de-Prüfung mit 1,5 Sekunden Exportverzögerung, initialer Leer-Validierung und anschließendem Hide/Reveal erfolgreich; vier neue Zustandsregressionen grün |
 | CI-Diagnosesicherung | Vier Script-Tests grün, einschließlich Report-Erhalt bei weiterhin abgelehnter fehlender Coverage; Delivery-Hardening-Vertrag grün |
+| Scope-Austausch nach Abschlussreview | 108 relevante Java-Tests grün; nach Entfernen doppelter Katalogzugriffe 69 betroffene Tests erneut grün, darunter 34 Scope-Austauschfälle |
+| Browser-Verträge für Austausch/State/Scope/Recovery | 97 Tests grün; drei neue Fälle führen den tatsächlichen Import/Reexport aus und erhalten null/fehlenden/ausgewählten Umfang |
+| Abschluss-/Preflight-Meldungen nach Review | 27 Workflow-Regressionen und 172 betroffene Session-/Austauschtests grün; die neuen Fälle scheiterten vor der Korrektur an ihren Verhaltensassertionen |
+| Abschließende UI-Verträge mit Austausch- und Meldungskorrektur | 737 Tests grün, keine Fehler oder übersprungenen Tests; gemeinsame Transport-/Routing-Prüfungen ebenfalls grün |
+| Vollständiger Firefox-Ablauf auf frisch gebautem Anwendungs-JAR | Zwei aufeinanderfolgende Kontexte, jeweils elf Prüfungen grün; bestehende Abschluss- und Veraltet-Assertions unverändert |
 
 Die 3.784 lokalen Tests verteilen sich auf Tooling 161, Domain 208, DSL 332,
 Extension API 2, Export 382, Workspace 757, Templates 127, Interop 133,
@@ -229,7 +283,7 @@ Produktionskonfiguration wurden nicht abgeschwächt.
 Der erneute vollständige CI-Lauf nach der letzten Korrektur ist in der
 [PR-Prüfliste](https://github.com/carstenartur/Taxonomy/pull/1160/checks) maßgeblich.
 Die obigen Zwischenstands-Ergebnisse ersetzen diesen Abschlusslauf nicht.
-Ein Draft-Merge-Gate bleibt absichtlich rot, solange der PR ein Entwurf ist.
+PR #1160 ist inzwischen zur Prüfung freigegeben; das frühere Draft-Gate entfällt.
 
 Projektbefehle für vollständige CI beziehungsweise UI-Verträge:
 

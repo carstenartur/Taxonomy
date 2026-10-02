@@ -254,8 +254,12 @@ public class ExportApiController {
                         return ResponseEntity.badRequest().build();
                     exported.setRawScores(raw);
                 }
-                exportFacade.validateCoverageEvidence(exported);
             } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) { return ResponseEntity.badRequest().build(); }
+        }
+        try {
+            exportFacade.validateCoverageEvidence(exported);
+        } catch (IllegalArgumentException invalid) {
+            return ResponseEntity.badRequest().build();
         }
         return ResponseEntity.ok(exported);
     }

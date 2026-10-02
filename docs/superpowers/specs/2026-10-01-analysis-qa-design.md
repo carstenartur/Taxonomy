@@ -6,7 +6,7 @@ Date: 2026-10-01. Baseline: `d6ecb6b16699270fc476ca2fe1e6e21d5e4a816c`.
 
 - Add immutable `AnalysisScope(Set<String> taxonomyRoots, AnalysisMode mode)` and
   `FULL` / `TAXONOMIES_ONLY`. Request/result field: `analysisScope`.
-- Missing/null scope and empty API root set preserve legacy all/full behavior.
+- Missing/null request scope and empty API root set preserve legacy all/full behavior.
   Canonicalize ordering; reject unknown, null and blank roots before admission or paid work.
   Browser explicit none is invalid, distinct from the API's empty-means-all convention.
 - Selected roots constrain scoring and relation sources. FULL targets retain all
@@ -20,8 +20,14 @@ Date: 2026-10-01. Baseline: `d6ecb6b16699270fc476ca2fe1e6e21d5e4a816c`.
   Old all/full signatures remain valid.
 - Keep next-run controls separate from completed evidence. Replacement manual or
   interactive evidence clears the previous result scope, retaining next-run controls.
+- Saved JSON scope is optional provenance: preserve absent/null metadata for manual,
+  interactive and legacy evidence. Validate every declared root against the catalogue
+  and all included score/raw/coverage identities against explicitly selected roots.
+  Partial evidence remains valid; unknown unscoped legacy nodes retain warning behavior.
 - Intentional partial Copilot runs must not generate global completeness, gap or
   recommendation claims.
+- Delayed input/stale checks must preserve newer completion, warning and error
+  feedback while retaining stale-text actions and revert behavior.
 
 ## Refactoring boundaries
 

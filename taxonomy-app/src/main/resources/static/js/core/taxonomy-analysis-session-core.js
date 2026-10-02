@@ -422,6 +422,9 @@
         }
 
         area.appendChild(alert);
+        if (window.TaxonomyBrowse && window.TaxonomyBrowse.rememberStatusFeedback) {
+            window.TaxonomyBrowse.rememberStatusFeedback();
+        }
         announce(title + (body ? '. ' + body : ''), kind === 'danger');
     }
 

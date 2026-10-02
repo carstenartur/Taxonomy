@@ -75,7 +75,7 @@ for (const action of ['enterManualScoringMode', 'applyManualScores']) {
         const nextOptions = copy(h.scope.options());
         h.S.taxonomyData = [];
         h.nodes.set('businessText', {value: 'New manual requirement'});
-        h.nodes.set('statusArea', {parentNode: {insertBefore() {}}});
+        h.nodes.set('statusArea', {dataset: {}, parentNode: {insertBefore() {}}});
         h.document.querySelectorAll = selector => selector === '.manual-score-input'
             ? [{value: '80', dataset: {code: 'CP'}, remove() {}}] : [];
         h.window.TaxonomyScoring = {applyLocalRawScores: scores => {h.S.currentScores = scores;}};
