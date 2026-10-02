@@ -41,7 +41,9 @@ public final class PortableRows {
 
     /** Reject a broken/unauthorized dependency rather than silently dropping its source record. */
     public void requireEmpty(Query query) throws IOException {
+        cancelled();
         try (var connection = database.getConnection()) {
+            cancelled(); // Some drivers consume the interrupt when preparing/executing SQL.
             connection.setReadOnly(true); connection.setAutoCommit(false);
             try (var statement = connection.prepareStatement(query.sql())) {
                 statement.setMaxRows(1); statement.setQueryTimeout(60);
@@ -56,7 +58,9 @@ public final class PortableRows {
     /** Dependency discovery retains only the identifiers requested by the caller. */
     public <T extends Record> void visit(Query query, Mapper<T> mapper, Visitor<T> visitor) throws IOException {
         if (query == null) return;
+        cancelled();
         try (var connection = database.getConnection()) {
+            cancelled();
             connection.setReadOnly(true); connection.setAutoCommit(false);
             try (var statement = connection.prepareStatement(query.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 statement.setFetchSize(64); statement.setQueryTimeout(60);
@@ -101,7 +105,9 @@ public final class PortableRows {
             try (var input = new ByteArrayInputStream(line(new Header(1, kind, profile)))) { sink.write(path, input); }
             return;
         }
+        cancelled();
         try (var connection = database.getConnection()) {
+            cancelled();
             connection.setReadOnly(true); connection.setAutoCommit(false);
             try (var statement = connection.prepareStatement(query.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 statement.setFetchSize(64); statement.setQueryTimeout(60);
@@ -202,7 +208,10 @@ public final class PortableRows {
                         closeBatch();
                         if (!queries.hasNext()) return false;
                         Query query=queries.next();
-                        connection=database.getConnection(); connection.setReadOnly(true); connection.setAutoCommit(false);
+                        cancelled();
+                        connection=database.getConnection();
+                        cancelled();
+                        connection.setReadOnly(true); connection.setAutoCommit(false);
                         statement=connection.prepareStatement(query.sql(),ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY);
                         statement.setFetchSize(64); statement.setQueryTimeout(60);
                         for (int i=0;i<query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));
