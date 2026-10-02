@@ -5,8 +5,8 @@ included runtime. There is no second application or mutable installed configurat
 Read [installation setup](../../docs/INSTALLATION_SETUP.md) before using the result.
 
 ```sh
-java deploy/native/PackageTaxonomy.java taxonomy-app/target/taxonomy-app-1.4.0-SNAPSHOT.jar 1.4.0 app-image target/native-image
-java deploy/native/PackageTaxonomy.java taxonomy-app/target/taxonomy-app-1.4.0-SNAPSHOT.jar 1.4.0 deb target/native-installer
+java deploy/native/PackageTaxonomy.java taxonomy-app/target/taxonomy-app-1.4.1-SNAPSHOT.jar 1.4.1 app-image target/native-image
+java deploy/native/PackageTaxonomy.java taxonomy-app/target/taxonomy-app-1.4.1-SNAPSHOT.jar 1.4.1 deb target/native-installer
 ```
 
 Pass the exact executable JAR and a numeric package version matching the intended
