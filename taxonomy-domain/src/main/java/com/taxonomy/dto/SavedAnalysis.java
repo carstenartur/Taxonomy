@@ -21,6 +21,11 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    /** Optional frozen automatic-run provenance; manual and legacy evidence may have none. */
+    private AnalysisScope analysisScope;
+    public AnalysisScope getAnalysisScope() { return analysisScope; }
+    public void setAnalysisScope(AnalysisScope value) { analysisScope = value; }
+
     /** Format version — {@code 1} for legacy, {@code 2} for provenance support. */
     private int version = 2;
 

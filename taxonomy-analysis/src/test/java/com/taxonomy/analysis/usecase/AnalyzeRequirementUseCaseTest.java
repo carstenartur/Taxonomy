@@ -17,6 +17,9 @@ import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisMode;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -60,6 +63,51 @@ class AnalyzeRequirementUseCaseTest {
 
     @InjectMocks
     private AnalyzeRequirementUseCase useCase;
+
+    @Mock private com.taxonomy.analysis.relations.RequirementRelationSearchService requirementRelationSearchService;
+
+    @BeforeEach
+    void injectOptionalRelationSearch() {
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "requirementRelationSearch", requirementRelationSearchService);
+    }
+
+    @Test
+    void taxonomyOnlyScopeSkipsEveryRelationAndArchitecturePhase() {
+        var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
+                new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
+        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
+        var result = useCase.analyze(command).analysisResult();
+        assertThat(result.getAnalysisScope()).isEqualTo(scope);
+        assertThat(result.getProvisionalRelations()).isEmpty();
+        assertThat(result.getRelationSearchReport()).isNull();
+        assertThat(result.getArchitectureView()).isNull();
+        verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
+                architectureViewService, preferencesService);
+        verify(llmService).clearRequestProvider();
+    }
+
+    @Test
+    void selectedFullScopeStillSearchesRelationsFromOnlySelectedScoringEvidence() {
+        var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL);
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, null, "alice",
+                new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
+        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        var report = org.mockito.Mockito.mock(com.taxonomy.dto.RelationSearchReport.class);
+        when(report.isSearchExhausted()).thenReturn(true);
+        when(report.stopReason()).thenReturn("");
+        when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(requirementRelationSearchService.isEnabled()).thenReturn(true);
+        when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenReturn(report);
+        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
+        var result = useCase.analyze(command).analysisResult();
+        assertThat(result.getAnalysisScope()).isEqualTo(scope);
+        assertThat(result.getRelationSearchReport()).isSameAs(report);
+        verify(requirementRelationSearchService).search("requirement", Map.of("BP", 20));
+        verifyNoInteractions(analysisRelationGenerator, hypothesisService, architectureViewService);
+    }
 
     @Test
     void analyzeCoordinatesScoringPersistenceArchitectureMetadataAndViewContext() {

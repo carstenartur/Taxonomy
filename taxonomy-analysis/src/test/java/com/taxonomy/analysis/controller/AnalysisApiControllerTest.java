@@ -107,6 +107,52 @@ class AnalysisApiControllerTest {
     }
 
     @Test
+    void analyzeCarriesSelectedScopeInTypedCommand() throws Exception {
+        when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("BP"));
+        when(analyzeRequirementUseCase.analyze(any())).thenReturn(new AnalyzeRequirementResult(new AnalysisResult()));
+        mockMvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"businessText\":\"requirement\",\"analysisScope\":{\"taxonomyRoots\":[\"BP\"],\"mode\":\"TAXONOMIES_ONLY\"}}"))
+                .andExpect(status().isOk());
+        var captor = ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(captor.capture());
+        var json = new ObjectMapper().valueToTree(captor.getValue());
+        assertThat(json.path("analysisScope").path("mode").asString()).isEqualTo("TAXONOMIES_ONLY");
+        assertThat(json.path("analysisScope").path("taxonomyRoots").get(0).asString()).isEqualTo("BP");
+    }
+
+    @Test
+    void analyzeRejectsUnknownTaxonomyBeforeAdmission() throws Exception {
+        mockMvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"businessText\":\"requirement\",\"analysisScope\":{\"taxonomyRoots\":[\"UNKNOWN\"]}}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(analyzeRequirementUseCase, repositoryStateService);
+    }
+
+    @Test
+    void analyzeRejectsMalformedScopeBeforeAdmission() throws Exception {
+        for (String scope : List.of("{\"taxonomyRoots\":[\" \"]}", "{\"taxonomyRoots\":[null]}", "{\"mode\":\"UNKNOWN\"}")) {
+            mockMvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"businessText\":\"requirement\",\"analysisScope\":" + scope + "}"))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(analyzeRequirementUseCase, repositoryStateService);
+    }
+
+    @Test
+    void streamingScopeIsValidatedAndCarriedInTypedCommand() throws Exception {
+        mockMvc.perform(get("/api/analyze-stream").param("businessText", "requirement").param("taxonomyRoots", "UNKNOWN"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(streamRequirementAnalysisUseCase, repositoryStateService);
+        when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("BP"));
+        mockMvc.perform(get("/api/analyze-stream").param("businessText", "requirement")
+                .param("taxonomyRoots", "BP").param("analysisMode", "TAXONOMIES_ONLY")).andExpect(status().isOk());
+        var captor = ArgumentCaptor.forClass(StreamRequirementAnalysisCommand.class);
+        verify(streamRequirementAnalysisUseCase).stream(captor.capture(), any());
+        assertThat(captor.getValue().analysisScope()).isEqualTo(new com.taxonomy.dto.AnalysisScope(
+                java.util.Set.of("BP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY));
+    }
+
+    @Test
     void analyzeRejectsBlankBusinessTextBeforeDelegation() {
         AnalysisRequest request = new AnalysisRequest();
         request.setBusinessText("  ");

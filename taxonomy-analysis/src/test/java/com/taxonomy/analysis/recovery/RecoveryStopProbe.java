@@ -14,6 +14,8 @@ public final class RecoveryStopProbe {
         interruptedEvidenceSurvivesExchange();
         var mapper = new ObjectMapper();
         var run = new AnalysisContinuationRun(); run.id = "run"; run.state = "RUNNING"; run.claimToken = "claim";
+        // Required frozen request; omission of scope retains legacy all/full semantics.
+        run.requestJson = "{}";
         var skipped = new AnalysisQuestionCheckpoint(); skipped.run = run; skipped.questionKey = "q";
         skipped.state = "SKIPPED"; skipped.nodeCodes = "[\"IP\"]"; skipped.error = "request too large";
         var query = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
@@ -46,6 +48,7 @@ public final class RecoveryStopProbe {
     private static void interruptedEvidenceSurvivesExchange() {
         var mapper = new ObjectMapper();
         var run = new AnalysisContinuationRun(); run.id = "run"; run.claimToken = "claim";
+        run.requestJson = "{}";
         var query = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "setParameter" -> proxy;

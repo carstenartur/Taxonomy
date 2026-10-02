@@ -430,11 +430,11 @@
         var provider = document.getElementById('providerSelect');
         var interactive = document.getElementById('interactiveMode');
         var architecture = document.getElementById('includeArchitectureView');
-        return {
+        return Object.assign({
             provider: provider ? provider.value : '',
             interactiveMode: interactive ? interactive.checked : true,
             includeArchitectureView: architecture ? architecture.checked : false
-        };
+        }, window.TaxonomyAnalysisScope?.options() || {});
     }
 
     function installPayloadOptions() {
@@ -459,6 +459,7 @@
         if (architecture && typeof options.includeArchitectureView === 'boolean') {
             architecture.checked = options.includeArchitectureView;
         }
+        window.TaxonomyAnalysisScope?.restoreOptions(options);
 
         var provider = document.getElementById('providerSelect');
         var requested = options.provider || '';
@@ -522,8 +523,8 @@
         restoreOptions(runtime.restoredPayload, 0);
     });
     document.addEventListener('change', function (event) {
-        if (!event.target || ['providerSelect', 'interactiveMode', 'includeArchitectureView']
-                .indexOf(event.target.id) < 0) return;
+        if (!event.target || (['providerSelect', 'interactiveMode', 'includeArchitectureView', 'analysisMode']
+                .indexOf(event.target.id) < 0 && !event.target.dataset?.taxonomyRoot)) return;
         if (typeof C.queueSave === 'function') C.queueSave();
     });
 

@@ -150,17 +150,30 @@ public final class RelationSearchProtocol {
 
     private <T> T exchange(Step step, List<String> nodes, String prompt, Function<String, T> decode,
                            java.util.function.Predicate<T> unresolved) {
+        class Decoded {
+            T value;
+            boolean available;
+            RelationSearchEngine.InvalidResponseException error;
+        }
+        var decoded = new Decoded();
         LlmCallDetail detail = AnalysisCheckpointSession.evaluateEvidence(step.name(), provider, nodes, prompt, () -> {
             var answer = new LlmCallDetail(); answer.setProvider(provider); answer.setPrompt(prompt);
             answer.setScores(Map.of());
             String raw = complete.complete(step, nodes, prompt); answer.setRawResponse(raw);
             try {
-                if (unresolved.test(decode.apply(raw))) answer.setError("RELATION_UNRESOLVED: review the retained response");
+                decoded.value = decode.apply(raw);
+                if (unresolved.test(decoded.value)) answer.setError("RELATION_UNRESOLVED: review the retained response");
+                decoded.available = true;
             } catch (RelationSearchEngine.InvalidResponseException invalid) {
+                decoded.error = invalid;
                 answer.setError("INVALID_RELATION_RESPONSE: " + invalid.getMessage());
             }
             return answer;
         });
+        if (decoded.error != null) throw decoded.error;
+        if (decoded.available) return decoded.value;
+        // A durable replay bypasses the operation above and still requires decoding
+        // and validation against the current, identically keyed question.
         return decode.apply(detail.getRawResponse());
     }
 

@@ -20,7 +20,7 @@ function fixture(options = {}) {
         renderView: (tree, scores) => { renders.push({ tree, scores: { ...scores } }); order.push('render'); }
     } };
     const textField = { value: 'communications', classList: { remove() {} } };
-    const document = { querySelector: () => null, getElementById: id => id === 'businessText' ? textField
+    const document = { querySelector: () => null, querySelectorAll: () => [], getElementById: id => id === 'businessText' ? textField
         : id === 'includeArchitectureView' ? { checked: true } : null };
     const sandbox = { window, document, CSS: { escape: value => value }, console: { log() {}, error() {} },
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(': ') }, TaxonomyUtils: { escapeHtml: text => text },
@@ -28,6 +28,8 @@ function fixture(options = {}) {
         fetch: (...args) => { calls.push(args); order.push('post'); return new Promise((resolve, reject) => { rejectRequest = reject; requests.push({ resolve, reject }); }); }
     };
     if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
+    if (options.analysisScope) window.TaxonomyAnalysisScope = {read: () => options.analysisScope};
+    if (options.invalidScope) window.TaxonomyAnalysisScope = {read: () => { throw new Error('Select a taxonomy'); }};
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
         observations.push(args); order.push('monitor');
@@ -59,6 +61,17 @@ for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader
     });
 }
 
+test('interactive analysis clears the previous frozen scope without reading next-run controls', () => {
+    const f = fixture({invalidScope: true});
+    f.state.lastAnalysisScope = {taxonomyRoots: ['BP'], mode: 'TAXONOMIES_ONLY'};
+    const accepted = [];
+    f.window.TaxonomyAnalysisScope.acceptResult = scope => accepted.push(scope);
+    f.window.TaxonomyScoring.runInteractiveAnalysis();
+    assert.equal(f.state.lastAnalysisScope, null);
+    assert.deepEqual(accepted, [null]);
+    assert.equal(f.state.lastAnalysisStatus, 'IN_PROGRESS');
+});
+
 test('once lifecycle is ready full analysis always starts observation before its POST', () => {
     const f = fixture();
     f.progress();
@@ -71,6 +84,39 @@ test('once lifecycle is ready full analysis always starts observation before its
     assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
     assert.equal(f.calls[0][1].headers['X-Analysis-Operation-Id'], f.observations[0][0]);
     assert.equal(JSON.parse(f.calls[0][1].body).includeArchitectureView, true);
+});
+
+
+test('automatic request carries taxonomy selection and skips the relation architecture option', () => {
+    const selected = {taxonomyRoots: ['BP'], mode: 'TAXONOMIES_ONLY'};
+    const f = fixture({analysisScope: selected});
+    f.progress();
+    f.window.TaxonomyAnalysisSession = {state: () => f.sessionState};
+    f.window.TaxonomyScoring.runAnalysis();
+    const body = JSON.parse(f.calls[0][1].body);
+    assert.deepEqual(body.analysisScope, selected);
+    assert.equal(body.includeArchitectureView, false);
+});
+
+test('empty taxonomy selection preserves prior evidence and makes no request', () => {
+    const f = fixture({invalidScope: true});
+    f.progress();
+    f.window.TaxonomyAnalysisSession = {state: () => f.sessionState};
+    f.window.TaxonomyScoring.runAnalysis();
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.observations.length, 0);
+    assert.equal(f.state.currentReasons.CP, 'retained reason');
+    assert.deepEqual(f.statuses, [['warning', 'Select a taxonomy']]);
+});
+
+test('continuation keeps its frozen scope when next-run controls change', () => {
+    const f = fixture({analysisScope: {taxonomyRoots: ['CP'], mode: 'FULL'}});
+    f.progress();
+    f.window.TaxonomyAnalysisSession = {state: () => f.sessionState};
+    const continuation = {businessText: 'communications', analysisScope: {taxonomyRoots: ['BP'], mode: 'TAXONOMIES_ONLY'},
+        continuationId: 'saved', continuationAction: 'RETRY'};
+    f.window.TaxonomyScoring.runAnalysis({continuation});
+    assert.deepEqual(JSON.parse(f.calls[0][1].body), continuation);
 });
 
 

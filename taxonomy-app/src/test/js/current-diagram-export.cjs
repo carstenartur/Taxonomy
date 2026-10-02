@@ -7,7 +7,8 @@ const source = readFileSync(path.resolve(__dirname, '../../main/resources/static
 function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeCode: 'A'}], includedRelationships: []}) {
     const elements = new Map();
     function element(tag) {
-        const e = {tagName: tag, children: [], attributes: {}, disabled: false,
+        const e = {tagName: tag, children: [], attributes: {}, disabled: false, listeners: {},
+            addEventListener(name, handler) {this.listeners[name] = handler;},
             classList: {add() {}, remove() {}}, textContent: '',
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); return child; },
             setAttribute(k,v) { this.attributes[k]=String(v); }, removeAttribute(k) { delete this.attributes[k]; },
@@ -23,13 +24,63 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
     const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
     const document={documentElement:{lang:'en'},body:element('body'),
         getElementById:id=>elements.get(id)||null,createElement:element,
-        querySelector:()=>null,addEventListener(){}};
+        querySelector:()=>null,addEventListener(){},dispatchEvent(){}};
     const state={currentArchView:view,lastAnalyzedText:'original',currentScores:{A:90}};
     const window={TaxonomyState:state,setTimeout() {},confirm:()=>true};
     const context={window,document,TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
         fetch:(url,options)=>{requests.push({url,options});return pending;},alert(message){alerts.push(message);},Element:class {}};
     vm.runInNewContext(source,context);
-    return {elements,requests,alerts,state,resolve,reject,downloads,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
+    return {elements,requests,alerts,state,resolve,reject,downloads,window,document,element,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
+}
+
+for (const scopeKind of ['missing', 'null', 'selected']) {
+    test(`JSON file import and re-export preserves ${scopeKind} evidence scope`, async () => {
+        const f = fixture();
+        f.state.lastAnalysisScope = {taxonomyRoots: ['CP'], mode: 'FULL'};
+        f.state.recoveryContext = {stale: true};
+        f.state.analysisRecovery = {state: 'PAUSED'};
+        const selected = {taxonomyRoots: ['BP'], mode: 'TAXONOMIES_ONLY'};
+        const incoming = {requirement: 'Imported requirement', scores: {BP: 70}, rawScores: {BP: 50},
+            analysisCoverage: {nodes: {BP: {state: 'RELEVANT', score: 50, effectiveRelevance: 70,
+                descendants: 'PARTIAL'}, 'BP-unknown': {state: 'UNKNOWN', score: null, effectiveRelevance: null,
+                descendants: 'UNASSESSED', reason: 'LEFT_OPEN:q'}}, assessedNodes: 1, unknownNodes: 1, failedOrBlockedNodes: 1},
+            analysisStatus: 'PARTIAL', warnings: []};
+        if (scopeKind !== 'missing') incoming.analysisScope = scopeKind === 'null' ? null : selected;
+        const file = f.element('input'); file.files = [{text: JSON.stringify(incoming)}];
+        f.elements.set('importJsonFile', file);
+        f.elements.set('importJson', f.element('button'));
+        f.window.TaxonomyScoring = {applyLocalRawScores(raw) {
+            f.state.currentRawScores = raw; f.state.currentScores = incoming.scores;
+        }};
+        f.window.TaxonomyAnalysisScope = {acceptResult(scope) {f.state.lastAnalysisScope = scope;}};
+        const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
+        // Run the actual import event registration with UI rendering isolated from the evidence behavior.
+        const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Dark mode toggle'));
+        const statuses = [];
+        vm.runInNewContext(registration, {window: f.window, document: f.document, S: f.state,
+            FileReader: class {readAsText(value) {this.onload({target: {result: value.text}});}},
+            CustomEvent: class {constructor(type) {this.type = type;}},
+            fetch(url, options) {f.requests.push({url, options}); return Promise.resolve({json: async () => incoming});},
+            renderView() {}, updateExportGroupVisibility() {}, showStatus(...args) {statuses.push(args);}, t: key => key});
+        file.listeners.change();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.requests[0].url, '/api/scores/import');
+        assert.equal(statuses[0]?.[0], 'success');
+        assert.equal(f.state.recoveryContext, null);
+        assert.equal(f.state.analysisRecovery, null);
+        assert.deepEqual(f.state.lastAnalysisScope, scopeKind === 'selected' ? selected : null);
+        f.api.exportJson(f.state.currentScores, f.state.currentReasons, f.state.lastAnalyzedText, 'IMPORTED');
+        const payload = JSON.parse(f.requests[1].options.body);
+        assert.equal(f.requests[1].url, '/api/scores/export');
+        assert.deepEqual(payload.analysisScope, scopeKind === 'selected' ? selected : null);
+        assert.deepEqual(payload.rawScores, {BP: 50});
+        assert.deepEqual(payload.scores, {BP: 70});
+        assert.deepEqual(payload.analysisCoverage, incoming.analysisCoverage);
+        assert.equal(payload.analysisStatus, 'PARTIAL');
+        f.resolve({ok: true, json: async () => incoming});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.downloads.length, 1);
+    });
 }
 test('exports a frozen copy of the current architecture with visible busy state',async()=>{
     const f=fixture();const original=JSON.stringify(f.state);const pending=f.run();await Promise.resolve();
@@ -269,4 +320,20 @@ test('main Export SVG and PNG handlers request full-model exports rather than vi
     assert.match(browse,/btnId === 'exportPng'[\s\S]*?TaxonomyExport\.exportPng\(\)/);
     assert.doesNotMatch(browse,/btnId === 'exportSvg'[\s\S]{0,180}?exportSvg\('taxonomyTree'\)/);
     assert.doesNotMatch(browse,/btnId === 'exportPng'[\s\S]{0,180}?exportPng\('taxonomyTree'\)/);
+});
+
+
+test('JSON export carries frozen evidence scope independently of next-run controls',async()=>{
+    const f=fixture();
+    const evidence={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+    f.state.lastAnalysisScope=evidence;
+    f.window.TaxonomyAnalysisScope={read:()=>{throw new Error('Export must not read next-run controls');}};
+    f.api.exportJson({BP:80},{},'original','MOCK');
+    assert.equal(f.requests[0].url,'/api/scores/export');
+    const body=JSON.parse(f.requests[0].options.body);
+    assert.deepEqual(body.analysisScope,evidence);
+    f.resolve({ok:true,json:async()=>body});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(f.downloads.length,1);
+    assert.deepEqual(f.state.lastAnalysisScope,evidence);
 });

@@ -58,6 +58,30 @@ test('fresh Copilot opts into durable questions and prevents duplicate starts',a
  assert(h.analyses[0].resumable);assert.equal(h.analyses[0].continuationAction,'START');
  h.complete();await settle();assert(h.ui.opened);assert.equal(h.S.analysisRecovery.state,'PAUSED');assert.equal(h.followups(),0);assert.equal(h.timers.size,0);
 });
+test('scoped Copilot freezes selection and does not infer global gaps after selected work completes',async()=>{
+ const h=harness();
+ const selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+ let nextScope=selected;
+ h.window.TaxonomyAnalysisScope={read:()=>nextScope,
+   acceptResult:scope=>{h.S.lastAnalysisScope=scope;},
+   restrictsGlobalAnalysis:scope=>scope?.mode==='TAXONOMIES_ONLY'||Boolean(scope?.taxonomyRoots?.length)};
+ h.recovery.startCopilot();
+ assert.deepEqual(JSON.parse(JSON.stringify(h.analyses[0].analysisScope)),selected);
+ assert.equal(h.analyses[0].includeArchitectureView,false);
+ nextScope={taxonomyRoots:['CP'],mode:'FULL'};
+ h.complete('COMPLETED');await settle();
+ // This harness stubs scoring's normal response hydration. Exercise the actual
+ // recovery restore path to hydrate evidence from the frozen server request.
+ h.window.TaxonomyScoring.renderArchitectureView=()=>{};
+ h.window.TaxonomyScoring.renderSuggestedRelations=()=>{};
+ await h.recovery.refresh();
+ assert.equal(h.S.recoveryContext.observationError,null);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.S.lastAnalysisScope)),selected);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.S.recoveryContext.request.analysisScope)),selected);
+ assert.equal(h.S.recoveryContext.followupState,'COMPLETED_SCOPED');
+ assert.equal(h.followups(),0);assert.equal(h.panels.length,1);
+ assert.match(h.panels[0],/selected analysis scope is complete/i);
+});
 test('rendered Retry continues the same operation and exact failed question revision',async()=>{
  const h=harness();h.recovery.startCopilot();h.complete();await settle();const id=h.analyses[0].continuationId;
  h.act('analysisRecoveryRetry');assert.equal(h.analyses.length,2);assert.equal(h.analyses[1].continuationId,id);

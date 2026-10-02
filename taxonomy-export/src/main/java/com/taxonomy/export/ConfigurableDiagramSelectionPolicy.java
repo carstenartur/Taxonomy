@@ -107,6 +107,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
             edges = new ArrayList<>(edges.subList(0, config.maxEdges()));
         }
 
+        nodes = repairContainment(nodes, rawModel.nodes());
         return new DiagramModel(rawModel.title(), nodes, edges, rawModel.layout());
     }
 
@@ -214,8 +215,6 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
         }
 
         List<DiagramNode> result = new ArrayList<>();
-        Set<String> collapsedParents = new HashSet<>();
-
         for (DiagramNode n : nodes) {
             List<DiagramNode> children = childrenOf.getOrDefault(n.id(), List.of());
             if (children.isEmpty()) {
@@ -223,7 +222,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
                 result.add(n);
             } else if (children.size() == 1 && config.collapseRedundantParentChild()) {
                 // Single child: suppress parent, lift child (child keeps its own identity)
-                collapsedParents.add(n.id());
+                continue;
             } else if (children.size() >= 2) {
                 // Multiple children: mark as container
                 result.add(new DiagramNode(n.id(), n.label(), n.type(),
@@ -235,21 +234,69 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
             }
         }
 
-        // Update parentId of children whose parent was collapsed
-        List<DiagramNode> finalResult = new ArrayList<>();
-        for (DiagramNode n : result) {
-            if (n.parentId() != null && collapsedParents.contains(n.parentId())) {
-                // Lift: clear the parent reference (or re-parent to grandparent)
-                DiagramNode grandparent = byId.get(n.parentId());
-                String newParent = grandparent != null ? grandparent.parentId() : null;
-                finalResult.add(new DiagramNode(n.id(), n.label(), n.type(),
-                        n.relevance(), n.anchor(), n.layer(),
-                        n.depth(), n.selectedForImpact(), newParent, n.container()));
-            } else {
-                finalResult.add(n);
-            }
+        return result;
+    }
+
+    /** Resolve original ancestry only after all filters and limits have selected the final nodes. */
+    private List<DiagramNode> repairContainment(List<DiagramNode> nodes, List<DiagramNode> originals) {
+        Map<String, DiagramNode> byId = originals.stream()
+                .collect(Collectors.toMap(DiagramNode::id, n -> n, (a, b) -> a));
+        Set<String> surviving = nodes.stream().map(DiagramNode::id).collect(Collectors.toSet());
+        Map<String, String> removedAncestors = new HashMap<>();
+        Map<String, String> parents = new LinkedHashMap<>();
+        for (DiagramNode node : nodes) {
+            String parent = nearestSurvivingAncestor(byId.get(node.id()).parentId(),
+                    byId, surviving, removedAncestors);
+            parents.put(node.id(), Objects.equals(node.id(), parent) ? null : parent);
         }
-        return finalResult;
+        breakContainmentCycles(parents);
+        return nodes.stream().map(node -> {
+            String parent = parents.get(node.id());
+            if (Objects.equals(parent, node.parentId())) return node;
+            return new DiagramNode(node.id(), node.label(), node.type(), node.relevance(),
+                    node.anchor(), node.layer(), node.depth(), node.selectedForImpact(), parent, node.container());
+        }).toList();
+    }
+
+    private String nearestSurvivingAncestor(String parent, Map<String, DiagramNode> originals,
+                                           Set<String> surviving, Map<String, String> removedAncestors) {
+        Set<String> visited = new LinkedHashSet<>();
+        while (parent != null && !surviving.contains(parent)) {
+            if (removedAncestors.containsKey(parent)) {
+                parent = removedAncestors.get(parent);
+                break;
+            }
+            if (!visited.add(parent)) {
+                parent = null;
+                break;
+            }
+            DiagramNode ancestor = originals.get(parent);
+            parent = ancestor == null ? null : ancestor.parentId();
+        }
+        String resolved = parent;
+        visited.forEach(id -> removedAncestors.put(id, resolved));
+        return parent;
+    }
+
+    private void breakContainmentCycles(Map<String, String> parents) {
+        // A malformed source can also cycle through surviving nodes. Break every member of
+        // each cycle, retaining valid descendants and visiting each surviving node once.
+        Set<String> completed = new HashSet<>();
+        for (String nodeId : parents.keySet()) {
+            Set<String> path = new LinkedHashSet<>();
+            String current = nodeId;
+            while (current != null && !completed.contains(current)) {
+                if (!path.add(current)) {
+                    String cycleStart = current;
+                    do {
+                        current = parents.put(current, null);
+                    } while (!cycleStart.equals(current));
+                    break;
+                }
+                current = parents.get(current);
+            }
+            completed.addAll(path);
+        }
     }
 
     // ── Utility methods ─────────────────────────────────────────────────

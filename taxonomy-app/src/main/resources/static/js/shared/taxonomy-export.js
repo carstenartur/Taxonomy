@@ -235,6 +235,7 @@
             provider: provider || '',
             analysisStatus: window.TaxonomyState?.lastAnalysisStatus || 'UNKNOWN',
             analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
+            analysisScope: window.TaxonomyState?.lastAnalysisScope || null,
             rawScores: window.TaxonomyState?.currentRawScores || null
         }).then(function (data) {
             downloadBlob(

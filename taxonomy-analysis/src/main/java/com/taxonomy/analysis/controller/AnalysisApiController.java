@@ -16,6 +16,8 @@ import com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase;
 import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -138,6 +140,7 @@ public class AnalysisApiController {
             return ResponseEntity.badRequest().build();
         }
         enforceBusinessTextLimit(request.getBusinessText());
+        AnalysisScope analysisScope = validateAnalysisScope(request.getAnalysisScope());
         int maxArchitectureNodes = resolveMaxArchitectureNodes(request);
 
         String operationId = newOperationId();
@@ -162,7 +165,7 @@ public class AnalysisApiController {
                             maxArchitectureNodes,
                             request.getProvider(),
                             username,
-                            context));
+                            context, null, analysisScope));
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {
                 // The continuation is the durable authority. Publishing live completion must
@@ -195,7 +198,15 @@ public class AnalysisApiController {
             @Parameter(description = "Business requirement text to analyze")
             @RequestParam String businessText,
             @Parameter(description = "LLM provider override")
-            @RequestParam(required = false) String provider) {
+            @RequestParam(required = false) String provider,
+            @RequestParam(required = false) java.util.Set<String> taxonomyRoots,
+            @RequestParam(defaultValue = "FULL") AnalysisMode analysisMode) {
+        AnalysisScope analysisScope;
+        try {
+            analysisScope = validateAnalysisScope(new AnalysisScope(taxonomyRoots, analysisMode));
+        } catch (IllegalArgumentException invalid) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+        }
         if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
                 && attributes.getRequest().getHeader("Last-Event-ID") != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -266,7 +277,7 @@ public class AnalysisApiController {
         }
 
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
-                businessText, provider, LocaleContextHolder.getLocale());
+                businessText, provider, LocaleContextHolder.getLocale(), analysisScope);
         // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
         // Reservation does not install thread-local control; the executor's worker claims that ownership.
         var reservation = analysisProgressRegistry == null ? null
@@ -307,6 +318,10 @@ public class AnalysisApiController {
                         mapped = withTerminalOutcome(mapped, outbound);
                         completed.set(true);
                     }
+                    Map<String, Object> scopedPayload = new LinkedHashMap<>();
+                    ((Map<?, ?>) mapped.payload()).forEach((key, value) -> scopedPayload.put(String.valueOf(key), value));
+                    scopedPayload.put("analysisScope", analysisScope);
+                    mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);
                     if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
                         cancelWorker.run();
                     }
@@ -352,6 +367,22 @@ public class AnalysisApiController {
             if (!scheduled && reservation != null) reservation.close();
         }
         return emitter;
+    }
+
+    public SseEmitter analyzeStream(String businessText, String provider) {
+        return analyzeStream(businessText, provider, null, AnalysisMode.FULL);
+    }
+
+    private AnalysisScope validateAnalysisScope(AnalysisScope requested) {
+        AnalysisScope scope = AnalysisScope.orDefault(requested);
+        if (!scope.taxonomyRoots().isEmpty()) {
+            try {
+                scope.validateRoots(taxonomyService.getRootCodes());
+            } catch (IllegalArgumentException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+            }
+        }
+        return scope;
     }
 
     @Operation(summary = "Analyze single node children",

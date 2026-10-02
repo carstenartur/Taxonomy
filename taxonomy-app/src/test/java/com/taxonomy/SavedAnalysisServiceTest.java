@@ -149,6 +149,26 @@ class SavedAnalysisServiceTest {
                 .doesNotContain("CO");
     }
 
+    @Test
+    void scopedImportAcceptsPartialEvidenceFromRealCatalogueRoot() throws IOException {
+        var saved = savedAnalysisService.importFromJson("""
+                {"version":2,"requirement":"Selected processes","scores":{"BP":70},
+                 "analysisScope":{"taxonomyRoots":["BP","CP"],"mode":"TAXONOMIES_ONLY"}}
+                """);
+        assertThat(saved.getScores()).containsExactlyEntriesOf(Map.of("BP", 70));
+        assertThat(saved.getAnalysisScope().taxonomyRoots()).containsExactly("BP", "CP");
+    }
+
+    @Test
+    void scopedImportRejectsEvidenceFromAnotherRealCatalogueRoot() {
+        assertThatThrownBy(() -> savedAnalysisService.importFromJson("""
+                {"version":2,"requirement":"Selected processes","scores":{"CO":70},
+                 "analysisScope":{"taxonomyRoots":["BP"],"mode":"FULL"}}
+                """))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("outside selected taxonomy roots");
+    }
+
     // ── loadFromClasspath ──────────────────────────────────────────────────────
 
     @Test

@@ -43,6 +43,7 @@ public class AnalysisContinuationStore {
             // Seed the original catalogue before any provider call. Cancellation can then
             // reconstruct typed evidence without a worker or a potentially changed catalogue.
             var seed = new AnalysisResult(Map.of(), tree);
+            seed.setAnalysisScope(request.getAnalysisScope());
             seed.setStatus("IN_PROGRESS"); seed.setProvider(request.getProvider());
             writeResult(run, seed);
             em.persist(run);
@@ -154,6 +155,8 @@ public class AnalysisContinuationStore {
             return previous; // Cancellation already committed the canonical result; late workers cannot rewrite it.
         }
         if (previous != null && previous.getTree() != null) tree = previous.getTree();
+        AnalysisScope analysisScope = mapper.readValue(run.requestJson, AnalysisRequest.class).getAnalysisScope();
+        result.setAnalysisScope(analysisScope);
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
         for (var question : questions(run)) if ("ATTEMPT".equals(question.state)) {
@@ -186,7 +189,7 @@ public class AnalysisContinuationStore {
         }
         String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
                 ? "INTERRUPTED:" + run.state : null;
-        result.setAnalysisCoverage(AnalysisCoverage.derive(tree, result.getRawScores(), result.getScores(), missing, interruption));
+        result.setAnalysisCoverage(AnalysisCoverage.derive(analysisScope.selectedTree(tree), result.getRawScores(), result.getScores(), missing, interruption));
         if (result.getArchitectureView() != null) {
             var view = result.getArchitectureView(); view.setAnalysisCoverage(result.getAnalysisCoverage());
             if (!open.isEmpty()) {

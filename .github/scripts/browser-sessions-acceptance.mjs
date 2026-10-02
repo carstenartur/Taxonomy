@@ -74,16 +74,33 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
         const state = window.TaxonomyAnalysisSession?.state?.();
         return window.__taxonomyAnalysisSessionLoading === false
           && state?.workspaceId && state.restoring === false
-          && window.dslCmView?.state.doc.length > 0 && !window.dslCmView.inView;
+          && !window.dslCmView;
       });
       assert.equal(hiddenValidationRequests, 0, 'The hidden startup editor must not validate in the background');
-      const originalDocument = await page.evaluate(() => window.dslCmView.state.doc.toString());
-      // Exercise the actual visibility -> CodeMirror needsRefresh -> HTTP path,
+      // Exercise on-demand editor creation and the real CodeMirror -> HTTP path,
       // without editing text or invoking the linter directly from the test.
       validationExpected = true;
-      const [validation] = await Promise.all([
-        page.waitForResponse(response => new URL(response.url()).pathname === validationUrl.pathname
-          && response.request().method() === 'POST'),
+      const exportedDocument = page.waitForResponse(response =>
+        new URL(response.url()).pathname === new URL('api/dsl/export', base).pathname
+          && response.request().method() === 'GET').then(async response => {
+        assert.equal(response.status(), 200);
+        assert.equal(await response.finished(), null);
+        await page.waitForFunction(() => window.dslCmView?.state.doc.length > 0);
+        const text = await page.evaluate(() => window.dslCmView.state.doc.toString());
+        assert.ok(text.length > 0, 'Opening the editor loads the scoped catalogue document');
+        return text;
+      });
+      // An empty editor can validate while a slow initial export is pending.
+      // Arm both listeners before navigation and accept only the loaded document.
+      // Read its browser text after export completion: WebDriver/CDP response
+      // decoding can differ from fetch's decoding of a Unicode text response.
+      const loadedDocumentValidation = page.waitForResponse(async response =>
+        new URL(response.url()).pathname === validationUrl.pathname
+          && response.request().method() === 'POST'
+          && response.request().postData() === await exportedDocument);
+      const [originalDocument, validation] = await Promise.all([
+        exportedDocument,
+        loadedDocumentValidation,
         navigateToPage(page, 'dsl-editor').then(() =>
           page.locator('#dslEditorContainer').scrollIntoViewIfNeeded())
       ]);
@@ -92,6 +109,23 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       // The reveal request has finished: departure must not inherit its allowance.
       validationExpected = false;
       assert.equal(validation.request().postData(), originalDocument);
+      assert.equal(await page.evaluate(() => window.dslCmView.state.doc.toString()), originalDocument);
+
+      // Preserve the original visibility/needsRefresh regression: let CodeMirror
+      // measure the hidden editor before returning without editing its document.
+      await navigateToPage(page, 'analyze');
+      await page.waitForFunction(() => !window.dslCmView.inView);
+      validationExpected = true;
+      const [revealValidation] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === validationUrl.pathname
+          && response.request().method() === 'POST'
+          && response.request().postData() === originalDocument),
+        navigateToPage(page, 'dsl-editor').then(() =>
+          page.locator('#dslEditorContainer').scrollIntoViewIfNeeded())
+      ]);
+      assert.equal(revealValidation.status(), 200);
+      assert.equal(await revealValidation.finished(), null);
+      validationExpected = false;
       assert.equal(await page.evaluate(() => window.dslCmView.state.doc.toString()), originalDocument);
       await navigateToPage(page, 'admin');
       await page.waitForFunction(() => !window.dslCmView.inView);

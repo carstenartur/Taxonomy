@@ -14,6 +14,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import com.taxonomy.catalog.service.TaxonomyService;
@@ -128,12 +129,7 @@ public class SavedAnalysisService {
         validateCoverageEvidence(saved);
 
         // Warn about unknown node codes but do not reject
-        List<String> unknownCodes = new ArrayList<>();
-        for (String code : saved.getScores().keySet()) {
-            if (taxonomyService.getNodeByCode(code) == null) {
-                unknownCodes.add(code);
-            }
-        }
+        List<String> unknownCodes = findUnknownCodes(saved);
         if (!unknownCodes.isEmpty()) {
             log.warn("SavedAnalysis import: {} unknown node code(s): {}", unknownCodes.size(), unknownCodes);
         }
@@ -141,10 +137,24 @@ public class SavedAnalysisService {
         return saved;
     }
 
-    /** Version-3 evidence must refer to real catalogue identities on both exchange paths. */
+    /** Declared scope and version-3 evidence use real catalogue identities on both exchange paths. */
     public void validateCoverageEvidence(SavedAnalysis saved) {
+        var scope = saved.getAnalysisScope();
+        boolean selectedRoots = scope != null && !scope.taxonomyRoots().isEmpty();
+        if (scope != null) {
+            scope.validateRoots(taxonomyService.getRootCodes());
+            if (!scope.taxonomyRoots().isEmpty()) {
+                var codes = new LinkedHashSet<String>();
+                if (saved.getScores() != null) codes.addAll(saved.getScores().keySet());
+                if (saved.getRawScores() != null) codes.addAll(saved.getRawScores().keySet());
+                if (saved.getAnalysisCoverage() != null) codes.addAll(saved.getAnalysisCoverage().nodes().keySet());
+                for (String code : codes) {
+                    taxonomyService.validateNodeRootMembership(code, scope.taxonomyRoots());
+                }
+            }
+        }
         saved.validateCoverageEvidence();
-        if (saved.getVersion() >= 3) {
+        if (saved.getVersion() >= 3 && !selectedRoots) {
             for (String code : saved.getAnalysisCoverage().nodes().keySet()) {
                 if (taxonomyService.getNodeByCode(code) == null) {
                     throw new IllegalArgumentException("Unknown catalogue node in assessment coverage: " + code);
@@ -169,10 +179,12 @@ public class SavedAnalysisService {
     }
 
     /**
-     * Returns the list of unknown node codes found in the given {@link SavedAnalysis}.
+     * Returns the list of unknown node codes in a validated imported {@link SavedAnalysis}.
      * Used by the import endpoint to return warnings to the caller.
      */
     public List<String> findUnknownCodes(SavedAnalysis saved) {
+        // Selected evidence has already proved every identity; unknown codes are fatal there.
+        if (saved.getAnalysisScope() != null && !saved.getAnalysisScope().taxonomyRoots().isEmpty()) return List.of();
         if (saved.getScores() == null) { return List.of(); }
         List<String> unknown = new ArrayList<>();
         for (String code : saved.getScores().keySet()) {

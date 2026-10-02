@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.remote.Augmenter;
@@ -77,7 +78,9 @@ class TaxonomyLargeResultBudgetIT {
                 .withEnv("LLM_MOCK", "true");
         application.start();
 
-        browserSession = ContainerTestUtils.startBrowser(network);
+        // performance.memory otherwise caches/bucketizes values and can report
+        // a zero delta even when the live heap grows beyond the budget.
+        browserSession = ContainerTestUtils.startBrowser(network, "--enable-precise-memory-info");
         driver = browserSession.driver();
         var augmented = new Augmenter().augment(driver);
         assertThat(augmented)
@@ -123,6 +126,67 @@ class TaxonomyLargeResultBudgetIT {
             evidence.add(metrics);
             writeEvidence();
             assertScenario(metrics, scenario);
+        }
+    }
+
+    @Test
+    void dslEditorLoadsOnDemandAndPreservesDraftAcrossNavigation() {
+        try {
+            openAnalyzer();
+            assertThat(execute("return Boolean(window.dslCmView)"))
+                    .as("analyzer startup must not create the hidden DSL editor")
+                    .isEqualTo(Boolean.FALSE);
+            assertThat(number(execute("""
+                    return performance.getEntriesByType('resource').filter(entry =>
+                      new URL(entry.name).pathname === '/api/dsl/export').length;
+                    """)))
+                    .as("analyzer startup must not fetch the hidden catalogue document")
+                    .isZero();
+
+            execute("""
+                    window.__taxonomyBudgetEditorReady = 0;
+                    document.querySelector('#dslEditorContainer').addEventListener('cm-ready', () => {
+                      window.__taxonomyBudgetEditorReady++;
+                    });
+                    window.navigateToPage('dsl-editor');
+                    """);
+            wait.until(browser -> Boolean.TRUE.equals(execute(
+                    "return Boolean(window.dslCmView?.state.doc.length)")));
+            execute("window.__taxonomyBudgetEditor = window.dslCmView");
+            WebElement editor = driver.findElement(
+                    By.cssSelector("#dslEditorContainer .cm-content"));
+            editor.click();
+            editor.sendKeys(Keys.chord(Keys.CONTROL, Keys.END));
+            editor.sendKeys("\n# retained local editor draft");
+            String draft = String.valueOf(execute(
+                    "return window.dslCmView.state.doc.toString()"));
+            assertThat(draft).endsWith("# retained local editor draft");
+
+            execute("window.navigateToPage('analyze'); window.navigateToPage('dsl-editor')");
+            assertThat(execute("return window.dslCmView === window.__taxonomyBudgetEditor"))
+                    .as("returning to the editor reuses its document and history")
+                    .isEqualTo(Boolean.TRUE);
+            assertThat(execute("return window.dslCmView.state.doc.toString()"))
+                    .isEqualTo(draft);
+            assertThat(number(execute("return window.__taxonomyBudgetEditorReady")))
+                    .as("the editor is initialized once per document")
+                    .isEqualTo(1);
+
+            // Leave this document first: navigating to its current hash alone
+            // can reuse the existing editor and miss a broken deep-link startup.
+            driver.get("about:blank");
+            driver.get(ContainerTestUtils.APP_ORIGIN + "/#dsl-editor");
+            wait.until(browser -> Boolean.TRUE.equals(execute(
+                    "return Boolean(window.dslCmView?.state.doc.length)")));
+            assertThat(execute("return '__taxonomyBudgetEditor' in window"))
+                    .as("the direct link loaded a new document, not the old editor")
+                    .isEqualTo(Boolean.FALSE);
+            assertThat(driver.findElement(By.id("dslEditorContainer")).isDisplayed())
+                    .as("a direct DSL link initializes the visible editor")
+                    .isTrue();
+        } finally {
+            openAnalyzer();
+            installSyntheticSearchBoundary();
         }
     }
 
@@ -479,6 +543,8 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("searchCompletedAtMs", decimal(renderTiming.get("completedAt")));
         metrics.put("longTasks", renderTiming.get("longTasks"));
         metrics.put("longestTaskMs", decimal(renderTiming.get("longestTaskMs")));
+        metrics.put("heapBeforeBytes", heapBefore);
+        metrics.put("heapAfterBytes", heapAfter);
         metrics.put("heapIncreaseBytes", heapIncrease);
         metrics.put("truncationClassNames", number(measured.get("truncationClassNames")));
         metrics.put("clippedNames", number(measured.get("clippedNames")));

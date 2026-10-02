@@ -330,6 +330,7 @@
             lastAnalysisStatus: S.lastAnalysisStatus,
             analysisDurationMillis: S.lastAnalysisDurationMillis,
             analysisCoverage: S.analysisCoverage || null,
+            analysisScope: S.lastAnalysisScope || null,
             analysisRecovery: S.analysisRecovery || null,
             recoveryContext: S.recoveryContext || null,
             storedBusinessText: S.storedBusinessText,
@@ -421,6 +422,9 @@
         }
 
         area.appendChild(alert);
+        if (window.TaxonomyBrowse && window.TaxonomyBrowse.rememberStatusFeedback) {
+            window.TaxonomyBrowse.rememberStatusFeedback();
+        }
         announce(title + (body ? '. ' + body : ''), kind === 'danger');
     }
 

@@ -748,6 +748,14 @@ public class TaxonomyService {
         return repository.findByParentIsNullOrderByCodeAsc();
     }
 
+    /** Scalar catalogue boundary for validating a root selection without exposing entities. */
+    @Transactional(readOnly = true)
+    public Set<String> getRootCodes() {
+        return getRootNodes().stream()
+                .map(TaxonomyNode::getCode)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getChildrenOf(String parentCode) {
         return repository.findByParentCodeOrderByNameEnAsc(parentCode);
@@ -759,6 +767,15 @@ public class TaxonomyService {
     @Transactional(readOnly = true)
     public TaxonomyNode getNodeByCode(String code) {
         return repository.findByCode(code).orElse(null);
+    }
+
+    /** Require a real catalogue identity to belong to one of the selected roots, without exposing entities. */
+    @Transactional(readOnly = true)
+    public void validateNodeRootMembership(String code, Set<String> selectedRoots) {
+        TaxonomyNode node = getNodeByCode(code);
+        if (node == null) throw new IllegalArgumentException("Unknown catalogue node: " + code);
+        if (node.getTaxonomyRoot() == null || !selectedRoots.contains(node.getTaxonomyRoot()))
+            throw new IllegalArgumentException("Catalogue node outside selected taxonomy roots: " + code);
     }
 
     /**

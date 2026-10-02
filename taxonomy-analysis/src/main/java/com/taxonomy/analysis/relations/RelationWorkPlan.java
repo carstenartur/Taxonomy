@@ -11,16 +11,23 @@ import static com.taxonomy.dto.RelationSearchModel.*;
 /** One scalar plan for the entire run, including work outside the current execution budget. */
 final class RelationWorkPlan implements RelationSearchEngine.Observer {
     private record Pair(String source, String root) { }
+    private static final class Counts {
+        int total, completed, unresolved;
+    }
     private static final class Work {
+        final Counts counts;
         int expected, finished;
         State state = State.PENDING;
+        Work(Counts counts) { this.counts = counts; }
     }
     private final Map<Pair, Work> work = new LinkedHashMap<>();
+    private final Map<String, List<Work>> workBySource = new HashMap<>();
+    private final Map<String, Counts> countsByRoot = new LinkedHashMap<>();
     private final Set<String> assessedSources = new HashSet<>();
     private final Set<Intent> finished = new HashSet<>();
     private final Set<Edge> verified = new HashSet<>();
     private final int sources, maximum;
-    private int calls;
+    private int calls, completed, unresolved;
     private Step step = Step.SOURCES;
     private Current current;
 
@@ -30,7 +37,14 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
             boolean compatible = Arrays.stream(RelationType.values()).anyMatch(type ->
                     rules.allowedTargetRoots(source.root(), type).contains(root.root())
                     || rules.allowedTargetRoots(root.root(), type).contains(source.root()));
-            if (compatible) work.putIfAbsent(new Pair(source.id(), root.root()), new Work());
+            Pair pair = new Pair(source.id(), root.root());
+            if (compatible && !work.containsKey(pair)) {
+                Counts counts = countsByRoot.computeIfAbsent(root.root(), unused -> new Counts());
+                Work value = new Work(counts);
+                work.put(pair, value);
+                workBySource.computeIfAbsent(source.id(), unused -> new ArrayList<>()).add(value);
+                counts.total++;
+            }
         }
         publish();
     }
@@ -40,7 +54,7 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         verified.addAll(previous.result().edges());
         for (Task task : previous.tasks()) {
             Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));
-            if (value != null && task.state() == State.COMPLETED) value.state = State.COMPLETED;
+            if (value != null && task.state() == State.COMPLETED) state(value, State.COMPLETED);
         }
         publish();
     }
@@ -51,10 +65,11 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
     }
     void assessed(SourceAssessment source) {
         assessedSources.add(source.node().id());
-        if (source.contributions().isEmpty()) work.forEach((pair, value) -> {
-            if (pair.source().equals(source.node().id())) value.state = source.question().isBlank()
-                    ? State.COMPLETED : State.UNRESOLVED;
-        });
+        if (source.contributions().isEmpty()) {
+            for (Work value : workBySource.getOrDefault(source.node().id(), List.of())) {
+                state(value, source.question().isBlank() ? State.COMPLETED : State.UNRESOLVED);
+            }
+        }
         publish();
     }
     void expect(List<Intent> intents) {
@@ -69,7 +84,7 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         current = new Current(query.contribution().source().id(), query.candidates().getFirst().root(),
                 query.type(), query.direction(), depth, query.candidates().stream().map(Node::id).toList());
         Work value = work.get(new Pair(current.sourceId(), current.targetRoot()));
-        if (value != null && value.state == State.PENDING) value.state = State.RUNNING;
+        if (value != null && value.state == State.PENDING) state(value, State.RUNNING);
         publish();
     }
     @Override public void finished(Intent intent, boolean complete) {
@@ -78,32 +93,36 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
             Work value = work.get(new Pair(intent.contribution().source().id(), root.root()));
             if (value == null) continue;
             value.finished++;
-            if (!complete && value.state != State.COMPLETED) value.state = State.UNRESOLVED;
-            else if (value.state != State.UNRESOLVED && value.finished == value.expected) value.state = State.COMPLETED;
+            if (!complete && value.state != State.COMPLETED) state(value, State.UNRESOLVED);
+            else if (value.state != State.UNRESOLVED && value.finished == value.expected) state(value, State.COMPLETED);
         }
         publish();
     }
     @Override public void verified(Edge edge) { verified.add(edge); publish(); }
     void finish(boolean exhausted) {
         step = exhausted ? Step.FINISHED : Step.PAUSED; current = null;
-        work.values().stream().filter(w -> w.state == State.RUNNING).forEach(w -> w.state = State.PENDING);
+        work.values().stream().filter(w -> w.state == State.RUNNING).forEach(w -> state(w, State.PENDING));
         publish();
     }
     List<Task> tasks() {
         return work.entrySet().stream().map(e -> new Task(e.getKey().source(), e.getKey().root(), e.getValue().state)).toList();
     }
     RelationSearchProgress snapshot() {
-        Map<String, int[]> parts = new LinkedHashMap<>();
-        int complete = 0, unresolved = 0;
-        for (var entry : work.entrySet()) {
-            int[] part = parts.computeIfAbsent(entry.getKey().root(), unused -> new int[3]); part[0]++;
-            if (entry.getValue().state == State.COMPLETED) { complete++; part[1]++; }
-            if (entry.getValue().state == State.UNRESOLVED) { unresolved++; part[2]++; }
-        }
-        List<Taxonomy> taxonomies = parts.entrySet().stream().map(e -> new Taxonomy(e.getKey(),
-                e.getValue()[0], e.getValue()[1], e.getValue()[2], e.getValue()[0] - e.getValue()[1] - e.getValue()[2])).toList();
-        return new RelationSearchProgress(sources, assessedSources.size(), work.size(), complete, unresolved,
-                work.size() - complete - unresolved, calls, maximum, verified.size(), step, current, taxonomies);
+        List<Taxonomy> taxonomies = countsByRoot.entrySet().stream().map(e -> {
+            Counts counts = e.getValue();
+            return new Taxonomy(e.getKey(), counts.total, counts.completed, counts.unresolved,
+                    counts.total - counts.completed - counts.unresolved);
+        }).toList();
+        return new RelationSearchProgress(sources, assessedSources.size(), work.size(), completed, unresolved,
+                work.size() - completed - unresolved, calls, maximum, verified.size(), step, current, taxonomies);
+    }
+    private void state(Work value, State next) {
+        if (value.state == next) return;
+        if (value.state == State.COMPLETED) { completed--; value.counts.completed--; }
+        if (value.state == State.UNRESOLVED) { unresolved--; value.counts.unresolved--; }
+        value.state = next;
+        if (next == State.COMPLETED) { completed++; value.counts.completed++; }
+        if (next == State.UNRESOLVED) { unresolved++; value.counts.unresolved++; }
     }
     private void publish() { AnalysisRunControl.relations(snapshot()); }
 }

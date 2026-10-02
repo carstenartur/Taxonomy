@@ -75,6 +75,55 @@ public final class RecoveryDurabilityProbe {
         AnalysisContinuationStore.Claim claim() { return new AnalysisContinuationStore.Claim(ID, "claim", null); }
     }
 
+    public static void frozenSelectedScope() {
+        var journal = new Journal(); journal.present = false;
+        var store = journal.store(); var request = new AnalysisRequest();
+        request.setBusinessText("requirement"); request.setContinuationId(ID);
+        var selected = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        request.setAnalysisScope(selected);
+        var tree = List.of(node("BP"), node("CP"));
+        store.begin(request, SCOPE, "selected-signature", tree);
+        request.setAnalysisScope(AnalysisScope.full());
+        var snapshot = store.read(ID, SCOPE);
+        check(snapshot.request().getAnalysisScope().equals(selected), "Admission lost frozen request scope");
+        check(snapshot.result().getAnalysisScope().equals(selected), "Admission lost frozen evidence scope");
+        journal.question("root", "SUCCESS", "BP", 80);
+        var cancelled = store.cancel(ID, SCOPE).result();
+        check(cancelled.getAnalysisScope().equals(selected), "Cancellation lost scope");
+        check(cancelled.getAnalysisCoverage().nodes().keySet().equals(Set.of("BP")), "Cancellation assessed unselected taxonomy");
+        check(cancelled.getTree().size() == 2 && cancelled.getRawScores().equals(Map.of("BP", 80)), "Cancellation lost full tree or evidence");
+        check(store.read(ID, SCOPE).result().getAnalysisScope().equals(selected), "Restored result lost scope");
+        try {
+            store.begin(request, SCOPE, "different-signature", tree);
+            throw new AssertionError("Changed scope reused frozen answers");
+        } catch (ResponseStatusException conflict) {
+            check(conflict.getStatusCode().value() == 409, "Wrong frozen scope status");
+        }
+    }
+
+    public static void selectedContinuationAndReplay() {
+        var journal = new Journal(); journal.present = false;
+        var store = journal.store(); var request = new AnalysisRequest();
+        request.setBusinessText("requirement"); request.setContinuationId(ID);
+        var selected = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        request.setAnalysisScope(selected);
+        var tree = List.of(node("BP"), node("CP"));
+        var claim = store.begin(request, SCOPE, "selected-signature", tree);
+        var partial = new AnalysisResult(Map.of(), List.of()); partial.setStatus("PARTIAL");
+        partial.setErrorMessage("TIME_LIMIT: analysis stopped");
+        store.complete(claim, partial, tree);
+        request.setContinuationAction("CONTINUE"); request.setContinuationVersion(store.read(ID, SCOPE).recovery().version());
+        claim = store.begin(request, SCOPE, "selected-signature", tree);
+        var success = new AnalysisResult(Map.of("BP", 80), List.of()); success.setStatus("SUCCESS");
+        var completed = store.complete(claim, success, tree);
+        check(completed.getAnalysisScope().equals(selected), "Continuation lost frozen scope");
+        check(completed.getAnalysisCoverage().nodes().keySet().equals(Set.of("BP")), "Continuation broadened selected coverage");
+        request.setContinuationAction("START");
+        var replay = store.begin(request, SCOPE, "selected-signature", tree).completedResult();
+        check(replay.getAnalysisScope().equals(selected) && replay.getTree().size() == 2
+                && replay.getRawScores().equals(Map.of("BP", 80)), "Replay lost selected evidence scope");
+    }
+
     public static void cancelledEvidence() {
         var journal = new Journal(); journal.question("good", "SUCCESS", "BP", 70);
         journal.question("bad", "FAILED", "CP", 0); journal.question("pending", "ATTEMPT", "IP", 0);

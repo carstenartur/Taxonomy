@@ -418,6 +418,15 @@
             return;
         }
 
+        var requestedScope;
+        try {
+            requestedScope = options.continuation ? options.continuation.analysisScope
+                : window.TaxonomyAnalysisScope?.read();
+        } catch (invalidScope) {
+            B().showStatus('warning', invalidScope.message);
+            return;
+        }
+
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
         var operationId;
@@ -447,6 +456,8 @@
         S.lastAnalyzedText = null;
         S.pendingProposalNodeCode = null;
         S.lastAnalysisProvider = null;
+        S.lastAnalysisScope = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         window._currentProvisionalRelations = [];
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
@@ -487,7 +498,9 @@
 
         var requestBody = {
             businessText: text,
-            includeArchitectureView: document.getElementById('includeArchitectureView').checked
+            includeArchitectureView: requestedScope?.mode !== 'TAXONOMIES_ONLY'
+                && document.getElementById('includeArchitectureView').checked,
+            analysisScope: requestedScope
         };
         if (provider && provider !== 'MANUAL') {
             requestBody.provider = provider;
@@ -530,6 +543,8 @@
                 if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
                 S.analysisCoverage = result.analysisCoverage || null;
+                S.lastAnalysisScope = result.analysisScope || requestedScope || null;
+                window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
                 S.analysisRecovery = result.recovery || null;
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
@@ -666,6 +681,8 @@
         }
 
         // Reset interactive state
+        S.lastAnalysisScope = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         S.evaluatedNodes = new Set();
@@ -702,6 +719,10 @@
             return;
         }
 
+        var requestedScope;
+        try { requestedScope = window.TaxonomyAnalysisScope?.read(); }
+        catch (invalidScope) { B().showStatus('warning', invalidScope.message); return; }
+
         setAnalyzing(true);
         B().clearStatus();
         clearAnalysisLog();
@@ -729,6 +750,12 @@
         var provider = providerSelect ? providerSelect.value : '';
 
         var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
+        if (requestedScope) {
+            url += '&analysisMode=' + encodeURIComponent(requestedScope.mode);
+            requestedScope.taxonomyRoots.forEach(function (root) { url += '&taxonomyRoots=' + encodeURIComponent(root); });
+            S.lastAnalysisScope = requestedScope;
+            window.TaxonomyAnalysisScope?.acceptResult?.(requestedScope);
+        }
         if (provider && provider !== 'MANUAL') {
             url += '&provider=' + encodeURIComponent(provider);
         }

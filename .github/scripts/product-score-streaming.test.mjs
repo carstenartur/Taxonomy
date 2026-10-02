@@ -399,7 +399,7 @@ function interactiveHarness(response) {
     querySelector: selector => selector === ':scope > .tax-children' ? children : null,
     setAttribute() {}
   };
-  const status = { innerHTML: '' }; const logs = []; const errors = [];
+  const status = { innerHTML: '', dataset: {} }; const logs = []; const errors = [];
   const state = { currentScores: { IP: 100 }, currentRawScores: { IP: 100 }, currentReasons: {},
     storedBusinessText: 'Read existing evidence', evaluatedNodes: new Set(['IP']) };
   const scoring = {

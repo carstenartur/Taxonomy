@@ -8,6 +8,10 @@ import java.util.Objects;
 
 public class AnalysisResult {
 
+    private AnalysisScope analysisScope = AnalysisScope.full();
+    public AnalysisScope getAnalysisScope() { return analysisScope; }
+    public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
+
     private AnalysisCoverage analysisCoverage;
     public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
     public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }

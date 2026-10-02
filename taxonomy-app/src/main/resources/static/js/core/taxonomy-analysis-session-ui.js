@@ -242,6 +242,11 @@
 
     function showStaleActions() {
         if (!isStale() || runtime.conflict || analysisRunning()) return;
+        if (window.TaxonomyBrowse && window.TaxonomyBrowse.canShowStaleStatus
+                && !window.TaxonomyBrowse.canShowStaleStatus()) {
+            guardStaleActions(true);
+            return;
+        }
         var area = statusArea();
         if (area && area.dataset.analysisSessionMessage === 'stale'
                 && area.querySelector('[data-analysis-session-action="discard-analysis"]')) {

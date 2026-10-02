@@ -83,6 +83,7 @@ test('preserves module ownership, unusual names, coverage and provenance across 
   put(root, 'taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml', '<report/>');
   put(root, 'taxonomy-coverage/target/site/jacoco-aggregate/index.html', 'coverage');
   put(root, 'target/maven-verification.log', 'BUILD SUCCESS');
+  put(root, 'target/ui-verification/large-results/report.json', '{"heapIncreaseBytes":1234}');
   put(root, 'target/quality-reports/tests/stale.txt');
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = stage(root);
@@ -92,6 +93,8 @@ test('preserves module ownership, unusual names, coverage and provenance across 
       readFileSync(join(root, 'target/quality-reports/tests', name), 'utf8'), `report ${i}\n`));
     assert.equal(readFileSync(join(root, 'target/quality-reports/coverage/jacoco.xml'), 'utf8'), '<report/>');
     assert.equal(readFileSync(join(root, 'target/quality-reports/evidence/maven-verification.log'), 'utf8'), 'BUILD SUCCESS');
+    assert.equal(readFileSync(join(root, 'target/quality-reports/evidence/large-result-budget.json'), 'utf8'),
+      '{"heapIncreaseBytes":1234}');
     assert.match(readFileSync(join(root, 'target/quality-reports/README.txt'), 'utf8'),
       /Commit: HEAD\nSource tree: [0-9a-f]{40}\nCore build ID: 123\.2\.core/);
   }
@@ -113,8 +116,11 @@ test('does not hide a failed source inventory behind a successful copy loop', t 
 test('still rejects missing aggregate coverage rather than publishing success', t => {
   const root = fixture(t);
   put(root, 'taxonomy-fixture/target/surefire-reports/TEST-one.xml', '<testsuite/>');
+  put(root, 'target/ui-verification/large-results/report.json', '{"heapIncreaseBytes":41208924}');
   const result = stage(root);
   assert.equal(result.status, 1, result.stderr || result.error?.message);
   assert.match(result.stdout, /Aggregate JaCoCo XML is missing/);
+  assert.equal(readFileSync(join(root, 'target/quality-reports/evidence/large-result-budget.json'), 'utf8'),
+    '{"heapIncreaseBytes":41208924}');
   assert.equal(existsSync(join(root, 'target/quality-reports/README.txt')), false);
 });

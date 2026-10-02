@@ -3,6 +3,8 @@ package com.taxonomy.analysis.service;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -329,21 +331,21 @@ public class LlmService {
      * @return an {@link AnalysisResult} with status SUCCESS, PARTIAL, or ERROR
      */
     public AnalysisResult analyzeWithBudget(String businessText) {
-        List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() ? taxonomyService.getFullTree() : null;
-        if (plannedTree != null) AnalysisRunControl.planNodes(plannedTree);
+        return analyzeWithBudget(businessText, AnalysisScope.full());
+    }
+
+    public AnalysisResult analyzeWithBudget(String businessText, AnalysisScope requestedScope) {
+        AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
+        List<TaxonomyNode> roots = selectedRoots(scope, true);
+        List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() || !scope.legacyFull()
+                ? taxonomyService.getFullTree() : null;
+        if (plannedTree != null) AnalysisRunControl.planNodes(scope.selectedTree(plannedTree));
         Map<String, Integer> allScores = new HashMap<>();
         Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-
-        // Sort root nodes by priority order
-        List<TaxonomyNode> roots = taxonomyService.getRootNodes();
-        roots.sort(Comparator.comparingInt(r -> {
-            int idx = ANALYSIS_PRIORITY.indexOf(r.getCode());
-            return idx < 0 ? Integer.MAX_VALUE : idx;
-        }));
 
         List<String> completedRoots = new ArrayList<>();
         List<String> skippedRoots  = new ArrayList<>();
@@ -378,7 +380,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         analyzeNodesPropagating(
                                 businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, score, scoreContexts);
+                                allDiscrepancies, productCoverageGaps, warnings, score, scoreContexts, null);
                     }
                 }
 
@@ -403,7 +405,7 @@ public class LlmService {
         }
 
         // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = stop == null
+        List<TaxonomyNodeDto> rawTree = stop == null || !scope.legacyFull()
                 ? plannedTree == null ? taxonomyService.getFullTree() : plannedTree : List.of();
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
@@ -415,6 +417,7 @@ public class LlmService {
             scoreContexts.keySet().retainAll(allScores.keySet());
             result.setScoreSemanticsContext(scoreContexts);
         }
+        result.setAnalysisScope(scope);
         result.setReasons(allReasons);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(allDiscrepancies);
@@ -437,7 +440,25 @@ public class LlmService {
             result.setStatus("SUCCESS");
         }
 
+        if (!scope.legacyFull()) {
+            List<TaxonomyNodeDto> coverageTree = plannedTree == null ? rawTree : plannedTree;
+            result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), allScores,
+                    result.getScores(), Map.of(), stop == null ? null : "INTERRUPTED:" + stop.reason().name()));
+        }
         return result;
+    }
+
+    private List<TaxonomyNode> selectedRoots(AnalysisScope scope, boolean prioritize) {
+        List<TaxonomyNode> roots = taxonomyService.getRootNodes();
+        scope.validateRoots(roots.stream().map(TaxonomyNode::getCode).collect(java.util.stream.Collectors.toSet()));
+        var selected = new ArrayList<>(roots.stream().filter(root -> scope.selects(root.getCode())).toList());
+        if (prioritize) {
+            selected.sort(Comparator.comparingInt(root -> {
+                int index = ANALYSIS_PRIORITY.indexOf(root.getCode());
+                return index < 0 ? Integer.MAX_VALUE : index;
+            }));
+        }
+        return selected;
     }
 
     private void analyzeNodesPropagating(String businessText,
@@ -448,9 +469,10 @@ public class LlmService {
                                           List<ProductCoverageGap> productCoverageGaps,
                                           List<String> warnings,
                                           int parentScore,
-                                          Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts) {
+                                          Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts,
+                                          AnalysisEventCallback callback) {
         if (nodes == null || nodes.isEmpty()) return;
-        captureScoreContexts(nodes, scoreContexts);
+        if (scoreContexts != null) captureScoreContexts(nodes, scoreContexts);
 
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
@@ -463,6 +485,8 @@ public class LlmService {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
         addAnalysisWarning(warnings, siblingScope(nodes), detail);
+        if (callback != null) callback.onScores(scores, detail.getReasons(),
+                "Evaluated " + nodes.size() + " node(s)", detail);
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
         if (!productNodes.isEmpty() && batch.productEvaluationComplete()
@@ -475,9 +499,11 @@ public class LlmService {
             if (entry.getValue() > 0 && !isProductCode(entry.getKey())) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
+                    if (callback != null) callback.onExpanding(entry.getKey(),
+                            children.stream().map(TaxonomyNode::getCode).toList());
                     analyzeNodesPropagating(
                             businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts);
+                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts, callback);
                 }
             }
         }
@@ -494,15 +520,20 @@ public class LlmService {
      * @param callback     receives phase, scores, expanding, complete and error events
      */
     public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
-        if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(taxonomyService.getFullTree());
+        analyzeStreaming(businessText, AnalysisScope.full(), callback);
+    }
+
+    public void analyzeStreaming(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
+        AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
+        // Legacy SSE preserves catalogue order, including its partial-evidence boundary.
+        List<TaxonomyNode> roots = selectedRoots(scope, !scope.legacyFull());
+        if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(scope.selectedTree(taxonomyService.getFullTree()));
         Map<String, Integer> allScores = new HashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         try {
-            List<TaxonomyNode> roots = taxonomyService.getRootNodes();
-
             for (int i = 0; i < roots.size(); i++) {
                 TaxonomyNode root = roots.get(i);
                 int progress = (i * 100) / roots.size();
@@ -530,8 +561,8 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
-                        analyzeStreamingNodes(businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, callback, rootScore);
+                        analyzeNodesPropagating(businessText, level1Children, allScores, allReasons,
+                                allDiscrepancies, productCoverageGaps, warnings, rootScore, null, callback);
                     }
                 }
             }
@@ -549,49 +580,6 @@ public class LlmService {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
                     allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
-        }
-    }
-
-    private void analyzeStreamingNodes(String businessText,
-                                        List<TaxonomyNode> nodes,
-                                        Map<String, Integer> allScores,
-                                        Map<String, String> allReasons,
-                                        List<TaxonomyDiscrepancy> allDiscrepancies,
-                                        List<ProductCoverageGap> productCoverageGaps,
-                                        List<String> warnings,
-                                        AnalysisEventCallback callback,
-                                        int parentScore) {
-        if (nodes == null || nodes.isEmpty()) return;
-
-        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
-        LlmCallDetail detail = batch.detail();
-        allScores.putAll(detail.getScores());
-        if (detail.getReasons() != null) allReasons.putAll(detail.getReasons());
-        if (detail.getDiscrepancy() != null) {
-            allDiscrepancies.add(detail.getDiscrepancy());
-        }
-        addAnalysisWarning(warnings, siblingScope(nodes), detail);
-        callback.onScores(detail.getScores(), detail.getReasons(),
-                "Evaluated " + nodes.size() + " node(s)", detail);
-
-        List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
-                && productNodes.stream().noneMatch(
-                        node -> detail.getScores().getOrDefault(node.getCode(), 0) > 0)) {
-            addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
-        }
-
-        for (Map.Entry<String, Integer> entry : detail.getScores().entrySet()) {
-            if (entry.getValue() > 0 && !isProductCode(entry.getKey())) {
-                List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
-                if (!children.isEmpty()) {
-                    callback.onExpanding(entry.getKey(),
-                            children.stream().map(TaxonomyNode::getCode).toList());
-                    analyzeStreamingNodes(businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, warnings, callback,
-                            entry.getValue());
-                }
-            }
         }
     }
 
