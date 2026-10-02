@@ -88,6 +88,15 @@ evidence: an optional provenance field must preserve absence, independently of
 the defaults used to start a new analysis. Manual/interactive replacement already
 clears this field in the browser; exchange must retain that state.
 
+CI follow-up on `8b0b6a94`: functional exchange tests and all six browser shards
+passed, but the new membership inspection directly called a catalogue entity.
+The unchanged architecture ratchet rejected growth of
+`analysis.service -> catalog.model` from four class dependencies to five. Keep
+membership inspection inside `TaxonomyService`, using scalar arguments at the
+analysis boundary. Re-run the unchanged ratchet together with exchange/recovery
+tests after this correction; preserve unknown-code errors and one identity
+resolution per operation. Do not update the architecture baseline.
+
 ## Task 7: Keep completed analysis status across delayed input checks
 
 Close the real UI regression exposed by the final Firefox shard at `550b80eb`.

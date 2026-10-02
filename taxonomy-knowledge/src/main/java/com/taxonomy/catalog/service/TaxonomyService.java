@@ -769,6 +769,15 @@ public class TaxonomyService {
         return repository.findByCode(code).orElse(null);
     }
 
+    /** Require a real catalogue identity to belong to one of the selected roots, without exposing entities. */
+    @Transactional(readOnly = true)
+    public void validateNodeRootMembership(String code, Set<String> selectedRoots) {
+        TaxonomyNode node = getNodeByCode(code);
+        if (node == null) throw new IllegalArgumentException("Unknown catalogue node: " + code);
+        if (node.getTaxonomyRoot() == null || !selectedRoots.contains(node.getTaxonomyRoot()))
+            throw new IllegalArgumentException("Catalogue node outside selected taxonomy roots: " + code);
+    }
+
     /**
      * Returns the path from the root to the node identified by {@code code} (inclusive),
      * ordered from root to leaf. Returns an empty list if the node is not found.

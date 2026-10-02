@@ -64,6 +64,7 @@ automatische Oberfläche verwendet weiterhin den vollständigen POST-Anwendungsf
 | Gefilterte Vorfahren hinterlassen ungültige Export-Eltern | Nächster überlebender Vorfahr, Zyklenschutz, keine Quellmutation | Fünf Regressionen mit tatsächlicher ArchiMate-/Visio-Validierung |
 | Scope überlebt Ersatz durch manuelle/interaktive Bewertung | Ergebnisumfang und Label zurücksetzen, nächste Auswahl behalten | Drei zusätzlich im Review reproduzierte Regressionen |
 | Gespeicherte manuelle/ältere Evidenz erhält erfundenen FULL-Scope; widersprüchliche Scope-Angaben werden akzeptiert | Optionalen Scope erhalten und ausgewählte Wurzeln mit allen enthaltenen Bewertungs-/Coverage-Kennungen an gemeinsamer Austauschgrenze prüfen | 23 zuvor fehlschlagende Verhaltensfälle, tatsächlicher Browser-Import/Reexport, realer Katalogtest; keine Präfix-Annahme |
+| Neue Zugehörigkeitsprüfung greift über die Modulgrenze auf das Katalog-Entity zu | Mitgliedschaft mit skalaren Argumenten im Katalog-Service prüfen | Derselbe Architektur-Ratchet zunächst rot, anschließend alle 23 Fälle mit unveränderter Baseline grün; Austausch- und Lookup-Assertions unverändert |
 | Scope-Validierung führt eine neue Controller-Abhängigkeit auf Katalog-Entities ein | Skalare Wurzelkennungen über `TaxonomyService.getRootCodes()` | 22 Controller-Tests und 23 Architektur-Ratchet-Tests; Baseline unverändert |
 | Verborgener DSL-Editor lädt und parst beim Analyse-Start den gesamten Katalog | Editor erst beim Öffnen initialisieren, Instanz und Entwurf beim Seitenwechsel erhalten | Reproduktion auch auf Basisstand; echte Browserprüfungen für Speicher, Direktlink, Tastatur und Wiederbesuch |
 | Editor-Validierung erkennt den verborgenen Seitenzustand nicht zuverlässig | Seitenaktivität explizit übergeben; von `pagehide`/`pageshow` getrennt halten | Vier Regressionen und reale Hide-/Reveal-Prüfung; laufende Anfragen abbrechen, beim Zurückkehren einmal neu validieren |
@@ -119,6 +120,21 @@ Korrektur. Ausgewählte Scope-Evidenz löst jede enthaltene Katalogkennung nun p
 Austauschoperation nur einmal auf; nachgewiesene Identitäten werden nicht erneut
 für Coverage oder Warnungen geladen. Die unabhängige Prüfung bestätigte beide
 Verträge und die auf validierte Importe begrenzten Warnungsaufrufer.
+
+Die vollständige CI auf `8b0b6a94` zeigte anschließend eine übersehene
+Architekturverletzung: Die Zugehörigkeitsprüfung rief direkt eine Methode des
+Katalog-Entity auf. Damit stieg die überwachte Abhängigkeit von `analysis.service`
+auf `catalog.model` von vier Klassenbeziehungen auf fünf. Core, die drei
+Datenbank-Lanes und der Transportvertrag scheiterten an derselben Assertion.
+Die Architekturprüfung war nach der letzten Austauschkorrektur lokal noch nicht
+erneut ausgeführt worden. Die Korrektur hält die Entity-Prüfung innerhalb des
+Katalog-Service und übergibt nur Code und Wurzelauswahl über die Servicegrenze;
+die bisherige Architektur-Baseline bleibt verbindlich.
+Der gemeinsame Nachtest besteht 96 Fälle: 23 Architektur-, 69 Austausch-/Recovery-
+und vier direkte Katalogprüfungen. Er verwendet die neu kompilierten Module.
+Die Katalogtests prüfen echte Mitgliedschaft trotz irreführendem Code-Präfix,
+unbekannte Kennung, falsche Wurzel und fehlende Wurzel; die vorhandenen
+Austauschtests behalten ihre Assertions und Lookup-Zählung unverändert.
 
 ### Abschlussmeldungen und verzögerte Eingabeprüfungen
 
@@ -263,6 +279,8 @@ wiederhergestellt und remote gesichert. Die Nachweise der neuen Ausführung sind
 | Abschluss-/Preflight-Meldungen nach Review | 27 Workflow-Regressionen und 172 betroffene Session-/Austauschtests grün; die neuen Fälle scheiterten vor der Korrektur an ihren Verhaltensassertionen |
 | Abschließende UI-Verträge mit Austausch- und Meldungskorrektur | 737 Tests grün, keine Fehler oder übersprungenen Tests; gemeinsame Transport-/Routing-Prüfungen ebenfalls grün |
 | Vollständiger Firefox-Ablauf auf frisch gebautem Anwendungs-JAR | Zwei aufeinanderfolgende Kontexte, jeweils elf Prüfungen grün; bestehende Abschluss- und Veraltet-Assertions unverändert |
+| CI auf `8b0b6a94` | Alle sechs UI-Shards und CodeQL grün; 2.295 Anwendungstests mit genau einem Fehler im Architektur-Ratchet; identischer Fehler in Datenbank- und Transport-Lanes, anschließend gezielt korrigiert |
+| Nachtest der korrigierten Katalog-Servicegrenze | 96 Tests grün: 23 Architektur, 69 Austausch/Recovery und vier Kataloggrenzfälle; keine Fehler oder übersprungenen Tests |
 
 Die 3.784 lokalen Tests verteilen sich auf Tooling 161, Domain 208, DSL 332,
 Extension API 2, Export 382, Workspace 757, Templates 127, Interop 133,

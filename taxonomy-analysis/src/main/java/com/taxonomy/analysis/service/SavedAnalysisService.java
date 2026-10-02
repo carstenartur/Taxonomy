@@ -149,10 +149,7 @@ public class SavedAnalysisService {
                 if (saved.getRawScores() != null) codes.addAll(saved.getRawScores().keySet());
                 if (saved.getAnalysisCoverage() != null) codes.addAll(saved.getAnalysisCoverage().nodes().keySet());
                 for (String code : codes) {
-                    var node = taxonomyService.getNodeByCode(code);
-                    if (node == null) throw new IllegalArgumentException("Unknown catalogue node in scoped evidence: " + code);
-                    if (!scope.selects(node.getTaxonomyRoot()))
-                        throw new IllegalArgumentException("Evidence node outside selected taxonomy roots: " + code);
+                    taxonomyService.validateNodeRootMembership(code, scope.taxonomyRoots());
                 }
             }
         }
