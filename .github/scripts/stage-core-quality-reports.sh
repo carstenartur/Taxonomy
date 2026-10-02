@@ -24,6 +24,13 @@ while IFS= read -r -d '' report; do
   cp "$report" "$destination"
 done < "$report_inventory"
 
+# Preserve diagnostics even when a failing integration test prevents aggregate
+# coverage generation. This copy does not turn incomplete evidence into success.
+large_result_report=target/ui-verification/large-results/report.json
+if [[ -f "$large_result_report" ]]; then
+  cp "$large_result_report" target/quality-reports/evidence/large-result-budget.json
+fi
+
 coverage=taxonomy-coverage/target/site/jacoco-aggregate
 [[ -f "$coverage/jacoco.xml" ]] || {
   echo '::error::Aggregate JaCoCo XML is missing; refusing stale coverage evidence.'

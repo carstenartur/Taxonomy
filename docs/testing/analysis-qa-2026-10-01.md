@@ -64,6 +64,38 @@ automatische Oberfläche verwendet weiterhin den vollständigen POST-Anwendungsf
 | Gefilterte Vorfahren hinterlassen ungültige Export-Eltern | Nächster überlebender Vorfahr, Zyklenschutz, keine Quellmutation | Fünf Regressionen mit tatsächlicher ArchiMate-/Visio-Validierung |
 | Scope überlebt Ersatz durch manuelle/interaktive Bewertung | Ergebnisumfang und Label zurücksetzen, nächste Auswahl behalten | Drei zusätzlich im Review reproduzierte Regressionen |
 | Scope-Validierung führt eine neue Controller-Abhängigkeit auf Katalog-Entities ein | Skalare Wurzelkennungen über `TaxonomyService.getRootCodes()` | 22 Controller-Tests und 23 Architektur-Ratchet-Tests; Baseline unverändert |
+| Verborgener DSL-Editor lädt und parst beim Analyse-Start den gesamten Katalog | Editor erst beim Öffnen initialisieren, Instanz und Entwurf beim Seitenwechsel erhalten | Reproduktion auch auf Basisstand; echte Browserprüfungen für Speicher, Direktlink, Tastatur und Wiederbesuch |
+| Editor-Validierung erkennt den verborgenen Seitenzustand nicht zuverlässig | Seitenaktivität explizit übergeben; von `pagehide`/`pageshow` getrennt halten | Vier Regressionen und reale Hide-/Reveal-Prüfung; laufende Anfragen abbrechen, beim Zurückkehren einmal neu validieren |
+
+### Browser-Speicher beim ersten Suchlauf
+
+Die vollständige CI auf `a4a6b024` bestand alle 2.259 Anwendungstests, scheiterte
+aber im Integrationsfall `TaxonomyLargeResultBudgetIT` beim ersten Suchlauf:
+41.208.924 zusätzliche Heap-Bytes gegenüber dem unveränderten Limit von
+25.165.824 Bytes. Die übrigen Browser-Shards bestanden. Das Draft-Merge-Gate war
+ein zusätzlicher, davon unabhängiger Blocker.
+
+Ein Vergleich mit Chromium 149 und präzisen Heap-Werten reproduzierte den Fehler
+auch auf dem Basisstand: 29.643.237 Bytes, gegenüber 29.571.984 Bytes vor dieser
+Korrektur. Der zunächst unsichtbare CodeMirror-Editor lud und parste parallel den
+etwa 1,4 Millionen Zeichen großen DSL-Katalog und löste zusätzliche DOM-Beobachter
+aus. Nach Initialisierung erst beim Öffnen betrug derselbe frühe Vergleich
+592.942 Bytes. Diese Messwerte sind einzelne kontrollierte Reproduktionen,
+keine P50-/P95-Benchmarks oder Aussagen über den gesamten Browser-Prozess.
+
+Die bestehende Messzeitspanne und die Budgets bleiben unverändert. Die
+Speichersuite schaltet `--enable-precise-memory-info` ausdrücklich ein, weil
+Chromiums zwischengespeicherte, gerundete Werte sonst einen falschen Nullzuwachs
+melden können. Der Testbericht enthält Ausgangs- und Endwerte; CI sichert ihn
+auch dann, wenn ein Testfehler die spätere Coverage-Aggregation verhindert.
+
+Die zusätzliche Browser-Abnahme reproduzierte auch auf dem Basisstand einen
+fehlenden Validierungslauf beim Zurückkehren: CodeMirror führte für seinen
+gemessenen verborgenen Zustand keinen Plugin-Update aus. Explizite Seitenaktivität
+behebt diesen Übergang, ohne die getrennte Browser-Lebenszyklussperre aufzuheben.
+Die Abnahme berücksichtigt einen verzögerten ersten Export und prüft die
+Validierung des tatsächlich geladenen Dokuments statt einer möglichen frühen
+Leer-Validierung. Unbearbeitete Dokumente und lokale Entwürfe bleiben erhalten.
 
 ## Relationslauf: Messwerte und Wartezeit
 
@@ -172,6 +204,11 @@ wiederhergestellt und remote gesichert. Die Nachweise der neuen Ausführung sind
 | Architektur-Ratchet, Katalog-Fingerprint und Recovery-Austausch nach derselben Korrektur | 38 Tests grün: 23 + 9 + 6 |
 | CI am Zwischenstand `b028019f` | Alle sechs Browser-Shards, UI-Verträge, Interoperabilität, Observability-Budget, Kubernetes-Smoke, Security-Scan und CodeQL erfolgreich |
 | Kanonischer Anwendungstest am Zwischenstand `b028019f` | 2.259 Tests, genau ein Fehler: neue Controller/Entity-Abhängigkeit; anschließend wie oben korrigiert und gezielt nachgeprüft |
+| CI auf `a4a6b024` | 2.259 Anwendungstests grün; alle sechs UI-Shards, Datenbanken und Nebenworkflows grün; Core rot wegen des oben beschriebenen Heap-Budgets |
+| UI-Verträge nach Editor-/Validierungskorrektur | 716 Tests grün, keine Fehler oder übersprungenen Tests |
+| Lokale Selenium-Abnahme derselben Budget-Szenarien, Chromium/Driver 149.0.7827.55 | Alle sieben Testmethoden grün; 309 Treffer: 1.610.842 Heap-Bytes, 1.000 Treffer: 4.479.905 Heap-Bytes, bei unverändert 25.165.824 Bytes Limit |
+| Browser-Lebenszyklus und langsamer Export | Echte en/de-Prüfung mit 1,5 Sekunden Exportverzögerung, initialer Leer-Validierung und anschließendem Hide/Reveal erfolgreich; vier neue Zustandsregressionen grün |
+| CI-Diagnosesicherung | Vier Script-Tests grün, einschließlich Report-Erhalt bei weiterhin abgelehnter fehlender Coverage; Delivery-Hardening-Vertrag grün |
 
 Die 3.784 lokalen Tests verteilen sich auf Tooling 161, Domain 208, DSL 332,
 Extension API 2, Export 382, Workspace 757, Templates 127, Interop 133,
@@ -180,11 +217,13 @@ deterministischen Relations-Performance-Tests sind in Analysis enthalten.
 Die letzten 60 gezielten Tests prüfen die nach diesem breiten Lauf vorgenommene
 Korrektur der Controller-Grenze; sie sind kein zusätzlicher vollständiger Reactor-Lauf.
 
-Der lokale Anwendungslauf ist **nicht vollständig grün**: Ein Browser-Szenario
+Der frühere lokale Anwendungslauf war **nicht vollständig grün**: Ein Browser-Szenario
 benötigt hier nicht verfügbares Docker. Außerdem fand er die inzwischen behobene
 Architekturabhängigkeit. Der Lauf wurde zur gezielten Korrektur beendet. Lokale
-Chromium-Downloads lieferten keine nutzbare Browserdatei; die Browsernachweise
-oben stammen aus GitHub Actions. Qualitätsgrenzen, Architektur-Baselines und
+Chromium-Downloads lieferten zunächst keine nutzbare Browserdatei. Inzwischen
+wurden ein passender lokaler Browser und Treiber wiederhergestellt, um die
+Speicherursache mit einem Docker-freien Adapter derselben Selenium-Szenarien
+nachzuweisen. Das ersetzt keine vollständige Container-CI. Qualitätsgrenzen, Architektur-Baselines und
 Produktionskonfiguration wurden nicht abgeschwächt.
 
 Der erneute vollständige CI-Lauf nach der letzten Korrektur ist in der

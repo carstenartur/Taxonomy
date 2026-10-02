@@ -43,7 +43,16 @@ The application architecture ratchet exposed a new controller-to-catalogue-entit
 dependency. The controller now consumes scalar root codes from TaxonomyService;
 the architecture baseline is unchanged. All 22 controller tests and 38 application
 follow-up tests (architecture ratchet, catalogue fingerprints, recovery exchange) pass.
-All six browser shards passed on the preceding code checkpoint. The canonical CI
-rerun verifies the final correction; the local environment cannot run Docker browser
-scenarios. Evidence and remaining findings are recorded in
+The subsequent CI at a4a6b024 passed all 2,259 application unit tests, all six UI
+shards and the database/auxiliary workflows, but exposed a first-search heap budget
+failure. Browser profiling reproduced it on the unchanged base: hidden CodeMirror
+startup loaded and parsed the full catalogue concurrently with search. The editor
+now initializes when opened and preserves its document on return. The same review
+also exposed a missing validation lifecycle transition; explicit page activation
+now handles it independently of browser pagehide/pageshow. Heap measurement uses
+precise values with unchanged sampling and limits, and CI retains raw heap reports
+even when aggregate coverage is unavailable. Local Chromium/Selenium replays can
+verify these scenarios; full Docker CI still has to run remotely.
+
+Evidence and remaining findings are recorded in
 `docs/testing/analysis-qa-2026-10-01.md` and the PR check list.

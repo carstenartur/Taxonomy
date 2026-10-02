@@ -161,3 +161,64 @@ test('navigation and disposal cannot be bypassed by a visibility refresh', async
     assert.deepEqual(await source.lint(view), []);
     assert.equal(calls.length, 0);
 });
+
+test('leaving the DSL page cancels validation before CodeMirror measures the hidden editor', async t => {
+    const { source, calls, view } = fixture();
+    t.after(() => source.dispose());
+    const pending = source.lint(view);
+    source.setPageActive(false);
+    assert.equal(view.inView, true, 'CodeMirror has not measured the hidden page yet');
+    assert.equal(calls[0].options.signal.aborted, true);
+    assert.deepEqual(await pending, []);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 1, 'delayed callbacks cannot validate the inactive page');
+});
+
+test('returning to the DSL page refreshes an unchanged editor without a hidden view update', async t => {
+    const { source, calls, view } = fixture();
+    t.after(() => source.dispose());
+    const initial = source.lint(view);
+    calls[0].resolve({ warnings: ['initial'] });
+    await initial;
+    const before = view.state.doc;
+    source.setPageActive(false);
+    source.setPageActive(true);
+    assert.equal(source.needsRefresh({ view }), true);
+    assert.equal(source.needsRefresh({ view }), false, 'one refresh per return');
+    const pending = source.lint(view);
+    assert.equal(view.state.doc, before);
+    calls[1].resolve({ warnings: ['refreshed'] });
+    assert.equal((await pending)[0].message, 'refreshed');
+    assert.equal(source.needsRefresh({ view }), false, 'publishing diagnostics does not loop');
+});
+
+test('DSL page activation cannot override document suspension or disposal', async t => {
+    const { source, calls, view, lifecycle } = fixture();
+    t.after(() => source.dispose());
+    lifecycle.dispatchEvent(new Event('pagehide'));
+    source.setPageActive(false);
+    source.setPageActive(true);
+    assert.equal(source.needsRefresh({ view }), false);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 0);
+    lifecycle.dispatchEvent(new Event('pageshow'));
+    assert.equal(source.needsRefresh({ view }), true);
+    source.dispose();
+    source.setPageActive(true);
+    assert.equal(source.needsRefresh({ view }), false);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 0);
+});
+
+test('restoring a document does not activate its hidden DSL page', async t => {
+    const { source, calls, view, lifecycle } = fixture();
+    t.after(() => source.dispose());
+    source.setPageActive(false);
+    lifecycle.dispatchEvent(new Event('pagehide'));
+    lifecycle.dispatchEvent(new Event('pageshow'));
+    assert.equal(source.needsRefresh({ view }), false);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 0);
+    source.setPageActive(true);
+    assert.equal(source.needsRefresh({ view }), true);
+});

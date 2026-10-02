@@ -114,12 +114,18 @@ final class ContainerTestUtils {
     }
 
     static BrowserSession startBrowser(Network network) {
+        return startBrowser(network, new String[0]);
+    }
+
+    static BrowserSession startBrowser(Network network, String... additionalArguments) {
         BrowserWebDriverContainer container = new BrowserWebDriverContainer(seleniumImage())
                 .withNetwork(network);
         container.start();
         try {
+            ChromeOptions options = chromeOptions();
+            options.addArguments(additionalArguments);
             RemoteWebDriver driver = new RemoteWebDriver(
-                    container.getSeleniumAddress(), chromeOptions());
+                    container.getSeleniumAddress(), options);
             return new BrowserSession(container, driver);
         } catch (RuntimeException exception) {
             try {

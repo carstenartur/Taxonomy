@@ -355,9 +355,9 @@ export function createMergeView(container, originalDoc, modifiedDoc) {
 }
 
 // ── Editor initialization ──────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+function initializeEditor() {
     const container = document.getElementById('dslEditorContainer');
-    if (!container) return;
+    if (!container || window.dslCmView) return;
 
     container.setAttribute('tabindex', '-1');
     let keyboardHelp = document.getElementById('dslEditorKeyboardHelp');
@@ -436,4 +436,28 @@ document.addEventListener('DOMContentLoaded', () => {
         attributes: true,
         attributeFilter: ['data-bs-theme']
     });
+}
+
+// Creating a hidden editor also starts the full catalogue read, parsing and DOM
+// observers. Keep that work out of analyzer startup; retain the editor and its
+// unsaved document when the user leaves and returns to the DSL page.
+document.addEventListener('taxonomy:page-activated', event => {
+    const active = event.detail?.page === 'dsl-editor';
+    dslValidation.setPageActive(active);
+    if (active) initializeEditor();
 });
+
+function initializeVisibleEditor() {
+    const pane = document.getElementById('tab-dsl-editor');
+    const active = !pane || !pane.classList.contains('d-none');
+    dslValidation.setPageActive(active);
+    if (active) initializeEditor();
+}
+
+// The initial navigation event can precede module evaluation. Read the selected
+// pane after DOM readiness so deep links and standalone editors still initialize.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeVisibleEditor, { once: true });
+} else {
+    initializeVisibleEditor();
+}

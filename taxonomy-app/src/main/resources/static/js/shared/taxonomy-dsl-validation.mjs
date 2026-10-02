@@ -1,12 +1,13 @@
 /** One editor's live validation requests, including visibility, navigation and stale results. */
 export function createDslValidationSource(apiClient, lifecycle) {
     let active = null;
+    let pageActive = true;
     let suspended = false;
     let disposed = false;
     let wasVisible = false;
 
     function available(view) {
-        return !disposed && !suspended && view.inView === true && view.dom.isConnected;
+        return !disposed && !suspended && pageActive && view.inView === true && view.dom.isConnected;
     }
 
     function cancel() {
@@ -29,6 +30,15 @@ export function createDslValidationSource(apiClient, lifecycle) {
     lifecycle.addEventListener('pageshow', show);
 
     return {
+        // App-page changes can hide the pane without a CodeMirror view update.
+        // Keep this separate from the document's pagehide/pageshow lifecycle.
+        setPageActive(value) {
+            pageActive = value;
+            if (!pageActive) {
+                wasVisible = false;
+                cancel();
+            }
+        },
         // CodeMirror reports visibility through its measured view state. Schedule
         // one ordinary debounced lint when an editor returns, not on every scroll
         // or on the transaction that publishes the resulting diagnostics.
