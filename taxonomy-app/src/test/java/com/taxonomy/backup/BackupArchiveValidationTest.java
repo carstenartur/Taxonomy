@@ -5,6 +5,7 @@ import com.google.crypto.tink.streamingaead.PredefinedStreamingAeadParameters;
 import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.snapshot.*;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import org.apache.commons.compress.archivers.zip.*;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,92 @@ class BackupArchiveValidationTest {
         try (var zip = ZipFile.builder().setPath(archive).get()) {
             assertThat(zip.getEntry(DATA).getExtraField(new ZipShort(0x0001))).isNotNull();
         }
+    }
+
+    enum EntryRead { SINGLE, BULK, SKIP, CLOSE, CATALOGUE_CAPTURE }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(EntryRead.class)
+    void verifiedEntryReadsCannotInvokeTheCompletedWorkersProgressCallback(EntryRead operation) throws Exception {
+        Path archive = root.resolve("read-only.taxbackup");
+        String payload = "saved current work\n";
+        try (var capture = capture(plain, false, payload)) {
+            new BackupArchiveWriter(plain, ArchiveLimits.defaults()).write(capture, archive);
+        }
+        var progress = new java.util.concurrent.atomic.AtomicLong();
+        var callbacks = new java.util.concurrent.atomic.AtomicInteger();
+        try (var verified = reader(plain).verify(archive, bytes -> { progress.set(bytes); callbacks.incrementAndGet(); })) {
+            int completedCallbacks = callbacks.get();
+            assertThat(progress.get()).isGreaterThan(Files.size(archive));
+            if (operation == EntryRead.CATALOGUE_CAPTURE) {
+                var source = CatalogueSourceBytes.capture(() -> verified.openEntry(DATA));
+                try (var input = source.openStream()) { assertThat(new String(input.readAllBytes(), UTF_8)).isEqualTo(payload); }
+            } else {
+                try (var input = verified.openEntry(DATA)) {
+                    switch (operation) {
+                        case SINGLE -> assertThat(input.read()).isEqualTo('s');
+                        case BULK -> assertThat(new String(input.readAllBytes(), UTF_8)).isEqualTo(payload);
+                        case SKIP -> assertThat(input.skip(payload.length())).isEqualTo(payload.length());
+                        case CLOSE -> { /* Closing an unread entry must still verify its contents. */ }
+                        default -> throw new AssertionError(operation);
+                    }
+                }
+            }
+            assertThat(callbacks).as("entry reads cannot update the completed worker's progress").hasValue(completedCallbacks);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void verificationChecksProgressDuringPayloadReadsAndStopsWithoutDraining(boolean interrupted) throws Exception {
+        Path archive = root.resolve("cancel-verification.taxbackup");
+        String payload = "x".repeat(256 * 1024);
+        long metadataBytes;
+        try (var capture = capture(plain, false, payload)) {
+            metadataBytes = new BackupManifestCodec().write(capture.manifest()).length;
+            for (var entry : capture.manifest().entries()) {
+                if (entry.path().equals(DATA)) break;
+                metadataBytes += entry.length();
+            }
+            new BackupArchiveWriter(plain, ArchiveLimits.defaults()).write(capture, archive);
+        }
+        long beforePayload = Files.size(archive) + metadataBytes;
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var bytesRead = new java.util.concurrent.atomic.AtomicLong();
+        var readsAfterStop = new java.util.concurrent.atomic.AtomicInteger();
+        ArchiveProtectionProvider measured = new ArchiveProtectionProvider() {
+            public boolean encrypted() { return false; }
+            public OutputStream protect(OutputStream output, byte[] context) { return output; }
+            public InputStream unprotect(InputStream input, byte[] context) { return input; }
+            public java.nio.channels.SeekableByteChannel open(java.nio.channels.SeekableByteChannel input, byte[] context) {
+                return new java.nio.channels.SeekableByteChannel() {
+                    public int read(java.nio.ByteBuffer buffer) throws IOException {
+                        if (stopped.get()) readsAfterStop.incrementAndGet();
+                        int count = input.read(buffer); if (count > 0) bytesRead.addAndGet(count); return count;
+                    }
+                    public int write(java.nio.ByteBuffer buffer) { throw new UnsupportedOperationException(); }
+                    public long position() throws IOException { return input.position(); }
+                    public java.nio.channels.SeekableByteChannel position(long value) throws IOException { input.position(value); return this; }
+                    public long size() throws IOException { return input.size(); }
+                    public java.nio.channels.SeekableByteChannel truncate(long value) { throw new UnsupportedOperationException(); }
+                    public boolean isOpen() { return input.isOpen(); }
+                    public void close() throws IOException { input.close(); }
+                };
+            }
+        };
+        try {
+            assertThatThrownBy(() -> reader(measured).verify(archive, bytes -> {
+                if (bytes > beforePayload) {
+                    stopped.set(true);
+                    if (interrupted) throw new InterruptedIOException("verification stopped");
+                    throw new IOException("verification stopped");
+                }
+            })).isInstanceOf(IOException.class).hasMessage("verification stopped");
+            assertThat(stopped).isTrue();
+            assertThat(bytesRead.get()).as("worker checks must happen before the payload is fully read").isLessThan(payload.length() / 2);
+            assertThat(readsAfterStop).as("failed verification must not drain the remaining payload").hasValue(0);
+            assertThat(Thread.currentThread().isInterrupted()).isEqualTo(interrupted);
+        } finally { Thread.interrupted(); }
     }
 
     @Test void rejectsUnsafeCollidingSymlinkAndUndeclaredEntries() throws Exception {

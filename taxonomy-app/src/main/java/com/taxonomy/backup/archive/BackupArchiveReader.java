@@ -35,8 +35,10 @@ public final class BackupArchiveReader {
             var manifestEntry = entries.remove("manifest.json");
             if (manifestEntry == null || manifestEntry.getSize() > BackupManifestCodec.MAX_MANIFEST_BYTES) throw new IOException("Manifest missing or size limit exceeded");
             BackupManifest manifest;
-            try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(manifestEntry), manifestEntry.getSize(), null, manifestEntry.getCrc(), guard)) {
-                manifest = new BackupManifestCodec().read(input.readNBytes(BackupManifestCodec.MAX_MANIFEST_BYTES + 1));
+            try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(manifestEntry), manifestEntry.getSize(), null, manifestEntry.getCrc(), guard.readGuard())) {
+                var document = new ByteArrayOutputStream();
+                consume(input, document, guard);
+                manifest = new BackupManifestCodec().read(document.toByteArray());
             }
             manifest.requireCompatible(applicationVersion, components);
             if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED && !protection.encrypted())
@@ -48,19 +50,33 @@ public final class BackupArchiveReader {
             for (var expected : manifest.entries()) {
                 var actual = entries.remove(expected.path());
                 if (actual == null || actual.getSize() != expected.length()) throw new IOException("Missing entry or manifest length mismatch");
-                try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(actual), expected.length(), expected.sha256(), actual.getCrc(), guard)) {
-                    input.transferTo(OutputStream.nullOutputStream());
+                try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(actual), expected.length(), expected.sha256(), actual.getCrc(), guard.readGuard())) {
+                    consume(input, OutputStream.nullOutputStream(), guard);
                 }
             }
             if (!entries.isEmpty()) throw new IOException("Undeclared archive entries");
             if (!digest.equals(ArchiveIO.digest(source, limits.maxArchiveBytes(), guard)))
                 throw new IOException("Archive changed during verification");
-            guard.check(); return new VerifiedBackup(digest, manifest, zip, guard);
+            guard.check(); return new VerifiedBackup(digest, manifest, zip, guard.readGuard());
         } catch (IOException | RuntimeException failure) {
             try { if (zip == null) channel.close(); else zip.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
             if (failure instanceof IOException io) throw io;
             // Package fields, crypto provider details and malformed JSON must never enter a public error.
             throw new IOException("Invalid or unsupported backup archive");
+        }
+    }
+    /** Worker progress belongs to active verification, never to a general-purpose InputStream read or close. */
+    private static void consume(VerifiedBackup.CheckedInput input, OutputStream output, ArchiveIO.Guard guard) throws IOException {
+        try {
+            byte[] buffer = new byte[65536];
+            while (true) {
+                guard.check(); int count = input.read(buffer);
+                if (count < 0) break;
+                guard.advance(count); output.write(buffer, 0, count);
+            }
+        } catch (IOException | RuntimeException | Error failure) {
+            // Callback failures occur outside read(); do not let close drain an abandoned verification.
+            input.abort(); throw failure;
         }
     }
     private Map<String, ZipArchiveEntry> inspectEntries(ZipFile zip, SeekableByteChannel channel,

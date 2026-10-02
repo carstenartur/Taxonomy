@@ -13,9 +13,9 @@ public final class VerifiedBackup implements AutoCloseable {
     private final BackupManifest manifest;
     private final ZipFile zip;
     private final Map<String, BackupEntry> entries;
-    private final ArchiveIO.Guard guard;
+    private final ArchiveIO.ReadGuard guard;
 
-    VerifiedBackup(String digest, BackupManifest manifest, ZipFile zip, ArchiveIO.Guard guard) {
+    VerifiedBackup(String digest, BackupManifest manifest, ZipFile zip, ArchiveIO.ReadGuard guard) {
         this.digest = digest; this.manifest = manifest; this.zip = zip; this.guard = guard;
         entries = new HashMap<>(); manifest.entries().forEach(entry -> entries.put(entry.path(), entry));
     }
@@ -34,10 +34,10 @@ public final class VerifiedBackup implements AutoCloseable {
         private final String expectedDigest;
         private final MessageDigest digest = ArchiveIO.sha256();
         private final CRC32 crc = new CRC32();
-        private final ArchiveIO.Guard guard;
+        private final ArchiveIO.ReadGuard guard;
         private long count;
         private boolean complete, failed;
-        CheckedInput(InputStream stream, long length, String digest, long crc, ArchiveIO.Guard guard) {
+        CheckedInput(InputStream stream, long length, String digest, long crc, ArchiveIO.ReadGuard guard) {
             super(stream); this.length = length; expectedDigest = digest; expectedCrc = crc; this.guard = guard;
         }
         @Override public int read() throws IOException {
@@ -48,7 +48,7 @@ public final class VerifiedBackup implements AutoCloseable {
                 guard.check(); int n = in.read(bytes, offset, size);
                 if (n > 0) {
                     if (n > length - count) throw new IOException("Archive entry length limit exceeded");
-                    count += n; digest.update(bytes, offset, n); crc.update(bytes, offset, n); guard.advance(n);
+                    count += n; digest.update(bytes, offset, n); crc.update(bytes, offset, n); guard.check();
                 } else if (n < 0 && !complete) {
                     if (count != length || crc.getValue() != expectedCrc
                             || expectedDigest != null && !HexFormat.of().formatHex(digest.digest()).equals(expectedDigest))
@@ -65,6 +65,7 @@ public final class VerifiedBackup implements AutoCloseable {
         }
         @Override public boolean markSupported() { return false; }
         @Override public void reset() throws IOException { throw new IOException("Verified streams cannot be rewound"); }
+        void abort() { failed = true; }
         @Override public void close() throws IOException {
             try { if (!failed && !complete) transferTo(OutputStream.nullOutputStream()); } finally { in.close(); }
         }

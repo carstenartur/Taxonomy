@@ -110,6 +110,54 @@ class TemplateBackupContributorTest {
         assertThat(repository.headCommit()).isNull();
     }
 
+    @Test void oversizedCommitMetadataFailsBeforeWritingAnyPayload() throws Exception {
+        commit("report", null, "x".repeat(1_048_577));
+        assertRejectedBeforeOutput();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void tagHeadCannotBypassCommitMetadataPreflight(boolean oversizedTarget) throws Exception {
+        commit("report", null, oversizedTarget ? "x".repeat(1_048_577) : "Stored template");
+        try (var inserter = git.newObjectInserter()) {
+            var tag = new TagBuilder();
+            tag.setObjectId(ObjectId.fromString(repository.headCommit()), Constants.OBJ_COMMIT);
+            tag.setTag("unexpected-head");
+            tag.setTagger(new PersonIdent("operator", "operator@example.test"));
+            tag.setMessage("A tag is not a captured commit");
+            ObjectId id = inserter.insert(tag); inserter.flush();
+            var update = git.updateRef("refs/heads/main"); update.setNewObjectId(id); update.setForceUpdate(true); update.forceUpdate();
+        }
+        assertRejectedBeforeOutput();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void oversizedRootOrNestedTreeMetadataFailsBeforeWritingAnyPayload(boolean nested) throws Exception {
+        try (var inserter = git.newObjectInserter()) {
+            ObjectId tree = directoryTree(inserter, 16_000);
+            if (nested) tree = parentTree(inserter, "templates", tree);
+            replaceHead(inserter, tree);
+        }
+        assertRejectedBeforeOutput();
+    }
+
+    @Test void cumulativeTreeMetadataIsBoundedEvenWhenIndividualTreesFit() throws Exception {
+        try (var inserter = git.newObjectInserter()) {
+            ObjectId subtree = directoryTree(inserter, 14_000);
+            var root = new TreeFormatter();
+            for (int i = 0; i < 5; i++) root.append("directory" + i, FileMode.TREE, subtree);
+            replaceHead(inserter, inserter.insert(root));
+        }
+        assertRejectedBeforeOutput();
+    }
+
+    @Test void cancellationIsCheckedBeforeOpeningCommitMetadata() {
+        assertThatThrownBy(() -> TemplateBackupCapture.capture(git, ObjectId.fromString("a".repeat(40)),
+                () -> { throw new InterruptedIOException("capture stopped"); }))
+                .isInstanceOf(InterruptedIOException.class).hasMessage("capture stopped");
+    }
+
     @Test void unsafeAndCollidingPathsFailBeforeWritingAnyPayload() throws Exception {
         commit("report", null);
         var files = files("report");
@@ -159,10 +207,36 @@ class TemplateBackupContributorTest {
         assertThat(output.bytes).isEmpty();
     }
     private DocumentTemplateGitRepository.TemplateSnapshot commit(String id, String expected) throws Exception {
+        return commit(id, expected, "Update template");
+    }
+    private DocumentTemplateGitRepository.TemplateSnapshot commit(String id, String expected, String message) throws Exception {
         var manifest = new DocumentTemplateGitRepository.TemplateManifest(1, id, id, id + ".dotx",
                 OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, now.toString(), "operator",
                 parts.values().stream().mapToLong(value -> value.length).sum(), parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
-        return repository.commit(manifest, parts, expected, "operator", "Update template");
+        return repository.commit(manifest, parts, expected, "operator", message);
+    }
+
+    private ObjectId directoryTree(ObjectInserter inserter, int count) throws IOException {
+        ObjectId empty = inserter.insert(new TreeFormatter());
+        var tree = new TreeFormatter();
+        for (int i = 0; i < count; i++) {
+            tree.append(String.format(Locale.ROOT, "%05d", i) + "x".repeat(240), FileMode.TREE, empty);
+        }
+        return inserter.insert(tree);
+    }
+
+    private ObjectId parentTree(ObjectInserter inserter, String name, ObjectId child) throws IOException {
+        var tree = new TreeFormatter();
+        tree.append(name, FileMode.TREE, child);
+        return inserter.insert(tree);
+    }
+
+    private void replaceHead(ObjectInserter inserter, ObjectId tree) throws IOException {
+        var commit = new CommitBuilder(); commit.setTreeId(tree);
+        var identity = new PersonIdent("operator", "operator@example.test");
+        commit.setAuthor(identity); commit.setCommitter(identity); commit.setMessage("Stored metadata fixture");
+        ObjectId id = inserter.insert(commit); inserter.flush();
+        var update = git.updateRef("refs/heads/main"); update.setNewObjectId(id); update.setForceUpdate(true); update.forceUpdate();
     }
     private Map<String, byte[]> files(String id) throws Exception {
         var snapshot = repository.readCurrent(id);

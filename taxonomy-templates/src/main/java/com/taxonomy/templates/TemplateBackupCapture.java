@@ -7,7 +7,7 @@ import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedFile;
 import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedTree;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
 import org.eclipse.jgit.lib.*;
-import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
@@ -22,6 +22,9 @@ import java.util.*;
 /** Complete preflight of one immutable template tree, with bounded metadata and streamed checksums. */
 final class TemplateBackupCapture {
     private static final int MAX_MANIFEST_BYTES = 1_048_576;
+    private static final int MAX_COMMIT_BYTES = 1_048_576;
+    private static final int MAX_TREE_BYTES = 4 * 1_048_576;
+    private static final int MAX_METADATA_BYTES = 16 * 1_048_576;
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
@@ -33,16 +36,27 @@ final class TemplateBackupCapture {
         if (head == null) return new CapturedTree(null, List.of());
         var files = new ArrayList<CapturedFile>();
         var packages = new TreeMap<String, PackageFiles>();
-        try (var walk = new RevWalk(repository); var tree = new TreeWalk(repository)) {
-            tree.addTree(walk.parseCommit(head).getTree());
-            tree.setRecursive(true);
+        try (var reader = repository.newObjectReader(); var tree = new TreeWalk(reader)) {
+            long metadataBytes = checkMetadata(reader, head, Constants.OBJ_COMMIT, MAX_COMMIT_BYTES, 0, checkpoint);
+            // A size lookup only hints the type; parseCommit would peel an unchecked tag target.
+            byte[] commit = reader.open(head, Constants.OBJ_COMMIT).getBytes(MAX_COMMIT_BYTES);
+            var root = RevCommit.parse(commit).getTree();
+            metadataBytes = checkMetadata(reader, root, Constants.OBJ_TREE, MAX_TREE_BYTES, metadataBytes, checkpoint);
+            tree.addTree(root);
+            // Visit directories explicitly so every subtree is bounded before JGit loads it.
+            tree.setRecursive(false);
             while (tree.next()) {
                 checkpoint.check();
-                if (files.size() >= BackupLimits.MAX_ITEMS - 1) throw new IOException("Template capture file limit exceeded");
                 String path = PortableGitPaths.requireFile(tree.getPathString());
                 if (!Arrays.equals(tree.getRawPath(), path.getBytes(StandardCharsets.UTF_8))) {
                     throw new IOException("Template path is not canonical UTF-8");
                 }
+                if (tree.isSubtree()) {
+                    metadataBytes = checkMetadata(reader, tree.getObjectId(0), Constants.OBJ_TREE, MAX_TREE_BYTES, metadataBytes, checkpoint);
+                    tree.enterSubtree();
+                    continue;
+                }
+                if (files.size() >= BackupLimits.MAX_ITEMS - 1) throw new IOException("Template capture file limit exceeded");
                 if (!FileMode.REGULAR_FILE.equals(tree.getFileMode(0))) {
                     throw new IOException("Template capture requires regular files");
                 }
@@ -76,6 +90,16 @@ final class TemplateBackupCapture {
             verifyPackage(repository, entry.getKey(), entry.getValue(), checkpoint);
         }
         return new CapturedTree(head.name(), files);
+    }
+
+    private static long checkMetadata(ObjectReader reader, AnyObjectId id, int type, int maximum,
+                                      long consumed, BackupCheckpoint checkpoint) throws IOException {
+        checkpoint.check();
+        long size = reader.getObjectSize(id, type);
+        if (size < 0 || size > maximum || size > MAX_METADATA_BYTES - consumed) {
+            throw new IOException("Template capture metadata limit exceeded");
+        }
+        return consumed + size;
     }
 
     private static void verifyPackage(Repository repository, String templateId, PackageFiles files,

@@ -28,14 +28,23 @@ final class ArchiveIO {
         if (Files.getFileStore(directory).supportsFileAttributeView("posix"))
             try (var channel = FileChannel.open(directory, StandardOpenOption.READ)) { channel.force(true); }
     }
-    static final class Guard {
+    /** Local read limits cannot invoke worker callbacks or update durable job state. */
+    static final class ReadGuard {
         private final long deadline;
-        private final ArchiveProgress progress;
-        private long bytes;
-        Guard(ArchiveLimits limits, ArchiveProgress progress) { this.deadline = System.nanoTime() + limits.maxDuration().toNanos(); this.progress = progress; }
+        ReadGuard(ArchiveLimits limits) { deadline = System.nanoTime() + limits.maxDuration().toNanos(); }
         void check() throws IOException {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup processing cancelled");
             if (System.nanoTime() - deadline >= 0) throw new IOException("Archive runtime limit exceeded");
+        }
+    }
+    static final class Guard {
+        private final ReadGuard reads;
+        private final ArchiveProgress progress;
+        private long bytes;
+        Guard(ArchiveLimits limits, ArchiveProgress progress) { reads = new ReadGuard(limits); this.progress = progress; }
+        ReadGuard readGuard() { return reads; }
+        void check() throws IOException {
+            reads.check();
             try { progress.check(bytes); }
             catch (InterruptedIOException cancelled) {
                 Thread.currentThread().interrupt();
