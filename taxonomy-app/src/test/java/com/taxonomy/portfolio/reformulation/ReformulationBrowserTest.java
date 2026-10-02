@@ -1,22 +1,21 @@
 package com.taxonomy.portfolio.reformulation;
+import com.taxonomy.testsupport.BrowserSession;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.openqa.selenium.*;
-import org.openqa.selenium.chrome.*;
 import org.openqa.selenium.support.ui.*;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.chromium.HasCdp;
-import org.testcontainers.Testcontainers;
-import org.testcontainers.containers.BrowserWebDriverContainer;
-import org.testcontainers.utility.DockerImageName;
 import java.time.Duration;
 import java.nio.file.*;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
+@Tag("browser")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"taxonomy.admin-password=Reformulation-Browser-2026!","taxonomy.security.require-password-change=false"})
 @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
 class ReformulationBrowserTest extends ReformulationWorkflowFixture {
@@ -109,12 +108,9 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     }
     @FunctionalInterface interface BrowserAction { void run(RemoteWebDriver driver,WebDriverWait wait) throws Exception; }
     private void inBrowser(String name,String proposalId,BrowserAction action) throws Exception {
-        var options=new ChromeOptions();options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");
-        String binary=System.getProperty("scenario.chrome.binary");if(binary!=null)options.setBinary(binary);
-        BrowserWebDriverContainer<?> container=null;RemoteWebDriver driver;String origin;
-        if(System.getProperty("webdriver.chrome.driver")!=null){driver=new ChromeDriver(options);origin="http://localhost:"+port;}
-        else {Testcontainers.exposeHostPorts(port);origin="http://host.testcontainers.internal:"+port;container=new BrowserWebDriverContainer<>(DockerImageName.parse(System.getProperty("selenium.container.image","selenium/standalone-chrome:"+new BuildInfo().getReleaseLabel())));container.start();driver=new RemoteWebDriver(container.getSeleniumAddress(),options);}
         Path output=Path.of("target/scenario-acceptance/reformulation-browser",name);Files.createDirectories(output);
+        var session=BrowserSession.open(port,output.resolve("downloads"));
+        var driver=session.driver();String origin=session.origin();
         try {
             var wait=new WebDriverWait(driver,Duration.ofSeconds(20));driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
             driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys("Reformulation-Browser-2026!");driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
@@ -123,19 +119,12 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
         } catch(Throwable failure) {
             Files.write(output.resolve("failure.png"),driver.getScreenshotAs(OutputType.BYTES));Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());
             Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;
-        } finally {saveGate.release.countDown();driver.quit();if(container!=null)container.close();}
+        } finally {saveGate.release.countDown();session.close();}
     }
     @Test void wideAndNarrowWorkspacePreservesEditsWhitespaceAndExplicitProposalSave() throws Exception {
         var proposal=seed();var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);
-        var options=new ChromeOptions(); options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");
-        String binary=System.getProperty("scenario.chrome.binary");if(binary!=null)options.setBinary(binary);
-        BrowserWebDriverContainer<?> container=null;RemoteWebDriver driver;String origin;
-        if(System.getProperty("webdriver.chrome.driver")!=null) {driver=new ChromeDriver(options);origin="http://localhost:"+port;}
-        else {
-            Testcontainers.exposeHostPorts(port);origin="http://host.testcontainers.internal:"+port;
-            container=new BrowserWebDriverContainer<>(DockerImageName.parse(System.getProperty("selenium.container.image","selenium/standalone-chrome:"+new BuildInfo().getReleaseLabel())));
-            container.start();driver=new RemoteWebDriver(container.getSeleniumAddress(),options);
-        }
+        var session=BrowserSession.open(port,Path.of("target/scenario-acceptance/reformulation-browser/downloads"));
+        var driver=session.driver();String origin=session.origin();
         try {
             var wait=new WebDriverWait(driver,Duration.ofSeconds(20));
             driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
@@ -211,7 +200,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             Files.write(output.resolve("failure.png"),driver.getScreenshotAs(OutputType.BYTES));
             Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());
             Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;
-        } finally {driver.quit();if(container!=null)container.close();}
+        } finally {session.close();}
     }
     private static WebElement questionButton(RemoteWebDriver driver,String id,String text) {
         var button=driver.findElement(By.id("question-"+id)).findElement(By.xpath(".//button[normalize-space()='"+text+"']"));

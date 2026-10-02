@@ -2,6 +2,7 @@ package com.taxonomy.build;
 
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -32,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * exports the production decision report and renders the downloaded DOCX for document QA.</p>
  */
 @EnabledIfSystemProperty(named = "documentTemplateE2E", matches = "true")
+@Tag("docker-required")
 class DocumentTemplateReportDownloadIT {
 
     private static final String APP_RUNTIME_IMAGE =

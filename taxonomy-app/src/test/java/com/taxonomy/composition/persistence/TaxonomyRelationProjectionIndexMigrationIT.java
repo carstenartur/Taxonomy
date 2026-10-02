@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class TaxonomyRelationProjectionIndexMigrationIT {
 
     @Container

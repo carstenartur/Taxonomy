@@ -1,10 +1,12 @@
 package com.taxonomy.acceptance;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import java.nio.file.*;
 import java.util.UUID;
 
 /** Same real lifecycle with desktop/390px interaction and explicit browser adoption. */
+@Tag("browser")
 class ReformulationScenarioBrowserTest {
     @Test void realAnalysedOfferSupportsKeyboardDraftRetentionDownloadAndExplicitAdoption() throws Exception {
         Path output = Files.createDirectories(Path.of("target/reformulation-scenario-acceptance", "browser-" + UUID.randomUUID()));

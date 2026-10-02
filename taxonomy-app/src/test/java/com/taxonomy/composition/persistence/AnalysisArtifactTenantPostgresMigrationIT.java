@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Upgrade evidence for tenant-bound analysis artifacts with real V13 history. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class AnalysisArtifactTenantPostgresMigrationIT {
 
     private static final String SCOPE_KEY =

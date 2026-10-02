@@ -52,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * presentation around real persisted operations.</p>
  */
 @Tag("ui-acceptance")
+@Tag("docker-required")
 class CompleteCopilotSessionIT {
 
     private static final String ADMIN_PASSWORD = "Complete-Copilot-Session-2026!";

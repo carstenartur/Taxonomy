@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.acceptance.ScenarioRelationQuality;
 import com.taxonomy.support.ProcessTestDiagnostics;
+import com.taxonomy.testsupport.BrowserSession;
 import org.springframework.test.context.TestContextManager;
 
 import java.lang.management.ManagementFactory;
@@ -56,7 +57,8 @@ public final class ScenarioAcceptanceProcess {
     }
 
     private static boolean testProperty(String key) {
-        return key.equals("generateScreenshots") || key.equals("java.awt.headless");
+        return key.equals("generateScreenshots") || key.equals("java.awt.headless")
+                || BrowserSession.JVM_PROPERTIES.contains(key);
     }
 
     public static void main(String[] args) throws Throwable {

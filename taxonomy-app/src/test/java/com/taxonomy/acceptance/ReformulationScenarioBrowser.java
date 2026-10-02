@@ -1,13 +1,10 @@
 package com.taxonomy.acceptance;
 
+import com.taxonomy.testsupport.BrowserSession;
 import org.openqa.selenium.*;
-import org.openqa.selenium.chrome.*;
 import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.remote.*;
 import org.openqa.selenium.support.ui.*;
-import org.testcontainers.Testcontainers;
-import org.testcontainers.containers.BrowserWebDriverContainer;
-import org.testcontainers.utility.DockerImageName;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
@@ -16,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real DOM and downloads against the HTTP-created analysed offer. No browser state is injected. */
 final class ReformulationScenarioBrowser implements AutoCloseable {
     private final RemoteWebDriver driver;
-    private final BrowserWebDriverContainer<?> container;
+    private final BrowserSession session;
     private final WebDriverWait wait;
     private final Path output, downloads;
     private final String origin;
@@ -25,23 +22,9 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
     ReformulationScenarioBrowser(int port, Path output) throws Exception {
         this.output = Files.createDirectories(output.resolve("browser"));
         downloads = Files.createDirectories(this.output.resolve("downloads")).toAbsolutePath();
-        var options = new ChromeOptions();
-        options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
-        if (System.getProperty("webdriver.chrome.driver") != null) {
-            String binary = System.getProperty("scenario.chrome.binary"); if (binary != null) options.setBinary(binary);
-            options.setExperimentalOption("prefs", Map.of("download.default_directory", downloads.toString(), "download.prompt_for_download", false));
-            container = null; origin = "http://localhost:" + port; driver = new ChromeDriver(options);
-        } else {
-            Testcontainers.exposeHostPorts(port); origin = "http://host.testcontainers.internal:" + port;
-            container = new BrowserWebDriverContainer<>(DockerImageName.parse(System.getProperty("selenium.container.image",
-                    "selenium/standalone-chrome:" + new BuildInfo().getReleaseLabel())))
-                    .withEnv("SE_NODE_ENABLE_MANAGED_DOWNLOADS", "true");
-            try {
-                container.start(); options.setEnableDownloads(true);
-                options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + origin);
-                driver = new RemoteWebDriver(container.getSeleniumAddress(), options);
-            } catch (RuntimeException failure) { container.close(); throw failure; }
-        }
+        session = BrowserSession.open(port, downloads);
+        driver = session.driver();
+        origin = session.origin();
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         driver.manage().window().setSize(new Dimension(1440, 1000));
     }
@@ -85,7 +68,7 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
         assertThat((Boolean) driver.executeScript("return document.documentElement.scrollWidth <= window.innerWidth")).isTrue();
         click(By.cssSelector("[data-reformulation-report='json']"));
         String file = wait.until(d -> downloaded().stream().filter(n -> n.endsWith(".json")).findFirst().orElse(null));
-        if (container != null) driver.downloadFile(file, downloads);
+        session.download(file);
         var report = new tools.jackson.databind.ObjectMapper().readTree(Files.readString(downloads.resolve(file)));
         assertThat(report.path("kind").asText()).isEqualTo("PROPOSAL_REVISION");
         assertThat(report.toString()).doesNotContain("Unsaved scenario wording");
@@ -112,9 +95,7 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
         shot("mobile-adoption-recorded.png"); completed = true;
     }
     private Set<String> downloaded() {
-        if (container != null) return new TreeSet<>(driver.getDownloadableFiles());
-        try (var files = Files.list(downloads)) { return new TreeSet<>(files.map(p -> p.getFileName().toString()).toList()); }
-        catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        return session.downloadedFiles();
     }
     private void selectView(String view) {
         By tab = By.cssSelector("[data-reformulation-view='" + view + "']");
@@ -158,6 +139,6 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
                         left:visualViewport?.offsetLeft,top:visualViewport?.offsetTop}});
                     """)));
         } }
-        finally { driver.quit(); if (container != null) container.close(); }
+        finally { session.close(); }
     }
 }

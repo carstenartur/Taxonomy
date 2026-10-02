@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * cannot be rendered.</p>
  */
 @Tag("ui-acceptance")
+@Tag("docker-required")
 class PortfolioAnalysisUiDiagnosticIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Analysis-Diagnostic-2026!";

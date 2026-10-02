@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@Tag("docker-required")
 abstract class AbstractSeleniumContainerIT {
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();

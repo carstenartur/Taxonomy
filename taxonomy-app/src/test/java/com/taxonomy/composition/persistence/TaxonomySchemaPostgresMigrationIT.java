@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Verifies fresh installation and adoption of the application migration stream. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class TaxonomySchemaPostgresMigrationIT {
 
     @Container

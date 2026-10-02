@@ -1,5 +1,6 @@
 package com.taxonomy.acceptance;
 
+import com.taxonomy.testsupport.BrowserSession;
 import org.junit.jupiter.api.Test;
 import java.nio.file.*;
 import java.util.*;
@@ -19,7 +20,7 @@ class ReformulationScenarioAcceptanceTest {
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         command.add("-Xmx" + Runtime.getRuntime().maxMemory());
-        for (String name : List.of("webdriver.chrome.driver", "scenario.chrome.binary", "selenium.container.image")) {
+        for (String name : BrowserSession.JVM_PROPERTIES) {
             String value = System.getProperty(name); if (value != null) command.add("-D" + name + "=" + value);
         }
         java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()

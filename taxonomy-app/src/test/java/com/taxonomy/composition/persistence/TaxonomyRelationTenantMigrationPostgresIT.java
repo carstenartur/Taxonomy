@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Focused migration evidence for repository-scoped committed taxonomy relations. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class TaxonomyRelationTenantMigrationPostgresIT {
 
     @Container

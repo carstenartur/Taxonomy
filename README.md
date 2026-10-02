@@ -190,6 +190,16 @@ Focused profiles include:
 ./mvnw verify -Pui-tests
 ```
 
+Without Docker, use the same Spring Boot/HSQLDB scenarios and GUI checks with
+matching local Chrome and ChromeDriver binaries:
+
+```bash
+CHROME_BIN=/absolute/path/chrome CHROMEDRIVER=/absolute/path/chromedriver ./mvnw verify -Ptest-local
+```
+
+See [Docker-free tests and GUI preview](docs/testing/docker-free-tests.md) for
+focused runs, screenshots and the coverage retained in the existing CI profiles.
+
 The whole-repository module-extraction gate is owned by `taxonomy-build`, which
 is ordered after the application, aggregate coverage, and tooling modules. It
 runs in ordinary full-reactor verification and in the root-level

@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * prove parent/child correlation without introducing a trace backend.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Tag("docker-required")
 class ObservabilityContainerIT {
 
     private static final String AGENT_IMAGE =

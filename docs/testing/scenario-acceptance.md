@@ -76,11 +76,12 @@ Versuchen verdeckt.
 
 ## Ausführen
 
-Normale Abnahme ohne Docker und ohne LLM-Schlüssel:
+Abnahme ohne Docker und ohne LLM-Schlüssel, mit lokalem Chrome/ChromeDriver
+(siehe [Voraussetzungen und GUI-Vorschau](docker-free-tests.md)):
 
 ```bash
 ./mvnw -B -ntp -pl taxonomy-app -am test \
-  -Pscenario-acceptance -DgenerateScreenshots=false
+  -Ptest-local,scenario-acceptance
 ```
 
 Browserabnahme und Dokumentationsbilder mit Docker/Selenium:

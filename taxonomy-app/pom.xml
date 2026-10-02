@@ -466,6 +466,7 @@
                 <configuration>
                     <excludedGroups>${excludedGroups}</excludedGroups>
                     <systemPropertyVariables>
+                        <selenium.container.image>${selenium.container.image}</selenium.container.image>
                         <!--
                             Different Spring test contexts rebuild the same in-memory
                             HSQLDB schema. Retaining only the current context prevents

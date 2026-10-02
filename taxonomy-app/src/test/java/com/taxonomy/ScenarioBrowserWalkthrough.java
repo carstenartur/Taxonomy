@@ -1,19 +1,14 @@
 package com.taxonomy;
 
 import com.taxonomy.acceptance.ScenarioExportQa;
+import com.taxonomy.testsupport.BrowserSession;
 import org.openqa.selenium.*;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.testcontainers.Testcontainers;
-import org.testcontainers.containers.Network;
-import org.testcontainers.selenium.BrowserWebDriverContainer;
-import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -34,8 +29,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private final Path output;
     private final Path screenshots;
     private final Path downloads;
-    private final Network network;
-    private final BrowserWebDriverContainer containerBrowser;
+    private final BrowserSession session;
     private final List<Map<String, Object>> controls = new ArrayList<>();
     private boolean completed;
 
@@ -44,43 +38,13 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         this.output = output;
         downloads = output.resolve("browser-downloads").toAbsolutePath();
         Files.createDirectories(downloads);
-        screenshots = Path.of(System.getProperty("project.basedir", ".")).toAbsolutePath()
+        Path documentationImages = Path.of(System.getProperty("project.basedir", ".")).toAbsolutePath()
                 .normalize().getParent().resolve("docs/images");
+        screenshots = Path.of(System.getProperty("scenario.screenshot.directory", documentationImages.toString()));
         Files.createDirectories(screenshots);
-        if (System.getProperty("webdriver.chrome.driver") != null) {
-            ChromeOptions options = new ChromeOptions();
-            options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
-            String binary = System.getProperty("scenario.chrome.binary");
-            if (binary != null) options.setBinary(binary);
-            options.setExperimentalOption("prefs", Map.of("download.default_directory", downloads.toString(),
-                    "download.prompt_for_download", false, "plugins.always_open_pdf_externally", true));
-            driver = new ChromeDriver(options);
-            origin = "http://localhost:" + port;
-            network = null;
-            containerBrowser = null;
-        } else {
-            origin = "http://host.testcontainers.internal:" + port;
-            Testcontainers.exposeHostPorts(port);
-            network = Network.newNetwork();
-            String image = System.getProperty("selenium.container.image",
-                    "selenium/standalone-chrome:" + new BuildInfo().getReleaseLabel());
-            containerBrowser = new BrowserWebDriverContainer(DockerImageName.parse(image)).withNetwork(network)
-                    .withEnv("SE_NODE_ENABLE_MANAGED_DOWNLOADS", "true");
-            try {
-                containerBrowser.start();
-                var options = new ChromeOptions();
-                // Like ContainerTestUtils, trust only this isolated HTTP test origin.
-                // Chrome otherwise blocks attachment downloads from the host bridge.
-                options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + origin);
-                options.setEnableDownloads(true);
-                options.setExperimentalOption("prefs", Map.of("plugins.always_open_pdf_externally", true));
-                driver = new RemoteWebDriver(containerBrowser.getSeleniumAddress(), options);
-            } catch (RuntimeException failure) {
-                containerBrowser.close();
-                network.close();
-                throw failure;
-            }
-        }
+        session = BrowserSession.open(port, downloads);
+        driver = session.driver();
+        origin = session.origin();
         driver.manage().window().setSize(new Dimension(1600, 1100));
         wait = new WebDriverWait(driver, Duration.ofSeconds(45));
     }
@@ -228,7 +192,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
             } catch (TimeoutException failure) {
                 Files.writeString(output.resolve("download-failure.json"), new ObjectMapper().writeValueAsString(Map.of(
                         "button", button.getKey(), "url", driver.getCurrentUrl(),
-                        "managedDownloads", containerBrowser == null ? List.of() : driver.getDownloadedFiles())));
+                        "downloads", session.downloadedFiles())));
                 driver.get("chrome://downloads/");
                 wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
                         "return !!document.querySelector('downloads-manager')?.shadowRoot")));
@@ -239,7 +203,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
                         """)));
                 throw failure;
             }
-            if (containerBrowser != null) driver.downloadFile(name, downloads);
+            session.download(name);
             byte[] bytes = Files.readAllBytes(downloads.resolve(name));
             assertThat(bytes).as("Browser download %s", name).isNotEmpty();
             downloaded.put(button.getValue(), bytes);
@@ -424,18 +388,13 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         return ids;
     }
     private Set<String> downloadedFiles() {
-        try {
-            Collection<String> names;
-            if (containerBrowser != null) names = driver.getDownloadableFiles();
-            else try (var files = Files.list(downloads)) {
-                names = files.map(path -> path.getFileName().toString()).toList();
-            }
-            var completed = new TreeSet<String>();
-            names.stream().filter(name -> name.endsWith(".svg") || name.endsWith(".pdf") || name.endsWith(".zip") || name.endsWith(".docx"))
-                    .forEach(completed::add);
-            return completed;
-        } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        var completed = new TreeSet<String>();
+        session.downloadedFiles().stream()
+                .filter(name -> name.endsWith(".svg") || name.endsWith(".pdf") || name.endsWith(".zip") || name.endsWith(".docx"))
+                .forEach(completed::add);
+        return completed;
     }
+
     private void awaitFit() {
         wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("""
                 const canvas = document.getElementById('architectureCanvas');
@@ -488,10 +447,6 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
                 System.err.println("Unable to capture scenario browser failure evidence: " + evidenceFailure.getClass().getSimpleName());
             }
         }
-        try { driver.quit(); }
-        finally {
-            try { if (containerBrowser != null) containerBrowser.close(); }
-            finally { if (network != null) network.close(); }
-        }
+        session.close();
     }
 }

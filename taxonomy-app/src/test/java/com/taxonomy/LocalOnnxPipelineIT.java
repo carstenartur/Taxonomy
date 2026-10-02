@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.acceptance.OnnxReferenceEvaluation;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -29,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
+@Tag("docker-required")
 class LocalOnnxPipelineIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
