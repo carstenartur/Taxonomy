@@ -1,140 +1,81 @@
 {
-  "schemaVersion": 3,
-  "documentationParent": "e7852cc8510d4d214b5dc018011d914619933ca5",
-  "priorManifest": "https://github.com/carstenartur/Taxonomy/blob/e7852cc8510d4d214b5dc018011d914619933ca5/docs/qa/2026-10-03-documentation-inputs.json",
-  "implementation": {
-    "pr": 1165,
-    "head": "83a9931579185d2fae789610057b69ca0bcce685",
-    "tree": "20e16d7dcd0fb83db17a4b4e2815e3793aab555a",
-    "controllerBlob": "774d59b71120ce31dbd4075f3dfff030bddfaf8c",
-    "headingAssertionsBlob": "64a0c8a3b7f5ccb188f4c657f150d760856bc0b4",
-    "headingJUnitAdapterBlob": "62f6be096f3e1f23e9b7381e844833a5b578045c"
-  },
-  "baselineArtifact": {
-    "run": 37082514184,
-    "id": 11258279358,
-    "zipSha256": "42be2dd943b548f434b795f6259356a76b7936b6f7be524b6158193845315c60",
-    "jarSha256": "fdc1f3522e3ba763d57518f44c8d5bd1642b1d058673015642e14f63e3774d62"
-  },
-  "candidateArtifact": {
-    "run": 37107450898,
-    "id": 11267389645,
-    "compiledMergeCommit": "d2e469f63a0a80d68429a36a3f7e7f69108afc31",
-    "sourceTree": "20e16d7dcd0fb83db17a4b4e2815e3793aab555a",
-    "zipSha256": "200791e5766ee02f61d64da421642883bb9cb53c4cac3b6beae0f0a45e5bcb2d",
-    "jarSha256": "f011d2800818404aca72ac36a94663534b564f82bc4f6e2d84c536e2a70cc2f5"
-  },
-  "guideSources": [
+  "schemaVersion": 1,
+  "scope": "Conservative restoration of complete English and German USER_GUIDEs; not full release acceptance",
+  "mainBaseline": "dc10e7b143ce03b465ae328cb32cf05f8f66c13d",
+  "rejectedHead": "086c3333f46891c12ba330850abc3a968fff7e38",
+  "restorationCommit": "e03e2c045ff0ee9a3c0874900c38fe79353ad08c",
+  "restorationTree": "8e8b48155d8fa280690ca12afa711a660fb63318",
+  "files": [
     {
       "path": "docs/en/USER_GUIDE.md",
-      "sha256": "49cd1a624507e02a824977531946c15fd640cee31085f89e3bd4b0805e1a6273",
-      "gitBlob": "1dade71a4f86ad7a61f5a13e771a86da7e720c6b",
-      "retainedIds": 173,
-      "retainedImageOccurrences": 55
+      "baseBlob": "f935020741b459f5773af5e03da7cbff425d6e0b",
+      "baseSha256": "82fa94aa624becee569967a608f68a4c871826aeb3a69897ca5265f7e433a039",
+      "resultBlob": "f99f10e8d72c727bb663474131a020f64e5f3a7d",
+      "resultSha256": "f67563346ff3d9bef0e73bbca0645f6ad56c94656ce74fc0f19d17585239f8bb",
+      "baseLines": 1881,
+      "resultLines": 1971,
+      "addedLines": 133,
+      "removedLines": 43,
+      "retainedHeadings": 173,
+      "retainedFencedExamples": 10,
+      "retainedImages": 55,
+      "exactPreservedProcedureBodies": 4
     },
     {
       "path": "docs/de/USER_GUIDE.md",
-      "sha256": "26307ce8f949c6f9a201fb608cd0062c1cce406fa64ecf6079021ecdde396555",
-      "gitBlob": "b555d1e755a3e3100357f1f7f31b77a82cb39cde",
-      "retainedIds": 173,
-      "retainedImageOccurrences": 55
+      "baseBlob": "9c2c04553283d6ef8b1fd8c2832948a263e0f3d7",
+      "baseSha256": "eb2fbe1b768069d79efeb949eea98a4177b96a9122362fa44d7403eea7590666",
+      "resultBlob": "81dd936a2982684dbe9ccc9b6aeaf8242df75407",
+      "resultSha256": "b3dacaa034940a7bd424621b679803fbe3fffdd46ec45df67547a7524c41a2f2",
+      "baseLines": 1869,
+      "resultLines": 1982,
+      "addedLines": 151,
+      "removedLines": 38,
+      "retainedHeadings": 173,
+      "retainedFencedExamples": 10,
+      "retainedImages": 55,
+      "exactPreservedProcedureBodies": 4
     }
   ],
-  "resourceOverlay": {
-    "publishedSource": "PR #1164 parent e7852cc8510d4d214b5dc018011d914619933ca5; complete packaged Markdown inventory plus its identified prior documentation amendments",
-    "publishedFiles": 337,
-    "changedResources": [
-      "docs/en/USER_GUIDE.md",
-      "docs/de/USER_GUIDE.md"
-    ],
-    "completeInputInventory": {
-      "packagePath": "inputs.json",
-      "sha256": "292081c78c8bdb836ae4916369b2f0975da86497f0293d8ab82ac264ab67d771"
-    }
-  },
-  "checks": {
+  "localRenderRuntime": {
+    "artifactId": 11267389645,
+    "workflowRunId": 37107450898,
+    "jarSha256": "f011d2800818404aca72ac36a94663534b564f82bc4f6e2d84c536e2a70cc2f5",
+    "compiledMergeCommit": "d2e469f63a0a80d68429a36a3f7e7f69108afc31",
+    "implementationHead": "83a9931579185d2fae789610057b69ca0bcce685",
+    "documentationResources": "Saved e7852cc8 documentation resources plus the two exact corrected USER_GUIDEs",
+    "usesResourceOverlay": true,
+    "replacesProductionClasses": false,
+    "isFreshCombinedReleaseBuild": false,
     "pages": 110,
-    "previousMissingSamePageOccurrences": 34,
-    "samePageOccurrencesAfter": 626,
-    "missingSamePageAfter": 0,
+    "samePageFragmentOccurrences": 650,
+    "missingSamePageFragments": 0,
     "duplicateIds": 0,
-    "missingLocalImages": 0,
-    "unchangedPages": 108,
-    "preservedIdsPerGuide": 173,
-    "preservedImageOccurrencesPerGuide": 55,
-    "firstTableStepsPerGuide": 5,
-    "authoredCrossDocumentReferencesChecked": 110,
-    "relativeMarkdownOccurrencesInCorpus": 709,
-    "offlineBrowserLocales": [
-      "en",
-      "de"
-    ],
-    "nativeSectionClicksWithNoNewFetches": 2
+    "missingReferencedImages": 0,
+    "relativeMarkdownOccurrences": 648
   },
-  "evidence": [
-    {
-      "packagePath": "check_guides.py",
-      "sha256": "3a770d5d8eb0fc5239134f64caba77d2c55e7f047db40cf5bb61597ada2ec9ce"
-    },
-    {
-      "packagePath": "artifact_runtime.py",
-      "sha256": "bb161d314f684c3f92d7ea5e986fdd001180bfa1713d7df36ce181a8f1e9c091"
-    },
-    {
-      "packagePath": "probes/com/taxonomy/shared/controller/RenderHelpCorpus.java",
-      "sha256": "6ca89a78f884488e6d2ea51987f30b971e3b3bda03c5d34871591aaab7ef297d"
-    },
-    {
-      "packagePath": "evidence/baseline-HelpHeadingAssertions.log",
-      "sha256": "860f4e2b517461c807e1b39958a5e94e63e4f7aad26409ba731fa4a98452ffa6"
-    },
-    {
-      "packagePath": "evidence/baseline-HelpResourceLifecycleAssertions.log",
-      "sha256": "48a2eaa3ed710f0ee65074fb756c9e3a3d021bc7d32daf886a675964fb80f1a9"
-    },
-    {
-      "packagePath": "evidence/candidate-HelpHeadingAssertions.log",
-      "sha256": "a59fe96e0596e68305361a1dcd5efd5565dbeb27210f0fb52d348bf49ecf250b"
-    },
-    {
-      "packagePath": "evidence/candidate-HelpResourceLifecycleAssertions.log",
-      "sha256": "a8c7e65070b992f25132b0836f557c2734d2a4ccc62a753d1e614febf438b136"
-    },
-    {
-      "packagePath": "evidence/candidate-render.log",
-      "sha256": "bd5cdbb1e169c5c9092a2b26a99cbde2f5b59ba6eb0971c453f5e683295a6e9e"
-    },
-    {
-      "packagePath": "evidence/compile.log",
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    {
-      "packagePath": "evidence/controller-regressions.json",
-      "sha256": "b3402411a01cbd085d8acfe2770c0aa3a33de498591b90ccbf4d7f06dcf90d35"
-    },
-    {
-      "packagePath": "evidence/fresh-check.log",
-      "sha256": "4c50f3a15b50491efffc812a0362ca5e927c74f25743f01c7b513c38a6fe48c9"
-    },
-    {
-      "packagePath": "evidence/published-render.log",
-      "sha256": "bd5cdbb1e169c5c9092a2b26a99cbde2f5b59ba6eb0971c453f5e683295a6e9e"
-    },
-    {
-      "packagePath": "evidence/rendered-manifest.json",
-      "sha256": "5991e98f99bc22790c61ecc55428c2dc85fe5c1a80e89441a68a3b220ff4f7bb"
-    },
-    {
-      "packagePath": "evidence/result.json",
-      "sha256": "aab257372987da229940ebfe07c017450c5de5b1770499e7764f40f285c9b175"
-    }
-  ],
-  "reproduction": "python check_guides.py --candidate-zip /absolute/path/taxonomy-help-83a99315-application.zip --work /new/directory --browser /absolute/path/chromium",
-  "limits": [
-    "Actual CI production classes with explicitly identified Markdown resource overlays; not a combined clean build of both PRs.",
-    "Standalone Java diagnostics are not JUnit/Maven/full-suite results.",
-    "Chromium uses offline component fetch fixtures and the unchanged shipped importer; no application login, HTTP, context-path or cross-document navigation acceptance.",
-    "Cross-document checks prove authored destination existence and registered target fragments only; no remote URL requests.",
-    "The prior unpublished broad help rewrite remains excluded and its earlier unbound quantitative claims remain withdrawn."
-  ]
+  "diagnosticSha256": {
+    "check_restoration.py": "188ec745dc4998320cc29a9c018fbb884fbee3b26d0ae16519081799b2cac7df",
+    "RenderHelpCorpus.java": "6ca89a78f884488e6d2ea51987f30b971e3b3bda03c5d34871591aaab7ef297d",
+    "result.json": "ebc2c987ef44490c2e96f1cacaf2877b4301baa4ce7c5362864b21277f1c94be",
+    "compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "render.log": "bd5cdbb1e169c5c9092a2b26a99cbde2f5b59ba6eb0971c453f5e683295a6e9e",
+    "en-all-changes.json": "b92a2964b7e8e475735b2d8344fa6950b5606bf3386c1b122ad3e6e109629bd1",
+    "de-all-changes.json": "5eab9b759477cba04a4e3e759c2953d96e67cd31d8ffecec2ba3c0d5516ede5d"
+  },
+  "publicationVerification": {
+    "workflowRunId": 37122578025,
+    "jobId": 111201454483,
+    "result": "success",
+    "scope": "Exact file hashes, preserved headings/examples/images/procedures, whitespace, two-file-only commit and fast-forward publication to the unchanged draft branch",
+    "temporaryMaintenanceBranchRemoved": true,
+    "mainOrReleaseModified": false,
+    "regularCiStillRequired": true
+  },
+  "historicalEvidence": {
+    "commit": "086c3333f46891c12ba330850abc3a968fff7e38",
+    "report": "docs/qa/2026-10-03-documentation-help-qa.md",
+    "manifest": "docs/qa/2026-10-03-documentation-inputs.json",
+    "warning": "Historical numbers do not certify these restored guides. Earlier unbound broad-rewrite claims remain withdrawn."
+  }
 }

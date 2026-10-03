@@ -1,115 +1,103 @@
 # Documentation and help QA — 3 October 2026
 
-## Current delivery boundary
+## Current decision and superseded review
 
-This amendment to PR #1164, based on
-`e7852cc8510d4d214b5dc018011d914619933ca5`, integrates both general USER_GUIDEs.
-They are no longer a deferred patch. The earlier README, portfolio, matrix,
-Git/workspace, privacy and verification-instruction corrections remain in place.
-There are 21 documentation files in the complete PR; this amendment changes only
-the two existing manuals and this report/input manifest. No runtime code, workflow,
-authorization rule, test selector, dependency or coverage threshold changes.
+The earlier approval of the heavily condensed USER_GUIDEs is withdrawn. Preserved
+anchors, pictures and successful rendering were not evidence that the corresponding
+instructions remained usable. The owner identified a real regression: instructions
+for starting over, cancelling/saving, provider retry versus status refresh, creating
+relations and recording current analysis had been reduced to inadequate summaries.
 
-The manuals were reviewed again rather than publishing the old patch unchanged.
-The former long introductions and duplicated API/DSL examples still contained
-contradictory advice, including ignoring every low-scored node. The revised manuals
-follow browser tasks, explain score/scope boundaries and link to existing maintained
-specialist references. They retain the main chapter topics, all 173 earlier rendered
-IDs and all 55 image occurrences in each language. Former subsection targets now
-lead to their corresponding task chapter; this is not a claim of identical layout
-or unchanged prose. Existing screenshots are not relabelled as freshly generated.
+Commit `e03e2c045ff0ee9a3c0874900c38fe79353ad08c` replaces that condensation with
+conservative corrections to the complete main guides at
+`dc10e7b143ce03b465ae328cb32cf05f8f66c13d`. No old chapter is relocated or removed.
+The original procedures, prerequisites, failure handling and examples remain in
+place. Valid clarifications about scope, scores, local embeddings, saved states,
+explicit adoption and separate reanalysis are retained. Other corrected documents
+in this PR, including privacy and quota text, are not rolled back.
 
-The separate implementation remains PR #1165 head
-`83a9931579185d2fae789610057b69ca0bcce685`, tree
-`20e16d7dcd0fb83db17a4b4e2815e3793aab555a`. Its three narrow fixes are cache identity,
-image-stream ownership and standard Flexmark heading IDs. The previously blocked
-broad browser/link rewrite remains excluded, not republished by another mechanism.
+## Content-preservation result
 
-## Documentation findings addressed
+| Guide | Main baseline | Rejected condensed version | Corrected version | Diff against main |
+|---|---:|---:|---:|---|
+| English | 1,881 lines | 705 lines | 1,971 lines | 133 added, 43 removed |
+| German | 1,869 lines | 707 lines | 1,982 lines | 151 added, 38 removed |
 
-The first-use tables now contain all five steps; a security note no longer splits
-them after step two. Ordinary users sign in with their assigned accounts; initial
-administrator bootstrap is a distinct operator procedure.
+In each language, all 173 prior headings, all ten fenced examples and all 55
+image occurrences remain in their original order. The following four complete
+procedure bodies were also compared byte-for-byte, not just by checking anchors:
 
-Both manuals explain the architecture-guided clarification loop: select a saved
-source and snapshot, review a separate offer and typed questions, record human
-answers or deferrals, inspect and confirm adoption, then request reanalysis
-separately. The mobile time-capture example is explicitly illustrative, not a
-claimed recorded model output. Original sources and historical evidence remain
-separate from generated wording and accepted architecture changes.
+- New analysis / cancel running analysis / save draft now, including shared drafts
+  across tabs and devices, preservation versus deliberate clearing, and stale tabs.
+- Paused ad-hoc Copilot recovery, including possible repeated provider billing,
+  Refresh status without another question, and its distinction from project jobs.
+- Creating a relation through the browser, with endpoint/type selection.
+- Recording current analysis in Requirement Coverage, including its actual threshold
+  policy; a separate clarification prevents treating that policy as universal truth.
 
-The analysis chapters distinguish selected roots, taxonomies-only/full mode,
-completed, excluded and unresolved work, and compatible continuation. Low child
-weight is not a reason to discard an indispensable contribution; similarity is not
-necessity. A failed or unvisited branch is not a negative finding. Local embeddings
-do not supply generative relationship or wording capabilities.
+The 81 removed main lines are targeted corrections rather than missing chapters.
+The complete before/replacement ledger is included in the accompanying evidence.
+Its categories are:
 
-Repeated API syntax and grammar examples are replaced by links to the existing
-specialist guides, not another parallel reference. Editor revisions, analysis
-snapshots, Git checkpoints and branch-head reset are distinguished. Export,
-coverage and administrative sections retain explicit support and authority limits.
-The prior privacy corrections remain: persistent analyses are not session-only,
-database-backed Git is not a generic folder, disabling an account is not erasure,
-and no improvised cross-store deletion procedure is claimed to be implemented.
+| Previous statement or structure | Replacement reason |
+|---|---|
+| Administrator bootstrap presented as normal user login; security note splits the first table | Assigned-account login, separate bootstrap/OIDC setup and one complete five-step table |
+| Every catalogue node independently assessed; ten roots; no colour or zero implies irrelevance | Selected hierarchical scope, eight roots, explicit assessed/excluded/open states |
+| Perfect score proves correctness; ignore low scores; universal 25/50 percent cutoffs | Explain independent relevance/suitability versus shared child weights and evidence limits |
+| Fixed word/sentence counts guarantee accuracy; rewrite toward catalogue words | Preserve actual domain meaning, conditions and dependencies within configured limits |
+| Displayed relationships or deterministic recommendation labels imply human approval | Distinguish candidates, imported links and accepted decisions |
+| Reload means saved scores are necessarily lost | Reopen the saved draft or snapshot before repeating paid model work |
+| Every editor change is a Git commit; materialization affects all installation relations | Separate semantic journal, workspace projection, explicit checkpoint and immutable snapshot |
+| Branch-head Undo and semantic editor Undo are interchangeable | Retain both procedures and explain their different effects |
+| LOCAL_ONNX implies all generative capabilities or complete offline isolation | State supported embedding/search/scoring scope and additional network/model requirements |
 
-## Fresh verification and immutable inputs
+Old inaccurate claims are not restored merely to reduce the diff. Pictures are
+retained illustrations, not new screenshot acceptance. More specialist documents
+still require review; this is not certification of all product documentation.
 
-[The input manifest](2026-10-03-documentation-inputs.json) identifies the two guide
-blobs, artifact ZIP/JAR digests, complete resource inventory and diagnostic/log
-hashes. Prior document inputs remain linked at their immutable parent commit.
-The earlier unbound quantitative claims for the lost broad help candidate remain
-withdrawn; these new results do not retroactively identify or validate it.
+## Fresh verification and identity
 
-The production classes are from CI artifact `11267389645`, built from merge commit
-`d2e469f63a0a80d68429a36a3f7e7f69108afc31`, whose tree matches the #1165 head.
-The guide checks overlay only the explicitly identified Markdown resources. They
-are not a clean combined build of the two PRs and replace no production classes.
+The [input manifest](2026-10-03-documentation-inputs.json) identifies the exact
+source blobs, candidate SHA-256 values, runtime and diagnostic/result hashes.
+The local preservation check passed after tightening all four German workflow
+checks as well as all four English checks. Whitespace validation passed.
 
-| Check performed again | Result | Exact boundary |
-|---|---|---|
-| Existing controller regressions against both exact CI artifacts | Baseline reproduces six failures; corrected artifact passes all eleven shared assertions | Java main entry points, not JUnit or the full suite |
-| Actual HelpController/Flexmark, all 55 registered documents in EN/DE | All 110 pages render; 34 prior missing same-page targets become zero among 626 current local fragment occurrences | Static HTML targets; not all navigation |
-| Output comparison for this two-guide amendment | Only EN/DE USER_GUIDE changes; 108 responses remain byte-identical | Compared with parent documentation on the same runtime |
-| Deep-link and image preservation | All 173 previous IDs and 55 image occurrences retained per language; no duplicate IDs or missing referenced local image files | Existence/identity, not screenshot freshness or image download |
-| First-use tables | Five body rows in each language | Actual rendered tables |
-| New manual cross-document destinations | All 110 authored Markdown references point to existing documents; checked registered target fragments exist | No remote requests or browser routing guarantee |
-| Unchanged shipped help importer in real local Chromium | Both languages retain the IDs, five table rows and 55 image nodes; two native section clicks scroll without additional fetches; no page errors | Controlled offline component responses, not login/HTTP/context-path acceptance |
+The actual packaged HelpController and Flexmark from CI artifact `11267389645`
+rendered 55 registered documents in both languages with explicitly overlaid
+previous documentation resources and these two corrected guides: 110 pages,
+650 same-page fragment occurrences, no missing same-page targets, no duplicate
+IDs and no missing referenced local image files. There were 648 relative Markdown
+links requiring browser handling; these are occurrences, not measured HTTP errors.
 
-The current corpus contains 709 relative Markdown-link occurrences. The manuals
-now link to specialist references instead of copying their APIs. This count is not
-709 bugs or HTTP 404 responses. Correct authored destinations and same-page targets
-do not repair the remaining browser cross-document routing or request ownership.
+This is a resource-overlay diagnostic, not a new combined release artifact or
+full browser/Maven run. The current main release registry contains an additional
+release-notes entry, so the 110-page diagnostic is not passed off as exhaustive
+coverage of the final main registry. Full CI must verify the final merged inputs.
+No paid/live model requests were made.
 
-A portable diagnostic was run from a fresh directory with the exact locally
-supplied artifact. It verifies input hashes before extraction, compiles the corpus
-probe with Java 21, renders both resource states and checks the tables, targets,
-images and cross-document destinations. Optional Chromium checks use the unchanged
-production script. The accompanying package includes the programs and logs, not
-runtime binaries, credentials, model files or a second implementation of the app.
+A one-time maintenance job `37122578025` applied only the two exact hash-bound
+Markdown results to the unchanged draft PR branch, repeated the preservation and
+whitespace checks, and removed its own maintenance branch. It neither changed main
+nor installed a permanent workflow, and is not a substitute for regular CI. The
+resulting guide blobs were read back from GitHub and match the locally tested
+files. The publication commit contains only the two USER_GUIDE files.
 
-## Verification not claimed and remaining work
+## Previous evidence and remaining release gates
 
-No new complete Maven/JUnit/Selenium/JaCoCo or full UI-suite result is claimed
-locally. The available verification copy is not a full checkout and lacks the
-Maven wrapper. Each final PR head still requires its normal GitHub CI and review;
-a successful older head or separately built runtime is not a substitute.
-No live or paid model calls were made.
+Earlier evidence belongs only to the exact historical candidates named in the
+manifest history reference. In particular, previously unbound numerical claims
+for the unpublished broad browser/link rewrite remain withdrawn. No new hashes
+retroactively identify that candidate. The blocked broad JavaScript/link rewrite
+is not part of this correction and has not been published by another route.
 
-The two general manual integrations and their local section-target corrections are
-completed in this amendment. Comprehensive documentation QA remains open for the
-actual application cross-document/help navigation, context paths and stale request
-ownership, full API/install/operations accuracy, specialist-guide contradictions,
-external references and current screenshots. The 337-file inventory and 110-page
-render checks are not a sentence-by-sentence semantic audit of every document.
+The already integrated #1165 independently fixes resource lifetime, duplicate
+fallback-cache entries and generated heading IDs. This documentation correction
+does not modify its code, any sanitizer, authorization, test selector or threshold.
 
-## Reproduction
-
-Supply the exact candidate artifact locally and run the packaged diagnostic:
-
-```text
-python check_guides.py --candidate-zip /absolute/path/taxonomy-help-83a99315-application.zip --work /new/directory --browser /absolute/path/chromium
-```
-
-Java 21, Python with BeautifulSoup, and optional local Chromium/Playwright are
-required. No download is performed. The manifest separately records the exact
-baseline/candidate controller evidence from the existing shared assertion programs.
+Before merging this corrected PR, its final head must complete the normal CI and
+review process. Before release, the required changes must be integrated and the
+native Release Workflow must receive a separate, one-file release request bound
+to the exact main parent, with tests enabled. Any failed required gate blocks release.
+Actual cross-document browser navigation/context paths, remaining API/installation/
+operations assertions, external references and fresh screenshots are follow-up
+QA work, not silently reported as completed by these checks.
