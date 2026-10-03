@@ -1,8 +1,8 @@
 # Taxonomy Architecture Analyzer
 
 [![CI/CD](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/coverage/badge.json)](https://github.com/carstenartur/Taxonomy/coverage/)
-[![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://github.com/carstenartur/Taxonomy/tests/surefire-report.html)
+[![Coverage](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/coverage/badge.json)](https://carstenartur.github.io/Taxonomy/coverage/)
+[![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
@@ -244,8 +244,7 @@ focused runs, screenshots and the coverage retained in the existing CI profiles.
 The whole-repository module-extraction gate is owned by `taxonomy-build`, which
 is ordered after the application, aggregate coverage, and tooling modules. It
 runs in ordinary full-reactor verification and in the root-level
-`architecture-tests` profile. Its report is written to
-`taxonomy-build/target/architecture-module-graph.txt`. Focused selections that
+`architecture-tests` profile. Focused selections that
 end at `taxonomy-app`, including the Keycloak-only lane, do not run this
 whole-reactor inventory; the full reactor remains its enforcement boundary.
 
