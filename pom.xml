@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.taxonomy</groupId>
     <artifactId>taxonomy</artifactId>
-    <version>1.4.0-SNAPSHOT</version>
+    <version>1.4.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Taxonomy Architecture Analyzer</name>
     <description>Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis.</description>
@@ -220,11 +220,18 @@
                                 <bannedDependencies>
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
-                                        <!-- CVE-2026-68497: reject vulnerable databind even if the BOM is overridden. -->
-                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.6):jar:compile</exclude>
-                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.6):jar:runtime</exclude>
-                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.2):jar:compile</exclude>
-                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.2):jar:runtime</exclude>
+                                        <!-- CVE-2026-68497, CVE-2026-91776 and CVE-2026-91777:
+                                             reject vulnerable databind even if either BOM is overridden. -->
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:(,2.18.11):jar:compile</exclude>
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:(,2.18.11):jar:runtime</exclude>
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:[2.19.0,2.21.7):jar:compile</exclude>
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:[2.19.0,2.21.7):jar:runtime</exclude>
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:[2.22.0,2.22.3):jar:compile</exclude>
+                                        <exclude>com.fasterxml.jackson.core:jackson-databind:[2.22.0,2.22.3):jar:runtime</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.7):jar:compile</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:(,3.1.7):jar:runtime</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.3):jar:compile</exclude>
+                                        <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.3):jar:runtime</exclude>
                                         <!-- Fixed floor is independent of overrides to tomcat.version. -->
                                         <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:compile</exclude>
                                         <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:runtime</exclude>

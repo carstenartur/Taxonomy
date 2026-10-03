@@ -1,10 +1,20 @@
-# Versionshinweise 1.4.0 — unveröffentlicht
+# Versionshinweise 1.4.1
 
-Version 1.4.0 wurde nicht veröffentlicht. Diese Hinweise beschreiben den damaligen Kandidaten; die [aktuellen Versionshinweise](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/de/RELEASE_NOTES_1_4_1.md) gelten für 1.4.1.
-
-Die [vollständige Release-Beschreibung](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md) ist die verbindliche
+Die [vollständige Release-Beschreibung](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/release_notes.md) ist die verbindliche
 Umfangsbeschreibung. Diese Hinweise fassen die sichtbaren Änderungen zusammen;
 die Veröffentlichung setzt die Freigabeprüfungen des endgültigen Kandidaten voraus.
+
+## Mehrbenutzerbetrieb und vollständiger Fortschritt
+
+Begrenzte Analyse- und Provider-Kapazitäten zeigen Wartezustände und trennen
+Wartezeit von Ausführungszeit. Die Grenzen gelten je Anwendungsinstanz; mehrere
+Replikate teilen keine globale Quote. Siehe [Mehrbenutzer-Analyse](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/de/MULTIUSER_ANALYSIS.md).
+
+Die Live-Ansicht zeigt bewertete, ausgeschlossene und offene Knoten bezogen auf die
+vollständige Gesamtzahl, insgesamt und je Teiltaxonomie. Die Beziehungssuche zeigt
+alle Suchaufträge, erledigte/ungeklärte/offene Arbeit und den aktuellen Suchschritt.
+Eine Fortsetzung erhält gültige Nachweise und verwendet gespeicherte Antworten,
+ohne erfolgreiche Provider-Aufrufe zu wiederholen.
 
 ## Anforderungen und Architektur
 
@@ -43,12 +53,12 @@ dateibasierte HSQLDB-Installationen bereiten Repository- und Portfolio-Zuordnung
 jetzt vor dem Hibernate-Start vor. Das Upgrade erhält gespeicherte Zuordnungen und
 bricht bei uneindeutiger Herkunft ab, statt befüllte Tabellen unmigriert zu lassen.
 Vor Produktivbetrieb
-die [Upgrade-Hinweise](https://github.com/carstenartur/Taxonomy/blob/v1.4.0/release_notes.md#upgrade-notes) beachten und Wiederherstellung,
+die [Upgrade-Hinweise](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/release_notes.md#upgrade-notes) beachten und Wiederherstellung,
 Suche und Git-Historie prüfen.
 
 Die GUI-Sprache garantiert derzeit nicht die Sprache generierter KI-Begründungen.
 Lokalisierte Berichtstitel übersetzen gespeicherte Gründe nicht. Die vorgeschlagenen
-getrennten Sprachvorgaben sind [separat beschrieben](../dev/ANALYSIS_LANGUAGE_POLICY.md)
+getrennten Sprachvorgaben sind [separat beschrieben](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/dev/ANALYSIS_LANGUAGE_POLICY.md)
 und in dieser Release-Korrektur noch nicht implementiert.
 
 ## Experimentelle visuelle Visio-Übergabe (#965)
@@ -61,4 +71,4 @@ Jedes erzeugte Paket durchläuft OPC-/Referenzprüfungen und eine Validierung mi
 
 **Die Microsoft-Visio-Desktop-Abnahme für Öffnen, Bearbeiten, Speichern und erneutes Öffnen steht aus.** Das Format bleibt eine experimentelle begrenzte visuelle Übergabe; produktionsreife Bearbeitung oder allgemeine Visio-Kompatibilität werden nicht zugesichert. Externe Änderungen aktualisieren Taxonomy nicht. Für semantischen Architekturaustausch dienen ArchiMate Exchange und freigegebene JSON-Nachweise vorbehaltlich der gesonderten Abnahme in #967.
 
-Das [Benutzerhandbuch](USER_GUIDE.md) beschreibt den Download; [Profil, Grenzen und Desktop-Abnahmeverfahren](../dev/VISIO_HANDOFF_PROFILE.md) dokumentieren Umfang und offene Nachweise. Die ergänzende POI-Vorschau zeigt Einschränkungen bei Schriftzeichen und Pfeilspitzen.
+Das [Benutzerhandbuch](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/de/USER_GUIDE.md) beschreibt den Download; [Profil, Grenzen und Desktop-Abnahmeverfahren](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/dev/VISIO_HANDOFF_PROFILE.md) dokumentieren Umfang und offene Nachweise. Die ergänzende POI-Vorschau zeigt Einschränkungen bei Schriftzeichen und Pfeilspitzen.

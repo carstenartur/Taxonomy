@@ -24,7 +24,7 @@ concurrency:
 jobs:
   reference:
     runs-on: ubuntu-latest
-    # A cold full reactor can consume nearly an hour before the ONNX integration tests start.
+    # Full reactor verification can exceed an hour even after the ONNX tests pass.
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
