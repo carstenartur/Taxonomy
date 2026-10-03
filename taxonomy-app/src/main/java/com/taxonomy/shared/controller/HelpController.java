@@ -133,6 +133,11 @@ public class HelpController {
             AutolinkExtension.create(),
             StrikethroughExtension.create()
         ));
+        // Section links need real heading targets, including translated and repeated headings.
+        options.set(HtmlRenderer.GENERATE_HEADER_ID, true);
+        options.set(HtmlRenderer.RENDER_HEADER_ID, true);
+        options.set(HtmlRenderer.HEADER_ID_GENERATOR_RESOLVE_DUPES, true);
+        options.set(HtmlRenderer.HEADER_ID_GENERATOR_NON_ASCII_TO_LOWERCASE, true);
         this.parser = Parser.builder(options).build();
         this.renderer = HtmlRenderer.builder(options).build();
     }
