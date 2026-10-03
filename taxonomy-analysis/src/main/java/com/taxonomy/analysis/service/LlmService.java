@@ -29,6 +29,14 @@ import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.analysis.service.PromptTemplateService;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
+import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
+import com.taxonomy.analysis.dag.RequirementReference;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
 
 /**
  * Provider-agnostic LLM service for taxonomy analysis.
@@ -340,101 +348,65 @@ public class LlmService {
         List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() || !scope.legacyFull()
                 ? taxonomyService.getFullTree() : null;
         if (plannedTree != null) AnalysisRunControl.planNodes(scope.selectedTree(plannedTree));
-        Map<String, Integer> allScores = new HashMap<>();
-        Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
-        Map<String, String> allReasons = new LinkedHashMap<>();
-        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-        List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-        List<String> warnings = new ArrayList<>();
+        RootScoringRun run = new RootScoringRun();
 
-        List<String> completedRoots = new ArrayList<>();
-        List<String> skippedRoots  = new ArrayList<>();
-        boolean rateLimitHit = false;
-        AnalysisStoppedException stop = null;
-
-        for (TaxonomyNode root : roots) {
-            if (rateLimitHit) {
-                skippedRoots.add(root.getName());
-                continue;
-            }
-            try {
-                // Capture scalar context before the provider can return a cooperative stop.
-                captureScoreContexts(List.of(root), scoreContexts);
-                // Score root independently (0-100) to gauge branch relevance
-                LlmCallDetail rootDetail = callLlmPropagatingDetailed(
-                        businessText, List.of(root), 100, ScoreAssessmentKind.ROOT_RELEVANCE);
-                Map<String, Integer> rootScore = rootDetail.getScores();
-                allScores.putAll(rootScore);
-                if (rootDetail.getReasons() != null) {
-                    allReasons.putAll(rootDetail.getReasons());
+        // Each root is one SubtaxonomyAnalysisTask of the operation's task graph. The
+        // in-process transport executes them on this thread in priority order, so
+        // provider selection, run control and call semantics remain those of one run.
+        Map<String, TaxonomyNode> rootsByCode = new LinkedHashMap<>();
+        roots.forEach(root -> rootsByCode.put(root.getCode(), root));
+        List<TaxonomyShardRoot> shardRoots = roots.stream().map(root -> TaxonomyShardRoot.of(root.getCode())).toList();
+        InProcessAnalysisOperation joined = InProcessAnalysisOperation.current()
+                .filter(InProcessAnalysisOperation::canPlan)
+                .filter(operation -> operation.context().requirement().matches(businessText))
+                .orElse(null);
+        try (InProcessAnalysisOperation ephemeral = joined != null ? null
+                : InProcessAnalysisOperation.open(ephemeralOperation(businessText), null)) {
+            InProcessAnalysisOperation operation = joined != null ? joined : ephemeral;
+            operation.plan(shardRoots, scope.includesRelations());
+            operation.runSubtaxonomyTasks(task -> {
+                if (!task.envelope().requirement().matches(businessText)) {
+                    throw new IllegalStateException("Task requirement reference does not match the analysed requirement");
                 }
-                if (rootDetail.getDiscrepancy() != null) {
-                    allDiscrepancies.add(rootDetail.getDiscrepancy());
+                TaxonomyNode root = rootsByCode.get(task.root().code());
+                if (root == null) {
+                    throw new IllegalStateException("Task root is not part of the selected catalogue roots");
                 }
-                addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                int score = rootScore.getOrDefault(root.getCode(), 0);
-
-                if (score > 0) {
-                    // Score Level-1 children distributing the root's score
-                    List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
-                    if (!level1Children.isEmpty()) {
-                        analyzeNodesPropagating(
-                                businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, score, scoreContexts, null);
-                    }
-                }
-
-                completedRoots.add(root.getName());
-
-            } catch (AnalysisStoppedException stopped) {
-                allScores.putAll(stopped.partialScores());
-                allReasons.putAll(stopped.partialReasons());
-                allDiscrepancies.addAll(stopped.partialDiscrepancies());
-                warnings.add(stopped.getMessage());
-                stop = stopped;
-                break;
-            } catch (LlmRateLimitException e) {
-                rateLimitHit = true;
-                skippedRoots.add(root.getName());
-                log.warn("Rate limit hit while processing '{}': {}", root.getName(), e.getMessage());
-            } catch (Exception e) {
-                log.error("Error processing root '{}': {}", root.getName(), e.getMessage(), e);
-                warnings.add("Error processing " + root.getName() + ": " + e.getMessage());
-                completedRoots.add(root.getName());
-            }
+                return scoreRootTask(operation, task, businessText, root, run);
+            });
         }
 
         // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = stop == null || !scope.legacyFull()
+        List<TaxonomyNodeDto> rawTree = run.stop == null || !scope.legacyFull()
                 ? plannedTree == null ? taxonomyService.getFullTree() : plannedTree : List.of();
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
-            annotatedTree.add(taxonomyService.applyScores(rootDto, allScores));
+            annotatedTree.add(taxonomyService.applyScores(rootDto, run.allScores));
         }
 
-        AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
-        if (stop != null) {
-            scoreContexts.keySet().retainAll(allScores.keySet());
-            result.setScoreSemanticsContext(scoreContexts);
+        AnalysisResult result = new AnalysisResult(run.allScores, annotatedTree);
+        if (run.stop != null) {
+            run.scoreContexts.keySet().retainAll(run.allScores.keySet());
+            result.setScoreSemanticsContext(run.scoreContexts);
         }
         result.setAnalysisScope(scope);
-        result.setReasons(allReasons);
+        result.setReasons(run.allReasons);
         result.setProvider(getActiveProviderName());
-        result.setDiscrepancies(allDiscrepancies);
-        result.setProductCoverageGaps(productCoverageGaps);
-        result.setWarnings(warnings);
+        result.setDiscrepancies(run.allDiscrepancies);
+        result.setProductCoverageGaps(run.productCoverageGaps);
+        result.setWarnings(run.warnings);
 
-        if (stop != null) {
+        if (run.stop != null) {
             result.setStatus("PARTIAL");
-            result.setErrorMessage(stop.getMessage());
-        } else if (rateLimitHit) {
+            result.setErrorMessage(run.stop.getMessage());
+        } else if (run.rateLimitHit) {
             String msg = "Rate limit reached after processing: " +
-                    String.join(", ", completedRoots) + ". Skipped: " +
-                    String.join(", ", skippedRoots) + ".";
+                    String.join(", ", run.completedRoots) + ". Skipped: " +
+                    String.join(", ", run.skippedRoots) + ".";
             result.setStatus("PARTIAL");
             result.setErrorMessage(msg);
             result.getWarnings().add(0, msg);
-        } else if (!warnings.isEmpty()) {
+        } else if (!run.warnings.isEmpty()) {
             result.setStatus("PARTIAL");
         } else {
             result.setStatus("SUCCESS");
@@ -442,10 +414,108 @@ public class LlmService {
 
         if (!scope.legacyFull()) {
             List<TaxonomyNodeDto> coverageTree = plannedTree == null ? rawTree : plannedTree;
-            result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), allScores,
-                    result.getScores(), Map.of(), stop == null ? null : "INTERRUPTED:" + stop.reason().name()));
+            result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), run.allScores,
+                    result.getScores(), Map.of(), run.stop == null ? null : "INTERRUPTED:" + run.stop.reason().name()));
         }
         return result;
+    }
+
+    /** Mutable, thread-confined accumulation of one operation's root task results. */
+    private static final class RootScoringRun {
+        final Map<String, Integer> allScores = new HashMap<>();
+        final Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
+        final Map<String, String> allReasons = new LinkedHashMap<>();
+        final List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
+        final List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
+        final List<String> warnings = new ArrayList<>();
+        final List<String> completedRoots = new ArrayList<>();
+        final List<String> skippedRoots = new ArrayList<>();
+        boolean rateLimitHit;
+        AnalysisStoppedException stop;
+    }
+
+    /**
+     * Process-local operation identity for callers that score without a coordinating
+     * use case. It reads the shared compatibility scope and is never persisted.
+     */
+    private static AnalysisOperationContext ephemeralOperation(String businessText) {
+        String runId = AnalysisRunControl.currentOperationId();
+        String operationId = runId != null ? runId : UUID.randomUUID().toString();
+        var shared = com.taxonomy.workspace.service.WorkspaceContext.SHARED;
+        return new AnalysisOperationContext(operationId,
+                new AnalysisSourceAuthority(shared.repositoryId(), shared.workspaceId(), shared.currentBranch(), null),
+                RequirementReference.adHoc(businessText), operationId);
+    }
+
+    /** Executes one {@link SubtaxonomyAnalysisTask}: root relevance followed by hierarchical descent. */
+    private SubtaxonomyAnalysisCompleted scoreRootTask(InProcessAnalysisOperation operation,
+                                                       SubtaxonomyAnalysisTask task, String businessText,
+                                                       TaxonomyNode root, RootScoringRun run) {
+        var messages = operation.messages();
+        if (run.rateLimitHit) {
+            run.skippedRoots.add(root.getName());
+            return messages.completed(task, AnalysisTaskOutcome.SKIPPED, null, 0, null);
+        }
+        int scoresBefore = run.allScores.size();
+        try {
+            // Capture scalar context before the provider can return a cooperative stop.
+            captureScoreContexts(List.of(root), run.scoreContexts);
+            // Score root independently (0-100) to gauge branch relevance
+            LlmCallDetail rootDetail = callLlmPropagatingDetailed(
+                    businessText, List.of(root), 100, ScoreAssessmentKind.ROOT_RELEVANCE);
+            Map<String, Integer> rootScore = rootDetail.getScores();
+            run.allScores.putAll(rootScore);
+            if (rootDetail.getReasons() != null) {
+                run.allReasons.putAll(rootDetail.getReasons());
+            }
+            if (rootDetail.getDiscrepancy() != null) {
+                run.allDiscrepancies.add(rootDetail.getDiscrepancy());
+            }
+            int warningsBefore = run.warnings.size();
+            addAnalysisWarning(run.warnings, root.getCode(), rootDetail);
+            int score = rootScore.getOrDefault(root.getCode(), 0);
+
+            if (score > 0) {
+                // Score Level-1 children distributing the root's score
+                List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
+                if (!level1Children.isEmpty()) {
+                    analyzeNodesPropagating(
+                            businessText, level1Children, run.allScores, run.allReasons,
+                            run.allDiscrepancies, run.productCoverageGaps, run.warnings, score,
+                            run.scoreContexts, null);
+                }
+            }
+
+            run.completedRoots.add(root.getName());
+            return messages.completed(task,
+                    run.warnings.size() > warningsBefore ? AnalysisTaskOutcome.PARTIAL : AnalysisTaskOutcome.COMPLETED,
+                    boundedScore(rootScore.get(root.getCode())), Math.max(0, run.allScores.size() - scoresBefore), null);
+
+        } catch (AnalysisStoppedException stopped) {
+            run.allScores.putAll(stopped.partialScores());
+            run.allReasons.putAll(stopped.partialReasons());
+            run.allDiscrepancies.addAll(stopped.partialDiscrepancies());
+            run.warnings.add(stopped.getMessage());
+            run.stop = stopped;
+            return messages.completed(task, AnalysisTaskOutcome.STOPPED, null,
+                    Math.max(0, run.allScores.size() - scoresBefore), stopped.reason().name());
+        } catch (LlmRateLimitException e) {
+            run.rateLimitHit = true;
+            run.skippedRoots.add(root.getName());
+            log.warn("Rate limit hit while processing '{}': {}", root.getName(), e.getMessage());
+            return messages.completed(task, AnalysisTaskOutcome.SKIPPED, null,
+                    Math.max(0, run.allScores.size() - scoresBefore), null);
+        } catch (Exception e) {
+            log.error("Error processing root '{}': {}", root.getName(), e.getMessage(), e);
+            run.warnings.add("Error processing " + root.getName() + ": " + e.getMessage());
+            run.completedRoots.add(root.getName());
+            return messages.completed(task, AnalysisTaskOutcome.FAILED, null,
+                    Math.max(0, run.allScores.size() - scoresBefore), null);
+        }
+    }
+
+    private static Integer boundedScore(Integer score) {
+        return score == null ? null : Math.max(0, Math.min(100, score));
     }
 
     private List<TaxonomyNode> selectedRoots(AnalysisScope scope, boolean prioritize) {

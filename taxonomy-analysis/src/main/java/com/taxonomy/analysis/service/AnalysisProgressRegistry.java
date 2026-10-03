@@ -366,6 +366,7 @@ public class AnalysisProgressRegistry {
         Run(String id, Scope scope, AnalysisProvenance provenance, AnalysisAdmissionQueue.Ticket ticket) {
             this.id = id; this.scope = scope; this.provenance = provenance; this.ticket = ticket;
         }
+        @Override public String operationId() { return id; }
         boolean active() { return "QUEUED".equals(status) || "RUNNING".equals(status) || "CANCELLING".equals(status); }
         boolean queueExpired() {
             return "QUEUED".equals(status)

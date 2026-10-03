@@ -9,6 +9,8 @@ import java.util.Objects;
 /** Request/worker-scoped callbacks; no global prompt, result or credential retention. */
 public final class AnalysisRunControl implements AutoCloseable {
     interface Observer {
+        /** Durable operation identity of the observed run, when it has one. */
+        default String operationId() { return null; }
         default void planNodes(java.util.List<com.taxonomy.dto.TaxonomyNodeDto> tree) { }
         default void assessment(LlmCallDetail detail) { }
         default void relations(com.taxonomy.dto.RelationSearchProgress progress) { }
@@ -43,6 +45,12 @@ public final class AnalysisRunControl implements AutoCloseable {
     }
 
     public static boolean active() { return CURRENT.get() != null; }
+
+    /** Durable operation identity of the active run, or {@code null}. */
+    public static String currentOperationId() {
+        var current = CURRENT.get();
+        return current == null ? null : current.observer.operationId();
+    }
 
     public static void planNodes(java.util.List<com.taxonomy.dto.TaxonomyNodeDto> tree) {
         var current = CURRENT.get();

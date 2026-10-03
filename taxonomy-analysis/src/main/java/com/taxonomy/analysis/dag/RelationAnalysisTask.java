@@ -1,0 +1,35 @@
+package com.taxonomy.analysis.dag;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.TreeSet;
+
+/**
+ * Relation work over the results of prerequisite sub-taxonomy tasks. The message
+ * references the prerequisite results by task identity instead of copying source
+ * trees, scores or prompts.
+ *
+ * @param targetRoots      roots whose taxonomy data the relation work evaluates
+ * @param prerequisiteTasks sub-taxonomy tasks whose persisted results are inputs
+ */
+public record RelationAnalysisTask(AnalysisEnvelope envelope, List<TaxonomyShardRoot> targetRoots,
+                                   List<AnalysisTaskId> prerequisiteTasks)
+        implements AnalysisTaskMessage {
+
+    public RelationAnalysisTask {
+        Objects.requireNonNull(envelope, "envelope");
+        envelope.requireType(AnalysisMessageType.RELATION_ANALYSIS_TASK);
+        targetRoots = List.copyOf(new TreeSet<>(Objects.requireNonNull(targetRoots, "targetRoots")));
+        prerequisiteTasks = List.copyOf(Objects.requireNonNull(prerequisiteTasks, "prerequisiteTasks"));
+        if (envelope.taskType() != AnalysisTaskType.RELATION_ANALYSIS
+                || !AnalysisTaskId.relation(envelope.operationId(), targetRoots).equals(envelope.taskId())
+                || !envelope.roots().equals(targetRoots)) {
+            throw new IllegalArgumentException("Relation task identity does not match its target roots");
+        }
+        for (AnalysisTaskId prerequisite : prerequisiteTasks) {
+            if (!prerequisite.operationId().equals(envelope.operationId())) {
+                throw new IllegalArgumentException("Relation prerequisite belongs to another operation");
+            }
+        }
+    }
+}
