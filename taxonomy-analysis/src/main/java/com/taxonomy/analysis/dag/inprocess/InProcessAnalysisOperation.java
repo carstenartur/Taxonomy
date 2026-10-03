@@ -173,12 +173,14 @@ public final class InProcessAnalysisOperation implements AutoCloseable {
         return messages;
     }
 
+    /** Recorded completions in completion order. */
     public Map<AnalysisTaskId, AnalysisCompletionMessage> completions() {
-        return Map.copyOf(completions);
+        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(completions));
     }
 
+    /** Dispatched task identities in dispatch order. */
     public Set<AnalysisTaskId> dispatched() {
-        return Set.copyOf(dispatched);
+        return java.util.Collections.unmodifiableSet(new LinkedHashSet<>(dispatched));
     }
 
     public boolean stopped() {

@@ -41,7 +41,10 @@ are recorded idempotently by task id and a cooperative stop ends dispatching.
   the relation phase as the `RelationAnalysisTask`.
 - `LlmService.analyzeWithBudget` plans the graph and executes each root as a
   `SubtaxonomyAnalysisTask` in the existing priority order. Direct callers
-  without a coordinating use case get a process-local ephemeral operation.
+  without a coordinating use case get a process-local ephemeral operation whose
+  authority is `WorkspaceContext.SHARED` (the reviewed extra
+  `analysis.service -> workspace.service` edge in
+  `.github/architecture-dependency-baseline.json`).
 
 Provider call count, prompt text, rate-limit skipping and stop semantics are
 unchanged; `AnalysisTaskDagEquivalenceTest` checks this and asserts that no task
