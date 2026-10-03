@@ -7,6 +7,10 @@ final `taxonomy-build` reactor module.
 
 ## Enforced invariants
 
+- Jackson Databind compile/runtime dependencies must include the fixes for
+  CVE-2026-91776 and CVE-2026-91777. The managed lines use 2.22.3 and 3.1.7;
+  the bans also preserve the patched 2.18.11, 2.21.7 and 3.2.3 release boundaries.
+  These checks remain effective when either Jackson BOM property is overridden.
 - No Apache PDFBox component below major version 3 may be packaged.
 - `org.apache.pdfbox:xmpbox` is prohibited unless a reviewed exception exists.
 - The unused Flexmark PDF converter is prohibited.
