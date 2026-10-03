@@ -28,7 +28,21 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 
 ## Überblick
 
-Architecture-DSL-Dokumente (`.taxdsl`-Dateien) werden in einem JGit-DFS-Repository (Distributed File System) gespeichert, das durch HSQLDB-Tabellen (`git_packs`, `git_reflog`) unterstützt wird. Jede Änderung an der DSL erzeugt einen Git-Commit mit Autor, Zeitstempel und Commit-Nachricht — und bietet damit eine vollständige Audit-Spur.
+Architecture-DSL-Dokumente (`.taxdsl`-Dateien) werden in datenbankgestützten
+JGit-Repositories versioniert. Eine gespeicherte semantische Editoroperation ist
+eine dauerhafte Arbeitsbereichsrevision mit Akteur, Begründung und Gegenoperation;
+sie erzeugt **nicht für jede Bearbeitung einen Git-Commit**. Auch Undo/Redo bleibt
+nach einem Anwendungsneustart erhalten.
+
+Ein Git-Checkpoint hält eine stabile Version des vollständigen Arbeitsstands fest.
+Er wird ausdrücklich angelegt; Veröffentlichung, Merge und andere Versionsgrenzen
+sichern ausstehende Änderungen entsprechend der [Editor-Anleitung](ARCHITECTURE_EDITOR.md).
+Unveränderliche Analysesnapshots und gespeicherte Neuformulierungsrevisionen sind
+separate Aufzeichnungen und werden nicht durch den aktuellen Arbeitsstand ersetzt.
+
+Git-Verlauf und semantisches Operationsjournal beantworten unterschiedliche Fragen.
+Ein Git-Log allein ist deshalb nicht die vollständige Historie einzelner
+Editorentscheidungen.
 
 Der Git-Zustand wird über die UI-Statusleiste und die REST-API bereitgestellt, sodass Sie den Zustand des Repositorys überwachen, veraltete Projektionen erkennen und Merge-/Cherry-Pick-Operationen vor der Ausführung in der Vorschau betrachten können.
 
@@ -152,7 +166,7 @@ Der ausgewählte Arbeitsbereich und dessen aktueller Branch bestimmen den Arbeit
 
 ## Commit-Historie
 
-Jede DSL-Änderung erzeugt einen Git-Commit mit:
+Ein Git-Checkpoint, nicht jede akzeptierte Editoroperation, erzeugt einen Commit mit:
 
 - **SHA** — Eindeutiger Commit-Bezeichner
 - **Autor** — Authentifizierter Benutzer, der die Änderung vorgenommen hat

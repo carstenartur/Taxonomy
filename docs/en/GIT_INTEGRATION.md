@@ -28,7 +28,20 @@ The Taxonomy Architecture Analyzer uses **JGit** to provide full Git version con
 
 ## Overview
 
-Architecture DSL documents (`.taxdsl` files) are stored in a JGit DFS (Distributed File System) repository backed by HSQLDB tables (`git_packs`, `git_reflog`). Every change to the DSL creates a Git commit with author, timestamp, and commit message — providing a complete audit trail.
+Architecture DSL documents (`.taxdsl` files) are versioned in database-backed
+JGit repositories. A saved semantic editor operation is a durable workspace
+revision with its actor, rationale and inverse data; it is **not one Git commit
+per edit**. Its undo/redo history survives application restart.
+
+A Git checkpoint records a stable version of the complete working content.
+Checkpoint creation is explicit, while publication, merge and other version
+boundaries checkpoint pending edits as described in the [editor guide](ARCHITECTURE_EDITOR.md).
+Immutable analysis snapshots and saved reformulation revisions remain separate
+records; neither is silently replaced by the current workspace.
+
+The Git commit history and the semantic operation journal answer different
+questions. Review them together; a Git log alone is not the complete history of
+individual editor decisions.
 
 The Git state is exposed through the UI status bar and REST API, allowing you to monitor repository health, detect stale projections, and preview merge/cherry-pick operations before executing them.
 
@@ -152,7 +165,7 @@ The selected workspace and its current branch determine the working context. The
 
 ## Commit History
 
-Every DSL change creates a Git commit with:
+A Git checkpoint, rather than each accepted editor operation, creates a commit with:
 
 - **SHA** — Unique commit identifier
 - **Author** — Authenticated user who made the change

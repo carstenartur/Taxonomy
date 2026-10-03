@@ -1,35 +1,90 @@
 # Taxonomy Architecture Analyzer — User Guide
 
 > **This guide covers the primary way to use the Taxonomy Architecture Analyzer: the web-based GUI.**
-> All major features described here are designed to be used interactively through the browser.
+> Browser workflows come first. Explicitly labelled API operations do not imply that a corresponding GUI control exists.
 > For automation and scripting, see the [API Reference](API_REFERENCE.md).
 
 ## Fastest Path — Your First Analysis in 5 Steps
 
 | Step | Action | Where |
 |:---:|---|---|
-| **1** | Log in as `admin` with the configured password, or read the owner-only bootstrap file whose path appears in the local startup log | Login page at `http://localhost:8080` |
+| **1** | Sign in with your assigned account; use the documented bootstrap procedure only for initial local administration | Login page at `http://localhost:8080` |
 | **2** | Type your requirement | Right panel → "Business Requirement Analysis" text area |
-
-> ⚠️ **Security:** There is no reusable default password. Set `TAXONOMY_ADMIN_PASSWORD` for any deployment. An unset non-production value creates a one-time owner-only credential file and logs only its path.
 | **3** | Click **Analyze with AI** | Button below the text area |
 | **4** | Explore the scored tree and architecture view | Left panel (tree) + right panel (architecture view card) |
 | **5** | Export your diagram | Left panel → ArchiMate / Visio / Mermaid / JSON buttons |
 
+> **Security:** There is no reusable default password. Use your assigned account. For initial local-administrator setup, follow the configured password or owner-only bootstrap-file procedure. Production local login and Keycloak/OIDC have different setup requirements; see [Security](SECURITY.md) and [Keycloak setup](KEYCLOAK_SETUP.md).
+
 > **Example requirement:** _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments."_
 
-The system scores every taxonomy node (0–100), highlights the most relevant elements with colour-coded scores, generates an architecture view showing how they relate, and lets you export the result.
+The system evaluates the selected taxonomy scope hierarchically and preserves partial results, explanations and progress. Assessed, excluded, open and unselected nodes are distinct; not every catalogue node receives an independent model assessment. A full run can propose typed architecture relationships for review and export.
 
 ![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
 
 **Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
 
 > 💡 **New users:** Start with the core workflow (Analyze → Architecture → Export).
-> Advanced features like Graph Explorer, DSL Editor, and Gap Analysis are described in later sections.
+> Continue with [requirement clarification](#requirement-clarification-workflow) to turn questions into recorded decisions, and [analysis scope and progress](#analysis-scope-and-progress) to control the work.
+
+<a id="requirement-clarification-workflow"></a>
+## Clarify a requirement through architecture and decisions
+
+Use **Projects** and the requirement detail page for a saved, reviewable workflow,
+rather than treating an exported diagram as the end of the analysis.
+
+| Stage | What you do | What remains separate |
+|---|---|---|
+| Establish the source | Save/import the requirement and select its version and analysis snapshot. | Original wording and earlier versions are retained. |
+| Inspect the proposal | Request a reformulation offer and inspect its text, architecture references and questions. | A stored initial draft or a completed run is not approval. |
+| Resolve decisions | Answer, defer or mark questions not applicable; review conflicts and edit proposed statements. | The model does not answer on your behalf; manual drafts are protected. |
+| Review adoption | Review the exact saved final text and warnings, provide a rationale and explicitly confirm. | Adoption creates/activates a requirement draft, not an approved architecture. |
+| Analyse again | Separately request a new analysis of the adopted version. | Earlier evidence is retained; inherited decisions keep their origins. |
+| Preserve the rationale | Export a saved revision or adoption receipt and create an explicit checkpoint when needed. | Unsaved browser text is not included in a historical export. |
+
+**Illustrative example, not a recorded model result:** “Staff must be able to
+record working hours on mobile devices” may require a decision about offline
+capture or who may correct entries. The benefit is not just a rewritten sentence:
+you review the architecture context of a question, retain your answer and carry
+that decision into the next explicitly adopted requirement version.
+
+Historical proposal reports use the source and architecture evidence frozen for
+that record, not today's catalogue. Traceability does not certify semantic
+completeness or guarantee that a later model call will reproduce the same answer.
+See [Project portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) and the
+[architecture editor](ARCHITECTURE_EDITOR.md) for the corresponding saved workflows.
+
+<a id="analysis-scope-and-progress"></a>
+## Select scope and interpret progress
+
+For automatic analysis and Copilot, choose the taxonomy roots and either the
+full mode or **Taxonomies only**. The choice is frozen with the run and retained
+through compatible retry/continuation and JSON exchange. Changing the controls
+for a future run does not reinterpret an earlier result.
+
+Selected roots limit scoring and relationship sources. In full mode, compatible
+relationship targets in other taxonomies can still be searched. Taxonomies-only
+mode does not perform relationship discovery or relationship-dependent architecture
+derivation; it must not be presented as a completed full architecture analysis.
+
+Directly assessed nodes, descendants excluded by a valid zero assessment, open
+nodes and unselected nodes are different. A budget stop, a failed answer or an
+unvisited branch is not a negative finding. Validated answers can be reused when
+resuming compatible work. “All planned tasks completed” concerns the configured
+plan, not proof that every possible relationship has been found.
+
+Scores are relevance weights/suitability or embedding similarity under their
+respective contracts, not calibrated probabilities or proof of necessity.
+Local ONNX supplies embeddings for search/scoring, not generative relationship
+assessment or reformulation. Language quality depends on the selected provider
+and model; German and English interface support does not establish equal model
+quality. See [Grouping and scoring](TAXONOMY_SCORING.md).
 
 ---
 
 ## Table of Contents
+
+[Requirement clarification](#requirement-clarification-workflow) · [Analysis scope and progress](#analysis-scope-and-progress)
 
 1. [Overview](#1-overview)
 2. [Getting Started](#2-getting-started)
@@ -60,14 +115,15 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
 
 ---
 
+<a id="guide-section-1"></a>
 ## 1. Overview
 
-The **Taxonomy Architecture Analyzer** is a web application that helps Architects, Analysts, and Requirements Engineers map free-text mission and business requirements to the C3 Taxonomy catalogue. You describe what you need in plain English, and the application finds the most relevant taxonomy nodes, shows you how they relate to each other, and lets you export structured diagrams.
+The **Taxonomy Architecture Analyzer** helps architects, analysts and requirements engineers in public administration and enterprises turn natural-language requirements into reviewable architecture proposals using the C3 Taxonomy catalogue. It connects catalogue analysis, decision questions, explicit requirement adoption, separate reanalysis and historical evidence. Supported input languages and result quality depend on the configured provider/model, not just the interface language.
 
 **Who is this guide for?**
 
 - **Requirements Engineers** who need to classify and map requirements to architecture elements.
-- **Architects and Capability Planners** who use the taxonomy to design or assess C3 systems.
+- **Architects and Capability Planners** who build and review catalogue-based architecture prototypes and cross-layer dependencies.
 - **Analysts** exploring the taxonomy structure and reviewing AI-generated relation proposals.
 
 **What you can do with the application:**
@@ -98,15 +154,16 @@ The **Taxonomy Architecture Analyzer** is a web application that helps Architect
 
 ---
 
+<a id="guide-section-2"></a>
 ## 2. Getting Started
 
 ### Opening the Application
 
 Open your web browser and navigate to the application URL (for example `http://localhost:8080` when running locally, or the deployed URL provided by your administrator).
 
-The application loads as a single page. A login page is presented on first access — sign in as `admin` with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. When that variable is intentionally empty for a non-production local run, read the one-time credential from the owner-only file whose path is written to the startup log. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 14](#14-administration)).
+Sign in using the installation's configured local login or Keycloak/OIDC. Ordinary users use their assigned accounts. The local bootstrap password is for initial administration, not a shared user credential. Available actions depend on your role and workspace authority; opening an admin panel does not grant additional server permissions.
 
-> ⚠️ **Security:** There is no reusable default password. Set `TAXONOMY_ADMIN_PASSWORD` before exposing the application on any network. See [Security](SECURITY.md) for the owner-only local bootstrap-file path.
+> **Security:** Keep application access behind the documented HTTPS and authorization configuration. Initial local-administrator and Keycloak setup are separate paths; follow [Security](SECURITY.md) and [Keycloak setup](KEYCLOAK_SETUP.md).
 
 **First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
 1. Describe your requirement in the text area
@@ -121,11 +178,12 @@ Click **Got it — let's start!** to dismiss the overlay. The overlay will not a
 
 Look at the navigation bar at the top of the page. There is an **AI Status** indicator:
 
-- 🟢 **Green badge** — an LLM provider is connected and analysis is available.
+- 🟢 **Green badge** — provider readiness is reported. Check capability support: local embeddings do not enable generative relationships or wording synthesis.
 - 🔴 **Red badge** — no LLM provider is configured; analysis is unavailable. Contact your administrator.
 
 ---
 
+<a id="guide-section-3"></a>
 ## 3. Understanding the Interface
 
 The application is divided into two main panels side by side.
@@ -186,6 +244,7 @@ Click the **🌙** (moon) button in the navigation bar to switch to dark mode. C
 
 ---
 
+<a id="guide-section-4"></a>
 ## 4. Analyzing a Business Requirement
 
 ### Writing a Good Requirement
@@ -197,16 +256,16 @@ Type your requirement as a clear, imperative sentence. For example:
 > *"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments."*
 
 Tips for good requirements:
-- Use domain vocabulary: capability, service, information product, communications, command, control.
+- Use the terminology of your actual domain and explain ambiguous terms. Do not rewrite a requirement merely to match catalogue labels.
 - Be specific about the function or outcome you need.
-- Keep the text under 500 words; longer text does not improve accuracy.
+- Keep the requirement focused, but retain conditions, exceptions and dependencies. Respect the displayed input limits; a fixed word count is not a guarantee of accuracy.
 
 ![Business Requirement Analysis card](../images/04-analysis-panel-empty.png)
 
 ### Standard Analysis
 
 1. Type your requirement in the textarea.
-2. Make sure the **Interactive Mode** checkbox is **unchecked** for a standard (full-tree) analysis.
+2. Select the taxonomy roots and full or **Taxonomies only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
 3. Click the **Analyze with AI** button.
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
@@ -241,7 +300,7 @@ The fully expanded tree shows scores at every level, making it easy to identify 
 
 ### Interactive Mode
 
-Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of scoring the whole tree at once.
+Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of launching an automatic hierarchical run over the selected scope.
 
 In Interactive Mode:
 - Only the top-level nodes are scored first.
@@ -263,12 +322,12 @@ The **Match Legend** (below the analysis card) shows the colour scale:
 
 | Colour | Score range | Meaning | Text Colour |
 |---|---|---|---|
-| Transparent | 0 % | No match | Dark (default) |
+| Transparent | 0 % | Zero displayed weight; check whether an assessment exists | Dark (default) |
 | Very light green | 1 % – 24 % | Very low match | Dark (default) |
 | Light green | 25 % – 49 % | Low match | Dark (default) |
 | Medium green | 50 % – 59 % | Moderate match | Dark (default) |
 | Dark green | 60 % – 99 % | Good match | **White** (for readability) |
-| Solid green | 100 % | Perfect match | **White** |
+| Solid green | 100 % | Maximum displayed weight, not proof of correctness | **White** |
 
 The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **opacity** (alpha channel) increases linearly with the score percentage. At 60 % and above, the text colour switches to white for readability against the darker background.
 
@@ -290,9 +349,9 @@ During analysis (especially in Interactive Mode), the status area shows real-tim
 | *"Expanding [Name]…"* | The LLM is drilling into the children of a matched node |
 | *"Scoring level N…"* | The LLM is processing taxonomy nodes at depth N |
 | *"Building architecture view…"* | The relation-aware architecture view is being assembled |
-| *"Analysis complete"* | All levels have been processed successfully |
+| *"Analysis complete"* | The configured work plan has reached its reported outcome; inspect unresolved work and scope before interpreting completeness |
 
-A progress percentage bar may also appear, indicating approximately how far through the taxonomy levels the analysis has progressed.
+The progress panel distinguishes assessed, excluded and open nodes against the planned total, including each selected taxonomy. The relationship phase reports its own planned/completed/open work; a node-scoring percentage is not relationship completion.
 
 ### Error Handling During Analysis
 
@@ -305,7 +364,9 @@ If the LLM encounters an error during analysis, the application handles it grace
 | **Invalid API key** | Status shows "Authentication failed" | Check your API key in environment variables |
 | **Partial failure** | Some roots scored, others show warnings | Review the warnings in the Analysis Log; scores for completed roots are still valid |
 
-Partial results are preserved when possible — if 7 of 10 roots were scored before a timeout, those scores are displayed and only the failed roots are flagged with warnings.
+Partial results are preserved when possible — if 7 of the 8 catalogue roots were scored before a timeout, those scores are displayed and only the failed roots are flagged with warnings.
+
+The incoming LLM quota is counted per stable authenticated identity and application instance, separately from provider quotas and authentication/WebDAV brute-force lockouts. Follow `Retry-After`, not a fixed delay, and never share an API key in a bug report.
 
 ### Export Button Visibility
 
@@ -313,6 +374,7 @@ The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only ap
 
 ---
 
+<a id="guide-section-5"></a>
 ## 5. Exploring the Taxonomy
 
 The left panel displays the taxonomy in six different views. Switch between them using the buttons at the top: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary**.
@@ -393,17 +455,18 @@ The **Descriptions** toggle switch (above the tree, below the view buttons) cont
 
 ---
 
+<a id="guide-section-6"></a>
 ## 6. Working with Analysis Results
 
 ### Reading the Score Colours
 
-After analysis completes, every taxonomy node shows a coloured score bar. Refer to the **Match Legend** on the right panel:
+After analysis, assessed nodes show score bars. Unselected, unvisited and unassessed nodes must be read using their recorded status, not inferred from colour alone. Refer to the **Match Legend** on the right panel:
 
-- **No colour** — score is 0 %, not relevant.
+- **No colour** — check status: a valid assessed zero differs from an unvisited, unselected or failed assessment.
 - **Light green → dark green** — increasing relevance.
 - **Bright/full green** — maximum relevance.
 
-Focus your attention on nodes with dark green highlights; these are the best matches for your requirement.
+Use the colour as orientation, then inspect the rationale, assessment status and hierarchy. Child weights may divide a parent budget; low absolute weights must not be discarded automatically.
 
 ### Requesting a Leaf Justification (📋 button)
 
@@ -434,9 +497,11 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 
 ---
 
+<a id="7-architecture-view"></a>
+<a id="guide-section-7"></a>
 ## 7. Architecture View — Requirement Impact Map
 
-The Architecture View shows how the highest-scoring taxonomy nodes relate to each other through confirmed architecture relationships (stored in the knowledge base). It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
+The Architecture View shows the selected elements and relationships for the analysed requirement. Inspect whether a relationship is inferred, imported or human-confirmed; displaying it does not make it an accepted decision. It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
 
 ### Enabling the Architecture View Checkbox
 
@@ -472,7 +537,10 @@ The main visualization is a **stable impact graph arranged by architecture layer
 
 ---
 
+<a id="guide-section-8"></a>
 ## 8. Using the Graph Explorer
+
+Graph results are bounded by stored relationships, selected types, permissions and traversal limits. They identify potential impacts for review, not every real-world dependency.
 
 The Graph Explorer lets you trace the network of confirmed architecture relationships around any taxonomy node, regardless of whether you have run an analysis.
 
@@ -538,6 +606,7 @@ Accepted proposals also appear as graph edges. After accepting a proposal (see [
 
 ---
 
+<a id="guide-section-9"></a>
 ## 9. Working with Relation Proposals
 
 The system can automatically propose new relations between taxonomy nodes using AI. These proposals are stored in a review queue where you can accept or reject them.
@@ -608,6 +677,7 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 ---
 
+<a id="guide-section-10"></a>
 ## 10. Exporting Results
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
@@ -628,7 +698,7 @@ Click **📥 SVG** to download the current taxonomy view as a scalable vector gr
 
 ### PNG Export
 
-Click **📥 PNG** to download a rasterised screenshot of the current taxonomy view as a PNG image.
+Click **📥 PNG** to download a rasterised image of the selected taxonomy view. Verify the exported scope and dimensions; a viewport capture and a complete diagram are different artifacts.
 
 ### PDF (Print)
 
@@ -682,7 +752,7 @@ Click **📥 JSON** (in the export group, visible after a successful analysis) t
 
 This file can be shared with colleagues or loaded back at a later time using the **📤 Load Scores** button, without re-running the AI analysis.
 
-> **Semantic distinction:** A score of `0` in the JSON means the node was _evaluated and found not relevant_. A node code that is _absent_ from the JSON was never evaluated.
+> **Semantic distinction:** Interpret numeric scores together with the saved assessment status, selected scope and coverage. An absent score is not a negative finding; a zero from an old or partial import alone does not prove a successful assessment. Preserve supplied status/provenance when loading results.
 
 ### Loading a Saved Analysis (Import)
 
@@ -699,7 +769,7 @@ This enables **offline review** and **reproducibility** — you can share a scor
 
 ### When Export Buttons Appear
 
-The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
+The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. Navigation or reload does not by itself prove that saved work is lost. Reopen the saved working draft or project snapshot in the same context and check the recorded status before repeating model calls. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
 
 ---
 
@@ -735,6 +805,7 @@ Each report includes:
 
 ---
 
+<a id="guide-section-11"></a>
 ## 11. Search
 
 The **Search Taxonomy** panel (right column, collapsible) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
@@ -781,6 +852,7 @@ Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the
 
 ---
 
+<a id="guide-section-12"></a>
 ## 11a. Quality Dashboard
 
 The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
@@ -807,6 +879,7 @@ Click **🔄 Refresh** to reload the dashboard at any time.
 
 ---
 
+<a id="guide-section-13"></a>
 ## 11b. Relations Browser
 
 The **🔗 Relations Browser** panel (right column, collapsible) lets you browse, create, and delete confirmed taxonomy relations.
@@ -839,6 +912,7 @@ The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive im
 
 ---
 
+<a id="guide-section-14"></a>
 ## 11c. Requirement Coverage
 
 The **📋 Requirement Coverage** panel (right column, collapsible) tracks which taxonomy
@@ -870,8 +944,9 @@ view the list of requirements that cover it, together with scores and analysis t
 
 ### Gap Candidates
 
-A table showing up to 10 nodes with no requirement coverage. These are prime candidates
-for architecture gaps — no existing requirement addresses these elements.
+Coverage records and diagram thresholds are view-specific policies, not a universal relevance cutoff or proof of implementation. An unrecorded catalogue node may be outside the requirement scope. Review unresolved assessments and the actual need before declaring a functional gap.
+
+A table shows up to 10 nodes without recorded coverage in this view. They are review candidates, not proven functional gaps: a catalogue entry may be outside the requirement scope or excluded by the recording threshold.
 
 <img src="../images/27-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
 
@@ -892,6 +967,7 @@ Click **🔄 Refresh** to reload coverage statistics after recording new analyse
 
 ---
 
+<a id="guide-section-15"></a>
 ## 11d. Architecture Gap Analysis
 
 The **Architecture Gap Analysis** identifies missing architectural relations by comparing
@@ -928,7 +1004,7 @@ The response contains:
 
 ### Interpreting Results
 
-- **Missing relations** tell you *what links need to be created* in the knowledge base to complete the architecture.
+- **Missing relations** flag absent compatible links for review. Compatibility does not establish that a link is required; review requirement scope and unresolved assessments before adding it.
 - **Incomplete patterns** show *which chain of relations is broken* and where.
 - **Coverage gaps** highlight nodes that are important for the requirement but architecturally isolated.
 
@@ -938,6 +1014,7 @@ See the [API Reference](API_REFERENCE.md#13-architecture-gap-analysis) for full 
 
 ---
 
+<a id="guide-section-16"></a>
 ## 11e. Architecture Recommendation
 
 The **Architecture Recommendation** feature combines requirement scoring, gap analysis, and semantic search into an automated pipeline that produces architecture recommendations for a business requirement.
@@ -946,7 +1023,7 @@ The **Architecture Recommendation** feature combines requirement scoring, gap an
 
 The recommendation pipeline executes four steps:
 
-1. **Confirm elements** — nodes with high scores (≥ 70) are confirmed as relevant architecture elements.
+1. **Confirm elements** — the deterministic recommendation view labels nodes above its configured threshold (for example ≥ 70) as confirmed candidates. This is not human approval and does not prove that a low-weight dependency is unnecessary.
 2. **Gap analysis** — identifies missing architectural links (see §11d).
 3. **Candidate proposal** — for each gap, proposes candidate nodes from the missing taxonomy root, ranked by semantic similarity to the business requirement when the embedding model is available.
 4. **Relation suggestion** — suggests relations that would fill the identified gaps.
@@ -985,6 +1062,7 @@ See the [API Reference](API_REFERENCE.md#14-architecture-recommendation) for ful
 
 ---
 
+<a id="guide-section-17"></a>
 ## 11f. Architecture Pattern Detection
 
 The **Architecture Pattern Detection** feature checks whether standard architecture patterns
@@ -1041,6 +1119,7 @@ See the [API Reference](API_REFERENCE.md#15-architecture-pattern-detection) for 
 
 ---
 
+<a id="guide-section-18"></a>
 ## 11g. Architecture DSL
 
 The **Architecture DSL** is a text-based domain-specific language for describing architecture models as versionable, diff-friendly source files. It serves as the **single source of truth** for architecture definitions — changes are committed to a Git-backed repository, can be reviewed in pull requests, and are materialized into the application database.
@@ -1291,13 +1370,13 @@ After accepting proposals, the exported DSL includes `relation` blocks alongside
 
 ### Version Control
 
-The DSL is stored in a **Git repository** managed entirely inside the application — no external Git server or filesystem is required. This means every change you make is tracked automatically.
+The application maintains durable accepted editor operations separately from explicit **Git checkpoints**. Git objects and refs use the configured database-backed repository; an external Git server is optional. Unsaved typing, an accepted semantic operation, a Git commit and an immutable analysis snapshot are different states.
 
 You interact with version control through the GUI — there is no need to use Git commands. The key concepts:
 
 - **Branches** — Use branches to experiment with architecture changes without affecting the main version. You can switch branches, create new ones, and merge them.
 - **Commits** — Every time you save a version or commit in the DSL Editor, a snapshot is recorded. You can browse, compare, restore, or undo commits at any time.
-- **Undo / Restore** — Made a mistake? Use the **Undo** button to remove the last change, or **Restore** to go back to any previous version.
+- **Undo / Restore** — In the Versions tab, branch-head Undo resets the selected branch to its parent. Personal editor Undo instead records an inverse semantic operation and preserves its journal; dependencies can block it. Restore creates a new checkpoint from selected earlier content. Review the context and confirmation; none is an installation-wide backup restore.
 
 For details on how to use these features step by step, see [§12 Versions Tab](#12-versions-tab) below.
 
@@ -1305,9 +1384,11 @@ For details on how to use these features step by step, see [§12 Versions Tab](#
 
 ### Materialization
 
+**Scope:** Materialization updates the selected authorized repository/workspace projection, not every relation in an installation. Review the target and preview before applying changes; see [Architecture editor](ARCHITECTURE_EDITOR.md) for the semantic editor contract.
+
 When you edit the DSL and commit changes, the architecture model in your DSL text needs to be **materialized** (applied) to the application database so that other parts of the application — the Graph Explorer, Relations Browser, and Architecture View — reflect those changes.
 
-- **Full materialization** replaces all relations in the database with the content from the DSL.
+- **Full materialization** replaces the relations of the selected authorized projection with the DSL content.
 - **Incremental materialization** applies only the differences (delta) between the current database state and the DSL, which is faster for large models.
 
 Both options are available in the DSL Editor panel. After materializing, the Git Status Bar at the top of the page will update to show the projection is **fresh** (in sync).
@@ -1332,6 +1413,7 @@ See [§12 Versions Tab](#12-versions-tab) for how to use the search in the GUI.
 
 ---
 
+<a id="guide-section-19"></a>
 ## 12. Versions Tab
 
 The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
@@ -1502,6 +1584,7 @@ In the navbar (top-right), the **workspace badge** shows your username and curre
 
 ---
 
+<a id="guide-section-20"></a>
 ## 13. Git Status and Context Bar
 
 Two horizontal bars at the top of the page provide at-a-glance information about the current architecture state.
@@ -1548,9 +1631,10 @@ Navigation buttons in the Context Bar:
 
 ---
 
+<a id="guide-section-21"></a>
 ## 14. Administration
 
-Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
+Administration features require the appropriate server-side role; opening or unlocking a panel does not grant that role. Standard users use their assigned accounts and do not share an administrator password.
 
 > 📖 For a comprehensive guide to all AI providers, per-request provider override, mock mode, diagnostics API, and rate limiting, see **[AI Providers](AI_PROVIDERS.md)**.
 > For runtime preference management (LLM settings, DSL config, size limits), see **[Preferences](PREFERENCES.md)**.
@@ -1567,7 +1651,7 @@ The badge in the navigation bar shows whether an LLM provider is connected:
 
 If you see a red badge, either:
 - Set one of the LLM API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.) and restart the application, or
-- Set `LLM_PROVIDER=LOCAL_ONNX` for offline analysis without any API key.
+- `LLM_PROVIDER=LOCAL_ONNX` uses local embeddings for supported scoring/search, not generative relation assessment or reformulation. Offline operation also requires provisioned models, disabled downloads and verified network policy; see [AI Providers](AI_PROVIDERS.md).
 
 When AI is unavailable, an **inline warning message** appears below the Analyze button listing the required environment variables.
 
@@ -1638,6 +1722,7 @@ The Preferences page is organized into three sections:
 
 ---
 
+<a id="guide-section-22"></a>
 ## 15. Relation Types Reference
 
 The system uses 12 relation types, each corresponding to a specific relationship in the NATO Architecture Framework (NAF) or The Open Group Architecture Framework (TOGAF).
@@ -1659,6 +1744,7 @@ The system uses 12 relation types, each corresponding to a specific relationship
 
 ---
 
+<a id="guide-section-23"></a>
 ## 15a. Document Import & Source Provenance
 
 ### Import Modes
@@ -1720,20 +1806,21 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ---
 
+<a id="guide-section-24"></a>
 ## 16. Tips and Best Practices
 
 ### Writing Effective Requirements
 
 - **Be specific:** Instead of *"communications"*, write *"integrated communication services for hospital staff enabling real-time data exchange between departments"*.
-- **Use domain vocabulary:** Terms like *capability*, *service*, *information product*, *command*, *control* help the AI find better matches.
+- **Use your domain vocabulary:** Explain ambiguous terms and retain the original need rather than optimizing wording for a catalogue match.
 - **One requirement at a time:** Analyze one requirement per session for cleaner, more focused results.
-- **Keep it concise:** Aim for 1–3 sentences. Very long paragraphs do not improve accuracy.
+- **Keep it focused:** Preserve required conditions, exclusions and dependencies; split independent needs without discarding their relationships.
 
 ### Interpreting Results
 
-- Focus on nodes with scores above 50 % as your primary matches.
-- Nodes scoring 25–50 % are secondary matches — they may be relevant but less directly.
-- Nodes below 25 % can usually be ignored unless you have domain knowledge suggesting otherwise.
+- Inspect the selected scope, assessed/unassessed status and reasons before ranking results.
+- Distinguish independent root/product scores from child weights that share a parent budget.
+- Do not apply a universal 25 % or 50 % cutoff; a low share can still identify a necessary dependency. Similarity or weight is not proof of necessity.
 - Use **Leaf Justification** (📋) to understand *why* a specific node scored highly before including it in your architecture.
 
 ### Working with Proposals
@@ -1752,11 +1839,12 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ---
 
+<a id="guide-section-25"></a>
 ## 17. Glossary
 
 | Term | Definition |
 |---|---|
-| **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for the Architecture View |
+| **Anchor node** | An element selected as a direct-match candidate and starting point for the Architecture View; not proof that the requirement is satisfied |
 | **Architecture DSL** | A text-based domain-specific language (`.taxdsl` format) for describing architecture models as versionable, diff-friendly source files |
 | **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
 | **Architecture pattern** | A predefined chain of relation types through the taxonomy (e.g. Full Stack, App Chain, Role Chain) |
@@ -1796,6 +1884,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ---
 
+<a id="guide-section-26"></a>
 ## 18. Troubleshooting
 
 ### The "Analyze with AI" button is disabled or greyed out
@@ -1810,7 +1899,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 **Action:**
 1. Check the **Analysis Log** (right panel, collapsible) for error messages.
-2. Try rephrasing the requirement using more specific C3 domain terminology.
+2. Check selected scope, assessment status and model/language support. Clarify ambiguity without changing the actual need merely to match catalogue labels.
 3. If admin mode is available, check the **LLM Communication Log** to see what the LLM returned.
 
 ### Export buttons are not visible
@@ -1853,6 +1942,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
 
+<a id="guide-section-27"></a>
 ## Saved reformulation offers and decision questions
 
 Open a saved requirement with an analysis snapshot and create a reformulation offer

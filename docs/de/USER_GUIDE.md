@@ -4,28 +4,86 @@
 
 | Schritt | Aktion | Wo |
 |:---:|---|---|
-| **1** | Melden Sie sich als `admin` mit dem konfigurierten Passwort an oder lesen Sie die nur für den Prozesseigentümer zugängliche Bootstrap-Datei, deren Pfad im lokalen Startprotokoll steht | Anmeldeseite unter `http://localhost:8080` |
+| **1** | Melden Sie sich mit Ihrem zugewiesenen Konto an; das dokumentierte Bootstrap-Verfahren ist nur für die erstmalige lokale Administration vorgesehen | Anmeldeseite unter `http://localhost:8080` |
 | **2** | Geben Sie Ihre Anforderung ein | Rechtes Panel → Textbereich „Business Requirement Analysis" |
-
-> ⚠️ **Sicherheit:** Es gibt kein wiederverwendbares Standardpasswort. Setzen Sie `TAXONOMY_ADMIN_PASSWORD` für jede Bereitstellung. Ein leerer Wert außerhalb der Produktion erzeugt eine einmalige, eigentümergeschützte Zugangsdaten-Datei und protokolliert nur deren Pfad.
 | **3** | Klicken Sie auf **Analyze with AI** | Schaltfläche unterhalb des Textbereichs |
 | **4** | Erkunden Sie den bewerteten Baum und die Architekturansicht | Linkes Panel (Baum) + rechtes Panel (Architekturansicht-Karte) |
 | **5** | Exportieren Sie Ihr Diagramm | Linkes Panel → ArchiMate / Visio / Mermaid / JSON Schaltflächen |
 
+> **Sicherheit:** Es gibt kein wiederverwendbares Standardpasswort. Nutzen Sie Ihr zugewiesenes Konto. Für die erstmalige lokale Administration gelten das konfigurierte Passwort oder die eigentümergeschützte Bootstrap-Datei. Produktive lokale Anmeldung und Keycloak/OIDC haben unterschiedliche Einrichtungsvorgaben; siehe [Sicherheit](SECURITY.md) und [Keycloak-Einrichtung](KEYCLOAK_SETUP.md).
+
 > **Beispielanforderung:** _„Bereitstellung einer integrierten Kommunikationsplattform für Krankenhauspersonal, die einen Echtzeit-Sprach- und Datenaustausch zwischen Abteilungen ermöglicht."_
 
-Das System bewertet jeden Taxonomieknoten (0–100), hebt die relevantesten Elemente mit farbcodierten Bewertungen hervor, erzeugt eine Architekturansicht, die deren Zusammenhänge zeigt, und ermöglicht den Export der Ergebnisse.
+Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält Teilergebnisse, Begründungen und Fortschritt. Bewertete, ausgeschlossene, offene und nicht ausgewählte Knoten sind zu unterscheiden; nicht jeder Katalogknoten erhält eine eigene Modellbewertung. Ein vollständiger Lauf kann typisierte Architekturbeziehungen zur Prüfung und zum Export vorschlagen.
 
 ![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
 
 **Bereit für mehr?** Lesen Sie weiter für die vollständige Anleitung, oder springen Sie zu [Architekturansicht](#7-architecture-view), um zu erfahren, wie die Architektur generiert wird.
 
 > 💡 **Neue Benutzer:** Beginnen Sie mit dem Kernarbeitsablauf (Analysieren → Architektur → Export).
-> Erweiterte Funktionen wie Graph Explorer, DSL-Editor und Gap-Analyse werden in späteren Abschnitten beschrieben.
+> Mit der [Anforderungsklärung](#requirement-clarification-workflow) führen Sie Fragen zu gespeicherten Entscheidungen; [Analyseumfang und Fortschritt](#analysis-scope-and-progress) erläutern die Steuerung des Arbeitsaufwands.
+
+<a id="requirement-clarification-workflow"></a>
+## Eine Anforderung durch Architektur und Entscheidungen klären
+
+Verwenden Sie **Projekte** und die Detailseite der Anforderung für einen
+gespeicherten, nachvollziehbaren Ablauf. Der Diagrammexport muss nicht das Ende
+der Anforderungsanalyse sein.
+
+| Schritt | Ihre Handlung | Was getrennt bleibt |
+|---|---|---|
+| Quelle festlegen | Anforderung speichern/importieren und deren Version mit einem Analysesnapshot auswählen. | Originaltext und frühere Versionen bleiben erhalten. |
+| Vorschlag prüfen | Neuformulierungsangebot anfordern; Text, Architekturbezüge und Fragen prüfen. | Ein gespeicherter Anfangsentwurf oder abgeschlossener Lauf ist keine Freigabe. |
+| Entscheidungen klären | Fragen beantworten, zurückstellen oder als nicht zutreffend markieren; Konflikte und Textvorschläge prüfen. | Das Modell entscheidet nicht an Ihrer Stelle; manuelle Entwürfe bleiben geschützt. |
+| Übernahme prüfen | Den genauen gespeicherten Endtext und Warnungen prüfen, eine Begründung angeben und ausdrücklich bestätigen. | Die Übernahme erzeugt/aktiviert einen Anforderungsentwurf, keine freigegebene Architektur. |
+| Erneut analysieren | Eine neue Analyse der übernommenen Version gesondert starten. | Frühere Nachweise und die Herkunft übernommener Entscheidungen bleiben erhalten. |
+| Begründung sichern | Eine gespeicherte Revision oder den Übernahmenachweis exportieren und bei Bedarf einen ausdrücklichen Checkpoint anlegen. | Ungespeicherter Browsertext gehört nicht zum historischen Export. |
+
+**Illustratives Beispiel, kein protokolliertes Modellergebnis:** „Mitarbeitende
+sollen Arbeitszeiten mobil erfassen können“ kann Entscheidungen zur Offline-Erfassung
+oder zu Korrekturberechtigungen erfordern. Der Nutzen ist nicht nur ein besserer
+Satz: Sie prüfen den Architekturbezug einer Frage, halten Ihre Antwort fest und
+übernehmen diese Entscheidung in die nächste ausdrücklich bestätigte Fassung.
+
+Historische Vorschlagsberichte verwenden die für den jeweiligen Stand eingefrorenen
+Quellen und Architekturnachweise, nicht den heutigen Katalog. Nachvollziehbarkeit
+ist keine Bestätigung semantischer Vollständigkeit und garantiert keine identische
+Antwort bei einer späteren Modellabfrage. Die gespeicherten Arbeitsabläufe erläutern
+[Projektportfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) und
+[Architektureditor](ARCHITECTURE_EDITOR.md).
+
+<a id="analysis-scope-and-progress"></a>
+## Umfang auswählen und Fortschritt verstehen
+
+Für automatische Analyse und Copilot wählen Sie die Teiltaxonomien und entweder
+den vollständigen Modus oder **Nur Taxonomien**. Die Auswahl bleibt an den Lauf
+gebunden und wird bei kompatibler Wiederholung/Fortsetzung sowie im JSON-Austausch
+erhalten. Einstellungen für den nächsten Lauf verändern kein früheres Ergebnis.
+
+Ausgewählte Wurzeln begrenzen Bewertung und Relationsquellen. Im vollständigen
+Modus können weiterhin passende Relationsziele aus anderen Teiltaxonomien untersucht
+werden. „Nur Taxonomien“ führt keine Relationssuche oder relationenabhängige
+Architekturableitung aus und ist keine abgeschlossene vollständige Architekturanalyse.
+
+Direkt bewertete Knoten, durch eine gültige Nullbewertung ausgeschlossene Nachfahren,
+offene und nicht ausgewählte Knoten sind unterschiedlich zu lesen. Budgetende,
+Fehler oder ein nicht besuchter Zweig sind keine negative fachliche Bewertung.
+Bei kompatibler Fortsetzung werden validierte Antworten wiederverwendet. „Alle
+geplanten Aufgaben erledigt“ bezieht sich auf den konfigurierten Plan und beweist
+nicht, dass jede denkbare Beziehung gefunden wurde.
+
+Bewertungen sind je nach Verfahren Relevanzgewichte, Eignungswerte oder
+Embedding-Ähnlichkeiten, keine kalibrierten Wahrscheinlichkeiten oder Belege einer
+zwingenden Notwendigkeit. Lokales ONNX liefert Embeddings für Suche/Bewertung,
+keine generative Relationsbewertung oder Neuformulierung. Die Sprachqualität hängt
+vom Anbieter und Modell ab; deutsche und englische Oberflächen belegen keine gleiche
+Modellqualität. Siehe [Gruppierung und Bewertung](TAXONOMY_SCORING.md).
 
 ---
 
 ## Inhaltsverzeichnis
+
+[Anforderungsklärung](#requirement-clarification-workflow) · [Analyseumfang und Fortschritt](#analysis-scope-and-progress)
 
 1. [Übersicht](#1-overview)
 2. [Erste Schritte](#2-getting-started)
@@ -56,14 +114,16 @@ Das System bewertet jeden Taxonomieknoten (0–100), hebt die relevantesten Elem
 
 ---
 
+<a id="1-overview"></a>
+<a id="guide-section-1"></a>
 ## 1. Übersicht
 
-Der **Taxonomy Architecture Analyzer** ist eine Webanwendung, die Architekten, Analysten und Requirements Engineers dabei unterstützt, freitextliche Missions- und Geschäftsanforderungen dem C3-Taxonomie-Katalog zuzuordnen. Sie beschreiben, was Sie benötigen, in einfachem Englisch, und die Anwendung findet die relevantesten Taxonomieknoten, zeigt Ihnen deren Zusammenhänge und ermöglicht den Export strukturierter Diagramme.
+Der **Taxonomy Architecture Analyzer** unterstützt Architektur- und Anforderungsarbeit in Behörden und Unternehmen: Aus natürlichsprachlichen Anforderungen entstehen überprüfbare Architekturvorschläge anhand des C3-Taxonomie-Katalogs. Kataloganalyse, Entscheidungsfragen, ausdrückliche Übernahme, gesonderte Reanalyse und historische Nachweise bilden einen zusammenhängenden Ablauf. Unterstützte Eingabesprachen und Ergebnisqualität hängen vom konfigurierten Anbieter/Modell ab, nicht allein von der Oberflächensprache.
 
 **Für wen ist dieses Handbuch?**
 
 - **Requirements Engineers**, die Anforderungen klassifizieren und Architektur-Elementen zuordnen müssen.
-- **Architekten und Capability-Planer**, die die Taxonomie nutzen, um C3-Systeme zu entwerfen oder zu bewerten.
+- **Architekten und Capability-Planer**, die katalogbasierte Architekturprototypen und schichtenübergreifende Abhängigkeiten erstellen und prüfen.
 - **Analysten**, die die Taxonomiestruktur erkunden und KI-generierte Beziehungsvorschläge überprüfen.
 
 **Was Sie mit der Anwendung tun können:**
@@ -94,15 +154,17 @@ Der **Taxonomy Architecture Analyzer** ist eine Webanwendung, die Architekten, A
 
 ---
 
+<a id="2-getting-started"></a>
+<a id="guide-section-2"></a>
 ## 2. Erste Schritte
 
 ### Die Anwendung öffnen
 
 Öffnen Sie Ihren Webbrowser und navigieren Sie zur Anwendungs-URL (zum Beispiel `http://localhost:8080` bei lokaler Ausführung oder die von Ihrem Administrator bereitgestellte Deploy-URL).
 
-Die Anwendung wird als einzelne Seite geladen. Beim ersten Zugriff wird eine Anmeldeseite angezeigt — melden Sie sich als `admin` mit dem über die Umgebungsvariable `TAXONOMY_ADMIN_PASSWORD` konfigurierten Passwort an. Bleibt die Variable bei einem lokalen Nicht-Produktionsstart bewusst leer, lesen Sie das einmalige Passwort aus der eigentümergeschützten Datei, deren Pfad beim Start protokolliert wird. Nach der Anmeldung sind alle Standardfunktionen verfügbar; Administratorfunktionen erfordern zusätzlich das Freischalten des Admin-Modus (siehe [Abschnitt 14](#14-administration)).
+Melden Sie sich über die konfigurierte lokale Anmeldung oder Keycloak/OIDC an. Reguläre Benutzer verwenden ihre zugewiesenen Konten. Das lokale Bootstrap-Passwort dient der erstmaligen Administration und ist kein gemeinsames Benutzerkonto. Verfügbare Aktionen hängen von Rolle und Arbeitsbereichsberechtigung ab; das Öffnen eines Administrationsbereichs erteilt keine zusätzlichen Serverrechte.
 
-> ⚠️ **Sicherheit:** Es gibt kein wiederverwendbares Standardpasswort. Setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung in einem Netzwerk bereitstellen. Details zur eigentümergeschützten lokalen Bootstrap-Datei stehen unter [Sicherheit](SECURITY.md).
+> **Sicherheit:** Verwenden Sie die dokumentierte HTTPS- und Berechtigungskonfiguration. Lokale Erstadministration und Keycloak-Einrichtung sind getrennte Verfahren; siehe [Sicherheit](SECURITY.md) und [Keycloak-Einrichtung](KEYCLOAK_SETUP.md).
 
 **Erstbenutzer** sehen ein **Willkommens-Overlay** mit einer 3-Schritte-Anleitung, die erklärt, wie Sie beginnen:
 1. Beschreiben Sie Ihre Anforderung im Textbereich
@@ -117,11 +179,13 @@ Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das O
 
 Schauen Sie auf die Navigationsleiste am oberen Rand der Seite. Dort befindet sich ein **AI Status**-Indikator:
 
-- 🟢 **Grünes Badge** — ein LLM-Anbieter ist verbunden und die Analyse ist verfügbar.
+- 🟢 **Grünes Badge** — die Anbieterbereitschaft wird angezeigt. Prüfen Sie den Funktionsumfang: Lokale Embeddings ermöglichen keine generative Relationsbewertung oder Textsynthese.
 - 🔴 **Rotes Badge** — kein LLM-Anbieter ist konfiguriert; die Analyse ist nicht verfügbar. Kontaktieren Sie Ihren Administrator.
 
 ---
 
+<a id="3-understanding-the-interface"></a>
+<a id="guide-section-3"></a>
 ## 3. Die Benutzeroberfläche verstehen
 
 Die Anwendung ist in zwei nebeneinander liegende Hauptpanels unterteilt.
@@ -182,6 +246,8 @@ Klicken Sie auf die **🌙** (Mond)-Schaltfläche in der Navigationsleiste, um i
 
 ---
 
+<a id="4-analyzing-a-business-requirement"></a>
+<a id="guide-section-4"></a>
 ## 4. Eine Geschäftsanforderung analysieren
 
 ### Eine gute Anforderung formulieren
@@ -193,16 +259,16 @@ Geben Sie Ihre Anforderung als klaren, imperativen Satz ein. Zum Beispiel:
 > *„Bereitstellung einer integrierten Kommunikationsplattform für Krankenhauspersonal, die einen Echtzeit-Sprach- und Datenaustausch zwischen Abteilungen ermöglicht."*
 
 Tipps für gute Anforderungen:
-- Verwenden Sie Fachvokabular: Fähigkeit, Dienst, Informationsprodukt, Kommunikation, Kommando, Kontrolle.
+- Verwenden Sie die Begriffe Ihres tatsächlichen Fachgebiets und erläutern Sie Mehrdeutigkeiten. Formulieren Sie nicht nur für passende Katalogbezeichnungen um.
 - Seien Sie spezifisch hinsichtlich der benötigten Funktion oder des gewünschten Ergebnisses.
-- Halten Sie den Text unter 500 Wörtern; längerer Text verbessert die Genauigkeit nicht.
+- Formulieren Sie gezielt, aber erhalten Sie Bedingungen, Ausnahmen und Abhängigkeiten. Beachten Sie die angezeigten Eingabegrenzen; eine feste Wortzahl garantiert keine Genauigkeit.
 
 ![Business Requirement Analysis Karte](../images/04-analysis-panel-empty.png)
 
 ### Standardanalyse
 
 1. Geben Sie Ihre Anforderung im Textbereich ein.
-2. Stellen Sie sicher, dass das **Interactive Mode**-Kontrollkästchen **deaktiviert** ist, für eine Standard-Analyse (gesamter Baum).
+2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Taxonomien** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
 3. Klicken Sie auf die Schaltfläche **Analyze with AI**.
 4. Im Statusbereich erscheint eine Fortschrittsanzeige. Der Taxonomiebaum im linken Panel beginnt, farbcodierte Bewertungsbalken anzuzeigen, sobald Ergebnisse eintreffen.
 5. Wenn die Analyse abgeschlossen ist, zeigt der Statusbereich eine Zusammenfassung an und die Export-Schaltflächen werden verfügbar.
@@ -251,7 +317,7 @@ Dieser Modus ist nützlich für sehr große Taxonomien oder wenn Sie sich auf ei
 
 ### Architekturansicht-Kontrollkästchen
 
-Aktivieren Sie das **Architecture View**-Kontrollkästchen, bevor Sie die Analyse starten, um nach der Berechnung der Bewertungen zusätzlich eine Architekturansicht zu erstellen. Die Architekturansicht verfolgt, wie die am höchsten bewerteten Knoten über bestätigte Architekturbeziehungen miteinander verbunden sind. Siehe [Abschnitt 7](#7-architecture-view) für Details.
+Aktivieren Sie das **Architecture View**-Kontrollkästchen, bevor Sie die Analyse starten, um nach der Berechnung der Bewertungen zusätzlich eine Architekturansicht zu erstellen. Die Architekturansicht zeigt die für die Anforderung ausgewählten Elemente und Beziehungen. Prüfen Sie, ob eine Beziehung vorgeschlagen, importiert oder menschlich bestätigt ist; die Anzeige macht sie nicht zu einer freigegebenen Entscheidung. Siehe [Abschnitt 7](#7-architecture-view) für Details.
 
 ### Bewertungen und die Farblegende verstehen
 
@@ -259,12 +325,12 @@ Die **Match Legend** (unterhalb der Analysekarte) zeigt die Farbskala:
 
 | Farbe | Bewertungsbereich | Bedeutung | Textfarbe |
 |---|---|---|---|
-| Transparent | 0 % | Keine Übereinstimmung | Dunkel (Standard) |
+| Transparent | 0 % | Angezeigtes Gewicht null; Bewertungsstatus prüfen | Dunkel (Standard) |
 | Sehr helles Grün | 1 % – 24 % | Sehr geringe Übereinstimmung | Dunkel (Standard) |
 | Helles Grün | 25 % – 49 % | Geringe Übereinstimmung | Dunkel (Standard) |
 | Mittleres Grün | 50 % – 59 % | Mäßige Übereinstimmung | Dunkel (Standard) |
 | Dunkles Grün | 60 % – 99 % | Gute Übereinstimmung | **Weiß** (für Lesbarkeit) |
-| Sattes Grün | 100 % | Perfekte Übereinstimmung | **Weiß** |
+| Sattes Grün | 100 % | Höchstes angezeigtes Gewicht, kein Richtigkeitsnachweis | **Weiß** |
 
 Die Farbe wird berechnet als `rgba(0, 128, 0, score/100)` — ein reines Grün, dessen **Deckkraft** (Alphakanal) linear mit dem Bewertungsprozentsatz ansteigt. Ab 60 % und höher wechselt die Textfarbe zu Weiß, um die Lesbarkeit vor dem dunkleren Hintergrund zu gewährleisten.
 
@@ -286,9 +352,9 @@ Während der Analyse (insbesondere im interaktiven Modus) zeigt der Statusbereic
 | *„[Name] wird erweitert…"* | Das LLM untersucht die Unterknoten eines übereinstimmenden Knotens |
 | *„Ebene N wird bewertet…"* | Das LLM verarbeitet Taxonomieknoten auf Tiefe N |
 | *„Architekturansicht wird erstellt…"* | Die beziehungsbasierte Architekturansicht wird zusammengestellt |
-| *„Analyse abgeschlossen"* | Alle Ebenen wurden erfolgreich verarbeitet |
+| *„Analyse abgeschlossen"* | Der konfigurierte Arbeitsplan hat seinen gemeldeten Zustand erreicht; offene Arbeit und Umfang vor Aussagen zur Vollständigkeit prüfen |
 
-Es kann auch ein Fortschrittsbalken in Prozent erscheinen, der ungefähr anzeigt, wie weit die Analyse durch die Taxonomieebenen fortgeschritten ist.
+Die Fortschrittsanzeige trennt bewertete, ausgeschlossene und offene Knoten bezogen auf die geplante Gesamtzahl und je ausgewählter Teiltaxonomie. Die Relationsphase zeigt ihre eigenen geplanten, erledigten und offenen Prüfungen; ein Prozentwert der Knotenbewertung ist kein Relationsabschluss.
 
 ### Fehlerbehandlung während der Analyse
 
@@ -301,7 +367,9 @@ Wenn das LLM während der Analyse auf einen Fehler stößt, behandelt die Anwend
 | **Ungültiger API-Schlüssel** | Status zeigt „Authentifizierung fehlgeschlagen" | Überprüfen Sie Ihren API-Schlüssel in den Umgebungsvariablen |
 | **Teilweiser Fehler** | Einige Stämme wurden bewertet, andere zeigen Warnungen | Überprüfen Sie die Warnungen im Analyseprotokoll; Bewertungen für abgeschlossene Stämme sind weiterhin gültig |
 
-Teilergebnisse werden nach Möglichkeit beibehalten — wenn 7 von 10 Stämmen vor einem Timeout bewertet wurden, werden diese Bewertungen angezeigt und nur die fehlgeschlagenen Stämme werden mit Warnungen gekennzeichnet.
+Teilergebnisse werden nach Möglichkeit beibehalten — wenn 7 der 8 Katalogwurzeln vor einem Timeout bewertet wurden, werden diese Bewertungen angezeigt und nur die fehlgeschlagenen Stämme werden mit Warnungen gekennzeichnet.
+
+Das eingehende LLM-Kontingent gilt je stabiler authentifizierter Identität und Anwendungsinstanz, getrennt von Anbieterquoten und Brute-Force-Sperren für Anmeldung/WebDAV. Beachten Sie den Antwort-Header `Retry-After` statt einer pauschalen Wartezeit und geben Sie in Fehlerberichten keine API-Schlüssel weiter.
 
 ### Sichtbarkeit der Export-Schaltflächen
 
@@ -309,6 +377,8 @@ Die Export-Schaltflächen (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) 
 
 ---
 
+<a id="5-exploring-the-taxonomy"></a>
+<a id="guide-section-5"></a>
 ## 5. Die Taxonomie erkunden
 
 Das linke Panel zeigt die Taxonomie in sechs verschiedenen Ansichten. Wechseln Sie zwischen ihnen mit den Schaltflächen oben: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary**.
@@ -389,17 +459,19 @@ Der **Descriptions**-Umschalter (oberhalb des Baums, unterhalb der Ansichtsschal
 
 ---
 
+<a id="6-working-with-analysis-results"></a>
+<a id="guide-section-6"></a>
 ## 6. Arbeiten mit Analyseergebnissen
 
 ### Die Bewertungsfarben lesen
 
-Nach Abschluss der Analyse zeigt jeder Taxonomieknoten einen farbigen Bewertungsbalken. Beziehen Sie sich auf die **Match Legend** im rechten Panel:
+Nach der Analyse zeigen bewertete Knoten Bewertungsbalken. Nicht ausgewählte, nicht besuchte und ungeklärte Knoten sind anhand ihres gespeicherten Status zu lesen, nicht allein anhand der Farbe. Beziehen Sie sich auf die **Match Legend** im rechten Panel:
 
-- **Keine Farbe** — Bewertung ist 0 %, nicht relevant.
+- **Keine Farbe** — Status prüfen: Eine gültige Nullbewertung ist etwas anderes als ein nicht besuchter, nicht ausgewählter oder fehlgeschlagener Bewertungsschritt.
 - **Helles Grün → dunkles Grün** — zunehmende Relevanz.
 - **Kräftiges/volles Grün** — maximale Relevanz.
 
-Konzentrieren Sie sich auf Knoten mit dunkelgrüner Hervorhebung; diese sind die besten Übereinstimmungen für Ihre Anforderung.
+Nutzen Sie die Farbe zur Orientierung und prüfen Sie Begründung, Bewertungsstatus und Hierarchie. Kindgewichte können ein Elternbudget aufteilen; kleine absolute Gewichte dürfen nicht automatisch verworfen werden.
 
 ### Eine Blattbegründung anfordern (📋-Schaltfläche)
 
@@ -430,6 +502,8 @@ Die Warnung wird nach einer 300-ms-Verzögerung (Debounce) ausgelöst, wenn Sie 
 
 ---
 
+<a id="7-architecture-view"></a>
+<a id="guide-section-7"></a>
 ## 7. Architekturansicht — Anforderungs-Wirkungsanalyse
 
 Die Architekturansicht zeigt, wie die am höchsten bewerteten Taxonomieknoten über bestätigte Architekturbeziehungen (gespeichert in der Wissensbasis) miteinander verbunden sind. Sie bietet eine **Anforderungs-Wirkungsanalyse** — eine schichtbasierte Visualisierung der Architekturelemente, die für Ihre Anforderung relevant sind.
@@ -468,6 +542,8 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 
 ---
 
+<a id="8-using-the-graph-explorer"></a>
+<a id="guide-section-8"></a>
 ## 8. Den Graph Explorer verwenden
 
 Der Graph Explorer ermöglicht es Ihnen, das Netzwerk bestätigter Architekturbeziehungen um jeden Taxonomieknoten herum zu verfolgen, unabhängig davon, ob Sie eine Analyse durchgeführt haben.
@@ -534,6 +610,8 @@ Akzeptierte Vorschläge erscheinen ebenfalls als Graph-Kanten. Nach dem Akzeptie
 
 ---
 
+<a id="9-working-with-relation-proposals"></a>
+<a id="guide-section-9"></a>
 ## 9. Arbeiten mit Beziehungsvorschlägen
 
 Das System kann automatisch neue Beziehungen zwischen Taxonomieknoten mithilfe von KI vorschlagen. Diese Vorschläge werden in einer Überprüfungswarteschlange gespeichert, in der Sie sie akzeptieren oder ablehnen können.
@@ -604,6 +682,8 @@ Die Spalte **Confidence** zeigt, wie stark die KI davon überzeugt ist, dass die
 
 ---
 
+<a id="10-exporting-results"></a>
+<a id="guide-section-10"></a>
 ## 10. Ergebnisse exportieren
 
 Nach einer erfolgreichen Analyse erscheinen Export-Schaltflächen am oberen Rand des linken Bereichs. Diese Schaltflächen sind nur sichtbar, wenn Analyse-Bewertungen vorhanden sind.
@@ -624,7 +704,7 @@ Klicken Sie auf **📥 SVG**, um die aktuelle Taxonomie-Ansicht als skalierbare 
 
 ### PNG-Export
 
-Klicken Sie auf **📥 PNG**, um einen gerasterten Screenshot der aktuellen Taxonomie-Ansicht als PNG-Bild herunterzuladen.
+Klicken Sie auf **📥 PNG**, um ein gerastertes Bild der ausgewählten Taxonomieansicht herunterzuladen. Prüfen Sie Umfang und Abmessungen; ein Bildausschnitt und ein vollständiges Diagramm sind verschiedene Artefakte.
 
 ### PDF (Drucken)
 
@@ -678,7 +758,7 @@ Klicken Sie auf **📥 JSON** (in der Export-Gruppe, sichtbar nach einer erfolgr
 
 Diese Datei kann mit Kollegen geteilt oder zu einem späteren Zeitpunkt über die Schaltfläche **📤 Load Scores** wieder geladen werden, ohne die KI-Analyse erneut durchführen zu müssen.
 
-> **Semantische Unterscheidung:** Ein Wert von `0` im JSON bedeutet, dass der Knoten _bewertet und als nicht relevant eingestuft_ wurde. Ein Knoten-Code, der im JSON _fehlt_, wurde nie bewertet.
+> **Semantische Unterscheidung:** Lesen Sie Zahlenwerte zusammen mit gespeichertem Bewertungsstatus, ausgewähltem Umfang und Abdeckung. Ein fehlender Wert ist kein negatives Ergebnis; eine Null aus einem älteren oder partiellen Import beweist allein keine erfolgreiche Bewertung. Erhalten Sie beim Laden mitgelieferten Status und Herkunft.
 
 ### Laden einer gespeicherten Analyse (Import)
 
@@ -695,10 +775,11 @@ Dies ermöglicht **Offline-Überprüfung** und **Reproduzierbarkeit** — Sie k�
 
 ### Wann Export-Schaltflächen erscheinen
 
-Die Export-Schaltflächen erscheinen nur, nachdem eine Analyse durchgeführt wurde und mindestens ein Taxonomie-Knoten eine Bewertung größer als 0 hat. Wenn Sie die Seite verlassen oder aktualisieren, gehen die Bewertungen verloren und die Schaltflächen verschwinden. Ein Hinweis **"📋 Analyze first to enable exports"** wird angezeigt, wenn Exporte nicht verfügbar sind. Führen Sie die Analyse erneut durch oder verwenden Sie **📤 Load Scores**, um die Export-Schaltflächen wiederherzustellen.
+Die Export-Schaltflächen erscheinen nur, nachdem eine Analyse durchgeführt wurde und mindestens ein Taxonomie-Knoten eine Bewertung größer als 0 hat. Navigation oder Neuladen beweisen nicht, dass gespeicherte Arbeit verloren ist. Öffnen Sie im selben Kontext den gespeicherten Arbeitsentwurf oder Projektsnapshot und prüfen Sie den Status, bevor Sie Modellaufrufe wiederholen. Ein Hinweis **"📋 Analyze first to enable exports"** wird angezeigt, wenn Exporte nicht verfügbar sind. Führen Sie die Analyse erneut durch oder verwenden Sie **📤 Load Scores**, um die Export-Schaltflächen wiederherzustellen.
 
 ---
 
+<a id="10a-generating-reports-mdhtmldocx"></a>
 ### 10a. Berichte erstellen (MD/HTML/DOCX)
 
 Der Export-Tab enthält einen Abschnitt **📄 Full Report** mit drei Schaltflächen, die einen umfassenden Architekturanalyse-Bericht in verschiedenen Formaten erstellen:
@@ -731,6 +812,8 @@ Jeder Bericht enthält:
 
 ---
 
+<a id="11-search"></a>
+<a id="guide-section-11"></a>
 ## 11. Suche
 
 Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi zum Auffinden von Taxonomie-Knoten. Öffnen Sie es durch Klicken auf die Zusammenfassung **🔍 Search Taxonomy**.
@@ -777,6 +860,8 @@ Jede Taxonomie-Knotenzeile enthält eine Schaltfläche **🔍 Similar**. Durch K
 
 ---
 
+<a id="11a-quality-dashboard"></a>
+<a id="guide-section-12"></a>
 ## 11a. Qualitäts-Dashboard
 
 Das Panel **📊 Quality Dashboard** (rechte Spalte, einklappbar) zeigt Metriken zur Qualität der Relationsvorschläge an. Öffnen Sie es durch Klicken auf die Zusammenfassung; die Metriken werden automatisch geladen.
@@ -803,6 +888,7 @@ Klicken Sie auf **🔄 Refresh**, um das Dashboard jederzeit neu zu laden.
 
 ---
 
+<a id="guide-section-13"></a>
 ## 11b. Relations-Browser
 
 Das Panel **🔗 Relations Browser** (rechte Spalte, einklappbar) ermöglicht es Ihnen, bestätigte Taxonomie-Relationen zu durchsuchen, zu erstellen und zu löschen.
@@ -835,6 +921,8 @@ Die Schaltfläche **🎯 Req. Impact** im Graph-Explorer-Panel führt eine trans
 
 ---
 
+<a id="11c-requirement-coverage"></a>
+<a id="guide-section-14"></a>
 ## 11c. Anforderungsabdeckung
 
 Das Panel **📋 Requirement Coverage** (rechte Spalte, einklappbar) verfolgt, welche Taxonomie-Knoten durch Ihre erfassten Anforderungen abgedeckt sind, und hebt Knoten hervor, die noch nicht durch eine Anforderung abgedeckt wurden (Lücken-Kandidaten).
@@ -880,6 +968,8 @@ Klicken Sie auf **🔄 Refresh**, um die Abdeckungsstatistiken nach der Aufzeich
 
 ---
 
+<a id="11d-architecture-gap-analysis"></a>
+<a id="guide-section-15"></a>
 ## 11d. Architektur-Lückenanalyse
 
 Die **Architektur-Lückenanalyse** identifiziert fehlende architektonische Relationen, indem verglichen wird, was *existieren sollte* (gemäß der Kompatibilitätsmatrix) mit dem, was *tatsächlich* in der Wissensbasis vorhanden ist.
@@ -924,6 +1014,8 @@ Siehe die [API-Referenz](API_REFERENCE.md#13-architecture-gap-analysis) für die
 
 ---
 
+<a id="11e-architecture-recommendation"></a>
+<a id="guide-section-16"></a>
 ## 11e. Architektur-Empfehlung
 
 Die Funktion **Architektur-Empfehlung** kombiniert Anforderungsbewertung, Lückenanalyse und semantische Suche in einer automatisierten Pipeline, die Architekturempfehlungen für eine Geschäftsanforderung erstellt.
@@ -932,7 +1024,7 @@ Die Funktion **Architektur-Empfehlung** kombiniert Anforderungsbewertung, Lücke
 
 Die Empfehlungs-Pipeline führt vier Schritte aus:
 
-1. **Elemente bestätigen** — Knoten mit hohen Bewertungen (≥ 70) werden als relevante Architekturelemente bestätigt.
+1. **Elemente bestätigen** — Die deterministische Empfehlungsansicht bezeichnet Knoten oberhalb ihrer eingestellten Schwelle (beispielsweise ≥ 70) als bestätigte Kandidaten. Dies ist keine menschliche Freigabe und beweist nicht, dass kleine Abhängigkeitsgewichte entbehrlich sind.
 2. **Lückenanalyse** — identifiziert fehlende architektonische Verbindungen (siehe §11d).
 3. **Kandidatenvorschlag** — für jede Lücke werden Kandidaten-Knoten aus der fehlenden Taxonomie-Wurzel vorgeschlagen, geordnet nach semantischer Ähnlichkeit zur Geschäftsanforderung, wenn das Embedding-Modell verfügbar ist.
 4. **Relationsvorschlag** — schlägt Relationen vor, die die identifizierten Lücken füllen würden.
@@ -971,6 +1063,8 @@ Siehe die [API-Referenz](API_REFERENCE.md#14-architecture-recommendation) für d
 
 ---
 
+<a id="11f-architecture-pattern-detection"></a>
+<a id="guide-section-17"></a>
 ## 11f. Erkennung von Architekturmustern
 
 Die Funktion **Erkennung von Architekturmustern** prüft, ob Standard-Architekturmuster im Relationsgraphen vorhanden sind (vollständig oder teilweise vollständig).
@@ -1026,6 +1120,8 @@ Siehe die [API-Referenz](API_REFERENCE.md#15-architecture-pattern-detection) fü
 
 ---
 
+<a id="11g-architecture-dsl"></a>
+<a id="guide-section-18"></a>
 ## 11g. Architektur-DSL
 
 Die **Architektur-DSL** ist eine textbasierte domänenspezifische Sprache zur Beschreibung von Architekturmodellen als versionierbare, diff-freundliche Quelldateien. Sie dient als **Single Source of Truth** für Architekturdefinitionen — Änderungen werden in ein Git-gestütztes Repository committet, können in Pull Requests überprüft werden und werden in die Anwendungsdatenbank materialisiert.
@@ -1276,13 +1372,13 @@ Nach dem Akzeptieren von Vorschlägen enthält die exportierte DSL `relation`-Bl
 
 ### Versionskontrolle
 
-Die DSL wird in einem **Git-Repository** gespeichert, das vollständig innerhalb der Anwendung verwaltet wird — es ist kein externer Git-Server oder Dateisystem erforderlich. Das bedeutet, dass jede Änderung automatisch nachverfolgt wird.
+Die Anwendung speichert akzeptierte Editoroperationen dauerhaft und getrennt von ausdrücklichen **Git-Checkpoints**. Git-Objekte und Referenzen verwenden das konfigurierte datenbankgestützte Repository; ein externer Git-Server ist optional. Ungespeicherte Eingabe, akzeptierte semantische Operation, Git-Commit und unveränderlicher Analysesnapshot sind verschiedene Zustände.
 
 Sie interagieren mit der Versionskontrolle über die grafische Benutzeroberfläche — es ist nicht notwendig, Git-Befehle zu verwenden. Die wichtigsten Konzepte:
 
 - **Branches** — Verwenden Sie Branches, um mit Architekturänderungen zu experimentieren, ohne die Hauptversion zu beeinflussen. Sie können Branches wechseln, neue erstellen und zusammenführen.
 - **Commits** — Jedes Mal, wenn Sie eine Version speichern oder im DSL-Editor committen, wird ein Snapshot aufgezeichnet. Sie können Commits jederzeit durchsuchen, vergleichen, wiederherstellen oder rückgängig machen.
-- **Rückgängig / Wiederherstellen** — Haben Sie einen Fehler gemacht? Verwenden Sie die Schaltfläche **Undo**, um die letzte Änderung zu entfernen, oder **Restore**, um zu einer früheren Version zurückzukehren.
+- **Rückgängig / Wiederherstellen** — Im Versionen-Tab setzt Branch-Undo den ausgewählten Branch auf den Elterncommit zurück. Persönliches Editor-Undo protokolliert dagegen eine semantische Gegenoperation und erhält das Journal; Abhängigkeiten können sie verhindern. Restore erzeugt einen neuen Checkpoint aus ausgewähltem früherem Inhalt. Prüfen Sie Kontext und Bestätigung; dies ist keine installationsweite Backup-Wiederherstellung.
 
 Für Details zur schrittweisen Verwendung dieser Funktionen siehe [§12 Versionen-Tab](#12-versions-tab) unten.
 
@@ -1290,9 +1386,11 @@ Für Details zur schrittweisen Verwendung dieser Funktionen siehe [§12 Versione
 
 ### Materialisierung
 
+**Geltungsbereich:** Materialisierung aktualisiert die ausgewählte berechtigte Repository-/Workspace-Projektion, nicht sämtliche Beziehungen der Installation. Prüfen Sie Ziel und Vorschau vor der Übernahme; den semantischen Editorvertrag erläutert der [Architektureditor](ARCHITECTURE_EDITOR.md).
+
 Wenn Sie die DSL bearbeiten und Änderungen committen, muss das Architekturmodell in Ihrem DSL-Text **materialisiert** (angewendet) werden, damit andere Teile der Anwendung — der Graph Explorer, der Relations Browser und die Architecture View — diese Änderungen widerspiegeln.
 
-- **Vollständige Materialisierung** ersetzt alle Beziehungen in der Datenbank durch den Inhalt der DSL.
+- **Vollständige Materialisierung** ersetzt die Beziehungen der ausgewählten berechtigten Projektion durch den Inhalt der DSL.
 - **Inkrementelle Materialisierung** wendet nur die Unterschiede (Delta) zwischen dem aktuellen Datenbankzustand und der DSL an, was bei großen Modellen schneller ist.
 
 Beide Optionen sind im DSL-Editor-Panel verfügbar. Nach der Materialisierung wird die Git-Statusleiste oben auf der Seite aktualisiert und zeigt an, dass die Projektion **aktuell** (synchron) ist.
@@ -1317,6 +1415,8 @@ Siehe [§12 Versionen-Tab](#12-versions-tab) für die Verwendung der Suche in de
 
 ---
 
+<a id="12-versions-tab"></a>
+<a id="guide-section-19"></a>
 ## 12. Versionen-Tab
 
 Der **🕓 Versions**-Tab bietet eine visuelle Oberfläche zum Durchsuchen, Verwalten und Zurücksetzen von Architekturversionen. Klicken Sie auf **🕓 Versions** in der oberen Navigationsleiste, um ihn zu öffnen.
@@ -1487,6 +1587,8 @@ In der Navigationsleiste (oben rechts) zeigt das **Arbeitsbereich-Badge** Ihren 
 
 ---
 
+<a id="13-git-status-and-context-bar"></a>
+<a id="guide-section-20"></a>
 ## 13. Git-Status und Kontextleiste
 
 Zwei horizontale Leisten oben auf der Seite bieten einen schnellen Überblick über den aktuellen Architekturzustand.
@@ -1533,9 +1635,10 @@ Navigationsschaltflächen in der Kontextleiste:
 
 ---
 
+<a id="guide-section-21"></a>
 ## 14. Administration
 
-Administrationsfunktionen sind hinter einem passwortgeschützten Admin-Modus verborgen. Ein Standardbenutzer muss nicht auf diese Funktionen zugreifen.
+Administrationsfunktionen erfordern die passende serverseitige Rolle; das Öffnen oder Entsperren eines Panels verleiht diese Rolle nicht. Standardbenutzer verwenden ihre zugewiesenen Konten, kein gemeinsam genutztes Administratorpasswort.
 
 > 📖 Für eine umfassende Anleitung zu allen KI-Anbietern, anbieterspezifischer Überschreibung pro Anfrage, Mock-Modus, Diagnose-API und Ratenbegrenzung siehe **[AI Providers](AI_PROVIDERS.md)**.
 > Für die Verwaltung von Laufzeiteinstellungen (LLM-Einstellungen, DSL-Konfiguration, Größenbeschränkungen) siehe **[Preferences](PREFERENCES.md)**.
@@ -1552,7 +1655,7 @@ Das Badge in der Navigationsleiste zeigt an, ob ein LLM-Anbieter verbunden ist:
 
 Wenn Sie ein rotes Badge sehen, können Sie entweder:
 - Einen der LLM-API-Schlüssel (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.) setzen und die Anwendung neu starten, oder
-- `LLM_PROVIDER=LOCAL_ONNX` für Offline-Analyse ohne API-Schlüssel setzen.
+- `LLM_PROVIDER=LOCAL_ONNX` verwendet lokale Embeddings für unterstützte Bewertung/Suche, nicht für generative Relationsbewertung oder Neuformulierung. Offline-Betrieb erfordert zusätzlich bereitgestellte Modelle, deaktivierte Downloads und eine geprüfte Netzwerkkonfiguration; siehe [KI-Anbieter](AI_PROVIDERS.md).
 
 Wenn die KI nicht verfügbar ist, erscheint eine **Inline-Warnmeldung** unterhalb der Analyse-Schaltfläche, die die erforderlichen Umgebungsvariablen auflistet.
 
@@ -1623,6 +1726,8 @@ Die Einstellungsseite ist in drei Abschnitte organisiert:
 
 ---
 
+<a id="15-relation-types-reference"></a>
+<a id="guide-section-22"></a>
 ## 15. Referenz der Beziehungstypen
 
 Das System verwendet 12 Beziehungstypen, die jeweils einer spezifischen Beziehung im NATO Architecture Framework (NAF) oder The Open Group Architecture Framework (TOGAF) entsprechen.
@@ -1644,6 +1749,7 @@ Das System verwendet 12 Beziehungstypen, die jeweils einer spezifischen Beziehun
 
 ---
 
+<a id="guide-section-23"></a>
 ## 15a. Dokumentenimport & Quellenherkunft
 
 ### Import-Modi
@@ -1704,20 +1810,22 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ---
 
+<a id="16-tips-and-best-practices"></a>
+<a id="guide-section-24"></a>
 ## 16. Tipps und Best Practices
 
 ### Effektive Anforderungen formulieren
 
 - **Seien Sie spezifisch:** Statt *„Kommunikation"* schreiben Sie *„integrierte Kommunikationsdienste für Krankenhauspersonal, die den Echtzeit-Datenaustausch zwischen Abteilungen ermöglichen"*.
-- **Verwenden Sie Fachvokabular:** Begriffe wie *Capability*, *Service*, *Information Product*, *Command*, *Control* helfen der KI, bessere Treffer zu finden.
+- **Verwenden Sie Ihre Fachbegriffe:** Erläutern Sie Mehrdeutigkeiten und erhalten Sie den ursprünglichen Bedarf, statt für einen Katalogtreffer umzuformulieren.
 - **Eine Anforderung auf einmal:** Analysieren Sie pro Sitzung eine Anforderung für sauberere, fokussiertere Ergebnisse.
-- **Halten Sie es kurz:** Streben Sie 1–3 Sätze an. Sehr lange Absätze verbessern die Genauigkeit nicht.
+- **Formulieren Sie gezielt:** Erhalten Sie notwendige Bedingungen, Ausnahmen und Abhängigkeiten; trennen Sie unabhängige Anforderungen ohne ihre Zusammenhänge zu verlieren.
 
 ### Ergebnisse interpretieren
 
-- Konzentrieren Sie sich auf Knoten mit Bewertungen über 50 % als Ihre primären Treffer.
-- Knoten mit Bewertungen von 25–50 % sind sekundäre Treffer — sie können relevant sein, aber weniger direkt.
-- Knoten unter 25 % können in der Regel ignoriert werden, es sei denn, Ihr Fachwissen deutet auf etwas anderes hin.
+- Prüfen Sie ausgewählten Umfang, bewertete/ungeklärte Zustände und Begründungen vor einer Rangfolge.
+- Unterscheiden Sie unabhängige Wurzel-/Produkteignung von Kindgewichten, die ein Elternbudget aufteilen.
+- Wenden Sie keine pauschale 25-%- oder 50-%-Grenze an; auch ein kleiner Anteil kann eine notwendige Abhängigkeit anzeigen. Ähnlichkeit oder Gewicht beweisen keine Notwendigkeit.
 - Verwenden Sie **Leaf Justification** (📋), um zu verstehen, *warum* ein bestimmter Knoten hoch bewertet wurde, bevor Sie ihn in Ihre Architektur aufnehmen.
 
 ### Mit Vorschlägen arbeiten
@@ -1736,11 +1844,13 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ---
 
+<a id="17-glossary"></a>
+<a id="guide-section-25"></a>
 ## 17. Glossar
 
 | Begriff | Definition |
 |---|---|
-| **Anchor node** | Ein hoch bewerteter Blattknoten, der eine Geschäftsanforderung direkt erfüllt; der Ausgangspunkt für die Architecture View |
+| **Anchor node** | Ein als direkter Trefferkandidat ausgewähltes Element und Ausgangspunkt der Architecture View; kein Nachweis, dass die Anforderung erfüllt ist |
 | **Architecture DSL** | Eine textbasierte domänenspezifische Sprache (`.taxdsl`-Format) zur Beschreibung von Architekturmodellen als versionierbare, Diff-freundliche Quelldateien |
 | **Architecture gap** | Eine erwartete Beziehung (gemäß der Kompatibilitätsmatrix), die in der Wissensbasis fehlt |
 | **Architecture pattern** | Eine vordefinierte Kette von Beziehungstypen durch die Taxonomie (z. B. Full Stack, App Chain, Role Chain) |
@@ -1780,6 +1890,8 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ---
 
+<a id="18-troubleshooting"></a>
+<a id="guide-section-26"></a>
 ## 18. Fehlerbehebung
 
 ### Die Schaltfläche „Analyze with AI" ist deaktiviert oder ausgegraut
@@ -1794,7 +1906,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 **Maßnahme:**
 1. Überprüfen Sie das **Analysis Log** (rechtes Panel, einklappbar) auf Fehlermeldungen.
-2. Versuchen Sie, die Anforderung mit spezifischerer C3-Fachterminologie umzuformulieren.
+2. Prüfen Sie Umfang, Bewertungsstatus sowie Modell- und Sprachunterstützung. Klären Sie Mehrdeutigkeiten, ohne den tatsächlichen Bedarf nur für passende Katalogbezeichnungen zu verändern.
 3. Wenn der Admin-Modus verfügbar ist, prüfen Sie das **LLM-Kommunikationsprotokoll**, um zu sehen, was das LLM zurückgegeben hat.
 
 ### Export-Schaltflächen sind nicht sichtbar
@@ -1837,6 +1949,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
 
+<a id="guide-section-27"></a>
 ## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen
 
 Öffnen Sie eine gespeicherte Anforderung mit Analyse-Snapshot und erstellen Sie ein

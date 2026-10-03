@@ -10,6 +10,29 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 > Unterstützungsgrenze festgelegt. Dateierzeugung und breite Interoperabilität mit
 > Drittwerkzeugen werden getrennt bewertet.
 
+## Zusammenhängende Abläufe und ihre Grenzen
+
+Die folgende Übersicht trennt geliefertes Verhalten, Qualitätsaussagen und noch
+offene Integration. Technische Tests oder ältere Screenshots sind keine neu
+aufgezeichnete Abnahme der aktuellen Anwendung.
+
+| Bereich | Geliefertes Verhalten / aktueller Stand | Grenze |
+|---|---|---|
+| Architekturgestützte Anforderungsklärung | Gespeicherte Vorschläge, typisierte Fragen, menschliche Entscheidungen, Übernahmeprüfung, vererbte Entscheidungen und historische Exporte | Ausdrückliche Übernahme, Freigabe und Reanalyse sind getrennt; Playback-Tests belegen keine semantische Qualität realer Modelle. |
+| Auswählbare Analyse und Fortsetzung | Ausgewählte Wurzeln, FULL/TAXONOMIES_ONLY, gespeicherte Arbeitspläne und Wiederverwendung validierter Antworten | Umfang und Fehler bleiben sichtbar; ein abgeschlossener Plan beweist keine universelle Abdeckung. |
+| Semantische Bearbeitung und Git-Checkpoints | Dauerhafte Operationen mit Begründung/Gegenoperation und getrennte stabile Git-Versionen | Editor-Undo/Redo und das Zurücksetzen eines Branch-Heads sind unterschiedliche Aktionen. |
+| Lokales ONNX | Embedding-Suche/-Bewertung | Kein generatives Relations- oder Neuformulierungsmodell; DE/EN-Oberflächen belegen keine gleichwertige Suchqualität. |
+| Planungsprofile | Versionierter geplanter Betriebsbeginn und Norm-/Vorgabenverweise | Ein Datum ist keine Betriebsverfügbarkeit; ein Verweis ist kein Erfüllungsnachweis. |
+| Portable Sicherung und externe Weiterbearbeitung | Unterstützende Capture-/Archivadapter und begrenzte Stand-Bundles | Produktive Erfassung, vollständige Historie/Wiederherstellung und geprüfte Rückübernahme sind kein abgeschlossener Endbenutzerablauf. |
+
+Siehe [Anforderungsklärung](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-clarification-workflow),
+[Umfang und Fortschritt](PROJECT_REQUIREMENT_PORTFOLIO.md#analysis-scope-and-progress) sowie
+[Editor-Anleitung](ARCHITECTURE_EDITOR.md).
+
+Ein fehlender Screenshot-Verweis bedeutet, dass diese Matrix diesen Teil ihres
+Vollständigkeitsnachweises nicht bereitstellt. Er darf nicht als abgehakt gelten.
+Das folgende Oberflächeninventar ist kein vergleichender Qualitätsbenchmark.
+
 ## Endbenutzer-Funktionen (GUI-first)
 
 | Funktion | GUI | REST | Benutzerhandbuch | Screenshot | Hilfe/Tooltip | DE/EN i18n | Status |
@@ -21,13 +44,13 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 | Relationsvorschläge (annehmen/ablehnen) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Vollständig |
 | Snapshot-gebundene Browser-/SVG-/Vektor-PDF-Ansichten | ✅ | ✅ | ✅ Exportgrenze | ✅ #20, 23 | ✅ | ✅ | ✅ Unterstützte menschenlesbare Ansichten des ausgewählten persistierten Snapshots |
 | Mermaid-/JSON-Architekturprojektionen | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Migration in die gemeinsame Snapshot-gebundene Artefakthülle, Autoritäts-Header und Verlustmanifest bleibt in #966 offen |
-| ArchiMate-3.1-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; Mapping-/Verlustprofil und Interoperabilität mit unabhängigen Werkzeugen bleiben in #967 offen |
+| ArchiMate-3.1-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; versioniertes Mapping-/Verlustprofil umgesetzt; Abnahme durch unabhängige Werkzeuge bleibt in #967 offen |
 | Visio-2012-VSDX-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; typisierte Identitäten, freigegebene Metadaten und versionierte Verlustmanifeste sind umgesetzt; Microsoft-Visio-Desktop-Zertifizierung bleibt in #965 offen |
-| Volltextsuche | ✅ | ✅ | ✅ §11a | ✅ #29 | ✅ | ✅ | ✅ Vollständig |
-| Semantische/Hybridsuche | ✅ | ✅ | ✅ §11b, §11c | ✅ #30, 31 | ✅ | ✅ | ✅ Vollständig |
+| Volltextsuche | ✅ | ✅ | ✅ §11 | ✅ #29 | ✅ | ✅ | ✅ Vollständig |
+| Semantische/Hybridsuche | ✅ | ✅ | ✅ §11 | ✅ #30, 31 | ✅ | ✅ | ✅ Vollständig |
 | Graphexploration (Upstream/Downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Vollständig |
 | Ausfallauswirkungsanalyse | ✅ | ✅ | ✅ §8 | ✅ #22 | ✅ | ✅ | ✅ Vollständig |
-| Lückenanalyse | ✅ | ✅ | ✅ §11e | ✅ #26, 27 | ✅ | ✅ | ✅ Vollständig |
+| Lückenanalyse | ✅ | ✅ | ✅ §11d | ✅ #26, 27 | ✅ | ✅ | ✅ Vollständig |
 | Mustererkennung | ✅ | ✅ | ✅ §11f | ✅ | ✅ | ✅ | ✅ Vollständig |
 | Empfehlungen (Copilot) | ✅ | ✅ | ✅ §4 | ✅ | ✅ | ✅ | ✅ Vollständig |
 | Berichte (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | ✅ #23 | ✅ | ✅ | ✅ Vollständig |
@@ -42,10 +65,10 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 | Versionsverlauf (Commits) | ✅ | ✅ | ✅ §12 | ✅ #41, 66, 67, 68 | ✅ | ✅ | ✅ Vollständig |
 | Sync vom Shared / Veröffentlichen | ✅ | ✅ | ✅ §12 | ✅ #55, 56, 63–65 | ✅ | ✅ | ✅ Vollständig |
 | Blattknoten-Begründung | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Vollständig |
-| Dokumentimport (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
-| Quell-Provenienz-Tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
-| KI-gestützte Anforderungsextraktion | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
-| Vorschriften-Architektur-Zuordnung | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
+| Dokumentimport (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
+| Quell-Provenienz-Tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
+| KI-gestützte Anforderungsextraktion | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
+| Vorschriften-Architektur-Zuordnung | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
 
 ## Unterstützungsgrenze der Architekturexporte
 

@@ -5,6 +5,19 @@ a question or saving a draft does not change requirement text, version history,
 the active version, architecture snapshot, or review status. The requirement detail
 page provides an English/German workspace for original text, proposal and questions.
 
+## What this workflow helps you do
+
+Use architecture evidence to clarify a requirement, record the decisions behind
+its wording and preserve those reasons across explicitly adopted versions and
+separately requested analyses. This is not merely grammar rewriting and does not
+make the model the decision-maker. The original, proposal, human decisions and
+accepted changes remain distinguishable.
+
+The browser-first walkthroughs are in the [English portfolio guide](../en/PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-clarification-workflow)
+and [German portfolio guide](../de/PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-clarification-workflow).
+The sections below are the technical contract, not claims of superior live-model
+results or a feature unavailable in every other product.
+
 ## Synthesis and review boundary
 
 Creating an offer first stores a source-preserving draft and starts an asynchronous

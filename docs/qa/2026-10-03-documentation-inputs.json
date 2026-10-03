@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "scope": "Conservative restoration of complete English and German USER_GUIDEs; not full release acceptance",
+  "mainBaseline": "dc10e7b143ce03b465ae328cb32cf05f8f66c13d",
+  "rejectedHead": "086c3333f46891c12ba330850abc3a968fff7e38",
+  "restorationCommit": "e03e2c045ff0ee9a3c0874900c38fe79353ad08c",
+  "restorationTree": "8e8b48155d8fa280690ca12afa711a660fb63318",
+  "files": [
+    {
+      "path": "docs/en/USER_GUIDE.md",
+      "baseBlob": "f935020741b459f5773af5e03da7cbff425d6e0b",
+      "baseSha256": "82fa94aa624becee569967a608f68a4c871826aeb3a69897ca5265f7e433a039",
+      "resultBlob": "f99f10e8d72c727bb663474131a020f64e5f3a7d",
+      "resultSha256": "f67563346ff3d9bef0e73bbca0645f6ad56c94656ce74fc0f19d17585239f8bb",
+      "baseLines": 1881,
+      "resultLines": 1971,
+      "addedLines": 133,
+      "removedLines": 43,
+      "retainedHeadings": 173,
+      "retainedFencedExamples": 10,
+      "retainedImages": 55,
+      "exactPreservedProcedureBodies": 4
+    },
+    {
+      "path": "docs/de/USER_GUIDE.md",
+      "baseBlob": "9c2c04553283d6ef8b1fd8c2832948a263e0f3d7",
+      "baseSha256": "eb2fbe1b768069d79efeb949eea98a4177b96a9122362fa44d7403eea7590666",
+      "resultBlob": "81dd936a2982684dbe9ccc9b6aeaf8242df75407",
+      "resultSha256": "b3dacaa034940a7bd424621b679803fbe3fffdd46ec45df67547a7524c41a2f2",
+      "baseLines": 1869,
+      "resultLines": 1982,
+      "addedLines": 151,
+      "removedLines": 38,
+      "retainedHeadings": 173,
+      "retainedFencedExamples": 10,
+      "retainedImages": 55,
+      "exactPreservedProcedureBodies": 4
+    }
+  ],
+  "localRenderRuntime": {
+    "artifactId": 11267389645,
+    "workflowRunId": 37107450898,
+    "jarSha256": "f011d2800818404aca72ac36a94663534b564f82bc4f6e2d84c536e2a70cc2f5",
+    "compiledMergeCommit": "d2e469f63a0a80d68429a36a3f7e7f69108afc31",
+    "implementationHead": "83a9931579185d2fae789610057b69ca0bcce685",
+    "documentationResources": "Saved e7852cc8 documentation resources plus the two exact corrected USER_GUIDEs",
+    "usesResourceOverlay": true,
+    "replacesProductionClasses": false,
+    "isFreshCombinedReleaseBuild": false,
+    "pages": 110,
+    "samePageFragmentOccurrences": 650,
+    "missingSamePageFragments": 0,
+    "duplicateIds": 0,
+    "missingReferencedImages": 0,
+    "relativeMarkdownOccurrences": 648
+  },
+  "diagnosticSha256": {
+    "check_restoration.py": "188ec745dc4998320cc29a9c018fbb884fbee3b26d0ae16519081799b2cac7df",
+    "RenderHelpCorpus.java": "6ca89a78f884488e6d2ea51987f30b971e3b3bda03c5d34871591aaab7ef297d",
+    "result.json": "ebc2c987ef44490c2e96f1cacaf2877b4301baa4ce7c5362864b21277f1c94be",
+    "compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "render.log": "bd5cdbb1e169c5c9092a2b26a99cbde2f5b59ba6eb0971c453f5e683295a6e9e",
+    "en-all-changes.json": "b92a2964b7e8e475735b2d8344fa6950b5606bf3386c1b122ad3e6e109629bd1",
+    "de-all-changes.json": "5eab9b759477cba04a4e3e759c2953d96e67cd31d8ffecec2ba3c0d5516ede5d"
+  },
+  "publicationVerification": {
+    "workflowRunId": 37122578025,
+    "jobId": 111201454483,
+    "result": "success",
+    "scope": "Exact file hashes, preserved headings/examples/images/procedures, whitespace, two-file-only commit and fast-forward publication to the unchanged draft branch",
+    "temporaryMaintenanceBranchRemoved": true,
+    "mainOrReleaseModified": false,
+    "regularCiStillRequired": true
+  },
+  "historicalEvidence": {
+    "commit": "086c3333f46891c12ba330850abc3a968fff7e38",
+    "report": "docs/qa/2026-10-03-documentation-help-qa.md",
+    "manifest": "docs/qa/2026-10-03-documentation-inputs.json",
+    "warning": "Historical numbers do not certify these restored guides. Earlier unbound broad-rewrite claims remain withdrawn."
+  }
+}

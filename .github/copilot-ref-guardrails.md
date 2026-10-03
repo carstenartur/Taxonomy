@@ -1,59 +1,83 @@
 # Guardrails — Read Before Making Any Changes
 
-> **Read this when**: Before making any changes — read this first to avoid common mistakes.
+## Preserve real catalogue identity and provenance
 
----
+The eight catalogue roots are `BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA`.
+Official concrete entries commonly use `XX-XXXX`; not every number exists and
+local navigation additions are not official architecture concepts. A syntactic
+prefix is not an identity or provenance check.
 
-## Taxonomy Codes — Never Invent Them
+Never invent example identifiers for live requests. Discover existing entries
+from `GET /api/taxonomy` or the exact recorded catalogue snapshot. Use the real
+catalogue in application acceptance tests. Existing authored unit fixtures remain
+fixtures and must not be advertised as evidence from real model inference.
+Do not overwrite original Excel entries, source order or sensible parent links
+merely to simplify a test or traversal.
 
-- **Real codes follow `XX-XXXX` format**: two uppercase letters, a hyphen, and four digits (e.g., `CP-1023`, `CR-1047`, `BP-1327`).
-- **Not all four-digit numbers exist.** The codes are defined in the C3 Taxonomy Catalogue Excel workbook, not generated sequentially.
-- **Never invent or guess codes** such as `CP-3`, `CR-5`, `CO-2`. They don't exist and will cause `400 Bad Request` from the API.
-- **Always discover codes at runtime**: query `GET /api/taxonomy` and walk the returned tree to find real, existing codes.
-- The 8 root codes are: `BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA` — these roots have no `-XXXX` suffix.
+## Model endpoints and credentials
 
-## Never Fake Taxonomy Data
+Do not invoke analysis, streaming, node scoring or justification endpoints in
+exploratory scripts against a remote provider. They can consume shared quota and
+incur costs. Use the existing explicit provider test path for approved live tests;
+no hidden fallback from a deterministic/local test to a remote service.
 
-- The taxonomy is loaded from the real Excel workbook on application startup. There is no need to mock it.
-- Do not create fake in-memory taxonomies, stub node codes, or bypass the `TaxonomyService`.
+Never hardcode or disclose provider keys, session cookies, passwords or source
+payloads. Keep secrets in the existing runtime/CI secret mechanism. Do not include
+them in diagnostic artifacts. Provider limits depend on configuration and service
+terms; do not treat historical quota numbers as universally applicable.
 
-## LLM Endpoints — Do Not Call in Tests
+## Screenshot and help evidence
 
-- **Do not call LLM endpoints** (`/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`) in unit tests or exploratory scripts.
-- These endpoints consume the shared free-tier Gemini quota (15 RPM, 1500 RPD).
-- If you need LLM integration tests, use the existing `DiagnosticsWithApiKeyContainerIT` (at most 1–2 calls per run).
+`ScreenshotGeneratorIT` is opt-in. Use the existing screenshot profile and its
+activation contract rather than adding screenshots to the ordinary build.
+Screenshots must identify the source/version they actually depict. Do not relabel
+an old screenshot as fresh acceptance or mark absent evidence as passed.
 
-## Do Not Hardcode or Log GEMINI_API_KEY
+Documentation changes need content, link and rendering checks. Help-controller,
+HTML-processing or browser-navigation changes are runtime changes and need
+behavioral regression tests as well as the normal code gates.
 
-- The key is a repository secret. It must never appear in source code, test output, or log files.
-- The secret is masked in CI logs; keep it that way.
+## Readiness checks
 
-## ScreenshotGeneratorIT Is Opt-In Only
+Do not use administrative `/api/diagnostics` as a generic health check.
+Use the documented read-only health/readiness endpoint for the specific purpose,
+respect its authentication and distinguish application readiness, catalogue
+readiness, model availability and a usable semantic index. An AI-status badge
+alone does not establish that every analysis capability can execute.
 
-- The screenshot generator only runs when `-DgenerateScreenshots=true` is passed to Maven failsafe.
-- It must **not** run as part of the normal `./mvnw verify` cycle.
-- Add `Assumptions.assumeTrue(System.getProperty("generateScreenshots") != null)` guard if adding new screenshot test classes.
+## Test failures and final verification
 
-## Do Not Use `/api/diagnostics` for Health Checks
+Reproduce failures before changing code. Do not extend timeouts, remove assertions,
+change coverage baselines or hide warnings solely to obtain a green result.
+Report missing Docker, browser, wrapper, dependency or model prerequisites as such.
+They are not successful or zero-score test outcomes.
 
-- `/api/diagnostics` returns **HTTP 401** when `ADMIN_PASSWORD` is configured (which it always is in container tests).
-- Use `/api/ai-status` as the health-check endpoint instead — it is always public.
+The CI-equivalent local entry point is:
 
-## Do Not Add Unnecessary Timeouts
+```bash
+./mvnw -B verify -Pci -DrunOnnxTests=true
+```
 
-- Extending test timeouts masks bugs. If a test is timing out, find and fix the root cause.
-- Silent JavaScript promise failures (missing `.catch()`) are a common cause of Selenium timeouts.
+The exact selections and sharding are owned by the current POMs,
+`.mvn/verification-suites.json`, `.github/workflows/ci-cd.yml` and
+`.github/workflows/database-compatibility.yml`. A GitHub core job with UI skipped
+is complete only together with its corresponding shard evidence and aggregate.
+Do not call the older `verify -DexcludedGroups="real-llm"` command equivalent to
+all current CI lanes.
 
-## Use `./mvnw verify` as Final Validation When Needed
+Focused commands are for iteration, not substitutes for required broader checks.
+The documented Docker-free `test-local` profile retains local scenarios; it does
+not certify PostgreSQL, Oracle, SQL Server or container execution.
 
-- Running only `./mvnw test` misses ALL integration tests (`*IT.java`).
-- These ITs start the real application in Docker via Testcontainers and test against HSQLDB, PostgreSQL, Oracle, and MSSQL.
-- Before finishing your work, run `./mvnw verify -DexcludedGroups="real-llm"` if your changes could affect controllers, GUI, startup config, pom.xml, or Dockerfiles.
-- You do NOT need to run `./mvnw verify` for every small iteration — only as a final check before pushing.
-- ⚠️ **Do NOT** weaken the test command by adding `-pl`, extra exclusion tags (`db-postgres`, `db-oracle`, `db-mssql`), or downgrading from `verify` to `test`. The CI runs `./mvnw verify -DexcludedGroups="real-llm"` — your local validation must match. If Docker/Testcontainers fail in your environment, report it rather than silently running fewer tests.
+## Multi-module Maven
 
-## Multi-Module Maven — Always Use `-am` With `-pl`
+A fresh module selection must also build needed siblings:
 
-- `./mvnw verify` does NOT run `install` — sibling modules are NOT in `~/.m2/repository`.
-- Any command using `-pl <module>` MUST also include `-am` (`--also-make`) or sibling dependencies will fail to resolve.
-- When adding Maven commands to CI workflow files, always test them manually in your workspace first.
+```bash
+./mvnw -pl taxonomy-app -am test
+```
+
+Use `-am` with `-pl` unless an explicit preceding step installed the exact sibling
+artifacts. `verify` does not install sibling artifacts into the local repository.
+Do not interpret an isolated partial compile as a full-reactor pass. Workflow
+changes must retain Maven's ownership of test selection and evidence.

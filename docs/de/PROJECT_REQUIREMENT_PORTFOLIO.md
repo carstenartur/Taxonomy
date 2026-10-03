@@ -18,6 +18,76 @@ Der Arbeitsbereich unterstützt insbesondere:
 
 Alle nachfolgend beschriebenen Arbeitsschritte sind über die Weboberfläche erreichbar. Technische Integrationsbeispiele stehen getrennt in [PROJECT_PORTFOLIO_API.md](PROJECT_PORTFOLIO_API.md).
 
+<a id="requirement-clarification-workflow"></a>
+## Eine Anforderung anhand ihres Architekturkontexts klären
+
+Verwenden Sie die Anforderungsdetailseite, wenn die Ausgangsformulierung Entscheidungen
+offenlässt. Ein gespeichertes Neuformulierungsangebot ist von Quellanforderung und
+Architektur getrennt. Das Erzeugen eines Angebots, Beantworten einer Frage oder
+Bearbeiten des Entwurfs gibt die aktive Anforderung weder frei noch ersetzt es sie.
+
+| Schritt | Ihre Aktion | Was nachvollziehbar bleibt |
+|---|---|---|
+| Quelle auswählen | Anforderung öffnen, gespeicherte Version und zugehörigen Analysesnapshot wählen | Exakter Originaltext, Quellversion und analysierte Architektur |
+| Angebot erzeugen | Separaten Formulierungsvorschlag anfordern und Synthesezustand prüfen | Ein gespeicherter Anfangsentwurf ist noch kein abgeschlossenes oder freigegebenes Ergebnis |
+| Fragen klären | Architekturbezüge prüfen; antworten, zurückstellen oder als nicht zutreffend kennzeichnen | Typisierte Entscheidungen, Nachweise und ungelöste Konflikte bleiben unterscheidbar |
+| Vorschlag prüfen | Text oder Aussagen bearbeiten, Ergänzungen prüfen und gewünschte Revision speichern | Manuelle Änderungen sind gegen verspätete Modellantworten geschützt |
+| Ausdrücklich übernehmen | Gespeicherte Übernahmevorschau, Warnungen und Endtext prüfen; mit Begründung bestätigen | Neuer Anforderungsentwurf und Übernahmebeleg; frühere Versionen bleiben erhalten |
+| Gesondert analysieren | Bei Bedarf eine weitere Analyse anfordern | Übernommene Entscheidungen behalten ihre Herkunft; der alte Snapshot wird nicht umgeschrieben |
+
+Die Formulierung entsteht zunächst von unten nach oben innerhalb der ausgewählten
+Taxonomienachweise. Ein begrenzter Abgleich zwischen Teiltaxonomien behandelt danach
+Grenzen und gemeinsame Randbedingungen. Das ist nicht nur eine allgemeine sprachliche
+Überarbeitung: Fragen können auf Elemente und gerichtete Beziehungen der eingefrorenen
+Analyse verweisen. Weder ein abgeschlossener Lauf noch eine leere Fragenliste beweist
+Freigabe oder fachliche Vollständigkeit.
+
+**Illustratives Beispiel, kein protokolliertes Modellergebnis:** „Beschäftigte sollen
+Arbeitszeiten mobil erfassen.“ Bei der Prüfung können Offline-Erfassung,
+Korrekturberechtigungen und das empfangende System zu klären sein. Eine menschliche
+Entscheidung wie „Offline-Erfassung ist erforderlich“ soll im gespeicherten Vorschlag
+und der anschließend übernommenen Version nachvollziehbar bleiben. Diese konkreten
+Fragen sind keine garantierte Modellausgabe.
+
+Exportieren Sie eine exakt gespeicherte Angebotsrevision oder einen Übernahmebeleg als
+JSON, Markdown, HTML oder DOCX. Ungespeicherter Browsertext bleibt ausgeschlossen.
+Historische Exporte verwenden ihre damalige Quelle und Architekturevidenz, nicht den
+heutigen Katalog. Eine Übernahme markiert Analysebedarf, startet aber weder automatisch
+eine Analyse noch verändert sie die Architektur.
+
+Siehe den [detaillierten Neuformulierungsvertrag](../features/requirement-reformulation.md)
+und die [Prüfgrenzen](../testing/requirement-reformulation.md). Technische Playback-,
+Wiederanlauf- und Exporttests belegen keine allgemeine Sprachqualität realer Modelle.
+
+<a id="analysis-scope-and-progress"></a>
+## Analyseumfang wählen und offene Arbeit verstehen
+
+Bei automatischer Analyse und Copilot können Sie Taxonomiewurzeln auswählen und
+zwischen vollständiger Analyse und **nur Taxonomien** unterscheiden. Eine begrenzte
+Wurzelauswahl beschränkt Bewertungen und Relationsquellen. Im vollständigen Modus
+bleiben kompatible Relationsziele anderer Teiltaxonomien erreichbar. Der Modus
+„nur Taxonomien“ führt weder Relationssuche noch davon abhängige Architekturableitung
+aus.
+
+Das Ergebnis erhält seinen tatsächlich verwendeten Umfang. Einstellungen für den
+nächsten Lauf interpretieren ältere Ergebnisse nicht neu. Nicht ausgewählte oder
+nicht besuchte Knoten werden nicht zu negativen Befunden. Ein begrenzter Lauf ist
+keine globale Lückenbewertung.
+
+Der Fortschritt unterscheidet direkt bewertete Knoten, durch eine gültige Nullbewertung
+ausgeschlossene Nachfahren und offene Knoten. Der Relationsfortschritt zeigt geplante
+Quell-/Zieltaxonomie-Arbeit, erledigte und ungeklärte Aufgaben sowie neue Provideraufrufe
+getrennt. Bei einem Budgetstopp bleibt unerledigte Arbeit sichtbar. Eine kompatible
+Fortsetzung verwendet validierte Antworten erneut, statt erfolgreiche Abfragen erneut
+zu bezahlen. Geänderte Eingaben oder Wiederaufnahmeregeln können einen neuen Lauf
+erfordern.
+
+Ein abgeschlossener Arbeitsplan beweist nicht, dass jede denkbare Beziehung im Ergebnis
+enthalten ist. Relevanzgewichte sind keine kalibrierten Wahrscheinlichkeiten oder
+Prozentwerte der Anforderungserfüllung. Lokales ONNX liefert Embeddings für Suche und
+Bewertung, nicht die generativen Relations- oder Formulierungsfähigkeiten eines
+konfigurierten Sprachmodells.
+
 ## Routen der Portfoliooberfläche
 
 | Arbeitsbereich | Route |

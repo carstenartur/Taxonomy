@@ -9,6 +9,29 @@ A feature is only complete when all required columns show ✅.
 > Architecture-export status is defined by the support boundary documented below.
 > File generation and broad third-party interoperability are tracked separately.
 
+## Connected workflows and their limits
+
+The following distinguishes delivered behavior from quality claims and unfinished
+integration. It does not turn technical tests or an older screenshot into a fresh
+acceptance of the current application.
+
+| Area | Delivered behavior / current state | Boundary |
+|---|---|---|
+| Architecture-guided requirement clarification | Saved proposals, typed questions, human decisions, adoption review, inherited decisions and historical exports | Explicit adoption is separate from approval and reanalysis; live-model semantic quality is not established by playback tests. |
+| Selectable analysis and continuation | Selected roots, FULL/TAXONOMIES_ONLY modes, retained work plans and reuse of validated answers | Scope and errors remain visible; a completed plan is not proof of universal coverage. |
+| Semantic editing and Git checkpoints | Durable operations with rationale/inverse data and separate stable Git versions | Editor undo/redo and branch-head undo are different operations. |
+| Local ONNX | Embedding search/scoring | Not a generative relationship or reformulation model; DE/EN interface support is not equal retrieval quality. |
+| Planning profiles | Versioned planned go-live and standard/directive references | A date is not operational availability; a reference is not proof of compliance. |
+| Portable backup and external contribution | Supporting capture/archive adapters and bounded stand-bundle work | Production capture, complete history/restore and reviewed reintegration are not a completed end-user workflow. |
+
+See the [clarification workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-clarification-workflow),
+[scope/progress guide](PROJECT_REQUIREMENT_PORTFOLIO.md#analysis-scope-and-progress) and
+[editor guide](ARCHITECTURE_EDITOR.md).
+
+A missing screenshot reference means that this matrix does not provide that part
+of its completion evidence. It must not silently count as a checked screenshot.
+The existing surface inventory below is not a comparative quality benchmark.
+
 ## End-User Features (GUI-first)
 
 | Feature | GUI | REST | User Guide | Screenshot | Help/Tooltip | DE/EN i18n | Status |
@@ -22,11 +45,11 @@ A feature is only complete when all required columns show ✅.
 | Mermaid/JSON architecture projections | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Migration to the common snapshot-bound artifact envelope, authority headers, and loss manifest remains open in #966 |
 | ArchiMate 3.1 export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; versioned mapping/loss profile implemented; independent-tool acceptance remains open in #967 |
 | Visio 2012 VSDX export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; typed identities, authorized metadata and versioned loss manifests are implemented; Microsoft Visio desktop certification remains open in #965 |
-| Full-text search | ✅ | ✅ | ✅ §11a | ✅ #29 | ✅ | ✅ | ✅ Complete |
-| Semantic/Hybrid search | ✅ | ✅ | ✅ §11b, §11c | ✅ #30, 31 | ✅ | ✅ | ✅ Complete |
+| Full-text search | ✅ | ✅ | ✅ §11 | ✅ #29 | ✅ | ✅ | ✅ Complete |
+| Semantic/Hybrid search | ✅ | ✅ | ✅ §11 | ✅ #30, 31 | ✅ | ✅ | ✅ Complete |
 | Graph exploration (upstream/downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Complete |
 | Failure impact analysis | ✅ | ✅ | ✅ §8 | ✅ #22 | ✅ | ✅ | ✅ Complete |
-| Gap analysis | ✅ | ✅ | ✅ §11e | ✅ #26, 27 | ✅ | ✅ | ✅ Complete |
+| Gap analysis | ✅ | ✅ | ✅ §11d | ✅ #26, 27 | ✅ | ✅ | ✅ Complete |
 | Pattern detection | ✅ | ✅ | ✅ §11f | ✅ | ✅ | ✅ | ✅ Complete |
 | Recommendations (Copilot) | ✅ | ✅ | ✅ §4 | ✅ | ✅ | ✅ | ✅ Complete |
 | Reports (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | ✅ #23 | ✅ | ✅ | ✅ Complete |
@@ -41,10 +64,10 @@ A feature is only complete when all required columns show ✅.
 | Version history (commits) | ✅ | ✅ | ✅ §12 | ✅ #41, 66, 67, 68 | ✅ | ✅ | ✅ Complete |
 | Sync from shared / Publish | ✅ | ✅ | ✅ §12 | ✅ #55, 56, 63–65 | ✅ | ✅ | ✅ Complete |
 | Leaf justification | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Complete |
-| Document import (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
-| Source provenance tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
-| AI-assisted requirement extraction | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
-| Regulation-to-architecture mapping | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
+| Document import (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
+| Source provenance tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
+| AI-assisted requirement extraction | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
+| Regulation-to-architecture mapping | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
 
 ## Architecture export support boundary
 

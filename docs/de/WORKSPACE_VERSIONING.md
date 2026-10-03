@@ -54,7 +54,7 @@ Im Nur-Lesen-Modus ändert sich das Badge, um anzuzeigen, dass der Arbeitsbereic
 
 ## 2. Versionsverlauf
 
-Navigieren Sie zu **Versionen → Verlauf**, um die vollständige Zeitleiste aller Architekturänderungen zu sehen.
+Navigieren Sie zu **Versionen → Verlauf**, um die Zeitleiste der Git-Checkpoints zu sehen. Einzelne akzeptierte Bearbeitungen stehen getrennt im [Verlauf des Architektureditors](ARCHITECTURE_EDITOR.md).
 
 ![Versionsverlauf-Zeitleiste](../images/66-versions-timeline.png)
 
@@ -161,7 +161,7 @@ Ein aufklappbarer Bereich, der den rohen DSL-Textunterschied mit farbcodierten Z
 ## 5. Wiederherstellen & Rückgängig
 
 ### Wiederherstellen
-Das Wiederherstellen einer Version erstellt einen neuen Commit mit dem Inhalt der ausgewählten Version. Die Versionsgeschichte bleibt erhalten — keine Daten gehen verloren.
+Das Wiederherstellen einer Version erstellt einen neuen Commit mit dem Inhalt der ausgewählten Version. Die bisherige Git-Historie bleibt erhalten.
 
 Vor der Bestätigung zeigt das System eine **Vorschau** der Änderungen an:
 - Anzahl der hinzugefügten, entfernten und geänderten Elemente
@@ -176,6 +176,15 @@ Beide Operationen verwenden modale Bestätigungsdialoge anstelle von Browser-Ale
 
 ### Letzte Änderung rückgängig machen
 Die **Rückgängig**-Schaltfläche am oberen Rand des Versionen-Reiters entfernt den letzten Commit aus der Zweighistorie. Diese Aktion erfordert ebenfalls eine Bestätigung.
+
+**Dies ist Branch-Undo, nicht das semantische Editor-Undo.** Die DSL-Versionierungs-API
+setzt den ausgewählten Branch auf seinen Elterncommit zurück; der erste Commit
+kann nicht so entfernt werden. Prüfen Sie Branch und Bestätigung vor der Aktion.
+Im [Architektureditor](ARCHITECTURE_EDITOR.md) erzeugt persönliches Undo/Redo dagegen
+eine protokollierte Gegenoperation und erhält die Operationshistorie. Spätere
+abhängige Änderungen können diese Gegenoperation verhindern. Das native Text-Undo
+betrifft nur ungespeicherte Eingaben. Keines der Verfahren ist eine vollständige
+Installationssicherung oder -wiederherstellung.
 
 ---
 

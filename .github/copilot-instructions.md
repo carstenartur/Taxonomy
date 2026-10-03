@@ -2,60 +2,99 @@
 
 ## Project Overview
 
-Spring Boot 4 / Java 21 web application. Taxonomy data loaded from an Excel workbook via Apache POI. Full-text and KNN search via Hibernate Search 8 + Lucene 9. LLM analysis via Google Gemini (default) or other configured provider. UI is a single Bootstrap 5 page rendered by Thymeleaf.
+Java 21 / Spring Boot application. Taxonomy data comes from the actual Excel
+catalogue through Apache POI. Hibernate Search/Lucene provide search; the configured
+provider gateway supplies model capabilities. The web interface uses Thymeleaf and
+modular JavaScript. The checked-in POMs, profiles and workflows own dependency
+versions and verification selection; do not infer them from old prose or badges.
 
-## Build & Test
+## Build and Test
+
+Use the checked-in Maven Wrapper from the repository root:
 
 ```bash
-./mvnw compile            # compile only
-./mvnw test               # unit + Spring context tests (never requires Docker or an API key)
-./mvnw verify             # unit tests + integration tests (requires Docker for container ITs)
+./mvnw compile
+./mvnw test
+./mvnw verify
 ```
 
-Integration test classes follow the `**/*IT.java` naming pattern and are run by `maven-failsafe-plugin`.
+The default lifecycle is a bounded developer check, not the complete CI run.
+`*Test`/`*Tests` are selected by Surefire and `*IT` by Failsafe when the relevant
+integration profiles are enabled. A naming suffix does not prove that a selected
+test is Docker-free: application/browser scenarios have their own prerequisites.
 
-### CI Command
+<a id="authoritative-verification"></a>
+### CI Command — authoritative verification
 
-The CI pipeline runs exactly:
+The complete local CI-equivalent entry point is:
+
 ```bash
-./mvnw -q verify -DexcludedGroups="real-llm"
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
-This is the **authoritative** build command. It runs **all** unit tests and **all** integration tests (including Testcontainers-based PostgreSQL, MSSQL, and Oracle ITs), excluding only LLM tests that require a real API key.
 
-### Validation Strategy
+Read `.github/workflows/ci-cd.yml`, the POM profiles and
+`.mvn/verification-suites.json` for the exact current selection. The GitHub core
+job supplies `-Dtaxonomy.ui.skip=true` because separate Maven-owned UI shards
+produce commit-bound browser evidence, checked by the final aggregate. Do not copy
+that skip flag into a standalone verification and call it a complete UI pass.
 
-During iterative development, `./mvnw test` is sufficient for quick feedback.
+The separate `.github/workflows/database-compatibility.yml` runs PostgreSQL,
+SQL Server and Oracle profiles on pull requests to main as well as the documented
+tag, scheduled and manual triggers. They are not all implicit in the default
+`verify` command, and SQL Server/Oracle are not merely optional scheduled checks.
 
-**Before completing your work** (final commit before opening the PR), run:
+### Iteration and completion
+
+Run focused tests appropriate to the change, then the broader required gates.
+Report exactly which command ran, its result and any missing prerequisites.
+A selected module, a direct Java assertion runner or a classpath overlay does not
+replace a fresh full-reactor, browser, database or coverage result.
+
+On a fresh reactor, module selections need their dependencies:
+
 ```bash
-./mvnw verify -DexcludedGroups="real-llm"
+./mvnw -pl taxonomy-app -am test
 ```
-if your changes could affect any of the following:
-- REST controllers or API endpoints
-- GUI (HTML, JavaScript, CSS, Thymeleaf templates)
-- Application startup, configuration, or Spring context (`application.properties`, Spring beans)
-- `pom.xml` or dependency changes
-- Dockerfile or container setup
 
-⚠️ **Do NOT** invent alternative test commands (e.g., adding `-pl`, extra `-DexcludedGroups`, or switching `verify` to `test`). If `./mvnw verify` fails due to Docker/Testcontainers issues in your environment, report the failure — do not silently fall back to a weaker command.
+Use `-am` with `-pl` unless an explicitly documented earlier step has installed
+the exact sibling artifacts. Do not invent additional exclusion tags or weaken
+assertions, coverage, security rules or timeouts to make a failing run green.
+Documentation-only edits still need link/rendering/content checks and the existing
+repository gates; changes to help rendering or navigation are product-code changes.
 
-For changes that only touch internal logic, Javadoc, comments, or documentation files, `./mvnw test` is sufficient.
+For Docker-free verification of the existing supported local scenarios, follow
+`docs/testing/docker-free-tests.md` and use its `test-local` profile with matching
+local Chrome and ChromeDriver. This is not external-database/container acceptance.
+Do not silently substitute it for a failed required container run.
 
-**When modifying CI/CD workflow files** (`.github/workflows/*.yml`): manually execute every new or changed shell command in your workspace before committing. This is a multi-module Maven project — commands using `-pl <module>` must also include `-am` (`--also-make`), because `./mvnw verify` does not install sibling modules into `~/.m2/repository`.
+When changing workflow shell commands, execute the changed commands and retain
+their evidence before claiming the workflow verified. Keep functional verification
+Maven-owned; a workflow must not grow a second independent test selector.
 
-## Critical Rules
+## Catalogue and model boundaries
 
-1. **Taxonomy codes follow `XX-XXXX` format** — two uppercase letters, hyphen, four digits (e.g., `CP-1023`, `CR-1047`). Not all numbers exist. Never invent codes; discover them from the live taxonomy via `GET /api/taxonomy`.
-2. **The taxonomy has 8 roots**: `BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA` — approximately 2,500 nodes loaded from the real Excel workbook.
-3. **Do not call LLM endpoints unnecessarily** — the Gemini free tier is rate-limited (15 RPM, 1500 RPD) and shared across all uses.
-4. **Do not hardcode or log `GEMINI_API_KEY`** — it is a repository secret; keep it masked.
+1. Never invent catalogue codes. Discover official identifiers and hierarchy from
+   the application's actual catalogue or its exact recorded snapshot. The eight
+   roots are `BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA`. Original entries and local
+   navigation additions have different provenance; neither a guessed code nor a
+   prefix alone establishes identity or authority.
+2. Do not call model endpoints unnecessarily. Tests and exploration must not spend
+   the shared remote-provider quota or use paid services without authorization.
+   Use existing deterministic fixtures and explicitly selected provider tests.
+3. Keep API keys, credentials, cookies and personal source material out of code,
+   logs and reports. No published reusable bootstrap password.
+4. Local ONNX embeddings are not a generative relation/reformulation model.
+   Partial, failed and unexecuted work must not become negative findings or a
+   fabricated quality pass.
 
-## Reference Files — Read Only When Relevant to Your Task
+## Reference Files — Read When Relevant
 
 | File | When to read |
 |---|---|
-| `.github/copilot-ref-guardrails.md` | **Before any changes** — hard constraints, common mistakes to avoid |
-| `.github/copilot-ref-architecture.md` | To understand modules, services, data model, and DSL architecture |
-| `.github/copilot-ref-screenshots.md` | When adding, modifying, or debugging `ScreenshotGeneratorIT` tests |
-| `.github/copilot-ref-llm.md` | When working with Gemini API, rate limits, or LLM integration |
-| `.github/copilot-ref-lessons.md` | When hitting known bugs or working on JGit / DSL / Hibernate areas |
+| `.github/copilot-ref-guardrails.md` | Before changes: safety and verification constraints |
+| `.github/copilot-ref-architecture.md` | Modules, services, data model and DSL architecture |
+| `.github/copilot-ref-screenshots.md` | Screenshot generation and evidence |
+| `.github/copilot-ref-llm.md` | Provider integration; verify current limits/configuration before relying on examples |
+| `.github/copilot-ref-lessons.md` | Known JGit / DSL / Hibernate problems |
+| `docs/dev/MAVEN_VERIFICATION.md` | Maven ownership and evidence aggregation |
+| `docs/dev/06-testing-by-change-type.md` | Focused commands and their broader verification boundaries |

@@ -191,7 +191,7 @@ Die Integration wird durch normale Maven-/JUnit-/Failsafe-Autorität abgedeckt:
 Eine saubere Verifikation löst das festgelegte `jgit-storage-hibernate-core`-Release anonym über das konfigurierte Release-Repository auf. Verwende ohne zusätzliche Variante den autoritativen CI-Befehl des Repositorys:
 
 ```bash
-./mvnw -q verify -DexcludedGroups="real-llm"
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
 GitHub Actions darf Maven-Aufrufe auswählen oder parallelisieren, aber weder einen abweichenden Migrations- noch einen eigenen Dokumentations-Pass/Fail-Vertrag besitzen.

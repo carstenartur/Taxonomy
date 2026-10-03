@@ -1,8 +1,10 @@
 # Data Protection
 
-This document describes the personal data processing activities of the Taxonomy Architecture Analyzer, in compliance with the EU General Data Protection Regulation (GDPR / DSGVO) and applicable German federal and state data protection laws.
-
----
+**Scope: operator reference reviewed against source `3ec8a986` on 3 October 2026.**
+This page describes data flows and limits relevant to a deployment assessment. It
+is not a privacy notice for a particular operator, a legal opinion, or a statement
+that installing Taxonomy establishes GDPR compliance. The operator must assess
+its actual data, purposes, configuration, recipients and retention procedures.
 
 ## Table of Contents
 
@@ -17,225 +19,205 @@ This document describes the personal data processing activities of the Taxonomy 
 9. [Data Protection Impact Assessment](#data-protection-impact-assessment)
 10. [BfDI Guidelines for AI in Federal Administration](#bfdi-guidelines-for-ai-in-federal-administration)
 
----
-
 ## Purpose of Data Processing
 
-The Taxonomy Architecture Analyzer processes data for the purpose of **architecture analysis and knowledge management**. The application:
-
-1. Manages user accounts for authentication and authorization
-2. Records audit events for security compliance
-3. Stores architecture analysis results and versioned DSL documents
-4. Optionally sends business requirement text to external LLM providers for AI-powered analysis
-
-The application does **not** process personal data of end-users' customers or citizens. It is an internal tool for IT architects and analysts.
-
----
+Taxonomy supports requirement clarification, architecture analysis, review,
+versioning and exchange. It also processes account and security information.
+Architecture use is not a guarantee of anonymous input: requirements, imported
+source documents, free-text reasons, decisions and generated outputs may contain
+information about employees, customers or citizens. Minimize such information
+before import or submission; the application must not be assumed to remove it
+automatically. Model output also requires review.
 
 ## Categories of Personal Data
 
 ### User Account Data
 
-| Data Field | Purpose | Storage | Mandatory |
-|---|---|---|---|
-| **Username** | Authentication, audit attribution | Database (JPA) | Yes |
-| **Password hash** (BCrypt) | Authentication | Database (JPA) | Yes |
-| **Display name** | UI display, audit logs | Database (JPA) | Optional |
-| **Email address** | User identification | Database (JPA) | Optional |
-| **Roles** | Authorization (USER, ARCHITECT, ADMIN) | Database (JPA) | Yes |
-| **Enabled flag** | Account lifecycle (soft delete) | Database (JPA) | Yes |
-| **Created/updated timestamps** | Audit trail | Database (JPA) | Automatic |
+Local-user mode stores account identifiers, password hashes, roles and account
+state, with optional profile information. Keycloak/OIDC has a different identity
+provider boundary; document that provider and its configuration separately.
+Account metadata returned by an administration endpoint is not a complete inventory
+of information about that person elsewhere in the application.
 
 ### Audit Log Data
 
-When `TAXONOMY_AUDIT_LOGGING=true` (default in production profile):
+Unlike authentication/WebDAV brute-force detection, the incoming LLM quota does not use IP addresses. It counts admitted requests per stable authenticated identity and application instance. Peer-based login/WebDAV protections, their transient state and security logs have separate data flows and retention settings; do not infer IP-free authentication logs from the LLM quota mechanism. See [login protection](LOGIN_BRUTE_FORCE_PROTECTION.md) and [configuration](CONFIGURATION_REFERENCE.md).
 
-| Data Field | Purpose | Storage | Retention |
-|---|---|---|---|
-| **Username** | Attribution of security events | Application logs | Configurable |
-| **IP address** | Security forensics and authentication/WebDAV brute-force detection | Application logs and transient peer-lockout state; the incoming LLM quota does not use IP addresses | Log rotation policy / volatile memory |
-| **Timestamp** | Event ordering | Application logs | Log rotation policy |
-| **Event type** | Compliance reporting | Application logs | Log rotation policy |
+Security and administration events can identify actors and network peers. Include
+application logs, reverse-proxy logs, monitoring, diagnostics and provider-side
+records in the deployment inventory. Diagnostic prompt/response content may contain
+the same sensitive information as the input. Do not infer payload-free logs from a
+single logging switch; inspect the enabled routes and log configuration.
 
 ### Workspace and Analysis Data
 
-| Data Field | Personal Data? | Purpose | Storage |
-|---|---|---|---|
-| **Business requirement text** | Potentially (if user includes names/references) | AI analysis input | In-memory (transient) |
-| **Analysis results** (scores) | No | Architecture mapping | In-memory / export files |
-| **DSL documents** | No (architecture descriptions) | Versioned architecture models | JGit repository |
-| **Commit metadata** | Yes (author name/email) | Version history attribution | JGit repository |
+| Record | Potential identifying content | Persistence boundary |
+|---|---|---|
+| Project requirement versions and source provenance | Requirement text, original fragments, creator, reasons | Application database; saved versions survive the browser session |
+| Analysis jobs, results and snapshots | Input references, generated explanations, actor, model and review evidence | Persisted jobs/snapshots and their tenant-bound mappings |
+| Reformulation offers and decisions | Frozen original, architecture evidence, questions, answers and revisions | Separate durable proposal journal; adoption does not erase older evidence |
+| Accepted editor operations | Actor, rationale, inverse data and working revision | Durable semantic journal, separate from Git checkpoints |
+| Git checkpoints and exported reports | Model text, evidence and author metadata | Database-backed Git, configured remotes and downloaded copies |
+| Saved ad-hoc drafts and continuation records | Working text and retained answers | Saved workspace/run records, not just browser memory |
 
----
+Numeric scores alone are not an adequate description of the complete analysis
+payload. Do not classify all DSL, results or indexes as non-personal merely because
+they describe architecture. The [architecture](ARCHITECTURE.md) and
+[portfolio guide](PROJECT_REQUIREMENT_PORTFOLIO.md) explain these distinct histories.
 
 ## Data Storage Locations
 
-| Component | Default Location | Contains Personal Data | Encryption |
-|---|---|---|---|
-| **Database** (HSQLDB/PostgreSQL/MSSQL/Oracle) | In-memory or configured URL | User accounts, password hashes | Database-level (TDE for enterprise DBs) |
-| **Application logs** | stdout / `/app/logs/` | Audit events (username, IP) | File-system level |
-| **JGit repository** | `/app/data/git` | Commit author metadata | File-system level |
-| **Lucene index** | `/app/data/lucene-index` | No (taxonomy data only) | None required |
-| **Docker volumes** | Host-configured | All of the above | Host-level encryption |
+| Component | What the operator must inventory |
+|---|---|
+| Relational database | Accounts, provenance, portfolio records, snapshots, journals and database-backed JGit objects/refs; use the configured database and its actual persistence volumes |
+| Search indexes and caches | Derived copies of indexed material; inspect the enabled indexes, locations and rebuilding/deletion procedures rather than assuming only taxonomy labels are indexed |
+| Files and external storage | Imported/exported artifacts, templates, temporary staging, downloaded reports, infrastructure backups and configured external Git repositories |
+| Logs and connected services | Application/proxy logs, observability, identity provider and configured model endpoints |
 
----
+`jgit-storage-hibernate` stores the application's logical Git repositories through
+the relational database adapter. A generic `/app/data/git` directory is not their
+universal location. Nor does choosing an enterprise database enable encryption at
+rest automatically. Verify database, volume, backup and key protection independently;
+HTTPS protects transport, not all stored copies. See [database setup](DATABASE_SETUP.md),
+[repository topology](REPOSITORY_TOPOLOGY.md) and [operations](OPERATIONS_GUIDE.md).
 
 ## Legal Basis
 
-Processing of personal data is based on:
-
-| Legal Basis (GDPR) | Applicable To |
-|---|---|
-| **Art. 6(1)(b) — Performance of contract** | User account management for employment/service relationship |
-| **Art. 6(1)(c) — Legal obligation** | Audit logging for IT security compliance (BSI IT-Grundschutz, ISO 27001) |
-| **Art. 6(1)(f) — Legitimate interest** | Brute-force protection (IP tracking), application security |
-
-For government agencies, processing may additionally be based on applicable administrative regulations (e.g., BDSG §26 for employee data processing).
-
----
+The responsible organization must determine the applicable legal basis for its
+actual processing, including any relevant national rules. A software feature,
+security standard or provider name is not itself that legal basis. This page does
+not assign one universal GDPR Article 6 basis to every employer or authority.
+The [official GDPR text](https://eur-lex.europa.eu/eli/reg/2016/679) is the reference,
+not a product checklist.
 
 ## Data Retention and Deletion
 
 ### Retention Periods
 
-| Data Category | Retention Period | Deletion Method |
-|---|---|---|
-| **Active user accounts** | Duration of employment/assignment | Admin disables account via API |
-| **Disabled user accounts** | 90 days after disabling (recommended) | Manual deletion from database |
-| **Audit logs** | 1 year (recommended per BSI) | Log rotation (see [Operations Guide](OPERATIONS_GUIDE.md)) |
-| **JGit commit history** | Indefinite (architecture knowledge base) | `git filter-branch` for specific commits |
-| **Analysis results** | Session duration (in-memory) | Automatically cleared on session end |
-| **Rate limiter data** (IP → attempt count) | 5 minutes (lockout duration) | Automatically expired |
+Set and document purpose-specific retention and review periods. This product
+reference does not establish a universal 90-day account period, one-year log period
+or indefinite retention permission. In particular, **ending a browser session does
+not delete saved requirements, analyses, proposals, decisions or Git history**.
+Apply the [GDPR storage-limitation principle](https://eur-lex.europa.eu/eli/reg/2016/679)
+to the deployment's real inventory, including recipient copies and backups.
 
 ### Deletion Procedure
 
-To completely remove a user's personal data:
+**Disabling an account is not erasure.** `UserManagementService.disableUser` saves
+`enabled=false`; it does not remove historical authorship, requirement text or
+other retained records. Account changes also must not be assumed to terminate
+every existing session or connected credential; verify the applicable revocation
+workflow and identity-provider behavior.
 
-1. **Disable the user account**: `DELETE /api/admin/users/{id}`
-2. **Delete the database record**: Direct database DELETE (after retention period)
-3. **Purge audit logs**: Remove entries containing the username from log files
-4. **Rewrite JGit history** (if required): Use `git filter-branch` to remove author metadata
+Do not use direct database deletion or an ad-hoc Git history rewrite as a supported
+whole-application erasure procedure. They can break foreign keys, commit references,
+provenance, synchronization and evidence while leaving other copies untouched.
+A new Git commit or new requirement version does not remove the previous content.
 
-> **Note:** JGit commits are append-only by design. Removing commit metadata requires a full repository rewrite, which may affect data integrity for other users.
-
----
+Before carrying out an erasure decision, identify affected records and copies,
+applicable retention obligations, authority and dependencies. Define a reviewed,
+testable procedure covering journals, snapshots, indexes, exports, backups and
+recipients, then verify both removal and remaining data integrity. There is no
+verified one-click, cross-store personal-data erasure workflow established by this
+page. Do not deploy a use case that depends on it without resolving that gap.
 
 ## Third-Party Data Transfers
 
 ### External LLM Providers
 
-When using cloud-based LLM providers (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral), the following data is sent to external servers:
+Depending on the feature, a generative request can include requirement text,
+source excerpts, catalogue context, relationships, existing decisions and prompt
+instructions. Review the actual feature's request contract and configured endpoint,
+not only the provider label. Logs or stored continuation evidence may retain copies.
 
-| Data Sent | Recipient | Purpose | Location |
-|---|---|---|---|
-| Business requirement text | LLM provider API | AI-powered analysis | Provider's cloud infrastructure |
-| Taxonomy node names/descriptions | LLM provider API | Scoring context | Provider's cloud infrastructure |
-
-**Important considerations:**
-
-- **No personal data should be included** in business requirement texts when using external LLM providers
-- The LLM providers' data processing terms apply (see each provider's privacy policy)
-- For government deployments, use `LLM_PROVIDER=LOCAL_ONNX` to keep all data on-premises
-- A **data processing agreement (DPA)** should be in place with the LLM provider if personal data may be included in prompts
+Assess processing terms, recipients, retention, training use, access locations and
+any applicable transfer requirements for the selected service and configuration.
+A provider's nationality or EU address alone does not establish data residency,
+absence of subprocessors or a guarantee that prompts are not used for training.
+See [AI transparency](AI_TRANSPARENCY.md) and [AI providers](AI_PROVIDERS.md).
 
 ### Air-Gapped Operation
 
-Set `LLM_PROVIDER=LOCAL_ONNX` and `TAXONOMY_EMBEDDING_ENABLED=true` with a pre-downloaded model to operate without any external data transfers:
+Local embeddings avoid remote inference for their supported search/scoring work;
+they do not implement generative relationship assessment or reformulation. A
+local model must already be available when downloads are disabled, for example:
 
 ```bash
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
 
-See [AI Transparency](AI_TRANSPARENCY.md) for details on which data flows where.
+These settings alone do not prove a network-isolated installation. Inventory
+identity services, remotes, telemetry, downloads and other enabled integrations;
+verify deployment egress controls and actual traffic. Do not present an unsupported
+or unassessed analysis phase as completed merely to retain local-only operation.
 
----
-
+<a id="technical-and-organizational-measures"></a>
 ## Technical and Organizational Measures (TOMs)
 
 ### Technical Measures
 
-| Measure | Implementation |
-|---|---|
-| **Password hashing** | BCrypt with default strength (10 rounds) |
-| **Transport encryption** | HTTPS via reverse proxy; HSTS header enforced |
-| **Access control** | Role-based (USER, ARCHITECT, ADMIN) via Spring Security |
-| **Brute-force protection** | IP-based rate limiting on login endpoints |
-| **CSRF protection** | Enabled for browser sessions |
-| **Security headers** | X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy |
-| **Session management** | Server-side sessions; stateless REST API |
-| **Audit logging** | Authentication events logged with username and IP |
-| **Input validation** | Size limits on business text, architecture nodes, export nodes |
+Use the [security guide](SECURITY.md) for authentication, role/scope checks, browser
+CSRF protection, credential handling and deployment requirements. Verify HTTPS,
+storage protection, backup access, network restrictions and recovery in the actual
+installation. A document or green CI run is not evidence that an operator enabled
+all those controls. Browser/session-authenticated APIs must not be assumed stateless.
 
 ### Organizational Measures
 
-| Measure | Recommendation |
-|---|---|
-| **Access management** | Assign minimum necessary roles; review quarterly |
-| **Admin separation** | Separate `TAXONOMY_ADMIN_PASSWORD` and `ADMIN_PASSWORD` |
-| **Password policy** | Enforce password changes via `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true` |
-| **Security training** | Ensure administrators are trained on secure configuration |
-| **Incident response** | Monitor audit logs; define escalation procedures |
-| **Regular updates** | Update application and dependencies; review SBOM for vulnerabilities |
-
----
+Define approved inputs and model endpoints, minimum access rights, administrative
+responsibilities, retention, incident handling and the procedure for rights requests.
+Review changes to integrations and prompts as possible changes to data flow. Retain
+configuration-bound evidence of these decisions rather than a universal “fulfilled”
+label. Verify configuration keys against the [configuration reference](CONFIGURATION_REFERENCE.md)
+instead of relying on undocumented password or administrator-separation switches.
 
 ## Data Subject Rights
 
-Under GDPR, data subjects (users of the application) have the following rights:
-
-| Right | How to Exercise |
-|---|---|
-| **Right of access** (Art. 15) | Admin exports user record via `GET /api/admin/users/{id}` |
-| **Right to rectification** (Art. 16) | Admin updates user via `PUT /api/admin/users/{id}` |
-| **Right to erasure** (Art. 17) | Admin disables user → database deletion after retention |
-| **Right to restriction** (Art. 18) | Admin disables user account (soft delete) |
-| **Right to data portability** (Art. 20) | User data is available via REST API in JSON format |
-
----
+Requests concerning access, rectification, erasure or restriction must be evaluated
+by the responsible organization under the applicable rules. An account JSON export
+is not automatically a complete access response; disabling login does not restrict
+all processing of already stored information. Include historical records and
+recipient copies as appropriate. Do not equate a generic JSON export with fulfillment
+of every condition for data portability. See the [GDPR](https://eur-lex.europa.eu/eli/reg/2016/679),
+Articles 12–22, and the reviewed deployment procedure.
 
 ## Data Protection Impact Assessment
 
-A Data Protection Impact Assessment (DPIA) according to GDPR Art. 35 may be required if:
-
-- The application processes personal data in business requirement texts
-- The application is integrated with external LLM providers (profiling risk)
-- The application is used across multiple organizational units
-
-**Recommendation:** Conduct a DPIA before deploying in environments where personal data may be included in analysis inputs. For architecture-only use cases with no personal data in requirements, a DPIA is typically not required.
-
----
+Assess whether the planned processing is likely to create a high risk to people's
+rights and freedoms, using GDPR Article 35 and applicable supervisory guidance.
+The number of organizational units or use of a model API alone is not a universal
+yes/no rule. Document the screening and involve the responsible privacy specialists;
+this page does not replace a deployment-specific assessment.
 
 ## BfDI Guidelines for AI in Federal Administration
 
-The German Federal Commissioner for Data Protection and Freedom of Information (BfDI) has published guidance for the use of AI/LLM systems in the federal administration. The following table maps BfDI requirements to the Taxonomy Architecture Analyzer implementation:
+This heading is retained for existing links. It does **not** mean that BfDI has
+certified Taxonomy or that the former product table was an authoritative list of
+BfDI requirements. Remove that inference from procurement or approval materials.
 
-| BfDI Requirement | Taxonomy Implementation | Status |
-|---|---|---|
-| **No training with personal data** | No custom model training; prompts should not contain personally identifiable information (PII) | ✅ Fulfilled |
-| **Logging of AI usage** | LLM Communication Log in admin panel (prompts, responses, timestamps, token counts); Audit logging for security events | ✅ Fulfilled |
-| **Data protection supervisory authority remains responsible** | Referenced in DPIA recommendation above; supervisory authority jurisdiction not affected by AI usage | ✅ Fulfilled |
-| **Transparency obligation towards data subjects** | [AI Transparency](AI_TRANSPARENCY.md) documents all AI components, data flows, and limitations | ✅ Fulfilled |
-| **Data must not leave Germany/EU** | `LOCAL_ONNX` for fully local processing; `MISTRAL` (France/EU) for cloud-based EU data residency | ✅ Fulfilled |
-| **Purpose limitation** | AI used exclusively for architecture analysis; no profiling, scoring of individuals, or decision automation | ✅ Fulfilled |
-| **Data minimization** | Only taxonomy node names/descriptions and business requirement text sent to LLM; no user account data or IP addresses | ✅ Fulfilled |
+The supervisory authorities' [DSK guidance on AI and data protection, May 2024](https://www.lfd.niedersachsen.de/startseite/infothek/presseinformationen/kunstliche-intelligenz-datenschutzkonform-einsetzen-orientierungshilfe-fur-unternehmen-und-behorden-231889.html)
+addresses selection, implementation and use. The [October 2025 RAG guidance announcement](https://www.lfd.niedersachsen.de/startseite/infothek/aktuelles/datenschutzkonferenz-veroffentlicht-orientierungshilfe-zu-ki-systemen-mit-retrieval-augmented-generation-rag-245773.html)
+likewise emphasizes case-specific assessment. These are dated references, not a
+claim that this product implements every criterion or that this is a complete
+inventory of current guidance.
 
 ### Recommendations for Government Operators
 
-1. **Use `LLM_PROVIDER=LOCAL_ONNX`** for maximum data protection — no data leaves the application server
-2. **If cloud LLM is required**, prefer EU-based providers (Mistral) and establish a **data processing agreement (DPA)** with the provider
-3. **Instruct users** not to include personal data in business requirement texts (see [AI Literacy Concept](AI_LITERACY_CONCEPT.md))
-4. **Enable audit logging** (`TAXONOMY_AUDIT_LOGGING=true`) for compliance documentation
-5. **Conduct a DPIA** if personal data may be included in analysis inputs
-
----
+Record the actual purpose, allowed input, endpoint, data locations and responsible
+parties before approval. Verify local-only restrictions when required, and keep
+functional limitations visible. Establish retention and rights-handling procedures
+for durable evidence, not only accounts. Reassess when the software, configuration,
+model service or permitted data changes.
 
 ## Related Documentation
 
-- [Security](SECURITY.md) — authentication, authorization, and security architecture
-- [AI Transparency](AI_TRANSPARENCY.md) — AI model details and data flows
-- [AI Literacy Concept](AI_LITERACY_CONCEPT.md) — AI literacy training concept per EU AI Act Art. 4
-- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
-- [Operations Guide](OPERATIONS_GUIDE.md) — backup, recovery, and log management
-- [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
-- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and data residency
+[Security](SECURITY.md) · [AI transparency](AI_TRANSPARENCY.md) ·
+[Architecture](ARCHITECTURE.md) · [Project portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) ·
+[Operations](OPERATIONS_GUIDE.md) · [Configuration](CONFIGURATION_REFERENCE.md)
+
+Technical review references at the baseline source:
+[requirement versions](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/model/ProjectRequirementVersion.java),
+[analysis snapshots](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/model/RequirementAnalysisSnapshot.java),
+[account disabling](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-app/src/main/java/com/taxonomy/security/service/UserManagementService.java).
