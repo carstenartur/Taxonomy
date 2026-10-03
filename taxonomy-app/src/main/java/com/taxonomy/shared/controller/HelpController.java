@@ -122,7 +122,7 @@ public class HelpController {
     private final Parser parser;
     private final HtmlRenderer renderer;
     private final MessageSource messageSource;
-    /** Cache key format: "locale:docName", e.g. "de:USER_GUIDE". */
+    /** Cache by the resolved resource: unsupported locales share the English fallback. */
     private final ConcurrentHashMap<String, String> htmlCache = new ConcurrentHashMap<>();
 
     public HelpController(MessageSource messageSource) {
@@ -133,6 +133,11 @@ public class HelpController {
             AutolinkExtension.create(),
             StrikethroughExtension.create()
         ));
+        // Section links need real heading targets, including translated and repeated headings.
+        options.set(HtmlRenderer.GENERATE_HEADER_ID, true);
+        options.set(HtmlRenderer.RENDER_HEADER_ID, true);
+        options.set(HtmlRenderer.HEADER_ID_GENERATOR_RESOLVE_DUPES, true);
+        options.set(HtmlRenderer.HEADER_ID_GENERATOR_NON_ASCII_TO_LOWERCASE, true);
         this.parser = Parser.builder(options).build();
         this.renderer = HtmlRenderer.builder(options).build();
     }
@@ -163,8 +168,11 @@ public class HelpController {
             return ResponseEntity.notFound().build();
         }
         Locale locale = LocaleContextHolder.getLocale();
-        String cacheKey = locale.getLanguage() + ":" + docName;
-        String html = htmlCache.computeIfAbsent(cacheKey, k -> renderDoc(docName, locale));
+        ClassPathResource resource = resolveDocument(docName, locale);
+        if (resource == null) {
+            return ResponseEntity.notFound().build();
+        }
+        String html = htmlCache.computeIfAbsent(resource.getPath(), k -> parseResource(resource, docName));
         if (html == null) {
             return ResponseEntity.notFound().build();
         }
@@ -183,9 +191,11 @@ public class HelpController {
             if (!resource.exists()) {
                 return ResponseEntity.notFound().build();
             }
-            byte[] bytes = resource.getInputStream().readAllBytes();
-            MediaType mediaType = guessMediaType(imageName);
-            return ResponseEntity.ok().contentType(mediaType).body(bytes);
+            try (InputStream in = resource.getInputStream()) {
+                byte[] bytes = in.readAllBytes();
+                MediaType mediaType = guessMediaType(imageName);
+                return ResponseEntity.ok().contentType(mediaType).body(bytes);
+            }
         } catch (IOException e) {
             log.warn("Could not read image {}: {}", imageName, e.getMessage());
             return ResponseEntity.notFound().build();
@@ -196,16 +206,16 @@ public class HelpController {
      * Resolves a document by locale, falling back through:
      * docs/{lang}/{docName}.md → docs/en/{docName}.md
      */
-    private String renderDoc(String docName, Locale locale) {
+    private ClassPathResource resolveDocument(String docName, Locale locale) {
         String localePath = "docs/" + locale.getLanguage() + "/" + docName + ".md";
         ClassPathResource localeResource = new ClassPathResource(localePath);
         if (localeResource.exists()) {
-            return parseResource(localeResource, docName);
+            return localeResource;
         }
         String enPath = "docs/en/" + docName + ".md";
         ClassPathResource enResource = new ClassPathResource(enPath);
         if (enResource.exists()) {
-            return parseResource(enResource, docName);
+            return enResource;
         }
         return null;
     }
