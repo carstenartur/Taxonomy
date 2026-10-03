@@ -1,140 +1,192 @@
 {
-  "schemaVersion": 1,
-  "date": "2026-10-03",
-  "baseline": {
-    "commit": "3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04",
-    "tree": "dd7809c324ed4a98b9fcc319dffbe3e1fbc44832",
-    "workflowRun": 37082514184,
-    "artifactId": 11258279358,
+  "schemaVersion": 2,
+  "baselineCommit": "3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04",
+  "parentDocumentationCommit": "3bd86d64519160c6a4747bf6239a32b2b9e340b5",
+  "priorManifest": "https://github.com/carstenartur/Taxonomy/blob/3bd86d64519160c6a4747bf6239a32b2b9e340b5/docs/qa/2026-10-03-documentation-inputs.json",
+  "implementation": {
+    "pr": 1165,
+    "head": "83a9931579185d2fae789610057b69ca0bcce685",
+    "tree": "20e16d7dcd0fb83db17a4b4e2815e3793aab555a",
+    "controllerBlob": "774d59b71120ce31dbd4075f3dfff030bddfaf8c",
+    "headingAssertionsBlob": "64a0c8a3b7f5ccb188f4c657f150d760856bc0b4",
+    "headingJUnitAdapterBlob": "62f6be096f3e1f23e9b7381e844833a5b578045c"
+  },
+  "baselineArtifact": {
+    "run": 37082514184,
+    "id": 11258279358,
     "zipSha256": "42be2dd943b548f434b795f6259356a76b7936b6f7be524b6158193845315c60",
     "jarSha256": "fdc1f3522e3ba763d57518f44c8d5bd1642b1d058673015642e14f63e3774d62"
   },
-  "documentationCandidate": {
-    "parentCommit": "497dbbebe955a275b1c217220ec6065b98521f94",
-    "overlay": "Nine listed additional documents; registered rendering uses unchanged baseline HelpController. README/report/this manifest are outside that rendering corpus.",
+  "candidateArtifact": {
+    "run": 37107450898,
+    "id": 11267389645,
+    "compiledMergeCommit": "d2e469f63a0a80d68429a36a3f7e7f69108afc31",
+    "sourceTree": "20e16d7dcd0fb83db17a4b4e2815e3793aab555a",
+    "zipSha256": "200791e5766ee02f61d64da421642883bb9cb53c4cac3b6beae0f0a45e5bcb2d",
+    "jarSha256": "f011d2800818404aca72ac36a94663534b564f82bc4f6e2d84c536e2a70cc2f5"
+  },
+  "newPublishedDocuments": [
+    {
+      "path": "docs/de/DATA_PROTECTION.md",
+      "bytes": 14789,
+      "git_blob": "baf1aae968bf870409cb78fc8a5cdf357d60fd0b",
+      "sha256": "5ed451e752b0da2abf803165a5e5345bc0990a4b067b8beaf1351e2b5647867e",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/de/GIT_INTEGRATION.md",
+      "bytes": 25707,
+      "git_blob": "cbf974475ae161f9fb62c4ca724744ab0f6c7101",
+      "sha256": "783f6ddda06219e811e3f0d44d39c8686e70916becf7d902497d3eded7b6c97c",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/de/WORKSPACE_VERSIONING.md",
+      "bytes": 11218,
+      "git_blob": "fb30b147a9d5eb9e4ff123cf6393479247262ead",
+      "sha256": "10dcfe8b8c776b507c5bb6deaf8047dfc8e47d6dbb2745bc130ef2c223cc9959",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/en/DATA_PROTECTION.md",
+      "bytes": 13384,
+      "git_blob": "c7cb6222e3a569faf48a48d46fa8c72af0ce8ff0",
+      "sha256": "1652945270b98605785a9d8fb29ebecef3cf0a884af2412ae865aa306e2eef86",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/en/GIT_INTEGRATION.md",
+      "bytes": 23169,
+      "git_blob": "cc533b1324738772930c288a9dc7b22c174c4350",
+      "sha256": "0db58a0e0f070fe4ead0b97e748861ce86142d5898f293395c391b15bfc2d6d7",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/en/WORKSPACE_VERSIONING.md",
+      "bytes": 9708,
+      "git_blob": "c032c136873cfa037636f1822d5d9a84ece41f0a",
+      "sha256": "23e3555ed2c5aa0273c9717920b730dbd0f9d72dcf140b865b757c181ab835a4",
+      "published_in_this_amendment": true
+    },
+    {
+      "path": "docs/features/requirement-reformulation.md",
+      "bytes": 11658,
+      "git_blob": "fa1ea3e3e3ec0eaa746a3526a4d8f2fd182129ca",
+      "sha256": "b83692a127f94cb325e684066360073f56c7c4f02b32932cd7ffc366dd70af08",
+      "published_in_this_amendment": true
+    }
+  ],
+  "remainingUserGuides": {
+    "status": "prepared, not published",
     "files": [
       {
-        "path": ".github/copilot-instructions.md",
-        "gitBlobSha": "d83be24ba5ec03a0891687d662c2d7ad48836977",
-        "sha256": "cbb53e8ae2b3ac2155a2a2229547ddeb06a713b66bc2bfdfd59bc606bb452d43"
+        "path": "docs/de/USER_GUIDE.md",
+        "bytes": 120532,
+        "git_blob": "bed78ce7ac5b95785f5092fb5dec9328da2bdf31",
+        "sha256": "16b2bdfd2cabbfc1a0156b9a3907d459925909f4edf459117df2be70f9abedc1",
+        "published_in_this_amendment": false
       },
       {
-        "path": ".github/copilot-ref-guardrails.md",
-        "gitBlobSha": "6c4e8b2650259be377360a2ce488444b430f65b9",
-        "sha256": "6af4a0ad5312740c28051bf0746675773dfbaad1c84cf7eefb285b9662780b99"
-      },
-      {
-        "path": "docs/dev/06-testing-by-change-type.md",
-        "gitBlobSha": "df29527a8e653dcc27d2d47dc653376baf276366",
-        "sha256": "419cdac9d8a680cd085fc2efbe4163ae8b90cc307f78b5b21f2c1db21caa9718"
-      },
-      {
-        "path": "docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md",
-        "gitBlobSha": "4b2cb0039bdd3c9104108eeee3d3a5e15a5927d5",
-        "sha256": "093d567b27af7da20025fd0f31fdb2754b91c4cc3d5ae3f7bca6b7fdc950005e"
-      },
-      {
-        "path": "docs/en/PROJECT_PORTFOLIO_FEATURE_MATRIX.md",
-        "gitBlobSha": "f17b56b7e17949f95c23485db7b1eb6fb840fa06",
-        "sha256": "ed9b574e3ab89a066ed57d5ae20cb595fef8cf1c72b7d1702e1a0f631979e991"
-      },
-      {
-        "path": "docs/en/FEATURE_MATRIX.md",
-        "gitBlobSha": "3a90b31ae6b3da77c23a9fababca03c69dece7c7",
-        "sha256": "0778dcaa726fedd18cb8d6c8ca01ee92c77f1092846bbef94ea96f1853744ecb"
-      },
-      {
-        "path": "docs/de/PROJECT_REQUIREMENT_PORTFOLIO.md",
-        "gitBlobSha": "a9154691b6e3ad13baac24780371bdfe75aef978",
-        "sha256": "da6fe65ed922c02f85f82c92eb077beedfb1f165461195687d77734264ebc36e"
-      },
-      {
-        "path": "docs/de/PROJECT_PORTFOLIO_FEATURE_MATRIX.md",
-        "gitBlobSha": "7894aa6a97fc1283e1f5d20efe08713b0838ebcc",
-        "sha256": "1f64b5b2c7e55e8b6745d955af635776d277682bae52d596a33e53e8be8b51bc"
-      },
-      {
-        "path": "docs/de/FEATURE_MATRIX.md",
-        "gitBlobSha": "873dc5a2861a3d4e9ad159e222371cac69954e73",
-        "sha256": "b0c5e2c399884e85334c56cd80c95c26e24f8461ba2727284c4da3428de97bb3"
+        "path": "docs/en/USER_GUIDE.md",
+        "bytes": 103727,
+        "git_blob": "6042853017454ae748a5de6e36f4937cb5d29d73",
+        "sha256": "8551d48d73e054a27bd9047975fadf227c46c31e859cb3b05047aef44aa9be5e",
+        "published_in_this_amendment": false
       }
-    ]
+    ],
+    "patch": {
+      "path": "documentation-followup/remaining-user-guides.patch",
+      "sha256": "92528fa5c1768d43a71b763ff49b842117ba71bc434aa6a5a577078178a7c2f1"
+    }
   },
-  "resourceLifecycleCandidate": {
-    "pullRequest": 1165,
-    "commit": "81c6b5464191ee64a8a647d96174a9b9c6327fee",
-    "tree": "7603671ff0ab3b197feb52c7a641cc19e2146aa8",
-    "files": [
-      {
-        "path": "taxonomy-app/src/main/java/com/taxonomy/shared/controller/HelpController.java",
-        "gitBlobSha": "71806d0ef7022ac9561426c1863438206f15d4c4",
-        "sha256": "b73c9d2b9c2c3d90ec78f60b77a9e0119d641c009b6957a0ff0cc2fa760212c2"
-      },
-      {
-        "path": "taxonomy-app/src/test/java/com/taxonomy/shared/controller/HelpResourceLifecycleAssertions.java",
-        "gitBlobSha": "dfe360fcbe773e768ff70e9c1ef20a8043cc3a4a",
-        "sha256": "391daaac46ea6a9cff4345d2351f91464d060f0b183ae3436d94f4e88987554d"
-      },
-      {
-        "path": "taxonomy-app/src/test/java/com/taxonomy/shared/controller/HelpResourceLifecycleTest.java",
-        "gitBlobSha": "52a0cbd8ac01965df970225f8f0ecb4028656107",
-        "sha256": "909d23c8ca4853c1cd8030708b3c1fddc588137664dfa528aaae50faf2ab2833"
-      }
-    ]
-  },
-  "diagnosticFiles": [
-    {
-      "path": "evidence/recheck-final.log",
-      "sha256": "cf685067a33fb413e2e8008128de31d09a6aab889931658c93e03eb3a367b302"
-    },
-    {
-      "path": "evidence/recheck-final/java-version.txt",
-      "sha256": "396eaa6c73c38012211ff4228112340c294c8c7639e11ce8494715249f959c09"
-    },
-    {
-      "path": "evidence/recheck-final/lifecycle-original.log",
-      "sha256": "922ee4e62411f134a200a48b846862d5320f93af4e45f377cce5b0aa146894b1"
-    },
-    {
-      "path": "evidence/recheck-final/lifecycle-candidate.log",
-      "sha256": "a2226755e26553e32fc8ca5070733a272c5ebbe2f3a53e474d59342bffd8b5a8"
-    },
-    {
-      "path": "evidence/recheck-final/summary.json",
-      "sha256": "0c1304ebc524b04fc23bec345823b117a95faa381d9074ed646e6dd19a7bca42"
-    },
-    {
-      "path": "evidence/recheck-final/render-manifest.json",
-      "sha256": "6fa9e191099ec73762dd7e09cf0e371e7d2f8664674a32d10d15647a56f0d5a4"
-    },
-    {
-      "path": "evidence/recheck-final/findings.json",
-      "sha256": "d985d1daf7e1aeb3e5738f7507f3b5821c22e3cfeaaffc91346a36251938b3a4"
-    },
-    {
-      "path": "evidence/maven-attempt.log",
-      "sha256": "5bbe1c5e28ce0de70bf0b772893a07dbe1bb6dd696a32d1b82e5ba66fb8a5c90"
-    },
-    {
-      "path": "evidence/remaining-documentation.patch",
-      "sha256": "1d043a3819c704290092baa10160c8ab443c01fd4244b0c076835288a0c75656"
-    },
-    {
-      "path": "evidence/packaged-markdown-inventory.json",
-      "sha256": "9a7cf886f244bdba42c540448708b517f174d10e2187592d9ba1b3435e5256f2"
-    },
-    {
-      "path": "probes/run-current-evidence.sh",
-      "sha256": "75d19ba615c84f76ea352e559043ad4255888bde31aaa0a7d056fcce312b853f"
-    },
-    {
-      "path": "probes/verify_current_candidates.py",
-      "sha256": "1c878f188ca755996f56a438c3ba1bc96300cb830c3953687a90815226221a6b"
-    },
+  "diagnostics": [
     {
       "path": "probes/com/taxonomy/shared/controller/RenderHelpCorpus.java",
       "sha256": "6ca89a78f884488e6d2ea51987f30b971e3b3bda03c5d34871591aaab7ef297d"
+    },
+    {
+      "path": "documentation-followup/verify-followup.py",
+      "sha256": "65e5e2365bc7adf376f8966ce2b1dbb5fd190595ac7b775603c47a5557014e9a"
+    },
+    {
+      "path": "documentation-followup/check-browser-component.py",
+      "sha256": "f330878dbec1209cd0ba9e0d6adb09d507975cf56f92a724b254a39b4a92b937"
     }
   ],
-  "priorUnboundResults": "Withdrawn as reproducible evidence. These identities refer only to the fresh candidates and do not identify the earlier unpublished browser/renderer rewrite."
+  "evidence": [
+    {
+      "path": "heading-fix/evidence/baseline.log",
+      "sha256": "860f4e2b517461c807e1b39958a5e94e63e4f7aad26409ba731fa4a98452ffa6"
+    },
+    {
+      "path": "heading-fix/evidence/candidate.log",
+      "sha256": "a59fe96e0596e68305361a1dcd5efd5565dbeb27210f0fb52d348bf49ecf250b"
+    },
+    {
+      "path": "documentation-followup/evidence/ci-artifact/heading.log",
+      "sha256": "a59fe96e0596e68305361a1dcd5efd5565dbeb27210f0fb52d348bf49ecf250b"
+    },
+    {
+      "path": "documentation-followup/evidence/ci-artifact/lifecycle.log",
+      "sha256": "4c315724622138108c7d83073cf904ac7d983649398ced1a923ae2f6fd8f7445"
+    },
+    {
+      "path": "documentation-followup/evidence/final-summary.json",
+      "sha256": "4ad7613989cec9727bc88cec6d8e7b050b987f88589e15b04740d6d0de4cb8a9"
+    },
+    {
+      "path": "documentation-followup/evidence/published-audit.json",
+      "sha256": "5a235d6857a2bd5ef727c8ef7b604c4d015cda0189e5cad05159d6c14d37fdbf"
+    },
+    {
+      "path": "documentation-followup/evidence/prepared-audit.json",
+      "sha256": "a7a6d0b022f4dec29f2199bd0c6142b022a9187aecede35a443fc0b01f480918"
+    },
+    {
+      "path": "documentation-followup/evidence/final-browser-component.json",
+      "sha256": "61229d4fae70157bd7dc484d8a3b4215d88f5f5e705788031cab8331c5f2408d"
+    },
+    {
+      "path": "documentation-followup/evidence/patch-and-whitespace.log",
+      "sha256": "a95ed86491dc548ce375981b99d618559f9da348234ab45a02ce43ceb7707ed9"
+    },
+    {
+      "path": "documentation-followup/evidence/full-maven-attempt.log",
+      "sha256": "1071f77052f216fc47f00468d34faa9c6ba550dd552a3f308fb321542e969e49"
+    }
+  ],
+  "results": {
+    "publishedDocumentAmendment": {
+      "pages": 110,
+      "changedPagesWithUnchangedRenderer": [
+        "de/DATA_PROTECTION.html",
+        "de/GIT_INTEGRATION.html",
+        "de/WORKSPACE_VERSIONING.html",
+        "en/DATA_PROTECTION.html",
+        "en/GIT_INTEGRATION.html",
+        "en/WORKSPACE_VERSIONING.html"
+      ],
+      "unchangedPagesWithUnchangedRenderer": 104,
+      "localFragmentOccurrences": 644,
+      "unresolvedLocalFragments": 34,
+      "relativeMarkdownOccurrences": 634
+    },
+    "additionalUnpublishedUserGuides": {
+      "pages": 110,
+      "localFragmentOccurrences": 650,
+      "unresolvedLocalFragments": 0,
+      "relativeMarkdownOccurrences": 646,
+      "firstTableStepsPerLanguage": 5
+    },
+    "bothCandidates": {
+      "duplicateIds": 0,
+      "missingReferencedImages": 0
+    },
+    "limits": "Occurrence counts only; relative Markdown paths still require browser resolution. No external URLs fetched by this audit."
+  },
+  "limits": [
+    "Resource overlays are explicit; no combined release build is claimed.",
+    "Standalone assertions and offline DOM fixtures are not full JUnit or HTTP/browser acceptance.",
+    "Normal final-head CI and broader documentation review remain required."
+  ]
 }

@@ -1,8 +1,11 @@
 # Datenschutz
 
-Dieses Dokument beschreibt die Verarbeitungstätigkeiten personenbezogener Daten des Taxonomy Architecture Analyzer in Übereinstimmung mit der Datenschutz-Grundverordnung (DSGVO / GDPR) und den anwendbaren deutschen Bundes- und Landesdatenschutzgesetzen.
-
----
+**Umfang: Betreiberreferenz, am 3. Oktober 2026 gegen Quellstand `3ec8a986` geprüft.**
+Diese Seite beschreibt Datenflüsse und Grenzen für die Bewertung einer Installation.
+Sie ist weder die Datenschutzerklärung eines konkreten Betreibers noch ein
+Rechtsgutachten oder eine Zusage, dass die Installation von Taxonomy bereits
+DSGVO-Konformität herstellt. Der Betreiber muss seine tatsächlichen Daten, Zwecke,
+Einstellungen, Empfänger und Aufbewahrungsverfahren bewerten.
 
 ## Inhaltsverzeichnis
 
@@ -17,225 +20,217 @@ Dieses Dokument beschreibt die Verarbeitungstätigkeiten personenbezogener Daten
 9. [Datenschutz-Folgenabschätzung](#datenschutz-folgenabschätzung)
 10. [BfDI-Leitlinien für KI in der Bundesverwaltung](#bfdi-leitlinien-für-ki-in-der-bundesverwaltung)
 
----
-
 ## Zweck der Datenverarbeitung
 
-Der Taxonomy Architecture Analyzer verarbeitet Daten zum Zweck der **Architekturanalyse und des Wissensmanagements**. Die Anwendung:
-
-1. Verwaltet Benutzerkonten zur Authentifizierung und Autorisierung
-2. Protokolliert Audit-Ereignisse zur Einhaltung von Sicherheitsanforderungen
-3. Speichert Architekturanalyseergebnisse und versionierte DSL-Dokumente
-4. Sendet optional Geschäftsanforderungstexte an externe LLM-Anbieter zur KI-gestützten Analyse
-
-Die Anwendung verarbeitet **keine** personenbezogenen Daten von Endkunden oder Bürgern. Sie ist ein internes Werkzeug für IT-Architekten und Analysten.
-
----
+Taxonomy unterstützt Anforderungsklärung, Architekturanalyse, Prüfung, Versionierung
+und Austausch. Hinzu kommen Konto- und Sicherheitsinformationen. Eine Nutzung für
+Architekturarbeit garantiert keine anonymen Eingaben: Anforderungen, importierte
+Quelldokumente, Freitextbegründungen, Entscheidungen und erzeugte Ergebnisse können
+Angaben über Beschäftigte, Kunden oder Bürger enthalten. Minimieren Sie solche
+Angaben vor Import oder Übermittlung; eine automatische Entfernung durch die
+Anwendung darf nicht vorausgesetzt werden. Auch Modellergebnisse müssen geprüft werden.
 
 ## Kategorien personenbezogener Daten
 
 ### Benutzerkontodaten
 
-| Datenfeld | Zweck | Speicherort | Pflichtfeld |
-|---|---|---|---|
-| **Benutzername** | Authentifizierung, Audit-Zuordnung | Datenbank (JPA) | Ja |
-| **Passwort-Hash** (BCrypt) | Authentifizierung | Datenbank (JPA) | Ja |
-| **Anzeigename** | UI-Anzeige, Audit-Protokolle | Datenbank (JPA) | Optional |
-| **E-Mail-Adresse** | Benutzeridentifikation | Datenbank (JPA) | Optional |
-| **Rollen** | Autorisierung (USER, ARCHITECT, ADMIN) | Datenbank (JPA) | Ja |
-| **Aktiviert-Flag** | Kontolebenszyklus (Soft Delete) | Datenbank (JPA) | Ja |
-| **Erstellungs-/Aktualisierungszeitstempel** | Audit-Trail | Datenbank (JPA) | Automatisch |
+Der lokale Benutzermodus speichert Kontokennungen, Passwort-Hashes, Rollen und
+Kontostatus sowie optionale Profilangaben. Keycloak/OIDC hat eine andere Grenze
+zum Identitätsanbieter; dokumentieren Sie diesen Anbieter und seine Konfiguration
+separat. Kontometadaten aus einem Verwaltungsendpunkt bilden nicht sämtliche
+Informationen ab, die andernorts in der Anwendung über eine Person gespeichert sind.
 
 ### Audit-Protokolldaten
 
-Wenn `TAXONOMY_AUDIT_LOGGING=true` (Standard im Produktionsprofil):
-
-| Datenfeld | Zweck | Speicherort | Aufbewahrung |
-|---|---|---|---|
-| **Benutzername** | Zuordnung von Sicherheitsereignissen | Anwendungsprotokolle | Konfigurierbar |
-| **IP-Adresse** | Sicherheitsforensik sowie Brute-Force-Erkennung für Anmeldung/WebDAV | Anwendungsprotokolle und flüchtiger Peer-Sperrzustand; das eingehende LLM-Kontingent verwendet keine IP-Adressen | Log-Rotationsrichtlinie / flüchtiger Speicher |
-| **Zeitstempel** | Ereignisreihenfolge | Anwendungsprotokolle | Log-Rotationsrichtlinie |
-| **Ereignistyp** | Compliance-Berichterstattung | Anwendungsprotokolle | Log-Rotationsrichtlinie |
+Sicherheits- und Verwaltungsereignisse können Akteure und Netzwerkteilnehmer
+identifizieren. Berücksichtigen Sie Anwendungs- und Reverse-Proxy-Protokolle,
+Monitoring, Diagnosen und anbieterseitige Aufzeichnungen im Dateninventar.
+Diagnostische Prompt-/Antwortinhalte können dieselben sensiblen Angaben wie die
+Eingabe enthalten. Ein einzelner Logging-Schalter belegt keine inhaltsfreien
+Protokolle; prüfen Sie die aktivierten Wege und die Protokollkonfiguration.
 
 ### Arbeitsbereichs- und Analysedaten
 
-| Datenfeld | Personenbezogene Daten? | Zweck | Speicherort |
-|---|---|---|---|
-| **Geschäftsanforderungstext** | Möglicherweise (wenn Nutzer Namen/Referenzen einfügen) | KI-Analyse-Eingabe | In-Memory (transient) |
-| **Analyseergebnisse** (Scores) | Nein | Architektur-Mapping | In-Memory / Exportdateien |
-| **DSL-Dokumente** | Nein (Architekturbeschreibungen) | Versionierte Architekturmodelle | JGit-Repository |
-| **Commit-Metadaten** | Ja (Autorname/-E-Mail) | Versionsverlaufszuordnung | JGit-Repository |
+| Aufzeichnung | Mögliche identifizierende Inhalte | Persistierungsgrenze |
+|---|---|---|
+| Projektanforderungsversionen und Quellenherkunft | Anforderungstext, Originalfragmente, Ersteller, Begründungen | Anwendungsdatenbank; gespeicherte Versionen überdauern die Browsersitzung |
+| Analyseaufträge, Ergebnisse und Snapshots | Eingabeverweise, erzeugte Erklärungen, Akteur, Modell- und Prüfnachweise | Persistierte Aufträge/Snapshots und zugehörige mandantengebundene Zuordnungen |
+| Neuformulierungsangebote und Entscheidungen | Eingefrorenes Original, Architekturnachweise, Fragen, Antworten und Revisionen | Separates dauerhaftes Vorschlagsjournal; Übernahme löscht ältere Nachweise nicht |
+| Akzeptierte Editoroperationen | Akteur, Begründung, Gegenoperation und Arbeitsrevision | Dauerhaftes semantisches Journal, getrennt von Git-Checkpoints |
+| Git-Checkpoints und exportierte Berichte | Modelltext, Nachweise und Autorenmetadaten | Datenbankgestütztes Git, konfigurierte Remotes und heruntergeladene Kopien |
+| Gespeicherte Ad-hoc-Entwürfe und Fortsetzungsdaten | Arbeitstext und erhaltene Antworten | Gespeicherte Workspace-/Laufdaten, nicht nur Browserspeicher |
 
----
+Numerische Bewertungen allein beschreiben nicht den vollständigen Analyseinhalt.
+DSL, Ergebnisse und Indizes sind nicht automatisch personenfrei, nur weil sie
+Architektur beschreiben. [Architektur](ARCHITECTURE.md) und
+[Portfolio-Handbuch](PROJECT_REQUIREMENT_PORTFOLIO.md) erläutern die getrennten Historien.
 
 ## Datenspeicherorte
 
-| Komponente | Standardspeicherort | Enthält personenbezogene Daten | Verschlüsselung |
-|---|---|---|---|
-| **Datenbank** (HSQLDB/PostgreSQL/MSSQL/Oracle) | In-Memory oder konfigurierte URL | Benutzerkonten, Passwort-Hashes | Datenbankebene (TDE für Enterprise-DBs) |
-| **Anwendungsprotokolle** | stdout / `/app/logs/` | Audit-Ereignisse (Benutzername, IP) | Dateisystemebene |
-| **JGit-Repository** | `/app/data/git` | Commit-Autor-Metadaten | Dateisystemebene |
-| **Lucene-Index** | `/app/data/lucene-index` | Nein (nur Taxonomiedaten) | Nicht erforderlich |
-| **Docker-Volumes** | Hostkonfiguriert | Alle oben genannten | Verschlüsselung auf Hostebene |
+| Komponente | Vom Betreiber zu erfassender Umfang |
+|---|---|
+| Relationale Datenbank | Konten, Quellenherkunft, Portfolioaufzeichnungen, Snapshots, Journale und datenbankgestützte JGit-Objekte/Refs; maßgeblich sind die konfigurierte Datenbank und ihre tatsächlichen persistenten Volumes |
+| Suchindizes und Caches | Abgeleitete Kopien indexierter Inhalte; aktivierte Indizes, Orte sowie Neuaufbau-/Löschverfahren prüfen, statt ausschließlich Taxonomiebezeichnungen anzunehmen |
+| Dateien und externe Ablagen | Import-/Exportartefakte, Vorlagen, temporäre Zwischenstände, heruntergeladene Berichte, Infrastruktursicherungen und konfigurierte externe Git-Repositories |
+| Protokolle und verbundene Dienste | Anwendungs-/Proxy-Protokolle, Observability, Identitätsanbieter und konfigurierte Modellendpunkte |
 
----
+`jgit-storage-hibernate` speichert die logischen Git-Repositories der Anwendung
+über den relationalen Datenbankadapter. Ein allgemeines Verzeichnis `/app/data/git`
+ist nicht ihr universeller Ablageort. Auch die Auswahl einer Unternehmensdatenbank
+aktiviert nicht automatisch eine Verschlüsselung gespeicherter Daten. Prüfen Sie
+Datenbank-, Volume-, Backup- und Schlüsselschutz unabhängig; HTTPS schützt die
+Übertragung, nicht sämtliche gespeicherten Kopien. Siehe
+[Datenbankeinrichtung](DATABASE_SETUP.md), [Repository-Topologie](REPOSITORY_TOPOLOGY.md)
+und [Betrieb](OPERATIONS_GUIDE.md).
 
 ## Rechtsgrundlage
 
-Die Verarbeitung personenbezogener Daten basiert auf:
-
-| Rechtsgrundlage (DSGVO) | Anwendungsbereich |
-|---|---|
-| **Art. 6 Abs. 1 lit. b — Vertragserfüllung** | Benutzerkontenverwaltung im Rahmen eines Beschäftigungs-/Dienstverhältnisses |
-| **Art. 6 Abs. 1 lit. c — Rechtliche Verpflichtung** | Audit-Protokollierung zur IT-Sicherheits-Compliance (BSI IT-Grundschutz, ISO 27001) |
-| **Art. 6 Abs. 1 lit. f — Berechtigtes Interesse** | Brute-Force-Schutz (IP-Tracking), Anwendungssicherheit |
-
-Für Behörden kann die Verarbeitung zusätzlich auf anwendbaren Verwaltungsvorschriften basieren (z. B. BDSG §26 für die Verarbeitung von Beschäftigtendaten).
-
----
+Die verantwortliche Organisation muss die anwendbare Rechtsgrundlage ihrer
+konkreten Verarbeitung einschließlich einschlägiger nationaler Regeln bestimmen.
+Eine Softwarefunktion, ein Sicherheitsstandard oder ein Anbietername ist nicht
+selbst diese Rechtsgrundlage. Diese Seite ordnet nicht jedem Arbeitgeber und jeder
+Behörde pauschal dieselbe Grundlage aus Artikel 6 DSGVO zu. Maßgeblich ist der
+[amtliche DSGVO-Text](https://eur-lex.europa.eu/eli/reg/2016/679), nicht eine Produktcheckliste.
 
 ## Datenaufbewahrung und Löschung
 
 ### Aufbewahrungsfristen
 
-| Datenkategorie | Aufbewahrungsfrist | Löschmethode |
-|---|---|---|
-| **Aktive Benutzerkonten** | Dauer des Beschäftigungs-/Einsatzverhältnisses | Administrator deaktiviert Konto über API |
-| **Deaktivierte Benutzerkonten** | 90 Tage nach Deaktivierung (empfohlen) | Manuelle Löschung aus der Datenbank |
-| **Audit-Protokolle** | 1 Jahr (empfohlen gemäß BSI) | Log-Rotation (siehe [Betriebshandbuch](OPERATIONS_GUIDE.md)) |
-| **JGit-Commit-Verlauf** | Unbegrenzt (Architektur-Wissensbasis) | `git filter-branch` für bestimmte Commits |
-| **Analyseergebnisse** | Sitzungsdauer (In-Memory) | Automatische Löschung bei Sitzungsende |
-| **Rate-Limiter-Daten** (IP → Versuchszähler) | 5 Minuten (Sperrdauer) | Automatischer Ablauf |
+Legen Sie zweckbezogene Aufbewahrungs- und Prüffristen fest und dokumentieren Sie
+sie. Diese Produktreferenz begründet weder eine allgemeine 90-Tage-Kontofrist noch
+eine einjährige Protokollfrist oder unbegrenzte Aufbewahrung. Insbesondere gilt:
+**Das Ende einer Browsersitzung löscht keine gespeicherten Anforderungen, Analysen,
+Vorschläge, Entscheidungen oder Git-Historien.** Berücksichtigen Sie bei der
+[Speicherbegrenzung nach DSGVO](https://eur-lex.europa.eu/eli/reg/2016/679) das tatsächliche
+Dateninventar einschließlich Empfängerkopien und Sicherungen.
 
 ### Löschverfahren
 
-Um die personenbezogenen Daten eines Benutzers vollständig zu entfernen:
+**Ein Konto zu deaktivieren ist keine Löschung.** `UserManagementService.disableUser`
+speichert `enabled=false`; historische Urheberschaft, Anforderungstexte und andere
+Aufzeichnungen bleiben dadurch erhalten. Ebenso darf nicht angenommen werden, dass
+Kontenänderungen sämtliche bestehenden Sitzungen oder verbundenen Zugangsdaten
+widerrufen. Prüfen Sie den zutreffenden Widerrufsablauf und den Identitätsanbieter.
 
-1. **Benutzerkonto deaktivieren**: `DELETE /api/admin/users/{id}`
-2. **Datenbankdatensatz löschen**: Direktes Datenbank-DELETE (nach Ablauf der Aufbewahrungsfrist)
-3. **Audit-Protokolle bereinigen**: Einträge mit dem Benutzernamen aus den Protokolldateien entfernen
-4. **JGit-Verlauf umschreiben** (falls erforderlich): Verwenden Sie `git filter-branch`, um Autor-Metadaten zu entfernen
+Direkte Datenbanklöschungen und improvisierte Git-Historienumschreibungen sind kein
+unterstütztes anwendungsweites Löschverfahren. Sie können Fremdschlüssel,
+Commit-Verweise, Quellenherkunft, Synchronisation und Nachweise beschädigen, während
+andere Kopien erhalten bleiben. Ein neuer Git-Commit oder eine neue
+Anforderungsversion entfernt den bisherigen Inhalt nicht.
 
-> **Hinweis:** JGit-Commits sind konstruktionsbedingt nur anhängend (append-only). Das Entfernen von Commit-Metadaten erfordert ein vollständiges Umschreiben des Repositorys, was die Datenintegrität für andere Benutzer beeinträchtigen kann.
-
----
+Identifizieren Sie vor einer Löschentscheidung betroffene Daten und Kopien,
+Aufbewahrungspflichten, Berechtigungen und Abhängigkeiten. Definieren Sie ein
+geprüftes, testbares Verfahren für Journale, Snapshots, Indizes, Exporte, Backups
+und Empfänger; prüfen Sie anschließend Entfernung und verbleibende Datenintegrität.
+Diese Seite belegt keinen verifizierten Ein-Klick-Ablauf zur speicherübergreifenden
+Löschung personenbezogener Daten. Ein davon abhängiger Einsatz darf nicht ohne
+Klärung dieser Lücke freigegeben werden.
 
 ## Datenübermittlung an Dritte
 
 ### Externe LLM-Anbieter
 
-Bei Verwendung cloudbasierter LLM-Anbieter (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) werden folgende Daten an externe Server gesendet:
+Eine generative Anfrage kann je nach Funktion Anforderungstext, Quellauszüge,
+Katalogkontext, Beziehungen, vorhandene Entscheidungen und Promptanweisungen
+enthalten. Prüfen Sie den tatsächlichen Anfragevertrag der Funktion und den
+konfigurierten Endpunkt, nicht nur den Anbieternamen. Protokolle oder gespeicherte
+Fortsetzungsnachweise können weitere Kopien enthalten.
 
-| Gesendete Daten | Empfänger | Zweck | Standort |
-|---|---|---|---|
-| Geschäftsanforderungstext | LLM-Anbieter-API | KI-gestützte Analyse | Cloud-Infrastruktur des Anbieters |
-| Taxonomie-Knotennamen/-beschreibungen | LLM-Anbieter-API | Scoring-Kontext | Cloud-Infrastruktur des Anbieters |
-
-**Wichtige Hinweise:**
-
-- **Keine personenbezogenen Daten sollten** in Geschäftsanforderungstexten enthalten sein, wenn externe LLM-Anbieter verwendet werden
-- Es gelten die Datenverarbeitungsbedingungen der jeweiligen LLM-Anbieter (siehe die Datenschutzrichtlinie des jeweiligen Anbieters)
-- Für den Einsatz in Behörden verwenden Sie `LLM_PROVIDER=LOCAL_ONNX`, um alle Daten vor Ort zu halten
-- Ein **Auftragsverarbeitungsvertrag (AVV)** sollte mit dem LLM-Anbieter abgeschlossen werden, wenn personenbezogene Daten in Prompts enthalten sein könnten
+Bewerten Sie Verarbeitungsbedingungen, Empfänger, Aufbewahrung, Trainingsnutzung,
+Zugriffsorte und gegebenenfalls Übermittlungsanforderungen für den konkreten Dienst
+und seine Konfiguration. Nationalität oder EU-Adresse eines Anbieters belegen
+weder Datenresidenz noch den Ausschluss von Unterauftragnehmern oder Trainingsnutzung.
+Siehe [KI-Transparenz](AI_TRANSPARENCY.md) und [KI-Anbieter](AI_PROVIDERS.md).
 
 ### Betrieb ohne Internetverbindung (Air-Gapped)
 
-Setzen Sie `LLM_PROVIDER=LOCAL_ONNX` und `TAXONOMY_EMBEDDING_ENABLED=true` mit einem vorab heruntergeladenen Modell, um ohne jegliche externe Datenübertragung zu arbeiten:
+Lokale Embeddings vermeiden entfernte Inferenz für die unterstützte Suche und
+Bewertung. Sie implementieren keine generative Relationsbewertung oder
+Neuformulierung. Bei deaktivierten Downloads muss ein lokales Modell bereits
+vorhanden sein, beispielsweise:
 
 ```bash
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
 
-Siehe [KI-Transparenz](AI_TRANSPARENCY.md) für Details darüber, welche Daten wohin fließen.
+Diese Einstellungen allein belegen keine netzisolierte Installation. Erfassen Sie
+Identitätsdienste, Remotes, Telemetrie, Downloads und andere aktive Integrationen;
+prüfen Sie ausgehende Netzwerkfreigaben und tatsächlichen Verkehr. Eine nicht
+unterstützte oder unbewertete Analysephase darf nicht als abgeschlossen erscheinen,
+nur um einen ausschließlich lokalen Betrieb behaupten zu können.
 
----
-
+<a id="technische-und-organisatorische-maßnahmen"></a>
 ## Technische und organisatorische Maßnahmen (TOMs)
 
 ### Technische Maßnahmen
 
-| Maßnahme | Umsetzung |
-|---|---|
-| **Passwort-Hashing** | BCrypt mit Standardstärke (10 Runden) |
-| **Transportverschlüsselung** | HTTPS über Reverse Proxy; HSTS-Header erzwungen |
-| **Zugriffskontrolle** | Rollenbasiert (USER, ARCHITECT, ADMIN) über Spring Security |
-| **Brute-Force-Schutz** | IP-basierte Ratenbegrenzung an Login-Endpunkten |
-| **CSRF-Schutz** | Aktiviert für Browsersitzungen |
-| **Sicherheitsheader** | X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy |
-| **Sitzungsverwaltung** | Serverseitige Sitzungen; zustandslose REST-API |
-| **Audit-Protokollierung** | Authentifizierungsereignisse mit Benutzername und IP protokolliert |
-| **Eingabevalidierung** | Größenbeschränkungen für Geschäftstexte, Architekturknoten, Exportknoten |
+Der [Sicherheitsleitfaden](SECURITY.md) beschreibt Authentifizierung, Rollen- und
+Bereichsprüfungen, Browser-CSRF-Schutz, Zugangsdaten und Deployment-Anforderungen.
+Prüfen Sie HTTPS, Speicherschutz, Backup-Zugriff, Netzwerkbeschränkungen und
+Wiederherstellung in der tatsächlichen Installation. Weder ein Dokument noch eine
+grüne CI belegt die Aktivierung aller Maßnahmen beim Betreiber. Browser- oder
+sitzungsauthentifizierte APIs sind nicht pauschal zustandslos.
 
 ### Organisatorische Maßnahmen
 
-| Maßnahme | Empfehlung |
-|---|---|
-| **Zugriffsverwaltung** | Minimal notwendige Rollen zuweisen; vierteljährlich überprüfen |
-| **Admin-Trennung** | Separate `TAXONOMY_ADMIN_PASSWORD` und `ADMIN_PASSWORD` |
-| **Passwortrichtlinie** | Passwortänderungen erzwingen über `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true` |
-| **Sicherheitsschulung** | Sicherstellen, dass Administratoren in sicherer Konfiguration geschult sind |
-| **Vorfallreaktion** | Audit-Protokolle überwachen; Eskalationsverfahren definieren |
-| **Regelmäßige Updates** | Anwendung und Abhängigkeiten aktualisieren; SBOM auf Schwachstellen prüfen |
-
----
+Definieren Sie zugelassene Eingaben und Modellendpunkte, minimale Rechte,
+Administrationsverantwortung, Aufbewahrung, Störfallbehandlung und die Bearbeitung
+von Betroffenenanfragen. Änderungen an Integrationen und Prompts können Datenflüsse
+ändern. Halten Sie konfigurationsbezogene Nachweise der Entscheidungen fest, statt
+eine allgemeine „erfüllt“-Markierung zu verwenden. Prüfen Sie Einstellungsschlüssel
+anhand der [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md), statt undokumentierte
+Schalter für Passwörter oder die Trennung von Administratorzugängen vorauszusetzen.
 
 ## Betroffenenrechte
 
-Gemäß DSGVO haben betroffene Personen (Benutzer der Anwendung) folgende Rechte:
-
-| Recht | Ausübung |
-|---|---|
-| **Auskunftsrecht** (Art. 15) | Administrator exportiert Benutzerdatensatz über `GET /api/admin/users/{id}` |
-| **Recht auf Berichtigung** (Art. 16) | Administrator aktualisiert Benutzer über `PUT /api/admin/users/{id}` |
-| **Recht auf Löschung** (Art. 17) | Administrator deaktiviert Benutzer → Datenbanklöschung nach Aufbewahrungsfrist |
-| **Recht auf Einschränkung der Verarbeitung** (Art. 18) | Administrator deaktiviert Benutzerkonto (Soft Delete) |
-| **Recht auf Datenübertragbarkeit** (Art. 20) | Benutzerdaten sind über REST-API im JSON-Format verfügbar |
-
----
+Die verantwortliche Organisation muss Auskunft, Berichtigung, Löschung oder
+Einschränkung nach den anwendbaren Regeln bewerten. Ein Konto-JSON ist nicht
+automatisch eine vollständige Auskunft; gesperrte Anmeldung schränkt nicht jede
+Verarbeitung bereits gespeicherter Angaben ein. Berücksichtigen Sie gegebenenfalls
+historische Aufzeichnungen und Empfängerkopien. Ein allgemeiner JSON-Export erfüllt
+nicht automatisch sämtliche Voraussetzungen der Datenübertragbarkeit. Siehe
+[DSGVO](https://eur-lex.europa.eu/eli/reg/2016/679), Artikel 12–22, und das geprüfte
+Verfahren der konkreten Installation.
 
 ## Datenschutz-Folgenabschätzung
 
-Eine Datenschutz-Folgenabschätzung (DSFA) gemäß Art. 35 DSGVO kann erforderlich sein, wenn:
-
-- Die Anwendung personenbezogene Daten in Geschäftsanforderungstexten verarbeitet
-- Die Anwendung mit externen LLM-Anbietern integriert ist (Profiling-Risiko)
-- Die Anwendung über mehrere Organisationseinheiten hinweg eingesetzt wird
-
-**Empfehlung:** Führen Sie eine DSFA durch, bevor Sie die Anwendung in Umgebungen einsetzen, in denen personenbezogene Daten in Analyseeingaben enthalten sein könnten. Für reine Architektur-Anwendungsfälle ohne personenbezogene Daten in den Anforderungen ist eine DSFA in der Regel nicht erforderlich.
-
----
+Prüfen Sie anhand von Artikel 35 DSGVO und einschlägigen Aufsichtshinweisen, ob die
+geplante Verarbeitung voraussichtlich ein hohes Risiko für Rechte und Freiheiten
+natürlicher Personen mit sich bringt. Die Anzahl beteiligter Organisationseinheiten
+oder eine Modell-API allein ist keine allgemeine Ja-/Nein-Regel. Dokumentieren Sie
+die Vorprüfung und beteiligen Sie die zuständigen Datenschutzfachleute; diese Seite
+ersetzt keine einsatzbezogene Bewertung.
 
 ## BfDI-Leitlinien für KI in der Bundesverwaltung
 
-Der Bundesbeauftragte für den Datenschutz und die Informationsfreiheit (BfDI) hat Leitlinien für den Einsatz von KI/LLM-Systemen in der Bundesverwaltung veröffentlicht. Die folgende Tabelle ordnet die BfDI-Anforderungen der Umsetzung im Taxonomy Architecture Analyzer zu:
+Die Überschrift bleibt für vorhandene Verweise erhalten. Sie bedeutet **nicht**,
+dass die BfDI Taxonomy zertifiziert hat oder die frühere Produkttabelle einen
+amtlichen BfDI-Anforderungskatalog abbildete. Verwenden Sie diese Schlussfolgerung
+nicht in Beschaffungs- oder Freigabeunterlagen.
 
-| BfDI-Anforderung | Umsetzung im Taxonomy | Status |
-|---|---|---|
-| **Kein Training mit personenbezogenen Daten** | Kein eigenes Modelltraining; Prompts sollten keine personenbezogenen Daten (PII) enthalten | ✅ Erfüllt |
-| **Protokollierung der KI-Nutzung** | LLM-Kommunikationsprotokoll im Admin-Panel (Prompts, Antworten, Zeitstempel, Token-Anzahl); Audit-Protokollierung für Sicherheitsereignisse | ✅ Erfüllt |
-| **Datenschutzaufsichtsbehörde bleibt zuständig** | In der obigen DSFA-Empfehlung referenziert; Zuständigkeit der Aufsichtsbehörde wird durch KI-Nutzung nicht berührt | ✅ Erfüllt |
-| **Transparenzpflicht gegenüber Betroffenen** | [KI-Transparenz](AI_TRANSPARENCY.md) dokumentiert alle KI-Komponenten, Datenflüsse und Einschränkungen | ✅ Erfüllt |
-| **Daten dürfen Deutschland/EU nicht verlassen** | `LOCAL_ONNX` für vollständig lokale Verarbeitung; `MISTRAL` (Frankreich/EU) für cloudbasierte EU-Datenresidenz | ✅ Erfüllt |
-| **Zweckbindung** | KI wird ausschließlich für Architekturanalyse verwendet; kein Profiling, keine Bewertung von Einzelpersonen oder Entscheidungsautomatisierung | ✅ Erfüllt |
-| **Datenminimierung** | Nur Taxonomie-Knotennamen/-beschreibungen und Geschäftsanforderungstext werden an das LLM gesendet; keine Benutzerkontodaten oder IP-Adressen | ✅ Erfüllt |
+Die aufsichtsbehördliche [DSK-Orientierungshilfe KI und Datenschutz vom Mai 2024](https://www.lfd.niedersachsen.de/startseite/infothek/presseinformationen/kunstliche-intelligenz-datenschutzkonform-einsetzen-orientierungshilfe-fur-unternehmen-und-behorden-231889.html)
+behandelt Auswahl, Implementierung und Nutzung. Auch die
+[Mitteilung zur RAG-Orientierungshilfe vom Oktober 2025](https://www.lfd.niedersachsen.de/startseite/infothek/aktuelles/datenschutzkonferenz-veroffentlicht-orientierungshilfe-zu-ki-systemen-mit-retrieval-augmented-generation-rag-245773.html)
+betont die Bewertung des Einzelfalls. Dies sind datierte Referenzen, keine Zusage
+der Erfüllung aller Kriterien und kein vollständiges Verzeichnis aktueller Leitlinien.
 
 ### Empfehlungen für Behördenbetreiber
 
-1. **Verwenden Sie `LLM_PROVIDER=LOCAL_ONNX`** für maximalen Datenschutz — keine Daten verlassen den Anwendungsserver
-2. **Falls ein Cloud-LLM erforderlich ist**, bevorzugen Sie EU-basierte Anbieter (Mistral) und schließen Sie einen **Auftragsverarbeitungsvertrag (AVV)** mit dem Anbieter ab
-3. **Weisen Sie die Benutzer an**, keine personenbezogenen Daten in Geschäftsanforderungstexte aufzunehmen (siehe [KI-Kompetenzkonzept](AI_LITERACY_CONCEPT.md))
-4. **Aktivieren Sie die Audit-Protokollierung** (`TAXONOMY_AUDIT_LOGGING=true`) für die Compliance-Dokumentation
-5. **Führen Sie eine DSFA durch**, wenn personenbezogene Daten in Analyseeingaben enthalten sein könnten
-
----
+Halten Sie vor einer Freigabe den tatsächlichen Zweck, zulässige Eingaben, Endpunkte,
+Datenorte und Verantwortliche fest. Prüfen Sie einen erforderlichen lokalen Betrieb
+und lassen Sie seine funktionalen Grenzen sichtbar. Definieren Sie Aufbewahrungs-
+und Betroffenenverfahren für dauerhafte Nachweise, nicht nur für Konten. Bewerten
+Sie Änderungen an Software, Konfiguration, Modelldienst oder zugelassenen Daten neu.
 
 ## Verwandte Dokumentation
 
-- [Sicherheit](SECURITY.md) — Authentifizierung, Autorisierung und Sicherheitsarchitektur
-- [KI-Transparenz](AI_TRANSPARENCY.md) — KI-Modelldetails und Datenflüsse
-- [KI-Kompetenzkonzept](AI_LITERACY_CONCEPT.md) — KI-Kompetenzschulungskonzept gemäß EU AI Act Art. 4
-- [BSI-KI-Checkliste](BSI_KI_CHECKLIST.md) — BSI-Kriterien-Checkliste für KI-Modelle
-- [Betriebshandbuch](OPERATIONS_GUIDE.md) — Sicherung, Wiederherstellung und Protokollverwaltung
-- [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) — alle Umgebungsvariablen
-- [Digitale Souveränität](DIGITAL_SOVEREIGNTY.md) — Digitale Souveränität und Datenresidenz
+[Sicherheit](SECURITY.md) · [KI-Transparenz](AI_TRANSPARENCY.md) ·
+[Architektur](ARCHITECTURE.md) · [Projektportfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) ·
+[Betrieb](OPERATIONS_GUIDE.md) · [Konfiguration](CONFIGURATION_REFERENCE.md)
+
+Technische Prüfstellen im Basisquellstand:
+[Anforderungsversionen](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/model/ProjectRequirementVersion.java),
+[Analysesnapshots](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/model/RequirementAnalysisSnapshot.java),
+[Kontodeaktivierung](https://github.com/carstenartur/Taxonomy/blob/3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04/taxonomy-app/src/main/java/com/taxonomy/security/service/UserManagementService.java).

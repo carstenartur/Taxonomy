@@ -1,157 +1,138 @@
 # Documentation and help QA — 3 October 2026
 
-## Delivery and evidence correction
+## Current delivery boundary
 
-This is a continuing QA checkpoint, not completion of the comprehensive audit.
-PR #1164 now supplements its README changes with the existing English/German
-portfolio guides and feature matrices, plus the developer verification instructions.
-The independent resource-lifecycle correction is in PR #1165; it is not hidden in
-this documentation change. No workflow, security rule or test threshold changes.
+This remains an ongoing QA, not a complete review of every product document.
+The documentation amendment builds on #1164 commit
+`3bd86d64519160c6a4747bf6239a32b2b9e340b5` and adds seven existing pages:
+English/German Git integration, workspace/versioning and data protection, plus
+the reformulation feature page. Its earlier README, portfolio-guide, matrix and
+verification-instruction corrections remain in place. No workflow, authorization,
+test selector or coverage threshold is changed by this documentation PR.
 
-**The earlier quantitative results for the unpublished broad help rewrite are
-withdrawn as reproducible verification evidence.** Its exact tested classes,
-resources and execution records could not be recovered and bound to an immutable
-candidate. This responds to review comment `discussion_r4171969851`. The new hashes
-below do not retroactively identify that old candidate. In particular, the former
-claims of a zero-finding link audit, successful browser checks and 118 + 118 HTTP
-checks must not be used as acceptance evidence for either pull request.
+Five of the previously separate seven-file corrections are now integrated. The
+two general USER_GUIDE corrections remain in the separately identified patch;
+they must not be described as delivered merely because their local audit passes.
 
-The fresh results in this revision refer only to the exact source files and
-runtime identified in [the input manifest](2026-10-03-documentation-inputs.json).
-The baseline is `3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04`; the documentation
-amendment builds on PR #1164 parent `497dbbebe955a275b1c217220ec6065b98521f94`.
+The separate implementation PR #1165 is at
+`83a9931579185d2fae789610057b69ca0bcce685`, tree
+`20e16d7dcd0fb83db17a4b4e2815e3793aab555a`. It now also enables the existing
+Flexmark heading-ID options. It does not contain the previously blocked broad
+browser/link rewrite. JavaScript, sanitizer behavior, routes and allowlists are
+unchanged. No alternate publication mechanism is used for that blocked rewrite.
 
-## Documentation corrections in this amendment
+## Corrections to the earlier evidence record
 
-The compact, already registered `PROJECT_REQUIREMENT_PORTFOLIO` guides now explain
-the complete clarification loop before their existing numbered chapters: source
-selection, separate offer, evidence-linked questions, human decisions, explicit
-adoption and separately requested reanalysis. Both languages include a clearly
-illustrative mobile time-capture example, not a claimed recorded model result.
-The same guides explain selected roots, taxonomies-only analysis, unresolved work,
-compatible continuation and the limits of local embeddings.
+The previously reported quantitative results for an unidentified broad help
+rewrite remain withdrawn as reproducible acceptance evidence. In particular, the
+old zero-finding, browser and 118 + 118 HTTP claims must not be used to approve
+these PRs. New source hashes do not retroactively identify that older candidate.
 
-The general feature matrices separate delivered behavior from semantic-quality
-claims and unfinished backup/restore integration. Four rows per language with no
-linked screenshot evidence no longer claim an unqualified complete evidence set.
-The portfolio matrices point to the actual guide sections for versions, mapping
-review, products, conflicts, matrices, Git and reports. Existing export support
-boundaries and earlier numbered guide sections are preserved.
+The results below are fresh and bound to
+[the input manifest](2026-10-03-documentation-inputs.json), the named PR sources,
+and the preserved logs/diagnostic sources in the accompanying QA package.
 
-The Copilot instructions, guardrails and change-type testing guide now distinguish
-bounded developer verification, the CI profile, separate browser evidence and the
-external-database matrix. The actual database workflow runs on pull requests to
-main, version tags, its schedule and manual dispatch. SQL Server and Oracle are
-not merely scheduled/manual checks, but neither are they selected implicitly by
-an ordinary `verify` or every `-Pci` invocation. These are documentation corrections,
-not changes to the executable verification policy.
+## Documentation findings addressed
 
-## Implementation decisions: fix causes without a new subsystem
+The Git guides no longer claim a Git commit is created for every accepted edit.
+The workspace guides identify the Git-checkpoint timeline separately from the
+semantic editor journal. Branch-head reset and personal semantic undo remain two
+different existing operations; the text explains both rather than changing the
+implementation to make an inaccurate description look consistent.
 
-PR #1165 is bound to commit `81c6b5464191ee64a8a647d96174a9b9c6327fee` and tree
-`7603671ff0ab3b197feb52c7a641cc19e2146aa8`.
+The reformulation feature page connects its technical contract to the already
+published, registered portfolio walkthroughs. It does not depend on new anchors
+in the still-unpublished general user guides.
 
-| Reproduced problem | Implemented correction | Reason for this choice |
+The data-protection review found materially misleading statements: saved analyses
+were described as session-only, database-backed Git as a generic filesystem folder,
+account disabling as part of a complete erasure procedure, and provider selection
+as a data-residency/compliance guarantee. The application code contradicts the
+first three claims: ProjectRequirementVersion and RequirementAnalysisSnapshot are
+persisted entities, and UserManagementService.disableUser saves enabled=false.
+The corrected pages describe durable copies, operator responsibilities and actual
+limits. They remove unsupported fixed retention periods, blanket fulfilled labels,
+and instructions to delete database rows or rewrite Git history as a supposedly
+complete supported erasure path. They preserve all existing heading titles and add
+the missing TOMs compatibility anchors.
+
+This does not implement a cross-store erasure feature or certify legal compliance.
+A safe erasure design would need explicit scope, retention decisions, authorization,
+reference closure and verification across journals, snapshots, indexes, backups and
+recipients. It must not be improvised as a destructive side effect of this QA.
+Technical source links and dated official GDPR/DSK references are included in the
+pages; the assessment is not a complete legal or production-security audit.
+
+## Implementation decisions in #1165
+
+| Reproduced defect | Correction | Why this implementation |
 |---|---|---|
-| Different unsupported locale tags cache the same English document repeatedly | Resolve the actual packaged resource before using its path as the cache key | Cache identity follows the content source. No new cache library, eviction scheduler or second translation registry is needed. |
-| Image streams are not explicitly closed after success or I/O failure | Use try-with-resources at the opening/read boundary | Resource ownership remains local and the existing response policy is preserved. |
+| Unsupported language aliases duplicate the same English cached HTML | Key by the actually resolved packaged resource | Content identity determines reuse; no extra cache library or eviction subsystem |
+| Image streams remain open on success or read failure | try-with-resources at the opening/read boundary | Resource ownership stays local; response semantics are retained |
+| Markdown section links have no generated heading targets | Enable Flexmark heading IDs, Unicode lowercasing and duplicate resolution | Use the existing parser's model, not a second slugging algorithm or browser workaround |
 
-The document/image allowlists, Markdown renderer, URL-rewrite rules, frontend,
-sanitizer and HTTP routes remain unchanged in this code correction. The separate
-browser/Markdown navigation rewrite that was previously blocked is not published
-through another mechanism. Link/anchor/navigation defects remain open below.
+The new heading change is five production lines plus regression assertions and
+JUnit adapters. Source-bound local comparisons show that, with unchanged documents,
+removing the newly generated heading attributes makes all 110 HTML responses
+byte-identical to the lifecycle-only parent. No duplicate IDs were found.
 
-## Fresh executed verification
+## Fresh verification and exact scope
 
-Java 21.0.11 compiled the actual changed controller and shared test assertions
-against the exact baseline runtime with `-Xlint:all,-path -Werror`. Only optional
-dependency-manifest path warnings are excluded from this supplementary compile.
-`HelpResourceLifecycleTest` delegates to the same six assertion methods; locally,
-those assertions ran through their Java `main`, **not through JUnit or Maven**.
+The original six lifecycle assertions reproduce three baseline failures; all six
+pass on the corrected controller. Five heading assertions reproduce three baseline
+failures; all five pass after the heading fix. Explicit anchors and fenced code
+are preserved. These same assertion methods are exposed through JUnit adapters,
+but local execution was through Java main methods, not a full JUnit run.
 
-| Shared real-controller assertion | Baseline | Candidate in #1165 |
+The final eleven assertions also passed against the freshly downloaded CI-packaged
+application, without overlaying replacement production classes. CI artifact
+11267389645 was built from merge commit
+`d2e469f63a0a80d68429a36a3f7e7f69108afc31`; its source tree equals the #1165 head tree
+above. The head SHA and the compiled merge SHA are not conflated in the manifest.
+
+The documentation checks use explicitly listed resource overlays on that artifact;
+they are not a claimed combined release build of both PRs.
+
+| Candidate / check | Fresh result | Boundary |
 |---|---|---|
-| Ten unsupported locales share one English cache entry | FAIL: ten entries | PASS: one entry |
-| German and English retain distinct content | PASS | PASS |
-| Successful image read closes the stream | FAIL: one opened, none closed | PASS |
-| Failed image read closes the stream | FAIL: one opened, none closed | PASS |
-| Existing traversal, allowlist and missing-image behavior | PASS | PASS |
-| A missing document does not poison a later read | PASS | PASS |
+| Heading fix with #1164 parent documents | 644 unresolved local fragment occurrences become 36 | Work on generated targets, not proof of complete browser navigation |
+| Seven published documentation pages, compared using the unchanged controller | 110 pages render; six help pages change, 104 remain byte-identical | The reformulation feature page is not one of the 55 registered help pages |
+| Those documents with #1165's packaged heading fix | 644 local fragment occurrences; 34 unresolved, all in the general user guides | Two authored TOMs targets are fixed; relative Markdown routing remains separate |
+| Same combination plus the two unpublished USER_GUIDE files | 650 local fragment occurrences; zero unresolved; five first-table steps per language | This is a separate prepared candidate, not the published #1164 content |
+| Both document candidates | No duplicate IDs or missing referenced local image files | Does not validate image freshness or external URLs |
+| Unchanged production help importer in offline Chromium fixtures | Six previously absent targets are present after import; no page errors | Actual shipped script and actual controller HTML, but no login/HTTP/end-to-end journey |
 
-The tiny tracked image stream is read through the actual controller and
-`ClassPathResource`. Its deliberate read exception produces the expected warning.
-No network service or mocked controller result supplies the assertion outcomes.
+There are 634 relative Markdown-link occurrences in the published candidate and
+646 in the prepared candidate. These need browser routing; they are not a count
+of distinct bugs or measured 404 responses. A zero same-page-fragment result does
+not certify cross-document navigation.
 
-All 55 registered help documents were rendered in English and German through the
-actual controller and Flexmark dependencies. Scope is critical:
+The two-file remaining patch passed forward application to full baseline files,
+byte comparison with the prepared candidate and exact reverse application.
+Whitespace checks passed for all seven published pages. Existing heading titles,
+image references and fenced examples in the Git/workspace pages were retained.
+The privacy examples were deliberately revised; they are not claimed unchanged.
 
-| Compared candidate | Fresh result | What it does not prove |
-|---|---|---|
-| Lifecycle-only controller change with unchanged documents | All 110 HTML responses are byte-identical to baseline | Existing links or navigation are not thereby correct. |
-| Exactly the nine additional documentation files in the input manifest, with unchanged controller | 110 pages render; six translated guide/matrix pages change, 104 stay identical; four explicit portfolio workflow anchors exist | No browser clicking, deployment or full prose audit is implied. |
-| Separate prepared seven-file documentation patch | First user-guide table changes from two to all five steps in both languages through the actual renderer | This separate patch is not included in this amendment. |
+## Verification not claimed
 
-The packaged Markdown inventory contains 337 files. Inventory and hash verification
-are not a claim that every sentence received semantic review. Manual review focused
-on the workflow, versioning, scoring, provider boundaries, matrices and verification
-instructions relevant to the corrected files.
+The local full command `./mvnw verify -Pci -DrunOnnxTests=true` exited 127 before
+Maven could execute because the recovered workspace has no wrapper/full checkout.
+There is no new local full-reactor, JUnit, Selenium, HTTP, JaCoCo or complete Node
+suite pass. Actual GitHub CI must verify each final PR head independently; earlier
+head results and the separately packaged tree are not substituted for that gate.
+No paid or live model requests were made by these checks.
 
-## The navigation audit is still red
+The review inventories 337 packaged Markdown files and renders all 55 registered
+help documents in EN/DE. It is not a sentence-by-sentence review of all 337 files.
+General user-guide integration, cross-document/browser navigation, complete API,
+installation and operations accuracy, screenshot freshness and remaining external
+references are still open. Further assertions in older specialist guides also need
+checking; correcting their introductions is not whole-guide certification.
 
-In the 110 pages rendered from this amendment, the static HTML audit records:
+## Reproduction
 
-- **644 occurrences** of local fragment links without a matching rendered target;
-- **620 occurrences** of relative Markdown links requiring browser routing;
-- no missing local image file among the checked `/help/images/` references.
-
-These are occurrence counts, not a count of independent root causes or proven
-HTTP 404 responses. External destinations were not requested. The existing browser
-script does not provide a general cross-document `.md` resolver, and generated
-heading targets are absent from the current renderer. Source-wide regular-expression
-replacement also cannot reliably distinguish links from literal Markdown examples.
-The next implementation needs a tested document-aware resolution contract and
-browser navigation, not more path-specific substitutions or a claimed zero-finding
-pass. User-facing sanitization and context-path handling must remain protected.
-
-## Remaining prepared changes and verification boundaries
-
-The separate seven-file patch covers both general `USER_GUIDE` files, both
-`GIT_INTEGRATION` files, both `WORKSPACE_VERSIONING` files and the reformulation
-feature page. It is prepared against complete baseline files and passes forward
-application and reverse-application checks, but is not in this amendment.
-Its SHA-256 is recorded in the input manifest. Git branch reset and personal
-semantic undo remain different real operations; documentation must explain both,
-not silently change one into the other.
-
-The real attempted full command was:
-
-```text
-./mvnw verify -Pci -DrunOnnxTests=true
-```
-
-It exited 127 before execution because the recovered local workspace has no full
-checkout or Maven wrapper. A classpath overlay and standalone assertions are not
-a freshly built application. There is no local new full-reactor, JUnit, browser,
-HTTP acceptance, JaCoCo or complete Node-suite pass. Each PR still requires its
-own exact-head GitHub CI and review; predecessor success does not transfer.
-
-Further work remains on general help navigation, the prepared seven-file patch,
-full API/installation/operations accuracy, active screenshot correspondence and
-external references. The audit is not complete merely because this bounded
-correction is available. No live model requests were made.
-
-## Reproduction and provenance
-
-The input manifest records the baseline application artifact, every candidate
-source blob/SHA-256, the diagnostic source hashes, execution logs, rendered-output
-manifest and remaining findings. Diagnostic sources and logs are also retained
-in the separately delivered QA package; runtime binaries and credentials are not.
-
-Baseline artifact: CI run `37082514184`, artifact `11258279358`.
-ZIP SHA-256: `42be2dd943b548f434b795f6259356a76b7936b6f7be524b6158193845315c60`.
-JAR SHA-256: `fdc1f3522e3ba763d57518f44c8d5bd1642b1d058673015642e14f63e3774d62`.
-
-The diagnostic runner compiles the published controller/assertion sources and
-renders the same named source overlays against those extracted dependencies.
-Its candidate identity is the listed source set, not the old artifact's commit.
-Normal Maven/JUnit/browser verification in a full checkout remains authoritative.
+The input manifest records baseline and candidate artifact digests, the seven new
+document blobs/SHA-256, the exact implementation head/tree, remaining-guide hashes,
+and diagnostic/log hashes. The accompanying package contains sources, patches,
+checks and output manifests, but not runtime binaries, credentials or model files.
+Retrieve the identified CI artifacts separately to reproduce the Java checks.

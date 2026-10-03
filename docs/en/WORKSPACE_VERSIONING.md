@@ -54,7 +54,7 @@ In read-only mode, the badge changes to indicate that the workspace is not edita
 
 ## 2. Version History
 
-Navigate to **Versions → Verlauf** (History) to see the complete timeline of all architecture changes.
+Navigate to **Versions → Verlauf** (History) to see the timeline of Git checkpoints. Individual accepted edits are listed separately in the [architecture editor history](ARCHITECTURE_EDITOR.md).
 
 ![Version History Timeline](../images/66-versions-timeline.png)
 
@@ -161,7 +161,7 @@ A collapsible section showing the raw DSL text diff with colour-coded lines:
 ## 5. Restore & Revert
 
 ### Restore
-Restoring a version creates a new commit with the content from the selected version. The version history is preserved — no data is lost.
+Restoring a version creates a new commit with the content from the selected version. The preceding Git history is preserved.
 
 Before confirming, the system shows a **preview** of the changes that will be applied:
 - Number of elements added, removed, and changed
@@ -176,6 +176,14 @@ Both operations use modal confirmation dialogs instead of browser alerts for a b
 
 ### Undo
 The **Undo** button at the top of the versions tab removes the last commit from the branch history. This action also requires confirmation.
+
+**This is branch-head undo, not semantic editor undo.** The DSL versioning API
+resets the selected branch to its parent; the initial commit cannot be undone.
+Review the selected branch and confirmation before using it. In the
+[architecture editor](ARCHITECTURE_EDITOR.md), personal undo/redo instead requests
+an audited inverse operation and retains the operation history. Later dependent
+changes can block that inverse. Native text undo affects unsaved input only.
+Neither operation is an installation-wide backup/restore mechanism.
 
 ---
 
