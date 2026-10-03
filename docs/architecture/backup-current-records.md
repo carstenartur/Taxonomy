@@ -83,6 +83,36 @@ are excluded. Continuation closure retains only hashes of current draft text in
 memory. Worker claims never enter the schema; continuation execution requires
 review after restore.
 
+Analysis rechecks every draft's exact owner, canonical tenant and explicit
+workspace before reading its payload. Draft owners use the source writer's
+stripped, lowercase username format; continuation owners preserve the exact
+authenticated username. Scoped queries and Java comparisons respect each source
+format. Only the draft lookup projects a continuation owner into the draft format;
+run selection and portable owner fields retain their original case.
+
+Continuation selection scans bounded metadata and chooses the latest timestamp,
+then exact source ID, independently for each exact owner/repository/workspace/branch
+tuple. Database collation cannot collapse differently spelled identities. Current
+profiles compare the selected request with the current draft text and exclude
+completed work without a draft; history profiles retain authorized earlier runs.
+Selected-version capture reads no present-day analysis rows.
+
+Selected continuation bodies and their questions are read in batches of at most
+200 IDs, with a 100,000-selected-run limit. Each body must still match its selected
+metadata; missing or changed runs abort capture. Questions must reference an
+emitted run with exact source-ID equality and unchanged parent metadata, including
+installation exports. Payload bodies of superseded runs are not read for current
+profiles. These checks rely on the coordinator's stable capture fence and require
+discarding partial staging on failure; they do not replace full application
+reference closure or implement restore activation.
+
+`PortableRows` checks interruption before and immediately after acquiring each
+read connection, as well as during streaming. This prevents JDBC setup from
+consuming a pending interruption and turning cancelled empty reads into successful
+exports. Real HSQL tests cover cancellation, cleanup, case-insensitive collation,
+mixed-case authenticated owners, metadata drift and exact question references.
+Version-1 record schemas and review-required continuation policy are unchanged.
+
 Portfolio publishes 25 explicit datasets, including requirements, analysis
 snapshots and decisions, solution/product decisions and reformulation work.
 Current snapshots must belong to the current requirement version; obsolete
