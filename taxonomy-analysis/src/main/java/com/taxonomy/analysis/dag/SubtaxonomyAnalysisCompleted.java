@@ -16,7 +16,10 @@ public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomySh
                                            int scoredNodes, String stopReason)
         implements AnalysisCompletionMessage {
 
-    static final Pattern REASON = Pattern.compile("[A-Z_]{1,32}");
+    // The shared wire vocabulary is finite; a syntactically valid unknown reason
+    // must not reach a worker that can only handle these cooperative-stop outcomes.
+    static final Pattern REASON = Pattern.compile(
+            "CANCELLED|MEMORY_PRESSURE|TIME_LIMIT|AWAITING_DECISION");
 
     public SubtaxonomyAnalysisCompleted {
         Objects.requireNonNull(envelope, "envelope");

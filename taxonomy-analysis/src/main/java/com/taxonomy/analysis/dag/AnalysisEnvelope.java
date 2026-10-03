@@ -63,6 +63,20 @@ public record AnalysisEnvelope(
         if (taskId != null && !taskId.operationId().equals(operationId)) {
             throw new IllegalArgumentException("taskId belongs to another operation");
         }
+        if (taskId != null) {
+            AnalysisTaskId expectedId = switch (taskType) {
+                case SUBTAXONOMY_ANALYSIS -> {
+                    if (roots.size() != 1) {
+                        throw new IllegalArgumentException("A sub-taxonomy task must address exactly one root");
+                    }
+                    yield AnalysisTaskId.subtaxonomy(operationId, roots.get(0));
+                }
+                case RELATION_ANALYSIS -> AnalysisTaskId.relation(operationId, roots);
+            };
+            if (!taskId.equals(expectedId)) {
+                throw new IllegalArgumentException("taskId does not match taskType and roots");
+            }
+        }
         requireReference(causationId, "causationId", true);
         requireReference(correlationId, "correlationId", false);
         if (deadline != null && deadline.isBefore(createdAt)) {

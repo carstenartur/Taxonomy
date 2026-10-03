@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.dag;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.TreeSet;
@@ -26,9 +27,20 @@ public record RelationAnalysisTask(AnalysisEnvelope envelope, List<TaxonomyShard
                 || !envelope.roots().equals(targetRoots)) {
             throw new IllegalArgumentException("Relation task identity does not match its target roots");
         }
+        var distinctPrerequisites = new HashSet<AnalysisTaskId>();
         for (AnalysisTaskId prerequisite : prerequisiteTasks) {
             if (!prerequisite.operationId().equals(envelope.operationId())) {
                 throw new IllegalArgumentException("Relation prerequisite belongs to another operation");
+            }
+            // Reconstruct the canonical root-task identity, rejecting relation/unknown
+            // families, wildcard roots and root sets without duplicating the ID grammar.
+            String rootCode = prerequisite.value().substring(prerequisite.value().lastIndexOf(':') + 1);
+            var root = TaxonomyShardRoot.of(rootCode);
+            if (!AnalysisTaskId.subtaxonomy(envelope.operationId(), root).equals(prerequisite)) {
+                throw new IllegalArgumentException("Relation prerequisite must be a sub-taxonomy task");
+            }
+            if (!distinctPrerequisites.add(prerequisite)) {
+                throw new IllegalArgumentException("Relation prerequisites must be distinct");
             }
         }
     }
