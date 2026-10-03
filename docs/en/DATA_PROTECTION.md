@@ -41,6 +41,8 @@ of information about that person elsewhere in the application.
 
 ### Audit Log Data
 
+Unlike authentication/WebDAV brute-force detection, the incoming LLM quota does not use IP addresses. It counts admitted requests per stable authenticated identity and application instance. Peer-based login/WebDAV protections, their transient state and security logs have separate data flows and retention settings; do not infer IP-free authentication logs from the LLM quota mechanism. See [login protection](LOGIN_BRUTE_FORCE_PROTECTION.md) and [configuration](CONFIGURATION_REFERENCE.md).
+
 Security and administration events can identify actors and network peers. Include
 application logs, reverse-proxy logs, monitoring, diagnostics and provider-side
 records in the deployment inventory. Diagnostic prompt/response content may contain

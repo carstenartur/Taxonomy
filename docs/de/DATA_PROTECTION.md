@@ -42,6 +42,8 @@ Informationen ab, die andernorts in der Anwendung über eine Person gespeichert 
 
 ### Audit-Protokolldaten
 
+Die Brute-Force-Erkennung für Anmeldung/WebDAV kann Netzwerkadressen verarbeiten; das eingehende LLM-Kontingent verwendet keine IP-Adressen. Es zählt zugelassene Aufrufe je stabiler authentifizierter Identität und Anwendungsinstanz. Peer-bezogene Anmeldesperren, deren flüchtiger Zustand und Sicherheitsprotokolle haben getrennte Datenflüsse und Aufbewahrungseinstellungen. Aus dem LLM-Kontingent folgt daher nicht, dass Authentifizierungsprotokolle IP-frei sind. Siehe [Anmeldeschutz](LOGIN_BRUTE_FORCE_PROTECTION.md) und [Konfiguration](CONFIGURATION_REFERENCE.md).
+
 Sicherheits- und Verwaltungsereignisse können Akteure und Netzwerkteilnehmer
 identifizieren. Berücksichtigen Sie Anwendungs- und Reverse-Proxy-Protokolle,
 Monitoring, Diagnosen und anbieterseitige Aufzeichnungen im Dateninventar.
