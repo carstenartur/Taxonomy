@@ -97,6 +97,7 @@ quality. See [Grouping and scoring](TAXONOMY_SCORING.md).
 9. [Working with Relation Proposals](#9-working-with-relation-proposals)
 10. [Exporting Results](#10-exporting-results)
     - [Generating Reports (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
+    - [Configure a decision report (Word/HTML/JSON)](#configurable-decision-report)
 11. [Search](#11-search)
     - [Quality Dashboard](#11a-quality-dashboard)
     - [Relations Browser](#11b-relations-browser)
@@ -688,6 +689,8 @@ The Export tab provides a dedicated panel with all available export formats orga
 
 ![Export tab — full view](../images/33-export-tab.png)
 
+This earlier overview shows the general export groups. See [Configure a decision report](#configurable-decision-report) below for the current decision-report controls and new illustrations.
+
 The [scenario reference workflow](../testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
 
 > **Support boundary:** Browser/SVG/vector-PDF views are human-readable views of the selected result. Mermaid and JSON are special-purpose projections. ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets; named-tool interoperability and Microsoft Visio desktop open/edit/save/reopen behavior are not certified. These controls do not by themselves prove equivalence with a persisted snapshot; use an explicitly snapshot-bound Architecture Workbench endpoint for that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary), [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966), and [#967](https://github.com/carstenartur/Taxonomy/issues/967).
@@ -707,6 +710,8 @@ Click **📥 PDF** to trigger the browser's print dialogue, pre-configured to pr
 ### CSV (Scores)
 
 Click **📥 CSV** to download a comma-separated file containing all node codes, names, and their analysis scores. Open in a spreadsheet application for further analysis or reporting.
+
+The `AnalysisTaxonomies` and `AnalysisMode` columns identify the recorded analysis scope. They remain empty for older results without that information. Selection in the decision-report dialog applies to its Word/HTML/JSON report; CSV continues to use its own export action.
 
 ### Experimental Visio 2012 VSDX Subset
 
@@ -802,6 +807,52 @@ Each report includes:
 - Summary statistics (total nodes scored, top categories).
 
 > **Note:** The report buttons only appear when analysis scores are available — the same condition as the other export buttons (see [When Export Buttons Appear](#when-export-buttons-appear)).
+
+<a id="configurable-decision-report"></a>
+### 10b. Configure a decision report (Word/HTML/JSON)
+
+Open **Decision report …** under **Decision Evidence** in the Export tab, on a saved requirement's detail page or in its architecture view. These entry points share the same dialog. Opening it from a single-tree view preselects that taxonomy. For a saved result, both the choices and the report belong to the selected analysis snapshot.
+
+#### Create a short Word report for one taxonomy
+
+1. Open the required analysis result, then **Decision report …**.
+2. Select **Word (.docx)** and **Compact** content.
+3. Under **Taxonomies in this report**, select the required taxonomy, such as **CP**. Select several for a small collection. At least one must remain selected.
+4. Check the source reference and **recorded analysis** scope. Taxonomies outside that scope cannot be selected.
+5. Open **More options** if needed. Choose **Short — main sections** or **None** for contents, and **Automatic (landscape)** for the decision tree.
+6. Click **Download**. The export uses existing scores and reasons; it does not start another analysis.
+
+The following illustrations show the current dialog component with labelled example input.
+
+![Decision report: Word, compact content and selected CP taxonomy; IP is outside the analysis scope](../images/decision-export-dialog-en.png)
+
+#### Content and more options
+
+| Content | Default sections |
+|---|---|
+| **Compact** | Short summary with essential recorded reasons for each selected taxonomy and its complete saved decision tree; no cover or detailed evidence appendix |
+| **Standard** | Adds decision reasoning and available saved architecture |
+| **Full** | Also includes a cover and detailed evidence |
+
+Under **More options**, select individual sections. Contents can cover the main sections, show detailed entries or be omitted. The saved-architecture section is disabled for a taxonomies-only analysis. Available source references, status and warnings remain visible in a short report.
+
+![More export options: short contents, A4 landscape and individual report sections](../images/decision-export-options-en.png)
+
+**Automatic (landscape)** places a small tree on one A4 landscape page, uses A3 when needed and divides larger trees into complete, readable continuation pages. **A4 landscape — one page** and **A3 landscape — one page** apply separately to each selected taxonomy. A message explains when the complete tree cannot fit legibly. Then choose **Automatic**, **A3** or **Table**. With several taxonomies, each tree has its own page area. The short introduction can occupy an additional portrait page.
+
+The tree preserves saved decisions, including rejected and open alternatives. A collapsed browser branch does not shorten the report. Selecting a successful part does not make an incomplete source analysis complete; its status and warnings remain visible.
+
+#### Other formats, narrow screens and retry
+
+**HTML** uses the selected content and displays the tree as a vector graphic or table. Printed page layout depends on the browser. **JSON** includes the complete structured evidence for the selected taxonomies; content-profile and page-layout controls are hidden for that format. Decision-report JSON is a separate export alongside the existing action for saving analysis scores.
+
+The same dialog is available on narrow screens. Common choices appear first; open **More options** for additional settings.
+
+![Decision export on a narrow screen with format, content, taxonomy selection and download action](../images/decision-export-mobile-en.png)
+
+If a download fails, your settings remain in the open dialog. Read the message, adjust the page layout if needed and click **Download** again. If the saved scope could not be loaded, use **Retry loading**. **Cancel** or Escape closes the dialog while no download is running.
+
+See the [export contracts and verification evidence](../testing/contextual-exports.md) for source handling, format limits and screenshot provenance.
 
 ---
 

@@ -59,7 +59,7 @@ what is implemented and what has not been established by live-model evaluation.
 | Versioned architecture DSL | Keeps explicit DSL checkpoints in JGit and durable semantic editor revisions in a separate operation journal; supports branches, diffs, merges, reverts, and selective transfer |
 | Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
 | Multi-user workspaces | Separates personal workspaces from the shared architecture repository |
-| Export | Produces machine-readable architecture outputs and configurable decision reports (Word/HTML/JSON), including selected taxonomies, compact profiles and readable landscape trees; see [scope and format contracts](docs/testing/contextual-exports.md) |
+| Export | Produces machine-readable architecture outputs and configurable decision reports (Word/HTML/JSON), including selected taxonomies, compact profiles and readable landscape trees; see the illustrated guide ([English](docs/en/USER_GUIDE.md#configurable-decision-report), [Deutsch](docs/de/USER_GUIDE.md#configurable-decision-report)) and [scope and format contracts](docs/testing/contextual-exports.md) |
 | Pluggable AI | Supports configured generative providers and optional local ONNX embeddings for search/scoring; local embeddings are not a generative relationship or reformulation model |
 
 ## Typical workflow

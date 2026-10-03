@@ -13,6 +13,39 @@
 
 Die Darstellungsauswahl ändert die Analyse nicht. Ein erfolgreicher Ausschnitt verdeckt keine offenen Bewertungen in der Quelle. Ursprünglicher Analyseumfang, Berichtsauswahl, Status, Snapshot und Quellfingerabdruck bleiben sichtbar. Bei alten Analysen wird ein nicht aufgezeichneter Umfang ausdrücklich benannt. Architekturbeziehungen über die Auswahlgrenze behalten ihre Endpunkte als gekennzeichneten Kontext. Reine Taxonomieanalysen ergänzen keine Architekturbeziehungen.
 
+## Illustrated user guides and screenshot provenance
+
+The user guides explain the compact Word workflow, taxonomy selection, contents,
+landscape page options, other formats and retry behavior in
+[German](../de/USER_GUIDE.md#configurable-decision-report) and
+[English](../en/USER_GUIDE.md#configurable-decision-report). Each guide embeds three
+current dialog screenshots: basic choices, expanded options and a narrow-screen
+view. Existing general export illustrations are retained and labelled as earlier
+overviews.
+
+The six `docs/images/decision-export-*.png` images are captured by the existing
+native-browser contract in `.github/scripts/decision-export-browser.mjs`. It loads
+the production dialog JavaScript and supplies explicitly labelled example input;
+it does not recreate the dialog markup. These are **component illustrations**,
+not full-application, persisted-snapshot or live-provider acceptance evidence.
+The [capture manifest](../images/decision-export-screenshots.json) records the
+source commit, source and image hashes, browser version, language and viewport.
+
+To regenerate from the repository root after installing the project's Playwright
+browser dependencies:
+
+```bash
+TAXONOMY_DOC_SCREENSHOTS="$PWD/docs/images" npm --prefix .github run verify:decision-export-dialog
+```
+
+The optional `TAXONOMY_CHROME` and `TAXONOMY_PLAYWRIGHT_MODULE` variables select an
+existing browser executable and Playwright module. The command first runs the
+desktop/mobile behavior contract, then captures both languages and the manifest.
+Inspect all six images before committing; the generator checks that each capture
+contains the complete dialog. Without `TAXONOMY_DOC_SCREENSHOTS`, the command only
+runs its existing behavior checks. Full-application screenshot owners and their
+CI gates remain unchanged; see the [screenshot reference](../../.github/copilot-ref-screenshots.md).
+
 ## Format contracts
 
 | Export | Selection and evidence |
@@ -39,6 +72,7 @@ Saved options: `GET /api/projects/{projectId}/snapshots/{snapshotId}/decision-re
 - Focused Maven reactor: **111 tests in 24 classes, zero failures/errors/skips**, covering the report, snapshot, HTTP, workbench and architecture boundaries. Invalid JSON/query options were also exercised with the application's real exception advice. Regressions verify that absent optional architecture remains exportable and deterministic score descriptions never become recorded AI reasons.
 - `npm --prefix .github run verify:ui-contracts`: **739 reported tests across 34 groups, zero failures**; the remaining script-only checks also completed successfully.
 - Native Chromium dialog contract passed at 1280px and 390px, including selection, failed download/retry, format-specific controls and focus restoration.
+- Illustrated guide refresh: the native contract generated all six DE/EN component captures. Both guides rendered with the application's Flexmark configuration; all prior headings and illustrations were retained. The new sections loaded their three images without horizontal overflow at 1280px and 390px using the help-content stylesheet. This is a documentation render check, not a full-application help-page acceptance.
 - LibreOffice fixtures cover compact reports with and without the validated template, A3 expansion, readable continuation pages and portrait/landscape/portrait transitions. These are authored deterministic fixtures, not provider inference results.
 - The full CI matrix, external databases and full-application Selenium journeys were **not run locally**. Their normal CI gates remain required before merge.
 
