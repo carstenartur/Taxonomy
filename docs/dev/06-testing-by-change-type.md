@@ -10,17 +10,17 @@ publication are documented separately in
 
 | Change | First command | Required broader check |
 |---|---|---|
-| Domain DTO or enum | `./mvnw test -pl taxonomy-domain` | `./mvnw verify` |
-| DSL parser/serializer | `./mvnw test -pl taxonomy-dsl` | App/editor tests when materialization changes |
-| Export model/serializer | `./mvnw test -pl taxonomy-export` | App endpoint tests when adapters change |
-| Spring service/controller | `./mvnw test -pl taxonomy-app` | `./mvnw verify` |
+| Domain DTO or enum | `./mvnw test -pl taxonomy-domain -am` | `./mvnw verify` |
+| DSL parser/serializer | `./mvnw test -pl taxonomy-dsl -am` | App/editor tests when materialization changes |
+| Export model/serializer | `./mvnw test -pl taxonomy-export -am` | App endpoint tests when adapters change |
+| Spring service/controller | `./mvnw test -pl taxonomy-app -am` | `./mvnw verify` |
 | Architecture boundary | `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
-| Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
-| ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
+| Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app -am` | `./mvnw -B verify -Pci` |
+| ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app -am` | `./mvnw -B verify -Pci` |
 | Persistence/core containers | `./mvnw -B verify -Pcore-integration` | `./mvnw -B verify -Pci` |
-| PostgreSQL mapping | `./mvnw -B verify -Pdatabase-postgres` | scheduled extended matrix |
-| SQL Server mapping | `./mvnw -B verify -Pdatabase-mssql` | scheduled extended matrix |
-| Oracle mapping | `./mvnw -B verify -Pdatabase-oracle` | scheduled extended matrix |
+| PostgreSQL mapping | `./mvnw -B verify -Pdatabase-postgres` | separate pull-request/tag/scheduled/manual database matrix |
+| SQL Server mapping | `./mvnw -B verify -Pdatabase-mssql` | separate pull-request/tag/scheduled/manual database matrix |
+| Oracle mapping | `./mvnw -B verify -Pdatabase-oracle` | separate pull-request/tag/scheduled/manual database matrix |
 | Local ONNX | `./mvnw -B verify -Ponnx` | `./mvnw -B verify -Pci` |
 | UI/CSS/JavaScript | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | `./mvnw -B verify -Pci` |
 | Dependency or workflow policy | `./mvnw -B verify -Pquality -DskipTests -DskipITs=true` | `./mvnw -B verify -Pci` |
@@ -35,8 +35,12 @@ three external database tags plus real LLM tests are excluded.
 
 `./mvnw -B verify -Pci` is the complete required pull-request lifecycle. It
 activates core/PostgreSQL integration, quality gates and browser/accessibility
-verification. SQL Server and Oracle remain scheduled/manual because their
-container cost is materially higher. Real LLM tests always remain opt-in.
+verification. The separate database-compatibility workflow also runs SQL Server
+and Oracle on pull requests to main, release tags, schedules and manual dispatch;
+those profiles are not automatically selected by `-Pci`. Real remote LLM tests
+remain opt-in. The current core CI additionally enables local ONNX tests with
+`-DrunOnnxTests=true`; use the complete command in the authority guide and workflow
+when reproducing that gate.
 
 The module-extraction gate lives in `taxonomy-build`, downstream of
 `taxonomy-app`, `taxonomy-coverage`, and `taxonomy-tooling`. The root-level
@@ -77,8 +81,8 @@ Reports, screenshots, DOM evidence and application logs are stored under
 | `*Test.java`, `*Tests.java` | Surefire | Included | Included |
 | `*IT.java` | Failsafe | Skipped | Included unless excluded |
 | `db-postgres` | Failsafe/Testcontainers | Excluded | Included |
-| `db-mssql` | Failsafe/Testcontainers | Excluded | Excluded; scheduled profile |
-| `db-oracle` | Failsafe/Testcontainers | Excluded | Excluded; scheduled profile |
+| `db-mssql` | Failsafe/Testcontainers | Excluded | Excluded; separate database profile |
+| `db-oracle` | Failsafe/Testcontainers | Excluded | Excluded; separate database profile |
 | `real-llm` | Surefire/Failsafe | Excluded | Excluded |
 
 Do not add `-Dtest`, `-Dit.test`, direct Playwright/axe commands or local quality

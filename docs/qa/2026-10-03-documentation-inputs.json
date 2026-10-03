@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "baseline": {
+    "commit": "3ec8a98610e6cb6d7fc4b4addee4c4f1bb87fb04",
+    "tree": "dd7809c324ed4a98b9fcc319dffbe3e1fbc44832",
+    "workflowRun": 37082514184,
+    "artifactId": 11258279358,
+    "zipSha256": "42be2dd943b548f434b795f6259356a76b7936b6f7be524b6158193845315c60",
+    "jarSha256": "fdc1f3522e3ba763d57518f44c8d5bd1642b1d058673015642e14f63e3774d62"
+  },
+  "documentationCandidate": {
+    "parentCommit": "497dbbebe955a275b1c217220ec6065b98521f94",
+    "overlay": "Nine listed additional documents; registered rendering uses unchanged baseline HelpController. README/report/this manifest are outside that rendering corpus.",
+    "files": [
+      {
+        "path": ".github/copilot-instructions.md",
+        "gitBlobSha": "d83be24ba5ec03a0891687d662c2d7ad48836977",
+        "sha256": "cbb53e8ae2b3ac2155a2a2229547ddeb06a713b66bc2bfdfd59bc606bb452d43"
+      },
+      {
+        "path": ".github/copilot-ref-guardrails.md",
+        "gitBlobSha": "6c4e8b2650259be377360a2ce488444b430f65b9",
+        "sha256": "6af4a0ad5312740c28051bf0746675773dfbaad1c84cf7eefb285b9662780b99"
+      },
+      {
+        "path": "docs/dev/06-testing-by-change-type.md",
+        "gitBlobSha": "df29527a8e653dcc27d2d47dc653376baf276366",
+        "sha256": "419cdac9d8a680cd085fc2efbe4163ae8b90cc307f78b5b21f2c1db21caa9718"
+      },
+      {
+        "path": "docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md",
+        "gitBlobSha": "4b2cb0039bdd3c9104108eeee3d3a5e15a5927d5",
+        "sha256": "093d567b27af7da20025fd0f31fdb2754b91c4cc3d5ae3f7bca6b7fdc950005e"
+      },
+      {
+        "path": "docs/en/PROJECT_PORTFOLIO_FEATURE_MATRIX.md",
+        "gitBlobSha": "f17b56b7e17949f95c23485db7b1eb6fb840fa06",
+        "sha256": "ed9b574e3ab89a066ed57d5ae20cb595fef8cf1c72b7d1702e1a0f631979e991"
+      },
+      {
+        "path": "docs/en/FEATURE_MATRIX.md",
+        "gitBlobSha": "3a90b31ae6b3da77c23a9fababca03c69dece7c7",
+        "sha256": "0778dcaa726fedd18cb8d6c8ca01ee92c77f1092846bbef94ea96f1853744ecb"
+      },
+      {
+        "path": "docs/de/PROJECT_REQUIREMENT_PORTFOLIO.md",
+        "gitBlobSha": "a9154691b6e3ad13baac24780371bdfe75aef978",
+        "sha256": "da6fe65ed922c02f85f82c92eb077beedfb1f165461195687d77734264ebc36e"
+      },
+      {
+        "path": "docs/de/PROJECT_PORTFOLIO_FEATURE_MATRIX.md",
+        "gitBlobSha": "7894aa6a97fc1283e1f5d20efe08713b0838ebcc",
+        "sha256": "1f64b5b2c7e55e8b6745d955af635776d277682bae52d596a33e53e8be8b51bc"
+      },
+      {
+        "path": "docs/de/FEATURE_MATRIX.md",
+        "gitBlobSha": "873dc5a2861a3d4e9ad159e222371cac69954e73",
+        "sha256": "b0c5e2c399884e85334c56cd80c95c26e24f8461ba2727284c4da3428de97bb3"
+      }
+    ]
+  },
+  "resourceLifecycleCandidate": {
+    "pullRequest": 1165,
+    "commit": "81c6b5464191ee64a8a647d96174a9b9c6327fee",
+    "tree": "7603671ff0ab3b197feb52c7a641cc19e2146aa8",
+    "files": [
+      {
+        "path": "taxonomy-app/src/main/java/com/taxonomy/shared/controller/HelpController.java",
+        "gitBlobSha": "71806d0ef7022ac9561426c1863438206f15d4c4",
+        "sha256": "b73c9d2b9c2c3d90ec78f60b77a9e0119d641c009b6957a0ff0cc2fa760212c2"
+      },
+      {
+        "path": "taxonomy-app/src/test/java/com/taxonomy/shared/controller/HelpResourceLifecycleAssertions.java",
+        "gitBlobSha": "dfe360fcbe773e768ff70e9c1ef20a8043cc3a4a",
+        "sha256": "391daaac46ea6a9cff4345d2351f91464d060f0b183ae3436d94f4e88987554d"
+      },
+      {
+        "path": "taxonomy-app/src/test/java/com/taxonomy/shared/controller/HelpResourceLifecycleTest.java",
+        "gitBlobSha": "52a0cbd8ac01965df970225f8f0ecb4028656107",
+        "sha256": "909d23c8ca4853c1cd8030708b3c1fddc588137664dfa528aaae50faf2ab2833"
+      }
+    ]
+  },
+  "diagnosticFiles": [
+    {
+      "path": "evidence/recheck-final.log",
+      "sha256": "cf685067a33fb413e2e8008128de31d09a6aab889931658c93e03eb3a367b302"
+    },
+    {
+      "path": "evidence/recheck-final/java-version.txt",
+      "sha256": "396eaa6c73c38012211ff4228112340c294c8c7639e11ce8494715249f959c09"
+    },
+    {
+      "path": "evidence/recheck-final/lifecycle-original.log",
+      "sha256": "922ee4e62411f134a200a48b846862d5320f93af4e45f377cce5b0aa146894b1"
+    },
+    {
+      "path": "evidence/recheck-final/lifecycle-candidate.log",
+      "sha256": "a2226755e26553e32fc8ca5070733a272c5ebbe2f3a53e474d59342bffd8b5a8"
+    },
+    {
+      "path": "evidence/recheck-final/summary.json",
+      "sha256": "0c1304ebc524b04fc23bec345823b117a95faa381d9074ed646e6dd19a7bca42"
+    },
+    {
+      "path": "evidence/recheck-final/render-manifest.json",
+      "sha256": "6fa9e191099ec73762dd7e09cf0e371e7d2f8664674a32d10d15647a56f0d5a4"
+    },
+    {
+      "path": "evidence/recheck-final/findings.json",
+      "sha256": "d985d1daf7e1aeb3e5738f7507f3b5821c22e3cfeaaffc91346a36251938b3a4"
+    },
+    {
+      "path": "evidence/maven-attempt.log",
+      "sha256": "5bbe1c5e28ce0de70bf0b772893a07dbe1bb6dd696a32d1b82e5ba66fb8a5c90"
+    },
+    {
+      "path": "evidence/remaining-documentation.patch",
+      "sha256": "1d043a3819c704290092baa10160c8ab443c01fd4244b0c076835288a0c75656"
+    },
+    {
+      "path": "evidence/packaged-markdown-inventory.json",
+      "sha256": "9a7cf886f244bdba42c540448708b517f174d10e2187592d9ba1b3435e5256f2"
+    },
+    {
+      "path": "probes/run-current-evidence.sh",
+      "sha256": "75d19ba615c84f76ea352e559043ad4255888bde31aaa0a7d056fcce312b853f"
+    },
+    {
+      "path": "probes/verify_current_candidates.py",
+      "sha256": "1c878f188ca755996f56a438c3ba1bc96300cb830c3953687a90815226221a6b"
+    },
+    {
+      "path": "probes/com/taxonomy/shared/controller/RenderHelpCorpus.java",
+      "sha256": "6ca89a78f884488e6d2ea51987f30b971e3b3bda03c5d34871591aaab7ef297d"
+    }
+  ],
+  "priorUnboundResults": "Withdrawn as reproducible evidence. These identities refer only to the fresh candidates and do not identify the earlier unpublished browser/renderer rewrite."
+}

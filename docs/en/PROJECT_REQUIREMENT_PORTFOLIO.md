@@ -18,6 +18,69 @@ Use the portfolio when you need to:
 
 All end-user steps described below are available through the web interface. Technical integration examples are documented separately in [PROJECT_PORTFOLIO_API.md](PROJECT_PORTFOLIO_API.md).
 
+<a id="requirement-clarification-workflow"></a>
+## Clarify a requirement using its architecture context
+
+Use the requirement detail workspace when the initial wording leaves decisions open.
+A saved reformulation offer is separate from the source requirement and architecture.
+Creating an offer, answering a question or editing its draft does not approve or
+replace the active requirement.
+
+| Step | What you do | What remains traceable |
+|---|---|---|
+| Select the source | Open the requirement, choose a saved version and its analysis snapshot | Exact original text, source version and analysed architecture |
+| Create an offer | Request a separate wording proposal; inspect its synthesis status | A stored initial draft is not a completed or approved result |
+| Resolve questions | Inspect architecture references; answer, defer or mark a question not applicable | Typed decisions, evidence and unresolved conflicts remain distinct |
+| Review the proposal | Edit wording or statements, inspect additions and save the intended revision | Manual edits are protected from late model responses |
+| Adopt explicitly | Review the saved adoption preview, warnings and final text; confirm with a rationale | A new requirement draft and its adoption receipt; earlier versions remain |
+| Analyse separately | Request another analysis when appropriate | Adopted decisions retain their origins; the previous snapshot is not rewritten |
+
+Formulation first works bottom-up within the selected taxonomy evidence. A bounded
+cross-taxonomy review then reconciles boundaries and shared constraints. This is not
+just a generic spelling rewrite: questions can refer to the elements and directed
+relationships of the frozen analysis. Neither a completed run nor an empty question
+list establishes approval or semantic completeness.
+
+**Illustrative example, not a recorded model result:** “Employees must record working
+time on mobile devices.” Review might raise whether offline capture is required,
+who may correct entries and which system receives them. A human decision such as
+“offline capture is required” should remain identifiable in the saved proposal and
+subsequent adopted version. These exact questions are not guaranteed model output.
+
+Export an exact saved proposal revision or adoption receipt as JSON, Markdown, HTML
+or DOCX. Unsaved browser text is excluded. Historical exports use their recorded
+source and architecture evidence, not today's catalogue. Adoption marks analysis as
+needing refresh; it does not automatically analyse or alter the architecture.
+
+See the [detailed reformulation contract](../features/requirement-reformulation.md)
+and [verification limits](../testing/requirement-reformulation.md). Technical playback,
+recovery and export tests do not establish general live-model language quality.
+
+<a id="analysis-scope-and-progress"></a>
+## Select analysis scope and understand incomplete work
+
+The automatic analysis and Copilot controls let you select taxonomy roots and choose
+full analysis or **taxonomies only**. A restricted root selection limits scoring and
+relationship sources. In full mode, compatible relationship targets in other
+sub-taxonomies can still be reached. Taxonomies-only mode does not run relationship
+search or the architecture derivation that depends on it.
+
+The result retains the scope actually used; changing the next run's settings does
+not reinterpret an older result. Unselected or unvisited nodes do not become
+negative findings. Restricted runs must not be read as a global gap assessment.
+
+Progress distinguishes directly assessed nodes, descendants excluded by a valid
+zero assessment and open nodes. Relationship progress records the planned
+source/target-taxonomy work, completed and unresolved tasks and newly made provider
+calls separately. A budget stop leaves unfinished work visible. Compatible
+continuation reuses validated answers instead of paying for successful calls again;
+changed input or recovery policy may require a new run.
+
+A completed work plan is not proof that every possible relationship exists in the
+result. Relevance weights are not calibrated probabilities or percentages of
+requirement fulfilment. Local ONNX provides embeddings for search/scoring, not the
+generative relationship or wording capabilities of a configured language model.
+
 ## Portfolio routes
 
 | Workspace | Route |
