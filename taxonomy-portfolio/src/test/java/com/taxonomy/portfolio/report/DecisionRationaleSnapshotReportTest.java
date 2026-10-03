@@ -81,6 +81,9 @@ class DecisionRationaleSnapshotReportTest {
                 "main", "commit-a", AnalysisStatus.SUCCESS);
         AnalysisResult analysis = reportableAnalysis();
         analysis.setProvider("ANALYSIS_PROVIDER");
+        analysis.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY));
+        analysis.setAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage.derive(analysis.getTree(), analysis.getScores(), analysis.getScores(), Map.of()));
+        when(jsonCodec.readField("analysis-json", "analysisScope", com.taxonomy.dto.AnalysisScope.class)).thenReturn(analysis.getAnalysisScope());
         analysis.setViewContext(new ViewContext(
                 "commit-a", "main", COMMIT_TIME, true, true, false));
         DecisionRationaleReport expected = report(7);
@@ -111,6 +114,8 @@ class DecisionRationaleSnapshotReportTest {
                 inputCaptor.capture(), eq(CONTEXT), viewCaptor.capture(), eq(Locale.GERMAN));
 
         DecisionAnalysisInput input = inputCaptor.getValue();
+        assertThat(input.analysisScope()).isEqualTo(analysis.getAnalysisScope());
+        assertThat(input.analysisCoverage()).isEqualTo(analysis.getAnalysisCoverage());
         assertThat(input.businessText()).isEqualTo("immutable requirement");
         assertThat(input.provider()).isEqualTo("MOCK");
         assertThat(input.analysisStatus()).isEqualTo("SUCCESS");
@@ -136,6 +141,47 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(historical.includesProvisionalRelations()).isTrue();
         assertThat(historical.projectionStale()).isTrue();
         assertThat(historical.indexStale()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "null", "full"})
+    void sourceScopeRecordednessSurvivesRealJsonDeserialization(String recordedness) {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder()
+                .disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        var codec = new PortfolioJsonCodec(mapper);
+        var json = (tools.jackson.databind.node.ObjectNode) mapper.readTree(codec.write(reportableAnalysis()));
+        if (recordedness.equals("missing")) json.remove("analysisScope");
+        if (recordedness.equals("null")) json.putNull("analysisScope");
+        var repository = mock(RequirementAnalysisSnapshotRepository.class);
+        var reports = mock(DecisionRationaleReportService.class);
+        var snapshot = snapshot("MOCK", "model", "sha", "prompt", "main", "commit", AnalysisStatus.SUCCESS);
+        when(snapshot.getAnalysisPayload()).thenReturn(json.toString());
+        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"),eq(41L),anyString())).thenReturn(Optional.of(snapshot));
+        when(reports.generate(any(),any(),any(),any())).thenReturn(report(7));
+        new DecisionRationaleSnapshotReportService(repository,codec,reports).generate(41L,"snapshot-1","auditor",CONTEXT,Locale.ENGLISH);
+        var input = ArgumentCaptor.forClass(DecisionAnalysisInput.class);
+        verify(reports).generate(input.capture(),any(),any(),any());
+        if (recordedness.equals("full")) assertThat(input.getValue().analysisScope()).isEqualTo(com.taxonomy.dto.AnalysisScope.full());
+        else assertThat(input.getValue().analysisScope()).isNull();
+    }
+
+    @Test
+    void selectedExportUsesTheSameFrozenInputAndTypedOptions() {
+        var repository = mock(RequirementAnalysisSnapshotRepository.class);
+        var codec = mock(PortfolioJsonCodec.class);
+        var reports = mock(DecisionRationaleReportService.class);
+        var service = new DecisionRationaleSnapshotReportService(repository, codec, reports);
+        var snapshot = snapshot("MOCK", "model-a", "taxonomy-sha", "prompt-sha", "main", "commit-a", AnalysisStatus.SUCCESS);
+        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"), eq(41L), anyString())).thenReturn(Optional.of(snapshot));
+        when(codec.read("analysis-json", AnalysisResult.class)).thenReturn(reportableAnalysis());
+        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
+                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.COMPACT, java.util.Set.of("CP"), null, null, null);
+        when(reports.generate(any(), eq(CONTEXT), any(), eq(Locale.ENGLISH), eq(options))).thenReturn(report(7));
+        var actual = service.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options);
+        assertThat(actual.metadata().analysisSnapshotId()).isEqualTo("snapshot-1");
+        var input = ArgumentCaptor.forClass(DecisionAnalysisInput.class);
+        verify(reports).generate(input.capture(), eq(CONTEXT), any(), eq(Locale.ENGLISH), eq(options));
+        assertThat(input.getValue().taxonomyTree()).extracting(TaxonomyNodeDto::getCode).containsExactly("CP");
     }
 
     @Test

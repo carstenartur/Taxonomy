@@ -137,6 +137,45 @@ class SnapshotWordReportServiceTest {
     }
 
     @Test
+    void selectedReportNamesCrossingEndpointsAsContextAndCompactDoesNotLoadGraph() {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
+                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.STANDARD, Set.of("A"), null, null, null);
+        var base = decision();
+        var selected = base.withScope(new com.taxonomy.architecture.decision.DecisionReportScope(null, null,
+                List.of(), Set.of("A"), Set.of("A"), base.scope().decisionTree(), options, true, true));
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options)).thenReturn(selected);
+        when(workbench.loadIfPresent(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(Optional.of(projection("Saved", "commit-a")));
+        var service = new SnapshotWordReportService(decisions, workbench);
+        var source = service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options);
+        assertThat(source.architecture().scope()).contains("Boundary context: B", "Source graph SHA-256:");
+        assertThat(source.architecture().relations()).hasSize(1);
+        var compact = new com.taxonomy.architecture.decision.DecisionReportOptions(
+                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.COMPACT, Set.of("A"), null, null, null);
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, compact)).thenReturn(selected);
+        clearInvocations(workbench);
+        assertThat(service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, compact).architecture()).isNull();
+        verifyNoInteractions(workbench);
+    }
+
+    @Test
+    void aValidSelectionWithoutGraphNodesStillExportsItsDecisionEvidence() {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
+                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.STANDARD, Set.of("CP"), null, null, null);
+        var base = decision();
+        var selected = base.withScope(new com.taxonomy.architecture.decision.DecisionReportScope(null, null,
+                List.of(), Set.of("CP"), Set.of("CP"), base.scope().decisionTree(), options, true, true));
+        when(decisions.generate(41L,"snapshot-1","auditor",CONTEXT,Locale.ENGLISH,options)).thenReturn(selected);
+        when(workbench.loadIfPresent(41L,"snapshot-1","auditor",CONTEXT)).thenReturn(Optional.of(projection("Saved","commit-a")));
+        var source = new SnapshotWordReportService(decisions,workbench).load(41L,"snapshot-1","auditor",CONTEXT,Locale.ENGLISH,options);
+        assertThat(source.architecture()).isNull();
+        assertThat(source.decision().scope().reportRoots()).containsExactly("CP");
+    }
+
+    @Test
     void refusesMixedCommitEvidence() {
         var decisions = mock(DecisionRationaleSnapshotReportService.class);
         var workbench = mock(ArchitectureWorkbenchService.class);
@@ -154,6 +193,21 @@ class SnapshotWordReportServiceTest {
                                                 CONTEXT,
                                                 Locale.ENGLISH))
                 .hasMessageContaining("commit");
+    }
+
+    @Test
+    void configuredFullExportKeepsDecisionEvidenceWhenNoArchitectureWasSaved() {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        var options = com.taxonomy.architecture.decision.DecisionReportOptions.full();
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options)).thenReturn(decision());
+        when(workbench.loadIfPresent(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(Optional.empty());
+        var service = new SnapshotWordReportService(decisions, workbench);
+        var source = service.loadEvidence(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options);
+        assertThat(source.decision().metadata().analysisSnapshotId()).isEqualTo("snapshot-1");
+        assertThat(source.architecture()).isNull();
+        assertThat(service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options).architecture()).isNull();
+        verify(workbench, never()).load(any(), any(), any(), any());
     }
 
     @Test

@@ -132,6 +132,32 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void optionalGraphAbsenceStillUsesTheAuthorizedSavedSource() {
+        AnalysisResult analysis = new AnalysisResult(Map.of("CP-1", 90), List.of());
+        when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .thenReturn(new SnapshotDetail(summary(), analysis, null, null, null, List.of(), List.of()));
+        assertThat(service.loadIfPresent(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT)).isEmpty();
+        analysis.setArchitectureView(new RequirementArchitectureView());
+        assertThat(service.loadIfPresent(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT)).isEmpty();
+        verify(persistenceService, times(2)).getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        verifyNoInteractions(projectService);
+    }
+
+    @Test
+    void optionalGraphDoesNotSwallowInvalidEvidenceOrAccessErrors() {
+        var snapshot = snapshotWithArchitecture();
+        snapshot.analysis().getArchitectureView().setIncludedElements(List.of());
+        when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT)).thenReturn(snapshot);
+        assertThatThrownBy(() -> service.loadIfPresent(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .isInstanceOf(PortfolioException.class);
+        when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .thenThrow(PortfolioException.notFound("Unavailable saved source"));
+        assertThatThrownBy(() -> service.loadIfPresent(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .hasMessageContaining("Unavailable saved source");
+        verifyNoInteractions(projectService);
+    }
+
+    @Test
     void rejectsSnapshotWithoutPersistedAnalysisBeforeReadingCurrentProjectData() {
         when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
                 .thenReturn(new SnapshotDetail(summary(), null, null, null, null, null, null));

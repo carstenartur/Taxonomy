@@ -681,9 +681,7 @@
                                 Export the traceable root-to-leaf decision path with one parent/children chapter per hierarchy decision.
                             </p>
                             <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportDecisionReportDocx" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.docx.title}">&#128221; <span th:text="#{export.btn.decision.docx}">Decision Report (.docx)</span></button>
-                                <button id="exportDecisionReportHtml" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.html.title}">&#128221; <span th:text="#{export.btn.decision.html}">Decision Report (.html)</span></button>
-                                <button id="exportDecisionReportJson" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.json.title}">&#128221; <span th:text="#{export.btn.decision.json}">Decision Report (.json)</span></button>
+                                <button id="exportDecisionReportDocx" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.configure}">&#128221; <span th:text="#{export.btn.decision.configure}">Decision report …</span></button>
                             </div>
                         </div>
 
@@ -1520,6 +1518,7 @@
 <script th:src="@{/js/shared/taxonomy-operation-result.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-versions.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-variants.js}"></script>
+<script th:src="@{/js/shared/decision-export-dialog.js}"></script>
 <script th:src="@{/js/shared/taxonomy-export.js}"></script>
 <script th:src="@{/js/shared/taxonomy-import.js}"></script>
 <script th:src="@{/js/shared/taxonomy-graph.js}"></script>

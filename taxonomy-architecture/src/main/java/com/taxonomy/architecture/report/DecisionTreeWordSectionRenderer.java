@@ -8,6 +8,9 @@ import java.util.List;
 
 public final class DecisionTreeWordSectionRenderer {
     public void write(XWPFDocument document, DecisionTreeOverview tree, String language) {
+        write(document, tree, language, true);
+    }
+    public void write(XWPFDocument document, DecisionTreeOverview tree, String language, boolean chapterLinks) {
         var labels = new DecisionReportLabels(language);
         var writer = new WordDocumentWriter(document, labels);
         writer.heading(labels.treeOverview(), 1, "decision_tree");
@@ -45,7 +48,7 @@ public final class DecisionTreeWordSectionRenderer {
                         case REJECTED -> labels.rejected();
                         case NOT_EVALUATED -> labels.notEvaluated();
                     });
-            if (entry.bookmark() != null)
+            if (chapterLinks && entry.bookmark() != null)
                 writer.link(
                         row.getCell(3).getParagraphs().getFirst(),
                         entry.bookmark(),

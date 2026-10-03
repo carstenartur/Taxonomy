@@ -36,15 +36,39 @@ public class SnapshotWordReportService {
             String username,
             WorkspaceContext context,
             Locale locale) {
+        return load(projectId, snapshotId, username, context, locale, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Source load(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options) {
+        return loadSource(projectId, snapshotId, username, context, locale, options, true);
+    }
+
+    /** HTML/JSON share frozen graph evidence without Word's page/rendering ceilings. */
+    @Transactional(readOnly = true)
+    public Source loadEvidence(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options) {
+        return loadSource(projectId, snapshotId, username, context, locale, options, false);
+    }
+
+    private Source loadSource(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options, boolean wordLayout) {
         if (projectId == null) throw PortfolioException.validation("projectId is required");
         if (snapshotId == null || snapshotId.isBlank())
             throw PortfolioException.validation("snapshotId is required");
         String id = snapshotId.strip();
         Locale language = locale == null ? Locale.ENGLISH : locale;
-        var decision = decisions.generate(projectId, id, username, context, language);
-        var projection = workbench.load(projectId, id, username, context);
+        var decision = options == null ? decisions.generate(projectId, id, username, context, language)
+                : decisions.generate(projectId, id, username, context, language, options);
+        if (options != null && !options.includes(DecisionReportOptions.Section.ARCHITECTURE)) return new Source(decision, null);
+        if (decision.scope().analysisScope() != null && !decision.scope().analysisScope().includesRelations())
+            return new Source(decision, null);
+        var projection = options == null ? workbench.load(projectId, id, username, context)
+                : workbench.loadIfPresent(projectId, id, username, context).orElse(null);
+        if (projection == null && options != null) return new Source(decision, null);
         try {
-            var architecture = frozenDocument(projectId, id, decision, projection, language);
+            var architecture = frozenDocument(projectId, id, decision, projection, language, wordLayout);
             return new Source(decision.withArchitecture(architecture), architecture);
         } catch (IllegalArgumentException exception) {
             throw PortfolioException.conflict(exception.getMessage());
@@ -56,7 +80,7 @@ public class SnapshotWordReportService {
             String snapshotId,
             DecisionRationaleReport decision,
             Projection p,
-            Locale locale) {
+            Locale locale, boolean wordLayout) {
         var m = decision.metadata();
         if (m == null || p == null || p.exportProvenance() == null)
             throw new IllegalArgumentException("Missing frozen snapshot provenance");
@@ -89,7 +113,7 @@ public class SnapshotWordReportService {
         if (!m.hierarchyFromImmutableSnapshot())
             throw new IllegalArgumentException(
                     "Decision hierarchy is not frozen snapshot evidence");
-        ArchitectureFigurePlanner.validate(p.diagram(), p.scene());
+        ArchitectureFigurePlanner.validateEvidence(p.diagram(), p.scene());
         var labels = new DecisionReportLabels(locale.toLanguageTag());
         // Explicit saved titles are evidence, including values that collide with a live fallback.
         // Policy keys and missing titles use a stable localized snapshot title.
@@ -111,6 +135,18 @@ public class SnapshotWordReportService {
                         p.scene().direction(),
                         p.scene().nodes(),
                         p.scene().edges());
+        String reportScope = labels.frozenScope();
+        if (!decision.scope().options().taxonomyRoots().isEmpty()) {
+            var selection = ArchitectureReportSelection.select(graph, scene, decision.scope().selectedNodeCodes());
+            graph = selection.graph(); scene = selection.scene();
+            if (graph.nodes().isEmpty()) return null;
+            boolean german = "de".equals(locale.getLanguage());
+            reportScope += " · " + (german ? "Berichtsauswahl: " : "Report selection: ")
+                    + String.join(", ", decision.scope().reportRoots())
+                    + " · " + (german ? "Kontext außerhalb der Auswahl: " : "Boundary context: ")
+                    + String.join(", ", selection.boundaryCodes())
+                    + " · Source graph SHA-256: " + selection.sourceGraphSha256();
+        }
         var gaps = new LinkedHashSet<String>();
         gaps.addAll(decision.warnings());
         gaps.addAll(p.warnings());
@@ -136,17 +172,17 @@ public class SnapshotWordReportService {
                         title,
                         locale.toLanguageTag(),
                         decision.requirement(),
-                        labels.frozenScope(),
+                        reportScope,
                         decision.executiveSummary() == null
                                 ? labels.noneRecorded()
                                 : decision.executiveSummary().conciseConclusion(),
                         List.copyOf(gaps),
                         graph,
                         scene,
-                        DecisionTreeOverview.from(decision.chapters()),
+                        decision.scope().decisionTree(),
                         evidence);
         // Enforce the complete document ceiling before allocating any PNG or DOCX buffers.
-        new ArchitectureFigurePlanner().plan(graph, scene);
+        if (wordLayout) new ArchitectureFigurePlanner().plan(graph, scene);
         return document;
     }
 

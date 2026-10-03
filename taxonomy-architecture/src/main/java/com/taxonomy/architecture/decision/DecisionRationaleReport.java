@@ -32,7 +32,8 @@ public record DecisionRationaleReport(
         List<TaxonomyDiscrepancy> discrepancies,
         ViewContext viewContext,
         Map<String, AnalysisScoreDetail> scoreDetails,
-        com.taxonomy.architecture.report.ArchitectureReportDocument architecture) {
+        com.taxonomy.architecture.report.ArchitectureReportDocument architecture,
+        DecisionReportScope scope) {
 
     public DecisionRationaleReport {
         languageTag = normalized(languageTag, "en");
@@ -43,9 +44,25 @@ public record DecisionRationaleReport(
         warnings = immutable(warnings);
         productCoverageGaps = immutable(productCoverageGaps);
         discrepancies = immutable(discrepancies);
+        scope = scope == null ? DecisionReportScope.legacy(chapters) : scope;
         scoreDetails = scoreDetails == null
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(scoreDetails));
+    }
+
+    public DecisionRationaleReport(String title, String languageTag, String requirement, ReportStatus status,
+            ReportMetadata metadata, ExecutiveSummary executiveSummary, List<DecisionChapter> chapters,
+            List<LeafCandidate> leadingLeaves, List<String> warnings, List<ProductCoverageGap> productCoverageGaps,
+            List<TaxonomyDiscrepancy> discrepancies, ViewContext viewContext, Map<String,AnalysisScoreDetail> scoreDetails,
+            com.taxonomy.architecture.report.ArchitectureReportDocument architecture) {
+        this(title, languageTag, requirement, status, metadata, executiveSummary, chapters, leadingLeaves,
+                warnings, productCoverageGaps, discrepancies, viewContext, scoreDetails, architecture, null);
+    }
+
+    public DecisionRationaleReport withScope(DecisionReportScope selection) {
+        return new DecisionRationaleReport(title, languageTag, requirement, status, metadata, executiveSummary,
+                chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,
+                scoreDetails, architecture, selection);
     }
 
     public DecisionRationaleReport(String title, String languageTag, String requirement, ReportStatus status,
@@ -57,12 +74,13 @@ public record DecisionRationaleReport(
     }
     public DecisionRationaleReport withArchitecture(com.taxonomy.architecture.report.ArchitectureReportDocument document) {
         return new DecisionRationaleReport(title,languageTag,requirement,status,metadata,executiveSummary,chapters,
-                leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document);
+                leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document,scope);
     }
 
     /** Coverage changes the qualification of conclusions, never the original requirement or scores. */
     public DecisionRationaleReport withAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage coverage) {
-        if (coverage == null || !coverage.hasOpenEvaluations()) return this;
+        if (coverage == null) return this;
+        if (!coverage.hasOpenEvaluations()) return withScope(scope.withCoverage(coverage));
         var notes = new java.util.ArrayList<>(warnings);
         boolean de = languageTag.startsWith("de");
         notes.add((de ? "Teilergebnis: " : "Partial result: ") + coverage.failedOrBlockedNodes()
@@ -83,7 +101,7 @@ public record DecisionRationaleReport(
                         + executiveSummary.conciseConclusion(), executiveSummary.methodologyNote());
         return new DecisionRationaleReport(title, languageTag, requirement, ReportStatus.DRAFT_INCOMPLETE,
                 metadata, summary, chapters, leadingLeaves, notes, productCoverageGaps,
-                discrepancies, viewContext, scoreDetails, architecture);
+                discrepancies, viewContext, scoreDetails, architecture, scope.withCoverage(coverage));
     }
 
     /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */

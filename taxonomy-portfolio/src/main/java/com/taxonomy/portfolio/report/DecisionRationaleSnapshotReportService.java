@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionReportOptions;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
@@ -68,6 +69,12 @@ public class DecisionRationaleSnapshotReportService {
             String username,
             WorkspaceContext workspaceContext,
             Locale locale) {
+        return generate(projectId, snapshotId, username, workspaceContext, locale, null);
+    }
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(Long projectId, String snapshotId, String username,
+            WorkspaceContext workspaceContext, Locale locale, DecisionReportOptions options) {
         if (projectId == null) {
             throw PortfolioException.validation("projectId is required");
         }
@@ -117,9 +124,11 @@ public class DecisionRationaleSnapshotReportService {
                 analysis.getProductCoverageGaps(),
                 analysis.getTree(),
                 provenance,
-                scoreDetails, analysis.getAnalysisDurationMillis());
-        DecisionRationaleReport report = reportService.generate(
-                input, workspaceContext, historicalViewContext, effectiveLocale);
+                scoreDetails, analysis.getAnalysisDurationMillis()).withRecordedReasons(analysis.getReasons())
+                .withScope(jsonCodec.readField(snapshot.getAnalysisPayload(), "analysisScope", com.taxonomy.dto.AnalysisScope.class), analysis.getAnalysisCoverage());
+        DecisionRationaleReport report = options == null
+                ? reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale)
+                : reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale, options);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, effectiveLocale);
     }
 

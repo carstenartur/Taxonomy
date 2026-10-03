@@ -936,21 +936,7 @@
             }
             return;
         }
-        if (btnId === 'exportDecisionReportDocx'
-                || btnId === 'exportDecisionReportHtml'
-                || btnId === 'exportDecisionReportJson') {
-            var decisionFormatMap = {
-                'exportDecisionReportDocx': 'docx',
-                'exportDecisionReportHtml': 'html',
-                'exportDecisionReportJson': 'json'
-            };
-            var decisionExtMap = {
-                'exportDecisionReportDocx': '.docx',
-                'exportDecisionReportHtml': '.html',
-                'exportDecisionReportJson': '.json'
-            };
-            var decisionFormat = decisionFormatMap[btnId];
-            var decisionExt = decisionExtMap[btnId];
+        if (btnId === 'exportDecisionReportDocx') {
             var decisionTextElement = document.getElementById('businessText');
             var decisionText = decisionTextElement ? decisionTextElement.value.trim() : '';
             var selectedProvider = document.getElementById('providerSelect');
@@ -970,32 +956,26 @@
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
                 analysisDurationMillis: S.lastAnalysisDurationMillis,
                 analysisCoverage: S.analysisCoverage || null,
+                analysisScope: S.lastAnalysisScope || null,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
                     ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
             };
-            window.TaxonomyApiClient.request('/api/decision-report/' + decisionFormat, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request)
-            })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('Decision report generation failed');
-                return resp.blob();
-            })
-            .then(function (blob) {
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = 'taxonomy-decision-rationale-report' + decisionExt;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            })
-            .catch(function (err) {
-                alert(t('browse.decision.report.export.failed', err.message));
+            var frozenRequest = JSON.parse(JSON.stringify(request));
+            window.TaxonomyDecisionExport.open({
+                source: decisionText,
+                language: request.language,
+                roots: (S.taxonomyData || []).map(function (root) { return {code: root.code, title: root.name || root.nameEn || root.code}; }),
+                analysisScope: S.lastAnalysisScope,
+                selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
+                submit: async function (selection) {
+                    var response = await window.TaxonomyApiClient.request('/api/decision-report/' + selection.format, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options}))
+                    });
+                    await window.TaxonomyDecisionExport.download(response, selection.format);
+                }
             });
             return;
         }
