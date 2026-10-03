@@ -1,8 +1,8 @@
 # Taxonomy Architecture Analyzer
 
 [![CI/CD](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/coverage/badge.json)](https://carstenartur.github.io/Taxonomy/coverage/)
-[![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)
+[![Coverage](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/coverage/badge.json)](https://github.com/carstenartur/Taxonomy/coverage/)
+[![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://github.com/carstenartur/Taxonomy/tests/surefire-report.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
@@ -20,12 +20,39 @@ Taxonomy addresses architecture work in federal, state and local public administ
 and in enterprises. Example scenarios describe test coverage, not a restriction of
 the intended users or application domains.
 
+## Why use Taxonomy?
+
+Taxonomy connects architecture prototyping with **requirement clarification**:
+inspect a proposed architecture, work through evidence-linked decision questions,
+review a separate wording proposal, and explicitly adopt a new requirement draft.
+A separately requested analysis can then use that draft and its inherited decisions.
+The original text and earlier analysis remain available; generated wording is not
+silently treated as an approved requirement or an accepted architecture change.
+
+The value is the connected workflow, not a claim that AI, Git, or diagrams are
+exclusive to this product:
+
+- **Clarify the need:** bottom-up formulations and cross-taxonomy review connect
+  wording and decision questions to the selected architecture evidence.
+- **Retain the reasons:** saved proposals and historical exports retain the source,
+  snapshot and decisions used at that time instead of reinterpreting them against
+  today's catalogue.
+- **Control the work:** choose taxonomy roots and full or taxonomies-only analysis;
+  distinguish completed, excluded and unresolved work, and reuse validated answers
+  when resuming a compatible run.
+
+Start with the browser workflows in the [English user guide](docs/en/USER_GUIDE.md)
+or [German user guide](docs/de/USER_GUIDE.md). The [reformulation contract](docs/features/requirement-reformulation.md)
+and [verification boundaries](docs/testing/requirement-reformulation.md) describe
+what is implemented and what has not been established by live-model evaluation.
+
 ## What the application provides
 
 | Capability | Description |
 |---|---|
 | Rapid architecture prototyping | Derives candidate cross-layer architecture elements, relations, and views from requirements and source documents |
-| Hierarchical analysis trace | Scores catalogue roots, intermediate nodes, and leaves while preserving the paths and rationales behind the result |
+| Hierarchical analysis trace | Preserves assessed roots, intermediate nodes, leaves, paths and rationales; unvisited or unselected nodes are not negative findings |
+| Selectable analysis and recovery | Select roots and FULL/TAXONOMIES_ONLY mode; retain scope, completed work and validated answers during compatible continuation |
 | Architecture views | Builds cross-layer views from selected elements and typed relations |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
 | Requirement reformulation | Produces a saved wording proposal with traceable decision questions, explicit draft adoption and historical JSON/Markdown/HTML/DOCX exports; see the [workflow](docs/features/requirement-reformulation.md) and [verification boundaries](docs/testing/requirement-reformulation.md) |
@@ -33,7 +60,7 @@ the intended users or application domains.
 | Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
 | Multi-user workspaces | Separates personal workspaces from the shared architecture repository |
 | Export | Produces machine-readable and presentation-oriented architecture outputs |
-| Pluggable AI | Supports cloud providers and a local ONNX option; deterministic browsing remains available without an LLM |
+| Pluggable AI | Supports configured generative providers and optional local ONNX embeddings for search/scoring; local embeddings are not a generative relationship or reformulation model |
 
 ## Typical workflow
 
@@ -42,12 +69,26 @@ flowchart LR
     A[Requirement or source document] --> B[Candidate extraction]
     B --> C[AI-assisted hierarchical analysis]
     C --> D[Architecture prototype]
-    D --> E[Human review and refinement]
-    E --> F[Versioned architecture change]
+    D --> E[Human architecture review and refinement]
+    E --> F[Explicit versioned architecture change]
     F --> G[Diagram, report, or data export]
+    D --> H[Separate wording proposal and decision questions]
+    H --> I[Human answers, edits and adoption review]
+    I --> J[Explicit adoption as a new requirement draft]
+    J -->|separately request a new analysis| C
 ```
 
 AI-generated scores, relations, and architecture prototypes are proposals, not authoritative decisions. Users remain responsible for reviewing rationales, source mappings, and model content before accepting them.
+
+Adoption does not automatically run another analysis or modify the architecture.
+Completing the planned work does not prove semantic completeness. Technical tests
+and retained evidence do not establish superior results against another product.
+Local ONNX cannot complete generative relationship assessment or wording synthesis.
+
+Portable backup/history/restore work is still being integrated; it is not a released
+end-to-end backup or round-trip contribution workflow merely because supporting
+capture adapters exist. Check the exact deployed version and documented support
+boundary before relying on it.
 
 ## Architecture Impact Showcase
 
@@ -157,7 +198,7 @@ cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Production startup rejects missing, placeholder, or short administrator passwords. Review the complete deployment and security documentation before exposing an instance outside a trusted development machine.
+In local-user mode, production startup rejects missing, placeholder, or short administrator passwords. Keycloak mode has separate identity-provider configuration requirements. Review the complete deployment and security documentation before exposing an instance outside a trusted development machine.
 
 - [Deployment guide](docs/en/DEPLOYMENT_GUIDE.md)
 - [Deployment checklist](docs/en/DEPLOYMENT_CHECKLIST.md)
@@ -325,7 +366,7 @@ Document registration and candidate confirmation are transactional. A failed ope
 
 ## AI and local operation
 
-For the actual grouping criteria, score calculations, limitations and rationale for each of the eight sub-taxonomies, see [Grouping and scoring](docs/en/TAXONOMY_SCORING.md) ([Deutsch](docs/de/TAXONOMY_SCORING.md)). It distinguishes implemented arithmetic from the target faceted navigation and necessity model.
+For the actual grouping criteria, score calculations, limitations and rationale for each of the eight sub-taxonomies, see [Grouping and scoring](docs/en/TAXONOMY_SCORING.md) ([Deutsch](docs/de/TAXONOMY_SCORING.md)). It separates implemented arithmetic, remaining navigation/provenance restrictions, and relevance from necessity.
 
 The application can use Gemini, OpenAI-compatible providers, or a local ONNX embedding model. Provider configuration is optional for catalogue browsing, DSL editing, version navigation, deterministic validation, and many search and export functions.
 
