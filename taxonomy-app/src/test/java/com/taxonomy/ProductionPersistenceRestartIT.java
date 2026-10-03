@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * when the application container is replaced while /app/data is preserved.
  */
 @Tag("persistence")
+@Tag("docker-required")
 class ProductionPersistenceRestartIT {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();

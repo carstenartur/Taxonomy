@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles({"postgres", "kubernetes"})
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class TaxonomyPostgresValidateStartupIT {
 
     @Container

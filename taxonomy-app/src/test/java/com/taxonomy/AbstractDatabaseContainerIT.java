@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Base class for application-container verification across database backends. */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@Tag("docker-required")
 abstract class AbstractDatabaseContainerIT {
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();

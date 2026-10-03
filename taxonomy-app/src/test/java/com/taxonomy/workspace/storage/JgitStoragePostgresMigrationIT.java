@@ -31,6 +31,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Verifies the real pre-library Taxonomy adoption path against PostgreSQL. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class JgitStoragePostgresMigrationIT {
 
     @Container

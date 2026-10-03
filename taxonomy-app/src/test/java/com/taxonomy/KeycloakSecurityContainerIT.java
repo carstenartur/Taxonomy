@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "runKeycloakTests", matches = "true")
+@Tag("docker-required")
 class KeycloakSecurityContainerIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();

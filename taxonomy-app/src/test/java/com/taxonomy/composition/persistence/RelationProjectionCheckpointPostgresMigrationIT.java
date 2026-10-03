@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Real PostgreSQL evidence for the exact relation branch projection checkpoint. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class RelationProjectionCheckpointPostgresMigrationIT {
 
     @Container

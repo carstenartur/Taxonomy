@@ -44,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * job visibility, reload recovery, dialogs, responsive layout and downloads.</p>
  */
 @Tag("ui-acceptance")
+@Tag("docker-required")
 class PortfolioUiAcceptanceIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Ui-Acceptance-2026!";

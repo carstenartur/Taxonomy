@@ -14,8 +14,7 @@ import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.util.UriComponentsBuilder;
-import org.testcontainers.Testcontainers;
-import org.testcontainers.containers.Network;
+import com.taxonomy.testsupport.BrowserSession;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -33,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real-browser component contract. The application/use-case and authorization boundaries have separate Java tests. */
 @Tag("ui-acceptance")
+@Tag("browser")
 class AnalysisLiveProgressUiIT {
     static final String ID = "cb2a3d71-e849-4a50-9855-1f9cb8f81402";
     private static final AtomicReference<String> STATUS = new AtomicReference<>("RUNNING");
@@ -42,8 +42,7 @@ class AnalysisLiveProgressUiIT {
     private static final AtomicInteger UNEXPECTED_REQUESTS = new AtomicInteger();
     private static HttpServer server;
     private static ExecutorService serverExecutor;
-    private static Network network;
-    private static ContainerTestUtils.BrowserSession session;
+    private static BrowserSession session;
     private static RemoteWebDriver driver;
     private static WebDriverWait wait;
     private static String origin;
@@ -54,16 +53,14 @@ class AnalysisLiveProgressUiIT {
         server.setExecutor(serverExecutor);
         server.createContext("/", AnalysisLiveProgressUiIT::serve);
         server.start();
-        Testcontainers.exposeHostPorts(server.getAddress().getPort());
-        origin = "http://host.testcontainers.internal:" + server.getAddress().getPort();
-        network = Network.newNetwork();
-        session = ContainerTestUtils.startBrowser(network);
+        session = BrowserSession.open(server.getAddress().getPort(), Path.of("target/analysis-ui-evidence/downloads"));
+        origin = session.origin();
         driver = session.driver();
         wait = new WebDriverWait(driver, Duration.ofSeconds(20));
     }
 
     @AfterAll static void stop() throws Exception {
-        try { ContainerTestUtils.closeAll(session, network); }
+        try { if (session != null) session.close(); }
         finally {
             if (server != null) server.stop(0);
             if (serverExecutor != null) serverExecutor.shutdownNow();

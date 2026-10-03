@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Focused migration evidence for repository-scoped relation hypotheses. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class RelationHypothesisTenantMigrationPostgresIT {
 
     @Container

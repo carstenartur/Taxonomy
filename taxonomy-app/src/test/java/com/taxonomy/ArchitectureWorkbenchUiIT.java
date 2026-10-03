@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * PDF endpoints expose the architecture model rather than the surrounding page.</p>
  */
 @Tag("ui-acceptance")
+@Tag("docker-required")
 class ArchitectureWorkbenchUiIT {
 
     private static final String ADMIN_PASSWORD = "Architecture-Workbench-Ui-2026!";

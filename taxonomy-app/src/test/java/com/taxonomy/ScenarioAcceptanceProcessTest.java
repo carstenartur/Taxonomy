@@ -27,6 +27,14 @@ class ScenarioAcceptanceProcessTest {
         assertFalse(forwarded("java.awt.headless.secret"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"taxonomy.test.browser", "webdriver.chrome.driver", "scenario.chrome.binary",
+            "selenium.container.image", "scenario.screenshot.directory"})
+    void browserRuntimeAndEvidencePathsSurviveTheRealJvmBoundary(String key) throws Exception {
+        assertTrue(forwarded(key), "Browser configuration must reach the application JVM: " + key);
+        assertFalse(forwarded(key + ".secret"), "Only the exact property name may be forwarded");
+    }
+
     private static boolean forwarded(String key) throws Exception {
         var selector = ScenarioAcceptanceProcess.class.getDeclaredMethod("testProperty", String.class);
         selector.setAccessible(true);

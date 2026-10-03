@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         named = "taxonomy.observability.performance.enabled",
         matches = "true")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Tag("docker-required")
 class ObservabilityPerformanceIT {
 
     private static final String AGENT_IMAGE =

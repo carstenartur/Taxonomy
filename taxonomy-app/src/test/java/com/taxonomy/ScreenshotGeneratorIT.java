@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
@@ -44,6 +45,7 @@ import com.taxonomy.catalog.service.AppInitializationStateService;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "generateScreenshots", matches = ".*")
+@Tag("docker-required")
 class ScreenshotGeneratorIT {
 
     private static final String REQUIREMENT_TEXT =

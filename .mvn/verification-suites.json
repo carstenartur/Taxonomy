@@ -2,6 +2,12 @@
   "schemaVersion": 1,
   "canonicalCommand": "./mvnw -B verify -Pci",
   "profiles": {
+    "test-local": {
+      "purpose": "Docker-free Java, Spring Boot/HSQLDB, forked restart and real local Chrome scenarios; reuses existing tests without adding a duplicate CI lane",
+      "excludedGroups": "real-llm,onnx,db-postgres,db-mssql,db-oracle,docker-required",
+      "systemProperty": "taxonomy.test.browser=local",
+      "requires": ["Java 21", "Node", "Matching Chrome and ChromeDriver (CHROME_BIN and CHROMEDRIVER)"]
+    },
     "ci": {
       "purpose": "Required pull-request verification: unit tests, core, PostgreSQL and Keycloak integration tests, quality gates, browser matrix and accessibility audit",
       "requires": ["Java 21", "Docker", "Python 3", "POSIX shell"]
@@ -38,7 +44,7 @@
       "purpose": "Sourced Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
       "test": "ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
-      "requires": ["Java 21", "Docker"]
+      "requires": ["Java 21", "Docker or test-local with matching Chrome and ChromeDriver"]
     },
     "supply-chain-policy": {
       "purpose": "Focused repository scan for immutable external GitHub Action commits and production image digests",

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Upgrade evidence for PostgreSQL V13 with real pre-existing requirement history. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class RequirementTenantPostgresMigrationIT {
 
     private static final String REPOSITORY_ID = "primary-repository";

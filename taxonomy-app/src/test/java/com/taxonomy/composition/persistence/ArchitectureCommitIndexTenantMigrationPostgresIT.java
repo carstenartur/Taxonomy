@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Real PostgreSQL evidence for repository-scoped commit-history projections. */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("docker-required")
 class ArchitectureCommitIndexTenantMigrationPostgresIT {
 
     @Container

@@ -335,6 +335,66 @@
         </plugins>
     </build>
     <profiles>
+        <!-- The same Java/HTTP/browser scenarios on machines without a Docker daemon.
+             CI keeps its existing container-backed selection; this is not a second CI lane. -->
+        <profile>
+            <id>test-local</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle,docker-required</excludedGroups>
+                <taxonomy.test.browser>local</taxonomy.test.browser>
+                <webdriver.chrome.driver>${env.CHROMEDRIVER}</webdriver.chrome.driver>
+                <scenario.chrome.binary>${env.CHROME_BIN}</scenario.chrome.binary>
+                <generateScreenshots>true</generateScreenshots>
+                <scenario.screenshot.directory>${project.build.directory}/scenario-acceptance/screenshots</scenario.screenshot.directory>
+            </properties>
+            <build><plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <executions><execution>
+                        <id>require-local-browser</id>
+                        <phase>validate</phase>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration><rules><requireFilesExist>
+                            <message>test-local needs matching Chrome and ChromeDriver. Set CHROME_BIN and CHROMEDRIVER to absolute executable paths, or use -Dscenario.chrome.binary and -Dwebdriver.chrome.driver. See docs/testing/docker-free-tests.md.</message>
+                            <files>
+                                <file>${scenario.chrome.binary}</file>
+                                <file>${webdriver.chrome.driver}</file>
+                            </files>
+                        </requireFilesExist></rules></configuration>
+                    </execution></executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <excludedGroups>${excludedGroups}</excludedGroups>
+                        <systemPropertyVariables>
+                            <taxonomy.test.browser>${taxonomy.test.browser}</taxonomy.test.browser>
+                            <webdriver.chrome.driver>${webdriver.chrome.driver}</webdriver.chrome.driver>
+                            <scenario.chrome.binary>${scenario.chrome.binary}</scenario.chrome.binary>
+                            <generateScreenshots>${generateScreenshots}</generateScreenshots>
+                            <scenario.screenshot.directory>${scenario.screenshot.directory}</scenario.screenshot.directory>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration>
+                        <excludedGroups>${excludedGroups}</excludedGroups>
+                        <systemPropertyVariables>
+                            <taxonomy.test.browser>${taxonomy.test.browser}</taxonomy.test.browser>
+                            <webdriver.chrome.driver>${webdriver.chrome.driver}</webdriver.chrome.driver>
+                            <scenario.chrome.binary>${scenario.chrome.binary}</scenario.chrome.binary>
+                            <generateScreenshots>${generateScreenshots}</generateScreenshots>
+                            <scenario.screenshot.directory>${scenario.screenshot.directory}</scenario.screenshot.directory>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+            </plugins></build>
+        </profile>
         <profile>
             <id>ci</id>
             <properties>
