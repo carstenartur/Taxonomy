@@ -1,9 +1,16 @@
 package com.taxonomy.architecture.decision;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.*;
 
-/** Presentation choices; these never change the recorded analysis scope. */
-public record DecisionReportOptions(Profile profile, Set<String> taxonomyRoots,
+/**
+ * Presentation choices; these never change the recorded analysis scope.
+ * An empty normalized root set means all analysis roots. Serialize that sentinel
+ * as an omitted property so it is not confused with an invalid explicit empty selection.
+ */
+public record DecisionReportOptions(Profile profile,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) Set<String> taxonomyRoots,
         Contents contents, TreeLayout treeLayout, Set<Section> sections) {
     public enum Profile { FULL, STANDARD, COMPACT }
     public enum Contents { NONE, SHORT, FULL }

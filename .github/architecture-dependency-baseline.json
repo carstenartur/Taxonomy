@@ -405,7 +405,7 @@
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
-      "classDependencyCount": 6
+      "classDependencyCount": 7
     },
     {
       "fromContext": "app-composition",
@@ -937,14 +937,14 @@
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
-      "classDependencyCount": 15
+      "classDependencyCount": 26
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.report",
-      "classDependencyCount": 11
+      "classDependencyCount": 12
     },
     {
       "fromContext": "portfolio",
