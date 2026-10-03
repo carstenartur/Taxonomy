@@ -42,6 +42,8 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
         rows.write(sink,"analysis","drafts",profile,scope.selectedVersion() ? null : new Query("select id,scope_key,workspace_id,username,payload_json,created_at,updated_at from analysis_working_draft where " + draftWhere + " order by id",draftParameters),r -> {
             String tenant=text(r,"scope_key"),owner=text(r,"username"),workspace=text(r,"workspace_id");
             verifyOwner(scope,owner,draftPrincipalScope);
+            // Installation scope must obey the draft writer's canonical owner format too.
+            if (!owner.equals(draftOwner(owner))) throw new IOException("Analysis draft owner is not canonical");
             try {
                 var identity=RepositoryTenantIdentity.parse(tenant);
                 if (!tenant.equals(identity.scopeKey()) || !scope.includesTenant(tenant)

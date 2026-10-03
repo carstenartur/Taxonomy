@@ -22,6 +22,25 @@ import static com.taxonomy.backup.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisRecordsExportIT {
+    @ParameterizedTest @CsvSource({
+            "Alice,INSTALLATION_CURRENT", "Alice,INSTALLATION_FULL",
+            "' alice ',INSTALLATION_CURRENT", "' alice ',INSTALLATION_FULL"})
+    void installationCaptureRejectsNoncanonicalDraftOwnersBeforeReadingPayload(String persistedOwner, BackupProfile profile) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.draft("repo-a", "private-a", "alice", "{\"businessText\":\"PRIVATE-DRAFT\"}");
+            fixture.jdbc.update("update analysis_working_draft set username=?", persistedOwner);
+            String id = run(fixture, "repo-a", "private-a", "draft", "Alice", 10, "PRIVATE-RUN");
+            question(fixture, id, "PRIVATE-QUESTION");
+            var output = new Contents();
+            assertThatThrownBy(() -> new AnalysisBackupContributor(fixture.database, "Alice")
+                    .write(snapshot(profile, new BackupScope.Installation()), output))
+                    .isInstanceOf(IOException.class).hasMessage("Analysis draft owner is not canonical");
+            assertThat(output.text()).doesNotContain("PRIVATE-DRAFT", "PRIVATE-RUN", "PRIVATE-QUESTION");
+            assertThat(fixture.jdbc.queryForObject("select username from analysis_working_draft", String.class))
+                    .isEqualTo(persistedOwner);
+        }
+    }
+
     @ParameterizedTest @EnumSource(value = BackupProfile.class, names = {"CURRENT_STATE", "REPOSITORY_HISTORY", "INSTALLATION_CURRENT", "INSTALLATION_FULL"})
     void mixedCaseOwnersKeepBothSourceRepresentationsAndTheirCompletedCurrentRun(BackupProfile profile) throws Exception {
         try (var fixture = new Fixture()) {
