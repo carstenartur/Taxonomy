@@ -23,7 +23,8 @@ The default lifecycle is a bounded developer check, not the complete CI run.
 integration profiles are enabled. A naming suffix does not prove that a selected
 test is Docker-free: application/browser scenarios have their own prerequisites.
 
-### Authoritative verification
+<a id="authoritative-verification"></a>
+### CI Command — authoritative verification
 
 The complete local CI-equivalent entry point is:
 
