@@ -94,11 +94,12 @@
 - [x] Exercise worker/coordinator/broker loss, duplicate deliveries, cross-user authority and bounded saturation.
 - [x] Run the canonical Maven and available Docker-free browser checks; report unavailable external prerequisites accurately.
 - [x] Review the complete change with a fresh reviewer; fix important findings with regression tests.
-- [ ] Publish independently reviewable follow-up PRs and update #1161 with exact evidence and remaining gates. Publication is authorized; component PRs #1170 and #1171 are open, and the execution PR and tracker update are in progress.
+- [x] Publish independently reviewable follow-up PRs and update #1161 with exact evidence and remaining gates. PRs #1170, #1171 and #1172 are open; tracker comment 5978670496 records the executed evidence and remaining gates. No follow-up merge is claimed.
 
 ### Publication decisions
 
 - Ruling: extend only the existing PR branch filters to `feat/artemis-execution-base`, because the execution PR depends on the two separately reviewed component branches. Main/push behavior, paths, jobs, selectors and thresholds remain unchanged; the additional cost is running the same gates for the stacked review.
+- Final publication review: the legacy exact-text branch expectation in `ProtectedReleaseMainContractTest` failed after that addition (two executions, one failure). Updating the expected list to exactly `main` and the stacked base preserves every protected-main/release safeguard; the same two tests now pass. The reviewer found no other important publication blockers.
 - Recovery: the complete production/test/deployment source was recovered from retained original files and patches. The intermediate integrated tree matches `ce959f3c05f8cad7e3b476df784aa2e097358cf3` exactly. Two lost DE/EN provider-enable description cells use the independently tested P08 wording; their property, environment variable and default are unchanged. The restored final source tree is `6481ad9e8f79bacc87b9a6481495d7843248f33e`, before this publication-only workflow/documentation change.
 
 ## Verification status

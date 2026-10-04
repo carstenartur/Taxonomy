@@ -87,7 +87,7 @@ lanes. No thresholds, test exclusions or required checks were weakened.
 | --- | --- | --- |
 | [#1170: `feat/artemis-provider-permits`](https://github.com/carstenartur/Taxonomy/pull/1170) | `main` at the baseline above | P08: physical HTTP attempt permits, bounded provider metrics, explicit queue provisioning and real-broker tests. |
 | [#1171: `feat/artemis-frozen-catalogue`](https://github.com/carstenartur/Taxonomy/pull/1171) | `main` at the baseline above | P05: consistent frozen catalogue inputs, worker-scoped data/index lifecycle, native ONNX parity and cache isolation. |
-| `feat/artemis-distributed-execution` | `feat/artemis-execution-base` | P04/P06/P07/P09/P10: durable root/relation execution, authorized observation, restore/schema integration, roles/deployment and failure acceptance. |
+| [#1172: `feat/artemis-distributed-execution`](https://github.com/carstenartur/Taxonomy/pull/1172) | `feat/artemis-execution-base` | P04/P06/P07/P09/P10: durable root/relation execution, authorized observation, restore/schema integration, roles/deployment and failure acceptance. |
 
 `feat/artemis-execution-base` contains only the first two component branches.
 The execution review therefore excludes their implementation; it can target
@@ -99,3 +99,10 @@ Publication is authorized. The existing PR branch filters also admit
 applicable CI gates. Main/push triggers, path filters, jobs and thresholds are
 unchanged. Current remote results belong to the exact PR heads; the historical
 local evidence above is not a claim that remote CI or live acceptance has passed.
+
+The publication recheck passes all eight JavaScript recovery tests and shell
+syntax validation. The protected-release contract's former exact `main` list
+failed as expected after adding the stacked base; its two tests pass with the
+new exact list and all existing protected-main/release assertions retained.
+The issue [implementation tracker](https://github.com/carstenartur/Taxonomy/issues/1161#issuecomment-5978670496)
+records the published PRs and outstanding exact-head acceptance.

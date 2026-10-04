@@ -76,7 +76,7 @@ class ProtectedReleaseMainContractTest {
 
         assertThat(ci)
                 .contains("workflow_dispatch:")
-                .contains("pull_request:\n    branches: [ main ]")
+                .contains("pull_request:\n    branches: [ main, feat/artemis-execution-base ]")
                 .contains("push:\n    branches:\n      - main")
                 .doesNotContain("- 'release/**'");
     }
