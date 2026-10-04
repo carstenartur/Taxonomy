@@ -7,6 +7,7 @@ import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -43,6 +44,7 @@ public class AnalysisDispatchStore {
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
     private final Clock clock;
 
+    @Autowired
     public AnalysisDispatchStore(EntityManager em, PlatformTransactionManager transactions) {
         this(em, transactions, Clock.systemUTC());
     }

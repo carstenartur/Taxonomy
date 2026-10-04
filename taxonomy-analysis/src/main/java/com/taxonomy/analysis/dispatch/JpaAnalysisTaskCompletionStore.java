@@ -7,6 +7,7 @@ import com.taxonomy.analysis.dag.RelationAnalysisCompleted;
 import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -31,6 +32,7 @@ public class JpaAnalysisTaskCompletionStore implements AnalysisTaskCompletionSto
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
     private final Clock clock;
 
+    @Autowired
     public JpaAnalysisTaskCompletionStore(EntityManager em, PlatformTransactionManager transactions) {
         this(em, transactions, Clock.systemUTC());
     }
