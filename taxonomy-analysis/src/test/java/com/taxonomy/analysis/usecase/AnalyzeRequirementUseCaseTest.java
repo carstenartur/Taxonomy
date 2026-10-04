@@ -110,6 +110,31 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
+    void cooperativeStopInsideTheRelationTaskKeepsPartialEvidenceAndSkipsArchitecture() {
+        var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL);
+        var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
+                new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
+        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        evidence.setStatus("SUCCESS");
+        when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(requirementRelationSearchService.isEnabled()).thenReturn(true);
+        when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenThrow(
+                new com.taxonomy.analysis.service.AnalysisStoppedException(
+                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED));
+        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
+
+        var result = useCase.analyze(command).analysisResult();
+
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getErrorMessage()).startsWith("CANCELLED");
+        assertThat(result.getArchitectureView()).isNull();
+        verifyNoInteractions(architectureViewService, preferencesService);
+        // Exact read authority is resolved once and reported on the result.
+        verify(repositoryStateService, org.mockito.Mockito.times(1)).resolveWorkspaceBranch("alice");
+        assertThat(com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation.current()).isEmpty();
+    }
+
+    @Test
     void analyzeCoordinatesScoringPersistenceArchitectureMetadataAndViewContext() {
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                 "Need secure voice comms", true, 7, "gemini",
