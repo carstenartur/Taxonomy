@@ -88,7 +88,7 @@ frozen view, and fills the production candidate cache. It uses the production
 workbook parser and overlay, deterministic 384-dimensional fixture vectors and
 an explicitly empty fixture relation set. No model or provider is downloaded.
 
-The 2026-10-04 run used JDK 21.0.2, `-Xms128m -Xmx256m -XX:+UseSerialGC`.
+The 2026-10-04 run used JDK 21.0.12.1+1-LTS, `-Xms128m -Xmx256m -XX:+UseSerialGC`.
 Heap is retained Java heap after three explicit GCs, relative to a warmed
 serialization/service baseline. The cache column is the exact stored float
 payload; Java cache/key overhead is included in heap. Times include binding and
@@ -99,19 +99,34 @@ latency guarantees.
 
 | Scope | Nodes/vectors | Snapshot heap delta (bytes) | Populated heap delta (bytes) | Vector payload (bytes) | Bind/populate (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| BP | 409 | 1514696 | 2708560 | 628224 | 397 |
-| BR | 307 | 889112 | 1903600 | 471552 | 360 |
-| CP | 34 | 429120 | 966896 | 52224 | 317 |
-| CI | 131 | 573144 | 1280672 | 201216 | 326 |
-| CO | 92 | 546984 | 1185704 | 141312 | 318 |
-| CR | 151 | 663432 | 1405680 | 231936 | 338 |
-| IP | 1072 | 2126440 | 4476328 | 1646592 | 528 |
-| UA | 376 | 975344 | 2109848 | 577536 | 391 |
-| All eight | 2572 | 5173056 | 10141400 | 3950592 | 524 |
+| BP | 409 | 1508576 | 2703744 | 628224 | 374 |
+| BR | 307 | 882080 | 1898072 | 471552 | 298 |
+| CP | 34 | 417888 | 957168 | 52224 | 253 |
+| CI | 131 | 562520 | 1271552 | 201216 | 283 |
+| CO | 92 | 536728 | 1176952 | 141312 | 275 |
+| CR | 151 | 654096 | 1397848 | 231936 | 290 |
+| IP | 1072 | 2127520 | 4478968 | 1646592 | 373 |
+| UA | 376 | 969200 | 2104936 | 577536 | 319 |
+| All eight | 2572 | 5198000 | 10166168 | 3950592 | 478 |
 
 [Retained machine-readable evidence](../testing/evidence/frozen-embedding-footprint-2026-10-04.json)
 includes workbook and overlay digests and every JVM result. Regeneration writes
 `taxonomy-knowledge/target/frozen-embedding-footprint/evidence.json`.
+
+## Whole-worker startup comparison
+
+The separate [whole-application worker startup report](https://github.com/carstenartur/Taxonomy/blob/3c24016c0c3ede13f63db2e2b6f77149197b9de8/docs/testing/worker-runtime-footprint.md)
+retains a six-process Spring comparison: a CP-only worker, an all-root worker,
+and the full-catalogue role, each cold and with the native model. Its
+[machine-readable measurements](https://github.com/carstenartur/Taxonomy/blob/3c24016c0c3ede13f63db2e2b6f77149197b9de8/docs/testing/evidence/worker-runtime-footprint-2026-10-04.json)
+include heap, RSS, indexed nodes and index bytes. The recorded CP worker retained
+96.64 MiB heap and had no catalogue/index nodes or index bytes when cold; the
+cold full-catalogue process retained 210.31 MiB heap with 2,572 indexed nodes
+and 519,545 index bytes. With the native model, the CP worker retained
+96.99 MiB heap and no global index, while the full-catalogue process retained
+203.29 MiB heap and 4,614,146 index bytes. These are the report's individual
+process measurements, not a deployment capacity guarantee; its documented
+source identity and limitations apply.
 
 ## Verification
 

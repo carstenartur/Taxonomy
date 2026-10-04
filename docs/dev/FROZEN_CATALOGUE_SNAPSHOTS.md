@@ -56,7 +56,9 @@ try (var ignored = catalogueSnapshots.bind(expectedSource, requiredRoots, snapsh
 ```
 
 `CatalogueSourceIdentity` contains `repositoryId`, `workspaceId`, `branch`, and
-`sourceCommit`, preserving nullable compatibility values without substitution.
+`sourceCommit`. The repository, branch, and source commit are mandatory; only
+`workspaceId` remains nullable for central scopes. Missing authority is rejected
+rather than compared as matching null values.
 `bind` requires exact identity equality, an exact required-root set, no duplicate
 node identities, a complete rooted hierarchy, and matching catalogue-generation
 and overlay provenance across every bound root.

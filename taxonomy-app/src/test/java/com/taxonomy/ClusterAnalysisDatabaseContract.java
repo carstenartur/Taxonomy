@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,6 +45,13 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
     private final JpaAnalysisTaskCompletionStore completions;
     private final List<AnalysisTaskMessage> sent = new CopyOnWriteArrayList<>();
     private volatile Runnable beforeCompletionInsert = () -> { };
+    private volatile Consumer<CompletionInsert> completionInsertObserver = ignored -> { };
+
+    record CompletionInsert(Connection connection, boolean executingSql) { }
+
+    void observeCompletionInserts(Consumer<CompletionInsert> observer) {
+        completionInsertObserver = Objects.requireNonNull(observer);
+    }
 
     static ClusterAnalysisDatabaseContract hsql() {
         return new ClusterAnalysisDatabaseContract(new DriverManagerDataSource(
@@ -133,29 +141,48 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         assertEquals(0, store.snapshot(context).completedRoots());
         assertContinuousEvents(context, 3);
 
-        var reserved = new CountDownLatch(1); var insertAttempts = new CountDownLatch(2); var effects = new AtomicInteger();
-        beforeCompletionInsert = insertAttempts::countDown;
+        var insertAttempts = new CountDownLatch(2); var releaseInserts = new CountDownLatch(1); var effects = new AtomicInteger();
+        beforeCompletionInsert = () -> {
+            insertAttempts.countDown();
+            await(releaseInserts);
+        };
         var prepared = new PreparedAnalysisCompletion<>(completion, () -> {
-            effects.incrementAndGet(); reserved.countDown();
-            await(insertAttempts); // The second transaction has read "absent" and is attempting its unique insert.
+            effects.incrementAndGet();
             store.persistResult(cp, result(CP, 40, "committed"));
         });
-        try (var pool = Executors.newFixedThreadPool(2)) {
+        var start = new CyclicBarrier(2);
+        var pool = Executors.newFixedThreadPool(2,
+                Thread.ofPlatform().daemon(true).name("cluster-completion-race-", 0).factory());
+        var tasks = new ArrayList<Future<?>>();
+        try {
             var first = pool.submit(() -> completions.commit(prepared));
-            assertTrue(reserved.await(20, TimeUnit.SECONDS), "First delivery did not reserve the task");
+            tasks.add(first);
             var second = pool.submit(() -> completions.commit(prepared));
+            tasks.add(second);
+            // Both absent-row reads must finish before either SQL insert: lock-based READ COMMITTED
+            // may otherwise block the second read behind the first transaction's reservation.
+            assertTrue(insertAttempts.await(20, TimeUnit.SECONDS), "Both deliveries must reach the JDBC insert barrier");
+            assertEquals(0, effects.get(), "Neither delivery may persist an effect before the insert barrier opens");
+            releaseInserts.countDown();
             assertEquals(completion, first.get(30, TimeUnit.SECONDS));
             assertEquals(completion, second.get(30, TimeUnit.SECONDS));
             assertEquals(1, effects.get(), "Concurrent duplicate must never invoke the losing result effect");
             assertEquals(1, count("AnalysisTaskCompletionRecord", "operationId", context.operationId()));
             assertEquals(0, store.snapshot(context).completedRoots(), "Only the coordinator settles committed work");
             var other = complete(ip, result(IP, 70, "committed"));
-            var start = new CyclicBarrier(2);
-            var acceptCp = pool.submit(() -> { start.await(); return store.accept(completion); });
-            var acceptIp = pool.submit(() -> { start.await(); return store.accept(other); });
+            var acceptCp = pool.submit(() -> { start.await(20, TimeUnit.SECONDS); return store.accept(completion); });
+            tasks.add(acceptCp);
+            var acceptIp = pool.submit(() -> { start.await(20, TimeUnit.SECONDS); return store.accept(other); });
+            tasks.add(acceptIp);
             assertTrue(acceptCp.get(30, TimeUnit.SECONDS)); assertTrue(acceptIp.get(30, TimeUnit.SECONDS));
             assertFalse(store.accept(completion)); assertFalse(store.accept(other));
-        } finally { beforeCompletionInsert = () -> { }; }
+        } finally {
+            releaseInserts.countDown();
+            start.reset();
+            tasks.forEach(task -> task.cancel(true));
+            pool.shutdownNow();
+            beforeCompletionInsert = () -> { };
+        }
         var snapshot = store.snapshot(context);
         assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
         assertEquals(2, snapshot.completedRoots());
@@ -245,7 +272,11 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
                     && sql.stripLeading().startsWith("insert into analysis_task_completion")) {
                 var statement = (PreparedStatement) value;
                 return Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(), new Class<?>[]{PreparedStatement.class}, (ignored, call, parameters) -> {
-                    if (call.getName().equals("executeUpdate")) beforeCompletionInsert.run();
+                    if (call.getName().equals("executeUpdate")) {
+                        completionInsertObserver.accept(new CompletionInsert(delegate, false));
+                        beforeCompletionInsert.run();
+                        completionInsertObserver.accept(new CompletionInsert(delegate, true));
+                    }
                     return invoke(statement, call, parameters);
                 });
             }
@@ -257,7 +288,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         catch (InvocationTargetException failure) { throw failure.getCause(); }
     }
     private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(20, TimeUnit.SECONDS), "Concurrent delivery did not attempt its insert"); }
+        try { assertTrue(latch.await(20, TimeUnit.SECONDS), "Concurrent insert barrier was not released"); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
     }
     @Override public void close() { factory.destroy(); }

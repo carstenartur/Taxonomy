@@ -6,8 +6,8 @@ public record CatalogueSourceIdentity(String repositoryId, String workspaceId, S
     public CatalogueSourceIdentity {
         bounded(repositoryId, "repositoryId", false);
         bounded(workspaceId, "workspaceId", true);
-        bounded(branch, "branch", true);
-        bounded(sourceCommit, "sourceCommit", true);
+        bounded(branch, "branch", false);
+        bounded(sourceCommit, "sourceCommit", false);
     }
 
     private static void bounded(String value, String field, boolean nullable) {

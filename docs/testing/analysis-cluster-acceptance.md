@@ -115,15 +115,30 @@ or selector. All **23** dependency-ratchet cases and **213** mandatory module
 guards pass in the combined 16-module reactor (236 executions, no failures,
 errors or skips, 1 minute 6 seconds).
 
+The [fifth remote run](https://github.com/carstenartur/Taxonomy/actions/runs/37237916621)
+on `55a7c55` passes both the original smoke and the complete Artemis scenario.
+Its independently verified artifact `11316004841` has SHA-256
+`186ccc6588e103215e45849aaa31681c05034fbb8bd68902dfb340d49cd8a26f`.
+The tested merge commit `c12ddbda14a9ef7369203226cabd5d2dfa028391` has tree
+`7fabb5547cb1078411398d8f9ea43c4e26752465`, exactly equal to the PR head.
+About four seconds after force deletion, the retained broker consumers/deliveries
+and lost-pod PostgreSQL sessions are zero while the acceptance lock remains held.
+Zero effects precede its release. CP completes with **2** delivery attempts and IP
+with **1**, each with exactly one durable effect. The CP broker records one added
+and one acknowledged message, with none remaining. All **425** durable scores
+equal the original response; replacement identities, contiguous events,
+independent scaling, quotas and actual allowed/denied egress also pass.
+
 See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
 
 ## Measured memory boundary
 
-The retained nine-process [data/cache experiment](evidence/frozen-embedding-footprint-2026-10-04.json)
-records CP frozen data/cache heap at **966,896 bytes** and all eight roots at
-**10,141,400 bytes**. Vector payloads are **52,224** versus **3,950,592 bytes**.
+The retained nine-process [data/cache experiment](evidence/frozen-embedding-footprint-2026-10-04.json),
+refreshed by P05 review commit `31e1a03`, records CP frozen data/cache heap at
+**957,168 bytes** and all eight roots at **10,166,168 bytes**. Vector payloads are
+**52,224** versus **3,950,592 bytes**.
 These are fresh-JVM measurements of the frozen data stage. They exclude Spring,
 native model memory, database connections and whole-pod RSS. They must not be
 presented as a measured production pod-startup footprint or a capacity promise.
@@ -206,6 +221,78 @@ durable observation, frozen ONNX/relation behavior, production TCP Artemis
 computation and all required architecture guards. It does not substitute for the
 next live provisioning/admission/worker-loss scenario.
 
+## Database-lane fixture corrections
+
+The [database matrix on `55a7c55`](https://github.com/carstenartur/Taxonomy/actions/runs/37237916641)
+passes PostgreSQL with **52** Failsafe cases, including all three new cluster
+contracts. Its independently verified artifact `11317577851` has SHA-256
+`195272dd56eb95995e97f88cd454ccb17d7c8d6a82604e9764104058ee079df2`.
+SQL Server completes **32** cases with one error in the duplicate-completion
+fixture; its artifact `11317469011` hashes to
+`8a24ff2ea095e8209b902faceb8cb81950a27636ef70afe1deb32533e18858ce`.
+The fixture starts its second transaction after the first has inserted an
+uncommitted completion, then holds the first transaction until the second inserts.
+[SQL Server's default locking READ COMMITTED](https://learn.microsoft.com/en-us/sql/t-sql/statements/set-transaction-isolation-level-transact-sql)
+can block the second initial read behind that uncommitted row. The worker stack
+was not retained, so this blocked-read location is inferred from the explicit
+ordering and database semantics. Both transactions must instead finish their
+absent-row reads before either attempts its real unique-key insert.
+
+The Oracle lane fails before vendor integration tests: one of **2,489** ordinary
+application unit cases fails in the provider interruption test. Artifact
+`11317183090`, SHA-256
+`4aa2f19aba367dda58839a9baaaea323fba8a04f62f6686fa2e21a8ca6723df2`, records the
+failure at the wait helper's final assertion after only 0.220 seconds of its
+10-second deadline. That helper has already observed the transient thread state
+as true, then incorrectly requires a second observation to remain true. The
+helper must preserve its successful observation. Neither failed lane establishes
+vendor acceptance; corrected-head runs remain required.
+
+The corrected database fixture gates both transactions at the existing JDBC
+boundary before either `executeUpdate`, then races both real unique-key inserts.
+A passive trace regression fails on the old ordering and verifies both arrivals
+before either insert, using two distinct connections. Rollback, losing-delivery
+savepoint handling, exactly one result effect and concurrent coordinator
+aggregation remain covered. Failure cleanup releases gates, cancels daemon
+workers and avoids an unbounded executor close.
+
+The provider helper now retains its successful observation. A deterministic
+false/true/false condition fails before the correction and passes afterward;
+the 10-second deadline and 10-millisecond polling interval are unchanged.
+The combined Java 21 reactor passes **240 executions across all 16 modules**,
+zero failures/errors/skips, in **1 minute 50 seconds**: four database contracts,
+ten provider-permit cases, thirteen actual TCP transport/production cases and
+213 mandatory architecture guards. Independent review found no important issue.
+The separate direct transaction gate also passes all **8 dispatch insertion**
+and **6 durable-effect** cases, with zero failures/errors/skips (10 seconds).
+These fixture corrections leave production code, database isolation, workflow
+selectors and thresholds unchanged.
+
+## Canonical checkpoint and dependency refresh
+
+The complete [canonical workflow on `55a7c55`](https://github.com/carstenartur/Taxonomy/actions/runs/37237916582)
+passes, including its final aggregate. The full 16-module Maven verification takes
+1 hour 28 minutes. Independently verified artifact `11318516035`, SHA-256
+`04200055562c8742deaf3569f8a118899f2179e159113c183c0d0295bfca77c4`, retains
+1,101 JUnit XML reports with **7,874 cases, zero failures/errors and 79 skips**.
+Those skips are the opt-in mock-score generator (3), screenshot generator (75)
+and document-template standalone E2E profile (1); the separate document workflow
+passes. All Artemis and cluster contract cases, including the six-process native
+worker measurement, run without skips. This is a completed remote canonical gate,
+unlike the earlier local OOM attempt.
+
+Before publication of the fixture corrections, P05 advanced independently to
+`31e1a03ec222dfbec46dbf246791daf971f56b02`. Its review change requires non-null
+frozen branch/commit authority, gives duplicate worker shards an explicit error,
+and refreshes the scoped data/cache measurement. The execution dependency base
+is refreshed with exactly that P05 commit; execution-specific changes remain
+outside the base. Independent review found no important integration issue.
+The final combined Java 21 reactor passes **336 executions across 16 modules**,
+zero failures/errors/skips, in **2 minutes 9 seconds**. It includes frozen
+authority/provenance and worker isolation, root/relation execution, both fixture
+corrections, direct transaction races, real TCP Artemis and mandatory guards.
+The final combined revision requires its own CI results.
+
 ## Remaining environment acceptance
 
 The complete canonical gate is `./mvnw -B verify -Pci -DrunOnnxTests=true`.
@@ -220,9 +307,10 @@ project's supported local Chrome mode and bounded JVM heaps (Maven 640 MiB, test
 JVM 1,536 MiB). The 130-execution rerun is green; the interrupted full attempt is
 not a green canonical gate.
 
-The current workspace has no Docker, Kubernetes or CNI runtime. PostgreSQL,
-Oracle and SQL Server execution, real constrained multi-pod operation, broker HA
-failover and production capacity still require the existing CI/deployment lanes.
+The current workspace has no Docker, Kubernetes or CNI runtime. Remote PostgreSQL
+and constrained multi-pod evidence is recorded above; Oracle and SQL Server still
+require successful corrected-head vendor reports. Broker HA failover and
+production capacity require their target-environment acceptance.
 The local whole-process measurement above is complete. No thresholds, test
 exclusions or required checks were weakened.
 
