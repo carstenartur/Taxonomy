@@ -13,6 +13,7 @@ import java.sql.SQLException;
 import java.util.*;
 import com.taxonomy.analysis.backup.AnalysisRunSelection.Key;
 import com.taxonomy.analysis.backup.AnalysisRunSelection.Run;
+import com.taxonomy.analysis.cluster.ClusterAnalysisBackupExport;
 import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Captures persisted analysis work; worker ownership is never portable. */
@@ -25,11 +26,13 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("analysis"); }
     @Override public int schemaVersion() { return 1; }
-    @Override public Set<String> categories() { return Set.of("com.taxonomy.analysis.session.AnalysisWorkingDraft", "com.taxonomy.analysis.recovery.AnalysisContinuationRun", "com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint"); }
+    @Override public Set<String> categories() { return Set.of("com.taxonomy.analysis.session.AnalysisWorkingDraft", "com.taxonomy.analysis.recovery.AnalysisContinuationRun", "com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint",
+            "com.taxonomy.analysis.cluster.ClusterAnalysisRun", "com.taxonomy.analysis.cluster.ClusterAnalysisWork",
+            "com.taxonomy.analysis.cluster.ClusterAnalysisInput", "com.taxonomy.analysis.cluster.ClusterAnalysisEvent"); }
     @Override public List<String> omissions(BackupProfile profile) {
-        if (profile == BackupProfile.SELECTED_VERSION) return List.of("analysis: drafts and continuations are not versioned by Git and cannot be attributed to a selected historical commit");
-        if (!profile.includesHistory()) return List.of("analysis: stale draft results, earlier continuations and unattached historical checkpoints are excluded", "analysis: worker claims and live execution are excluded");
-        return List.of("analysis: worker claims and live execution are excluded");
+        if (profile == BackupProfile.SELECTED_VERSION) return List.of("analysis: drafts, continuations and clustered runs are not versioned by Git and cannot be attributed to a selected historical commit");
+        if (!profile.includesHistory()) return List.of("analysis: stale draft results, earlier continuations/clustered runs and unattached historical checkpoints are excluded", "analysis: worker claims, broker deliveries, provider permits and live execution are excluded");
+        return List.of("analysis: worker claims, broker deliveries, provider permits and live execution are excluded");
     }
     @Override public void write(SnapshotContext snapshot,ComponentSink sink) throws IOException {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
@@ -89,6 +92,12 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
             if (!run.id().equals(text(r,"question_run_id")) || !run.equals(includedRuns.get(run.id())))
                 throw new IOException("Analysis question reference is inconsistent");
             return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),text(r,"node_codes"),text(r,"detail_json"),text(r,"prompt_text"),text(r,"state"),r.getInt("attempts"),r.getLong("started_at"));
+        });
+        new ClusterAnalysisBackupExport(rows, principalScope).write(snapshot, sink, (owner, authority, businessText, terminal) -> {
+            if (authority.workspaceId() == null || authority.branch() == null) return !terminal;
+            String tenant = new RepositoryTenantIdentity(authority.repositoryId(), "WORKSPACE:" + authority.workspaceId(), authority.branch()).scopeKey();
+            var key = new DraftKey(tenant, draftOwner(owner));
+            return currentTexts.containsKey(key) ? Objects.equals(currentTexts.get(key), textHash(businessText)) : !terminal;
         });
     }
     private static String draftOwner(String owner) {

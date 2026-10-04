@@ -1,5 +1,7 @@
 # Betriebshandbuch
 
+Verteilte Analyse mit externem Artemis: [Bereitstellung, TLS/Secrets, Worker-Skalierung, HA und Administration](#betrieb-mit-externem-artemis-broker).
+
 Dieses Dokument beschreibt die betrieblichen Verfahren für den Betrieb des Taxonomy Architecture Analyzer in Produktionsumgebungen.
 
 ---
@@ -387,3 +389,279 @@ server {
 - [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md) — Deployment-Checkliste für Behörden
 - [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) — alle Umgebungsvariablen
 - [Sicherheit](SECURITY.md) — Sicherheitsarchitektur und Härtung
+
+---
+
+## Betrieb mit externem Artemis-Broker
+
+Standard bleibt der Transport `local` mit Laufzeitrolle `all`. Verteilte Analysen
+verwenden dasselbe Taxonomy-Image für Web-Pods mit Rolle `coordinator` und separat
+skalierbare Pods mit Rolle `worker`. Die Datenbank ist die Autorität für Operationen,
+Quellkontext, Aufgabeneffekte, Abbruch und Replay; der externe Broker übernimmt die
+Zustellung. Produktions-Pods starten keinen eingebetteten Broker.
+
+### Coordinator und Worker-Sets bereitstellen
+
+Alle Pods benötigen dieselbe externe Datenbank, eine gemeinsame unveränderliche
+Image-Version, dasselbe Zielpräfix sowie passende Provider- und Quellkonfiguration.
+Keine private HSQLDB pro Pod verwenden. Reine Worker laden exakte Root-Snapshots
+für ihre konfigurierten Roots statt den globalen Katalog und seine Indizes zu
+initialisieren. Der öffentliche Ingress führt nur zu Coordinators. Zusätzliche
+Worker lösen nicht automatisch die Sitzungs- und Hintergrundjob-Koordination
+mehrerer Web-Replikate; dafür bleibt `scaling.allowMultipleReplicas` erforderlich.
+
+Das [Artemis-Overlay](../../deploy/helm/taxonomy/values-artemis.yaml) erzeugt ein
+Coordinator-Deployment, ein CP-Set mit zwei Replikaten und ein Set für die übrigen
+sieben Roots. Das ist ein Beispiel, keine vorgeschriebene Topologie. Ein Set kann
+mehrere Roots besitzen; null Replikate pausieren dieses Set. Für jeden auswählbaren
+Root einschließlich Relation-Zielroots muss ein Consumer verfügbar sein.
+
+```bash
+helm upgrade --install taxonomy deploy/helm/taxonomy \
+  --namespace taxonomy \
+  --values deploy/helm/taxonomy/values-artemis.yaml \
+  --values /secure/config/taxonomy-site.yaml \
+  --set existingSecret=taxonomy-secrets \
+  --set image.digest=sha256:REPLACE_WITH_VERIFIED_IMAGE_DIGEST
+```
+
+Die Standortdatei enthält geprüfte Endpunkte und Policy-Selektoren, keine
+Zugangsdaten. Den Digest-Platzhalter durch einen echten Digest mit 64 Zeichen
+ersetzen. `taxonomy-artemis` außerhalb des Charts über den Secret-Manager oder
+geschützte Dateien mit `ARTEMIS_USER` und `ARTEMIS_PASSWORD` bereitstellen. Beide
+werden als verpflichtende Secret-Referenzen injiziert; das Chart erzeugt keine
+Zugangsdaten. Einen Broker-Anwendungsbenutzer ohne Verwaltungsrechte verwenden.
+Datenbank- und Provider-Secrets folgen weiterhin `existingSecret` / `secretEnv`.
+
+Nur das gewünschte Set ändern und erneut mit denselben Helm-Werten bereitstellen:
+
+```yaml
+analysis:
+  workerSets:
+    - name: cp
+      replicas: 4
+      shards: [CP]
+      consumersPerShard: 1
+    - name: general
+      replicas: 1
+      shards: [BP, BR, CI, CO, CR, IP, UA]
+      consumersPerShard: 1
+```
+
+Helm ersetzt Listen vollständig: Die übrigen Sets in der Wertedatei erhalten.
+Jeder Worker konsumiert Subtaxonomie- und Relation-Queues seiner Roots;
+`consumersPerShard` gilt pro Aufgabenfamilie. HTTP-Kapazität zusätzlich mit
+Provider-Permits begrenzen. Ein optionaler `resources`-Block pro Set überschreibt
+die gemeinsamen Ressourcen. Worker nutzen flüchtige Arbeitsverzeichnisse;
+dauerhafte Operationen, Ergebnisse und unveränderliche Quell-Snapshots liegen in
+der gemeinsamen Datenbank. Kein gemeinsam beschreibbares Lucene-Volume verwenden.
+
+### TLS und NetworkPolicy
+
+Jeder TCP-Connector einer Failover-URL benötigt `sslEnabled=true`. Zertifikatsketten-
+und Hostnamenprüfung aktiviert lassen; niemals `trustAll=true` oder
+`verifyHost=false` verwenden. Bei `requireTls=true` weist das Chart sichtbar
+unsichere URLs zurück. `requireTls=false` ist nur für ausdrücklich isolierte,
+kurzlebige Testnetze vorgesehen. Für eigene CAs können PKCS12/JKS-Stores über
+`analysis.artemis.tlsSecret` schreibgeschützt unter `/var/run/taxonomy-artemis`
+eingebunden werden. `trustStorePath`/`trustStoreType` sowie bei mTLS
+`keyStorePath`/`keyStoreType` beziehen sich auf diese Dateien.
+
+Enthalten Connector-Optionen ein Store-Passwort, die **gesamte Broker-URL** als
+Secret-Schlüssel `ARTEMIS_URL` hinterlegen:
+
+```yaml
+analysis:
+  artemis:
+    brokerUrl: ""
+    brokerUrlSecretKey: ARTEMIS_URL
+    existingSecret: taxonomy-artemis
+    tlsSecret: taxonomy-artemis-tls
+```
+
+Helm kann Secret-Inhalte nicht prüfen. Bei Erstellung/Rotation sämtliche TLS-,
+Trust- und Hostnamenoptionen kontrollieren. Nach URL-/Credential-Rotation Pods neu
+starten; eine aktualisierte Store-Datei ersetzt die laufende JMS-Connection-Factory
+nicht. Passwörter gehören weder in `JAVA_OPTS` noch in normale Werte, Render-Artefakte
+oder die Shell-Historie. Siehe [Transport-Konfiguration](https://artemis.apache.org/components/artemis/documentation/latest/configuring-transports.html).
+
+`analysis.artemis.egress` ergänzt Web- und Worker-NetworkPolicies um Regeln mit
+Ziel **und** TCP-Port. Alle Primary-/Backup-Adressen einschließlich vom Broker
+angekündigter Topologie-Endpunkte freigeben. DNS hat eine eigene Regel. Mit
+`allowSameNamespaceEgress=false` brauchen Datenbank, Provider, OIDC, OTLP und weitere
+Dienste eigene geprüfte Regeln unter `networkPolicy.egress`. Kubernetes-NetworkPolicy
+löst keine FQDNs auf: geprüfte CIDRs oder Namespace-/Pod-Selektoren verwenden,
+alternativ separat verwaltete CNI-FQDN-Policies. Rendering prüft die Regeln; nur
+ein Cluster mit durchsetzender CNI prüft ihre tatsächliche Wirkung.
+
+Worker haben standardmäßig keinen Service und verweigern eingehenden Verkehr.
+Bei aktiviertem ServiceMonitor entstehen interne ClusterIP-Metrik-Services;
+`analysis.workerMetricsIngressFrom` muss die Monitoring-Peers benennen. Web-Service
+und Ingress wählen niemals Worker-Pods aus. Das Chart erstellt keine Broker-Services,
+Administrationsports, Hawtio- oder Jolokia-Routen.
+
+### Broker-Konfiguration und Zustellung
+
+[broker.xml](../../deploy/artemis/broker.xml) ist ein echtes Artemis-Beispiel, das
+`ArtemisBrokerConfigurationTest` mit der Broker-Abhängigkeit des Repositories parst.
+Adress-, ACL- und Zustelleinstellungen in die extern verwaltete Installation
+übernehmen. Geschützte TLS-Schlüssel, JAAS-Benutzer/Rollen, dauerhafte Datenträger
+und HA separat konfigurieren; die Datei ist keine vollständige HA-Installation.
+Änderungen an `destinationPrefix` erfordern passende Broker-Namen und ACL-Muster.
+
+| Ziel unter `taxonomy.analysis` | Routing und Aufbewahrung |
+|---|---|
+| `subtaxonomy.BP` … `subtaxonomy.UA` | Acht dauerhafte Anycast-Queues; idempotenter Effekt pro deterministischer Aufgabenidentität |
+| `relation.BP` … `relation.UA` | Acht dauerhafte Anycast-Queues, geroutet nach Zielroot |
+| `relation.general` | Kompatibilitätsqueue für mehrere Roots; nur Consumer mit allen Roots |
+| `completion` | Dauerhafte Anycast-Coordinator-Queue ohne Broker-Verfall |
+| `progress`, `control` | Multicast mit flüchtigem Abonnement pro Prozess; Datenbank bleibt Replay-/Abbruchautorität |
+| `rejected` | Ungültige, unbekannte oder falsch geroutete Nachrichten |
+| `dlq`, `expiry` | Dauerhafte Fehlereingänge; der Coordinator setzt bekannte Aufgaben auf fehlgeschlagen |
+| `failed` | Inhaltsfreie Fehlerdiagnosen nach dauerhafter Zustandsänderung für Administratoren |
+| `provider-permits.<quota-group>` | Separat provisionierte dauerhafte Anycast-Tokens ohne Verfall oder endliches Zustelllimit |
+
+Das Beispiel begrenzt Aufgaben auf zehn Zustellversuche mit wachsendem Abstand bis
+30 Sekunden. Subtaxonomie-/Relation-Nachrichten verfallen nach 24 Stunden, falls
+keine JMS-TTL gesetzt wurde. Diese Beispielwerte mit Anwendungsfristen,
+Wiederherstellungsfenstern und Datenträgerkapazität abstimmen. DLQ/Expiry bedeutet
+Fehler, nicht erfolgreiche Fertigstellung. Der Coordinator setzt bekannte Aufgaben dauerhaft auf fehlgeschlagen und leitet
+inhaltsfreie Diagnosen nach `failed` weiter; die Datenbank behält den expliziten
+End-/Teilzustand. Ursache vor selektiver Wiederherstellung beheben; niemals
+Tenant-/Quell-/Task-IDs umschreiben.
+Bei vollem Speicher verwendet der Broker dauerhaftes Paging statt Nachrichten
+zu verwerfen. Siehe [Adressparameter](https://artemis.apache.org/components/artemis/documentation/latest/address-settings.html).
+
+Aufgabeneffekte werden vor der Zustellbestätigung gespeichert. Ein Worker-Absturz
+kann Redelivery und Replay gespeicherter Effekte auslösen; genau einmalige externe
+Provider-Abrechnung ist nicht garantiert. Dispatch-Recovery läuft bei Start,
+Wiederverbindung oder administrativer Reparatur
+(`POST /api/admin/analysis/dispatch/repair`), nicht über periodische DB-Abfragen.
+Abbruch wird vor dem Control-Event gespeichert; ein verpasstes Live-Event kann
+abgebrochene Arbeit nicht wieder aktivieren.
+
+### Clusterweite Provider-Permits
+
+`taxonomy.analysis.provider-permits.enabled` ausdrücklich aktivieren und jeden
+HTTP-Provider einer Quotengruppe zuordnen. Beispielsweise teilen
+`provider-groups.openai=shared-openai` und
+`provider-groups.custom-openai=shared-openai` die Tokens desselben Upstream-Kontos.
+Die Quotenzuordnung nicht aus Anzeigenamen ableiten. Vor dem Start der Consumer
+mit dem separaten einmaligen Provisionierer genau N dauerhafte Nachrichten in
+der neuen Queue anlegen. Anwendungsstarts erzeugen keine Tokens. Eine vorhandene
+Queue niemals anhand der aktuell verfügbaren Nachrichten auffüllen: Tokens
+können in offenen Transaktionen gebunden sein.
+
+Für Helm eine explizite JSON-Map verwenden, damit Provider-Namen wie
+`custom-openai` erhalten bleiben. Reine Umgebungsvariablen können Trennzeichen
+verlieren. In ein vorhandenes JSON-Objekt integrieren; Rolle und Transport
+weiterhin über `analysis`-Chart-Werte setzen:
+
+```yaml
+config:
+  SPRING_APPLICATION_JSON: >-
+    {"taxonomy":{"analysis":{"provider-permits":{"enabled":true,
+    "provider-groups":{"openai":"shared-openai","custom-openai":"shared-openai"}}}}}
+```
+
+Den Provisionierer aus der gepackten Anwendung mit separatem Provisionierungskonto
+über `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL`, `TAXONOMY_ANALYSIS_ARTEMIS_USER` und
+`TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` starten. TLS-Vorgabe und optionales
+`TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX` gelten weiterhin. Beispiel
+für zwei Permits in `shared-openai` (außerhalb des Images den Jar-Pfad anpassen):
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitProvisioner \
+  -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher shared-openai 2
+```
+
+Permit-Queues dürfen weder verfallen noch nach endlich vielen Versuchen in der DLQ
+landen. Das XML setzt unbegrenzte Zustellversuche, keinen Verfall, kein Auto-Delete
+und kein Leeren bei null Consumern. Die Broker-Transaktionsfrist muss länger als
+der längste physische HTTP-Aufruf sein; die beispielhaften 900 Sekunden mit den
+Provider-Timeouts abstimmen. Bei Ausfall eines Halters wird das unbestätigte Token
+wieder verfügbar. Unterbrochene Erstprovisionierung nur bei gestoppten Consumern
+prüfen: Zwischen Queue-Anlage und Token-Commit kann eine leere Queue bleiben, die
+bewusst neu angelegt werden muss. Gleichzeitigkeit ist keine clusterweite
+RPM-/TPM-/RPD-Grenze; vorhandene lokale Ratenbegrenzungen bleiben bestehen.
+
+### Readiness, Monitoring und Administration
+
+| Signal | Bedeutung |
+|---|---|
+| Web `/actuator/health/readiness` | `readinessState,taxonomy`: Editor/Katalog bleiben bei Brokerausfall nutzbar |
+| Worker `/actuator/health/readiness` | `readinessState,analysisBroker`: Broker-Verbindung ohne globalen Katalog |
+| `/actuator/health/broker` | Broker-Gruppe; Detailzugriff unterliegt weiterhin Actuator-Autorisierung |
+| `/actuator/health/liveness` | Prozesszustand; Brokerausfall darf keine Neustartschleife auslösen |
+
+Worker-Readiness beweist weder Provider-Zugangsdaten noch Quotentokens, DNS/TLS zum
+Modell, Modellverfügbarkeit oder erfolgreiche Inferenz. Provider-Konfiguration
+über vorhandene autorisierte Prüfungen validieren, ohne unfreigegebene kostenpflichtige
+Anfragen auszulösen. Ein getrennter Worker kann bereits empfangene Arbeit noch
+abschließen; das dauerhafte Protokoll sichert die Wiederherstellung.
+
+Der vorhandene authentifizierte `/actuator/prometheus`-ServiceMonitor erfasst
+Web- und Worker-Metrik-Services. Das getrennte Maschinen-Secret `ADMIN_TOKEN`
+verwenden, niemals das interaktive Login-Passwort. Externe Broker-Metriken benötigen
+dessen Exporter/Metrik-Plugin und einen separat verwalteten Monitor. Alarme für
+Queue-Tiefe ohne Consumer, anhaltende Delivering-/Redelivery-Zahlen,
+Expiry-/DLQ-/Rejected-Zuwachs, Verbindungsfehler und Paging-Plattenfüllung setzen.
+Bei Permit-Queues verfügbare plus zugestellte Tokens mit der provisionierten
+Kapazität vergleichen. Anwendungssignale beschreiben dauerhafte Aufgaben,
+Broker-Metriken die Zustellung; keine Operations-/Benutzer-IDs als Metriklabels.
+Siehe [Broker-Metriken](https://artemis.apache.org/components/artemis/documentation/latest/metrics.html).
+
+Hawtio/Jolokia sind Administrationsoberflächen. Konsole an private Interfaces
+binden, TLS und authentifizierte Administratorrollen erzwingen und Netzwerkzugriff
+auf Admin-Netze oder authentifiziertes Port-Forwarding begrenzen. JAAS und
+Konsolen-/Jolokia-Autorisierung ausdrücklich konfigurieren; Anwendungsbenutzer
+erhalten keine `manage`-/Admin-Rollen. Hawtio-Proxy-Allowlist und Jolokia-Origin-Policy
+eng halten. Weder 8161 noch 8778 oder Verwaltungskontexte über Taxonomys öffentlichen
+Ingress veröffentlichen. Normales Monitoring nutzt Zähler statt Nachrichteninhalte
+oder Prompt-/Antwortaufzeichnungen. Siehe
+[Broker-Sicherheit](https://artemis.apache.org/components/artemis/documentation/latest/security.html)
+und [Verwaltungskonsole](https://artemis.apache.org/components/artemis/documentation/latest/management-console.html).
+
+### HA, Upgrades und Wiederherstellungsübungen
+
+Ein Primary-/Backup-Paar mit dauerhaften Journal-, Bindings-, Paging- und
+Large-Message-Daten über unterstützte Shared-Store- oder Replikations-HA betreiben.
+Quorum/Fencing und Netzpartitionen gemäß gewählter Policy konfigurieren. Zwei
+unabhängige Broker hinter einem Loadbalancer bilden keine gemeinsame dauerhafte
+Queue oder Permit-Kapazität. Eine Failover-URL benennt Endpunkte, repliziert aber
+keine Daten. Pro Permit-Queue muss während Failover genau eine logische Autorität
+bestehen. Aktivierung und Failback mit TLS und tatsächlich angekündigten Hostnamen
+prüfen. Siehe [Artemis-HA](https://artemis.apache.org/components/artemis/documentation/latest/ha.html).
+
+`Recreate` wirkt pro Deployment. Es stoppt nicht alle Worker-Sets, bevor der
+Coordinator die gemeinsame Datenbank migriert. Ohne bestätigte Schema-Kompatibilität
+zwischen Versionen Aufnahme stoppen, Arbeit beenden/abbrechen oder dokumentieren,
+alle Taxonomy-Deployments auf null skalieren und deren Ende abwarten. Datenbank und
+Broker sichern, danach das neue Image für alle Rollen bereitstellen. Nach
+Migration/Readiness Redelivery und Dispatch-Reparatur prüfen und Betrieb aufnehmen.
+Keine ältere wiederhergestellte Datenbank ungeprüft mit einem neueren Broker-Journal
+kombinieren. Rolling Updates erfordern weiterhin die ausdrückliche
+versionsspezifische Kompatibilitätsbestätigung.
+
+Der Maven-Test `HelmArtemisContractTest` rendert lokale, verteilte und begrenzte
+Profile und prüft unabhängige CP-Skalierung, TLS/Secrets, Selektortrennung, Metriken
+und Broker-Egress. `ArtemisBrokerConfigurationTest` prüft echte XML-Parser und Ziele:
+
+```bash
+./mvnw -B -pl taxonomy-build -am test \
+  -Dtest=HelmArtemisContractTest,HelmConstrainedSmokeContractTest,ArtemisBrokerConfigurationTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+bash deploy/helm/taxonomy/verify.sh
+```
+
+Diese Tests ersetzen weder den vorhandenen #638-Cluster-Smoke noch die
+Mehrpod-Fehlerabnahme. Dessen Single-Pod-Quota ist keine Kapazitätszusage für die
+vier Anwendungspods dieses Beispiels plus externe Abhängigkeiten. In einem
+wegwerfbaren Cluster mit durchsetzender CNI, externer Datenbank und HA-Broker
+Belege für unabhängige CP-Skalierung, CP-Worker-Verlust bei weiterlaufendem IP,
+Broker-Neustart/Failover, Coordinator-Verlust, SSE-Wiederverbindung zu einem anderen
+Web-Pod, Expiry/DLQ, Permit-Recovery und verweigerten sonstigen/Admin-Egress sammeln.
+Deterministischen Provider und echte Katalogroots verwenden. Befehle,
+Image-/Chart-Versionen, Ressourcen, Commit, Zeiten und Ergebnisse ohne Secrets
+oder Payloads festhalten; reine Render-Tests niemals als erfolgreiche Live-Übung
+bezeichnen.

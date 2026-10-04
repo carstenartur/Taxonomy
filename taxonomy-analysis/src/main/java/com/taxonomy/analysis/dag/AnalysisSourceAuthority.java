@@ -3,17 +3,22 @@ package com.taxonomy.analysis.dag;
 import java.util.Objects;
 
 /**
- * Exact repository/workspace/branch/source-commit identity a task must read.
+ * Exact architecture repository/workspace/branch/source-commit identity of a task.
  *
  * <p>This is routing and provenance data, not authorization: a consumer
  * revalidates scope and authority before any effect. A worker must never fall
  * back to another branch, commit, workspace or a global "current" taxonomy.</p>
  *
+ * <p>The official shared catalogue has independent source-journal provenance,
+ * retained with its immutable root snapshots at admission. An architecture Git
+ * commit does not identify a historical official workbook. Workers read those
+ * admitted catalogue snapshots under this operation scope.</p>
+ *
  * @param repositoryId exact logical repository
  * @param workspaceId  workspace, or {@code null} for a central scope
  * @param branch       exact Git branch, or {@code null} only when the compatibility
  *                     scope could not resolve one (never substituted by a guess)
- * @param sourceCommit exact commit the analysis reads, or {@code null} when the
+ * @param sourceCommit exact architecture commit the analysis reads, or {@code null} when the
  *                     repository has not yet recorded a commit
  */
 public record AnalysisSourceAuthority(String repositoryId, String workspaceId, String branch,
@@ -36,7 +41,7 @@ public record AnalysisSourceAuthority(String repositoryId, String workspaceId, S
         }
     }
 
-    /** Equality is the authority check; an equal value names the same exact read scope. */
+    /** Compare exact read scopes after authorization; identity equality does not grant access. */
     public boolean sameAs(AnalysisSourceAuthority other) {
         return Objects.equals(this, other);
     }

@@ -2,7 +2,7 @@ name: Security Scan
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/artemis-execution-base ]
     paths:
       - '**/pom.xml'
       - 'taxonomy-*/src/**'

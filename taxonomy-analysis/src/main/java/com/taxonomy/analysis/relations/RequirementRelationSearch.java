@@ -78,52 +78,8 @@ public final class RequirementRelationSearch {
             plan.restore(previous);
             budget.plan = plan;
             var protocol = new RelationSearchProtocol(budget::complete, provider);
-            int size = options.limits().batchSize();
-            for (int i = 0; i < nodes.size();) {
-                checkpoint.run();
-                int length = Math.min(size, options.maxSources() - i % options.maxSources());
-                var batch = nodes.subList(i, Math.min(i + length, nodes.size()));
-                plan.sourceBatch(batch.stream().map(Node::id).toList());
-                try {
-                    var assessments = protocol.contributions(original, batch);
-                    sources.addAll(assessments);
-                    for (var assessment : assessments) {
-                        plan.assessed(assessment);
-                        if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
-                                + assessment.node().id() + ": " + assessment.question());
-                    }
-                } catch (AnalysisCheckpointSession.DeferredException deferred) {
-                    warnings.add(deferred.getMessage() + ": " + (nodes.size() - i) + " sources remain unassessed.");
-                    break;
-                } catch (RelationSearchEngine.InvalidResponseException invalid) {
-                    warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
-                }
-                i += batch.size();
-            }
-            List<List<Intent>> routesByContribution = new ArrayList<>();
-            for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
-                List<Intent> intents = new ArrayList<>();
-                for (RelationType type : RelationType.values()) {
-                    Set<String> allowed = rules.allowedTargetRoots(contribution.source().root(), type);
-                    List<Node> outgoing = roots.stream().filter(n -> allowed.contains(n.root())).toList();
-                    for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
-                    List<Node> incoming = roots.stream().filter(n -> rules.allowedTargetRoots(n.root(), type)
-                            .contains(contribution.source().root())).toList();
-                    for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
-                }
-                if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
-                        + ": the current root profile cannot route this contribution; not evidence of absence.");
-                routesByContribution.add(intents);
-            }
-            // Complete an admitted branch, then give the next contribution a turn.
-            // One high-ranked source must not spend the entire budget on its types.
-            List<Intent> intents = new ArrayList<>();
-            int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);
-            for (int round = 0; round < rounds; round++) {
-                for (List<Intent> routes : routesByContribution) {
-                    if (round < routes.size()) intents.add(routes.get(round));
-                }
-            }
+            assessSources(original, nodes, options, protocol, plan, sources, warnings, batch -> { });
+            List<Intent> intents = intents(sources, roots, warnings);
             Limits l = options.limits();
             plan.expect(intents);
             var engine = new RelationSearchEngine(node -> {
@@ -163,6 +119,192 @@ public final class RequirementRelationSearch {
                 sources, result, budget.calls, options.limits().maxCalls(),
                 (System.nanoTime() - start) / 1_000_000, warnings, stop,
                 progress, tasks);
+    }
+
+    /**
+     * Extract source contributions once, from an immutable, complete source cohort.
+     * The caller persists this scalar plan before dispatching target work. The
+     * supplied catalogue must be bound to that cohort's exact frozen authority.
+     * A missing root result must remain a prerequisite, not a synthetic zero score.
+     */
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original,
+            Map<String, Integer> scores, List<String> sourceResultIds, Options options, boolean includeRelations) {
+        if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
+        Objects.requireNonNull(scores); Objects.requireNonNull(options); Objects.requireNonNull(sourceResultIds);
+        long started = System.nanoTime();
+        List<Node> nodes = List.of(), roots = List.of();
+        List<SourceAssessment> sources = new ArrayList<>();
+        List<RelationSearchDistribution.Item> items = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        String stop = "";
+        int[] charged = {0, 0}; // Immutable operation charges: calls, source nodes, including durable replay.
+        if (includeRelations) try {
+            checkpoint.run();
+            List<Node> offered = List.copyOf(catalogue.roots());
+            ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());
+            roots = offered.stream().sorted(Comparator.comparing(Node::id)).toList();
+            nodes = sourceNodes(scores, warnings);
+            var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
+            var protocol = new RelationSearchProtocol((step, ids, prompt) -> completion.apply(prompt), provider);
+            assessSources(original, nodes, options, protocol, progress, sources, warnings, batch -> {
+                if (charged[0] >= options.limits().maxCalls())
+                    throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+                if (charged[1] + batch.size() > options.maxSources())
+                    throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
+                charged[0]++; charged[1] += batch.size(); progress.calls(charged[0]);
+            });
+            List<Intent> intents = intents(sources, roots, warnings);
+            Map<String, Integer> bounds = new HashMap<>();
+            int cap = Math.min(options.limits().maxCalls(), options.limits().maxWorkItems()) + 1;
+            for (Intent intent : intents) {
+                Node root = intent.roots().getFirst();
+                int bound = bounds.computeIfAbsent(root.root(), unused ->
+                        queryBound(List.of(root), 0, Set.of(), options.limits(), cap, new HashMap<>()));
+                Contribution contribution = intent.contribution();
+                int sourceIndex = -1, contributionIndex = -1;
+                for (int n = 0; n < sources.size(); n++) {
+                    int at = sources.get(n).contributions().indexOf(contribution);
+                    if (at >= 0) { sourceIndex = n; contributionIndex = at; break; }
+                }
+                items.add(new RelationSearchDistribution.Item(items.size(), sourceIndex, contributionIndex,
+                        intent.type(), intent.direction(), com.taxonomy.analysis.dag.TaxonomyShardRoot.of(root.root()), bound));
+            }
+        } catch (RuntimeException failure) { stop = failureReason(failure); }
+        return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
+                nodes, roots, sources, items, charged[0], (System.nanoTime() - started) / 1_000_000,
+                warnings, stop, includeRelations);
+    }
+
+    /**
+     * Evaluate a persisted grant using only its frozen target shard. Source
+     * catalogue reads and contribution extraction are deliberately absent here.
+     * Admission through RelationSearchDistribution.ready is the coordinator's
+     * durable responsibility; the worker enforces the admitted local allowance.
+     */
+    public RelationSearchDistribution.WorkResult evaluate(String original, RelationSearchDistribution.Plan plan,
+                                                          RelationSearchDistribution.Work work) {
+        Objects.requireNonNull(plan); Objects.requireNonNull(work);
+        if (original == null || !sha256(original).equals(plan.originalSha256())
+                || !work.preparationId().equals(plan.preparationId()) || work.ordinal() >= plan.items().size())
+            throw new IllegalArgumentException("Foreign relation work or original requirement");
+        var item = plan.items().get(work.ordinal());
+        if (!work.targetRoot().equals(item.targetRoot()) || work.maxCalls() > item.maxQueries()
+                || work.maxWorkItems() > item.maxQueries()
+                || work.maxCalls() > plan.options().limits().maxCalls() - plan.sourceCalls()
+                || work.maxWorkItems() > plan.options().limits().maxWorkItems())
+            throw new IllegalArgumentException("Invalid relation work grant");
+        Intent intent = RelationSearchDistribution.intent(plan, item);
+        Node target = intent.roots().getFirst();
+        List<Node> offered = List.copyOf(catalogue.roots());
+        ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());
+        if (offered.stream().noneMatch(target::equals))
+            throw new IllegalArgumentException("Missing or different frozen relation target shard");
+        int[] calls = {0};
+        var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
+            if (step == Step.SOURCES) throw new IllegalStateException("Prepared source extraction cannot repeat");
+            return completion.apply(prompt);
+        }, provider);
+        Limits limits = plan.options().limits();
+        var engine = new RelationSearchEngine(node -> {
+            if (!node.root().equals(work.targetRoot().code())) throw new IllegalArgumentException("Foreign target node");
+            List<Node> children = List.copyOf(catalogue.children(node));
+            if (children.stream().anyMatch(child -> !child.root().equals(work.targetRoot().code())))
+                throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
+            return children;
+        }, query -> {
+            if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+            if (calls[0] >= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
+            calls[0]++;
+            return protocol.evaluate(query);
+        }, checkpoint, new RelationSearchEngine.Observer() { }, true);
+        Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
+        String stop = "";
+        try {
+            result = engine.search(original, List.of(intent), limits);
+        } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
+            result = interrupted.partialResult(); stop = failureReason(interrupted.getCause());
+        } catch (RuntimeException failure) { stop = failureReason(failure); }
+        return new RelationSearchDistribution.WorkResult(work, result, calls[0], stop);
+    }
+
+    /** A conservative branch bound, capped above any spendable operation budget. */
+    private int queryBound(List<Node> candidates, int depth, Set<String> path, Limits limits,
+                           int cap, Map<String, List<Node>> childrenCache) {
+        ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());
+        int total = (candidates.size() + limits.batchSize() - 1) / limits.batchSize();
+        for (Node node : candidates) {
+            if (total >= cap) return cap;
+            checkpoint.run();
+            int branch = node.container() ? 0 : 1; // An admitted concrete match requires verification.
+            if (depth < limits.maxDepth()) {
+                List<Node> children = childrenCache.computeIfAbsent(node.id(), unused -> List.copyOf(catalogue.children(node)));
+                ChildAssessmentContract.validateCandidates(children.stream().map(Node::id).toList());
+                if (children.stream().anyMatch(child -> !child.root().equals(node.root())))
+                    throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
+                Set<String> next = new HashSet<>(path); next.add(node.id());
+                List<Node> safe = children.stream().filter(child -> !next.contains(child.id())).toList();
+                if (!safe.isEmpty()) branch = Math.max(branch,
+                        queryBound(safe, depth + 1, Set.copyOf(next), limits, cap, childrenCache));
+            }
+            total = Math.min(cap, total + branch);
+        }
+        return total;
+    }
+
+    private void assessSources(String original, List<Node> nodes, Options options, RelationSearchProtocol protocol,
+                               RelationWorkPlan plan, List<SourceAssessment> sources, List<String> warnings,
+                               java.util.function.Consumer<List<Node>> admission) {
+        int size = options.limits().batchSize();
+        for (int i = 0; i < nodes.size();) {
+            checkpoint.run();
+            int length = Math.min(size, options.maxSources() - i % options.maxSources());
+            var batch = nodes.subList(i, Math.min(i + length, nodes.size()));
+            plan.sourceBatch(batch.stream().map(Node::id).toList());
+            try {
+                admission.accept(batch);
+                var assessments = protocol.contributions(original, batch);
+                sources.addAll(assessments);
+                for (var assessment : assessments) {
+                    plan.assessed(assessment);
+                    if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
+                            + assessment.node().id() + ": " + assessment.question());
+                }
+            } catch (AnalysisCheckpointSession.DeferredException deferred) {
+                warnings.add(deferred.getMessage() + ": " + (nodes.size() - i) + " sources remain unassessed.");
+                break;
+            } catch (RelationSearchEngine.InvalidResponseException invalid) {
+                warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
+            }
+            i += batch.size();
+        }
+    }
+
+    private List<Intent> intents(List<SourceAssessment> sources, List<Node> roots, List<String> warnings) {
+    List<List<Intent>> routesByContribution = new ArrayList<>();
+    for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
+        List<Intent> intents = new ArrayList<>();
+        for (RelationType type : RelationType.values()) {
+            Set<String> allowed = rules.allowedTargetRoots(contribution.source().root(), type);
+            List<Node> outgoing = roots.stream().filter(n -> allowed.contains(n.root())).toList();
+            for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
+            List<Node> incoming = roots.stream().filter(n -> rules.allowedTargetRoots(n.root(), type)
+                    .contains(contribution.source().root())).toList();
+            for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
+        }
+        if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
+                + ": the current root profile cannot route this contribution; not evidence of absence.");
+        routesByContribution.add(intents);
+    }
+    // Complete an admitted branch, then give the next contribution a turn.
+    // One high-ranked source must not spend the entire budget on its types.
+    List<Intent> intents = new ArrayList<>();
+    int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);
+    for (int round = 0; round < rounds; round++) {
+        for (List<Intent> routes : routesByContribution) {
+            if (round < routes.size()) intents.add(routes.get(round));
+        }
+    }
+        return List.copyOf(intents);
     }
 
     private final class Budget {

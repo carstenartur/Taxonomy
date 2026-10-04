@@ -7,7 +7,11 @@ import org.springframework.stereotype.Component;
 @Component
 class AnalysisTransportModeValidator {
 
-    AnalysisTransportModeValidator(@Value("${taxonomy.analysis.transport.mode:local}") String mode) {
+    AnalysisTransportModeValidator(@Value("${taxonomy.analysis.transport.mode:local}") String mode,
+            @Value("${taxonomy.analysis.runtime-role:all}") String role) {
         ArtemisAnalysisSettings.artemisMode(mode);
+        var runtimeRole = ArtemisAnalysisTransportConfiguration.RuntimeRole.parse(role);
+        if (!ArtemisAnalysisSettings.artemisMode(mode) && runtimeRole != ArtemisAnalysisTransportConfiguration.RuntimeRole.ALL)
+            throw new IllegalArgumentException("Dedicated analysis roles require Artemis transport");
     }
 }

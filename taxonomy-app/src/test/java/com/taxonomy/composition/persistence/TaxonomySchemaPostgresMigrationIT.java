@@ -149,11 +149,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
+        assertClusterAnalysisSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
     }
 
     @Test
@@ -228,11 +229,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
+        assertClusterAnalysisSchema(dataSource);
     }
 
     private static void assertAnalysisRecoverySchema(DataSource dataSource) throws SQLException {
@@ -258,6 +260,25 @@ class TaxonomySchemaPostgresMigrationIT {
                 "run_id", "state");
         assertRecoveryIndex(dataSource, "analysis_question_checkpoint", "uq_analysis_question", false,
                 "run_id", "question_key");
+    }
+
+    private static void assertClusterAnalysisSchema(DataSource dataSource) throws SQLException {
+        var columns = java.util.Map.of(
+                "analysis_cluster_run", List.of("id", "username", "scope_key", "project_id", "requirement_id", "context_json", "command_json", "view_json", "result_json",
+                        "relation_plan_json", "state", "total_roots", "completed_roots", "event_revision", "created_at", "updated_at", "row_version"),
+                "analysis_cluster_work", List.of("id", "operation_id", "task_id", "task_type", "root_code", "ordinal_number",
+                        "message_json", "input_json", "result_json", "failure_reason", "state", "settled", "delivery_attempts", "started_at", "finished_at"),
+                "analysis_cluster_input", List.of("id", "operation_id", "root_code", "input_json"),
+                "analysis_cluster_event", List.of("id", "operation_id", "event_revision", "event_json"));
+        for (var table : columns.entrySet())
+            for (String column : table.getValue())
+                assertThat(columnExists(dataSource, table.getKey(), column)).as(table.getKey() + " " + column).isTrue();
+        assertRecoveryIndex(dataSource, "analysis_cluster_run", "idx_analysis_cluster_owner", true, "username", "created_at");
+        assertRecoveryIndex(dataSource, "analysis_cluster_run", "idx_analysis_cluster_scope", true, "username", "scope_key", "created_at");
+        assertRecoveryIndex(dataSource, "analysis_cluster_work", "idx_analysis_cluster_work_run", true, "operation_id", "ordinal_number");
+        assertRecoveryIndex(dataSource, "analysis_cluster_input", "idx_analysis_cluster_input_run", true, "operation_id");
+        assertRecoveryIndex(dataSource, "analysis_cluster_event", "idx_analysis_cluster_event_run", true, "operation_id", "event_revision");
+        assertRecoveryIndex(dataSource, "analysis_cluster_event", "uq_analysis_cluster_event_revision", false, "operation_id", "event_revision");
     }
 
     private static void assertAnalysisDispatchSchema(DataSource dataSource) throws SQLException {

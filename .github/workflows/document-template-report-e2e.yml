@@ -2,7 +2,7 @@ name: Document Template Report E2E
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/artemis-execution-base ]
     paths:
       - '.github/package.json'
       - '.github/package-lock.json'

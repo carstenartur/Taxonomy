@@ -347,13 +347,13 @@ Die Warnschwelle muss unter der Stoppschwelle liegen; diese darf höchstens 98 P
 
 ### Laufzeit der Streaming-Verbindung
 
-Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein; der Worker sendet das Endergebnis und schließt die Verbindung. Ein Verbindungsabbruch bricht weiterhin den Worker ab, und die HTTP-Zeitlimits der Provider bleiben unverändert. So verwirft kein festes Transportlimit eine zulässige lange Analyse oder deren Teilergebnis. Vorgeschaltete Proxys können die Verbindung weiterhin beenden; dann den gespeicherten Operationsstatus abfragen statt die Analyse neu zu starten.
+Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein. Im lokalen Modus bricht ein Verbindungsabbruch weiterhin den Worker ab. Im Artemis-Modus endet nach dauerhafter Aufnahme nur die Beobachtung; abgebrochen wird über den expliziten Operationsendpunkt. Die HTTP-Zeitlimits der Provider bleiben unverändert. Nach einem Proxy-Verbindungsabbruch kann der gespeicherte Lauf wieder geöffnet werden, ohne eine neue Analyse zu starten.
 
 ## Clustered analysis transport (opt-in) / Verteilte Analyse (optional)
 
 | Environment variable | Spring property | Default | Beschreibung |
 |---|---|---|---|
-| `TAXONOMY_ANALYSIS_RUNTIME_ROLE` | `taxonomy.analysis.runtime-role` | `all` | Katalog-/Indexrolle: `all` und `coordinator` behalten die bisherige Initialisierung bei; `worker` deaktiviert die globale Katalog-/Indexinitialisierung und benötigt für Katalogzugriffe gebundene eingefrorene Snapshots der exakten Quelle. Unbekannte Werte brechen den Start ab. |
+| `TAXONOMY_ANALYSIS_RUNTIME_ROLE` | `taxonomy.analysis.runtime-role` | `all` | `all` kombiniert Web und Worker; `coordinator` bedient Web und koordiniert dauerhafte Aufgaben; `worker` konsumiert konfigurierte Roots ohne globale Kataloginitialisierung. Getrennte Rollen benötigen Artemis. |
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` führt die Analyse im Prozess aus (Standard, kein Broker). `artemis` aktiviert den externen Apache-Artemis-Aufgabentransport. Jeder andere Wert bricht den Start ab. |
 | `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_ENABLED` | `taxonomy.analysis.provider-permits.enabled` | `false` | Aktiviert clusterweite Parallelitäts-Permits für physische Provider-Anfragen. Erfordert den Modus `artemis`, explizite Provider-Gruppenzuordnungen und provisionierte Permit-Queues. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | leer | Im Modus `artemis` erforderlich. `tcp://` (oder Failover-Liste `(tcp://a,tcp://b)?ha=true`) bzw. `vm://`. Wird weder protokolliert noch im Health-Endpunkt angezeigt. |
@@ -363,22 +363,31 @@ Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfiguri
 | `TAXONOMY_ANALYSIS_ARTEMIS_RETRY_INTERVAL_MS` | `taxonomy.analysis.artemis.retry-interval-ms` | `1000` | Anfangsintervall für Wiederverbindungen (100–60000 ms), verdoppelt bis 30 s. Unbegrenzte Versuche, blockieren den Start nie. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_CALL_TIMEOUT_MS` | `taxonomy.analysis.artemis.call-timeout-ms` | `30000` | Maximale Wartezeit auf eine Broker-Bestätigung (1000–300000 ms). Unbestätigte Aufgaben bleiben `WAITING_FOR_BROKER`. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX` | `taxonomy.analysis.artemis.destination-prefix` | `taxonomy.analysis` | Kleingeschriebenes, punktgetrenntes Präfix aller Analyse-Queues und -Adressen. |
-| `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Ob diese Instanz Aufgaben-Queues konsumiert. Ohne gebundene Handler wird keine Queue konsumiert. |
-| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | leer (alle acht Wurzeln) | Kommagetrennte Katalogwurzeln dieses Workers, z. B. `CP,IP`. Unbekannte oder doppelte Wurzeln brechen den Start ab. In der Laufzeitrolle `worker` muss jede Wurzel eines gebundenen Snapshots in dieser Menge enthalten sein. Nur Worker mit vollständigem Katalog übernehmen wurzelübergreifende Beziehungsarbeit. |
+| `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Ob diese Instanz Aufgaben-Queues konsumiert. Ein Coordinator konsumiert keine Worker-Queues. |
+| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | leer (alle acht Wurzeln) | Kommagetrennte Katalogwurzeln dieses Workers, z. B. `CP,IP`. Unbekannte oder doppelte Wurzeln brechen den Start ab. Worker verweigern nicht verfügbare Roots und fehlende exakte Quell-Snapshots. Die gemeinsame Relationsvorbereitung übernehmen die Rollen `all`/`coordinator`, unabhängig von den Root-Worker-Queues. |
 | `TAXONOMY_ANALYSIS_WORKER_CONSUMERS_PER_SHARD` | `taxonomy.analysis.worker.consumers-per-shard` | `1` | Parallele Konsumenten je konfigurierter Queue (1–64). |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_BATCH` | `taxonomy.analysis.dispatch.recovery-batch` | `200` | Versandabsichten pro Wiederherstellungsseite. |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_LIMIT` | `taxonomy.analysis.dispatch.recovery-limit` | `5000` | Höchstzahl erneut veröffentlichter Absichten pro Lauf; der Rest wartet auf den nächsten Auslöser. |
 
-Stand: Transport, dauerhafte Versandabsichten und Worker-Protokoll existieren, die
-produktive Analyse läuft aber in jedem Modus weiterhin im Prozess, bis die
-Aufgaben-Handler angebunden sind (Issue #1161, P04). Versandabsichten werden in der
-Datenbanktransaktion der Operation geschrieben und erst nach dem Commit veröffentlicht.
-Die Wiederherstellung veröffentlicht offene Absichten nur bei der ersten
-Broker-Verbindung nach dem Start, nach einer Wiederverbindung und über den
-Administrator-Endpunkt `POST /api/admin/analysis/dispatch/repair` erneut – es gibt
-kein periodisches Datenbank-Polling. Die Health-Komponente `analysisBroker` meldet
-Verbindungszustand und Rückstau, gehört aber nicht zur Readiness. Den Broker mit
-`max-delivery-attempts` und einer Dead-Letter-Adresse konfigurieren, damit
-Giftnachrichten isoliert werden; fehlerhafte, unbekannte Schema-Versionen und falsch
-geroutete Nachrichten landen in `<prefix>.rejected`. Details:
-`docs/dev/ANALYSIS_TASK_DAG.md`.
+Im Artemis-Modus werden ausgewählte Root- und Relation-Aufgaben über dauerhafte
+Queues verteilt; `local` bleibt der kompatible Standard. Dispatch-Intents werden
+in der Operationstransaktion gespeichert und nach Commit veröffentlicht.
+Wiederherstellung läuft beim Start, nach Wiederverbindung oder über
+`POST /api/admin/analysis/dispatch/repair`, ohne periodische Datenbankabfragen.
+Das Helm-Profil hält `analysisBroker` außerhalb der Web-Readiness und nimmt ihn
+in die Worker-Readiness auf. Broker-Verbindung beweist keine Provider-Verfügbarkeit.
+
+Provider-Gleichzeitigkeit wird separat ausdrücklich aktiviert:
+
+| Spring-Eigenschaft | Standard | Beschreibung |
+|---|---|---|
+| `taxonomy.analysis.provider-permits.enabled` | `false` | Dauerhafte Broker-Tokens vor jedem physischen HTTP-Versuch im Artemis-Modus verwenden. |
+| `taxonomy.analysis.provider-permits.destination-prefix` | `taxonomy.analysis.provider-permits` | Queue-Präfix; die Quotengruppe wird angehängt. |
+| `taxonomy.analysis.provider-permits.maximum-wait-ms` | `120000` | Maximale abbrechbare Wartezeit auf ein Token. |
+| `taxonomy.analysis.provider-permits.provider-groups.<provider>` | leer | Explizite Quotengruppe, etwa `openai=shared-openai` und `custom-openai=shared-openai`. |
+
+Neue Permit-Queues einmalig separat provisionieren; Anwendungsstarts erzeugen
+keine Kapazität. Lokale RPM-/TPM-/RPD-Regeln bleiben getrennt von clusterweiter
+Gleichzeitigkeit. TLS-Secrets, externe Broker-HA, Queue-Namen, DLQ/Expiry,
+Hawtio-Administration und Helm-Skalierung beschreibt
+[Betrieb mit externem Artemis](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker).

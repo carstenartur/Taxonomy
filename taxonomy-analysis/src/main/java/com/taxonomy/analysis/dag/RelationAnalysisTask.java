@@ -23,7 +23,7 @@ public record RelationAnalysisTask(AnalysisEnvelope envelope, List<TaxonomyShard
         targetRoots = List.copyOf(new TreeSet<>(Objects.requireNonNull(targetRoots, "targetRoots")));
         prerequisiteTasks = List.copyOf(Objects.requireNonNull(prerequisiteTasks, "prerequisiteTasks"));
         if (envelope.taskType() != AnalysisTaskType.RELATION_ANALYSIS
-                || !AnalysisTaskId.relation(envelope.operationId(), targetRoots).equals(envelope.taskId())
+                || !envelope.taskId().matchesRelation(envelope.operationId(), targetRoots, envelope.schemaVersion())
                 || !envelope.roots().equals(targetRoots)) {
             throw new IllegalArgumentException("Relation task identity does not match its target roots");
         }

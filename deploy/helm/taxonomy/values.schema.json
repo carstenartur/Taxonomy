@@ -171,6 +171,143 @@
           "maximum": 65535
         }
       }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transportMode",
+        "runtimeRole",
+        "artemis",
+        "workerSets",
+        "workerMetricsIngressFrom"
+      ],
+      "properties": {
+        "transportMode": {
+          "enum": [
+            "local",
+            "artemis"
+          ]
+        },
+        "runtimeRole": {
+          "enum": [
+            "all",
+            "coordinator"
+          ]
+        },
+        "artemis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "brokerUrl": {
+              "type": "string"
+            },
+            "brokerUrlSecretKey": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "userKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "passwordKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "requireTls": {
+              "type": "boolean"
+            },
+            "destinationPrefix": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*){0,7}$"
+            },
+            "tlsSecret": {
+              "type": "string"
+            },
+            "tlsMountPath": {
+              "type": "string",
+              "pattern": "^/[^.].*"
+            },
+            "egress": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "to",
+                  "ports"
+                ],
+                "properties": {
+                  "to": {
+                    "type": "array",
+                    "minItems": 1
+                  },
+                  "ports": {
+                    "type": "array",
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "workerSets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "replicas",
+              "shards",
+              "consumersPerShard"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z]([a-z0-9-]{0,18}[a-z0-9])?$"
+              },
+              "replicas": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "shards": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "BP",
+                    "BR",
+                    "CP",
+                    "CI",
+                    "CO",
+                    "CR",
+                    "IP",
+                    "UA"
+                  ]
+                }
+              },
+              "consumersPerShard": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64
+              },
+              "resources": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "workerMetricsIngressFrom": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
     }
   }
 }

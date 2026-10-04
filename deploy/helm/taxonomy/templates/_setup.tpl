@@ -2,6 +2,7 @@
 {{- define "taxonomy.environment" -}}
 {{- $config := deepCopy .Values.config -}}
 {{- $secrets := deepCopy .Values.secretEnv -}}
+{{- include "taxonomy.validateAnalysisEnvironment" . -}}
 {{/* Defense in depth: retain this check when a caller skips JSON Schema validation. */}}
 {{- $credentialKey := "(?i)(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$" -}}
 {{- range $name, $_ := $config -}}
@@ -143,4 +144,5 @@
 {{- with .Values.extraEnv }}
 {{- toYaml . | nindent 0 }}
 {{- end }}
+{{- include "taxonomy.analysisEnvironment" . }}
 {{- end -}}

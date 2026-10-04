@@ -1,6 +1,10 @@
 package com.taxonomy.analysis.controller;
 
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
+import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
+import com.taxonomy.analysis.cluster.ClusterAnalysisObservationDetachedException;
+import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
+import com.taxonomy.analysis.usecase.AnalysisOperationContexts;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
@@ -81,6 +85,9 @@ public class AnalysisApiController {
     private AnalysisProgressRegistry analysisProgressRegistry;
 
     @Autowired(required = false)
+    private ClusterAnalysisExecution clusterExecution;
+
+    @Autowired(required = false)
     private com.taxonomy.analysis.recovery.AnalysisContinuationService continuationService;
 
     /**
@@ -147,6 +154,17 @@ public class AnalysisApiController {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
             WorkspaceContext context = resolveWorkspaceContext(username);
+            // #808 owns its checkpoint/decision protocol even when ordinary runs use Artemis.
+            if (clusterExecution != null && !request.isResumable()) {
+                var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
+                        maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
+                String branch = repositoryStateService.resolveWorkspaceBranch(context.username());
+                var view = repositoryStateService.getViewContext(context.username(), branch, context);
+                var operation = AnalysisOperationContexts.create(operationId, command, view);
+                var result = analyzeRequirementUseCase.analyze(command, operation, view);
+                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                        .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(result.analysisResult());
+            }
             if (request.isResumable() && continuationService == null) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
             }
@@ -212,6 +230,7 @@ public class AnalysisApiController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A disconnected stream is not restarted. Observe the existing analysis operation instead.");
         }
+        if (clusterExecution != null) return clusteredStream(businessText, provider, analysisScope);
         // The reserved operation owns the configured deadline, including executor-queue time.
         // A second servlet deadline can expire first and discard the terminal partial result.
         // Keep transport open until the worker's terminal event or client disconnect; provider
@@ -371,6 +390,111 @@ public class AnalysisApiController {
 
     public SseEmitter analyzeStream(String businessText, String provider) {
         return analyzeStream(businessText, provider, null, AnalysisMode.FULL);
+    }
+
+    private SseEmitter clusteredStream(String businessText, String provider, AnalysisScope scope) {
+        if (!taxonomyService.isInitialized()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Taxonomy data is still loading. Please wait.");
+        if (businessText == null || businessText.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "businessText must not be blank");
+        enforceBusinessTextLimit(businessText);
+        String username = workspaceResolver.resolveCurrentUsername();
+        WorkspaceContext workspace = resolveWorkspaceContext(username);
+        if (workspace.workspaceId() == null || workspace.workspaceId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Full analysis requires an isolated workspace");
+        }
+        String operationId = newOperationId();
+        var command = new AnalyzeRequirementCommand(businessText, scope.includesRelations(),
+                resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope);
+        String branch = repositoryStateService.resolveWorkspaceBranch(workspace.username());
+        var view = repositoryStateService.getViewContext(workspace.username(), branch, workspace);
+        var operation = AnalysisOperationContexts.create(operationId, command, view);
+        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope);
+        var emitter = new SseEmitter(0L);
+        var completed = new AtomicBoolean();
+        var disconnected = new AtomicBoolean();
+        var admitted = new AtomicBoolean();
+        var worker = new AtomicReference<Thread>();
+        var sequence = new AtomicLong(-1);
+        Runnable detach = () -> {
+            synchronized (worker) {
+                if (completed.get()) return;
+                disconnected.set(true);
+                // Never interrupt capture/admission: the browser does not own the durable work.
+                if (admitted.get() && worker.get() != null) worker.get().interrupt();
+            }
+        };
+        emitter.onTimeout(detach); emitter.onError(error -> detach.run()); emitter.onCompletion(detach);
+        try {
+            analysisExecutor.execute(() -> {
+                worker.set(Thread.currentThread());
+                try {
+                    streamRequirementAnalysisUseCase.stream(stream, operation, command, view, event -> {
+                        if (!(event instanceof AnalysisStreamEvent.DurableSnapshot durable)) {
+                            throw new IllegalStateException("Cluster observation requires durable snapshots");
+                        }
+                        synchronized (worker) {
+                            admitted.set(true);
+                            if (disconnected.get()) throw new ClusterAnalysisObservationDetachedException();
+                        }
+                        var snapshot = durable.snapshot();
+                        if (!operationId.equals(snapshot.operationId())) throw new IllegalArgumentException("Foreign operation snapshot");
+                        if (snapshot.revision() <= sequence.get()) return;
+                        sequence.set(snapshot.revision());
+                        var payload = durablePayload(snapshot, scope);
+                        boolean terminal = snapshot.state().terminal();
+                        if (terminal) completed.set(true);
+                        String name = terminal ? ("SUCCESS".equals(snapshot.result().getStatus()) ? "complete" : "error") : "phase";
+                        if (!sendEvent(emitter, operationId, snapshot.revision(), name, payload)) {
+                            detach.run();
+                            throw new ClusterAnalysisObservationDetachedException();
+                        }
+                        if (terminal) emitter.complete();
+                    });
+                } catch (ClusterAnalysisObservationDetachedException detached) {
+                    // The durable operation remains observable and explicitly cancellable elsewhere.
+                } catch (Exception failure) {
+                    log.error("Cluster analysis observation failed for {}", operationId, failure);
+                    if (!disconnected.get() && !completed.get()) {
+                        String message = failure instanceof UnknownAnalysisProviderException unknown
+                                ? "Unknown provider: " + unknown.getProvider()
+                                : "Analysis observation ended. Inspect the stored operation before starting another analysis.";
+                        sendEvent(emitter, operationId, Math.max(1, sequence.incrementAndGet()), "error",
+                                Map.of("status", "ERROR", "errorMessage", message, "observationOnly", admitted.get()));
+                    }
+                } finally {
+                    synchronized (worker) {
+                        completed.set(true); worker.set(null);
+                        if (disconnected.get()) Thread.interrupted();
+                    }
+                    emitter.complete();
+                }
+            });
+        } catch (RejectedExecutionException full) {
+            completed.set(true); emitter.complete();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Analysis queue is full; retry after an active run finishes.");
+        }
+        return emitter;
+    }
+
+    private Map<String, Object> durablePayload(ClusterAnalysisStore.Snapshot snapshot, AnalysisScope scope) {
+        var payload = new LinkedHashMap<String, Object>();
+        if (snapshot.result() != null) {
+            Map<?, ?> frozen = objectMapper.convertValue(snapshot.result(), Map.class);
+            frozen.forEach((key, value) -> payload.put(String.valueOf(key), value));
+            payload.put("totalScores", snapshot.result().getScores());
+            payload.put("partialScores", snapshot.result().getScores());
+            payload.put("totalMatched", snapshot.result().getScores().values().stream().filter(score -> score > 0).count());
+        }
+        payload.put("analysisScope", scope); payload.put("revision", snapshot.revision());
+        payload.put("operationState", snapshot.state().name()); payload.put("completedRoots", snapshot.completedRoots());
+        payload.put("totalRoots", snapshot.totalRoots()); payload.put("runningTasks", snapshot.runningTasks());
+        payload.put("queuedTasks", snapshot.queuedTasks()); payload.put("tasks", snapshot.tasks());
+        payload.put("message", snapshot.state().name());
+        payload.put("progress", snapshot.state().terminal() ? 100 : Math.min(99,
+                snapshot.totalRoots() == 0 ? 0 : snapshot.completedRoots() * 100 / snapshot.totalRoots()));
+        return payload;
     }
 
     private AnalysisScope validateAnalysisScope(AnalysisScope requested) {

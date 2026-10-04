@@ -46,6 +46,19 @@ public final class AnalysisRunControl implements AutoCloseable {
 
     public static boolean active() { return CURRENT.get() != null; }
 
+    /** Bind cooperative controls on a broker worker without registering another local user job. */
+    public static AnalysisRunControl worker(String operationId, BooleanSupplier cancelled, AnalysisMemoryGuard guard) {
+        Objects.requireNonNull(operationId); Objects.requireNonNull(cancelled); Objects.requireNonNull(guard);
+        return new AnalysisRunControl(new Observer() {
+            @Override public String operationId() { return operationId; }
+            @Override public void phase(String phase, String node) { }
+            @Override public long started(String provider, String node) { return 0; }
+            @Override public void completed(long id, LlmCallDetail detail, long duration) { }
+            @Override public void failed(long id, String failure, long duration) { }
+            @Override public void stopped(AnalysisStoppedException.Reason reason) { }
+        }, cancelled, guard);
+    }
+
     /** Durable operation identity of the active run, or {@code null}. */
     public static String currentOperationId() {
         var current = CURRENT.get();

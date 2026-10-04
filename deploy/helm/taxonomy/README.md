@@ -2,6 +2,26 @@
 
 This chart deploys the same Taxonomy image on Rancher/RKE2, K3s, OpenShift and generic Kubernetes. It deliberately contains no Rancher-specific application code. Published releases are also distributed as versioned OCI Helm artifacts for installation and upgrade through Rancher.
 
+## External Artemis and independent workers
+
+The default `analysis.transportMode=local` / `analysis.runtimeRole=all` keeps one
+combined workload. Apply [values-artemis.yaml](values-artemis.yaml) for an external
+TLS broker, a coordinator web Deployment, and independently sized `workerSets`.
+Each set declares validated roots, replicas and consumers per shard; eight separate
+Deployments are not required. Broker credentials and optional trust/key stores come
+from existing Secrets. Explicit `analysis.artemis.egress` rules cover every HA
+endpoint in restricted mode. Web ingress never selects workers; optional worker
+metrics Services remain internal and require reviewed monitoring peers.
+
+Worker readiness checks `readinessState,analysisBroker`; web readiness checks
+`readinessState,taxonomy`. A broker connection is not evidence of provider availability.
+Per-Deployment `Recreate` does not coordinate database migrations across several
+Deployments: stop all roles before an incompatible schema upgrade. See the complete
+[English operations guide](../../../docs/en/OPERATIONS_GUIDE.md#external-artemis-analysis-operations),
+[German operations guide](../../../docs/de/OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker), and the external
+[broker XML example](../../artemis/broker.xml) for HA, TLS, DLQ/expiry, provider permits,
+admin-only Hawtio/Jolokia and the distinction between render and live-cluster evidence.
+
 ## Prerequisites
 
 - Kubernetes 1.27 or newer

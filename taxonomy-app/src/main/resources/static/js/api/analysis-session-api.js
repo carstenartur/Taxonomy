@@ -1,6 +1,9 @@
 /* analysis-session-api.js – HTTP boundary for resumable ad-hoc analysis state */
 (function () {
     'use strict';
+    // Capture the native constructor before active-tab routing is installed. Every
+    // operation stream below carries its original explicit workspace pin.
+    var RunEventSource = window.EventSource;
 
     function request(url, options, pinnedWorkspaceId) {
         var client = window.TaxonomyApiClient;
@@ -49,10 +52,46 @@
         return runRequest(operationId, '/calls/' + encodeURIComponent(callId), scope, 'GET');
     }
 
+    function getRunResult(operationId, scope) {
+        return runRequest(operationId, '/result', scope, 'GET');
+    }
+
+    function getRunInput(operationId, scope) {
+        return runRequest(operationId, '/request', scope, 'GET');
+    }
+
+    function getRecentRuns(scope) {
+        scope = scope || {};
+        var workspace = scope.workspaceId == null ? '' : scope.workspaceId;
+        return request('/api/analysis-runs?workspaceId=' + encodeURIComponent(workspace), {
+            method: 'GET', cache: 'no-store', signal: scope.signal,
+            headers: { 'X-Taxonomy-Workspace-Id': workspace }
+        }, workspace);
+    }
+
+    function openRunEvents(operationId, scope) {
+        scope = scope || {};
+        if (typeof RunEventSource !== 'function') throw new Error('EVENT_STREAM_UNAVAILABLE');
+        var cursor = scope.afterSequence === undefined ? 0 : scope.afterSequence;
+        if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('INVALID_REPLAY_CURSOR');
+        var url = '/api/analysis-runs/' + encodeURIComponent(operationId) + '/events?workspaceId='
+            + encodeURIComponent(scope.workspaceId == null ? '' : scope.workspaceId)
+            + '&afterSequence=' + cursor;
+        var i18n = window.TaxonomyI18n;
+        if (i18n && typeof i18n.resolveUrl === 'function') url = i18n.resolveUrl(url);
+        // Native reconnect retains Last-Event-ID and this exact URL; it never
+        // resolves another active workspace or resubmits the analysis request.
+        return new RunEventSource(url);
+    }
+
     window.TaxonomyAnalysisSessionApi = Object.freeze({
         request: request,
         getRunStatus: getRunStatus,
         cancelRun: cancelRun,
-        getRunCallDetail: getRunCallDetail
+        getRunCallDetail: getRunCallDetail,
+        getRunResult: getRunResult,
+        getRunInput: getRunInput,
+        getRecentRuns: getRecentRuns,
+        openRunEvents: openRunEvents
     });
 }());

@@ -36,6 +36,8 @@ public class LlmProviderConfig {
     static final String MISTRAL_MODEL = "mistral-small-latest";
 
     private static final ThreadLocal<LlmProvider> requestProviderOverride = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> requestMockOverride = new ThreadLocal<>();
+    private static final ThreadLocal<RequestProviderScope> providerScopes = new ThreadLocal<>();
 
     @Value("${llm.provider:}")
     private String llmProviderConfig;
@@ -95,6 +97,41 @@ public class LlmProviderConfig {
         requestProviderOverride.remove();
     }
 
+    /** Bind the admitted provider identity, including MOCK, independently of this worker's defaults. */
+    public RequestProviderScope withRequestProvider(String frozenProvider) {
+        if (frozenProvider == null || frozenProvider.isBlank()) {
+            throw new IllegalArgumentException("Frozen provider is required");
+        }
+        boolean mock = "MOCK".equalsIgnoreCase(frozenProvider);
+        LlmProvider provider = mock ? null : LlmProvider.valueOf(frozenProvider.toUpperCase(java.util.Locale.ROOT));
+        var scope = new RequestProviderScope();
+        if (provider == null) requestProviderOverride.remove(); else requestProviderOverride.set(provider);
+        requestMockOverride.set(mock);
+        providerScopes.set(scope);
+        return scope;
+    }
+
+    public static final class RequestProviderScope implements AutoCloseable {
+        private final Thread owner = Thread.currentThread();
+        private final LlmProvider previousProvider = requestProviderOverride.get();
+        private final Boolean previousMock = requestMockOverride.get();
+        private final RequestProviderScope previousScope = providerScopes.get();
+        private boolean closed;
+
+        private RequestProviderScope() { }
+
+        @Override public void close() {
+            if (closed) return;
+            if (Thread.currentThread() != owner || providerScopes.get() != this) {
+                throw new IllegalStateException("Provider scopes must close in order on their owning thread");
+            }
+            if (previousProvider == null) requestProviderOverride.remove(); else requestProviderOverride.set(previousProvider);
+            if (previousMock == null) requestMockOverride.remove(); else requestMockOverride.set(previousMock);
+            if (previousScope == null) providerScopes.remove(); else providerScopes.set(previousScope);
+            closed = true;
+        }
+    }
+
     public LlmProvider getActiveProvider() {
         LlmProvider override = requestProviderOverride.get();
         if (override != null) return override;
@@ -119,7 +156,7 @@ public class LlmProviderConfig {
     }
 
     public String getActiveProviderName() {
-        if (llmMock) return "Mock";
+        if (isMockMode()) return "Mock";
         return switch (getActiveProvider()) {
             case GEMINI -> "Gemini";
             case OPENAI -> "OpenAI";
@@ -308,7 +345,7 @@ public class LlmProviderConfig {
     }
 
     public AiAvailabilityLevel getAvailabilityLevel() {
-        if (llmMock) return AiAvailabilityLevel.FULL;
+        if (isMockMode()) return AiAvailabilityLevel.FULL;
         LlmProvider provider = getActiveProvider();
         if (provider == LlmProvider.LOCAL_ONNX) {
             return localEmbeddingService.isAvailable()
@@ -326,7 +363,8 @@ public class LlmProviderConfig {
     }
 
     public boolean isMockMode() {
-        return llmMock;
+        Boolean override = requestMockOverride.get();
+        return override == null ? llmMock : override;
     }
 
     private String customOpenAiTransportApiKey() {

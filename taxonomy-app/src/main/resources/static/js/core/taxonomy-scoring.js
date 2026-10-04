@@ -5,6 +5,7 @@
 
     var t = TaxonomyI18n.t;
     var S = window.TaxonomyState;
+    var recoverySelection = 0;
     // B (browse functions) resolved lazily — script may load before taxonomy-browse.js
     function B() { return window.TaxonomyBrowse || {}; }
 
@@ -391,6 +392,122 @@
         content.insertBefore(entry, content.firstChild);
     }
 
+    function applyAnalysisResult(result, settings) {
+        var text = settings.text, requestedScope = settings.requestedScope, provider = settings.provider;
+        var options = settings.options || {}, analysisStart = settings.analysisStart || new Date();
+        setAnalyzing(false);
+        if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
+        applyScoreEnvelope(result);
+        S.analysisCoverage = result.analysisCoverage || null;
+        S.lastAnalysisScope = result.analysisScope || requestedScope || null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
+        S.analysisRecovery = result.recovery || null;
+        S.currentReasons = result.reasons || {};
+        S.currentDiscrepancies = result.discrepancies || [];
+        S.currentProductCoverageGaps = result.productCoverageGaps || [];
+        S.lastAnalysisProvider = result.provider || provider || null;
+        S.lastAnalysisStatus = result.status || 'UNKNOWN';
+        S.storedBusinessText = text;
+        S.lastAnalyzedText = text;
+        B().renderView(S.taxonomyData, S.currentScores);
+
+        console.log('[Taxonomy] Analysis result:', result);
+        console.log('[Taxonomy] Scores:', result.scores);
+        const matchedEntries = Object.entries(result.scores).filter(([k, v]) => v > 0);
+        console.log('[Taxonomy] Matched nodes:', matchedEntries);
+
+        const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
+
+        if (result.status === 'SUCCESS') {
+            if (matchedCount === 0) {
+                B().showStatus('warning', t('analyze.zero.matches'));
+            } else {
+                B().showStatus('success', t('analyze.complete', matchedCount));
+            }
+        } else if (result.status === 'PARTIAL') {
+            B().showStatus('warning',
+                t('analyze.partial', (result.errorMessage || t('analyze.incomplete')), matchedCount));
+        } else if (result.status === 'CANCELLED') {
+            B().showStatus('warning', result.errorMessage || 'Analysis cancelled; valid partial results retained.');
+        } else if (result.status === 'ERROR') {
+            B().showStatus('danger',
+                '❌ ' + t('scoring.analysis.failed', result.errorMessage || 'Unknown error.'));
+        } else {
+            if (matchedCount === 0) {
+                B().showStatus('warning', t('analyze.zero.matches'));
+            } else {
+                B().showStatus('success', t('analyze.complete', matchedCount));
+            }
+        }
+
+        if (result.warnings && result.warnings.length > 0) {
+            const warningList = result.warnings
+                .map(w => '<li>' + escapeHtml(w) + '</li>')
+                .join('');
+            document.getElementById('statusArea').innerHTML +=
+                '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
+        }
+
+        const analysisFindings = [];
+        if (S.currentDiscrepancies.length > 0) {
+            analysisFindings.push(t(
+                'analyze.discrepancies', S.currentDiscrepancies.length));
+        }
+        if (S.currentProductCoverageGaps.length > 0) {
+            analysisFindings.push(t(
+                'analyze.product.coverage.gaps',
+                S.currentProductCoverageGaps.length));
+        }
+        if (analysisFindings.length > 0) {
+            document.getElementById('statusArea').innerHTML +=
+                '<div class="mt-1">' + analysisFindings
+                    .map(escapeHtml).join(' ') + '</div>';
+        }
+
+        // Update analysis log panel
+        updateAnalysisLog({
+            timestamp: analysisStart,
+            totalNodes: Object.keys(result.scores).length,
+            matchedEntries: matchedEntries,
+            warnings: result.warnings || [],
+            status: result.status
+        });
+
+        // Render architecture view if present
+        renderArchitectureView(result.architectureView);
+        // Render suggested relationships from provisional relations
+        renderSuggestedRelations(result.provisionalRelations);
+
+        // Render ViewContext provenance info
+        if (window.TaxonomyViewContext) {
+            window.TaxonomyViewContext.renderFromResponse('analyzeViewContext', result);
+        }
+
+        // Store architecture view and show summary button
+        if (result.architectureView) {
+            S.currentArchView = result.architectureView;
+            var summaryBtn = document.getElementById('viewSummary');
+            if (summaryBtn) summaryBtn.style.display = '';
+            // Keep the user's diagram selection and viewport during recovery.
+            if (!options.recoveryManaged) B().switchView('summary');
+            // Add quick action to navigate to Architecture tab
+            var statusArea = document.getElementById('statusArea');
+            if (statusArea && window.navigateToPage) {
+                var archLink = document.createElement('div');
+                archLink.className = 'mt-2';
+                var archBtn = document.createElement('button');
+                archBtn.className = 'btn btn-sm btn-outline-primary';
+                archBtn.textContent = '\uD83C\uDFDB\uFE0F ' + t('scoring.view.architecture');
+                archBtn.addEventListener('click', function () {
+                    window.navigateToPage('architecture');
+                });
+                archLink.appendChild(archBtn);
+                statusArea.appendChild(archLink);
+            }
+        }
+        return result;
+    }
+
     // ── Analysis ──────────────────────────────────────────────────────────────
     function runAnalysis(options) {
         options = options || {};
@@ -427,6 +544,7 @@
             return;
         }
 
+        recoverySelection++;
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
         var operationId;
@@ -468,7 +586,25 @@
         S.analysisCoverage = null;
         if (!options.recoveryManaged) { S.analysisRecovery = null; S.recoveryContext = null; }
         }
+        var resultHandled = false, acceptedResult, clusterObserved = false, resolveRecovered;
+        var recoveredResult = new Promise(function (resolve) { resolveRecovered = resolve; });
+        function acceptResult(result) {
+            if (resultHandled) return acceptedResult;
+            // Polling may have stopped after observing completion, but only the latest
+            // in-scope operation owns this full response and may update the application.
+            if (progress && !progress.acceptsResult()) return;
+            if (options.recoveryManaged && document.getElementById('businessText').value.trim() !== text) {
+                if (progress) progress.finish(result.status, false);
+                setAnalyzing(false); return result;
+            }
+            if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
+            acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
+                options: options, analysisStart: analysisStart });
+            resultHandled = true;
+            return acceptedResult;
+        }
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+                clusterObserved = snapshot.transport === 'artemis' || clusterObserved;
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
                 applyLocalRawScores(options.continuation
@@ -485,6 +621,9 @@
                 } else {
                     B().renderView(S.taxonomyData, S.currentScores);
                 }
+            }, function (result) {
+                var accepted = acceptResult(result);
+                if (accepted) resolveRecovered(accepted);
             });
 
 
@@ -508,7 +647,7 @@
 
         if (options.continuation) requestBody = Object.assign({}, options.continuation);
         const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
-        return fetch('/api/analyze', {
+        var posted = fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId,
                 'X-Taxonomy-Workspace-Id': workspacePin },
@@ -530,128 +669,15 @@
                 }
                 return r.json();
             })
-            .then(result => {
-                // Polling may have stopped after observing completion, but only the latest
-                // in-scope operation owns this full response and may update the application.
-                if (progress && !progress.acceptsResult()) return;
-                if (options.recoveryManaged && document.getElementById('businessText').value.trim() !== text) {
-                    if (progress) progress.finish(result.status, false);
-                    setAnalyzing(false); return result;
-                }
-                if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
-                setAnalyzing(false);
-                if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
-                applyScoreEnvelope(result);
-                S.analysisCoverage = result.analysisCoverage || null;
-                S.lastAnalysisScope = result.analysisScope || requestedScope || null;
-                window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
-                S.analysisRecovery = result.recovery || null;
-                S.currentReasons = result.reasons || {};
-                S.currentDiscrepancies = result.discrepancies || [];
-                S.currentProductCoverageGaps = result.productCoverageGaps || [];
-                S.lastAnalysisProvider = result.provider || provider || null;
-                S.lastAnalysisStatus = result.status || 'UNKNOWN';
-                S.storedBusinessText = text;
-                S.lastAnalyzedText = text;
-                B().renderView(S.taxonomyData, S.currentScores);
-
-                console.log('[Taxonomy] Analysis result:', result);
-                console.log('[Taxonomy] Scores:', result.scores);
-                const matchedEntries = Object.entries(result.scores).filter(([k, v]) => v > 0);
-                console.log('[Taxonomy] Matched nodes:', matchedEntries);
-
-                const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
-
-                if (result.status === 'SUCCESS') {
-                    if (matchedCount === 0) {
-                        B().showStatus('warning', t('analyze.zero.matches'));
-                    } else {
-                        B().showStatus('success', t('analyze.complete', matchedCount));
-                    }
-                } else if (result.status === 'PARTIAL') {
-                    B().showStatus('warning',
-                        t('analyze.partial', (result.errorMessage || t('analyze.incomplete')), matchedCount));
-                } else if (result.status === 'CANCELLED') {
-                    B().showStatus('warning', result.errorMessage || 'Analysis cancelled; valid partial results retained.');
-                } else if (result.status === 'ERROR') {
-                    B().showStatus('danger',
-                        '❌ ' + t('scoring.analysis.failed', result.errorMessage || 'Unknown error.'));
-                } else {
-                    if (matchedCount === 0) {
-                        B().showStatus('warning', t('analyze.zero.matches'));
-                    } else {
-                        B().showStatus('success', t('analyze.complete', matchedCount));
-                    }
-                }
-
-                if (result.warnings && result.warnings.length > 0) {
-                    const warningList = result.warnings
-                        .map(w => '<li>' + escapeHtml(w) + '</li>')
-                        .join('');
-                    document.getElementById('statusArea').innerHTML +=
-                        '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
-                }
-
-                const analysisFindings = [];
-                if (S.currentDiscrepancies.length > 0) {
-                    analysisFindings.push(t(
-                        'analyze.discrepancies', S.currentDiscrepancies.length));
-                }
-                if (S.currentProductCoverageGaps.length > 0) {
-                    analysisFindings.push(t(
-                        'analyze.product.coverage.gaps',
-                        S.currentProductCoverageGaps.length));
-                }
-                if (analysisFindings.length > 0) {
-                    document.getElementById('statusArea').innerHTML +=
-                        '<div class="mt-1">' + analysisFindings
-                            .map(escapeHtml).join(' ') + '</div>';
-                }
-
-                // Update analysis log panel
-                updateAnalysisLog({
-                    timestamp: analysisStart,
-                    totalNodes: Object.keys(result.scores).length,
-                    matchedEntries: matchedEntries,
-                    warnings: result.warnings || [],
-                    status: result.status
-                });
-
-                // Render architecture view if present
-                renderArchitectureView(result.architectureView);
-                // Render suggested relationships from provisional relations
-                renderSuggestedRelations(result.provisionalRelations);
-
-                // Render ViewContext provenance info
-                if (window.TaxonomyViewContext) {
-                    window.TaxonomyViewContext.renderFromResponse('analyzeViewContext', result);
-                }
-
-                // Store architecture view and show summary button
-                if (result.architectureView) {
-                    S.currentArchView = result.architectureView;
-                    var summaryBtn = document.getElementById('viewSummary');
-                    if (summaryBtn) summaryBtn.style.display = '';
-                    // Keep the user's diagram selection and viewport during recovery.
-                    if (!options.recoveryManaged) B().switchView('summary');
-                    // Add quick action to navigate to Architecture tab
-                    var statusArea = document.getElementById('statusArea');
-                    if (statusArea && window.navigateToPage) {
-                        var archLink = document.createElement('div');
-                        archLink.className = 'mt-2';
-                        var archBtn = document.createElement('button');
-                        archBtn.className = 'btn btn-sm btn-outline-primary';
-                        archBtn.textContent = '\uD83C\uDFDB\uFE0F ' + t('scoring.view.architecture');
-                        archBtn.addEventListener('click', function () {
-                            window.navigateToPage('architecture');
-                        });
-                        archLink.appendChild(archBtn);
-                        statusArea.appendChild(archLink);
-                    }
-                }
-                return result;
-            })
+            .then(acceptResult)
             .catch(err => {
+                if (resultHandled) return acceptedResult;
+                if (clusterObserved && !err.httpStatus && progress.acceptsResult()) {
+                    B().showStatus('warning', isGermanLocale()
+                        ? 'Verbindung zur Startanfrage unterbrochen; der gespeicherte Lauf wird weiter beobachtet.'
+                        : 'The start request disconnected; observation of the saved run continues.');
+                    return recoveredResult;
+                }
                 if (progress && !progress.acceptsResult()) return;
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
@@ -670,10 +696,64 @@
                 });
                 if (options.recoveryManaged) throw err;
             });
+        return Promise.race([posted, recoveredResult]);
+    }
+
+    async function resumeAnalysis(operationId, expectedScope) {
+        var session = window.TaxonomyAnalysisSession;
+        var state = session && session.state();
+        var lifecycle = window.__TaxonomyAnalysisSessionContext;
+        var runtime = lifecycle && lifecycle.runtime || {};
+        var field = document.getElementById('businessText');
+        if (!state || !state.ready || !field || !window.TaxonomyAnalysisProgress) return false;
+        var selection = ++recoverySelection;
+        var workspace = state.workspaceId, generation = runtime.analysisGeneration, previousText = field.value;
+        function inScope() {
+            var current = session.state();
+            return recoverySelection === selection && current.ready && current.workspaceId === workspace
+                && runtime.analysisGeneration === generation && !runtime.invalidating;
+        }
+        var response = await window.TaxonomyAnalysisSessionApi.getRunInput(operationId, { workspaceId: workspace });
+        var saved = await response.json();
+        if (!inScope() || field.value !== previousText || saved.operationId !== operationId
+                || typeof saved.businessText !== 'string' || !saved.scope
+                || (saved.scope.workspaceId || '') !== (workspace || '')
+                || expectedScope && !['workspaceId', 'repositoryId', 'branch', 'sourceCommit'].every(function (key) {
+                    return saved.scope[key] === expectedScope[key];
+                })) return false;
+
+        // This is an explicit recovery choice. Restore the original requirement;
+        // never label an old result as an assessment of the current edited draft.
+        field.value = saved.businessText;
+        field.classList.remove('stale-results');
+        if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
+        S.currentReasons = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
+        S.currentArchView = null; S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
+        S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
+        S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
+        S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
+        S.lastAnalysisStatus = 'IN_PROGRESS'; window._currentProvisionalRelations = [];
+        applyScoreEnvelope({}); clearAnalysisLog(); setAnalyzing(true);
+        B().renderView(S.taxonomyData, S.currentScores);
+        var monitor = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+            if (!inScope() || field.value !== saved.businessText) return;
+            applyLocalRawScores(snapshot.rawScores || {}, true, true);
+            B().renderView(S.taxonomyData, S.currentScores);
+        }, function (result) {
+            if (!inScope() || !monitor.acceptsResult()) return;
+            if (field.value !== saved.businessText) {
+                monitor.finish(result.status, false); setAnalyzing(false); return;
+            }
+            monitor.finish(result.status, false, result.analysisDurationMillis);
+            applyAnalysisResult(result, { text: saved.businessText, provider: saved.provider,
+                requestedScope: saved.analysisScope, options: { recoveryManaged: true } });
+        }, saved.scope);
+        return monitor;
     }
 
     // ── Interactive analysis (stores text, renders tree without LLM calls) ─────
     function runInteractiveAnalysis() {
+        recoverySelection++;
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
             B().showStatus('warning', t('scoring.enter.requirement'));
@@ -713,6 +793,7 @@
 
     // ── Streaming analysis (list / tabs views) ────────────────────────────────
     function runStreamingAnalysis() {
+        recoverySelection++;
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
             B().showStatus('warning', t('scoring.enter.requirement'));
@@ -2009,6 +2090,7 @@
     // ── Public API ────────────────────────────────────────────────────────────
     window.TaxonomyScoring = {
         runAnalysis: runAnalysis,
+        resumeAnalysis: resumeAnalysis,
         runInteractiveAnalysis: runInteractiveAnalysis,
         runStreamingAnalysis: runStreamingAnalysis,
         applyScoreToNode: applyScoreToNode,

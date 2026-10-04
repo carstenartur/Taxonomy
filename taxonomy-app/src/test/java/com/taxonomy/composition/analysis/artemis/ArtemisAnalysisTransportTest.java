@@ -24,6 +24,12 @@ import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.cluster.*;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchStore;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.dto.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.jms.BytesMessage;
 import jakarta.jms.Connection;
 import jakarta.jms.Message;
@@ -124,12 +130,15 @@ class ArtemisAnalysisTransportTest {
         config.setBindingsDirectory(brokerData.resolve("bindings").toString());
         config.setLargeMessagesDirectory(brokerData.resolve("large").toString());
         config.setPagingDirectory(brokerData.resolve("paging").toString());
+        config.setMessageExpiryScanPeriod(20);
         config.addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
         config.addAddressSetting("#", new AddressSettings()
                 .setMaxDeliveryAttempts(3)
                 .setRedeliveryDelay(0)
+                .setExpiryAddress(SimpleString.of("taxonomy.analysis.expiry"))
                 .setDeadLetterAddress(SimpleString.of(DLQ)));
         config.addQueueConfiguration(QueueConfiguration.of(DLQ).setRoutingType(RoutingType.ANYCAST));
+        config.addQueueConfiguration(QueueConfiguration.of("taxonomy.analysis.expiry").setRoutingType(RoutingType.ANYCAST));
         EmbeddedActiveMQ embedded = new EmbeddedActiveMQ();
         embedded.setConfiguration(config);
         return embedded;
@@ -482,5 +491,127 @@ class ArtemisAnalysisTransportTest {
         var full = worker(new AnalysisTaskHandlers(null, task -> PreparedAnalysisCompletion.withoutEffects(
                 factory(task.envelope().operationId()).completed(task, AnalysisTaskOutcome.COMPLETED, 0, null))), store, "");
         assertThat(full.consumerCount()).as("8 root relation queues + the general relation queue").isEqualTo(9);
+    }
+
+    @Test void coordinatorSubscribesToSharedPreparationWhileWorkersOwnOnlyConfiguredRootQueues() {
+        var handlers = new AnalysisTaskHandlers(null, task -> PreparedAnalysisCompletion.withoutEffects(
+                factory(task.envelope().operationId()).completed(task, AnalysisTaskOutcome.COMPLETED, 0, null)));
+        var shared = new ArtemisAnalysisWorker(connect(), destinations, AnalysisWorkerShards.parse("CP"), 1, handlers, new InMemoryCompletionStore(), codec);
+        resources.push(shared); shared.start(false, true);
+        assertThat(shared.consumerCount()).isEqualTo(1);
+        var shards = new ArtemisAnalysisWorker(connect(), destinations, AnalysisWorkerShards.parse(""), 1, handlers, new InMemoryCompletionStore(), codec);
+        resources.push(shards); shards.start(true, false);
+        assertThat(shards.consumerCount()).isEqualTo(8);
+    }
+
+    private record ClusterDatabase(ClusterAnalysisStore store, JpaAnalysisTaskCompletionStore ledger, List<AnalysisTaskMessage> sent) { }
+
+    private ClusterDatabase clusteredDatabase(boolean publish) {
+        var emf = new LocalContainerEntityManagerFactoryBean();
+        emf.setDataSource(new DriverManagerDataSource("jdbc:hsqldb:mem:cluster-broker-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
+        emf.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
+                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
+        emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        emf.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false"));
+        emf.afterPropertiesSet(); resources.push(emf::destroy);
+        var transactions = new JpaTransactionManager(emf.getObject());
+        var em = SharedEntityManagerCreator.createSharedEntityManager(emf.getObject());
+        var sent = new java.util.concurrent.CopyOnWriteArrayList<AnalysisTaskMessage>();
+        var publisher = publisher(connect());
+        var dispatch = new AnalysisDispatchService(new AnalysisDispatchStore(em, transactions), task -> {
+            sent.add(task); if (publish) publisher.publish(task);
+        }, 100, 1000);
+        var store = new ClusterAnalysisStore(em, transactions, new tools.jackson.databind.ObjectMapper(), dispatch);
+        store.eventPublisher(publisher::progress);
+        return new ClusterDatabase(store, new JpaAnalysisTaskCompletionStore(em, transactions), sent);
+    }
+
+    private ArtemisClusterCoordinator coordinator(ClusterDatabase db, ClusterAnalysisSignals signals, boolean coordinator) {
+        var instance = new ArtemisClusterCoordinator(connect(), destinations, codec, db.store(), db.ledger(), signals, coordinator);
+        resources.push(instance); instance.start(); return instance;
+    }
+
+    private void admit(ClusterDatabase db, AnalysisOperationContext context, Set<String> selected) {
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                new WorkspaceContext("alice", "ws", "draft", "repo"), null, new AnalysisScope(selected, AnalysisMode.TAXONOMIES_ONLY));
+        var shards = new java.util.LinkedHashMap<TaxonomyShardRoot, String>();
+        selected.stream().map(TaxonomyShardRoot::of).forEach(r -> shards.put(r, "{\"root\":\"" + r.code() + "\"}"));
+        db.store().admit(context, command, null, shards);
+    }
+
+    @Test void eightRootWorkersOverlapAndCoordinatorReplaysPersistedCompletionsAfterRestart() throws Exception {
+        var db = clusteredDatabase(true);
+        var entered = new CountDownLatch(8); var computations = new AtomicInteger();
+        for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {
+            var service = new ClusterAnalysisService(db.store(), (input, task, cancelled) -> {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                computations.incrementAndGet(); entered.countDown();
+                try { if (!entered.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("Root work serialized"); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+                var result = new AnalysisResult(Map.of(task.root().code(), 61), List.of()); result.setStatus("SUCCESS"); return result;
+            }, new ClusterAnalysisSignals());
+            var worker = worker(new AnalysisTaskHandlers(service::prepare, null), db.ledger(), root.code());
+            if (root.equals(CP)) {
+                var first = new AtomicInteger();
+                worker.acknowledgementHook(task -> { if (first.getAndIncrement() == 0) throw new IllegalStateException("after-db-before-ack"); });
+            }
+        }
+        var context = factory("eight-roots").operation();
+        admit(db, context, TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(java.util.stream.Collectors.toSet()));
+        await(() -> db.sent().stream().allMatch(t -> db.ledger().find(t).isPresent()), "eight persisted worker results");
+        assertThat(db.store().snapshot(context).completedRoots()).isZero();
+        var observed = new ClusterAnalysisSignals();
+        var complete = new CountDownLatch(1);
+        try (var listen = observed.listen(context, e -> { if (e.phase() == com.taxonomy.analysis.dag.AnalysisProgressPhase.OPERATION_COMPLETED) complete.countDown(); })) {
+            coordinator(db, observed, false);
+            var first = coordinator(db, new ClusterAnalysisSignals(), true);
+            var second = coordinator(db, new ClusterAnalysisSignals(), true);
+            assertThat(complete.await(20, TimeUnit.SECONDS)).as("other pod receives live completion").isTrue();
+            await(() -> db.store().snapshot(context).state().terminal(), "durable aggregate");
+            assertThat(first.accepted() + second.accepted()).isEqualTo(8);
+        }
+        var snapshot = db.store().snapshot(context);
+        assertThat(snapshot.completedRoots()).isEqualTo(8);
+        assertThat(snapshot.result().getRawScores()).hasSize(8).allSatisfy((root, score) -> assertThat(score).isEqualTo(61));
+        assertThat(computations).hasValue(8);
+    }
+
+    @Test void deadLetterAndActualExpirySettleExplicitPartialOutcomes() throws Exception {
+        var db = clusteredDatabase(false);
+        coordinator(db, new ClusterAnalysisSignals(), true);
+        worker(new AnalysisTaskHandlers(task -> { throw new IllegalStateException("poison"); }, null), db.ledger(), "CP");
+        var poison = factory("poison-root").operation(); admit(db, poison, Set.of("CP"));
+        var expired = factory("expired-root").operation(); admit(db, expired, Set.of("IP"));
+        var session = rawConnection().createSession(false, Session.AUTO_ACKNOWLEDGE);
+        var producer = session.createProducer(null);
+        for (var task : db.sent()) producer.send(session.createQueue(destinations.queueFor(task)),
+                ArtemisAnalysisMessages.encode(session, codec, task), jakarta.jms.DeliveryMode.PERSISTENT, 4, task.routingRoot().equals(CP) ? 0 : 80);
+        await(() -> db.store().snapshot(poison).state().terminal() && db.store().snapshot(expired).state().terminal(), "broker failure settlement");
+        for (var context : List.of(poison, expired)) {
+            var result = db.store().snapshot(context).result();
+            assertThat(result.getStatus()).isEqualTo("PARTIAL"); assertThat(result.getRawScores()).isEmpty();
+            assertThat(result.getWarnings()).anyMatch(w -> w.contains(context == poison ? "BROKER_DEAD_LETTER" : "BROKER_EXPIRED"));
+        }
+        var diagnostics = drain(destinations.failed(), 2, Duration.ofSeconds(5));
+        assertThat(diagnostics).hasSize(2);
+        for (var message : diagnostics) assertThat(message.getStringProperty("operationId")).isIn("poison-root", "expired-root");
+    }
+
+    @Test void cancellationFanoutReachesWorkerPodAndLateSuccessCannotReplaceDurableStop() throws Exception {
+        var db = clusteredDatabase(true); var remote = new ClusterAnalysisSignals();
+        coordinator(db, remote, false); coordinator(db, new ClusterAnalysisSignals(), true);
+        var entered = new CountDownLatch(1); var stopped = new CountDownLatch(1);
+        var service = new ClusterAnalysisService(db.store(), (input, task, cancelled) -> {
+            entered.countDown(); await(cancelled, "cross-pod cancellation"); stopped.countDown();
+            var result = new AnalysisResult(Map.of("CP", 100), List.of()); result.setStatus("SUCCESS"); return result;
+        }, remote);
+        worker(new AnalysisTaskHandlers(service::prepare, null), db.ledger(), "CP");
+        var context = factory("cancel-broadcast").operation(); admit(db, context, Set.of("CP"));
+        assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+        db.store().cancel(context); publisher(connect()).cancellation(factory(context.operationId()).cancellation("CANCELLED"));
+        assertThat(stopped.await(10, TimeUnit.SECONDS)).isTrue();
+        await(() -> db.ledger().find(db.sent().getFirst()).isPresent(), "late completion ledger");
+        assertThat(db.store().snapshot(context).state()).isEqualTo(ClusterAnalysisState.CANCELLED);
+        assertThat(db.store().snapshot(context).result().getRawScores()).isEmpty();
     }
 }

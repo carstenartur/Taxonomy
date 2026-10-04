@@ -12,7 +12,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "taxonomy.selectorLabels" . | nindent 6 }}
+      taxonomy.io/metrics: {{ include "taxonomy.fullname" . | quote }}
   endpoints:
     - port: http
       path: /actuator/prometheus

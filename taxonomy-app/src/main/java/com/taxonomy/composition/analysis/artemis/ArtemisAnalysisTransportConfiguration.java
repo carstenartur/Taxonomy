@@ -90,9 +90,14 @@ public class ArtemisAnalysisTransportConfiguration {
     @Bean
     AnalysisDispatchService analysisDispatchService(
             AnalysisDispatchStore store, ArtemisAnalysisTaskPublisher publisher,
+            ObjectProvider<ArtemisAnalysisMetrics> instrumentation,
             @Value("${taxonomy.analysis.dispatch.recovery-batch:200}") int recoveryBatch,
             @Value("${taxonomy.analysis.dispatch.recovery-limit:5000}") int recoveryLimit) {
-        return new AnalysisDispatchService(store, publisher, recoveryBatch, recoveryLimit);
+        var metrics = instrumentation.getIfAvailable();
+        return new AnalysisDispatchService(store, task -> {
+            if (metrics == null) publisher.publish(task);
+            else metrics.dispatched(task, () -> publisher.publish(task));
+        }, recoveryBatch, recoveryLimit);
     }
 
     @Bean(destroyMethod = "close")
@@ -116,8 +121,14 @@ public class ArtemisAnalysisTransportConfiguration {
     @Bean(initMethod = "start", destroyMethod = "close")
     ArtemisAnalysisLifecycle artemisAnalysisLifecycle(
             ArtemisAnalysisConnection connection, ArtemisAnalysisWorker worker, AnalysisDispatchService dispatch,
-            @Value("${taxonomy.analysis.worker.enabled:true}") boolean workerEnabled) {
-        return new ArtemisAnalysisLifecycle(connection, worker, dispatch, workerEnabled);
+            @Value("${taxonomy.analysis.worker.enabled:true}") boolean workerEnabled,
+            @Value("${taxonomy.analysis.runtime-role:all}") String role) {
+        return new ArtemisAnalysisLifecycle(connection, worker, dispatch, workerEnabled, RuntimeRole.parse(role));
+    }
+
+    enum RuntimeRole {
+        ALL, COORDINATOR, WORKER;
+        static RuntimeRole parse(String role) { return valueOf(role.strip().toUpperCase(java.util.Locale.ROOT)); }
     }
 
     /** Lifecycle owner; recovery runs on one non-scheduled thread, coalesced by the dispatch service. */
@@ -127,22 +138,24 @@ public class ArtemisAnalysisTransportConfiguration {
         private final ArtemisAnalysisWorker worker;
         private final AnalysisDispatchService dispatch;
         private final boolean workerEnabled;
+        private final RuntimeRole role;
         private final ExecutorService recovery = Executors.newSingleThreadExecutor(
                 Thread.ofPlatform().daemon().name("taxonomy-analysis-dispatch-recovery").factory());
 
         ArtemisAnalysisLifecycle(ArtemisAnalysisConnection connection, ArtemisAnalysisWorker worker,
-                                 AnalysisDispatchService dispatch, boolean workerEnabled) {
+                                 AnalysisDispatchService dispatch, boolean workerEnabled, RuntimeRole role) {
             this.connection = connection;
             this.worker = worker;
             this.dispatch = dispatch;
             this.workerEnabled = workerEnabled;
+            this.role = role;
         }
 
         void start() {
             connection.addListener(reconnect -> {
-                if (workerEnabled) {
+                if (workerEnabled || role != RuntimeRole.WORKER) {
                     try {
-                        worker.start();
+                        worker.start(workerEnabled && role != RuntimeRole.COORDINATOR, role != RuntimeRole.WORKER);
                     } catch (RuntimeException failure) {
                         log.warn("Analysis worker subscription failed ({})", failure.getClass().getSimpleName());
                     }

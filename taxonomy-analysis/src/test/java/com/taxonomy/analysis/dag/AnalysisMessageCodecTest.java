@@ -55,7 +55,7 @@ class AnalysisMessageCodecTest {
     @Test
     void unsupportedSchemaUnknownTypeAndUnknownPropertiesAreRejected() {
         String json = new String(codec.encode(allContracts().get(0)), StandardCharsets.UTF_8);
-        assertKind(json.replace("\"schemaVersion\":1", "\"schemaVersion\":2"), Kind.UNSUPPORTED_SCHEMA);
+        assertKind(json.replace("\"schemaVersion\":1", "\"schemaVersion\":999"), Kind.UNSUPPORTED_SCHEMA);
         assertKind(json.replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""), Kind.UNSUPPORTED_SCHEMA);
         assertKind(json.replace("SUBTAXONOMY_ANALYSIS_TASK", "java.lang.Runtime"), Kind.UNKNOWN_TYPE);
         assertKind(json.replace("SUBTAXONOMY_ANALYSIS_TASK", "RELATION_ANALYSIS_TASK"), Kind.INVALID_CONTRACT);

@@ -1,6 +1,8 @@
 package com.taxonomy.composition.analysis.artemis;
 
 import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -29,8 +31,11 @@ public class ArtemisProviderPermitsConfiguration {
     }
 
     @Bean
-    ArtemisProviderConcurrencyPermits artemisProviderConcurrencyPermits(
-            ArtemisAnalysisConnection connection, ArtemisProviderPermitSettings settings) {
-        return new ArtemisProviderConcurrencyPermits(connection, settings);
+    ProviderConcurrencyPermits artemisProviderConcurrencyPermits(
+            ArtemisAnalysisConnection connection, ArtemisProviderPermitSettings settings,
+            ObjectProvider<ArtemisAnalysisMetrics> instrumentation) {
+        var permits = new ArtemisProviderConcurrencyPermits(connection, settings);
+        var metrics = instrumentation.getIfAvailable();
+        return metrics == null ? permits : metrics.permits(permits, settings);
     }
 }

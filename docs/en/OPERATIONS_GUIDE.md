@@ -1,5 +1,7 @@
 # Operations Guide
 
+Clustered analysis with external Artemis: [deployment, TLS/Secrets, worker scaling, HA and administration](#external-artemis-analysis-operations).
+
 This document provides operational procedures for running the Taxonomy Architecture Analyzer in production environments.
 
 ---
@@ -380,3 +382,277 @@ server {
 - [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — government deployment checklist
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
 - [Security](SECURITY.md) — security architecture and hardening
+
+---
+
+## External Artemis analysis operations
+
+The default remains `local` transport with runtime role `all`. Clustered analysis
+uses the same Taxonomy image with `coordinator` web pods and independently scaled
+`worker` pods. The database owns operations, source authority, task effects,
+cancellation and replay; the external broker owns delivery. No production
+Taxonomy pod starts an embedded broker.
+
+### Deploy a coordinator and worker sets
+
+Use an external shared database and the same immutable image, destination prefix,
+provider configuration and source authority across all pods. Do not use a private
+HSQLDB database per pod. Worker-only mode loads exact root snapshots for its
+configured roots instead of initializing the global catalogue/indexes. Only
+coordinators serve the normal ingress. Adding workers does not automatically make
+other web session or background-job state safe for multiple web replicas; the
+existing `scaling.allowMultipleReplicas` acknowledgement still applies to web pods.
+
+The chart's [Artemis overlay](../../deploy/helm/taxonomy/values-artemis.yaml) creates
+one coordinator Deployment, a CP set with two replicas, and a set for the other
+seven roots. This is an example, not a required topology. A set can own several
+roots; zero replicas pauses that set. Keep at least one consumer for every root
+that users may request, including relation target roots.
+
+```bash
+helm upgrade --install taxonomy deploy/helm/taxonomy \
+  --namespace taxonomy \
+  --values deploy/helm/taxonomy/values-artemis.yaml \
+  --values /secure/config/taxonomy-site.yaml \
+  --set existingSecret=taxonomy-secrets \
+  --set image.digest=sha256:REPLACE_WITH_VERIFIED_IMAGE_DIGEST
+```
+
+The site file contains reviewed endpoints and policy selectors, not credentials.
+The digest placeholder must be replaced with a real 64-character digest. Create
+`taxonomy-artemis` out of band with `ARTEMIS_USER` and `ARTEMIS_PASSWORD`, using your
+secret manager or protected files. Both keys are required Secret references; the
+chart never creates credentials. Use a dedicated application broker role, not a
+broker management account. Database/provider credentials use the existing
+`existingSecret` / `secretEnv` mechanism.
+
+Adjust one set in values and run the same Helm upgrade:
+
+```yaml
+analysis:
+  workerSets:
+    - name: cp
+      replicas: 4
+      shards: [CP]
+      consumersPerShard: 1
+    - name: general
+      replicas: 1
+      shards: [BP, BR, CI, CO, CR, IP, UA]
+      consumersPerShard: 1
+```
+
+Helm lists replace rather than merge individual entries: keep the other sets in
+your values file. Each worker consumes both subtaxonomy and relation queues for
+its roots. `consumersPerShard` applies to each queue family; size HTTP capacity
+with provider permits as well as pod resources. Give a hot set a `resources` block
+to override common resources. Workers use ephemeral scratch volumes; durable
+operations/results and immutable source snapshots belong in the shared database.
+Do not share a writable Lucene volume between workers.
+
+### TLS and network policy
+
+Every TCP connector in a failover URL needs `sslEnabled=true`. Keep certificate
+chain and hostname verification enabled; never use `trustAll=true` or
+`verifyHost=false`. The chart rejects insecure visible URLs when `requireTls=true`.
+Use `requireTls=false` only for an explicitly isolated disposable test network.
+If your CA is not in the JVM trust store, put PKCS12/JKS stores in
+`analysis.artemis.tlsSecret`; the chart mounts them read-only at
+`/var/run/taxonomy-artemis`. Connector `trustStorePath`, `trustStoreType` and, for
+mTLS, `keyStorePath`/`keyStoreType` refer to these mounted files.
+
+When connector options contain a store password, store the **entire broker URL**
+in an `ARTEMIS_URL` Secret key and configure:
+
+```yaml
+analysis:
+  artemis:
+    brokerUrl: ""
+    brokerUrlSecretKey: ARTEMIS_URL
+    existingSecret: taxonomy-artemis
+    tlsSecret: taxonomy-artemis-tls
+```
+
+Secret contents cannot be inspected at Helm render time. Verify every connector's
+TLS, hostname and trust settings when creating/rotating that Secret. Restart pods
+after URL/credential rotation; a mounted store update alone does not recreate the
+existing JMS connection factory. Never put passwords in `JAVA_OPTS`, ordinary
+values, rendered evidence or shell history. See the upstream
+[transport configuration](https://artemis.apache.org/components/artemis/documentation/latest/configuring-transports.html).
+
+`analysis.artemis.egress` supplies destination **and** TCP-port rules to the web
+and worker NetworkPolicies. Include all primary/backup connector destinations,
+including any topology addresses advertised by the broker. DNS remains separately
+allowed. With `allowSameNamespaceEgress=false`, add explicit database, provider,
+OIDC, OTLP and other required peers through `networkPolicy.egress`. Kubernetes
+NetworkPolicy has no FQDN resolver: use reviewed CIDRs or namespace/pod selectors,
+or separately managed CNI FQDN policies. A policy render proves the rules exist;
+only a CNI-enabled cluster test proves they are enforced.
+
+Workers have no Service by default and reject inbound traffic. When the existing
+ServiceMonitor is enabled, the chart adds internal ClusterIP metrics Services;
+`analysis.workerMetricsIngressFrom` must identify the monitoring peers. The normal
+web Service and ingress never select worker pods. No broker Service, admin port,
+Hawtio route or Jolokia route is created by this chart.
+
+### Broker configuration and delivery
+
+[broker.xml](../../deploy/artemis/broker.xml) is a real Artemis configuration
+example, parsed against the repository's broker dependency by
+`ArtemisBrokerConfigurationTest`. Merge the address, ACL and delivery settings
+into the externally operated broker. Configure protected TLS key material, JAAS
+users/roles, durable disks and HA separately; the file is not a complete HA cluster
+installation. Changing `destinationPrefix` requires updating the broker names and
+ACL patterns too.
+
+| Destination under `taxonomy.analysis` | Routing and retention |
+|---|---|
+| `subtaxonomy.BP` … `subtaxonomy.UA` | Eight durable anycast queues; one successful durable effect per deterministic task identity |
+| `relation.BP` … `relation.UA` | Eight durable anycast queues routed by target root |
+| `relation.general` | Compatibility queue for multi-root work; only full-root consumers can handle it |
+| `completion` | Durable anycast coordinator queue; no broker expiry |
+| `progress`, `control` | Multicast with per-process transient subscriptions; database replay/cancellation remains authoritative |
+| `rejected` | Malformed, unsupported-schema or misrouted delivery evidence |
+| `dlq`, `expiry` | Durable failure input queues; the coordinator settles known tasks as failed |
+| `failed` | Content-free failure diagnostics for administrators after durable settlement |
+| `provider-permits.<quota-group>` | Separately provisioned durable anycast tokens; no expiry or finite delivery-attempt limit |
+
+The example bounds task redelivery to ten attempts with increasing delay and a
+30-second cap. Subtaxonomy/relation deliveries expire after 24 hours if no JMS TTL
+was set. These values are operational examples: align retention with application
+deadlines, recovery windows and disk capacity. Expiry/DLQ arrival is a failure
+signal, not successful task completion. The coordinator records known tasks as failed and forwards content-free diagnostics
+to `failed`; the database retains the explicit terminal/incomplete state.
+Investigate and repair the cause before selective recovery. Never rewrite tenant/source/task IDs to force delivery.
+The broker pages to durable storage rather than dropping work when memory fills.
+See [address settings](https://artemis.apache.org/components/artemis/documentation/latest/address-settings.html).
+
+Task effects commit before delivery acknowledgement. A worker crash can cause
+redelivery and replay of the recorded effect; it cannot guarantee exactly-once
+external provider billing. Dispatch intent recovery runs at startup/reconnect or
+explicit administrator repair (`POST /api/admin/analysis/dispatch/repair`), not
+through a periodic pending-row scheduler. Cancellation commits in the database
+before a live control event; a missed event cannot resurrect cancelled work.
+
+### Provider concurrency permits
+
+Enable `taxonomy.analysis.provider-permits.enabled` explicitly and map every HTTP
+provider to a quota group. For example `provider-groups.openai=shared-openai` and
+`provider-groups.custom-openai=shared-openai` share one upstream account's tokens.
+Do not infer quota ownership from display names. Provision exactly N durable
+messages in the group's new queue with the separate one-shot provisioner **before
+starting consumers**. The application never seeds tokens on startup, and an
+existing queue must never be topped up from its current available-message count:
+some tokens may be held in open transactions.
+
+For Helm, use an explicit JSON map to preserve provider names such as
+`custom-openai`; plain environment-variable map keys can lose separators. Merge
+this into any existing JSON object and keep chart-owned role/transport settings
+in `analysis` values:
+
+```yaml
+config:
+  SPRING_APPLICATION_JSON: >-
+    {"taxonomy":{"analysis":{"provider-permits":{"enabled":true,
+    "provider-groups":{"openai":"shared-openai","custom-openai":"shared-openai"}}}}}
+```
+
+Run the provisioner from the packaged application with the separate provisioning
+account in `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL`, `TAXONOMY_ANALYSIS_ARTEMIS_USER`
+and `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` environment variables. The TLS requirement
+and optional `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX` apply as usual.
+For two permits in `shared-openai` (adjust the jar path outside the image):
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitProvisioner \
+  -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher shared-openai 2
+```
+
+Keep permit queues outside task expiry/finite-redelivery policy. The example
+sets no expiry, unlimited delivery attempts, no auto-delete and no purge on zero
+consumers. The broker transaction timeout must exceed the maximum physical HTTP
+exchange; review the example's 900 seconds against provider timeouts. On holder
+loss the unacknowledged token becomes available again. Inspect an interrupted
+initial provisioning operation with all consumers stopped; a queue created before
+token commit may be empty and needs deliberate recreation. Concurrency tokens do
+not provide cluster-wide RPM, TPM or RPD; existing local rate limits remain.
+
+### Readiness, observability and administration
+
+| Signal | Meaning |
+|---|---|
+| Web `/actuator/health/readiness` | `readinessState,taxonomy`: editor/catalogue usability stays available during broker outage |
+| Worker `/actuator/health/readiness` | `readinessState,analysisBroker`: a connected broker, without waiting for the global catalogue |
+| `/actuator/health/broker` | Broker-only health group; details remain subject to Actuator authorization |
+| `/actuator/health/liveness` | Process liveness; a broker outage must not trigger restart loops |
+
+Worker readiness does **not** prove provider credentials, quota tokens, DNS/TLS to
+the model service, model availability, or a successful inference. Validate provider
+configuration through the existing authorized provider checks without making an
+unapproved paid request. A disconnected worker may still finish already received
+work while the durable protocol preserves recovery.
+
+The existing authenticated `/actuator/prometheus` ServiceMonitor covers web and
+worker metrics Services. Keep the distinct `ADMIN_TOKEN` machine credential;
+never reuse the interactive login password. Scrape external broker metrics using
+its own exporter/metrics plugin and separately managed monitor. Alert on shard
+queue depth with zero consumers, sustained delivering/redelivering messages,
+expiry/DLQ/rejected growth, connection failures and paging disk pressure. For
+permit queues compare available plus delivering tokens with provisioned capacity.
+Application operation/task/phase/root and latency metrics describe durable work;
+broker metrics describe delivery. Avoid operation/user IDs as metric labels.
+See [broker metrics](https://artemis.apache.org/components/artemis/documentation/latest/metrics.html).
+
+Hawtio/Jolokia are administrative surfaces. Bind the broker console to a private
+interface, protect it with TLS and authenticated admin roles, and restrict
+management NetworkPolicy/firewall access to an admin network or authenticated
+port-forward. Configure JAAS and console/Jolokia authorization explicitly; deny
+application users `manage`/admin roles. Keep Hawtio's proxy allowlist and Jolokia
+origin policy restricted. Do not route 8161, 8778 or the broker management context
+through Taxonomy's public ingress. Routine monitoring should use counters, not
+message-body browsing or prompt/response capture. See
+[broker security](https://artemis.apache.org/components/artemis/documentation/latest/security.html)
+and [management console](https://artemis.apache.org/components/artemis/documentation/latest/management-console.html).
+
+### HA, upgrades and recovery exercises
+
+Operate a primary/backup Artemis pair with durable journal/bindings/paging/large
+message storage, either using the supported shared-store or replicated HA policy.
+Configure quorum/fencing and network partition behavior for your chosen policy.
+Two independent brokers behind a load balancer are not a shared durable queue or
+permit pool. A failover URL only supplies endpoints; it does not replicate their
+state. Keep one logical authority for each permit queue during failover. Test
+backup activation and failback with TLS and real client-advertised hostnames.
+See [Artemis HA](https://artemis.apache.org/components/artemis/documentation/latest/ha.html).
+
+`Recreate` applies to each Deployment independently. It does not stop all worker
+sets before the coordinator migrates the shared database. For upgrades without
+explicit cross-version schema compatibility, stop admission, cancel/drain or
+record running work, scale all Taxonomy Deployments to zero, confirm termination,
+back up the database and broker, then deploy the new image to every role. Resume
+after migrations/readiness and inspect redelivery/dispatch repair evidence. Never
+combine a restored older database with a newer broker journal without reconciling
+operation/task authority. Rolling upgrades require the existing explicit
+release-specific compatibility acknowledgement.
+
+The Maven-owned `HelmArtemisContractTest` renders local, distributed and constrained
+profiles, checks independent CP scaling, TLS/Secret handling, web/worker selector
+isolation, metrics and restricted broker egress. `ArtemisBrokerConfigurationTest`
+checks the actual XML against destination names and broker parsing. Run:
+
+```bash
+./mvnw -B -pl taxonomy-build -am test \
+  -Dtest=HelmArtemisContractTest,HelmConstrainedSmokeContractTest,ArtemisBrokerConfigurationTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+bash deploy/helm/taxonomy/verify.sh
+```
+
+These checks do not replace the existing #638 live constrained-cluster smoke or
+multi-pod failure acceptance. The existing single-pod smoke quota is not a sizing
+promise for this example's four application pods plus external dependencies. In
+a disposable cluster with a NetworkPolicy-enforcing CNI, external database and HA
+broker, retain evidence of independent CP scaling, CP worker loss while IP
+progresses, broker restart/failover, coordinator loss, SSE reconnect to another web
+pod, bounded expiry/DLQ, permit recovery, and denied non-broker/admin egress. Use a
+deterministic provider and actual catalogue roots. Record command/image/chart
+versions, replica/resources, source commit, timings and outcomes without secrets
+or payload bodies; do not report render-only checks as a successful live exercise.

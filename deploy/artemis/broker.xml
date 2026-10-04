@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- External broker example; never deployed/embedded by the Taxonomy chart.
+     Merge reviewed HA/storage/TLS/JAAS settings into your broker installation.
+     Keep the default prefix aligned with AnalysisDestinations.
+     Supply artemis.keystore.password using the broker's protected secret mechanism. -->
+<configuration xmlns="urn:activemq" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="urn:activemq /schema/artemis-configuration.xsd">
+  <core xmlns="urn:activemq:core" xsi:schemaLocation="urn:activemq:core /schema/artemis-configuration.xsd">
+    <name>taxonomy-analysis</name>
+    <persistence-enabled>true</persistence-enabled>
+    <journal-type>NIO</journal-type>
+    <paging-directory>data/paging</paging-directory>
+    <bindings-directory>data/bindings</bindings-directory>
+    <journal-directory>data/journal</journal-directory>
+    <large-messages-directory>data/large-messages</large-messages-directory>
+    <journal-sync-transactional>true</journal-sync-transactional>
+    <journal-sync-non-transactional>true</journal-sync-non-transactional>
+    <security-enabled>true</security-enabled>
+    <!-- Longer than the configured maximum physical HTTP exchange; review with
+         provider timeouts before enabling long-running permit transactions. -->
+    <transaction-timeout>900000</transaction-timeout>
+    <acceptors>
+      <acceptor name="analysis-tls">tcp://0.0.0.0:61617?protocols=CORE;sslEnabled=true;keyStoreType=PKCS12;keyStorePath=/etc/artemis/tls/broker.p12;keyStorePassword=${artemis.keystore.password}</acceptor>
+    </acceptors>
+    <security-settings>
+      <security-setting match="#">
+        <permission type="send" roles="taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+        <permission type="createAddress" roles="taxonomy-admin"/>
+        <permission type="deleteAddress" roles="taxonomy-admin"/>
+        <permission type="createDurableQueue" roles="taxonomy-admin"/>
+        <permission type="deleteDurableQueue" roles="taxonomy-admin"/>
+        <permission type="createNonDurableQueue" roles="taxonomy-admin"/>
+        <permission type="deleteNonDurableQueue" roles="taxonomy-admin"/>
+        <permission type="manage" roles="taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.#">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+        <permission type="createAddress" roles="taxonomy-admin"/>
+        <permission type="deleteAddress" roles="taxonomy-admin"/>
+        <permission type="createDurableQueue" roles="taxonomy-admin"/>
+        <permission type="deleteDurableQueue" roles="taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.progress">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="createNonDurableQueue" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="deleteNonDurableQueue" roles="taxonomy-analysis,taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.control">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="createNonDurableQueue" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="deleteNonDurableQueue" roles="taxonomy-analysis,taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.rejected">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.dlq">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.expiry">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
+      <security-setting match="taxonomy.analysis.failed">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
+      <!-- Only the separate, one-shot provisioner may create a permit queue. -->
+      <security-setting match="taxonomy.analysis.provider-permits.#">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="createAddress" roles="taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="createDurableQueue" roles="taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="deleteDurableQueue" roles="taxonomy-admin"/>
+        <permission type="deleteAddress" roles="taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
+    </security-settings>
+    <address-settings>
+      <address-setting match="taxonomy.analysis.#">
+        <dead-letter-address>taxonomy.analysis.dlq</dead-letter-address>
+        <expiry-address>taxonomy.analysis.expiry</expiry-address>
+        <redelivery-delay>1000</redelivery-delay>
+        <redelivery-delay-multiplier>2.0</redelivery-delay-multiplier>
+        <max-redelivery-delay>30000</max-redelivery-delay>
+        <max-delivery-attempts>10</max-delivery-attempts>
+        <max-size-bytes>67108864</max-size-bytes>
+        <page-size-bytes>4194304</page-size-bytes>
+        <address-full-policy>PAGE</address-full-policy>
+        <auto-create-queues>false</auto-create-queues>
+        <auto-create-addresses>false</auto-create-addresses>
+        <auto-delete-queues>false</auto-delete-queues>
+        <auto-delete-addresses>false</auto-delete-addresses>
+        <enable-metrics>true</enable-metrics>
+      </address-setting>
+      <!-- Broker expiry bounds retained delivery; DB deadlines/terminal state
+           remain authoritative and expiry is an operator-visible failure. -->
+      <address-setting match="taxonomy.analysis.subtaxonomy.*">
+        <expiry-delay>86400000</expiry-delay>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.relation.*">
+        <expiry-delay>86400000</expiry-delay>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.completion">
+        <no-expiry>true</no-expiry>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.progress">
+        <expiry-delay>60000</expiry-delay>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.control">
+        <expiry-delay>60000</expiry-delay>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.rejected">
+        <no-expiry>true</no-expiry>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.dlq">
+        <no-expiry>true</no-expiry>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.expiry">
+        <no-expiry>true</no-expiry>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+      </address-setting>
+      <address-setting match="taxonomy.analysis.failed">
+        <no-expiry>true</no-expiry>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+      </address-setting>
+      <!-- Permit tokens must never expire or be dead-lettered after a worker
+           crashes. Do not seed them from application startup or Helm hooks. -->
+      <address-setting match="taxonomy.analysis.provider-permits.#">
+        <no-expiry>true</no-expiry>
+        <expiry-delay>-1</expiry-delay>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+        <redelivery-delay>0</redelivery-delay>
+        <default-purge-on-no-consumers>false</default-purge-on-no-consumers>
+        <auto-delete-queues>false</auto-delete-queues>
+        <auto-delete-addresses>false</auto-delete-addresses>
+      </address-setting>
+    </address-settings>
+    <addresses>
+      <address name="taxonomy.analysis.subtaxonomy.BP">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.BP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.BR">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.BR"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.CP">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.CP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.CI">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.CI"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.CO">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.CO"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.CR">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.CR"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.IP">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.IP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.subtaxonomy.UA">
+        <anycast><queue name="taxonomy.analysis.subtaxonomy.UA"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.BP">
+        <anycast><queue name="taxonomy.analysis.relation.BP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.BR">
+        <anycast><queue name="taxonomy.analysis.relation.BR"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.CP">
+        <anycast><queue name="taxonomy.analysis.relation.CP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.CI">
+        <anycast><queue name="taxonomy.analysis.relation.CI"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.CO">
+        <anycast><queue name="taxonomy.analysis.relation.CO"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.CR">
+        <anycast><queue name="taxonomy.analysis.relation.CR"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.IP">
+        <anycast><queue name="taxonomy.analysis.relation.IP"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.UA">
+        <anycast><queue name="taxonomy.analysis.relation.UA"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.relation.general">
+        <anycast><queue name="taxonomy.analysis.relation.general"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.completion">
+        <anycast><queue name="taxonomy.analysis.completion"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.rejected">
+        <anycast><queue name="taxonomy.analysis.rejected"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.dlq">
+        <anycast><queue name="taxonomy.analysis.dlq"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.expiry">
+        <anycast><queue name="taxonomy.analysis.expiry"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.failed">
+        <anycast><queue name="taxonomy.analysis.failed"><durable>true</durable></queue></anycast>
+      </address>
+      <address name="taxonomy.analysis.progress"><multicast/></address>
+      <address name="taxonomy.analysis.control"><multicast/></address>
+    </addresses>
+  </core>
+</configuration>

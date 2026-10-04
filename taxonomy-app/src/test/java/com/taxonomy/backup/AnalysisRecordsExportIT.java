@@ -140,7 +140,7 @@ class AnalysisRecordsExportIT {
             }
             var output = new Contents();
             new AnalysisBackupContributor(fixture.database, "alice").write(selected(profile), output);
-            assertThat(output.entries).hasSize(3);
+            assertThat(output.entries).hasSize(7);
             List<String> expected = profile.includesHistory() ? allIds : selectedIds;
             assertThat(ids(output, "continuations")).containsExactlyInAnyOrderElementsOf(expected);
             assertThat(records(output, "questions")).extracting(r -> r.path("run").path("value").asText()).containsExactlyInAnyOrderElementsOf(expected);
@@ -186,7 +186,7 @@ class AnalysisRecordsExportIT {
             new AnalysisBackupContributor(database, "alice").write(scoped(BackupProfile.CURRENT_STATE), output);
             assertThat(ids(output, "continuations")).containsExactlyInAnyOrderElementsOf(expected);
             assertThat(records(output, "questions")).hasSize(205);
-            assertThat(database.sql).hasSize(6);
+            assertThat(database.sql).hasSize(7);
             assertThat(database.sql.get(1)).doesNotContain("request_json", "result_json");
             assertThat(database.sql.subList(2, 6).stream().map(query -> query.chars().filter(c -> c == '?').count())).containsExactly(200L, 5L, 200L, 5L);
             database.assertClosed();
@@ -260,7 +260,7 @@ class AnalysisRecordsExportIT {
             @Override public Connection getConnection(String username, String password) { return getConnection(); }
         };
         var output = new Contents(); new AnalysisBackupContributor(unavailable, "alice").write(scoped(BackupProfile.SELECTED_VERSION), output);
-        assertThat(output.entries).hasSize(3);
+        assertThat(output.entries).hasSize(7);
         for (String dataset : List.of("drafts", "continuations", "questions")) assertThat(records(output, dataset)).isEmpty();
     }
     @ParameterizedTest @ValueSource(strings = {"null", "[]", "{\"businessText\":false}"})

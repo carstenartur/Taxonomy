@@ -2,7 +2,7 @@ name: CodeQL Source Analysis
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/artemis-execution-base ]
     paths:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'

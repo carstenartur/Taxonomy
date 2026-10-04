@@ -47,9 +47,11 @@ public record AnalysisEnvelope(
     private static final Pattern REFERENCE = Pattern.compile("[A-Za-z0-9._:+*-]{1,1280}");
 
     public AnalysisEnvelope {
-        if (schemaVersion != SCHEMA_VERSION) {
+        if (schemaVersion != SCHEMA_VERSION && schemaVersion != 2) {
             throw new IllegalArgumentException("Unsupported analysis message schema version: " + schemaVersion);
         }
+        if (schemaVersion == 2 && taskType != AnalysisTaskType.RELATION_ANALYSIS)
+            throw new IllegalArgumentException("Version 2 is defined only for relation work and its completions");
         Objects.requireNonNull(messageType, "messageType");
         AnalysisTaskId.requireOperationId(operationId);
         Objects.requireNonNull(authority, "authority");
@@ -71,7 +73,8 @@ public record AnalysisEnvelope(
                     }
                     yield AnalysisTaskId.subtaxonomy(operationId, roots.get(0));
                 }
-                case RELATION_ANALYSIS -> AnalysisTaskId.relation(operationId, roots);
+                case RELATION_ANALYSIS -> taskId.matchesRelation(operationId, roots, schemaVersion)
+                        ? taskId : AnalysisTaskId.relation(operationId, roots);
             };
             if (!taskId.equals(expectedId)) {
                 throw new IllegalArgumentException("taskId does not match taskType and roots");
@@ -79,7 +82,9 @@ public record AnalysisEnvelope(
         }
         requireReference(causationId, "causationId", true);
         requireReference(correlationId, "correlationId", false);
-        if (deadline != null && deadline.isBefore(createdAt)) {
+        if (deadline != null && deadline.isBefore(createdAt)
+                && messageType != AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED
+                && messageType != AnalysisMessageType.RELATION_ANALYSIS_COMPLETED) {
             throw new IllegalArgumentException("deadline must not precede createdAt");
         }
     }
@@ -114,7 +119,7 @@ public record AnalysisEnvelope(
 
     /** Derive a reply/event header caused by this message, keeping operation identity. */
     public AnalysisEnvelope derive(AnalysisMessageType type, Instant now) {
-        return new AnalysisEnvelope(SCHEMA_VERSION, type, operationId, taskId, taskType, authority,
+        return new AnalysisEnvelope(schemaVersion, type, operationId, taskId, taskType, authority,
                 requirement, roots, 1, taskId == null ? correlationId : taskId.value(), correlationId,
                 now, deadline);
     }
