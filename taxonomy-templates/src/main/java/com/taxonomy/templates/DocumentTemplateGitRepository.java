@@ -4,6 +4,7 @@ import com.taxonomy.backup.BackupCheckpoint;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import io.github.carstenartur.jgit.storage.hibernate.repository.HibernateRepository;
 import jakarta.annotation.PreDestroy;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuilder;
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 /**
@@ -64,7 +64,6 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     private final HibernateGitStorage storageHandle;
     private final Repository repository;
     private final boolean closeRepository;
-    private final ReentrantLock writeLock = new ReentrantLock();
 
     @org.springframework.beans.factory.annotation.Autowired
     public DocumentTemplateGitRepository(HibernateRepositoryFactory storageFactory) {
@@ -108,13 +107,12 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         String prefix = templatePrefix(manifest.templateId());
         String normalizedExpected = normalizeExpectedVersion(expectedTemplateVersion);
 
-        writeLock.lock();
-        try {
+        // Storage 0.11.3 takes catalogue/database locks in opposite orders during
+        // pack flush and ref access. Coordinate both paths on the live repository,
+        // including callers using different wrappers; cross-process CAS still applies.
+        synchronized (repository) {
             for (int attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
-                Ref currentRef = repository.getRefDatabase()
-                        .exactRef(Constants.R_HEADS + BRANCH);
-                ObjectId repositoryHead = currentRef == null
-                        ? null : currentRef.getObjectId();
+                ObjectId repositoryHead = headObjectId();
                 String actualTemplateVersion = currentTemplateVersion(
                         manifest.templateId(), repositoryHead);
                 requireTemplatePrecondition(
@@ -185,8 +183,6 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             String actual = currentTemplateVersion(
                     manifest.templateId(), headObjectId());
             throw new TemplateConflictException(normalizedExpected, actual);
-        } finally {
-            writeLock.unlock();
         }
     }
 
@@ -412,6 +408,19 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     }
 
     private ObjectId headObjectId() throws IOException {
+        synchronized (repository) {
+            if (repository instanceof HibernateRepository sharedRepository) {
+                // Another application can compact away a reftable cached when this
+                // handle opened. Refresh under the ref-publication database lock;
+                // the outer monitor prevents a concurrent local pack flush from
+                // holding the catalogue lock while waiting for this database lock.
+                return sharedRepository.inRefTransaction(session -> readHeadObjectId());
+            }
+            return readHeadObjectId();
+        }
+    }
+
+    private ObjectId readHeadObjectId() throws IOException {
         Ref ref = repository.getRefDatabase().exactRef(Constants.R_HEADS + BRANCH);
         return ref == null ? null : ref.getObjectId();
     }

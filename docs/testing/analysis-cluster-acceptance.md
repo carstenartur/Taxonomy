@@ -57,8 +57,23 @@ Hibernate Search after the worker role disabled it. The corrected lifecycle
 passes seven Spring-context regressions and the six complete process measurements
 below. The smoke now captures bounded current/previous logs and resources before
 cleanup, redacting fixture credentials. Three failing-path regressions pass with
-the original timeout and exit status retained. The corrected live scenario still
-requires its remote rerun. See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
+the original timeout and exit status retained.
+
+The [second remote attempt](https://github.com/carstenartur/Taxonomy/actions/runs/37231204928)
+on PR head `3c24016` retained those diagnostics. The disabled-search exception was
+absent, but two pods failed while reading the same retired JGit reftable during
+concurrent default-template bootstrap. After restart, both workers remained
+unready: the default lazy application initialization had never started the
+Artemis lifecycle beans. The IP worker also published a 73-character empty
+default DSL before the coordinator loaded the 2,572-node catalogue. These are
+separate startup defects, not evidence that a longer Helm timeout is needed.
+
+The subsequent correction starts both Artemis lifecycle owners eagerly, reads
+shared template heads under the storage library's existing database ref lock,
+and prevents workers from publishing the global default DSL. Targeted regressions
+reproduce the missing subscriptions, deleted reftable and premature empty draft.
+The live scenario must pass again on the corrected revision before acceptance.
+See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
 
@@ -103,7 +118,9 @@ image UIDs, dropped capabilities, read-only roots and explicit writable volumes.
 A fresh local Trivy **0.70.0** configuration scan reports **23 successful checks,
 zero failures**, with the same HIGH/CRITICAL threshold. The combined chart passes
 the existing full Helm verification, including all three new diagnostics cases.
-The complete remote security workflow still needs to validate the updated head.
+The complete [remote security workflow](https://github.com/carstenartur/Taxonomy/actions/runs/37231204907)
+passes on published head `3c24016`; later source revisions still require their own
+applicable checks.
 
 The final combined focused reactor passes **357 executions, zero failures,
 errors or skips**, across all 16 modules (2 minutes 38 seconds). It covers the
@@ -112,6 +129,33 @@ actual Artemis production execution path, strict provisioner CLI, startup
 lifecycle, Helm rendering, workflow/Python policies and required module guards.
 The separate six-process native matrix and full Helm/Trivy checks above also
 pass. These are targeted revision checks, not a completed canonical remote gate.
+
+The additional lazy-startup regression observes actual TCP broker consumers in
+`all`, `coordinator` and `worker` roles without looking up beans to initialize
+them. All three roles fail before the lifecycle correction; the combined
+configuration tests pass **9/9** after it. Two independent Hibernate storage
+handles reproduce the exact missing-reftable failure before the template fix;
+the **13** targeted template tests pass afterward, including idempotent bootstrap
+and rejection of stale updates. Separate JVM block caches are modelled explicitly
+so a shared test-process cache cannot hide the production failure.
+Review also identified the storage library's catalogue/database lock inversion.
+A capped subprocess reproduces that deadlock between a real pack flush and a
+simultaneous head read. Both paths now share the live repository monitor, including
+different wrappers, while retaining cross-process CAS. The regression terminates
+within a fixed deadline even when the broken locks cannot be interrupted; child
+Java-option injection variables are cleared.
+The worker/global-draft regression reproduces the same 73-character premature
+export seen in Kubernetes. All **18** focused bootstrap/initialization tests pass:
+worker readiness cannot create the branch or claim its one-shot guard, while
+subsequent coordinator readiness still publishes the complete fixture DSL.
+
+The final combined startup regression reactor passes **293 executions across all
+16 modules, zero failures, errors or skips**, in 2 minutes 27 seconds. It includes
+the bounded lock-order subprocess, shared-template bootstrap, production TCP
+Artemis computation and lazy lifecycle configuration, worker/global-draft
+bootstrap, full Spring template initialization, Helm contracts and all mandatory
+architecture guards. This is a targeted local gate; the corrected revision still
+requires its own canonical, vendor-database and live Kubernetes results.
 
 ## Remaining environment acceptance
 

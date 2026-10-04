@@ -5,6 +5,7 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.AppInitializationStateService.InitializationReadyEvent;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,6 +32,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@link ApplicationReadyEvent} fires. In asynchronous init mode, the application-ready
  * event can precede catalogue completion; {@link InitializationReadyEvent} retries the
  * same idempotent bootstrap immediately after the catalogue becomes authoritative.
+ * Workers only consume exact-source snapshots, so their readiness never authorizes
+ * exporting the global catalogue into the shared repository.
  *
  * <p>Controlled by the {@code taxonomy.git.bootstrap} property (default: {@code true}).
  * A JVM-wide static guard ensures that only the <em>first</em> Spring context in a
@@ -61,14 +64,17 @@ public class GitRepositoryBootstrap {
     private final DslGitRepository gitRepository;
     private final TaxDslExportService exportService;
     private final AppInitializationStateService stateService;
+    private final CatalogueRuntimePolicy catalogueRuntimePolicy;
 
     public GitRepositoryBootstrap(
             DslGitRepositoryFactory repositoryFactory,
             TaxDslExportService exportService,
-            AppInitializationStateService stateService) {
+            AppInitializationStateService stateService,
+            CatalogueRuntimePolicy catalogueRuntimePolicy) {
         this.gitRepository = repositoryFactory.getSystemRepository();
         this.exportService = exportService;
         this.stateService = stateService;
+        this.catalogueRuntimePolicy = catalogueRuntimePolicy;
     }
 
     /**
@@ -81,6 +87,13 @@ public class GitRepositoryBootstrap {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initializeDraftBranch() {
+        // Worker READY means exact-source snapshots can be consumed; it does not
+        // mean the coordinator's global catalogue has been loaded. Do not claim
+        // the guard or create a draft that would suppress its later bootstrap.
+        if (catalogueRuntimePolicy.workerOnly()) {
+            log.debug("Catalogue worker skips global draft branch bootstrap.");
+            return;
+        }
         // Check readiness before acquiring the one-shot guard. Otherwise an
         // ApplicationReady listener can hold the guard while the asynchronous
         // READY event is dispatched, causing that only retry to be skipped.

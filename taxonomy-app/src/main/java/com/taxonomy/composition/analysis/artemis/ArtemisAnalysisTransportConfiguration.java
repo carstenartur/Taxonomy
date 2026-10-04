@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -118,6 +119,7 @@ public class ArtemisAnalysisTransportConfiguration {
     }
 
     /** Wires connection events to worker subscription and event-driven dispatch recovery. */
+    @Lazy(false) // Background transport must start even when application beans are lazy by default.
     @Bean(initMethod = "start", destroyMethod = "close")
     ArtemisAnalysisLifecycle artemisAnalysisLifecycle(
             ArtemisAnalysisConnection connection, ArtemisAnalysisWorker worker, AnalysisDispatchService dispatch,
