@@ -371,47 +371,15 @@
         if (!summary || !summary.id) return '';
         return `<div class="d-flex flex-wrap align-items-center gap-2 mt-3 p-3 border rounded bg-body-tertiary">`
             + `<strong class="me-2">${escapeHtml(t('decisionReport'))}</strong>`
-            + `<button type="button" class="btn btn-sm btn-outline-primary" data-decision-report-format="docx">${escapeHtml(t('reportDocx'))}</button>`
-            + `<button type="button" class="btn btn-sm btn-outline-primary" data-decision-report-format="html">${escapeHtml(t('reportHtml'))}</button>`
-            + `<button type="button" class="btn btn-sm btn-outline-secondary" data-decision-report-format="json">${escapeHtml(t('reportJson'))}</button>`
+            + `<button type="button" class="btn btn-sm btn-outline-primary" data-decision-report-format="docx">${escapeHtml(t('decisionReport'))} …</button>`
             + `</div>`;
     }
 
     async function downloadDecisionReport(format) {
         const snapshot = state.selectedSnapshot;
         if (!snapshot || !snapshot.id || !format) return;
-        setBusy(true);
-        try {
-            const response = await api().downloadDecisionReport(
-                projectId, snapshot.id, format, locale);
-            if (!response.ok) {
-                let detail = `HTTP ${response.status}`;
-                try {
-                    const problem = await response.json();
-                    detail = problem.detail || problem.message || detail;
-                } catch (ignored) {
-                    // A non-JSON error body still retains the HTTP status.
-                }
-                throw new Error(detail);
-            }
-            const blob = await response.blob();
-            const disposition = response.headers.get('Content-Disposition') || '';
-            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
-            const filename = filenameMatch ? filenameMatch[1]
-                : `taxonomy-decision-rationale-report.${format}`;
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            showError(error);
-        } finally {
-            setBusy(false);
-        }
+        window.TaxonomyDecisionExport.openSaved({projectId, snapshotId: snapshot.id, language: locale,
+            format, api: api()});
     }
 
     function renderAnalysisSummary(detail) {

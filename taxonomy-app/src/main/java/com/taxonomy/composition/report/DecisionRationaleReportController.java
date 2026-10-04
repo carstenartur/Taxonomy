@@ -1,6 +1,8 @@
 package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionReportOptions;
+import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
@@ -113,7 +115,18 @@ public class DecisionRationaleReportController {
             List<ProductCoverageGap> productCoverageGaps,
             String language,
             Long analysisDurationMillis,
-            com.taxonomy.dto.AnalysisCoverage analysisCoverage) {
+            com.taxonomy.dto.AnalysisCoverage analysisCoverage,
+            AnalysisScope analysisScope, DecisionReportOptions exportOptions) {
+        public DecisionReportRequest(Map<String, Integer> scores, Map<String, Integer> rawScores,
+                Map<String, Integer> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Integer> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, analysisCoverage, null, null);
+        }
         public DecisionReportRequest(Map<String, Integer> scores, Map<String, Integer> rawScores,
                 Map<String, Integer> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
                 Map<String, Integer> productSuitabilityScores, Integer scoreSemanticsVersion,
@@ -248,10 +261,12 @@ public class DecisionRationaleReportController {
                 request.productCoverageGaps(),
                 List.of(),
                 null,
-                scoreDetails, request.analysisDurationMillis());
-        DecisionRationaleReport report = reportService.generate(
-                input, context, viewContext, locale);
-        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale).withAnalysisCoverage(request.analysisCoverage());
+                scoreDetails, request.analysisDurationMillis()).withRecordedReasons(request.reasons())
+                .withScope(request.analysisScope(), request.analysisCoverage());
+        DecisionRationaleReport report = request.exportOptions() == null
+                ? reportService.generate(input, context, viewContext, locale)
+                : reportService.generate(input, context, viewContext, locale, request.exportOptions());
+        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
     }
 
     private AnalysisScoreSemantics.Derived resolveScoreSemantics(

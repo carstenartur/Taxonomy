@@ -15,7 +15,11 @@
     }
 
     bind('downloadArchitectureWord', ArchitectureWorkbenchApi.architectureWordUrl);
-    bind('downloadDecisionWord', ArchitectureWorkbenchApi.decisionWordUrl);
+    const decision = document.getElementById('downloadDecisionWord');
+    if (decision) decision.addEventListener('click', function () {
+        window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: document.documentElement.lang,
+            api: window.TaxonomyPortfolioApi});
+    });
 
     bind(
         'downloadArchitectureArchiMate',

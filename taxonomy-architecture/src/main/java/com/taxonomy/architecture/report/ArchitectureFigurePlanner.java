@@ -144,15 +144,18 @@ public final class ArchitectureFigurePlanner {
     }
 
     public static void validate(DiagramModel model, DiagramScene scene) {
+        validateEvidence(model, scene);
+        if (model.nodes().size() > MAX_NODES || model.edges().size() > MAX_EDGES)
+            throw new IllegalArgumentException("Word document policy ceiling exceeded: maximum 500 nodes and 1000 relations");
+    }
+
+    public static void validateEvidence(DiagramModel model, DiagramScene scene) {
         if (model == null
                 || scene == null
                 || model.nodes() == null
                 || model.nodes().isEmpty()
                 || model.edges() == null)
             throw new IllegalArgumentException("Missing frozen architecture graph");
-        if (model.nodes().size() > MAX_NODES || model.edges().size() > MAX_EDGES)
-            throw new IllegalArgumentException(
-                    "Word document policy ceiling exceeded: maximum 500 nodes and 1000 relations");
         var nodeIds = new HashSet<String>();
         var edgeIds = new HashSet<String>();
         for (var node : model.nodes())

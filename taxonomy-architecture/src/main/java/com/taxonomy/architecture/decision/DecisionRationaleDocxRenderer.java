@@ -120,7 +120,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             configurePage(document);
             WordDocumentWriter.ensureStyles(document);
             addHeaderAndFooter(document, report, labels);
-            renderTitlePage(document, report, labels);
+            if (report.scope().options().includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(document, report, labels);
             writeReportBody(document, report, labels);
             document.write(output);
             return output.toByteArray();
@@ -144,19 +144,37 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionReportLabels labels) throws Exception {
         WordDocumentWriter writer = new WordDocumentWriter(document, labels);
         configureCoreProperties(document, report);
+        var options = report.scope().options();
         var navigation = new LinkedHashMap<String,String>();
-        navigation.put("decision_summary",labels.executiveSummary());
-        if(report.architecture()!=null)navigation.put("architecture_figures",labels.architectureOverview());
-        navigation.put("decision_tree",labels.treeOverview());
-        navigation.put("decision_chapters",labels.decisionChapters());
-        navigation.put("decision_evidence",labels.appendix());
-        writer.contents(navigation, 2);
-        renderExecutiveSummary(document, report, labels);
-        if(report.architecture()!=null)new ArchitectureWordSectionRenderer().write(document,report.architecture());
-        new DecisionTreeWordSectionRenderer().write(document,
-                report.architecture()==null?DecisionTreeOverview.from(report.chapters()):report.architecture().decisionTree(),report.languageTag());
-        renderChapters(document, report, labels);
-        renderAppendix(document, report, labels);
+        if (options.includes(DecisionReportOptions.Section.SUMMARY)) navigation.put("decision_summary", labels.executiveSummary());
+        if (options.includes(DecisionReportOptions.Section.TREE)) navigation.put("decision_tree", labels.treeOverview());
+        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) navigation.put("architecture_figures", labels.architectureOverview());
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put("decision_chapters", labels.decisionChapters());
+        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put("decision_evidence", labels.appendix());
+        if (!options.includes(DecisionReportOptions.Section.TITLE_PAGE)) {
+            writer.heading(report.title(), 0, null);
+            writer.paragraph(report.requirement());
+        }
+        DecisionReportPresentation.sourceNotice(report).forEach(writer::paragraph);
+        if (options.contents() != DecisionReportOptions.Contents.NONE && !navigation.isEmpty())
+            writer.contents(navigation, options.contents() == DecisionReportOptions.Contents.SHORT ? 1 : 2);
+        if (options.includes(DecisionReportOptions.Section.SUMMARY)) {
+            if (options.profile() == DecisionReportOptions.Profile.COMPACT) {
+                writer.heading(labels.executiveSummary(), 1, "decision_summary");
+                writer.paragraph(report.executiveSummary().conciseConclusion());
+                DecisionReportPresentation.compactReasons(report).forEach(writer::paragraph);
+            } else renderExecutiveSummary(document, report, labels);
+        }
+        boolean architecture = options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null;
+        if (options.includes(DecisionReportOptions.Section.TREE)) {
+            if (options.treeLayout() == DecisionReportOptions.TreeLayout.TABLE)
+                new DecisionTreeWordSectionRenderer().write(document, report.scope().decisionTree(), report.languageTag(), options.includes(DecisionReportOptions.Section.CHAPTERS));
+            else new DecisionTreeLandscapeSection().write(document, report, architecture
+                    || options.includes(DecisionReportOptions.Section.CHAPTERS) || options.includes(DecisionReportOptions.Section.EVIDENCE));
+        }
+        if (architecture) new ArchitectureWordSectionRenderer().write(document, report.architecture());
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) renderChapters(document, report, labels);
+        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) renderAppendix(document, report, labels);
     }
 
     private void configurePage(XWPFDocument document) {

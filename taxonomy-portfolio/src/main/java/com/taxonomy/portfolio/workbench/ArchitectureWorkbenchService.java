@@ -62,6 +62,18 @@ public class ArchitectureWorkbenchService {
                            String snapshotId,
                            String username,
                            WorkspaceContext context) {
+        return loadSource(projectId, snapshotId, username, context, false);
+    }
+
+    /** Optional report evidence; access and malformed-source failures remain errors. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Projection> loadIfPresent(Long projectId, String snapshotId,
+                           String username, WorkspaceContext context) {
+        return java.util.Optional.ofNullable(loadSource(projectId, snapshotId, username, context, true));
+    }
+
+    private Projection loadSource(Long projectId, String snapshotId, String username,
+                           WorkspaceContext context, boolean optional) {
         if (snapshotId == null || snapshotId.isBlank()) {
             throw PortfolioException.validation("snapshotId is required");
         }
@@ -74,6 +86,9 @@ public class ArchitectureWorkbenchService {
         if (architectureView == null
                 || architectureView.getIncludedElements() == null
                 || architectureView.getIncludedElements().isEmpty()) {
+            if (optional && analysis != null && (architectureView == null
+                    || architectureView.getIncludedRelationships() == null
+                    || architectureView.getIncludedRelationships().isEmpty())) return null;
             throw PortfolioException.conflict(
                     "Snapshot " + snapshotId
                             + " contains no persisted architecture view. "

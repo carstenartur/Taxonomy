@@ -196,7 +196,9 @@
         }
         taxonomyData.forEach(function (root) { visit(root, [], 0); });
         var coverage = window.TaxonomyState && window.TaxonomyState.analysisCoverage;
-        var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '')];
+        var scope = window.TaxonomyState && window.TaxonomyState.lastAnalysisScope;
+        var scopeFields = [csvField(scope ? (scope.taxonomyRoots?.length ? scope.taxonomyRoots.join(';') : 'ALL') : ''), csvField(scope?.mode || '')];
+        var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '') + ',AnalysisTaxonomies,AnalysisMode'];
         Object.entries(scores)
             .filter(function (entry) { return Number.isFinite(entry[1]) && (coverage || entry[1] > 0); })
             .sort(function (left, right) { return right[1] - left[1]; })
@@ -210,13 +212,13 @@
                     csvField((paths[code] || []).join(' > ')),
                     levels[code] || 0
                 ].concat(coverage ? [coverage.nodes[code]?.state || 'UNKNOWN',
-                    coverage.nodes[code]?.descendants || 'UNASSESSED', csvField(coverage.nodes[code]?.reason || '')] : []).join(','));
+                    coverage.nodes[code]?.descendants || 'UNASSESSED', csvField(coverage.nodes[code]?.reason || '')] : []).concat(scopeFields).join(','));
             });
         if (coverage) Object.entries(coverage.nodes).forEach(function (entry) {
             var code = entry[0], assessment = entry[1];
             if (Object.prototype.hasOwnProperty.call(scores, code) || assessment.state !== 'UNKNOWN') return;
             lines.push(['', csvField(code), csvField(names[code] || ''), '', csvField((paths[code] || []).join(' > ')),
-                levels[code] || 0, 'UNKNOWN', assessment.descendants, csvField(assessment.reason || '')].join(','));
+                levels[code] || 0, 'UNKNOWN', assessment.descendants, csvField(assessment.reason || '')].concat(scopeFields).join(','));
         });
         downloadBlob(
             new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }),

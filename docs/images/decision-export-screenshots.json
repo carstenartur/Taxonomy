@@ -1,0 +1,66 @@
+{
+  "capturedAt": "2026-10-03T18:30:12.199Z",
+  "sourceCommit": "6c25cf520aa3b760fcaae7647056f28e901cf22a",
+  "sourceFile": "taxonomy-app/src/main/resources/static/js/shared/decision-export-dialog.js",
+  "sourceSha256": "cb525a9e3b64cf4f8e91eb44456dc09571ee2eef84058615a6358bf91f6cb3d6",
+  "browser": "138.0.7204.183",
+  "kind": "production-component-with-authored-example-input",
+  "fullApplication": false,
+  "providerCalls": false,
+  "captures": [
+    {
+      "file": "decision-export-dialog-de.png",
+      "language": "de",
+      "viewport": {
+        "width": 1280,
+        "height": 1250
+      },
+      "sha256": "98e20b5f57dad2c3892e9f9c7cb3ed9cc71a53833a6a66a9915ad8a8e5f0fc5a"
+    },
+    {
+      "file": "decision-export-options-de.png",
+      "language": "de",
+      "viewport": {
+        "width": 1280,
+        "height": 1250
+      },
+      "sha256": "572485016fe000a9806e42c910479b7443c01f6ae3342c5befccc87e1898e05d"
+    },
+    {
+      "file": "decision-export-mobile-de.png",
+      "language": "de",
+      "viewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "sha256": "5f710f951def1d840ed7293768a52d6f5625a34ccf8af4b946f621ca2b85ce6b"
+    },
+    {
+      "file": "decision-export-dialog-en.png",
+      "language": "en",
+      "viewport": {
+        "width": 1280,
+        "height": 1250
+      },
+      "sha256": "2bedcaecf91fd224abb49af45db9491b9e557401de427f7cc36e074281bf2906"
+    },
+    {
+      "file": "decision-export-options-en.png",
+      "language": "en",
+      "viewport": {
+        "width": 1280,
+        "height": 1250
+      },
+      "sha256": "c075597f7d2a7e874198263afdc92ab7784b208ca8c6fc7400dd625d476adc11"
+    },
+    {
+      "file": "decision-export-mobile-en.png",
+      "language": "en",
+      "viewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "sha256": "eb14446426e3c689a3a18e9e82b05155f8fcf72033e9583156a892dc1f2ed13d"
+    }
+  ]
+}

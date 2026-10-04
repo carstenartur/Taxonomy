@@ -68,12 +68,60 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append(text(footerText(report, labels)))
                 .append("</span><span class=\"page-counter\"></span></footer>");
 
-        renderTitlePage(html, report, labels);
-        renderExecutiveSummary(html, report, labels);
-        renderChapters(html, report, labels);
-        renderAppendix(html, report, labels);
+        var options = report.scope().options();
+        if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(html, report, labels);
+        html.append("<section class=\"source-notice\"><h1>").append(text(report.title())).append("</h1><p>")
+                .append(text(report.requirement())).append("</p>");
+        DecisionReportPresentation.sourceNotice(report).forEach(line -> html.append("<p>").append(text(line)).append("</p>"));
+        html.append("</section>");
+        var navigation = new java.util.LinkedHashMap<String, String>();
+        if (options.includes(DecisionReportOptions.Section.SUMMARY)) navigation.put("decision_summary", labels.executiveSummary());
+        if (options.includes(DecisionReportOptions.Section.TREE)) navigation.put("decision_tree", labels.treeOverview());
+        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) navigation.put("architecture_figures", labels.architectureOverview());
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put("decision_chapters", labels.decisionChapters());
+        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put("decision_evidence", labels.appendix());
+        if (options.contents() != DecisionReportOptions.Contents.NONE) {
+            html.append("<nav aria-label=\"").append(attr(labels.contents())).append("\"><h2>").append(text(labels.contents())).append("</h2><ul>");
+            navigation.forEach((id, title) -> html.append("<li><a href=\"#").append(id).append("\">").append(text(title)).append("</a></li>"));
+            if (options.contents() == DecisionReportOptions.Contents.FULL && options.includes(DecisionReportOptions.Section.CHAPTERS))
+                report.chapters().forEach(chapter -> html.append("<li><a href=\"#chapter-").append(chapter.number()).append("\">").append(text(chapter.parentCode())).append("</a></li>"));
+            html.append("</ul></nav>");
+        }
+        if (options.includes(DecisionReportOptions.Section.SUMMARY)) {
+            html.append("<div id=\"decision_summary\">");
+            if (options.profile() == DecisionReportOptions.Profile.COMPACT) {
+                html.append("<h2>").append(text(labels.executiveSummary())).append("</h2><p>").append(text(report.executiveSummary().conciseConclusion())).append("</p>");
+                DecisionReportPresentation.compactReasons(report).forEach(line -> html.append("<p>").append(text(line)).append("</p>"));
+            }
+            else renderExecutiveSummary(html, report, labels);
+            html.append("</div>");
+        }
+        if (options.includes(DecisionReportOptions.Section.TREE)) renderTree(html, report, labels);
+        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) {
+            html.append("<section id=\"architecture_figures\"><h2>").append(text(labels.architectureOverview())).append("</h2><p>")
+                    .append(text(report.architecture().scope())).append("</p><table><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.titleLabel())).append("</th></tr>");
+            report.architecture().elements().forEach(e -> html.append("<tr><td>").append(text(e.id())).append("</td><td>").append(text(e.title())).append("</td></tr>"));
+            html.append("</table><ul>");
+            report.architecture().relations().forEach(e -> html.append("<li>").append(text(e.sourceId())).append(" → ").append(text(e.targetId())).append(" · ").append(text(e.type())).append("</li>"));
+            html.append("</ul></section>");
+        }
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) { html.append("<div id=\"decision_chapters\">"); renderChapters(html, report, labels); html.append("</div>"); }
+        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) { html.append("<div id=\"decision_evidence\">"); renderAppendix(html, report, labels); html.append("</div>"); }
         html.append("</body></html>");
         return html.toString();
+    }
+
+    private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels) {
+        html.append("<section id=\"decision_tree\"><h2>").append(text(labels.treeOverview())).append("</h2>");
+        if (report.scope().options().treeLayout() == DecisionReportOptions.TreeLayout.TABLE) {
+            html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.score())).append("</th></tr></thead><tbody>");
+            report.scope().decisionTree().rows().forEach(row -> html.append("<tr><td style=\"padding-left:").append(row.depth() * 12 + 8).append("px\">").append(text(row.code() + " · " + row.title())).append("</td><td>").append(row.score() == null ? text(labels.notEvaluated()) : row.score() + "%").append("</td></tr>"));
+            html.append("</tbody></table>");
+        } else {
+            var panels = new com.taxonomy.architecture.report.DecisionTreeFigureRenderer().render(report.scope().decisionTree(), report.languageTag(), report.scope().options().treeLayout());
+            for (var panel : panels) html.append("<figure class=\"tree-figure ").append(panel.a3() ? "a3" : "a4").append("\" style=\"break-inside:avoid\">").append(panel.svg()).append("<figcaption>").append(text(panel.rootCode())).append("</figcaption></figure>");
+        }
+        html.append("</section><style>.tree-figure svg{width:100%;height:auto}.source-notice{overflow-wrap:anywhere} @page treeA4{size:A4 landscape} @page treeA3{size:A3 landscape} @media print{.tree-figure.a4{page:treeA4}.tree-figure.a3{page:treeA3}}</style>");
     }
 
     private void renderTitlePage(
@@ -177,7 +225,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append("</p></section>");
 
         for (DecisionChapter chapter : report.chapters()) {
-            html.append("<section class=\"report-section decision-chapter\"><div class=\"chapter-number\">")
+            html.append("<section id=\"chapter-").append(chapter.number()).append("\" class=\"report-section decision-chapter\"><div class=\"chapter-number\">")
                     .append(chapter.number()).append("</div><div class=\"chapter-heading\"><div><span class=\"small-label\">")
                     .append(text(labels.parentNode())).append("</span><h2><code>")
                     .append(text(chapter.parentCode())).append("</code> · ")

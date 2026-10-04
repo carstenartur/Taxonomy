@@ -61,7 +61,7 @@ public record ArchitectureReportDocument(
             String graphSha256) {}
 
     public ArchitectureReportDocument {
-        ArchitectureFigurePlanner.validate(diagram, scene);
+        ArchitectureFigurePlanner.validateEvidence(diagram, scene);
         diagram =
                 new DiagramModel(
                         diagram.title(),
