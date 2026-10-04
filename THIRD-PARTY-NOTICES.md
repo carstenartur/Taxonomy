@@ -66,13 +66,15 @@ Representative projects include:
 - Micrometer — https://micrometer.io/
 - OpenTelemetry Java instrumentation and Collector — https://opentelemetry.io/
 - Jaeger — https://www.jaegertracing.io/
+- Apache ActiveMQ Artemis JMS client (opt-in analysis transport) — https://activemq.apache.org/components/artemis/
 
 The OpenTelemetry Java agent is present only in the container distribution and
 is disabled by default. Collector and Jaeger are optional deployment services,
 not Taxonomy application-classpath dependencies.
 
-Testcontainers is Apache-2.0-licensed test infrastructure and is excluded from
-the generated runtime report.
+Testcontainers and the embedded Artemis test broker are Apache-2.0-licensed test
+infrastructure and are excluded from the generated runtime report. Taxonomy ships
+only the Artemis client; clustered deployments run their own external broker.
 
 ---
 

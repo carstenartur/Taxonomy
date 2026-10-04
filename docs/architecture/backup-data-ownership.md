@@ -23,6 +23,8 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 
 | Category / entity | Module owner | Rule | Database table | Contract |
 |---|---|---|---|---|
+| `com.taxonomy.analysis.dispatch.AnalysisDispatchIntent` | analysis | TRANSIENT | `analysis_dispatch_intent` | Broker dispatch bookkeeping only; restore never republishes tasks or reactivates broker state |
+| `com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord` | analysis | TRANSIENT | `analysis_task_completion` | Idempotency ledger for broker redelivery; durable results live in the owning operation records |
 | `com.taxonomy.analysis.recovery.AnalysisContinuationRun` | analysis | PORTABLE_PRIMARY | `analysis_continuation` | Durable work/status retained; restore interrupted, never restore leases or automatically start external work |
 | `com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint` | analysis | PORTABLE_PRIMARY | `analysis_question_checkpoint` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.analysis.session.AnalysisWorkingDraft` | analysis | PORTABLE_PRIMARY | `analysis_working_draft` | Explicit versioned records; preserve business IDs and map technical foreign keys |
