@@ -1,6 +1,7 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
@@ -14,6 +15,7 @@ import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
@@ -37,6 +39,9 @@ public class GraphSearchService {
     @PersistenceContext
     private EntityManager entityManager;
 
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
+
     public GraphSearchService(LocalEmbeddingService embeddingService) {
         this.embeddingService = embeddingService;
     }
@@ -45,6 +50,7 @@ public class GraphSearchService {
     public GraphSearchResult graphSearch(String queryText,
                                          int maxResults,
                                          WorkspaceContext workspaceContext) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (maxResults <= 0) {
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
                     Collections.emptyMap(), "No graph search results were requested.");

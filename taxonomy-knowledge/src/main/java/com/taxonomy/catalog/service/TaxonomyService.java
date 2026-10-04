@@ -7,6 +7,8 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
@@ -82,6 +84,9 @@ public class TaxonomyService {
     @Autowired
     private CatalogueSourceJournal catalogueSourceJournal;
 
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
+
     /** Exact catalogue resource used both for loading and report provenance. */
     @Value("${taxonomy.catalogue.resource:classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx}")
     private String catalogueResource;
@@ -147,6 +152,12 @@ public class TaxonomyService {
      */
     @PostConstruct
     public void initOnStartup() {
+        if (catalogueRuntimePolicy.workerOnly()) {
+            initialized.set(true);
+            stateService.update(AppInitializationStateService.State.READY,
+                    "Catalogue worker is ready for exact-source root snapshots");
+            return;
+        }
         if (asyncInit) {
             log.info("Async taxonomy init enabled — taxonomy will load after server starts.");
         } else {
@@ -166,7 +177,7 @@ public class TaxonomyService {
     @EventListener(ApplicationReadyEvent.class)
     @Async
     public void onApplicationReady(ApplicationReadyEvent event) {
-        if (!asyncInit) {
+        if (catalogueRuntimePolicy.workerOnly() || !asyncInit) {
             return;
         }
         if (initializing.compareAndSet(false, true)) {
@@ -218,6 +229,9 @@ public class TaxonomyService {
     }
 
     private void doLoadTaxonomy() throws Exception {
+        // The journal gate precedes every row read/write and survives batched EM clears.
+        // Analysis can therefore freeze all roots from one committed import generation.
+        catalogueSourceJournal.lockForMutation();
         long persistedNodeCount = repository.count();
         if (persistedNodeCount > 0 && !reloadExisting) {
             List<TaxonomyNode> persistedNodes = repository.findAll();
@@ -640,10 +654,10 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> getFullTree() {
-        List<TaxonomyNode> roots = repository.findByParentIsNullOrderByCodeAsc();
+        List<TaxonomyNode> roots = getRootNodes();
         List<TaxonomyNodeDto> dtos = new ArrayList<>();
         for (TaxonomyNode root : roots) {
-            dtos.add(toDto(root));
+            dtos.add(toDtoEvidence(root));
         }
         return dtos;
     }
@@ -655,6 +669,9 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> getFingerprintTree() {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return toFingerprintTree(frozen.allNodes());
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         return toFingerprintTree(repository.findAll());
     }
 
@@ -665,6 +682,9 @@ public class TaxonomyService {
      */
     public List<TaxonomyNodeDto> toFingerprintTree(Collection<TaxonomyNode> nodes) {
         Objects.requireNonNull(nodes, "nodes");
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) nodes = frozen.canonicalNodes(List.copyOf(nodes));
+        else catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         Map<String, TaxonomyNodeDto> byCode = new TreeMap<>();
         for (TaxonomyNode node : nodes) {
             if (node == null || node.getCode() == null || node.getCode().isBlank()) {
@@ -710,6 +730,13 @@ public class TaxonomyService {
     }
 
     public TaxonomyNodeDto toDto(TaxonomyNode node) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) node = frozen.node(node.getCode());
+        else catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        return toDtoEvidence(node);
+    }
+
+    private TaxonomyNodeDto toDtoEvidence(TaxonomyNode node) {
         TaxonomyNodeDto dto = new TaxonomyNodeDto();
         dto.setId(node.getId());
         dto.setCode(node.getCode());
@@ -736,7 +763,7 @@ public class TaxonomyService {
         dto.setClassificationJustification(overlayMetadata.justification());
         List<TaxonomyNodeDto> childDtos = new ArrayList<>();
         for (TaxonomyNode child : node.getChildren()) {
-            childDtos.add(toDto(child));
+            childDtos.add(toDtoEvidence(child));
         }
         dto.setChildren(childDtos);
         List<TaxonomyRelationDto> outgoing = new ArrayList<>();
@@ -769,6 +796,9 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getRootNodes() {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.rootNodes();
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         return repository.findByParentIsNullOrderByCodeAsc();
     }
 
@@ -782,6 +812,9 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getChildrenOf(String parentCode) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.children(parentCode);
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         return repository.findByParentCodeOrderByNameEnAsc(parentCode);
     }
 
@@ -790,6 +823,9 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public TaxonomyNode getNodeByCode(String code) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.node(code);
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         return repository.findByCode(code).orElse(null);
     }
 
@@ -858,6 +894,9 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public Map<String, String> getAssessmentDescriptions(List<TaxonomyNode> nodes) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) nodes = frozen.canonicalNodes(nodes);
+        else catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         Map<String, String> contexts = getAssessmentContexts(nodes);
         Map<String, String> descriptions = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
@@ -871,6 +910,9 @@ public class TaxonomyService {
     @Transactional(readOnly = true)
     public Map<String, String> getAssessmentContexts(List<TaxonomyNode> nodes) {
         Objects.requireNonNull(nodes, "nodes");
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) nodes = frozen.canonicalNodes(nodes);
+        else catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         Map<String, TaxonomyNode> resolved = new HashMap<>();
         for (TaxonomyNode node : nodes) {
             if (node == null || node.getCode() == null || node.getCode().isBlank()
@@ -912,7 +954,9 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public Map<String, List<TaxonomyNode>> getChildrenMap() {
-        List<TaxonomyNode> allNodes = repository.findAll();
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen == null) catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        List<TaxonomyNode> allNodes = frozen == null ? repository.findAll() : frozen.allNodes();
         Map<String, List<TaxonomyNode>> map = new HashMap<>();
         for (TaxonomyNode node : allNodes) {
             String parentCode = node.getParentCode();

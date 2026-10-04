@@ -5,6 +5,8 @@ import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.NodeEmbeddingBinder;
 import jakarta.annotation.PreDestroy;
@@ -15,8 +17,10 @@ import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -103,13 +107,21 @@ public class LocalEmbeddingService {
     private boolean allowDownload;
 
     private volatile ZooModel<String, float[]> model;
+    private volatile EmbeddingModelIdentity loadedModelIdentity;
     private volatile boolean modelLoadFailed;
     private volatile boolean closed;
     private final Object modelLock = new Object();
     private final ReentrantReadWriteLock modelLifecycleLock = new ReentrantReadWriteLock();
+    private final FrozenEmbeddingCache frozenCache = new FrozenEmbeddingCache();
+
+    @Value("${embedding.frozen.cache.max-vectors:8192}")
+    private int frozenCacheMaxVectors = 8192;
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
 
     public boolean isEnabled() {
         return embeddingEnabled;
@@ -201,7 +213,20 @@ public class LocalEmbeddingService {
         java.nio.file.Path modelPath = java.nio.file.Path.of(localPath);
         log.info("Loading DJL model from local path: {}", modelPath.toAbsolutePath());
         try {
-            return modelCriteria(modelPath).loadModel();
+            EmbeddingModelIdentity before = EmbeddingModelIdentity.capture(modelPath, queryPrefix);
+            ZooModel<String, float[]> loaded = modelCriteria(modelPath).loadModel();
+            try {
+                if (!before.equals(EmbeddingModelIdentity.capture(modelPath, queryPrefix))) {
+                    throw new IllegalStateException("Embedding artifacts changed while the model was loading");
+                }
+                loadedModelIdentity = new EmbeddingModelIdentity(before.modelSha256(), before.tokenizerSha256(),
+                        before.configurationSha256(), before.queryPrefix(), before.inferenceVersion()
+                        + ":runtime-" + loaded.getNDManager().getEngine().getVersion());
+                return loaded;
+            } catch (Exception failure) {
+                loaded.close();
+                throw failure;
+            }
         } catch (Exception exception) {
             log.error("DJL Criteria.loadModel() failed for path '{}': {}",
                     modelPath.toAbsolutePath(), exception.getMessage(), exception);
@@ -336,6 +361,7 @@ public class LocalEmbeddingService {
 
     @Transactional(readOnly = true)
     public int indexedNodeCount() {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         try {
             SearchSession session = Search.session(entityManager);
             return (int) session.search(TaxonomyNode.class)
@@ -368,8 +394,77 @@ public class LocalEmbeddingService {
         return embed(prefixed);
     }
 
+    /** Exact loaded artifact identity. Does not confuse a configured URL with the bytes used for inference. */
+    public EmbeddingModelIdentity embeddingIdentity() throws Exception {
+        var readLock = modelLifecycleLock.readLock();
+        readLock.lock();
+        try {
+            getModel();
+            if (loadedModelIdentity == null) throw new IllegalStateException("Loaded embedding model identity is unavailable");
+            return new EmbeddingModelIdentity(loadedModelIdentity.modelSha256(), loadedModelIdentity.tokenizerSha256(),
+                    loadedModelIdentity.configurationSha256(), queryPrefix == null ? "" : queryPrefix,
+                    loadedModelIdentity.inferenceVersion());
+        } finally {
+            readLock.unlock();
+        }
+    }
+
+    /** Preflight all bound roots before traversal, so incompatible or absent evidence fails the durable task. */
+    public void validateFrozenModel() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Frozen embedding validation requires no database transaction");
+        }
+        var catalogue = FrozenCatalogueContext.current();
+        if (catalogue == null) throw new IllegalStateException("Frozen embedding validation requires a bound catalogue");
+        if (!isAvailable()) throw new IllegalStateException("Frozen embedding model is unavailable");
+        try {
+            var roots = catalogue.rootNodes();
+            catalogueRuntimePolicy.requireConfiguredRoots(roots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet()));
+            roots.forEach(root -> catalogue.embeddingSnapshot(root.getCode()));
+            var identity = embeddingIdentity();
+            for (var root : roots) {
+                if (!identity.equals(catalogue.embeddingSnapshot(root.getCode()).model())) {
+                    throw new IllegalStateException("Frozen embedding model does not match the worker model configuration");
+                }
+            }
+        } catch (IllegalStateException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            throw new IllegalStateException("Frozen embedding validation failed", failure);
+        }
+    }
+
+    /** Worker inference is deliberately outside a database transaction and reads only its frozen candidate texts. */
+    public Map<String, Integer> scoreFrozenNodes(String businessText, List<TaxonomyNode> nodes) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Frozen embedding inference requires no database transaction");
+        }
+        var catalogue = FrozenCatalogueContext.current();
+        if (catalogue == null) throw new IllegalStateException("Frozen embedding inference requires a bound catalogue");
+        catalogueRuntimePolicy.requireConfiguredRoots(nodes.stream().map(TaxonomyNode::getTaxonomyRoot)
+                .collect(Collectors.toSet()));
+        if (!isAvailable()) throw new IllegalStateException("Frozen embedding model is unavailable");
+        var readLock = modelLifecycleLock.readLock();
+        readLock.lock();
+        try {
+            return frozenCache.score(catalogue, embeddingIdentity(), businessText, nodes, this, frozenCacheMaxVectors);
+        } catch (IllegalArgumentException | IllegalStateException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            throw new IllegalStateException("Frozen embedding inference failed", failure);
+        } finally {
+            readLock.unlock();
+        }
+    }
+
+    public record FrozenCacheStatistics(int vectors, long vectorBytes) { }
+
+    /** Vector payload only; excludes Java object overhead and native model memory. */
+    public FrozenCacheStatistics frozenCacheStatistics() { return frozenCache.statistics(); }
+
     @Transactional(readOnly = true)
     public Map<String, Integer> scoreNodes(String businessText, List<TaxonomyNode> nodes) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         Map<String, Integer> scores = new HashMap<>();
         for (TaxonomyNode node : nodes) {
             scores.put(node.getCode(), 0);
@@ -414,6 +509,7 @@ public class LocalEmbeddingService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> semanticSearch(String queryText, int topK) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (!isAvailable()) {
             return Collections.emptyList();
         }
@@ -455,6 +551,7 @@ public class LocalEmbeddingService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> findSimilarNodes(String nodeCode, int topK) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (!isAvailable()) {
             return Collections.emptyList();
         }
@@ -501,8 +598,10 @@ public class LocalEmbeddingService {
                     return;
                 }
                 closed = true;
+                frozenCache.clear();
                 ZooModel<String, float[]> currentModel = model;
                 model = null;
+                loadedModelIdentity = null;
                 if (currentModel != null) {
                     try {
                         currentModel.close();

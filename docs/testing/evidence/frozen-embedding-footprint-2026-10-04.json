@@ -1,0 +1,117 @@
+{
+  "measurement" : "Fresh JVM retained heap after GC for frozen worker snapshot binding and actual candidate cache; deterministic 384D fixture vectors, no native model or Spring/broker/database startup claim",
+  "fixtureRelations" : "Explicit empty relation set for footprint fixture only; not production relation provenance or ONNX quality evidence",
+  "jvmFlags" : [ "-Xms128m", "-Xmx256m", "-XX:+UseSerialGC" ],
+  "workbookSha256" : "6b19743eff1487a76ea3e5b788d90831ba1705da31790cf58f2d69a979b14130",
+  "overlaySha256" : "f82b7d614d00700760bb009ece94949080148d244974b2363037bed3d3b10d3e",
+  "measurements" : {
+    "BP" : {
+      "roots" : [ "BP" ],
+      "nodes" : 409,
+      "baselineHeapBytes" : 15909416,
+      "snapshotRetainedHeapDeltaBytes" : 1514696,
+      "populatedRetainedHeapDeltaBytes" : 2708560,
+      "cachedVectors" : 409,
+      "cachedVectorPayloadBytes" : 628224,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 397,
+      "jvm" : "21.0.2+13-58"
+    },
+    "BR" : {
+      "roots" : [ "BR" ],
+      "nodes" : 307,
+      "baselineHeapBytes" : 15908696,
+      "snapshotRetainedHeapDeltaBytes" : 889112,
+      "populatedRetainedHeapDeltaBytes" : 1903600,
+      "cachedVectors" : 307,
+      "cachedVectorPayloadBytes" : 471552,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 360,
+      "jvm" : "21.0.2+13-58"
+    },
+    "CP" : {
+      "roots" : [ "CP" ],
+      "nodes" : 34,
+      "baselineHeapBytes" : 15907544,
+      "snapshotRetainedHeapDeltaBytes" : 429120,
+      "populatedRetainedHeapDeltaBytes" : 966896,
+      "cachedVectors" : 34,
+      "cachedVectorPayloadBytes" : 52224,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 317,
+      "jvm" : "21.0.2+13-58"
+    },
+    "CI" : {
+      "roots" : [ "CI" ],
+      "nodes" : 131,
+      "baselineHeapBytes" : 15908144,
+      "snapshotRetainedHeapDeltaBytes" : 573144,
+      "populatedRetainedHeapDeltaBytes" : 1280672,
+      "cachedVectors" : 131,
+      "cachedVectorPayloadBytes" : 201216,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 326,
+      "jvm" : "21.0.2+13-58"
+    },
+    "CO" : {
+      "roots" : [ "CO" ],
+      "nodes" : 92,
+      "baselineHeapBytes" : 15909800,
+      "snapshotRetainedHeapDeltaBytes" : 546984,
+      "populatedRetainedHeapDeltaBytes" : 1185704,
+      "cachedVectors" : 92,
+      "cachedVectorPayloadBytes" : 141312,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 318,
+      "jvm" : "21.0.2+13-58"
+    },
+    "CR" : {
+      "roots" : [ "CR" ],
+      "nodes" : 151,
+      "baselineHeapBytes" : 15907944,
+      "snapshotRetainedHeapDeltaBytes" : 663432,
+      "populatedRetainedHeapDeltaBytes" : 1405680,
+      "cachedVectors" : 151,
+      "cachedVectorPayloadBytes" : 231936,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 338,
+      "jvm" : "21.0.2+13-58"
+    },
+    "IP" : {
+      "roots" : [ "IP" ],
+      "nodes" : 1072,
+      "baselineHeapBytes" : 15907928,
+      "snapshotRetainedHeapDeltaBytes" : 2126440,
+      "populatedRetainedHeapDeltaBytes" : 4476328,
+      "cachedVectors" : 1072,
+      "cachedVectorPayloadBytes" : 1646592,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 528,
+      "jvm" : "21.0.2+13-58"
+    },
+    "UA" : {
+      "roots" : [ "UA" ],
+      "nodes" : 376,
+      "baselineHeapBytes" : 15908432,
+      "snapshotRetainedHeapDeltaBytes" : 975344,
+      "populatedRetainedHeapDeltaBytes" : 2109848,
+      "cachedVectors" : 376,
+      "cachedVectorPayloadBytes" : 577536,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 391,
+      "jvm" : "21.0.2+13-58"
+    },
+    "ALL" : {
+      "roots" : [ "BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA" ],
+      "nodes" : 2572,
+      "baselineHeapBytes" : 15910136,
+      "snapshotRetainedHeapDeltaBytes" : 5173056,
+      "populatedRetainedHeapDeltaBytes" : 10141400,
+      "cachedVectors" : 2572,
+      "cachedVectorPayloadBytes" : 3950592,
+      "storage" : "bounded candidate vector cache; no EntityManager or Lucene directory configured",
+      "bindAndPopulateMillis" : 524,
+      "jvm" : "21.0.2+13-58"
+    }
+  }
+}

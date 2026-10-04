@@ -21,6 +21,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -29,6 +33,37 @@ class CatalogueOverlayServiceTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DataFormatter formatter = new DataFormatter(Locale.ROOT);
+
+    @Test
+    void publishesOverlayDigestOnlyWithItsCompleteMetadataIndex() throws Exception {
+        var service = new CatalogueOverlayService(objectMapper, new DefaultResourceLoader(), true,
+                "classpath:data/nato-taxonomy.json");
+        var indexing = new CountDownLatch(1);
+        var continueIndexing = new CountDownLatch(1);
+        var firstCode = new AtomicReference<String>();
+        var first = new AtomicBoolean(true);
+        var metadata = new ConcurrentHashMap<String, CatalogueOverlayService.NodeMetadata>() {
+            @Override public CatalogueOverlayService.NodeMetadata put(String code, CatalogueOverlayService.NodeMetadata value) {
+                if (first.compareAndSet(true, false)) {
+                    firstCode.set(code); indexing.countDown();
+                    try { if (!continueIndexing.await(5, TimeUnit.SECONDS)) throw new AssertionError("Index latch timed out"); }
+                    catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+                }
+                return super.put(code, value);
+            }
+        };
+        ReflectionTestUtils.setField(service, "nodeMetadata", metadata);
+        try (var threads = Executors.newFixedThreadPool(2)) {
+            var loading = threads.submit(service::getOverlayMetadata);
+            assertThat(indexing.await(5, TimeUnit.SECONDS)).isTrue();
+            var reading = threads.submit(() -> service.getNodeMetadata(firstCode.get()));
+            try {
+                assertThatThrownBy(() -> reading.get(100, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            } finally { continueIndexing.countDown(); }
+            assertThat(loading.get(5, TimeUnit.SECONDS).sha256()).isNotBlank();
+            assertThat(reading.get(5, TimeUnit.SECONDS).analysisRole()).isIn("PRODUCT", "PRODUCT_FAMILY");
+        }
+    }
 
     @Test
     void checkedInOverlayRepairsAndClassifiesEveryDraftInformationProduct() throws Exception {

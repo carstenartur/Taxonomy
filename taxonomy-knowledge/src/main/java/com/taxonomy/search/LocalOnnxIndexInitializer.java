@@ -2,9 +2,11 @@ package com.taxonomy.search;
 
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
@@ -56,6 +58,9 @@ public class LocalOnnxIndexInitializer {
     private final AppInitializationStateService initializationState;
     private final LocalEmbeddingIndexRebuilder indexRebuilder;
     private final String provider;
+
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicReference<State> state =
             new AtomicReference<>(State.DISABLED);
@@ -77,6 +82,10 @@ public class LocalOnnxIndexInitializer {
     @Async
     @EventListener(ApplicationReadyEvent.class)
     public void initializeLocalOnnxIndex() {
+        if (catalogueRuntimePolicy.workerOnly()) {
+            update(State.DISABLED, "Catalogue worker does not build a global embedding index");
+            return;
+        }
         if (!embeddingService.isEnabled()) {
             update(State.DISABLED, "Local embeddings are disabled");
             return;

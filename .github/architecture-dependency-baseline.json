@@ -103,6 +103,13 @@
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.service",
       "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.snapshot",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.service",
+      "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
       "classDependencyCount": 1
     },
@@ -642,6 +649,13 @@
       "fromContext": "architecture",
       "fromPackage": "com.taxonomy.architecture.service",
       "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.provenance",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "architecture",
+      "fromPackage": "com.taxonomy.architecture.service",
+      "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.repository",
       "classDependencyCount": 14
     },
@@ -847,6 +861,13 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 5
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.catalog.snapshot",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "knowledge",

@@ -880,7 +880,7 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Integer> rawScores = localEmbeddingService.scoreNodes(businessText, products);
+            Map<String, Integer> rawScores = scoreLocalNodes(businessText, products);
             detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
             detail.setReasons(Map.of());
             detail.setPrompt("(local embedding – independent product suitability)");
@@ -1117,7 +1117,7 @@ public class LlmService {
                 }
                 log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
                 Map<String, Integer> scores = normalizeToParent(
-                        localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
+                        scoreLocalNodes(businessText, nodes), parentScore);
                 recordSuccess();
                 return new ScoreParseResult(scores, Map.of());
             }
@@ -1166,9 +1166,14 @@ public class LlmService {
         }
     }
 
-    /**
-     * Like {@link #callLlm} but propagates {@link LlmRateLimitException} instead of swallowing it.
-     */
+    /** Frozen workers do not enter the legacy global-index transaction. */
+    private Map<String, Integer> scoreLocalNodes(String businessText, List<TaxonomyNode> nodes) {
+        return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.current() == null
+                ? localEmbeddingService.scoreNodes(businessText, nodes)
+                : localEmbeddingService.scoreFrozenNodes(businessText, nodes);
+    }
+
+    /** Like {@link #callLlm}, but propagates {@link LlmRateLimitException}. */
     private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         if (providerConfig.isMockMode()) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
@@ -1185,7 +1190,7 @@ public class LlmService {
             }
             log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
             Map<String, Integer> scores = normalizeToParent(
-                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
+                    scoreLocalNodes(businessText, nodes), parentScore);
             recordSuccess();
             return scores;
         }
@@ -1263,7 +1268,7 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Integer> similarityScores = localEmbeddingService.scoreNodes(businessText, nodes);
+            Map<String, Integer> similarityScores = scoreLocalNodes(businessText, nodes);
             Map<String, Integer> scores = kind == ScoreAssessmentKind.ROOT_RELEVANCE
                     ? similarityScores : normalizeToParent(similarityScores, parentScore);
             detail.setDurationMs(System.currentTimeMillis() - start);
