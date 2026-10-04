@@ -60,6 +60,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          # The loss test holds a row lock until the worker's connections vanish.
+          # Poll dead clients even while their queries are waiting for that lock.
+          args: [postgres, -c, client_connection_check_interval=1s]
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false

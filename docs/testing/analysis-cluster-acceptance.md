@@ -84,8 +84,37 @@ analysis callers and the final source recheck now read the branch from the
 immutable authorized workspace context. They still verify the current commit and
 reject a changed source. Four red-to-green regressions cover this mismatch and a
 concurrent change to another active workspace; all **23** focused tests pass.
-Independent review found no important issue. The next live run must confirm
-provisioning through admission and worker-loss recovery on the corrected source.
+Independent review found no important issue.
+
+The [fourth remote attempt](https://github.com/carstenartur/Taxonomy/actions/runs/37236100813)
+on `ae2c33b` confirms durable two-root admission and an actual unacknowledged CP
+delivery. After force-deleting that worker, the unchanged 120-second joint
+broker/database disconnection check fails while the acceptance row lock is held.
+The artifact does not retain the final state of each resource, so it cannot
+identify which half caused the timeout.
+
+The smoke PostgreSQL instance now sets `client_connection_check_interval=1s`.
+[PostgreSQL documents](https://www.postgresql.org/docs/16/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL)
+that its default zero disables dead-client checks during running queries; that
+matters when this test deliberately blocks the worker on a row lock. Every loss
+poll now samples both resources independently and retains their latest bounded,
+allowlisted counters even if the other observation fails. Failed observations
+replace previous evidence and cannot satisfy the predicate. Seven new behavioral
+cases fail before this correction; all **10** smoke cases and the full Helm
+verification pass afterward. Independent review found no important issue.
+Production database defaults, the timeout, the held lock, zero pre-release
+effects and real redelivery/exactly-one-effect assertions remain unchanged. The
+next live run must establish whether this fixture correction resolves the timeout.
+
+The [same-head reformulation run](https://github.com/carstenartur/Taxonomy/actions/runs/37236101044)
+also reports exactly one new architecture edge introduced by the worker bootstrap
+fix: composition DSL bootstrap now depends on the existing knowledge catalogue
+runtime policy. Review confirms the intended composition-to-feature direction;
+the baseline records this one class edge without changing any architecture rule
+or selector. All **23** dependency-ratchet cases and **213** mandatory module
+guards pass in the combined 16-module reactor (236 executions, no failures,
+errors or skips, 1 minute 6 seconds).
+
 See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.

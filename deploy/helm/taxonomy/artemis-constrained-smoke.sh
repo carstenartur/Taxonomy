@@ -92,7 +92,8 @@ trap cleanup EXIT
 
 # A failed or render-only rerun must not leave a previous live success marker.
 mkdir -p "${EVIDENCE_DIR}"
-rm -f -- "${EVIDENCE_DIR}/evidence.json"
+rm -f -- "${EVIDENCE_DIR}/evidence.json" \
+  "${EVIDENCE_DIR}/worker-loss-broker.json" "${EVIDENCE_DIR}/worker-loss-database.json"
 rm -rf -- "${EVIDENCE_DIR}/startup" "${EVIDENCE_DIR}/diagnostics"
 [[ "${MODE}" == live || "${MODE}" == --render-only ]] || fail "Usage: $0 [--render-only]"
 [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "SOURCE_SHA must be a full Git commit"
@@ -255,7 +256,36 @@ kubectl delete pod "${LOST_POD}" --namespace "${NAMESPACE}" --grace-period=0 --f
 # API deletion alone does not prove process death. Keep the row lock until both
 # broker consumption and every database connection from the lost pod have gone.
 lost_worker_disconnected() {
-  no_cp_consumers && [[ $(sql "select count(*) from pg_stat_activity where client_addr='${LOST_IP}'::inet") == 0 ]]
+  local broker_disconnected=false database_disconnected=false
+  # Sample both resources independently. Keep only the latest bounded counters,
+  # without SQL text, credentials, or arbitrary broker response/error fields.
+  if broker_stats && jq -e '
+      .value | {ConsumerCount, DeliveringCount, MessageCount, MessagesAcknowledged, MessagesAdded}
+      | select(all(.[]; type == "number" and . >= 0))
+      | {observed: true, observedAt: (now | todateiso8601), value: .}
+      ' "${PRIVATE_DIR}/broker-stats.json" >"${EVIDENCE_DIR}/worker-loss-broker.json"; then
+    if jq -e '.value.ConsumerCount == 0 and .value.DeliveringCount == 0' \
+        "${EVIDENCE_DIR}/worker-loss-broker.json" >/dev/null; then broker_disconnected=true; fi
+  else
+    jq -n '{observed: false, observedAt: (now | todateiso8601)}' >"${EVIDENCE_DIR}/worker-loss-broker.json"
+  fi
+  if sql "select json_build_object(
+      'sessionCount', count(*),
+      'lockWaitCount', count(*) filter (where wait_event_type='Lock'),
+      'activeCount', count(*) filter (where state='active'),
+      'clientConnectionCheckInterval', current_setting('client_connection_check_interval'))
+      from pg_stat_activity where client_addr='${LOST_IP}'::inet" >"${PRIVATE_DIR}/worker-loss-database.json" &&
+      jq -e 'select([.sessionCount, .lockWaitCount, .activeCount] | all(.[]; type == "number" and . >= 0))
+        | {observed: true, observedAt: (now | todateiso8601), sessionCount, lockWaitCount,
+           activeCount, clientConnectionCheckInterval}
+        ' "${PRIVATE_DIR}/worker-loss-database.json" >"${EVIDENCE_DIR}/worker-loss-database.json"; then
+    if jq -e '.sessionCount == 0' "${EVIDENCE_DIR}/worker-loss-database.json" >/dev/null; then
+      database_disconnected=true
+    fi
+  else
+    jq -n '{observed: false, observedAt: (now | todateiso8601)}' >"${EVIDENCE_DIR}/worker-loss-database.json"
+  fi
+  [[ "${broker_disconnected}" == true && "${database_disconnected}" == true ]]
 }
 await_until 120 "lost CP worker disconnected from broker and database" lost_worker_disconnected
 locked || fail "Acceptance row lock expired before the lost worker disconnected"

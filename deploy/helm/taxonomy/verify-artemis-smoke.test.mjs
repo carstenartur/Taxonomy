@@ -122,3 +122,91 @@ for (const [keep, missingCurrent] of [[false, false], [true, false], [false, tru
     }
   });
 }
+
+function smokeFunction(name) {
+  const definition = readFileSync(script, 'utf8').match(new RegExp(`^${name}\\(\\) \\{(?:[^\\n]*\\}|[\\s\\S]*?^\\})\\n`, 'm'));
+  assert.ok(definition, `Actual smoke function ${name} must exist`);
+  return definition[0];
+}
+
+// Run the actual loss predicate with external observations supplied by the test.
+// This deliberately does not reproduce its boolean logic in a test-only helper.
+function pollLostWorker(root, {consumers = 0, delivering = 0, sessions = 0, brokerAvailable = true, databaseAvailable = true}) {
+  const evidence = join(root, 'evidence'), privateDir = join(root, 'private');
+  for (const directory of [evidence, privateDir]) mkdirSync(directory, {recursive: true});
+  writeFileSync(join(root, 'broker.json'), JSON.stringify({status: 200, value: {
+    ConsumerCount: consumers, DeliveringCount: delivering, MessageCount: 1,
+    MessagesAcknowledged: 0, MessagesAdded: 1, secret: 'must-not-be-retained',
+  }, secret: 'must-not-be-retained'}));
+  writeFileSync(join(root, 'database.json'), JSON.stringify({sessionCount: sessions, lockWaitCount: sessions,
+    activeCount: sessions, clientConnectionCheckInterval: '1s', query: 'must-not-be-retained'}));
+  const result = spawnSync('bash', ['-c', `set -euo pipefail
+broker_stats() {
+  echo broker >>"$SMOKE_TEST_STATE/calls"
+  cp "$SMOKE_TEST_STATE/broker.json" "$PRIVATE_DIR/broker-stats.json"
+  [[ "$BROKER_AVAILABLE" == true ]]
+}
+sql() {
+  echo database >>"$SMOKE_TEST_STATE/calls"
+  [[ "$DATABASE_AVAILABLE" == true ]] || return 1
+  if [[ "$1" == *json_build_object* ]]; then cat "$SMOKE_TEST_STATE/database.json";
+  else jq -r '.sessionCount' "$SMOKE_TEST_STATE/database.json"; fi
+}
+${smokeFunction('no_cp_consumers')}
+${smokeFunction('lost_worker_disconnected')}
+if lost_worker_disconnected; then exit 0; else exit 1; fi
+`], {env: {...process.env, SMOKE_TEST_STATE: root, EVIDENCE_DIR: evidence, PRIVATE_DIR: privateDir,
+    LOST_IP: '10.244.0.11', BROKER_AVAILABLE: String(brokerAvailable), DATABASE_AVAILABLE: String(databaseAvailable)},
+  encoding: 'utf8', timeout: 5_000});
+  assert.ok(!result.error, result.error?.message);
+  return {result, evidence};
+}
+
+for (const [name, state, disconnected] of [
+  ['consumer remains', {consumers: 1}, false],
+  ['delivery remains', {delivering: 1}, false],
+  ['blocked database client remains', {sessions: 1}, false],
+  ['both resources disconnected', {}, true],
+  ['broker observation fails', {brokerAvailable: false}, false],
+  ['database observation fails', {databaseAvailable: false}, false],
+]) {
+  test(`Loss poll records both bounded observations and fails closed: ${name}`, () => {
+    const root = mkdtempSync(join(tmpdir(), 'artemis-loss-poll-'));
+    try {
+      const {result, evidence} = pollLostWorker(root, state);
+      assert.equal(result.status, disconnected ? 0 : 1, result.stdout + result.stderr);
+      assert.deepEqual(readFileSync(join(root, 'calls'), 'utf8').trim().split('\n'), ['broker', 'database'],
+        'A negative broker observation must not short-circuit database diagnostics');
+      assert.deepEqual(readdirSync(evidence).sort(), ['worker-loss-broker.json', 'worker-loss-database.json']);
+      const broker = JSON.parse(readFileSync(join(evidence, 'worker-loss-broker.json'), 'utf8'));
+      const database = JSON.parse(readFileSync(join(evidence, 'worker-loss-database.json'), 'utf8'));
+      assert.equal(broker.observed, state.brokerAvailable !== false);
+      assert.equal(database.observed, state.databaseAvailable !== false);
+      if (database.observed) {
+        assert.equal(database.sessionCount, state.sessions ?? 0);
+        assert.equal(database.lockWaitCount, state.sessions ?? 0);
+        assert.equal(database.clientConnectionCheckInterval, '1s');
+      }
+      assert.ok(!evidenceText(evidence).includes('must-not-be-retained'), 'Retain only allowed diagnostic fields');
+    } finally {
+      rmSync(root, {recursive: true, force: true});
+    }
+  });
+}
+
+test('Loss polling replaces previous observations instead of retaining stale success or growing artifacts', () => {
+  const root = mkdtempSync(join(tmpdir(), 'artemis-loss-poll-'));
+  try {
+    assert.equal(pollLostWorker(root, {}).result.status, 0);
+    const {result, evidence} = pollLostWorker(root, {brokerAvailable: false, databaseAvailable: false});
+    assert.equal(result.status, 1);
+    assert.deepEqual(readdirSync(evidence).sort(), ['worker-loss-broker.json', 'worker-loss-database.json']);
+    for (const file of readdirSync(evidence)) {
+      const observation = JSON.parse(readFileSync(join(evidence, file), 'utf8'));
+      assert.equal(observation.observed, false);
+      assert.deepEqual(Object.keys(observation).sort(), ['observed', 'observedAt']);
+    }
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});

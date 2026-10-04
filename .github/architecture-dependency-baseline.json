@@ -410,6 +410,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.dsl.service",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.snapshot",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
       "classDependencyCount": 1
