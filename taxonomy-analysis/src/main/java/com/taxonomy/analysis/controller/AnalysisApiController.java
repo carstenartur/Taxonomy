@@ -158,7 +158,7 @@ public class AnalysisApiController {
             if (clusterExecution != null && !request.isResumable()) {
                 var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                         maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
-                String branch = repositoryStateService.resolveWorkspaceBranch(context.username());
+                String branch = context.currentBranch();
                 var view = repositoryStateService.getViewContext(context.username(), branch, context);
                 var operation = AnalysisOperationContexts.create(operationId, command, view);
                 var result = analyzeRequirementUseCase.analyze(command, operation, view);
@@ -406,7 +406,7 @@ public class AnalysisApiController {
         String operationId = newOperationId();
         var command = new AnalyzeRequirementCommand(businessText, scope.includesRelations(),
                 resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope);
-        String branch = repositoryStateService.resolveWorkspaceBranch(workspace.username());
+        String branch = workspace.currentBranch();
         var view = repositoryStateService.getViewContext(workspace.username(), branch, workspace);
         var operation = AnalysisOperationContexts.create(operationId, command, view);
         var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope);

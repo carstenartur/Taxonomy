@@ -145,6 +145,29 @@ class DurableClusterAnalysisExecutionTest {
     }
 
     @Test
+    void admissionRechecksPinnedBranchWhenTheUsersActiveWorkspaceChangesDuringCapture() {
+        var selected = new WorkspaceContext("alice", "workspace", "main", "repository");
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                selected, null, new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY));
+        var context = new AnalysisOperationContext("pinned-main",
+                new AnalysisSourceAuthority("repository", "workspace", "main", "main-commit"),
+                RequirementReference.adHoc("requirement"), "pinned-main");
+        var view = new ViewContext("main-commit", "main", null, false, false, false);
+        when(views.getViewContext("alice", "main", selected)).thenReturn(view);
+        when(catalogue.captureRoots(any(), anySet())).thenAnswer(i -> {
+            when(views.resolveWorkspaceBranch("alice")).thenReturn("other-workspace-branch");
+            return List.of(root(i.getArgument(0), "CP"));
+        });
+        when(store.snapshot(context)).thenReturn(snapshot(context, ClusterAnalysisState.COMPLETED));
+
+        assertThat(execution.execute(context, command, view, ignored -> { }).getStatus()).isEqualTo("SUCCESS");
+
+        verify(views).getViewContext("alice", "main", selected);
+        verify(views, never()).resolveWorkspaceBranch(anyString());
+        verify(store).admit(eq(context), any(), eq(view), anyMap(), anyMap());
+    }
+
+    @Test
     void architectureOnlyStillFreezesAllRootsWithoutAddingScoringTasks() {
         when(catalogue.captureRoots(any(), anySet())).thenAnswer(i -> i.<Set<String>>getArgument(1).stream()
                 .sorted().map(code -> root(i.getArgument(0), code)).toList());

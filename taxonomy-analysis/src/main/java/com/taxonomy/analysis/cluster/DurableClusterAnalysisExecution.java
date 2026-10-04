@@ -120,7 +120,8 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
 
     private void requireCurrentSource(AnalysisOperationContext context, AnalyzeRequirementCommand command) {
         var workspace = command.workspaceContext();
-        String branch = workspaceViews.resolveWorkspaceBranch(workspace.username());
+        // Recheck the request's authorized branch, not another tab's active workspace.
+        String branch = workspace.currentBranch();
         ViewContext current = workspaceViews.getViewContext(workspace.username(), branch, workspace);
         if (!Objects.equals(context.authority().branch(), branch)
                 || !Objects.equals(context.authority().sourceCommit(), current == null ? null : current.basedOnCommit())

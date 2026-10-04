@@ -73,6 +73,19 @@ shared template heads under the storage library's existing database ref lock,
 and prevents workers from publishing the global default DSL. Targeted regressions
 reproduce the missing subscriptions, deleted reftable and premature empty draft.
 The live scenario must pass again on the corrected revision before acceptance.
+
+The [third remote attempt](https://github.com/carstenartur/Taxonomy/actions/runs/37234521014)
+on `ff6532c` confirms ready coordinator/CP/IP pods, real permitted database/TLS
+broker egress and denied broker-management egress. The coordinator publishes the
+complete 1,427,610-character default DSL. Workspace creation and provisioning
+succeed, but analysis admission returns HTTP 400: the authorized workspace uses
+`main`, while legacy user navigation still names `draft`. POST, streaming, direct
+analysis callers and the final source recheck now read the branch from the
+immutable authorized workspace context. They still verify the current commit and
+reject a changed source. Four red-to-green regressions cover this mismatch and a
+concurrent change to another active workspace; all **23** focused tests pass.
+Independent review found no important issue. The next live run must confirm
+provisioning through admission and worker-loss recovery on the corrected source.
 See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
@@ -156,6 +169,13 @@ Artemis computation and lazy lifecycle configuration, worker/global-draft
 bootstrap, full Spring template initialization, Helm contracts and all mandatory
 architecture guards. This is a targeted local gate; the corrected revision still
 requires its own canonical, vendor-database and live Kubernetes results.
+
+The subsequent branch-authority correction passes **276 combined executions
+across all 16 modules, zero failures, errors or skips**, in 1 minute 40 seconds.
+This includes POST/SSE and direct-call regressions, source movement rejection,
+durable observation, frozen ONNX/relation behavior, production TCP Artemis
+computation and all required architecture guards. It does not substitute for the
+next live provisioning/admission/worker-loss scenario.
 
 ## Remaining environment acceptance
 

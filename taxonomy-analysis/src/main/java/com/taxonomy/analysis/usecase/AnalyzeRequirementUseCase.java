@@ -253,7 +253,7 @@ public class AnalyzeRequirementUseCase {
 
     private ViewContext resolveViewContext(AnalyzeRequirementCommand command) {
         String effectiveUsername = command.workspaceContext().username();
-        String branch = repositoryStateService.resolveWorkspaceBranch(effectiveUsername);
+        String branch = command.workspaceContext().currentBranch();
         return repositoryStateService.getViewContext(
                 effectiveUsername,
                 branch,

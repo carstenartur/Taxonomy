@@ -92,6 +92,65 @@ class ClusterAnalysisApiControllerTest {
         verifyNoInteractions(analyze, localRegistry);
     }
 
+    @Test void postUsesProvisionedMainBranchWhenLegacyUserStateStillNamesDraft() throws Exception {
+        var selected = selectProvisionedMain();
+        when(analyze.analyze(any(), any(), any())).thenAnswer(i -> {
+            AnalyzeRequirementCommand command = i.getArgument(0);
+            AnalysisOperationContext operation = i.getArgument(1);
+            ViewContext captured = i.getArgument(2);
+            assertThat(command.workspaceContext()).isEqualTo(selected);
+            assertThat(operation.authority().branch()).isEqualTo("main");
+            assertThat(operation.authority().sourceCommit()).isEqualTo("main-commit");
+            assertThat(captured.basedOnBranch()).isEqualTo("main");
+            var result = new AnalysisResult(Map.of("CP", 71), List.of());
+            result.setStatus("SUCCESS");
+            return new AnalyzeRequirementResult(result);
+        });
+
+        mvc.perform(post("/api/analyze").param("workspaceId", selected.workspaceId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"businessText\":\"requirement\",\"provider\":\"MOCK\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rawScores.CP").value(71));
+
+        verify(state).getViewContext("alice", "main", selected);
+        verify(state, never()).resolveWorkspaceBranch(anyString());
+    }
+
+    @Test void streamUsesProvisionedMainBranchWhenLegacyUserStateStillNamesDraft() throws Exception {
+        var selected = selectProvisionedMain();
+        doAnswer(i -> {
+            AnalysisOperationContext operation = i.getArgument(1);
+            AnalyzeRequirementCommand command = i.getArgument(2);
+            ViewContext captured = i.getArgument(3);
+            assertThat(command.workspaceContext()).isEqualTo(selected);
+            assertThat(operation.authority().branch()).isEqualTo("main");
+            assertThat(operation.authority().sourceCommit()).isEqualTo("main-commit");
+            assertThat(captured.basedOnBranch()).isEqualTo("main");
+            i.<AnalysisStreamEventHandler>getArgument(4).handle(
+                    new AnalysisStreamEvent.DurableSnapshot(snapshot(operation.operationId(), true)));
+            return null;
+        }).when(stream).stream(any(), any(), any(), any(), any());
+
+        mvc.perform(get("/api/analyze-stream").param("businessText", "requirement")
+                        .param("workspaceId", selected.workspaceId()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"sequence\":5")));
+
+        verify(state).getViewContext("alice", "main", selected);
+        verify(state, never()).resolveWorkspaceBranch(anyString());
+    }
+
+    private WorkspaceContext selectProvisionedMain() {
+        var selected = new WorkspaceContext("alice", "workspace", "main", "repository");
+        when(workspace.resolveCurrentContext()).thenReturn(selected);
+        when(state.getViewContext(eq("alice"), anyString(), eq(selected))).thenAnswer(i -> {
+            String branch = i.getArgument(1);
+            return new ViewContext("main".equals(branch) ? "main-commit" : null,
+                    branch, null, false, false, false);
+        });
+        return selected;
+    }
+
     @Test void streamUsesDurableRevisionAndFrozenResultWithoutGlobalMapper() throws Exception {
         String operation = UUID.randomUUID().toString();
         doAnswer(i -> {
