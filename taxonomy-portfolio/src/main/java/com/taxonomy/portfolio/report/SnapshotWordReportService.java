@@ -136,7 +136,9 @@ public class SnapshotWordReportService {
                         p.scene().nodes(),
                         p.scene().edges());
         String reportScope = labels.frozenScope();
-        if (!decision.scope().options().taxonomyRoots().isEmpty()) {
+        if (!decision.scope().options().taxonomyRoots().isEmpty()
+                || (decision.scope().analysisScope() != null
+                    && !decision.scope().analysisScope().taxonomyRoots().isEmpty())) {
             var selection = ArchitectureReportSelection.select(graph, scene, decision.scope().selectedNodeCodes());
             graph = selection.graph(); scene = selection.scene();
             if (graph.nodes().isEmpty()) return null;

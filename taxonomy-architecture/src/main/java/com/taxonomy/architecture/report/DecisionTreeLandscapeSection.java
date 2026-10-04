@@ -28,7 +28,9 @@ public final class DecisionTreeLandscapeSection {
             margins.setTop(BigInteger.valueOf(900)); margins.setBottom(BigInteger.valueOf(900));
             if (section.isSetType()) section.getType().setVal(STSectionMark.NEXT_PAGE);
             body.setSectPr(section);
-            writer.heading(labels.treeOverview() + " · " + panel.rootCode() + " · " + (i + 1) + "/" + panels.size(), 1, i == 0 ? "decision_tree" : null);
+            // SHORT contents includes outline level 1; additional roots and continuation
+            // panels remain available at level 2 without expanding that short overview.
+            writer.heading(labels.treeOverview() + " · " + panel.rootCode() + " · " + (i + 1) + "/" + panels.size(), i == 0 ? 1 : 2, i == 0 ? "decision_tree" : null);
             var p = doc.createParagraph(); p.setSpacingBefore(0); p.setSpacingAfter(0);
             var run = p.createRun();
             run.addPicture(new ByteArrayInputStream(panel.png()), Document.PICTURE_TYPE_PNG, "decision-tree-"+i+".png",
