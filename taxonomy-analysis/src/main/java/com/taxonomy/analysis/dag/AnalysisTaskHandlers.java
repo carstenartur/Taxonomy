@@ -1,12 +1,14 @@
 package com.taxonomy.analysis.dag;
 
 /**
- * Worker-side handlers a transport may invoke. A {@code null} handler means this
- * process does not execute that task family; its queues are left to other workers.
+ * Worker-side computation ports. Preparation runs without a result transaction;
+ * all durable effects are deferred to PreparedAnalysisCompletion.persistEffect.
+ * A null preparation means that this process does not consume that task family.
+ * The existing same-thread in-process AnalysisTaskHandler contract is unchanged.
  */
 public record AnalysisTaskHandlers(
-        AnalysisTaskHandler<SubtaxonomyAnalysisTask, SubtaxonomyAnalysisCompleted> subtaxonomy,
-        AnalysisTaskHandler<RelationAnalysisTask, RelationAnalysisCompleted> relation) {
+        AnalysisTaskPreparation<SubtaxonomyAnalysisTask, SubtaxonomyAnalysisCompleted> subtaxonomy,
+        AnalysisTaskPreparation<RelationAnalysisTask, RelationAnalysisCompleted> relation) {
 
     public static final AnalysisTaskHandlers NONE = new AnalysisTaskHandlers(null, null);
 
@@ -17,16 +19,26 @@ public record AnalysisTaskHandlers(
         };
     }
 
-    /** Execute {@code task} with the handler of its family. */
-    public AnalysisCompletionMessage handle(AnalysisTaskMessage task) {
-        AnalysisCompletionMessage completion = switch (task) {
-            case SubtaxonomyAnalysisTask root -> require(subtaxonomy, task).handle(root);
-            case RelationAnalysisTask relations -> require(relation, task).handle(relations);
+    public PreparedAnalysisCompletion<?> prepare(AnalysisTaskMessage task) {
+        PreparedAnalysisCompletion<?> prepared = switch (task) {
+            case SubtaxonomyAnalysisTask root -> require(subtaxonomy, task).prepare(root);
+            case RelationAnalysisTask relations -> require(relation, task).prepare(relations);
         };
-        if (completion == null || !task.taskId().equals(completion.taskId())) {
-            throw new IllegalStateException("Handler returned no completion for " + task.taskId());
-        }
-        return completion;
+        if (prepared == null) throw new IllegalStateException("Handler returned no prepared completion");
+        AnalysisTaskIdentity.requireSameSource(task.envelope(), prepared.completion().envelope());
+        return prepared;
+    }
+
+    /**
+     * Keep the prepare/commit boundary behind the framework-neutral worker ports.
+     * The observer accounts for completed computation, even if result commit fails;
+     * it is not the business mutation and must not perform durable work.
+     */
+    public AnalysisCompletionMessage prepareAndCommit(AnalysisTaskMessage task,
+            AnalysisTaskCompletionStore store, Runnable preparedObserver) {
+        var prepared = prepare(task);
+        preparedObserver.run();
+        return store.commit(prepared);
     }
 
     private static <H> H require(H handler, AnalysisTaskMessage task) {

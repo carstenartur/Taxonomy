@@ -11,6 +11,11 @@ import com.taxonomy.analysis.dag.AnalysisTaskHandlers;
 import com.taxonomy.analysis.dag.AnalysisTaskId;
 import com.taxonomy.analysis.dag.AnalysisTaskMessage;
 import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
+import com.taxonomy.analysis.dag.AnalysisTaskIdentity;
+import com.taxonomy.analysis.dag.PreparedAnalysisCompletion;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchIntent;
+import com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord;
+import com.taxonomy.analysis.dispatch.JpaAnalysisTaskCompletionStore;
 import com.taxonomy.analysis.dag.AnalysisTaskType;
 import com.taxonomy.analysis.dag.AnalysisTransportUnavailableException;
 import com.taxonomy.analysis.dag.AnalysisWorkerShards;
@@ -38,6 +43,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
@@ -152,9 +165,8 @@ class ArtemisAnalysisTransportTest {
     private static AnalysisTaskHandlers subtaxonomyHandler(AtomicInteger effects, Set<AnalysisTaskId> poison) {
         return new AnalysisTaskHandlers(task -> {
             if (poison.contains(task.taskId())) throw new IllegalStateException("poison");
-            effects.incrementAndGet();
-            return factory(task.envelope().operationId())
-                    .completed(task, AnalysisTaskOutcome.COMPLETED, 50, 3, null);
+            return new PreparedAnalysisCompletion<>(factory(task.envelope().operationId())
+                    .completed(task, AnalysisTaskOutcome.COMPLETED, 50, 3, null), effects::incrementAndGet);
         }, null);
     }
 
@@ -235,7 +247,7 @@ class ArtemisAnalysisTransportTest {
         }
     }
 
-    /** Durable ledger double with the same first-writer-wins contract as the JPA store. */
+    /** In-memory transport-test double; the concurrent durable-effect test below uses actual JPA. */
     static final class InMemoryCompletionStore implements AnalysisTaskCompletionStore {
         final Map<AnalysisTaskId, AnalysisCompletionMessage> completions = new ConcurrentHashMap<>();
 
@@ -245,9 +257,14 @@ class ArtemisAnalysisTransportTest {
         }
 
         @Override
-        public AnalysisCompletionMessage recordIfAbsent(AnalysisCompletionMessage completion) {
-            AnalysisCompletionMessage winner = completions.putIfAbsent(completion.taskId(), completion);
-            return winner == null ? completion : winner;
+        public AnalysisCompletionMessage commit(PreparedAnalysisCompletion<?> prepared) {
+            AnalysisCompletionMessage requested = prepared.completion();
+            AnalysisCompletionMessage winner = completions.computeIfAbsent(requested.taskId(), id -> {
+                prepared.persistEffect().run();
+                return requested;
+            });
+            AnalysisTaskIdentity.requireSameSource(requested.envelope(), winner.envelope());
+            return winner;
         }
     }
 
@@ -275,6 +292,73 @@ class ArtemisAnalysisTransportTest {
         assertThat(first.executions() + second.executions()).isEqualTo(20);
         assertThat(first.executions()).as("both competing consumers take work").isPositive();
         assertThat(second.executions()).as("both competing consumers take work").isPositive();
+    }
+
+    @Test
+    void simultaneousDuplicateDeliveriesCommitOneActualDatabaseEffect() throws Exception {
+        // Two real worker instances and two real JPA store instances share only the
+        // database. Deliberately omit broker duplicate-detection headers, so the
+        // broker cannot hide a broken result-commit contract from this test.
+        var dataSource = new DriverManagerDataSource(
+                "jdbc:hsqldb:mem:broker-effects-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", "");
+        var emf = new LocalContainerEntityManagerFactoryBean();
+        emf.setDataSource(dataSource);
+        emf.setManagedTypes(PersistenceManagedTypes.of(AnalysisDispatchIntent.class.getName(),
+                AnalysisTaskCompletionRecord.class.getName()));
+        emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        emf.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false"));
+        emf.afterPropertiesSet();
+        resources.push(emf::destroy);
+        var transactions = new JpaTransactionManager(emf.getObject());
+        var firstStore = new JpaAnalysisTaskCompletionStore(
+                SharedEntityManagerCreator.createSharedEntityManager(emf.getObject()), transactions);
+        var secondStore = new JpaAnalysisTaskCompletionStore(
+                SharedEntityManagerCreator.createSharedEntityManager(emf.getObject()), transactions);
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("create table qa_worker_effect(id varchar(36) primary key)");
+        var preparedTogether = new CountDownLatch(2);
+        var preparations = new AtomicInteger();
+        var effects = new AtomicInteger();
+        var handlers = new AnalysisTaskHandlers(task -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .as("provider computation must not hold the result transaction").isFalse();
+            preparations.incrementAndGet();
+            preparedTogether.countDown();
+            try {
+                if (!preparedTogether.await(10, TimeUnit.SECONDS))
+                    throw new IllegalStateException("Duplicate deliveries did not overlap");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted preparing task", interrupted);
+            }
+            return new PreparedAnalysisCompletion<>(factory(task.envelope().operationId())
+                    .completed(task, AnalysisTaskOutcome.COMPLETED, 50, 3, null), () -> {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+                effects.incrementAndGet();
+                jdbc.update("insert into qa_worker_effect(id) values (?)", UUID.randomUUID().toString());
+            });
+        }, null);
+        var first = worker(handlers, firstStore, "CP");
+        var second = worker(handlers, secondStore, "CP");
+        var task = subtaxonomyTask(CP);
+        Session session = rawConnection().createSession(false, Session.AUTO_ACKNOWLEDGE);
+        resources.push(session::close);
+        MessageProducer producer = session.createProducer(session.createQueue(destinations.subtaxonomy(CP)));
+        for (int i = 0; i < 2; i++) {
+            BytesMessage duplicate = session.createBytesMessage();
+            duplicate.writeBytes(codec.encode(task));
+            producer.send(duplicate);
+        }
+        List<Message> messages = drain(destinations.completion(), 2, Duration.ofSeconds(20));
+        assertThat(messages).hasSize(2);
+        assertThat(decode(messages.get(0))).isEqualTo(decode(messages.get(1)));
+        assertThat(preparations.get()).as("both deliveries actually reached preparation").isEqualTo(2);
+        assertThat(first.executions() + second.executions()).isEqualTo(2);
+        assertThat(first.rolledBack() + second.rolledBack()).isZero();
+        assertThat(effects.get()).as("only the winning transaction invokes the effect").isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from qa_worker_effect", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from analysis_task_completion", Integer.class)).isEqualTo(1);
+        assertThat(firstStore.find(task.taskId())).isEqualTo(secondStore.find(task.taskId()));
     }
 
     @Test
@@ -395,8 +479,8 @@ class ArtemisAnalysisTransportTest {
         var idle = worker(AnalysisTaskHandlers.NONE, store, "");
         assertThat(idle.consumerCount()).as("no handler bound, no consumer").isZero();
 
-        var full = worker(new AnalysisTaskHandlers(null, task -> factory(task.envelope().operationId())
-                .completed(task, AnalysisTaskOutcome.COMPLETED, 0, null)), store, "");
+        var full = worker(new AnalysisTaskHandlers(null, task -> PreparedAnalysisCompletion.withoutEffects(
+                factory(task.envelope().operationId()).completed(task, AnalysisTaskOutcome.COMPLETED, 0, null))), store, "");
         assertThat(full.consumerCount()).as("8 root relation queues + the general relation queue").isEqualTo(9);
     }
 }

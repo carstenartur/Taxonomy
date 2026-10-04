@@ -3,12 +3,13 @@ package com.taxonomy.analysis.dispatch;
 import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
 import com.taxonomy.analysis.dag.AnalysisTaskCompletionStore;
 import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskIdentity;
+import com.taxonomy.analysis.dag.PreparedAnalysisCompletion;
 import com.taxonomy.analysis.dag.RelationAnalysisCompleted;
 import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -20,13 +21,14 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Database-backed idempotent effect ledger. The insert is its own short
- * transaction so it is durable before the worker acknowledges the delivery; a
- * concurrent duplicate loses on the primary key and observes the winner.
+ * The completion insert reserves the task before the business-result mutation.
+ * Both become visible in one short transaction. A concurrent insert waits for
+ * the winner, then reads it without invoking the losing effect. A failed effect
+ * rolls back its reservation too, allowing broker redelivery to try again.
+ * Provider computation and JMS acknowledgement stay outside this transaction.
  */
 @Repository
 public class JpaAnalysisTaskCompletionStore implements AnalysisTaskCompletionStore {
-
     private final EntityManager em;
     private final TransactionTemplate newTransaction;
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
@@ -50,32 +52,46 @@ public class JpaAnalysisTaskCompletionStore implements AnalysisTaskCompletionSto
     }
 
     @Override
-    public AnalysisCompletionMessage recordIfAbsent(AnalysisCompletionMessage completion) {
-        Objects.requireNonNull(completion, "completion");
-        try {
-            AnalysisCompletionMessage recorded = newTransaction.execute(status -> {
-                AnalysisCompletionMessage existing = read(completion.taskId());
-                if (existing != null) return existing;
-                var record = new AnalysisTaskCompletionRecord();
-                record.id = AnalysisDispatchStore.key(completion.taskId());
-                record.taskId = completion.taskId().value();
-                record.operationId = completion.envelope().operationId();
-                record.messageType = completion.envelope().messageType().name();
-                record.outcome = switch (completion) {
-                    case SubtaxonomyAnalysisCompleted root -> root.outcome().name();
-                    case RelationAnalysisCompleted relation -> relation.outcome().name();
-                };
-                record.completionJson = new String(codec.encode(completion), StandardCharsets.UTF_8);
-                record.recordedAt = clock.millis();
-                em.persist(record);
-                em.flush();
-                return completion;
+    public AnalysisCompletionMessage commit(PreparedAnalysisCompletion<?> prepared) {
+        Objects.requireNonNull(prepared, "prepared");
+        AnalysisCompletionMessage completion = prepared.completion();
+        return Objects.requireNonNull(newTransaction.execute(status -> {
+            AnalysisCompletionMessage existing = read(completion.taskId());
+            if (existing != null) return winner(completion, existing);
+            String outcome = switch (completion) {
+                case SubtaxonomyAnalysisCompleted root -> root.outcome().name();
+                case RelationAnalysisCompleted relation -> relation.outcome().name();
+            };
+            String json = new String(codec.encode(completion), StandardCharsets.UTF_8);
+            var duplicate = AnalysisInsertIfAbsent.insert(em, """
+                    insert into analysis_task_completion
+                      (id, task_id, operation_id, message_type, outcome, completion_json, recorded_at)
+                    values (?, ?, ?, ?, ?, ?, ?)""", statement -> {
+                statement.setString(1, AnalysisDispatchStore.key(completion.taskId()));
+                statement.setString(2, completion.taskId().value());
+                statement.setString(3, completion.envelope().operationId());
+                statement.setString(4, completion.envelope().messageType().name());
+                statement.setString(5, outcome);
+                statement.setString(6, json);
+                statement.setLong(7, clock.millis());
             });
-            return Objects.requireNonNull(recorded, "recorded completion");
-        } catch (DataIntegrityViolationException | jakarta.persistence.PersistenceException concurrentInsert) {
-            // A concurrent worker won the primary key. Its record is the durable effect.
-            return find(completion.taskId()).orElseThrow(() -> concurrentInsert);
-        }
+            if (duplicate.isPresent()) {
+                AnalysisCompletionMessage recorded = read(completion.taskId());
+                if (recorded == null) {
+                    throw new IllegalStateException("Concurrent completion is not visible", duplicate.get());
+                }
+                return winner(completion, recorded);
+            }
+            prepared.persistEffect().run();
+            em.flush();
+            return completion;
+        }), "recorded completion");
+    }
+
+    private static AnalysisCompletionMessage winner(AnalysisCompletionMessage requested,
+                                                    AnalysisCompletionMessage recorded) {
+        AnalysisTaskIdentity.requireSameSource(requested.envelope(), recorded.envelope());
+        return recorded;
     }
 
     private AnalysisCompletionMessage read(AnalysisTaskId taskId) {

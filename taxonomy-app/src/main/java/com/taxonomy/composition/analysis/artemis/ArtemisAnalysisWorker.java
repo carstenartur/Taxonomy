@@ -33,8 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>receive inside a local JMS transaction;</li>
  *   <li>decode the versioned contract and verify it belongs to this queue;</li>
  *   <li>answer from the durable completion ledger if the task already ran;</li>
- *   <li>otherwise execute the handler (which revalidates authority/operation state);</li>
- *   <li>record the completion idempotently in the database;</li>
+ *   <li>otherwise prepare the result without durable mutations or a database transaction;</li>
+ *   <li>atomically reserve the task, persist its result and record completion in the database;</li>
  *   <li>send the completion and commit the delivery in one JMS transaction.</li>
  * </ol>
  *
@@ -139,14 +139,12 @@ public final class ArtemisAnalysisWorker implements AutoCloseable {
             }
             task = task.atAttempt(ArtemisAnalysisMessages.deliveryAttempt(message));
             AnalysisCompletionMessage completion;
-            var recorded = completions.find(task.taskId());
+            var recorded = completions.find(task);
             if (recorded.isPresent()) {
                 idempotentReplays.incrementAndGet();
                 completion = recorded.get();
             } else {
-                AnalysisCompletionMessage executed = handlers.handle(task);
-                executions.incrementAndGet();
-                completion = completions.recordIfAbsent(executed);
+                completion = handlers.prepareAndCommit(task, completions, executions::incrementAndGet);
             }
             subscription.producer().send(session.createQueue(destinations.completion()),
                     ArtemisAnalysisMessages.encode(session, codec, completion));

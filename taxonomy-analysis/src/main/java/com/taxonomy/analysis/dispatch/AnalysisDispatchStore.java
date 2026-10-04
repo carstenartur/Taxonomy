@@ -2,6 +2,7 @@ package com.taxonomy.analysis.dispatch;
 
 import com.taxonomy.analysis.dag.AnalysisMessage;
 import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskIdentity;
 import com.taxonomy.analysis.dag.AnalysisTaskMessage;
 import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
@@ -17,7 +18,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Comparator;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -68,34 +70,49 @@ public class AnalysisDispatchStore {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public List<String> recordIntents(Collection<? extends AnalysisTaskMessage> tasks) {
-        List<String> pending = new ArrayList<>();
+        var input = List.copyOf(tasks);
+        var pending = new HashSet<String>();
         long now = clock.millis();
-        for (AnalysisTaskMessage task : tasks) {
+        // Acquire insert locks in stable order even when callers submit reversed batches.
+        // Publication still follows the caller's original order.
+        for (AnalysisTaskMessage task : input.stream()
+                .sorted(Comparator.comparing(t -> key(t.taskId()))).toList()) {
             String id = key(task.taskId());
             AnalysisDispatchIntent existing = em.find(AnalysisDispatchIntent.class, id);
-            if (existing != null) {
-                if (!existing.taskId.equals(task.taskId().value())) {
-                    throw new IllegalStateException("Dispatch intent key collision");
+            if (existing == null) {
+                String json = new String(codec.encode(task), StandardCharsets.UTF_8);
+                var duplicate = AnalysisInsertIfAbsent.insert(em, """
+                        insert into analysis_dispatch_intent
+                          (id, task_id, operation_id, task_type, routing_root, message_json, status,
+                           dispatch_attempts, created_at, updated_at, row_version)
+                        values (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)""", statement -> {
+                    statement.setString(1, id);
+                    statement.setString(2, task.taskId().value());
+                    statement.setString(3, task.envelope().operationId());
+                    statement.setString(4, task.taskType().name());
+                    TaxonomyShardRoot root = task.routingRoot();
+                    statement.setString(5, root == null ? null : root.code());
+                    statement.setString(6, json);
+                    statement.setString(7, AnalysisDispatchStatus.DISPATCH_PENDING.name());
+                    statement.setLong(8, now);
+                    statement.setLong(9, now);
+                });
+                if (duplicate.isEmpty()) {
+                    pending.add(id);
+                    continue;
                 }
-                if (existing.status.recoverable()) pending.add(id);
-                continue;
+                existing = em.find(AnalysisDispatchIntent.class, id);
+                if (existing == null) {
+                    throw new IllegalStateException("Concurrent dispatch intent is not visible", duplicate.get());
+                }
             }
-            var intent = new AnalysisDispatchIntent();
-            intent.id = id;
-            intent.taskId = task.taskId().value();
-            intent.operationId = task.envelope().operationId();
-            intent.taskType = task.taskType().name();
-            TaxonomyShardRoot root = task.routingRoot();
-            intent.routingRoot = root == null ? null : root.code();
-            intent.messageJson = new String(codec.encode(task), StandardCharsets.UTF_8);
-            intent.status = AnalysisDispatchStatus.DISPATCH_PENDING;
-            intent.createdAt = now;
-            intent.updatedAt = now;
-            em.persist(intent);
-            pending.add(id);
+            if (!existing.taskId.equals(task.taskId().value())) {
+                throw new IllegalStateException("Dispatch intent key collision");
+            }
+            AnalysisTaskIdentity.requireSameSource(task.envelope(), decode(view(existing)).envelope());
+            if (existing.status.recoverable()) pending.add(id);
         }
-        em.flush();
-        return List.copyOf(pending);
+        return input.stream().map(task -> key(task.taskId())).filter(pending::contains).toList();
     }
 
     /** Same as {@link #recordIntents} in a dedicated transaction, for callers without one. */
