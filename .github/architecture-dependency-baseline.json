@@ -111,7 +111,7 @@
       "fromPackage": "com.taxonomy.analysis.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",

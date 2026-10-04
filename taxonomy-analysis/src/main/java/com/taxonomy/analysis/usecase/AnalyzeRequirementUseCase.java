@@ -17,7 +17,20 @@ import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
+import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
+import com.taxonomy.analysis.dag.RelationAnalysisTask;
+import com.taxonomy.analysis.dag.RequirementReference;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
+import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+
+import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class AnalyzeRequirementUseCase {
@@ -75,10 +88,14 @@ public class AnalyzeRequirementUseCase {
     private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
                                              boolean persistHypotheses) {
         long startedNanos = System.nanoTime();
+        InProcessAnalysisOperation operation = null;
         try {
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
                     command.businessText(), command.provider());
+            // Exact read authority is captured once before any task and reported on the result.
+            ViewContext viewContext = resolveViewContext(command);
+            operation = InProcessAnalysisOperation.open(operationContext(command, viewContext), null);
 
             AnalysisResult result = command.analysisScope().legacyFull()
                     ? llmService.analyzeWithBudget(command.businessText())
@@ -88,7 +105,7 @@ public class AnalyzeRequirementUseCase {
                     && (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage()))) {
                 try {
                     AnalysisRunControl.phase("RELATIONS", null);
-                    enrichWithRelationHypotheses(command, result, persistHypotheses);
+                    runRelationTask(operation, command, result, persistHypotheses);
                     if (result.getRelationSearchReport() == null
                             || !isCooperativeStop(result.getRelationSearchReport().stopReason())) {
                         AnalysisRunControl.phase("ARCHITECTURE", null);
@@ -103,12 +120,63 @@ public class AnalyzeRequirementUseCase {
                     result.setWarnings(warnings);
                 }
             }
-            populateViewContext(command, result);
+            result.setViewContext(viewContext);
             result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
             return new AnalyzeRequirementResult(result);
         } finally {
+            if (operation != null) operation.close();
             llmService.clearRequestProvider();
         }
+    }
+
+    /**
+     * Operation identity shared by every task: the durable run identity when a
+     * progress run is active, the exact workspace authority and a requirement
+     * reference instead of the requirement text.
+     */
+    private static AnalysisOperationContext operationContext(AnalyzeRequirementCommand command,
+                                                             ViewContext viewContext) {
+        String runId = AnalysisRunControl.currentOperationId();
+        String operationId = runId != null ? runId : UUID.randomUUID().toString();
+        WorkspaceContext workspace = command.workspaceContext();
+        String branch = viewContext != null && viewContext.basedOnBranch() != null
+                ? viewContext.basedOnBranch() : workspace.currentBranch();
+        var authority = new AnalysisSourceAuthority(workspace.repositoryId(), workspace.workspaceId(), branch,
+                viewContext == null ? null : viewContext.basedOnCommit());
+        AnalysisProvenance provenance = command.provenance();
+        var requirement = provenance == null
+                ? RequirementReference.adHoc(command.businessText())
+                : RequirementReference.of(provenance.projectId(), provenance.requirementId(),
+                        provenance.snapshotId(), command.businessText());
+        return new AnalysisOperationContext(operationId, authority, requirement, operationId);
+    }
+
+    /** Executes relation work as the operation's {@link RelationAnalysisTask}. */
+    private void runRelationTask(InProcessAnalysisOperation operation, AnalyzeRequirementCommand command,
+                                 AnalysisResult result, boolean persistHypotheses) {
+        List<TaxonomyShardRoot> targets = command.analysisScope().taxonomyRoots().stream()
+                .map(TaxonomyShardRoot::of).toList();
+        AnalysisStoppedException[] stopped = new AnalysisStoppedException[1];
+        operation.runRelationTasks(targets, task -> {
+            if (!task.envelope().requirement().matches(command.businessText())) {
+                throw new IllegalStateException("Task requirement reference does not match the analysed requirement");
+            }
+            try {
+                enrichWithRelationHypotheses(command, result, persistHypotheses);
+            } catch (AnalysisStoppedException stop) {
+                stopped[0] = stop;
+                return operation.messages().completed(task, AnalysisTaskOutcome.STOPPED, 0, stop.reason().name());
+            }
+            var report = result.getRelationSearchReport();
+            if (report != null) {
+                int edges = report.result() == null ? 0 : report.result().edges().size();
+                return operation.messages().completed(task, report.isSearchExhausted()
+                        ? AnalysisTaskOutcome.COMPLETED : AnalysisTaskOutcome.PARTIAL, edges, null);
+            }
+            int relations = result.getProvisionalRelations() == null ? 0 : result.getProvisionalRelations().size();
+            return operation.messages().completed(task, AnalysisTaskOutcome.COMPLETED, relations, null);
+        });
+        if (stopped[0] != null) throw stopped[0];
     }
 
     private static boolean isCooperativeStop(String message) {
@@ -181,12 +249,12 @@ public class AnalyzeRequirementUseCase {
         result.setArchitectureView(archView);
     }
 
-    private void populateViewContext(AnalyzeRequirementCommand command, AnalysisResult result) {
+    private ViewContext resolveViewContext(AnalyzeRequirementCommand command) {
         String effectiveUsername = command.workspaceContext().username();
         String branch = repositoryStateService.resolveWorkspaceBranch(effectiveUsername);
-        result.setViewContext(repositoryStateService.getViewContext(
+        return repositoryStateService.getViewContext(
                 effectiveUsername,
                 branch,
-                command.workspaceContext()));
+                command.workspaceContext());
     }
 }
