@@ -130,6 +130,14 @@ class CatalogueSnapshotServiceTest {
     }
 
     @Test
+    void requiresBranchAndSourceCommitInSourceIdentity() {
+        assertThatThrownBy(() -> new CatalogueSourceIdentity("repo", null, null, "commit"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("branch");
+        assertThatThrownBy(() -> new CatalogueSourceIdentity("repo", null, "branch", null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("sourceCommit");
+    }
+
+    @Test
     void closingAfterExceptionRestoresLocalCataloguePath() {
         var local = node("IP", "IP", null, "Current catalogue");
         when(repository.findByParentIsNullOrderByCodeAsc()).thenReturn(List.of(local));

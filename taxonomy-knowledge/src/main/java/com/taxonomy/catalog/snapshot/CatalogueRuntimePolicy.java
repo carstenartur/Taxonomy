@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -20,8 +22,12 @@ public class CatalogueRuntimePolicy {
             @Value("${taxonomy.analysis.worker.shards:BP,BR,CP,CI,CO,CR,IP,UA}") String shards) {
         this.role = Role.valueOf(role.toUpperCase(java.util.Locale.ROOT));
         String configuredShards = shards == null || shards.isBlank() ? "BP,BR,CP,CI,CO,CR,IP,UA" : shards;
-        this.shards = Set.of(Arrays.stream(configuredShards.split(",", -1)).map(String::strip)
-                .map(CatalogueRoot::require).toArray(CatalogueRoot[]::new));
+        List<CatalogueRoot> parsedShards = Arrays.stream(configuredShards.split(",", -1)).map(String::strip)
+                .map(CatalogueRoot::require).toList();
+        if (new HashSet<>(parsedShards).size() != parsedShards.size()) {
+            throw new IllegalArgumentException("Duplicate catalogue worker shard");
+        }
+        this.shards = Set.copyOf(parsedShards);
     }
 
     /** Default for directly constructed services in the existing local API. */
