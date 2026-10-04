@@ -17,9 +17,13 @@ public record DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage 
     public DecisionReportScope {
         availableRoots = List.copyOf(availableRoots);
         reportRoots = Collections.unmodifiableSet(new LinkedHashSet<>(reportRoots));
-        selectedNodeCodes = Set.copyOf(selectedNodeCodes);
-        recordedReasons = recordedReasons == null ? Map.of() : Collections.unmodifiableMap(new TreeMap<>(recordedReasons));
         Objects.requireNonNull(decisionTree);
+        // The internal source index is deliberately absent from exported JSON. Rebuild
+        // its evidence subset on reload; an empty fallback would disable score filtering.
+        selectedNodeCodes = selectedNodeCodes == null
+                ? Set.copyOf(decisionTree.rows().stream().map(DecisionTreeOverview.DecisionTreeRow::code).toList())
+                : Set.copyOf(selectedNodeCodes);
+        recordedReasons = recordedReasons == null ? Map.of() : Collections.unmodifiableMap(new TreeMap<>(recordedReasons));
         options = options == null ? DecisionReportOptions.full() : options;
     }
 
