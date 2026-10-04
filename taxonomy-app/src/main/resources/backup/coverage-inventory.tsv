@@ -1,4 +1,6 @@
 # Category	Owner	Rule	Rationale
+com.taxonomy.analysis.dispatch.AnalysisDispatchIntent	analysis	TRANSIENT	Broker dispatch bookkeeping only; restore never republishes tasks or reactivates broker state
+com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord	analysis	TRANSIENT	Idempotency ledger for broker redelivery; durable results live in the owning operation records
 com.taxonomy.analysis.recovery.AnalysisContinuationRun	analysis	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
 com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint	analysis	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.analysis.session.AnalysisWorkingDraft	analysis	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys

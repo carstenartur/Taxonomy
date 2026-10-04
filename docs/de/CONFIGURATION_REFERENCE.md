@@ -348,3 +348,35 @@ Die Warnschwelle muss unter der Stoppschwelle liegen; diese darf höchstens 98 P
 ### Laufzeit der Streaming-Verbindung
 
 Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein; der Worker sendet das Endergebnis und schließt die Verbindung. Ein Verbindungsabbruch bricht weiterhin den Worker ab, und die HTTP-Zeitlimits der Provider bleiben unverändert. So verwirft kein festes Transportlimit eine zulässige lange Analyse oder deren Teilergebnis. Vorgeschaltete Proxys können die Verbindung weiterhin beenden; dann den gespeicherten Operationsstatus abfragen statt die Analyse neu zu starten.
+
+## Clustered analysis transport (opt-in) / Verteilte Analyse (optional)
+
+| Environment variable | Spring property | Default | Beschreibung |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` führt die Analyse im Prozess aus (Standard, kein Broker). `artemis` aktiviert den externen Apache-Artemis-Aufgabentransport. Jeder andere Wert bricht den Start ab. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | leer | Im Modus `artemis` erforderlich. `tcp://` (oder Failover-Liste `(tcp://a,tcp://b)?ha=true`) bzw. `vm://`. Wird weder protokolliert noch im Health-Endpunkt angezeigt. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | leer | Broker-Benutzer; über ein Secret bereitstellen. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` | `taxonomy.analysis.artemis.password` | leer | Broker-Passwort; nur über ein Secret, nie über Images oder eingecheckte Dateien. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS` | `taxonomy.analysis.artemis.require-tls` | `true` | Eine `tcp://`-URL muss `sslEnabled=true` enthalten; Klartext bricht den Start ab. Nur für ein isoliertes Netz oder lokale Tests auf `false` setzen. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_RETRY_INTERVAL_MS` | `taxonomy.analysis.artemis.retry-interval-ms` | `1000` | Anfangsintervall für Wiederverbindungen (100–60000 ms), verdoppelt bis 30 s. Unbegrenzte Versuche, blockieren den Start nie. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_CALL_TIMEOUT_MS` | `taxonomy.analysis.artemis.call-timeout-ms` | `30000` | Maximale Wartezeit auf eine Broker-Bestätigung (1000–300000 ms). Unbestätigte Aufgaben bleiben `WAITING_FOR_BROKER`. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX` | `taxonomy.analysis.artemis.destination-prefix` | `taxonomy.analysis` | Kleingeschriebenes, punktgetrenntes Präfix aller Analyse-Queues und -Adressen. |
+| `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Ob diese Instanz Aufgaben-Queues konsumiert. Ohne gebundene Handler wird keine Queue konsumiert. |
+| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | leer (alle acht Wurzeln) | Kommagetrennte Katalogwurzeln dieses Workers, z. B. `CP,IP`. Unbekannte oder doppelte Wurzeln brechen den Start ab. Nur Worker mit vollständigem Katalog übernehmen wurzelübergreifende Beziehungsarbeit. |
+| `TAXONOMY_ANALYSIS_WORKER_CONSUMERS_PER_SHARD` | `taxonomy.analysis.worker.consumers-per-shard` | `1` | Parallele Konsumenten je konfigurierter Queue (1–64). |
+| `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_BATCH` | `taxonomy.analysis.dispatch.recovery-batch` | `200` | Versandabsichten pro Wiederherstellungsseite. |
+| `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_LIMIT` | `taxonomy.analysis.dispatch.recovery-limit` | `5000` | Höchstzahl erneut veröffentlichter Absichten pro Lauf; der Rest wartet auf den nächsten Auslöser. |
+
+Stand: Transport, dauerhafte Versandabsichten und Worker-Protokoll existieren, die
+produktive Analyse läuft aber in jedem Modus weiterhin im Prozess, bis die
+Aufgaben-Handler angebunden sind (Issue #1161, P04). Versandabsichten werden in der
+Datenbanktransaktion der Operation geschrieben und erst nach dem Commit veröffentlicht.
+Die Wiederherstellung veröffentlicht offene Absichten nur bei der ersten
+Broker-Verbindung nach dem Start, nach einer Wiederverbindung und über den
+Administrator-Endpunkt `POST /api/admin/analysis/dispatch/repair` erneut – es gibt
+kein periodisches Datenbank-Polling. Die Health-Komponente `analysisBroker` meldet
+Verbindungszustand und Rückstau, gehört aber nicht zur Readiness. Den Broker mit
+`max-delivery-attempts` und einer Dead-Letter-Adresse konfigurieren, damit
+Giftnachrichten isoliert werden; fehlerhafte, unbekannte Schema-Versionen und falsch
+geroutete Nachrichten landen in `<prefix>.rejected`. Details:
+`docs/dev/ANALYSIS_TASK_DAG.md`.
