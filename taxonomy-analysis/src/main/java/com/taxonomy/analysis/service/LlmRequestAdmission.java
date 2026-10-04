@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.function.Supplier;
+import java.util.concurrent.TimeUnit;
 import org.springframework.web.client.HttpClientErrorException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -11,7 +12,9 @@ final class LlmRequestAdmission {
     private final LlmProvider provider;
     private final int defaultRpm;
     private final AnalysisRuntimeSettings settings;
-    private ProviderRequestLimiter limiter = new ProviderRequestLimiter(new ProviderRequestLimiter.Limits(4, 64));
+    private ProviderRequestLimiter.Limits limits = new ProviderRequestLimiter.Limits(4, 64);
+    private ProviderRequestLimiter limiter = new ProviderRequestLimiter(limits);
+    private ProviderConcurrencyPermits clusterPermits = ProviderConcurrencyPermits.NONE;
     private boolean used;
 
     LlmRequestAdmission(LlmProvider provider, int defaultRpm, AnalysisRuntimeSettings settings) {
@@ -23,25 +26,60 @@ final class LlmRequestAdmission {
     /** Application-startup configuration only; an active queue is never replaced. */
     synchronized void configure(ProviderRequestLimiter.Limits limits) {
         if (used) throw new IllegalStateException("Cannot replace an active provider admission policy");
+        this.limits = limits;
         limiter = new ProviderRequestLimiter(limits);
+    }
+
+    synchronized void configure(ProviderConcurrencyPermits permits) {
+        if (used) throw new IllegalStateException("Cannot replace an active provider permit policy");
+        clusterPermits = java.util.Objects.requireNonNull(permits, "permits");
     }
 
     <T> T execute(Supplier<T> request) {
         ProviderRequestLimiter current;
-        synchronized (this) { used = true; current = limiter; }
+        ProviderConcurrencyPermits distributed;
+        long maximumWait;
+        synchronized (this) {
+            used = true;
+            current = limiter;
+            distributed = clusterPermits;
+            maximumWait = limits.maximumWaitMillis();
+        }
         String key = provider == LlmProvider.GEMINI ? "llm.rpm"
                 : "llm.rpm." + provider.name().toLowerCase(Locale.ROOT);
         int rpm = settings == null ? 0 : Math.max(0, settings.getInt(key, defaultRpm));
-        ProviderRequestLimiter.Permit permit;
-        try {
-            permit = current.acquire(rpm, AnalysisRunControl::checkpoint, (reason, millis) ->
-                    AnalysisRunControl.pause(reason == ProviderRequestLimiter.WaitReason.CAPACITY
-                            ? "WAITING_PROVIDER_CAPACITY" : "WAITING_RATE_LIMIT", millis));
-        } catch (ProviderRequestLimiter.CapacityException | ProviderRequestLimiter.WaitTimeoutException full) {
-            throw new LlmRateLimitException(provider + ": " + full.getMessage(), full);
+        long queuedAt = System.nanoTime();
+        Runnable checkpoint = () -> {
+            AnalysisRunControl.checkpoint();
+            if (distributed != ProviderConcurrencyPermits.NONE
+                    && TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt) >= maximumWait) {
+                throw new LlmRateLimitException(provider + ": Provider admission wait expired");
+            }
+        };
+        while (true) {
+            ProviderRequestLimiter.Permit permit;
+            try {
+                permit = current.acquire(rpm, checkpoint, (reason, millis) ->
+                        AnalysisRunControl.pause(reason == ProviderRequestLimiter.WaitReason.CAPACITY
+                                ? "WAITING_PROVIDER_CAPACITY" : "WAITING_RATE_LIMIT", millis));
+            } catch (ProviderRequestLimiter.CapacityException | ProviderRequestLimiter.WaitTimeoutException full) {
+                throw new LlmRateLimitException(provider + ": " + full.getMessage(), full);
+            }
+            boolean requestStarted = false;
+            try {
+                if (distributed == ProviderConcurrencyPermits.NONE) return request.get();
+                AnalysisRunControl.phase("WAITING_PROVIDER_CAPACITY", null);
+                try (var clusterPermit = distributed.acquire(provider, checkpoint)) {
+                    checkpoint.run();
+                    if (!permit.refreshRateAdmission(rpm)) continue;
+                    requestStarted = true;
+                    return request.get();
+                }
+            } finally {
+                if (distributed != ProviderConcurrencyPermits.NONE && !requestStarted) permit.cancelRateReservation();
+                permit.close();
+            }
         }
-        try { return request.get(); }
-        finally { permit.close(); }
     }
 
     boolean retryRateLimit(HttpClientErrorException failure, ObjectMapper mapper, int attempt, int maxRetries) {

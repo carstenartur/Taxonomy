@@ -40,7 +40,7 @@ public final class ProviderRequestLimiter {
     private final Limits limits;
     private final LongSupplier monotonicMillis;
     private final ArrayDeque<Object> waiting = new ArrayDeque<>();
-    private final ArrayDeque<Long> starts = new ArrayDeque<>();
+    private final ArrayDeque<RateReservation> starts = new ArrayDeque<>();
     private int inFlight;
     private long notBefore = Long.MIN_VALUE;
 
@@ -72,14 +72,15 @@ public final class ProviderRequestLimiter {
                 long pauseMillis = 250L;
                 synchronized (this) {
                     long now = monotonicMillis.getAsLong();
-                    while (!starts.isEmpty() && now - starts.peekFirst() >= WINDOW_MILLIS) starts.removeFirst();
+                    expireStarts(now);
                     boolean rateAvailable = requestsPerMinute == 0 || starts.size() < requestsPerMinute;
                     boolean capacityAvailable = inFlight < limits.maxConcurrent() && waiting.peekFirst() == ticket;
                     if (capacityAvailable && rateAvailable && now >= notBefore) {
                         waiting.removeFirst();
-                        if (requestsPerMinute > 0) starts.addLast(now);
+                        RateReservation reservation = requestsPerMinute > 0 ? new RateReservation(now) : null;
+                        if (reservation != null) starts.addLast(reservation);
                         inFlight++;
-                        return new Permit();
+                        return new Permit(reservation);
                     }
                     if (now - queuedAt >= limits.maximumWaitMillis()) throw new WaitTimeoutException();
                     if (now < notBefore) {
@@ -88,7 +89,7 @@ public final class ProviderRequestLimiter {
                         reason = WaitReason.CAPACITY;
                     } else {
                         reason = WaitReason.RATE_LIMIT;
-                        pauseMillis = Math.max(1L, Math.min(pauseMillis, WINDOW_MILLIS - (now - starts.peekFirst())));
+                        pauseMillis = Math.max(1L, Math.min(pauseMillis, WINDOW_MILLIS - (now - starts.peekFirst().at)));
                     }
                 }
                 // The application supplies cooperative cancellation/deadline checks.
@@ -112,9 +113,48 @@ public final class ProviderRequestLimiter {
     synchronized int inFlight() { return inFlight; }
     synchronized int waiting() { return waiting.size(); }
 
+    private void expireStarts(long now) {
+        while (!starts.isEmpty() && now - starts.peekFirst().at >= WINDOW_MILLIS) starts.removeFirst();
+    }
+
+    private static final class RateReservation {
+        private final long at;
+        private RateReservation(long at) { this.at = at; }
+    }
+
     public final class Permit implements AutoCloseable {
         private boolean closed;
-        private Permit() { }
+        private RateReservation reservation;
+        private Permit(RateReservation reservation) { this.reservation = reservation; }
+
+        /**
+         * Revalidate after waiting for external capacity. A stale admission must not
+         * shift physical calls outside the RPM window, or bypass a concurrent 429.
+         * On false, return external capacity before waiting for local admission again.
+         */
+        boolean refreshRateAdmission(int requestsPerMinute) {
+            synchronized (ProviderRequestLimiter.this) {
+                if (closed) throw new IllegalStateException("Provider permit already closed");
+                long now = monotonicMillis.getAsLong();
+                expireStarts(now);
+                if (reservation != null) starts.remove(reservation);
+                reservation = null;
+                if (now < notBefore || (requestsPerMinute > 0 && starts.size() >= requestsPerMinute)) return false;
+                if (requestsPerMinute > 0) {
+                    reservation = new RateReservation(now);
+                    starts.addLast(reservation);
+                }
+                return true;
+            }
+        }
+
+        /** A denied/cancelled external admission never started a physical request. */
+        void cancelRateReservation() {
+            synchronized (ProviderRequestLimiter.this) {
+                if (reservation != null) starts.remove(reservation);
+                reservation = null;
+            }
+        }
         @Override public void close() {
             synchronized (ProviderRequestLimiter.this) {
                 if (closed) return;
