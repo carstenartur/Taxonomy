@@ -24,6 +24,14 @@ import static org.mockito.Mockito.*;
 
 class CatalogueWorkerIsolationTest {
     @Test
+    void duplicateShardsFailStartupAfterWhitespaceNormalization() {
+        for (String configured : List.of("CP,CP", "CP, CP", " CP ,IP,CP ")) {
+            assertThatThrownBy(() -> new CatalogueRuntimePolicy("worker", configured))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
     void legacyBlankOrNullShardConfigurationMeansAllEightRoots() {
         for (String configured : new String[] { null, "", "  " }) {
             var policy = new CatalogueRuntimePolicy("worker", configured);

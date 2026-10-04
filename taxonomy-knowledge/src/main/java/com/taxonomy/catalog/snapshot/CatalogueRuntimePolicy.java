@@ -20,8 +20,8 @@ public class CatalogueRuntimePolicy {
             @Value("${taxonomy.analysis.worker.shards:BP,BR,CP,CI,CO,CR,IP,UA}") String shards) {
         this.role = Role.valueOf(role.toUpperCase(java.util.Locale.ROOT));
         String configuredShards = shards == null || shards.isBlank() ? "BP,BR,CP,CI,CO,CR,IP,UA" : shards;
-        this.shards = Arrays.stream(configuredShards.split(",", -1)).map(String::strip)
-                .map(CatalogueRoot::require).collect(Collectors.toUnmodifiableSet());
+        this.shards = Set.of(Arrays.stream(configuredShards.split(",", -1)).map(String::strip)
+                .map(CatalogueRoot::require).toArray(CatalogueRoot[]::new));
     }
 
     /** Default for directly constructed services in the existing local API. */
