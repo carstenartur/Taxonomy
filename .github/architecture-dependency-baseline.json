@@ -157,6 +157,27 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis.artemis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.dag",
+      "classDependencyCount": 27
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis.artemis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.dag.json",
+      "classDependencyCount": 9
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis.artemis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.dispatch",
+      "classDependencyCount": 10
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",

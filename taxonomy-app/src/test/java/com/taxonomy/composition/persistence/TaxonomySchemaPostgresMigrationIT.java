@@ -148,11 +148,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
+        assertAnalysisDispatchSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
     }
 
     @Test
@@ -227,10 +228,11 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
+        assertAnalysisDispatchSchema(dataSource);
     }
 
     private static void assertAnalysisRecoverySchema(DataSource dataSource) throws SQLException {
@@ -256,6 +258,26 @@ class TaxonomySchemaPostgresMigrationIT {
                 "run_id", "state");
         assertRecoveryIndex(dataSource, "analysis_question_checkpoint", "uq_analysis_question", false,
                 "run_id", "question_key");
+    }
+
+    private static void assertAnalysisDispatchSchema(DataSource dataSource) throws SQLException {
+        for (String column : List.of("id", "task_id", "operation_id", "task_type", "routing_root", "message_json",
+                "status", "dispatch_attempts", "created_at", "updated_at", "dispatched_at", "failure_kind",
+                "row_version")) {
+            assertThat(columnExists(dataSource, "analysis_dispatch_intent", column))
+                    .as("analysis dispatch intent " + column).isTrue();
+        }
+        for (String column : List.of("id", "task_id", "operation_id", "message_type", "outcome",
+                "completion_json", "recorded_at")) {
+            assertThat(columnExists(dataSource, "analysis_task_completion", column))
+                    .as("analysis task completion " + column).isTrue();
+        }
+        assertRecoveryIndex(dataSource, "analysis_dispatch_intent", "idx_analysis_dispatch_status", true,
+                "status", "created_at");
+        assertRecoveryIndex(dataSource, "analysis_dispatch_intent", "idx_analysis_dispatch_operation", true,
+                "operation_id");
+        assertRecoveryIndex(dataSource, "analysis_task_completion", "idx_analysis_completion_operation", true,
+                "operation_id");
     }
 
     private static void assertRecoveryIndex(DataSource dataSource, String table, String name,

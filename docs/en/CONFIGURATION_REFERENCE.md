@@ -345,3 +345,33 @@ Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace
 ### Streaming transport lifetime
 
 The legacy SSE connection has no independent servlet timeout. The configured analysis deadline starts when the operation is reserved and includes executor-queue time; the worker emits the terminal result and closes the connection. Client disconnects still cancel the worker, and provider HTTP timeouts remain unchanged. This avoids a fixed transport timeout discarding an otherwise valid long analysis or its partial result. Intermediary/proxy timeouts can still disconnect the transport; observe the retained operation status rather than restarting it.
+
+## Clustered analysis transport (opt-in)
+
+| Environment variable | Spring property | Default | Description |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` keeps analysis in-process (default, no broker). `artemis` enables the external Apache Artemis task transport. Any other value fails startup. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | empty | Required in `artemis` mode. `tcp://` (or a failover list `(tcp://a,tcp://b)?ha=true`) or `vm://`. Never logged or shown in health output. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | empty | Broker user; supply through a secret. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` | `taxonomy.analysis.artemis.password` | empty | Broker password; supply through a secret, never through images or committed files. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS` | `taxonomy.analysis.artemis.require-tls` | `true` | A `tcp://` URL must contain `sslEnabled=true`; plaintext fails startup. Set `false` only for an isolated network or local tests. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_RETRY_INTERVAL_MS` | `taxonomy.analysis.artemis.retry-interval-ms` | `1000` | Initial reconnect interval (100–60000 ms), doubled up to 30 s. Reconnect attempts are unlimited and never block startup. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_CALL_TIMEOUT_MS` | `taxonomy.analysis.artemis.call-timeout-ms` | `30000` | Maximum wait for a broker acknowledgement (1000–300000 ms). An unacknowledged send leaves the task `WAITING_FOR_BROKER`. |
+| `TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX` | `taxonomy.analysis.artemis.destination-prefix` | `taxonomy.analysis` | Lower-case dotted prefix of all analysis queues and addresses. |
+| `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Whether this instance consumes task queues. Without bound task handlers no queue is consumed. |
+| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | empty (all eight roots) | Comma-separated catalogue roots this worker consumes, e.g. `CP,IP`. Unknown or duplicate roots fail startup. Only full-catalogue workers consume multi-root relation work. |
+| `TAXONOMY_ANALYSIS_WORKER_CONSUMERS_PER_SHARD` | `taxonomy.analysis.worker.consumers-per-shard` | `1` | Concurrent consumers per configured queue (1–64). |
+| `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_BATCH` | `taxonomy.analysis.dispatch.recovery-batch` | `200` | Dispatch intents read per recovery page. |
+| `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_LIMIT` | `taxonomy.analysis.dispatch.recovery-limit` | `5000` | Maximum intents one recovery run republishes; the rest wait for the next trigger. |
+
+Status: the transport, durable dispatch intents and worker protocol exist, but production
+analysis still executes in-process in every mode until the task handlers are bound
+(issue #1161, P04). Dispatch intents are written in the operation's database transaction
+and published only after commit. Recovery republishes unfinished intents only on the
+first broker connection after startup, after a broker reconnect, and through the
+administrator endpoint `POST /api/admin/analysis/dispatch/repair` — there is no
+fixed-rate database polling. The `analysisBroker` health component reports the
+connection state and backlog counts but is not part of readiness. Configure the
+broker with `max-delivery-attempts` and a dead-letter address so poison tasks are
+isolated; malformed, unknown-schema and misrouted messages go to
+`<prefix>.rejected`. Details: `docs/dev/ANALYSIS_TASK_DAG.md`.
