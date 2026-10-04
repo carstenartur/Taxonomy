@@ -31,6 +31,7 @@ const renderPreview =
   String(process.env.TAXONOMY_RENDER_DOCX_PREVIEW || 'false') === 'true';
 const templateId = 'decision-rationale-report';
 const expectedReportFilename = 'taxonomy-decision-rationale-report.docx';
+const expectedDownloadFilename = 'taxonomy-decision-report.docx';
 const docxMediaType =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const hospitalRequirement =
@@ -520,6 +521,18 @@ async function verifyDecisionModel(target, request) {
 }
 
 async function downloadDecisionReport(target, reportPath) {
+  await target.locator('#exportDecisionReportDocx').click();
+  const dialog = target.locator('dialog.decision-export-dialog');
+  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
+  await dialog.locator('[name="format"]').selectOption('docx');
+  // This acceptance test verifies the complete template-backed report, not the
+  // dialog's compact default or a contextually preselected single taxonomy.
+  await dialog.locator('[name="profile"]').selectOption('FULL');
+  const roots = dialog.locator('input[name="root"]:enabled');
+  await roots.first().waitFor({ state: 'visible', timeout: 30_000 });
+  for (const root of await roots.all()) await root.check();
+  const rootCount = await roots.count();
+
   const [download, response] = await Promise.all([
     target.waitForEvent('download', { timeout: 120_000 }),
     target.waitForResponse(candidate => {
@@ -527,12 +540,18 @@ async function downloadDecisionReport(target, reportPath) {
       return url.pathname.endsWith('/api/decision-report/docx')
         && candidate.request().method() === 'POST';
     }, { timeout: 120_000 }),
-    target.locator('#exportDecisionReportDocx').click()
+    dialog.locator('button[type="submit"]').click()
   ]);
   if (response.status() !== 200) {
     throw new Error(
       `Decision report download failed with HTTP ${response.status()}: `
         + (await response.text()).slice(0, 1_000));
+  }
+  const exportOptions = response.request().postDataJSON().exportOptions;
+  if (exportOptions?.profile !== 'FULL' || exportOptions.contents !== 'FULL'
+      || exportOptions.treeLayout !== 'TABLE'
+      || exportOptions.taxonomyRoots?.length !== rootCount) {
+    throw new Error(`Unexpected full-report options: ${JSON.stringify(exportOptions)}`);
   }
   const failure = await download.failure();
   if (failure) throw new Error(`Report download failed: ${failure}`);
@@ -550,14 +569,16 @@ async function downloadDecisionReport(target, reportPath) {
   if (bytes.length < 10_000 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     throw new Error(`Downloaded report is not a plausible DOCX (${bytes.length} bytes)`);
   }
-  if (download.suggestedFilename() !== expectedReportFilename) {
+  if (download.suggestedFilename() !== expectedDownloadFilename) {
     throw new Error(`Unexpected downloaded filename: ${download.suggestedFilename()}`);
   }
+  await dialog.waitFor({ state: 'detached', timeout: 30_000 });
   return {
     url: response.url(),
     responseContentType: contentType,
     responseContentDisposition: disposition,
-    downloadedFilename: download.suggestedFilename()
+    downloadedFilename: download.suggestedFilename(),
+    exportOptions
   };
 }
 
