@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalBinding.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.model</a> &gt; <span class="el_source">PrincipalBinding.java</span></div><h1>PrincipalBinding.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.model;
+
+import com.taxonomy.backup.IdentityBinding;
+import com.taxonomy.backup.PrincipalId;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
+/** The digest is an index key; the exact provider tuple is always compared after lookup. */
+<span class="fc" id="L12">public record PrincipalBinding(PrincipalId principal, IdentityBinding identity, boolean enabled) {</span>
+    public static String key(IdentityBinding identity) {
+        try {
+<span class="fc" id="L15">            var digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">            for (String part : new String[]{identity.kind().name(), identity.issuer(), identity.subject()}) {</span>
+<span class="fc" id="L17">                byte[] bytes = part.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L18">                digest.update(ByteBuffer.allocate(4).putInt(bytes.length).array());</span>
+<span class="fc" id="L19">                digest.update(bytes);</span>
+            }
+<span class="fc" id="L21">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L22">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L23">            throw new IllegalStateException(impossible);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

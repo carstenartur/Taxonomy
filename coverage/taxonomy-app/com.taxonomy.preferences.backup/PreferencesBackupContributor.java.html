@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreferencesBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences.backup</a> &gt; <span class="el_source">PreferencesBackupContributor.java</span></div><h1>PreferencesBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences.backup;
+
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.preferences.storage.PreferencesGitRepository;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Installation-owned current preferences; full history is supplied by the Git adapter. */
+public final class PreferencesBackupContributor implements BackupDataContributor {
+    private static final int MAX_DOCUMENT_BYTES = 1_048_576;
+    private static final int MAX_GIT_METADATA_BYTES = 65_536;
+    private static final String ENTRY = &quot;data/application/preferences.json&quot;;
+<span class="fc" id="L28">    private static final Set&lt;String&gt; KEYS = Set.of(&quot;llm.rpm&quot;, &quot;llm.timeout.seconds&quot;, &quot;rate-limit.per-minute&quot;,</span>
+            &quot;analysis.min-relevance-score&quot;, &quot;dsl.default-branch&quot;, &quot;dsl.project-name&quot;, &quot;dsl.auto-save.interval-seconds&quot;,
+            &quot;limits.max-business-text&quot;, &quot;limits.max-architecture-nodes&quot;, &quot;limits.max-export-nodes&quot;, &quot;diagram.policy&quot;,
+            &quot;dsl.remote.url&quot;, &quot;dsl.remote.token&quot;, &quot;dsl.remote.push-on-commit&quot;);
+<span class="fc" id="L32">    private static final List&lt;String&gt; EXCLUDED_FIELDS = List.of(&quot;dsl.remote.url&quot;, &quot;dsl.remote.token&quot;);</span>
+<span class="fc" id="L33">    private static final JsonMapper JSON = JsonMapper.builder()</span>
+<span class="fc" id="L34">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L35">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();</span>
+<span class="fc" id="L36">    static { JSON.getFactory().setStreamReadConstraints(StreamReadConstraints.builder()</span>
+<span class="fc" id="L37">            .maxNestingDepth(4).maxStringLength(MAX_DOCUMENT_BYTES).maxNumberLength(100).build()); }</span>
+    private final PreferencesGitRepository repository;
+
+<span class="fc" id="L40">    public PreferencesBackupContributor(PreferencesGitRepository repository) { this.repository = Objects.requireNonNull(repository); }</span>
+<span class="fc" id="L41">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;application&quot;); }</span>
+<span class="fc" id="L42">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L43">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;storage.git.preferences&quot;); }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (!profile.isInstallation()) return List.of(&quot;preferences: installation-owned administrative settings are outside the selected workspace scope&quot;);</span>
+<span class="fc" id="L46">        return List.of(&quot;preferences: history, commit authors and messages are excluded from current state&quot;,</span>
+                &quot;preferences: remote URLs and credentials are target-owned and excluded; outgoing execution requires manual review&quot;,
+                &quot;preferences: absent persisted values remain null and require source deployment defaults; no runtime defaults are invented&quot;);
+    }
+
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L52">        var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (profile == BackupProfile.INSTALLATION_FULL) throw new IOException(&quot;Preferences repository history capture is required for INSTALLATION_FULL&quot;);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (!profile.isInstallation()) {</span>
+<span class="fc" id="L55">            PortableRows.document(sink, ENTRY, inventory(profile, Selection.OUTSIDE_SCOPE, null, null, null));</span>
+<span class="fc" id="L56">            return;</span>
+        }
+        Inventory captured;
+<span class="fc" id="L59">        try { captured = capture(profile, sink); }</span>
+<span class="fc" id="L60">        catch (InterruptedIOException cancelled) { throw new InterruptedIOException(&quot;Preferences capture interrupted&quot;); }</span>
+<span class="fc" id="L61">        catch (IOException | RuntimeException invalid) {</span>
+            // Neither parser diagnostics nor provider errors may disclose raw source settings or secrets.
+<span class="fc" id="L63">            throw new IOException(&quot;Stored preferences cannot be exported safely&quot;);</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">        PortableRows.document(sink, ENTRY, captured);</span>
+<span class="fc" id="L66">    }</span>
+
+    private Inventory capture(BackupProfile profile, ComponentSink sink) throws IOException {
+<span class="fc" id="L69">        sink.checkpoint();</span>
+<span class="fc" id="L70">        Repository git = repository.getGitRepository();</span>
+<span class="fc" id="L71">        Ref ref = git.getRefDatabase().exactRef(&quot;refs/heads/main&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (ref == null) return inventory(profile, Selection.UNINITIALIZED, null, null, null);</span>
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">        if (ref.isSymbolic() || ref.getObjectId() == null) throw new IOException(&quot;Invalid preferences ref&quot;);</span>
+<span class="fc" id="L74">        ObjectId head = ref.getObjectId().copy();</span>
+<span class="fc" id="L75">        sink.checkpoint();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (git.open(head, Constants.OBJ_COMMIT).getSize() &gt; MAX_GIT_METADATA_BYTES) throw new IOException(&quot;Preferences commit limit exceeded&quot;);</span>
+<span class="fc" id="L77">        try (var walk = new RevWalk(git); var tree = new TreeWalk(git)) {</span>
+<span class="fc" id="L78">            walk.setRetainBody(false);</span>
+<span class="fc" id="L79">            var commit = walk.parseCommit(head);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (git.open(commit.getTree(), Constants.OBJ_TREE).getSize() &gt; MAX_GIT_METADATA_BYTES) throw new IOException(&quot;Preferences tree limit exceeded&quot;);</span>
+<span class="fc" id="L81">            tree.addTree(commit.getTree());</span>
+<span class="pc bpc" id="L82" title="1 of 6 branches missed.">            if (!tree.next() || !tree.getPathString().equals(&quot;preferences.json&quot;) || !FileMode.REGULAR_FILE.equals(tree.getFileMode(0)))</span>
+<span class="fc" id="L83">                throw new IOException(&quot;Unsupported preferences tree&quot;);</span>
+<span class="fc" id="L84">            ObjectId blob = tree.getObjectId(0).copy();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (tree.next()) throw new IOException(&quot;Unclassified preferences entry&quot;);</span>
+<span class="fc" id="L86">            ObjectLoader loader = git.open(blob, Constants.OBJ_BLOB);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (loader.getSize() &gt; MAX_DOCUMENT_BYTES) throw new IOException(&quot;Preferences document limit exceeded&quot;);</span>
+<span class="fc" id="L88">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L89">            try (var input = loader.openStream()) {</span>
+<span class="fc" id="L90">                byte[] buffer = new byte[8192];</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                for (int read; (read = input.read(buffer)) != -1;) {</span>
+<span class="fc" id="L92">                    sink.checkpoint();</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                    if (read &gt; MAX_DOCUMENT_BYTES - bytes.size()) throw new IOException(&quot;Preferences document limit exceeded&quot;);</span>
+<span class="fc" id="L94">                    bytes.write(buffer, 0, read);</span>
+                }
+            }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (bytes.size() != loader.getSize()) throw new IOException(&quot;Truncated preferences document&quot;);</span>
+<span class="fc" id="L98">            String text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)</span>
+<span class="fc" id="L99">                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes.toByteArray())).toString();</span>
+<span class="fc" id="L100">            JsonNode document = JSON.readTree(text);</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">            if (document == null || !document.isObject()) throw new IOException(&quot;Invalid preferences object&quot;);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            for (var names = document.fieldNames(); names.hasNext();) {</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (!KEYS.contains(names.next())) throw new IOException(&quot;Unclassified preference key&quot;);</span>
+            }
+<span class="fc" id="L105">            var settings = new Settings(integer(document, &quot;llm.rpm&quot;), integer(document, &quot;llm.timeout.seconds&quot;),</span>
+<span class="fc" id="L106">                    integer(document, &quot;rate-limit.per-minute&quot;), integer(document, &quot;analysis.min-relevance-score&quot;),</span>
+<span class="fc" id="L107">                    text(document, &quot;dsl.default-branch&quot;), text(document, &quot;dsl.project-name&quot;), integer(document, &quot;dsl.auto-save.interval-seconds&quot;),</span>
+<span class="fc" id="L108">                    integer(document, &quot;limits.max-business-text&quot;), integer(document, &quot;limits.max-architecture-nodes&quot;),</span>
+<span class="fc" id="L109">                    integer(document, &quot;limits.max-export-nodes&quot;), text(document, &quot;diagram.policy&quot;));</span>
+<span class="fc" id="L110">            var remote = new RemoteConfiguration(present(document, &quot;dsl.remote.url&quot;), present(document, &quot;dsl.remote.token&quot;),</span>
+<span class="fc" id="L111">                    flag(document, &quot;dsl.remote.push-on-commit&quot;));</span>
+<span class="fc" id="L112">            sink.checkpoint();</span>
+<span class="fc" id="L113">            return inventory(profile, Selection.CURRENT_STATE, head.name(), settings, remote);</span>
+        }
+    }
+
+    private static Integer integer(JsonNode document, String key) throws IOException {
+<span class="fc" id="L118">        JsonNode value = document.path(key);</span>
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">        if (value.isMissingNode() || value.isNull()) return null;</span>
+<span class="fc bfc" id="L120" title="All 4 branches covered.">        if (value.isIntegralNumber() &amp;&amp; value.canConvertToInt()) return value.intValue();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (value.isTextual()) return Integer.valueOf(value.textValue());</span>
+<span class="fc" id="L122">        throw new IOException(&quot;Invalid integer preference&quot;);</span>
+    }
+    private static String text(JsonNode document, String key) throws IOException {
+<span class="fc" id="L125">        JsonNode value = document.path(key);</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">        if (value.isMissingNode() || value.isNull()) return null;</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">        if (!value.isTextual() || value.textValue().length() &gt; 4096) throw new IOException(&quot;Invalid text preference&quot;);</span>
+<span class="fc" id="L128">        return value.textValue();</span>
+    }
+    private static Boolean flag(JsonNode document, String key) throws IOException {
+<span class="fc" id="L131">        JsonNode value = document.path(key);</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (value.isMissingNode() || value.isNull()) return null;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (value.isBoolean()) return value.booleanValue();</span>
+<span class="pc bpc" id="L134" title="2 of 6 branches missed.">        if (value.isTextual() &amp;&amp; (value.textValue().equalsIgnoreCase(&quot;true&quot;) || value.textValue().equalsIgnoreCase(&quot;false&quot;)))</span>
+<span class="fc" id="L135">            return Boolean.valueOf(value.textValue());</span>
+<span class="fc" id="L136">        throw new IOException(&quot;Invalid boolean preference&quot;);</span>
+    }
+    private static boolean present(JsonNode document, String key) throws IOException {
+<span class="fc" id="L139">        JsonNode value = document.path(key);</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">        if (value.isMissingNode() || value.isNull()) return false;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (!value.isTextual()) throw new IOException(&quot;Invalid remote preference&quot;);</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        return !value.textValue().isBlank();</span>
+    }
+    private static Inventory inventory(BackupProfile profile, Selection selection, String commit, Settings settings, RemoteConfiguration remote) {
+<span class="fc" id="L145">        return new Inventory(1, profile, selection, commit, settings, remote, RestorePolicy.MANUAL_REVIEW_REQUIRED, EXCLUDED_FIELDS);</span>
+    }
+
+<span class="fc" id="L148">    public enum Selection { CURRENT_STATE, UNINITIALIZED, OUTSIDE_SCOPE }</span>
+<span class="fc" id="L149">    public enum RestorePolicy { MANUAL_REVIEW_REQUIRED }</span>
+<span class="fc" id="L150">    public record Settings(Integer llmRequestsPerMinute, Integer llmTimeoutSeconds, Integer rateLimitPerMinute,</span>
+                           Integer analysisMinimumRelevanceScore, String defaultBranch, String projectName,
+                           Integer autoSaveIntervalSeconds, Integer maximumBusinessText, Integer maximumArchitectureNodes,
+                           Integer maximumExportNodes, String diagramPolicy) { }
+<span class="fc" id="L154">    public record RemoteConfiguration(boolean configured, boolean credentialPresent, Boolean sourcePushOnCommit) { }</span>
+    public record Inventory(int schemaVersion, BackupProfile profile, Selection selection, String sourceCommit,
+                            Settings settings, RemoteConfiguration remote, RestorePolicy restorePolicy, List&lt;String&gt; excludedFields) {
+<span class="fc" id="L157">        public Inventory { excludedFields = List.copyOf(excludedFields); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

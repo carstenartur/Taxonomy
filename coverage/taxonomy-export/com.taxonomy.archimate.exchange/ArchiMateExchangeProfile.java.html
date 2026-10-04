@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateExchangeProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateExchangeProfile.java</span></div><h1>ArchiMateExchangeProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** The executable, versioned outbound profile. There is no implicit fallback. */
+public final class ArchiMateExchangeProfile {
+    public static final String VERSION = &quot;taxonomy-archimate-3.1-v2&quot;;
+    public static final String RESOURCE = &quot;/archimate/profile-v2.tsv&quot;;
+<span class="fc" id="L15">    private static final Map&lt;String, Mapping&gt; MAPPINGS = load();</span>
+
+    private ArchiMateExchangeProfile() { }
+
+<span class="fc" id="L19">    public record Mapping(String scope, String sourceType, String targetType,</span>
+                          String accessType, List&lt;String&gt; properties, String kind, String rationale, String profileVersion) { }
+
+<span class="fc" id="L22">    public static Mapping element(String sourceType) { return mapping(&quot;element&quot;, sourceType); }</span>
+<span class="fc" id="L23">    public static Mapping relationship(String sourceType) { return mapping(&quot;relationship&quot;, sourceType); }</span>
+<span class="fc" id="L24">    public static List&lt;Mapping&gt; mappings() { return List.copyOf(MAPPINGS.values()); }</span>
+
+    public static byte[] resourceBytes() {
+<span class="fc" id="L27">        try (InputStream input = ArchiMateExchangeProfile.class.getResourceAsStream(RESOURCE)) {</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            if (input == null) throw new IllegalStateException(&quot;Missing exchange mapping profile&quot;);</span>
+<span class="fc" id="L29">            return input.readAllBytes();</span>
+<span class="nc" id="L30">        } catch (IOException exception) {</span>
+<span class="nc" id="L31">            throw new UncheckedIOException(exception);</span>
+        }
+    }
+
+    private static Mapping mapping(String scope, String sourceType) {
+<span class="fc" id="L36">        Mapping mapping = MAPPINGS.get(scope + &quot;:&quot; + sourceType);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (mapping == null) {</span>
+<span class="fc" id="L38">            throw new IllegalArgumentException(&quot;Unsupported ArchiMate &quot; + scope + &quot; source type: &quot;</span>
+                    + sourceType + &quot; (profile &quot; + VERSION + &quot;; no fallback enabled)&quot;);
+        }
+<span class="fc" id="L41">        return mapping;</span>
+    }
+
+    private static Map&lt;String, Mapping&gt; load() {
+<span class="fc" id="L45">        Map&lt;String, Mapping&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L46">        new String(resourceBytes(), StandardCharsets.UTF_8).lines().skip(1).forEach(line -&gt; {</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">            if (line.isBlank()) return;</span>
+<span class="fc" id="L48">            String[] fields = line.split(&quot;\t&quot;, -1);</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">            if (fields.length != 8 || !VERSION.equals(fields[7])) {</span>
+<span class="nc" id="L50">                throw new IllegalStateException(&quot;Invalid exchange profile row&quot;);</span>
+            }
+<span class="fc" id="L52">            Mapping mapping = new Mapping(fields[0], fields[1], fields[2],</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                    fields[3].isEmpty() ? null : fields[3], List.of(fields[4].split(&quot;;&quot;)), fields[5], fields[6], fields[7]);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if (result.putIfAbsent(mapping.scope() + &quot;:&quot; + mapping.sourceType(), mapping) != null) {</span>
+<span class="nc" id="L55">                throw new IllegalStateException(&quot;Duplicate exchange mapping&quot;);</span>
+            }
+<span class="fc" id="L57">        });</span>
+<span class="fc" id="L58">        return java.util.Collections.unmodifiableMap(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

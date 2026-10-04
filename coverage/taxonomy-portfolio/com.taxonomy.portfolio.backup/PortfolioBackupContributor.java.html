@@ -1,0 +1,592 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.backup</a> &gt; <span class="el_source">PortfolioBackupContributor.java</span></div><h1>PortfolioBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.exchange.backup.PrincipalScopeCapture;
+import com.taxonomy.portfolio.model.PortfolioTypes.*;
+import com.taxonomy.workspace.backup.BackupRowScope;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Version 1 business records and source-reference mappings. SQL projections and profile closure are explicit. */
+public final class PortfolioBackupContributor implements BackupDataContributor {
+    private final PortableRows rows;
+<span class="fc" id="L18">    public PortfolioBackupContributor(DataSource database) { rows = new PortableRows(database); }</span>
+    /** The same current ownership rows as the record export; creator/author labels remain historical metadata. */
+    public Set&lt;String&gt; principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L21">        var scope = new BackupRowScope(snapshot); var queries = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (!scope.selectedVersion()) {</span>
+<span class="fc" id="L23">            var tenant = scope.tenants(&quot;scope_key&quot;);</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            for (String table : List.of(&quot;arch_project&quot;, &quot;project_requirement&quot;, &quot;solution_definition&quot;))</span>
+<span class="fc" id="L25">                queries.add(new Query(&quot;select scope_key,owner_username from &quot; + table + &quot; where &quot; + tenant.sql() + &quot; order by id&quot;, tenant.parameters()));</span>
+        }
+<span class="fc" id="L27">        return new PrincipalScopeCapture(rows).capture(queries, row -&gt; {</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (!scope.includesTenant(text(row, &quot;scope_key&quot;))) throw new IOException(&quot;Principal reference belongs to a different portfolio tenant&quot;);</span>
+<span class="fc" id="L29">            return new PrincipalScopeCapture.Scope(text(row, &quot;owner_username&quot;));</span>
+        }, checkpoint);
+    }
+<span class="fc" id="L32">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;portfolio&quot;); }</span>
+<span class="fc" id="L33">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L34">    @Override public Set&lt;String&gt; categories() { return Set.of(</span>
+            &quot;com.taxonomy.portfolio.model.ArchitectureProject&quot;,
+            &quot;com.taxonomy.portfolio.model.ProjectRequirement&quot;,
+            &quot;com.taxonomy.portfolio.model.ProjectRequirementVersion&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementAnalysisJob&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementAnalysisSnapshot&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementAnalysisJobItem&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementElementMapping&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementRelationMapping&quot;,
+            &quot;com.taxonomy.portfolio.model.SolutionDefinition&quot;,
+            &quot;com.taxonomy.portfolio.model.ProductCatalogEntry&quot;,
+            &quot;com.taxonomy.portfolio.model.ProjectSolution&quot;,
+            &quot;com.taxonomy.portfolio.model.ProductTaxonomyCoverage&quot;,
+            &quot;com.taxonomy.portfolio.model.SolutionTaxonomyCoverage&quot;,
+            &quot;com.taxonomy.portfolio.model.RequirementSolutionLink&quot;,
+            &quot;com.taxonomy.portfolio.model.SolutionProductCandidate&quot;,
+            &quot;com.taxonomy.portfolio.model.ProjectConflict&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationProposal&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationRevision&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationRun&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationNodeCheckpoint&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationUsageSession&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationUsageAttempt&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationAdoptionPreview&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationAdoption&quot;,
+            &quot;com.taxonomy.portfolio.reformulation.ReformulationPortableEvidence&quot;); }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (profile == BackupProfile.SELECTED_VERSION) return List.of(&quot;portfolio: present-day database rows are excluded; the projected selected Git document is authoritative&quot;);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (!profile.includesHistory()) return List.of(&quot;portfolio: non-current requirement/analysis/reformulation versions, original text, change reasons and adoption ancestry are excluded&quot;, &quot;portfolio: worker ownership, error diagnostics and automatic execution are excluded&quot;);</span>
+<span class="fc" id="L63">        return List.of(&quot;portfolio: worker ownership, error diagnostics and automatic execution are excluded&quot;);</span>
+    }
+    /** Uses the same version selection as the business export; never infers ownership from business IDs. */
+    public List&lt;BackupSourceReference&gt; sourceReferences(SnapshotContext snapshot) throws IOException {
+<span class="fc" id="L67">        var scope=new BackupRowScope(snapshot);</span>
+<span class="fc" id="L68">        var result=new ArrayList&lt;BackupSourceReference&gt;();</span>
+<span class="fc" id="L69">        rows.visit(query(scope,&quot;select t.id,t.scope_key,owner.scope_key as requirement_scope,t.source_artifact_id,t.source_version_id,t.source_fragment_ids from project_req_version t left join project_requirement owner on owner.id=t.requirement_id&quot;,</span>
+<span class="fc" id="L70">                scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from project_requirement r where r.id=t.requirement_id and r.scope_key=t.scope_key and r.current_version_id=t.id)&quot;,&quot;t.id&quot;),</span>
+<span class="fc" id="L71">                scoped(scope, r -&gt; {</span>
+<span class="fc" id="L72">                    requireSameTenant(r, &quot;requirement_scope&quot;);</span>
+<span class="fc" id="L73">                    return new BackupSourceReference(reference(r,&quot;portfolio.requirement-version&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L74">                            reference(r,&quot;application.source-artifact&quot;,&quot;source_artifact_id&quot;),</span>
+<span class="fc" id="L75">                            reference(r,&quot;application.source-version&quot;,&quot;source_version_id&quot;),fragmentReferences(text(r,&quot;source_fragment_ids&quot;)));</span>
+                }),
+                ref -&gt; {
+<span class="pc bpc" id="L78" title="2 of 6 branches missed.">                    if (ref.artifact()!=null || ref.version()!=null || !ref.fragments().isEmpty()) {</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                        if (result.size()&gt;=100_000) throw new IOException(&quot;Source dependency limit exceeded&quot;);</span>
+<span class="fc" id="L80">                        result.add(ref);</span>
+                    }
+<span class="fc" id="L82">                });</span>
+<span class="fc" id="L83">        return List.copyOf(result);</span>
+    }
+    /** The identity closure includes old snapshots so the consumer can distinguish stale from foreign links. */
+    public List&lt;BackupAnalysisReference&gt; analysisReferences(SnapshotContext snapshot) throws IOException {
+<span class="fc" id="L87">        var scope = new BackupRowScope(snapshot);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (scope.selectedVersion()) return List.of();</span>
+<span class="fc" id="L89">        var tenant = scope.tenants(&quot;s.scope_key&quot;);</span>
+<span class="fc" id="L90">        rows.requireEmpty(new Query(&quot;select 1 from req_analysis_snapshot s left join arch_project p on p.id=s.project_id &quot;</span>
+<span class="fc" id="L91">                + &quot;left join project_requirement r on r.id=s.requirement_id left join project_req_version v on v.id=s.requirement_version_id where &quot; + tenant.sql()</span>
+                + &quot; and (p.id is null or r.id is null or v.id is null or p.scope_key&lt;&gt;s.scope_key or r.scope_key&lt;&gt;s.scope_key &quot;
+<span class="fc" id="L93">                + &quot;or r.project_id&lt;&gt;s.project_id or v.requirement_id&lt;&gt;s.requirement_id or v.scope_key&lt;&gt;s.scope_key)&quot;, tenant.parameters()));</span>
+<span class="fc" id="L94">        var result = new ArrayList&lt;BackupAnalysisReference&gt;();</span>
+<span class="fc" id="L95">        rows.visit(new Query(&quot;select s.id,s.scope_key,p.scope_key as project_scope,r.scope_key as requirement_scope,v.scope_key as version_scope,&quot;</span>
+                + &quot;s.project_id,s.requirement_id,s.requirement_version_id,s.analysis_session_id,&quot;
+                + &quot;p.repository_id,p.workspace_id,r.current_version_id,r.current_snapshot_id from req_analysis_snapshot s &quot;
+                + &quot;join arch_project p on p.id=s.project_id join project_requirement r on r.id=s.requirement_id &quot;
+                + &quot;join project_req_version v on v.id=s.requirement_version_id where &quot;
+<span class="fc" id="L100">                + tenant.sql() + &quot; order by s.id&quot;, tenant.parameters()), scoped(scope, r -&gt; {</span>
+<span class="fc" id="L101">                    requireSameTenant(r, &quot;project_scope&quot;);</span>
+<span class="fc" id="L102">                    requireSameTenant(r, &quot;requirement_scope&quot;);</span>
+<span class="fc" id="L103">                    requireSameTenant(r, &quot;version_scope&quot;);</span>
+<span class="fc" id="L104">                    return new BackupAnalysisReference(</span>
+<span class="fc" id="L105">                            reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;id&quot;), reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L106">                            reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;), new BackupRepositoryKey(text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;)),</span>
+<span class="fc bfc" id="L107" title="All 4 branches covered.">                            text(r,&quot;analysis_session_id&quot;), scope.history() || Objects.equals(text(r,&quot;id&quot;),text(r,&quot;current_snapshot_id&quot;))</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                                    &amp;&amp; Objects.equals(number(r,&quot;requirement_version_id&quot;),number(r,&quot;current_version_id&quot;)));</span>
+                }), ref -&gt; {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                    if (result.size() &gt;= 100_000) throw new IOException(&quot;Analysis dependency limit exceeded&quot;);</span>
+<span class="fc" id="L111">                    result.add(ref);</span>
+<span class="fc" id="L112">                });</span>
+<span class="fc" id="L113">        return List.copyOf(result);</span>
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L116">        var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (!scope.selectedVersion()) validateScopeClosure(scope);</span>
+<span class="fc" id="L118">        var includedRuns = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L119">        write(scope,sink,&quot;project&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.owner_username,t.project_key,t.title,t.description,t.status,t.target_architecture,t.target_date,t.budget_amount,t.budget_currency,t.created_at,t.updated_at from arch_project t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L120">            return new ProjectRecord(reference(r,&quot;portfolio.project&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L121">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L122">                    text(r,&quot;repository_id&quot;),</span>
+<span class="fc" id="L123">                    text(r,&quot;workspace_scope&quot;),</span>
+<span class="fc" id="L124">                    text(r,&quot;branch_name&quot;),</span>
+<span class="fc" id="L125">                    text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L126">                    text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L127">                    text(r,&quot;project_key&quot;),</span>
+<span class="fc" id="L128">                    text(r,&quot;title&quot;),</span>
+<span class="fc" id="L129">                    text(r,&quot;description&quot;),</span>
+<span class="fc" id="L130">                    enumeration(r,&quot;status&quot;,ProjectStatus.class),</span>
+<span class="fc" id="L131">                    text(r,&quot;target_architecture&quot;),</span>
+<span class="fc" id="L132">                    date(r,&quot;target_date&quot;),</span>
+<span class="fc" id="L133">                    decimal(r,&quot;budget_amount&quot;),</span>
+<span class="fc" id="L134">                    text(r,&quot;budget_currency&quot;),</span>
+<span class="fc" id="L135">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L136">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L138">        write(scope,sink,&quot;requirement&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_id,t.requirement_key,t.title,t.status,t.priority,t.criticality,t.requirement_type,t.review_status,t.owner_username,t.current_version_id,(select v.scope_key from project_req_version v where v.id=t.current_version_id and v.requirement_id=t.id) as current_version_scope,(case when &quot;+historyOr(scope)+&quot;exists (select 1 from req_analysis_snapshot valid_snapshot where valid_snapshot.id=t.current_snapshot_id and valid_snapshot.scope_key=t.scope_key and valid_snapshot.requirement_id=t.id and valid_snapshot.requirement_version_id=t.current_version_id) then t.current_snapshot_id else null end) as current_snapshot_id,t.created_at,t.updated_at from project_requirement t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (number(r,&quot;current_version_id&quot;) != null) requireSameTenant(r, &quot;current_version_scope&quot;);</span>
+<span class="fc" id="L140">            return new ProjectRequirementRecord(reference(r,&quot;portfolio.requirement&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L141">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L142">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L143">                    text(r,&quot;requirement_key&quot;),</span>
+<span class="fc" id="L144">                    text(r,&quot;title&quot;),</span>
+<span class="fc" id="L145">                    enumeration(r,&quot;status&quot;,RequirementStatus.class),</span>
+<span class="fc" id="L146">                    r.getInt(&quot;priority&quot;),</span>
+<span class="fc" id="L147">                    enumeration(r,&quot;criticality&quot;,Criticality.class),</span>
+<span class="fc" id="L148">                    enumeration(r,&quot;requirement_type&quot;,RequirementType.class),</span>
+<span class="fc" id="L149">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L150">                    text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L151">                    reference(r,&quot;portfolio.requirement-version&quot;,&quot;current_version_id&quot;),</span>
+<span class="fc" id="L152">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;current_snapshot_id&quot;),</span>
+<span class="fc" id="L153">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L154">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L156">        write(scope,sink,&quot;requirement-version&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.requirement_id,t.version_number,t.requirement_text,t.content_hash,t.change_reason,t.created_by,t.created_at,t.source_artifact_id,t.source_version_id,t.source_fragment_ids,t.section_ref,t.page_number,t.original_text from project_req_version t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L157">            return new ProjectRequirementVersionRecord(reference(r,&quot;portfolio.requirement-version&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L158">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L159">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L160">                    r.getInt(&quot;version_number&quot;),</span>
+<span class="fc" id="L161">                    text(r,&quot;requirement_text&quot;),</span>
+<span class="fc" id="L162">                    text(r,&quot;content_hash&quot;),</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                    scope.history() ? text(r,&quot;change_reason&quot;) : null,</span>
+<span class="fc" id="L164">                    text(r,&quot;created_by&quot;),</span>
+<span class="fc" id="L165">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L166">                    reference(r,&quot;application.source-artifact&quot;,&quot;source_artifact_id&quot;),</span>
+<span class="fc" id="L167">                    reference(r,&quot;application.source-version&quot;,&quot;source_version_id&quot;),</span>
+<span class="fc" id="L168">                    fragmentReferences(text(r,&quot;source_fragment_ids&quot;)),</span>
+<span class="fc" id="L169">                    text(r,&quot;section_ref&quot;),</span>
+<span class="fc" id="L170">                    number(r,&quot;page_number&quot;),</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                    scope.history() ? text(r,&quot;original_text&quot;) : null);</span>
+        });
+<span class="fc" id="L173">        write(scope,sink,&quot;analysis-job&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_id,t.status,t.idempotency_key,t.provider,t.max_architecture_nodes,t.requested_by,t.workspace_id,t.created_at,t.started_at,t.completed_at,t.total_items,t.successful_items,t.partial_items,t.failed_items from req_analysis_job t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;(t.status in ('PENDING','RUNNING') or exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.job_id=t.id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id))&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L174">            return new RequirementAnalysisJobRecord(reference(r,&quot;portfolio.analysis-job&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L175">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L176">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L177">                    enumeration(r,&quot;status&quot;,AnalysisStatus.class),</span>
+<span class="fc" id="L178">                    text(r,&quot;idempotency_key&quot;),</span>
+<span class="fc" id="L179">                    text(r,&quot;provider&quot;),</span>
+<span class="fc" id="L180">                    r.getInt(&quot;max_architecture_nodes&quot;),</span>
+<span class="fc" id="L181">                    text(r,&quot;requested_by&quot;),</span>
+<span class="fc" id="L182">                    text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L183">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L184">                    instant(r,&quot;started_at&quot;),</span>
+<span class="fc" id="L185">                    instant(r,&quot;completed_at&quot;),</span>
+<span class="fc" id="L186">                    r.getInt(&quot;total_items&quot;),</span>
+<span class="fc" id="L187">                    r.getInt(&quot;successful_items&quot;),</span>
+<span class="fc" id="L188">                    r.getInt(&quot;partial_items&quot;),</span>
+<span class="fc" id="L189">                    r.getInt(&quot;failed_items&quot;));</span>
+        });
+<span class="fc" id="L191">        write(scope,sink,&quot;analysis-snapshot&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_id,t.requirement_id,t.requirement_version_id,t.job_id,t.status,t.analysis_session_id,t.provider,t.model_name,t.prompt_fingerprint,t.taxonomy_fingerprint,t.workspace_id,t.branch_name,t.commit_sha,t.created_by,t.created_at,t.duration_ms,t.warning_count,t.analysis_payload,t.gap_payload,t.pattern_payload,t.recommendation_payload from req_analysis_snapshot t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.requirement_version_id and current_requirement.current_snapshot_id=t.id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L192">            return new RequirementAnalysisSnapshotRecord(reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L193">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L194">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L195">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L196">                    reference(r,&quot;portfolio.requirement-version&quot;,&quot;requirement_version_id&quot;),</span>
+<span class="fc" id="L197">                    reference(r,&quot;portfolio.analysis-job&quot;,&quot;job_id&quot;),</span>
+<span class="fc" id="L198">                    enumeration(r,&quot;status&quot;,AnalysisStatus.class),</span>
+<span class="fc" id="L199">                    text(r,&quot;analysis_session_id&quot;),</span>
+<span class="fc" id="L200">                    text(r,&quot;provider&quot;),</span>
+<span class="fc" id="L201">                    text(r,&quot;model_name&quot;),</span>
+<span class="fc" id="L202">                    text(r,&quot;prompt_fingerprint&quot;),</span>
+<span class="fc" id="L203">                    text(r,&quot;taxonomy_fingerprint&quot;),</span>
+<span class="fc" id="L204">                    text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L205">                    text(r,&quot;branch_name&quot;),</span>
+<span class="fc" id="L206">                    text(r,&quot;commit_sha&quot;),</span>
+<span class="fc" id="L207">                    text(r,&quot;created_by&quot;),</span>
+<span class="fc" id="L208">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L209">                    r.getLong(&quot;duration_ms&quot;),</span>
+<span class="fc" id="L210">                    r.getInt(&quot;warning_count&quot;),</span>
+<span class="fc" id="L211">                    text(r,&quot;analysis_payload&quot;),</span>
+<span class="fc" id="L212">                    text(r,&quot;gap_payload&quot;),</span>
+<span class="fc" id="L213">                    text(r,&quot;pattern_payload&quot;),</span>
+<span class="fc" id="L214">                    text(r,&quot;recommendation_payload&quot;));</span>
+        });
+<span class="fc" id="L216">        write(scope,sink,&quot;analysis-item&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_id,t.job_id,t.requirement_id,t.requirement_version_id,t.status,(case when &quot;+historyOr(scope)+&quot;exists (select 1 from project_requirement current_requirement where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_snapshot_id=t.snapshot_id and current_requirement.current_version_id=t.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.attempt,t.started_at,t.completed_at from req_analysis_item t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from project_requirement current_requirement join req_analysis_job job on job.id=t.job_id and job.scope_key=t.scope_key where current_requirement.id=t.requirement_id and current_requirement.scope_key=t.scope_key and current_requirement.current_version_id=t.requirement_version_id and (t.snapshot_id=current_requirement.current_snapshot_id or job.status in ('PENDING','RUNNING')))&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L217">            return new RequirementAnalysisJobItemRecord(reference(r,&quot;portfolio.analysis-item&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L218">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L219">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L220">                    reference(r,&quot;portfolio.analysis-job&quot;,&quot;job_id&quot;),</span>
+<span class="fc" id="L221">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L222">                    reference(r,&quot;portfolio.requirement-version&quot;,&quot;requirement_version_id&quot;),</span>
+<span class="fc" id="L223">                    enumeration(r,&quot;status&quot;,AnalysisStatus.class),</span>
+<span class="fc" id="L224">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;snapshot_id&quot;),</span>
+<span class="fc" id="L225">                    r.getInt(&quot;attempt&quot;),</span>
+<span class="fc" id="L226">                    instant(r,&quot;started_at&quot;),</span>
+<span class="fc" id="L227">                    instant(r,&quot;completed_at&quot;));</span>
+        });
+<span class="fc" id="L229">        write(scope,sink,&quot;element-decision&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.snapshot_id,t.node_code,t.node_title,t.taxonomy_root,t.direct_score,t.relevance,t.confidence,t.mapping_origin,t.hierarchy_path,t.presence_reason,t.selected_for_impact,t.review_status,t.action_status,t.action_evidence,t.decision_by,t.decision_at,t.decision_comment from req_element_mapping t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L230">            return new RequirementElementMappingRecord(reference(r,&quot;portfolio.element-decision&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L231">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L232">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;snapshot_id&quot;),</span>
+<span class="fc" id="L233">                    text(r,&quot;node_code&quot;),</span>
+<span class="fc" id="L234">                    text(r,&quot;node_title&quot;),</span>
+<span class="fc" id="L235">                    text(r,&quot;taxonomy_root&quot;),</span>
+<span class="fc" id="L236">                    r.getInt(&quot;direct_score&quot;),</span>
+<span class="fc" id="L237">                    r.getDouble(&quot;relevance&quot;),</span>
+<span class="fc" id="L238">                    r.getDouble(&quot;confidence&quot;),</span>
+<span class="fc" id="L239">                    enumeration(r,&quot;mapping_origin&quot;,MappingOrigin.class),</span>
+<span class="fc" id="L240">                    text(r,&quot;hierarchy_path&quot;),</span>
+<span class="fc" id="L241">                    text(r,&quot;presence_reason&quot;),</span>
+<span class="fc" id="L242">                    r.getBoolean(&quot;selected_for_impact&quot;),</span>
+<span class="fc" id="L243">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L244">                    enumeration(r,&quot;action_status&quot;,ActionStatus.class),</span>
+<span class="fc" id="L245">                    text(r,&quot;action_evidence&quot;),</span>
+<span class="fc" id="L246">                    text(r,&quot;decision_by&quot;),</span>
+<span class="fc" id="L247">                    instant(r,&quot;decision_at&quot;),</span>
+<span class="fc" id="L248">                    text(r,&quot;decision_comment&quot;));</span>
+        });
+<span class="fc" id="L250">        write(scope,sink,&quot;relation-decision&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.snapshot_id,t.source_code,t.target_code,t.relation_type,t.relation_origin,t.relation_category,t.relevance,t.confidence,t.presence_reason,t.review_status,t.decision_by,t.decision_at,t.decision_comment from req_relation_mapping t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from req_analysis_snapshot snapshot join project_requirement current_requirement on current_requirement.id=snapshot.requirement_id and current_requirement.scope_key=snapshot.scope_key where snapshot.id=t.snapshot_id and snapshot.scope_key=t.scope_key and current_requirement.current_snapshot_id=snapshot.id and current_requirement.current_version_id=snapshot.requirement_version_id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L251">            return new RequirementRelationMappingRecord(reference(r,&quot;portfolio.relation-decision&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L252">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L253">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;snapshot_id&quot;),</span>
+<span class="fc" id="L254">                    text(r,&quot;source_code&quot;),</span>
+<span class="fc" id="L255">                    text(r,&quot;target_code&quot;),</span>
+<span class="fc" id="L256">                    text(r,&quot;relation_type&quot;),</span>
+<span class="fc" id="L257">                    text(r,&quot;relation_origin&quot;),</span>
+<span class="fc" id="L258">                    text(r,&quot;relation_category&quot;),</span>
+<span class="fc" id="L259">                    r.getDouble(&quot;relevance&quot;),</span>
+<span class="fc" id="L260">                    r.getDouble(&quot;confidence&quot;),</span>
+<span class="fc" id="L261">                    text(r,&quot;presence_reason&quot;),</span>
+<span class="fc" id="L262">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L263">                    text(r,&quot;decision_by&quot;),</span>
+<span class="fc" id="L264">                    instant(r,&quot;decision_at&quot;),</span>
+<span class="fc" id="L265">                    text(r,&quot;decision_comment&quot;));</span>
+        });
+<span class="fc" id="L267">        write(scope,sink,&quot;solution&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.solution_key,t.title,t.description,t.solution_type,t.operating_model,t.lifecycle_status,t.maturity_level,t.owner_username,t.responsible_organization,t.cost_amount,t.cost_currency,t.risk_notes,t.lead_time_days,t.extension_attributes,t.created_at,t.updated_at from solution_definition t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L268">            return new SolutionDefinitionRecord(reference(r,&quot;portfolio.solution&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L269">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L270">                    text(r,&quot;repository_id&quot;),</span>
+<span class="fc" id="L271">                    text(r,&quot;workspace_scope&quot;),</span>
+<span class="fc" id="L272">                    text(r,&quot;branch_name&quot;),</span>
+<span class="fc" id="L273">                    text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L274">                    text(r,&quot;solution_key&quot;),</span>
+<span class="fc" id="L275">                    text(r,&quot;title&quot;),</span>
+<span class="fc" id="L276">                    text(r,&quot;description&quot;),</span>
+<span class="fc" id="L277">                    enumeration(r,&quot;solution_type&quot;,SolutionType.class),</span>
+<span class="fc" id="L278">                    enumeration(r,&quot;operating_model&quot;,OperatingModel.class),</span>
+<span class="fc" id="L279">                    enumeration(r,&quot;lifecycle_status&quot;,LifecycleStatus.class),</span>
+<span class="fc" id="L280">                    r.getInt(&quot;maturity_level&quot;),</span>
+<span class="fc" id="L281">                    text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L282">                    text(r,&quot;responsible_organization&quot;),</span>
+<span class="fc" id="L283">                    decimal(r,&quot;cost_amount&quot;),</span>
+<span class="fc" id="L284">                    text(r,&quot;cost_currency&quot;),</span>
+<span class="fc" id="L285">                    text(r,&quot;risk_notes&quot;),</span>
+<span class="fc" id="L286">                    number(r,&quot;lead_time_days&quot;),</span>
+<span class="fc" id="L287">                    text(r,&quot;extension_attributes&quot;),</span>
+<span class="fc" id="L288">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L289">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L291">        write(scope,sink,&quot;product&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.repository_id,t.workspace_scope,t.branch_name,t.workspace_id,t.product_key,t.manufacturer,t.product_family,t.product_name,t.edition_version,t.product_status,t.end_of_support,t.license_model,t.operating_model,t.supported_platforms,t.security_features,t.compliance_features,t.cost_amount,t.cost_currency,t.cost_basis,t.source_reference,t.verified_at,t.created_by,t.created_at,t.updated_at from product_catalog t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L292">            return new ProductCatalogEntryRecord(reference(r,&quot;portfolio.product&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L293">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L294">                    text(r,&quot;repository_id&quot;),</span>
+<span class="fc" id="L295">                    text(r,&quot;workspace_scope&quot;),</span>
+<span class="fc" id="L296">                    text(r,&quot;branch_name&quot;),</span>
+<span class="fc" id="L297">                    text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L298">                    text(r,&quot;product_key&quot;),</span>
+<span class="fc" id="L299">                    text(r,&quot;manufacturer&quot;),</span>
+<span class="fc" id="L300">                    text(r,&quot;product_family&quot;),</span>
+<span class="fc" id="L301">                    text(r,&quot;product_name&quot;),</span>
+<span class="fc" id="L302">                    text(r,&quot;edition_version&quot;),</span>
+<span class="fc" id="L303">                    enumeration(r,&quot;product_status&quot;,ProductStatus.class),</span>
+<span class="fc" id="L304">                    date(r,&quot;end_of_support&quot;),</span>
+<span class="fc" id="L305">                    text(r,&quot;license_model&quot;),</span>
+<span class="fc" id="L306">                    enumeration(r,&quot;operating_model&quot;,OperatingModel.class),</span>
+<span class="fc" id="L307">                    text(r,&quot;supported_platforms&quot;),</span>
+<span class="fc" id="L308">                    text(r,&quot;security_features&quot;),</span>
+<span class="fc" id="L309">                    text(r,&quot;compliance_features&quot;),</span>
+<span class="fc" id="L310">                    decimal(r,&quot;cost_amount&quot;),</span>
+<span class="fc" id="L311">                    text(r,&quot;cost_currency&quot;),</span>
+<span class="fc" id="L312">                    text(r,&quot;cost_basis&quot;),</span>
+<span class="fc" id="L313">                    text(r,&quot;source_reference&quot;),</span>
+<span class="fc" id="L314">                    instant(r,&quot;verified_at&quot;),</span>
+<span class="fc" id="L315">                    text(r,&quot;created_by&quot;),</span>
+<span class="fc" id="L316">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L317">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L319">        write(scope,sink,&quot;project-solution&quot;,profile,query(scope,&quot;select parent.scope_key,solution.scope_key as solution_scope,t.id,t.project_id,t.solution_id,t.status,t.action_status,t.priority,t.rationale,t.created_by,t.created_at,t.updated_at from project_solution t join arch_project parent on parent.id=t.project_id join solution_definition solution on solution.id=t.solution_id and solution.scope_key=parent.scope_key&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L320">            requireSameTenant(r, &quot;solution_scope&quot;);</span>
+<span class="fc" id="L321">            return new ProjectSolutionRecord(reference(r,&quot;portfolio.project-solution&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L322">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L323">                    reference(r,&quot;portfolio.solution&quot;,&quot;solution_id&quot;),</span>
+<span class="fc" id="L324">                    enumeration(r,&quot;status&quot;,ProjectSolutionStatus.class),</span>
+<span class="fc" id="L325">                    enumeration(r,&quot;action_status&quot;,ActionStatus.class),</span>
+<span class="fc" id="L326">                    r.getInt(&quot;priority&quot;),</span>
+<span class="fc" id="L327">                    text(r,&quot;rationale&quot;),</span>
+<span class="fc" id="L328">                    text(r,&quot;created_by&quot;),</span>
+<span class="fc" id="L329">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L330">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L332">        write(scope,sink,&quot;product-coverage&quot;,profile,query(scope,&quot;select parent.scope_key,t.id,t.product_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from product_taxonomy t join product_catalog parent on parent.id=t.product_id&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L333">            return new ProductTaxonomyCoverageRecord(reference(r,&quot;portfolio.product-coverage&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L334">                    reference(r,&quot;portfolio.product&quot;,&quot;product_id&quot;),</span>
+<span class="fc" id="L335">                    text(r,&quot;node_code&quot;),</span>
+<span class="fc" id="L336">                    r.getInt(&quot;coverage_percent&quot;),</span>
+<span class="fc" id="L337">                    text(r,&quot;evidence&quot;),</span>
+<span class="fc" id="L338">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L339">                    text(r,&quot;updated_by&quot;),</span>
+<span class="fc" id="L340">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L342">        write(scope,sink,&quot;solution-coverage&quot;,profile,query(scope,&quot;select parent.scope_key,t.id,t.solution_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from solution_taxonomy t join solution_definition parent on parent.id=t.solution_id&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L343">            return new SolutionTaxonomyCoverageRecord(reference(r,&quot;portfolio.solution-coverage&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L344">                    reference(r,&quot;portfolio.solution&quot;,&quot;solution_id&quot;),</span>
+<span class="fc" id="L345">                    text(r,&quot;node_code&quot;),</span>
+<span class="fc" id="L346">                    r.getInt(&quot;coverage_percent&quot;),</span>
+<span class="fc" id="L347">                    text(r,&quot;evidence&quot;),</span>
+<span class="fc" id="L348">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L349">                    text(r,&quot;updated_by&quot;),</span>
+<span class="fc" id="L350">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L352">        write(scope,sink,&quot;requirement-solution&quot;,profile,query(scope,&quot;select parent.scope_key,requirement.scope_key as requirement_scope,t.id,t.project_solution_id,t.requirement_id,(case when &quot;+historyOr(scope)+&quot;exists (select 1 from req_analysis_snapshot valid_snapshot join project_requirement req on req.id=valid_snapshot.requirement_id and req.scope_key=valid_snapshot.scope_key where valid_snapshot.id=t.snapshot_id and req.id=t.requirement_id and req.current_snapshot_id=valid_snapshot.id and req.current_version_id=valid_snapshot.requirement_version_id) then t.snapshot_id else null end) as snapshot_id,t.coverage_percent,t.solution_role,t.review_status,t.evidence,t.updated_by,t.updated_at from req_solution_link t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join project_requirement requirement on requirement.id=t.requirement_id and requirement.project_id=parent.id and requirement.scope_key=parent.scope_key&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L353">            requireSameTenant(r, &quot;requirement_scope&quot;);</span>
+<span class="fc" id="L354">            return new RequirementSolutionLinkRecord(reference(r,&quot;portfolio.requirement-solution&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L355">                    reference(r,&quot;portfolio.project-solution&quot;,&quot;project_solution_id&quot;),</span>
+<span class="fc" id="L356">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L357">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;snapshot_id&quot;),</span>
+<span class="fc" id="L358">                    r.getInt(&quot;coverage_percent&quot;),</span>
+<span class="fc" id="L359">                    enumeration(r,&quot;solution_role&quot;,RequirementSolutionRole.class),</span>
+<span class="fc" id="L360">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L361">                    text(r,&quot;evidence&quot;),</span>
+<span class="fc" id="L362">                    text(r,&quot;updated_by&quot;),</span>
+<span class="fc" id="L363">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L365">        write(scope,sink,&quot;solution-product&quot;,profile,query(scope,&quot;select parent.scope_key,product.scope_key as product_scope,t.id,t.project_solution_id,t.product_id,t.coverage_percent,t.hard_exclusions,t.strengths,t.weaknesses,t.open_evidence,t.confidence,t.review_status,t.selection_status,t.updated_by,t.updated_at from solution_product t join project_solution decision on decision.id=t.project_solution_id join arch_project parent on parent.id=decision.project_id join product_catalog product on product.id=t.product_id and product.scope_key=parent.scope_key&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L366">            requireSameTenant(r, &quot;product_scope&quot;);</span>
+<span class="fc" id="L367">            return new SolutionProductCandidateRecord(reference(r,&quot;portfolio.solution-product&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L368">                    reference(r,&quot;portfolio.project-solution&quot;,&quot;project_solution_id&quot;),</span>
+<span class="fc" id="L369">                    reference(r,&quot;portfolio.product&quot;,&quot;product_id&quot;),</span>
+<span class="fc" id="L370">                    r.getInt(&quot;coverage_percent&quot;),</span>
+<span class="fc" id="L371">                    text(r,&quot;hard_exclusions&quot;),</span>
+<span class="fc" id="L372">                    text(r,&quot;strengths&quot;),</span>
+<span class="fc" id="L373">                    text(r,&quot;weaknesses&quot;),</span>
+<span class="fc" id="L374">                    text(r,&quot;open_evidence&quot;),</span>
+<span class="fc" id="L375">                    r.getDouble(&quot;confidence&quot;),</span>
+<span class="fc" id="L376">                    enumeration(r,&quot;review_status&quot;,ReviewStatus.class),</span>
+<span class="fc" id="L377">                    enumeration(r,&quot;selection_status&quot;,ProductSelectionStatus.class),</span>
+<span class="fc" id="L378">                    text(r,&quot;updated_by&quot;),</span>
+<span class="fc" id="L379">                    instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L381">        write(scope,sink,&quot;conflict&quot;,profile,query(scope,&quot;select parent.scope_key,ra.scope_key as requirement_a_scope,rb.scope_key as requirement_b_scope,t.id,t.project_id,t.requirement_a_id,t.requirement_b_id,t.conflict_type,t.status,t.fingerprint,t.title,t.evidence,t.confidence,t.resolution_note,t.detected_at,t.reviewed_by,t.reviewed_at from project_conflict t join arch_project parent on parent.id=t.project_id join project_requirement ra on ra.id=t.requirement_a_id and ra.project_id=parent.id and ra.scope_key=parent.scope_key join project_requirement rb on rb.id=t.requirement_b_id and rb.project_id=parent.id and rb.scope_key=parent.scope_key&quot;,scope.tenants(&quot;parent.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L382">            requireSameTenant(r, &quot;requirement_a_scope&quot;);</span>
+<span class="fc" id="L383">            requireSameTenant(r, &quot;requirement_b_scope&quot;);</span>
+<span class="fc" id="L384">            return new ProjectConflictRecord(reference(r,&quot;portfolio.conflict&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L385">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L386">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_a_id&quot;),</span>
+<span class="fc" id="L387">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_b_id&quot;),</span>
+<span class="fc" id="L388">                    enumeration(r,&quot;conflict_type&quot;,ConflictType.class),</span>
+<span class="fc" id="L389">                    enumeration(r,&quot;status&quot;,ConflictStatus.class),</span>
+<span class="fc" id="L390">                    text(r,&quot;fingerprint&quot;),</span>
+<span class="fc" id="L391">                    text(r,&quot;title&quot;),</span>
+<span class="fc" id="L392">                    text(r,&quot;evidence&quot;),</span>
+<span class="fc" id="L393">                    r.getDouble(&quot;confidence&quot;),</span>
+<span class="fc" id="L394">                    text(r,&quot;resolution_note&quot;),</span>
+<span class="fc" id="L395">                    instant(r,&quot;detected_at&quot;),</span>
+<span class="fc" id="L396">                    text(r,&quot;reviewed_by&quot;),</span>
+<span class="fc" id="L397">                    instant(r,&quot;reviewed_at&quot;));</span>
+        });
+<span class="fc" id="L399">        write(scope,sink,&quot;reformulation-proposal&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_id,t.requirement_id,t.source_version_id,t.snapshot_id,t.baseline_payload,t.created_by,t.created_at,t.current_revision from reformulation_proposal t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from project_requirement current_requirement where current_requirement.scope_key=t.scope_key and current_requirement.project_id=t.project_id and current_requirement.id=t.requirement_id and current_requirement.current_version_id=t.source_version_id and current_requirement.current_snapshot_id=t.snapshot_id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L400">            return new ReformulationProposalRecord(reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L401">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L402">                    reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L403">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L404">                    reference(r,&quot;portfolio.requirement-version&quot;,&quot;source_version_id&quot;),</span>
+<span class="fc" id="L405">                    reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;snapshot_id&quot;),</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">                    scope.history() ? text(r,&quot;baseline_payload&quot;) : currentBaseline(text(r,&quot;baseline_payload&quot;)),</span>
+<span class="fc" id="L407">                    text(r,&quot;created_by&quot;),</span>
+<span class="fc" id="L408">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L409">                    r.getLong(&quot;current_revision&quot;));</span>
+        });
+<span class="fc" id="L411">        write(scope,sink,&quot;reformulation-revision&quot;,profile,query(scope,&quot;select t.id,t.proposal_id,t.scope_key,t.revision_number,t.revision_payload from reformulation_revision t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id) and exists (select 1 from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and proposal.current_revision=t.revision_number)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L412">            return new ReformulationRevisionRecord(reference(r,&quot;portfolio.reformulation-revision&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L413">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L414">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L415">                    r.getLong(&quot;revision_number&quot;),</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">                    scope.history() ? text(r,&quot;revision_payload&quot;) : currentRevision(text(r,&quot;revision_payload&quot;)));</span>
+        });
+<span class="fc" id="L418">        write(scope,sink,&quot;reformulation-run&quot;,profile,query(scope,&quot;select t.id,t.proposal_id,t.scope_key,t.run_payload,t.cancelled_by,t.cancelled_at,(select proposal.current_revision from reformulation_proposal proposal where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key) as selected_revision from reformulation_run t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L419">            String runId = text(r,&quot;id&quot;);</span>
+<span class="fc bfc" id="L420" title="All 4 branches covered.">            if (!scope.history() &amp;&amp; !currentRun(text(r,&quot;run_payload&quot;),r.getLong(&quot;selected_revision&quot;))) return null;</span>
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">            if (includedRuns.size() &gt;= 100_000) throw new IOException(&quot;Reformulation run selection limit exceeded&quot;);</span>
+<span class="fc" id="L422">            includedRuns.add(runId);</span>
+<span class="fc" id="L423">            return new ReformulationRunRecord(reference(r,&quot;portfolio.reformulation-run&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L424">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L425">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L426">                    text(r,&quot;run_payload&quot;),</span>
+<span class="fc" id="L427">                    text(r,&quot;cancelled_by&quot;),</span>
+<span class="fc" id="L428">                    instant(r,&quot;cancelled_at&quot;));</span>
+        });
+<span class="fc" id="L430">        write(scope,sink,&quot;reformulation-checkpoint&quot;,profile,query(scope,&quot;select t.id,t.proposal_id,t.scope_key,t.run_id,t.task_kind,t.input_fingerprint,t.result_payload,t.created_at from reformulation_node_checkpoint t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc bfc" id="L431" title="All 4 branches covered.">            if (!scope.history() &amp;&amp; !includedRuns.contains(text(r,&quot;run_id&quot;))) return null;</span>
+<span class="fc" id="L432">            return new ReformulationNodeCheckpointRecord(reference(r,&quot;portfolio.reformulation-checkpoint&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L433">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L434">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L435">                    reference(r,&quot;portfolio.reformulation-run&quot;,&quot;run_id&quot;),</span>
+<span class="fc" id="L436">                    text(r,&quot;task_kind&quot;),</span>
+<span class="fc" id="L437">                    text(r,&quot;input_fingerprint&quot;),</span>
+<span class="fc" id="L438">                    text(r,&quot;result_payload&quot;),</span>
+<span class="fc" id="L439">                    instant(r,&quot;created_at&quot;));</span>
+        });
+<span class="fc" id="L441">        write(scope,sink,&quot;reformulation-usage-session&quot;,profile,query(scope,&quot;select t.run_id,t.proposal_id,t.scope_key,t.created_at,t.from_first_attempt,t.schema_version from reformulation_usage_session t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;exists (select 1 from reformulation_proposal proposal join project_requirement current_requirement on current_requirement.id=proposal.requirement_id and current_requirement.scope_key=proposal.scope_key and current_requirement.project_id=proposal.project_id where proposal.id=t.proposal_id and proposal.scope_key=t.scope_key and current_requirement.current_version_id=proposal.source_version_id and current_requirement.current_snapshot_id=proposal.snapshot_id)&quot;,&quot;t.run_id&quot;),r -&gt; {</span>
+<span class="fc bfc" id="L442" title="All 4 branches covered.">            if (!scope.history() &amp;&amp; !includedRuns.contains(text(r,&quot;run_id&quot;))) return null;</span>
+<span class="fc" id="L443">            return new ReformulationUsageSessionRecord(reference(r,&quot;portfolio.reformulation-usage-session&quot;,&quot;run_id&quot;),</span>
+<span class="fc" id="L444">                    reference(r,&quot;portfolio.reformulation-run&quot;,&quot;run_id&quot;),</span>
+<span class="fc" id="L445">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L446">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L447">                    instant(r,&quot;created_at&quot;),</span>
+<span class="fc" id="L448">                    r.getBoolean(&quot;from_first_attempt&quot;),</span>
+<span class="fc" id="L449">                    r.getInt(&quot;schema_version&quot;));</span>
+        });
+<span class="fc" id="L451">        write(scope,sink,&quot;reformulation-usage-attempt&quot;,profile,query(scope,&quot;select run.scope_key,t.id,t.run_id,t.invocation_id,t.provider,t.source_kind,t.retry_index,t.started_at,t.completed_at,t.status_code,t.outcome,t.duration_millis,t.input_tokens,t.output_tokens,t.total_tokens,t.cached_input_tokens,t.reasoning_tokens,t.invalid_usage from reformulation_usage_attempt t join reformulation_run run on run.id=t.run_id&quot;,scope.tenants(&quot;run.scope_key&quot;),&quot;1=1&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc bfc" id="L452" title="All 4 branches covered.">            if (!scope.history() &amp;&amp; !includedRuns.contains(text(r,&quot;run_id&quot;))) return null;</span>
+<span class="fc" id="L453">            return new ReformulationUsageAttemptRecord(reference(r,&quot;portfolio.reformulation-usage-attempt&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L454">                    reference(r,&quot;portfolio.reformulation-run&quot;,&quot;run_id&quot;),</span>
+<span class="fc" id="L455">                    text(r,&quot;invocation_id&quot;),</span>
+<span class="fc" id="L456">                    text(r,&quot;provider&quot;),</span>
+<span class="fc" id="L457">                    text(r,&quot;source_kind&quot;),</span>
+<span class="fc" id="L458">                    r.getInt(&quot;retry_index&quot;),</span>
+<span class="fc" id="L459">                    instant(r,&quot;started_at&quot;),</span>
+<span class="fc" id="L460">                    instant(r,&quot;completed_at&quot;),</span>
+<span class="fc" id="L461">                    number(r,&quot;status_code&quot;),</span>
+<span class="fc" id="L462">                    text(r,&quot;outcome&quot;),</span>
+<span class="fc" id="L463">                    number(r,&quot;duration_millis&quot;),</span>
+<span class="fc" id="L464">                    number(r,&quot;input_tokens&quot;),</span>
+<span class="fc" id="L465">                    number(r,&quot;output_tokens&quot;),</span>
+<span class="fc" id="L466">                    number(r,&quot;total_tokens&quot;),</span>
+<span class="fc" id="L467">                    number(r,&quot;cached_input_tokens&quot;),</span>
+<span class="fc" id="L468">                    number(r,&quot;reasoning_tokens&quot;),</span>
+<span class="fc" id="L469">                    (Boolean) r.getObject(&quot;invalid_usage&quot;));</span>
+        });
+<span class="fc" id="L471">        write(scope,sink,&quot;reformulation-preview&quot;,profile,query(scope,&quot;select t.id,t.proposal_id,t.scope_key,t.content_hash,t.preview_payload,t.created_at from reformulation_adoption_preview t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=0&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L472">            return new ReformulationAdoptionPreviewRecord(reference(r,&quot;portfolio.reformulation-preview&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L473">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L474">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L475">                    text(r,&quot;content_hash&quot;),</span>
+<span class="fc" id="L476">                    text(r,&quot;preview_payload&quot;),</span>
+<span class="fc" id="L477">                    instant(r,&quot;created_at&quot;));</span>
+        });
+<span class="fc" id="L479">        write(scope,sink,&quot;reformulation-adoption&quot;,profile,query(scope,&quot;select t.id,t.proposal_id,t.preview_id,t.scope_key,t.command_hash,t.requirement_id,t.target_version_id,t.receipt_payload,t.created_at from reformulation_adoption t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=0&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L480">            return new ReformulationAdoptionRecord(reference(r,&quot;portfolio.reformulation-adoption&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L481">                    reference(r,&quot;portfolio.reformulation-proposal&quot;,&quot;proposal_id&quot;),</span>
+<span class="fc" id="L482">                    reference(r,&quot;portfolio.reformulation-preview&quot;,&quot;preview_id&quot;),</span>
+<span class="fc" id="L483">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L484">                    text(r,&quot;command_hash&quot;),</span>
+<span class="fc" id="L485">                    reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L486">                    reference(r,&quot;portfolio.requirement-version&quot;,&quot;target_version_id&quot;),</span>
+<span class="fc" id="L487">                    text(r,&quot;receipt_payload&quot;),</span>
+<span class="fc" id="L488">                    instant(r,&quot;created_at&quot;));</span>
+        });
+<span class="fc" id="L490">        write(scope,sink,&quot;reformulation-evidence&quot;,profile,query(scope,&quot;select t.id,t.scope_key,t.project_key,t.requirement_key,t.target_version_number,t.schema_version,t.evidence_hash,t.target_text_hash,t.evidence_payload,t.created_at from reformulation_portable_evidence t&quot;,scope.tenants(&quot;t.scope_key&quot;),&quot;1=0&quot;,&quot;t.id&quot;),r -&gt; {</span>
+<span class="fc" id="L491">            return new ReformulationPortableEvidenceRecord(reference(r,&quot;portfolio.reformulation-evidence&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L492">                    text(r,&quot;scope_key&quot;),</span>
+<span class="fc" id="L493">                    text(r,&quot;project_key&quot;),</span>
+<span class="fc" id="L494">                    text(r,&quot;requirement_key&quot;),</span>
+<span class="fc" id="L495">                    r.getInt(&quot;target_version_number&quot;),</span>
+<span class="fc" id="L496">                    text(r,&quot;schema_version&quot;),</span>
+<span class="fc" id="L497">                    text(r,&quot;evidence_hash&quot;),</span>
+<span class="fc" id="L498">                    text(r,&quot;target_text_hash&quot;),</span>
+<span class="fc" id="L499">                    text(r,&quot;evidence_payload&quot;),</span>
+<span class="fc" id="L500">                    instant(r,&quot;created_at&quot;));</span>
+        });
+<span class="fc" id="L502">    }</span>
+    private void validateScopeClosure(BackupRowScope scope) throws IOException {
+<span class="fc" id="L504">        var tenant=scope.tenants(&quot;parent.scope_key&quot;);</span>
+<span class="fc" id="L505">        var checks=List.of(</span>
+                &quot;from project_solution decision join arch_project parent on parent.id=decision.project_id left join solution_definition solution on solution.id=decision.solution_id where %s and (solution.id is null or solution.scope_key&lt;&gt;parent.scope_key)&quot;,
+                &quot;from solution_product candidate join project_solution decision on decision.id=candidate.project_solution_id join arch_project parent on parent.id=decision.project_id left join product_catalog product on product.id=candidate.product_id where %s and (product.id is null or product.scope_key&lt;&gt;parent.scope_key)&quot;,
+                &quot;from req_solution_link link join project_solution decision on decision.id=link.project_solution_id join arch_project parent on parent.id=decision.project_id left join project_requirement requirement on requirement.id=link.requirement_id where %s and (requirement.id is null or requirement.project_id&lt;&gt;parent.id or requirement.scope_key&lt;&gt;parent.scope_key)&quot;,
+                &quot;from project_conflict conflict join arch_project parent on parent.id=conflict.project_id left join project_requirement ra on ra.id=conflict.requirement_a_id left join project_requirement rb on rb.id=conflict.requirement_b_id where %s and (ra.id is null or rb.id is null or ra.project_id&lt;&gt;parent.id or rb.project_id&lt;&gt;parent.id or ra.scope_key&lt;&gt;parent.scope_key or rb.scope_key&lt;&gt;parent.scope_key)&quot;);
+<span class="fc bfc" id="L510" title="All 2 branches covered.">        for (String check:checks) rows.requireEmpty(new Query(&quot;select 1 &quot;+check.formatted(tenant.sql()),tenant.parameters()));</span>
+<span class="fc" id="L511">        var requirementTenant=scope.tenants(&quot;r.scope_key&quot;);</span>
+<span class="fc" id="L512">        rows.requireEmpty(new Query(&quot;select 1 from project_requirement r where &quot;+requirementTenant.sql()</span>
+<span class="fc" id="L513">                +&quot; and r.current_version_id is not null and not exists (select 1 from project_req_version v where v.id=r.current_version_id and v.requirement_id=r.id and v.scope_key=r.scope_key)&quot;,requirementTenant.parameters()));</span>
+<span class="fc" id="L514">    }</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">    private static String historyOr(BackupRowScope scope) { return scope.history() ? &quot;1=1 or &quot; : &quot;&quot;; }</span>
+    private &lt;T extends Record&gt; void write(BackupRowScope scope, ComponentSink sink, String kind, BackupProfile profile,
+                                         Query query, PortableRows.Mapper&lt;T&gt; mapper) throws IOException {
+<span class="fc" id="L518">        rows.write(sink, &quot;portfolio&quot;, kind, profile, query, scoped(scope, mapper));</span>
+<span class="fc" id="L519">    }</span>
+    /** SQL is only the first filter: database collations cannot widen the captured tenant. */
+    private static &lt;T extends Record&gt; PortableRows.Mapper&lt;T&gt; scoped(BackupRowScope scope, PortableRows.Mapper&lt;T&gt; mapper) {
+<span class="fc" id="L522">        return row -&gt; {</span>
+<span class="fc" id="L523">            String tenant = text(row, &quot;scope_key&quot;);</span>
+<span class="fc" id="L524">            boolean included = false;</span>
+<span class="pc bpc" id="L525" title="1 of 4 branches missed.">            try { included = tenant != null &amp;&amp; scope.includesTenant(tenant); }</span>
+<span class="fc" id="L526">            catch (IllegalArgumentException malformed) { /* Source identity details do not enter capture errors. */ }</span>
+<span class="fc bfc" id="L527" title="All 2 branches covered.">            if (!included) throw new IOException(&quot;Portable selection contains an invalid or different portfolio tenant&quot;);</span>
+<span class="fc" id="L528">            return mapper.read(row);</span>
+        };
+    }
+    private static void requireSameTenant(ResultSet row, String linkedColumn) throws SQLException, IOException {
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (!Objects.equals(text(row, &quot;scope_key&quot;), text(row, linkedColumn)))</span>
+<span class="fc" id="L533">            throw new IOException(&quot;Portable selection has a missing or cross-tenant dependency&quot;);</span>
+<span class="fc" id="L534">    }</span>
+    private static Query query(BackupRowScope scope,String select,Query tenant,String current,String order) {
+<span class="fc bfc" id="L536" title="All 2 branches covered.">        if (scope.selectedVersion()) return null;</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        return new Query(select+&quot; where &quot;+tenant.sql()+(scope.history()?&quot;&quot;:&quot; and (&quot;+current+&quot;)&quot;)+&quot; order by &quot;+order,tenant.parameters());</span>
+    }
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumeration(ResultSet row,String column,Class&lt;E&gt; type) throws SQLException,IOException {
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        String value=text(row,column); return value==null?null:Enum.valueOf(type,value);</span>
+    }
+<span class="fc bfc" id="L542" title="All 2 branches covered.">    private static String date(ResultSet row,String column) throws SQLException { var value=row.getDate(column); return value==null?null:value.toLocalDate().toString(); }</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">    private static String decimal(ResultSet row,String column) throws SQLException { var value=row.getBigDecimal(column); return value==null?null:value.toPlainString(); }</span>
+    private static List&lt;SourceRecordId&gt; fragmentReferences(String source) throws IOException {
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        if (source==null) return List.of(); var array=json().readTree(source);</span>
+<span class="pc bpc" id="L546" title="1 of 4 branches missed.">        if (!array.isArray() || array.size()&gt;10000) throw new IOException(&quot;Invalid source fragment references&quot;);</span>
+<span class="fc" id="L547">        var result=new ArrayList&lt;SourceRecordId&gt;();</span>
+<span class="fc bfc" id="L548" title="All 8 branches covered.">        for (var id:array) { if (!id.isIntegralNumber() || !id.canConvertToLong() || id.longValue()&lt;1) throw new IOException(&quot;Invalid source fragment reference&quot;); result.add(new SourceRecordId(&quot;application.source-fragment&quot;,id.asText())); }</span>
+<span class="fc" id="L549">        return List.copyOf(result);</span>
+    }
+    private static com.fasterxml.jackson.databind.node.ObjectNode object(String payload) throws IOException {
+<span class="pc bpc" id="L552" title="1 of 4 branches missed.">        var node=json().readTree(payload); if (node==null || !node.isObject()) throw new IOException(&quot;Invalid reformulation document&quot;);</span>
+<span class="fc" id="L553">        return (com.fasterxml.jackson.databind.node.ObjectNode) node;</span>
+    }
+    private static String currentBaseline(String payload) throws IOException {
+<span class="fc" id="L556">        var node=object(payload); node.putObject(&quot;frozenContext&quot;);</span>
+<span class="fc" id="L557">        return json().writeValueAsString(node);</span>
+    }
+    private static String currentRevision(String payload) throws IOException {
+<span class="fc" id="L560">        var node=object(payload); node.putNull(&quot;predecessor&quot;); node.putNull(&quot;variantOrigin&quot;);</span>
+<span class="fc" id="L561">        return json().writeValueAsString(node);</span>
+    }
+    private static boolean currentRun(String payload,long revision) throws IOException {
+<span class="fc bfc" id="L564" title="All 4 branches covered.">        var node=object(payload); return node.path(&quot;sourceRevision&quot;).isIntegralNumber() &amp;&amp; node.path(&quot;sourceRevision&quot;).longValue()==revision;</span>
+    }
+<span class="fc" id="L566">    public record ProjectRecord(SourceRecordId sourceId, String tenant, String repositoryId, String workspaceScope, String branchName, String workspaceId, String ownerUsername, String projectKey, String title, String description, ProjectStatus status, String targetArchitecture, String targetDate, String budgetAmount, String budgetCurrency, String createdAt, String updatedAt) { }</span>
+<span class="fc" id="L567">    public record ProjectRequirementRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, String requirementKey, String title, RequirementStatus status, int priority, Criticality criticality, RequirementType requirementType, ReviewStatus reviewStatus, String ownerUsername, SourceRecordId currentVersionId, SourceRecordId currentAnalysisSnapshotId, String createdAt, String updatedAt) { }</span>
+<span class="fc" id="L568">    public record ProjectRequirementVersionRecord(SourceRecordId sourceId, String tenant, SourceRecordId requirementId, int versionNumber, String text, String contentHash, String changeReason, String createdBy, String createdAt, SourceRecordId sourceArtifactId, SourceRecordId sourceVersionId, List&lt;SourceRecordId&gt; sourceFragments, String sectionReference, Long pageNumber, String originalText) { }</span>
+<span class="fc" id="L569">    public record RequirementAnalysisJobRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, AnalysisStatus status, String idempotencyKey, String provider, int maxArchitectureNodes, String requestedBy, String workspaceId, String createdAt, String startedAt, String completedAt, int totalItems, int successfulItems, int partialItems, int failedItems) { }</span>
+<span class="fc" id="L570">    public record RequirementAnalysisSnapshotRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, SourceRecordId requirementId, SourceRecordId requirementVersionId, SourceRecordId jobId, AnalysisStatus status, String analysisSessionId, String provider, String modelName, String promptFingerprint, String taxonomyFingerprint, String workspaceId, String branchName, String commitSha, String createdBy, String createdAt, long durationMs, int warningCount, String analysisPayload, String gapAnalysisPayload, String patternDetectionPayload, String recommendationPayload) { }</span>
+<span class="fc" id="L571">    public record RequirementAnalysisJobItemRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, SourceRecordId jobId, SourceRecordId requirementId, SourceRecordId requirementVersionId, AnalysisStatus status, SourceRecordId snapshotId, int attempt, String startedAt, String completedAt) { }</span>
+<span class="fc" id="L572">    public record RequirementElementMappingRecord(SourceRecordId sourceId, String tenant, SourceRecordId snapshotId, String nodeCode, String nodeTitle, String taxonomyRoot, int directScore, double relevance, double confidence, MappingOrigin mappingOrigin, String hierarchyPath, String presenceReason, boolean selectedForImpact, ReviewStatus reviewStatus, ActionStatus actionStatus, String actionEvidence, String decisionBy, String decisionAt, String decisionComment) { }</span>
+<span class="fc" id="L573">    public record RequirementRelationMappingRecord(SourceRecordId sourceId, String tenant, SourceRecordId snapshotId, String sourceCode, String targetCode, String relationType, String relationOrigin, String relationCategory, double relevance, double confidence, String presenceReason, ReviewStatus reviewStatus, String decisionBy, String decisionAt, String decisionComment) { }</span>
+<span class="fc" id="L574">    public record SolutionDefinitionRecord(SourceRecordId sourceId, String tenant, String repositoryId, String workspaceScope, String branchName, String workspaceId, String solutionKey, String title, String description, SolutionType solutionType, OperatingModel operatingModel, LifecycleStatus lifecycleStatus, int maturityLevel, String ownerUsername, String responsibleOrganization, String costAmount, String costCurrency, String riskNotes, Long leadTimeDays, String extensionAttributesJson, String createdAt, String updatedAt) { }</span>
+<span class="fc" id="L575">    public record ProductCatalogEntryRecord(SourceRecordId sourceId, String tenant, String repositoryId, String workspaceScope, String branchName, String workspaceId, String productKey, String manufacturer, String productFamily, String productName, String editionVersion, ProductStatus productStatus, String endOfSupport, String licenseModel, OperatingModel operatingModel, String supportedPlatforms, String securityFeatures, String complianceFeatures, String costAmount, String costCurrency, String costBasis, String sourceReference, String verifiedAt, String createdBy, String createdAt, String updatedAt) { }</span>
+<span class="fc" id="L576">    public record ProjectSolutionRecord(SourceRecordId sourceId, SourceRecordId projectId, SourceRecordId solutionId, ProjectSolutionStatus status, ActionStatus actionStatus, int priority, String rationale, String createdBy, String createdAt, String updatedAt) { }</span>
+<span class="fc" id="L577">    public record ProductTaxonomyCoverageRecord(SourceRecordId sourceId, SourceRecordId productId, String nodeCode, int coveragePercent, String evidence, ReviewStatus reviewStatus, String updatedBy, String updatedAt) { }</span>
+<span class="fc" id="L578">    public record SolutionTaxonomyCoverageRecord(SourceRecordId sourceId, SourceRecordId solutionId, String nodeCode, int coveragePercent, String evidence, ReviewStatus reviewStatus, String updatedBy, String updatedAt) { }</span>
+<span class="fc" id="L579">    public record RequirementSolutionLinkRecord(SourceRecordId sourceId, SourceRecordId projectSolutionId, SourceRecordId requirementId, SourceRecordId snapshotId, int coveragePercent, RequirementSolutionRole role, ReviewStatus reviewStatus, String evidence, String updatedBy, String updatedAt) { }</span>
+<span class="fc" id="L580">    public record SolutionProductCandidateRecord(SourceRecordId sourceId, SourceRecordId projectSolutionId, SourceRecordId productId, int coveragePercent, String hardExclusions, String strengths, String weaknesses, String openEvidence, double confidence, ReviewStatus reviewStatus, ProductSelectionStatus selectionStatus, String updatedBy, String updatedAt) { }</span>
+<span class="fc" id="L581">    public record ProjectConflictRecord(SourceRecordId sourceId, SourceRecordId projectId, SourceRecordId requirementAId, SourceRecordId requirementBId, ConflictType conflictType, ConflictStatus status, String fingerprint, String title, String evidence, double confidence, String resolutionNote, String detectedAt, String reviewedBy, String reviewedAt) { }</span>
+<span class="fc" id="L582">    public record ReformulationProposalRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, SourceRecordId requirementId, SourceRecordId sourceVersionId, SourceRecordId snapshotId, String baselinePayload, String createdBy, String createdAt, long currentRevision) { }</span>
+<span class="fc" id="L583">    public record ReformulationRevisionRecord(SourceRecordId sourceId, SourceRecordId proposalId, String tenant, long number, String payload) { }</span>
+<span class="fc" id="L584">    public record ReformulationRunRecord(SourceRecordId sourceId, SourceRecordId proposalId, String tenant, String payload, String cancelledBy, String cancelledAt) { }</span>
+<span class="fc" id="L585">    public record ReformulationNodeCheckpointRecord(SourceRecordId sourceId, SourceRecordId proposalId, String tenant, SourceRecordId runId, String taskKind, String inputFingerprint, String resultPayload, String createdAt) { }</span>
+<span class="fc" id="L586">    public record ReformulationUsageSessionRecord(SourceRecordId sourceId, SourceRecordId runId, SourceRecordId proposalId, String tenant, String createdAt, boolean fromFirstAttempt, int schemaVersion) { }</span>
+<span class="fc" id="L587">    public record ReformulationUsageAttemptRecord(SourceRecordId sourceId, SourceRecordId runId, String invocationId, String provider, String source, int retryIndex, String startedAt, String completedAt, Long statusCode, String outcome, Long durationMillis, Long inputTokens, Long outputTokens, Long totalTokens, Long cachedInputTokens, Long reasoningTokens, Boolean invalidUsage) { }</span>
+<span class="fc" id="L588">    public record ReformulationAdoptionPreviewRecord(SourceRecordId sourceId, SourceRecordId proposalId, String tenant, String contentHash, String payload, String createdAt) { }</span>
+<span class="fc" id="L589">    public record ReformulationAdoptionRecord(SourceRecordId sourceId, SourceRecordId proposalId, SourceRecordId previewId, String tenant, String commandHash, SourceRecordId requirementId, SourceRecordId targetVersionId, String payload, String createdAt) { }</span>
+<span class="fc" id="L590">    public record ReformulationPortableEvidenceRecord(SourceRecordId sourceId, String tenant, String projectKey, String requirementKey, int targetVersionNumber, String schemaVersion, String evidenceHash, String targetTextHash, String payload, String createdAt) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

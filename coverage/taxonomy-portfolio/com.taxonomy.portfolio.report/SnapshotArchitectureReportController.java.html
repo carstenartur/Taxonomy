@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotArchitectureReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.report</a> &gt; <span class="el_source">SnapshotArchitectureReportController.java</span></div><h1>SnapshotArchitectureReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.report;
+
+import com.taxonomy.architecture.report.ArchitectureReportDocxRenderer;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Locale;
+
+/** Reproducible architecture Word download from one saved analysis. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/snapshots/{snapshotId}/architecture-report&quot;)
+public class SnapshotArchitectureReportController {
+    private final SnapshotWordReportService reports;
+    private final ArchitectureReportDocxRenderer renderer;
+    private final WorkspaceResolver resolver;
+
+    public SnapshotArchitectureReportController(
+            SnapshotWordReportService reports,
+            ArchitectureReportDocxRenderer renderer,
+<span class="fc" id="L23">            WorkspaceResolver resolver) {</span>
+<span class="fc" id="L24">        this.reports = reports;</span>
+<span class="fc" id="L25">        this.renderer = renderer;</span>
+<span class="fc" id="L26">        this.resolver = resolver;</span>
+<span class="fc" id="L27">    }</span>
+
+    @GetMapping(&quot;/docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; export(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
+        Locale locale =
+<span class="fc bfc" id="L35" title="All 4 branches covered.">                language == null || language.isBlank()</span>
+<span class="fc" id="L36">                        ? LocaleContextHolder.getLocale()</span>
+<span class="fc" id="L37">                        : Locale.forLanguageTag(language.strip());</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (locale.getLanguage().isBlank()) locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L39">        var source =</span>
+<span class="fc" id="L40">                reports.load(</span>
+                        projectId,
+                        snapshotId,
+<span class="fc" id="L43">                        resolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L44">                        resolver.resolveCurrentContext(),</span>
+                        locale);
+<span class="fc" id="L46">        var evidence = source.architecture().evidence();</span>
+<span class="fc" id="L47">        return ResponseEntity.ok()</span>
+<span class="fc" id="L48">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L49">                .contentType(</span>
+<span class="fc" id="L50">                        MediaType.parseMediaType(</span>
+                                &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;))
+<span class="fc" id="L52">                .header(</span>
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        &quot;attachment; filename=\&quot;taxonomy-architecture-report-v&quot;
+<span class="fc" id="L55">                                + evidence.requirementVersionNumber()</span>
+                                + &quot;.docx\&quot;&quot;)
+<span class="fc" id="L57">                .header(&quot;X-Taxonomy-Snapshot-Id&quot;, evidence.snapshotId())</span>
+<span class="fc" id="L58">                .header(&quot;X-Taxonomy-Graph-SHA256&quot;, evidence.graphSha256())</span>
+<span class="fc" id="L59">                .header(</span>
+                        &quot;X-Taxonomy-Data-SHA256&quot;,
+<span class="fc" id="L61">                        source.decision().metadata().taxonomyDataFingerprintSha256())</span>
+<span class="fc" id="L62">                .header(</span>
+                        &quot;X-Taxonomy-Analysis-SHA256&quot;,
+<span class="fc" id="L64">                        source.decision().metadata().analysisSnapshotFingerprintSha256())</span>
+<span class="fc" id="L65">                .body(renderer.render(source.architecture()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

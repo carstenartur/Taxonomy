@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisProgressController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisProgressController.java</span></div><h1>AnalysisProgressController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+
+/** Read-only live telemetry plus explicit cooperative cancellation; never starts analysis. */
+@RestController
+@RequestMapping(&quot;/api/analysis-runs&quot;)
+public class AnalysisProgressController {
+    private final AnalysisProgressRegistry registry;
+    private final WorkspaceResolver workspaceResolver;
+
+<span class="fc" id="L25">    public AnalysisProgressController(AnalysisProgressRegistry registry, WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L26">        this.registry = registry;</span>
+<span class="fc" id="L27">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L28">    }</span>
+
+    @GetMapping
+    public ResponseEntity&lt;List&lt;AnalysisProgressRegistry.Snapshot&gt;&gt; recent(
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) Long requirementId) {
+<span class="fc" id="L34">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L35">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L36">        return privateResponse(registry.recent(owner, context, projectId, requirementId));</span>
+    }
+
+    @GetMapping(&quot;/{operationId}&quot;)
+    public ResponseEntity&lt;AnalysisProgressRegistry.Snapshot&gt; status(
+            @PathVariable String operationId,
+            @RequestParam(defaultValue = &quot;false&quot;) boolean waitForRegistration) {
+<span class="fc" id="L43">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L44">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+        try {
+<span class="fc" id="L46">            return privateResponse(registry.snapshot(operationId, owner, context));</span>
+<span class="fc" id="L47">        } catch (ResponseStatusException unavailable) {</span>
+<span class="fc bfc" id="L48" title="All 4 branches covered.">            if (!waitForRegistration || unavailable.getStatusCode().value() != 404) throw unavailable;</span>
+            // An early poll can precede POST registration. Reveal no foreign run and allocate no work.
+            // This acknowledges a pending observation, not acceptance of the analysis request itself.
+<span class="fc" id="L51">            return ResponseEntity.accepted().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L52">                    .header(&quot;Retry-After&quot;, &quot;1&quot;).build();</span>
+        }
+    }
+
+    @GetMapping(&quot;/{operationId}/calls/{callId}&quot;)
+    public ResponseEntity&lt;AnalysisProgressRegistry.CallDetail&gt; detail(
+            @PathVariable String operationId, @PathVariable long callId) {
+<span class="fc" id="L59">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L60">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L61">        return privateResponse(registry.callDetail(operationId, callId, owner, context));</span>
+    }
+
+    @PostMapping(&quot;/{operationId}/cancel&quot;)
+    public ResponseEntity&lt;AnalysisProgressRegistry.Snapshot&gt; cancel(@PathVariable String operationId) {
+<span class="fc" id="L66">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L67">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L68">        return privateResponse(registry.cancel(operationId, owner, context));</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; privateResponse(T value) {
+<span class="fc" id="L72">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalIdentityService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">PrincipalIdentityService.java</span></div><h1>PrincipalIdentityService.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import com.taxonomy.backup.BackupCapability;
+import com.taxonomy.backup.BackupRepositoryKey;
+import com.taxonomy.backup.IdentityBinding;
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.AppPrincipal;
+import com.taxonomy.security.model.PrincipalBinding;
+import com.taxonomy.security.model.StablePrincipal;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import javax.sql.DataSource;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
+
+/** Resolves verified login bindings. Username and email are never external identity keys. */
+public final class PrincipalIdentityService {
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate transaction;
+    private final String registryLock;
+
+<span class="fc" id="L28">    public PrincipalIdentityService(DataSource database) {</span>
+<span class="fc" id="L29">        jdbc = new JdbcTemplate(database);</span>
+<span class="fc" id="L30">        transaction = new TransactionTemplate(new DataSourceTransactionManager(database));</span>
+<span class="fc" id="L31">        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L32">        transaction.setTimeout(30);</span>
+<span class="fc" id="L33">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L34">            boolean sqlServer = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains(&quot;microsoft&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            registryLock = sqlServer</span>
+<span class="nc" id="L36">                    ? &quot;select installation_id from principal_installation with (updlock, holdlock) where registry_key='local'&quot;</span>
+<span class="fc" id="L37">                    : &quot;select installation_id from principal_installation where registry_key='local' for update&quot;;</span>
+<span class="pc" id="L38">        } catch (java.sql.SQLException exception) { throw new IllegalStateException(&quot;Cannot inspect identity database&quot;, exception); }</span>
+<span class="fc" id="L39">    }</span>
+
+    public AppPrincipal local(long accountId) {
+<span class="fc" id="L42">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L43">            String installation = lockRegistry();</span>
+<span class="fc" id="L44">            var accounts = jdbc.query(&quot;select principal_id, username, enabled from app_user where id=?&quot;,</span>
+<span class="fc" id="L45">                    (row, number) -&gt; new LocalAccount(row.getString(1), row.getString(2), row.getBoolean(3)), accountId);</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (accounts.size() != 1) throw new BadCredentialsException(&quot;Local account is unavailable&quot;);</span>
+<span class="fc" id="L47">            var account = accounts.getFirst();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (!account.enabled()) throw new DisabledException(&quot;Local account is disabled&quot;);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">            if (account.id() == null) throw new BadCredentialsException(&quot;Local account requires identity migration&quot;);</span>
+<span class="fc" id="L50">            var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, account.id());</span>
+<span class="fc" id="L51">            return resolve(binding, new PrincipalId(UUID.fromString(account.id())), account.scope());</span>
+        });
+    }
+
+    /** Call only after the OIDC token's signature, issuer, audience and lifetime have been verified. */
+    public AppPrincipal oidc(String issuer, String subject) {
+<span class="fc" id="L57">        var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject);</span>
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">        if (issuer.length() &gt; 2048 || subject.length() &gt; 1024) throw new BadCredentialsException(&quot;Identity binding is too long&quot;);</span>
+<span class="fc" id="L59">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L60">            lockRegistry();</span>
+<span class="fc" id="L61">            var id = PrincipalId.create();</span>
+            // Legacy workspace branches embed the scope in a Git ref. Keep the
+            // opaque namespace portable to native Git and Windows path rules.
+<span class="fc" id="L64">            return resolve(binding, id, &quot;principal-&quot; + id.value());</span>
+        });
+    }
+
+    public Optional&lt;AppPrincipal&gt; find(PrincipalId principal) {
+<span class="fc" id="L69">        return jdbc.query(&quot;select principal_id, scope_key, enabled from app_principal where principal_id=?&quot;,</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                (row, number) -&gt; new AppPrincipal(new PrincipalId(UUID.fromString(row.getString(1))), row.getString(2), row.getInt(3) == 1),</span>
+<span class="fc" id="L71">                principal.value().toString()).stream().findFirst();</span>
+    }
+
+    public boolean isEnabled(PrincipalId principal) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (find(principal).filter(AppPrincipal::enabled).isEmpty()) return false;</span>
+<span class="fc" id="L76">        var bindings = jdbc.query(&quot;select binding_kind, subject_id from principal_binding where principal_id=? and enabled=1&quot;,</span>
+<span class="fc" id="L77">                (row, number) -&gt; new ActiveBinding(IdentityBinding.Kind.valueOf(row.getString(1)), row.getString(2)), principal.value().toString());</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (var binding : bindings) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (binding.kind() != IdentityBinding.Kind.LOCAL) return true;</span>
+<span class="fc" id="L80">            var accounts = jdbc.query(&quot;select enabled from app_user where principal_id=?&quot;,</span>
+<span class="fc" id="L81">                    (row, number) -&gt; row.getBoolean(1), binding.subject());</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">            if (accounts.size() == 1 &amp;&amp; accounts.getFirst()) return true;</span>
+<span class="fc" id="L83">        }</span>
+<span class="fc" id="L84">        return false;</span>
+    }
+
+    public boolean hasCapability(PrincipalId principal, BackupCapability capability) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (!isEnabled(principal)) return false;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        return jdbc.queryForObject(&quot;select count(*) from backup_capability_grant where principal_id=? and capability=?&quot;,</span>
+<span class="fc" id="L90">                Integer.class, principal.value().toString(), capability.name()) == 1;</span>
+    }
+
+    public boolean hasVersionAccess(PrincipalId principal, BackupRepositoryKey repository, String commit) {
+<span class="pc bpc" id="L94" title="3 of 6 branches missed.">        if (!isEnabled(principal) || commit == null || !commit.matches(&quot;[0-9a-f]{40}&quot;)) return false;</span>
+<span class="fc" id="L95">        String workspace = versionScopeKey(repository);</span>
+        // Exact Java comparisons also work with case-insensitive database collations.
+<span class="fc" id="L97">        return jdbc.query(&quot;select repository_id, workspace_key, commit_id from backup_version_grant where principal_id=? and repository_id=? and workspace_key=? and commit_id=?&quot;,</span>
+<span class="pc bpc" id="L98" title="3 of 6 branches missed.">                (row, number) -&gt; repository.repositoryId().equals(row.getString(1)) &amp;&amp; workspace.equals(row.getString(2)) &amp;&amp; commit.equals(row.getString(3)),</span>
+<span class="fc" id="L99">                principal.value().toString(), repository.repositoryId(), workspace, commit).stream().anyMatch(Boolean.TRUE::equals);</span>
+    }
+
+    public static String versionScopeKey(BackupRepositoryKey repository) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        return repository.workspaceId() == null ? &quot;C:&quot; : &quot;W:&quot; + repository.workspaceId();</span>
+    }
+
+    public PrincipalId require(org.springframework.security.core.Authentication authentication) {
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">        if (authentication == null || !authentication.isAuthenticated()) throw denied();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        StablePrincipal stable = authentication instanceof StablePrincipal identity ? identity</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                : authentication.getPrincipal() instanceof StablePrincipal identity ? identity : null;</span>
+<span class="fc bfc" id="L110" title="All 4 branches covered.">        if (stable == null || !isEnabled(stable.principalId())) throw denied();</span>
+<span class="fc" id="L111">        return stable.principalId();</span>
+    }
+
+    private static org.springframework.security.access.AccessDeniedException denied() {
+<span class="fc" id="L115">        return new org.springframework.security.access.AccessDeniedException(&quot;Verified active principal required&quot;);</span>
+    }
+
+<span class="fc" id="L118">    private String lockRegistry() { return jdbc.queryForObject(registryLock, String.class); }</span>
+
+    private AppPrincipal resolve(IdentityBinding identity, PrincipalId proposedId, String scope) {
+<span class="fc" id="L121">        String key = PrincipalBinding.key(identity);</span>
+<span class="fc" id="L122">        var matches = jdbc.query(&quot;select principal_id, binding_kind, issuer, subject_id, enabled from principal_binding where binding_key=?&quot;,</span>
+<span class="fc" id="L123">                (row, number) -&gt; new PrincipalBinding(new PrincipalId(UUID.fromString(row.getString(1))),</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                        new IdentityBinding(IdentityBinding.Kind.valueOf(row.getString(2)), row.getString(3), row.getString(4)), row.getInt(5) == 1), key);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (!matches.isEmpty()) {</span>
+<span class="fc" id="L126">            var match = matches.getFirst();</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (!match.identity().equals(identity)) throw new BadCredentialsException(&quot;Conflicting identity binding&quot;);</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">            if (!match.enabled() || !isEnabled(match.principal())) throw new DisabledException(&quot;Identity is disabled&quot;);</span>
+<span class="pc" id="L129">            return find(match.principal()).orElseThrow(() -&gt; new BadCredentialsException(&quot;Principal is unavailable&quot;));</span>
+        }
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (jdbc.queryForObject(&quot;select count(*) from app_principal where scope_key=? or principal_id=?&quot;, Integer.class,</span>
+<span class="fc" id="L132">                scope, proposedId.value().toString()) != 0) {</span>
+<span class="fc" id="L133">            throw new BadCredentialsException(&quot;Scope requires an explicit identity mapping&quot;);</span>
+        }
+<span class="fc" id="L135">        jdbc.update(&quot;insert into app_principal values (?, ?, 1)&quot;, proposedId.value().toString(), scope);</span>
+<span class="fc" id="L136">        jdbc.update(&quot;insert into principal_binding values (?, ?, ?, ?, ?, 1)&quot;, key, proposedId.value().toString(),</span>
+<span class="fc" id="L137">                identity.kind().name(), identity.issuer(), identity.subject());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (var capability : new BackupCapability[]{BackupCapability.EXPORT_CURRENT, BackupCapability.DOWNLOAD_BACKUP}) {</span>
+<span class="fc" id="L139">            jdbc.update(&quot;insert into backup_capability_grant values (?, ?)&quot;, proposedId.value().toString(), capability.name());</span>
+        }
+<span class="fc" id="L141">        return new AppPrincipal(proposedId, scope, true);</span>
+    }
+
+<span class="fc" id="L144">    private record LocalAccount(String id, String scope, boolean enabled) { }</span>
+<span class="fc" id="L145">    private record ActiveBinding(IdentityBinding.Kind kind, String subject) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SetupProbe.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">SetupProbe.java</span></div><h1>SetupProbe.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+/** Explicit, bounded connection probes. Never starts Spring, Flyway or an AI provider. */
+public final class SetupProbe {
+    private SetupProbe() { }
+
+    public static List&lt;SetupChecks.Finding&gt; check(Function&lt;String, String&gt; properties, Set&lt;String&gt; profiles) {
+<span class="fc" id="L25">        List&lt;SetupChecks.Finding&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L26">        String url = SetupChecks.value(properties, &quot;spring.datasource.url&quot;);</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (url.startsWith(&quot;jdbc:hsqldb:&quot;)) {</span>
+<span class="fc" id="L28">            result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;database.connection&quot;,</span>
+                    &quot;Embedded databases are not opened by preflight: opening could create files or conflict with a running instance.&quot;));
+        } else {
+<span class="nc" id="L31">            result.add(bounded(&quot;database.connection&quot;, () -&gt; database(properties), Duration.ofSeconds(10)));</span>
+        }
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (profiles.contains(&quot;keycloak&quot;)) {</span>
+<span class="fc" id="L34">            String issuer = SetupChecks.value(properties, &quot;spring.security.oauth2.client.provider.keycloak.issuer-uri&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (SetupChecks.safeEndpoint(issuer)) {</span>
+<span class="fc" id="L36">                result.add(bounded(&quot;authentication.discovery&quot;, () -&gt; discovery(issuer), Duration.ofSeconds(10)));</span>
+            }
+        }
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (Boolean.parseBoolean(SetupChecks.value(properties, &quot;embedding.enabled&quot;))) {</span>
+<span class="fc" id="L40">            String directory = SetupChecks.value(properties, &quot;embedding.model.dir&quot;);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (directory.isEmpty()) {</span>
+<span class="nc" id="L42">                result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;embedding.model.dir&quot;, &quot;No local model directory selected; downloads are not performed by preflight.&quot;));</span>
+            } else {
+                try {
+<span class="fc" id="L45">                    Path path = Path.of(directory);</span>
+<span class="fc" id="L46">                    boolean available = List.of(&quot;model.onnx&quot;, &quot;tokenizer.json&quot;).stream()</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">                            .allMatch(name -&gt; Files.isRegularFile(path.resolve(name)) &amp;&amp; Files.isReadable(path.resolve(name)));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                    result.add(new SetupChecks.Finding(available ? SetupChecks.Status.OK : SetupChecks.Status.ERROR,</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                            &quot;embedding.model.dir&quot;, available ? &quot;Expected model files are readable; inference was not tested.&quot;</span>
+<span class="fc" id="L50">                            : &quot;The model directory must contain readable model.onnx and tokenizer.json.&quot;));</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">                    if (available &amp;&amp; !Files.isRegularFile(path.resolve(&quot;serving.properties&quot;))) {</span>
+<span class="fc" id="L52">                        result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;embedding.serving-properties&quot;,</span>
+                                &quot;Serving metadata is generated during model startup; generation permissions and model loading were not tested. No file was written.&quot;));
+                    }
+<span class="nc" id="L55">                } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L56">                    result.add(new SetupChecks.Finding(SetupChecks.Status.ERROR, &quot;embedding.model.dir&quot;, &quot;Invalid model directory.&quot;));</span>
+<span class="fc" id="L57">                }</span>
+            }
+        }
+<span class="fc" id="L60">        return List.copyOf(result);</span>
+    }
+
+    private static SetupChecks.Finding database(Function&lt;String, String&gt; properties) throws Exception {
+<span class="nc" id="L64">        String username = properties.apply(&quot;spring.datasource.username&quot;);</span>
+<span class="nc" id="L65">        String password = properties.apply(&quot;spring.datasource.password&quot;);</span>
+<span class="nc" id="L66">        try (Connection connection = DriverManager.getConnection(properties.apply(&quot;spring.datasource.url&quot;), username, password)) {</span>
+<span class="nc" id="L67">            connection.setReadOnly(true);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (!connection.isValid(5)) { throw new IllegalStateException(&quot;Connection validation failed&quot;); }</span>
+<span class="nc" id="L69">            return new SetupChecks.Finding(SetupChecks.Status.OK, &quot;database.connection&quot;,</span>
+                    &quot;JDBC connection validated in read-only mode; schema and migration permissions remain untested.&quot;);
+        }
+    }
+
+    private static SetupChecks.Finding discovery(String issuer) throws Exception {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        String base = issuer.endsWith(&quot;/&quot;) ? issuer.substring(0, issuer.length() - 1) : issuer;</span>
+<span class="fc" id="L76">        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))</span>
+<span class="fc" id="L77">                .followRedirects(HttpClient.Redirect.NEVER).build()) {</span>
+<span class="fc" id="L78">            HttpRequest request = HttpRequest.newBuilder(URI.create(base + &quot;/.well-known/openid-configuration&quot;))</span>
+<span class="fc" id="L79">                    .timeout(Duration.ofSeconds(5)).GET().build();</span>
+<span class="fc" id="L80">            int status = client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            return new SetupChecks.Finding(status == 200 ? SetupChecks.Status.OK : SetupChecks.Status.ERROR,</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                    &quot;authentication.discovery&quot;, status == 200</span>
+<span class="fc" id="L83">                    ? &quot;Discovery endpoint reachable; metadata, browser callback and role mapping still require a login test.&quot;</span>
+<span class="pc" id="L84">                    : &quot;Discovery did not return HTTP 200; redirects are not followed.&quot;);</span>
+        }
+    }
+
+    static SetupChecks.Finding bounded(String key, Callable&lt;SetupChecks.Finding&gt; operation, Duration timeout) {
+<span class="fc" id="L89">        FutureTask&lt;SetupChecks.Finding&gt; task = new FutureTask&lt;&gt;(operation);</span>
+<span class="fc" id="L90">        Thread thread = Thread.ofVirtual().name(&quot;taxonomy-setup-probe&quot;).unstarted(task);</span>
+<span class="fc" id="L91">        thread.start();</span>
+        try {
+<span class="fc" id="L93">            return task.get(timeout.toMillis(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L94">        } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L95">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L96">            return new SetupChecks.Finding(SetupChecks.Status.ERROR, key, &quot;Connection check interrupted.&quot;);</span>
+<span class="fc" id="L97">        } catch (Exception failure) {</span>
+            // Driver/TLS exceptions can contain credentials and full connection URLs.
+<span class="fc" id="L99">            return new SetupChecks.Finding(SetupChecks.Status.ERROR, key,</span>
+                    &quot;Connection failed or timed out; check DNS, network policy, TLS trust and credentials in the target environment.&quot;);
+        } finally {
+<span class="fc" id="L102">            task.cancel(true);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

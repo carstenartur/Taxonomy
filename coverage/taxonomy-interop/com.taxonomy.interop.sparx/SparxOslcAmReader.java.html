@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxOslcAmReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.sparx</a> &gt; <span class="el_source">SparxOslcAmReader.java</span></div><h1>SparxOslcAmReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.exchange.sparx.SparxOslcAmCodec;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.exchange.sparx.SparxAmReadEvidence;
+import com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeDocument;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.oslc.OslcTransport;
+import com.taxonomy.interop.persistence.IntegrationStore.Connection;
+import com.taxonomy.workspace.service.RepositoryContext;
+
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.*;
+
+/** Read the complete bounded AM query chain; a failed page never produces a partial preview. */
+public final class SparxOslcAmReader {
+    private final OslcTransport transport;
+<span class="fc" id="L22">    private final SparxOslcAmCodec codec = new SparxOslcAmCodec();</span>
+    private final SparxAmReadBudget.Limits limits;
+    private final java.util.function.LongSupplier clock;
+<span class="fc" id="L25">    public SparxOslcAmReader(OslcTransport transport) { this(transport, SparxAmReadBudget.Limits.defaults(), System::nanoTime); }</span>
+<span class="fc" id="L26">    public SparxOslcAmReader(OslcTransport transport, SparxAmReadBudget.Limits limits, java.util.function.LongSupplier clock) {</span>
+<span class="fc" id="L27">        this.transport = transport; this.limits = limits; this.clock = clock;</span>
+<span class="fc" id="L28">    }</span>
+
+    public URI validate(RepositoryContext context, Connection connection, String resource) {
+<span class="fc" id="L31">        URI base = transport.validate(context, connection, null);</span>
+<span class="pc bpc" id="L32" title="2 of 4 branches missed.">        if (!base.getPath().endsWith(&quot;/oslc/am/&quot;) || !base.toString().equals(connection.externalScope().repository())</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">                || connection.externalScope().configuration() != null)</span>
+<span class="nc" id="L34">            throw new IntegrationProblem(&quot;SPARX_AM_SCOPE&quot;, 400, &quot;PCS model scope must equal the configured /oslc/am/ boundary, without a configuration context&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        URI uri = transport.validate(context, connection, resource == null || resource.isBlank() ? &quot;sp/&quot; : resource);</span>
+<span class="fc" id="L36">        boolean discovery = uri.getPath().equals(base.getPath() + &quot;sp/&quot;);</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">        if (!discovery &amp;&amp; !uri.getPath().equals(base.getPath() + &quot;qc/&quot;))</span>
+<span class="fc" id="L38">            throw new IntegrationProblem(&quot;SPARX_AM_RESOURCE&quot;, 400, &quot;Choose model service discovery or an unfiltered AM query&quot;);</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">        if (uri.getRawQuery() != null) for (String part : uri.getRawQuery().split(&quot;&amp;&quot;)) {</span>
+<span class="fc" id="L40">            String name = URLDecoder.decode(part.split(&quot;=&quot;, 2)[0], StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            if (discovery || !Set.of(&quot;oslc.paging&quot;, &quot;oslc.pageSize&quot;, &quot;page&quot;, &quot;pageToken&quot;).contains(name))</span>
+<span class="fc" id="L42">                throw new IntegrationProblem(&quot;SPARX_AM_QUERY&quot;, 400, &quot;Filtered or projected AM queries cannot establish a reviewable model scope&quot;);</span>
+        }
+<span class="fc" id="L44">        return uri;</span>
+    }
+
+    public ExchangeDocument read(RepositoryContext context, Connection connection, String resource, String version) {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (&quot;2&quot;.equals(connection.profileVersion())) return readV2(context, connection, resource, version);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (!&quot;1&quot;.equals(connection.profileVersion())) throw IntegrationProblem.conflict(&quot;PROFILE_VERSION_CHANGED&quot;);</span>
+<span class="fc" id="L50">        URI next = validate(context, connection, resource);</span>
+<span class="fc" id="L51">        URI base = transport.validate(context, connection, null);</span>
+<span class="fc" id="L52">        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();</span>
+<span class="fc" id="L53">        long bytes = 0;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (next.getPath().endsWith(&quot;/sp/&quot;)) {</span>
+<span class="fc" id="L55">            var discovery = transport.readPcs(context, connection, next.toString());</span>
+<span class="fc" id="L56">            bytes += discovery.content().length;</span>
+<span class="fc" id="L57">            next = validate(context, connection, codec.queryBase(discovery.content(), discovery.resource()).toString());</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (!next.getPath().endsWith(&quot;/qc/&quot;)) throw new IntegrationProblem(&quot;SPARX_AM_DISCOVERY&quot;, 502, &quot;Discovery must identify the model query capability&quot;);</span>
+        }
+<span class="fc" id="L60">        Set&lt;URI&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L61">        List&lt;SparxOslcAmCodec.Page&gt; pages = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        while (next != null) {</span>
+<span class="fc" id="L63">            next = validate(context, connection, next.toString());</span>
+<span class="pc bpc" id="L64" title="2 of 6 branches missed.">            if (!next.getPath().endsWith(&quot;/qc/&quot;) || !visited.add(next) || pages.size() &gt;= SparxOslcAmCodec.MAX_PAGES)</span>
+<span class="fc" id="L65">                throw new IntegrationProblem(&quot;SPARX_AM_PAGE_LIMIT&quot;, 502, &quot;AM query has a loop or exceeds the supported page bound&quot;);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            if (System.nanoTime() &gt;= deadline) throw new IntegrationProblem(&quot;REMOTE_TIMEOUT&quot;, 504, &quot;AM collection deadline exceeded&quot;);</span>
+<span class="fc" id="L67">            var response = transport.readPcs(context, connection, next.toString());</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (System.nanoTime() &gt;= deadline) throw new IntegrationProblem(&quot;REMOTE_TIMEOUT&quot;, 504, &quot;AM collection deadline exceeded&quot;);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if ((bytes += response.content().length) &gt; ExchangeXml.MAX_BYTES)</span>
+<span class="nc" id="L70">                throw new IntegrationProblem(&quot;REMOTE_RESPONSE_LIMIT&quot;, 502, &quot;AM collection exceeds the supported bound&quot;);</span>
+<span class="fc" id="L71">            pages.add(new SparxOslcAmCodec.Page(response.resource(), response.etag(), response.content()));</span>
+<span class="fc" id="L72">            next = codec.nextPage(response.content(), response.resource());</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">        ExchangeDocument document = codec.read(pages, base);</span>
+<span class="fc bfc" id="L75" title="All 4 branches covered.">        if (version != null &amp;&amp; !version.equals(document.externalVersion()))</span>
+<span class="fc" id="L76">            throw new IntegrationProblem(&quot;REMOTE_STALE&quot;, 409, &quot;AM collection changed; fetch and review a fresh preview&quot;);</span>
+<span class="fc" id="L77">        return document;</span>
+    }
+    private ExchangeDocument readV2(RepositoryContext context, Connection connection, String resource, String expectedVersion) {
+<span class="fc" id="L80">        var budget = new SparxAmReadBudget(limits, clock);</span>
+<span class="fc" id="L81">        var evidence = new SparxAmReadEvidence();</span>
+<span class="fc" id="L82">        var codec = new SparxOslcAmCodec(&quot;2&quot;);</span>
+<span class="fc" id="L83">        URI first = validate(context, connection, resource), base = transport.validate(context, connection, null);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (first.getPath().endsWith(&quot;/sp/&quot;)) {</span>
+<span class="fc" id="L85">            var discovery = fetch(context, connection, budget, first, &quot;sp&quot;, &quot;ROOT&quot;, 0, evidence);</span>
+<span class="fc" id="L86">            first = validate(context, connection, codec.queryBase(discovery.content(), discovery.resource()).toString());</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (!first.getPath().endsWith(&quot;/qc/&quot;)) throw new IntegrationProblem(&quot;SPARX_AM_DISCOVERY&quot;, 502, &quot;Discovery must identify the model query capability&quot;);</span>
+        }
+<span class="fc" id="L89">        var roots = collectChain(context, connection, budget, first, &quot;qc&quot;, &quot;ROOT&quot;, evidence);</span>
+<span class="fc" id="L90">        var identifiers = codec.rootIdentifiers(roots, base); budget.roots(identifiers.size());</span>
+<span class="fc" id="L91">        List&lt;SparxOslcAmCodec.Collection&gt; collections = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        for (String root : identifiers) {</span>
+<span class="fc" id="L93">            collectFeature(context, connection, budget, base, &quot;linkedresources&quot;, root, collections, evidence);</span>
+<span class="fc" id="L94">            collectFeature(context, connection, budget, base, &quot;taggedvalues&quot;, root, collections, evidence);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (root.startsWith(&quot;el_&quot;)) {</span>
+<span class="fc" id="L96">                var attributes = collectFeature(context, connection, budget, base, &quot;attributes&quot;, root, collections, evidence);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                for (String attribute : codec.featureIdentifiers(attributes, base))</span>
+<span class="fc" id="L98">                    collectFeature(context, connection, budget, base, &quot;taggedvalues&quot;, attribute, collections, evidence);</span>
+<span class="fc" id="L99">                var operations = collectFeature(context, connection, budget, base, &quot;operations&quot;, root, collections, evidence);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                for (String operation : codec.featureIdentifiers(operations, base)) {</span>
+<span class="fc" id="L101">                    collectFeature(context, connection, budget, base, &quot;taggedvalues&quot;, operation, collections, evidence);</span>
+<span class="fc" id="L102">                    collectFeature(context, connection, budget, base, &quot;parameters&quot;, operation, collections, evidence);</span>
+<span class="fc" id="L103">                }</span>
+            }
+<span class="fc" id="L105">        }</span>
+<span class="fc" id="L106">        var parsed = codec.read(roots, collections, base); budget.checkTime();</span>
+<span class="fc" id="L107">        String version = evidence.version();</span>
+<span class="fc bfc" id="L108" title="All 4 branches covered.">        if (expectedVersion != null &amp;&amp; !expectedVersion.equals(version)) throw IntegrationProblem.conflict(&quot;REMOTE_STALE&quot;);</span>
+<span class="fc" id="L109">        Map&lt;String,String&gt; metadata = new TreeMap&lt;&gt;(parsed.metadata());</span>
+<span class="fc" id="L110">        metadata.put(&quot;responseCount&quot;, Integer.toString(budget.responseCount())); metadata.put(&quot;byteCount&quot;, Long.toString(budget.byteCount()));</span>
+<span class="fc" id="L111">        return new ExchangeDocument(parsed.profile(), &quot;2&quot;, version, false, &quot;&quot;, parsed.artifacts(), parsed.relations(), parsed.placements(), metadata, parsed.losses());</span>
+    }
+    private SparxOslcAmCodec.Collection collectFeature(RepositoryContext context, Connection connection, SparxAmReadBudget budget,
+            URI base, String kind, String owner, List&lt;SparxOslcAmCodec.Collection&gt; collections, SparxAmReadEvidence evidence) {
+<span class="fc" id="L115">        SparxMappingProfile.prefixedGuid(owner, ownerPrefixes(kind));</span>
+<span class="fc" id="L116">        URI first = base.resolve(kind + &quot;/&quot; + owner.replace(&quot;{&quot;, &quot;%7B&quot;).replace(&quot;}&quot;, &quot;%7D&quot;) + &quot;/&quot;);</span>
+<span class="fc" id="L117">        var collection = new SparxOslcAmCodec.Collection(kind, owner, collectChain(context, connection, budget, first, kind, owner, evidence));</span>
+<span class="fc" id="L118">        collections.add(collection); return collection;</span>
+    }
+    private List&lt;SparxOslcAmCodec.Page&gt; collectChain(RepositoryContext context, Connection connection, SparxAmReadBudget budget,
+            URI first, String kind, String owner, SparxAmReadEvidence evidence) {
+<span class="fc" id="L122">        Set&lt;URI&gt; visited = new HashSet&lt;&gt;(); List&lt;SparxOslcAmCodec.Page&gt; pages = new ArrayList&lt;&gt;(); URI next = first;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        while (next != null) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            URI validated = kind.equals(&quot;qc&quot;) ? validate(context, connection, next.toString()) : validateFeature(context, connection, next, kind, owner);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (!first.getPath().equals(validated.getPath())) throw new IntegrationProblem(&quot;SPARX_AM_PAGING&quot;, 502, &quot;Collection paging must retain its exact endpoint&quot;);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">            if (!visited.add(validated)) throw new IntegrationProblem(&quot;SPARX_AM_PAGE_LIMIT&quot;, 502, &quot;AM collection paging loop&quot;);</span>
+<span class="fc" id="L127">            var response = fetch(context, connection, budget, validated, kind, owner, pages.size(), evidence);</span>
+<span class="fc" id="L128">            pages.add(response); next = codec.nextPage(response.content(), response.resource());</span>
+<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">        return List.copyOf(pages);</span>
+    }
+    private SparxOslcAmCodec.Page fetch(RepositoryContext context, Connection connection, SparxAmReadBudget budget,
+            URI uri, String kind, String owner, int chainPages, SparxAmReadEvidence evidence) {
+<span class="fc" id="L134">        budget.beforeResponse(chainPages);</span>
+<span class="fc" id="L135">        var response = transport.readPcs(context, connection, uri.toString());</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        budget.received(response.content().length, codec.statementCount(response.content(), response.resource()), kind.equals(&quot;sp&quot;) ? Set.of() : codec.objectIdentities(response.content(), response.resource()));</span>
+<span class="fc" id="L137">        var page = new SparxOslcAmCodec.Page(response.resource(), response.etag(), response.content());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        evidence.add(kind, owner.equals(&quot;ROOT&quot;) ? owner : SparxMappingProfile.prefixedGuid(owner, Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;at_&quot;, &quot;op_&quot;)), page);</span>
+<span class="fc" id="L139">        return page;</span>
+    }
+    private URI validateFeature(RepositoryContext context, Connection connection, URI resource, String kind, String owner) {
+<span class="fc" id="L142">        SparxMappingProfile.prefixedGuid(owner, ownerPrefixes(kind));</span>
+<span class="fc" id="L143">        URI base = transport.validate(context, connection, null), uri = transport.validate(context, connection, resource.toString());</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (!uri.getPath().equals(base.getPath() + kind + &quot;/&quot; + owner + &quot;/&quot;))</span>
+<span class="nc" id="L145">            throw new IntegrationProblem(&quot;SPARX_AM_RESOURCE&quot;, 400, &quot;Feature page must stay on its validated owner endpoint&quot;);</span>
+<span class="fc bfc" id="L146" title="All 4 branches covered.">        if (uri.getRawQuery() != null) for (String part : uri.getRawQuery().split(&quot;&amp;&quot;)) {</span>
+<span class="fc" id="L147">            String name = URLDecoder.decode(part.split(&quot;=&quot;, 2)[0], StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (!Set.of(&quot;oslc.paging&quot;, &quot;oslc.pageSize&quot;, &quot;page&quot;, &quot;pageToken&quot;).contains(name))</span>
+<span class="nc" id="L149">                throw new IntegrationProblem(&quot;SPARX_AM_QUERY&quot;, 400, &quot;Feature collection accepts only bounded paging parameters&quot;);</span>
+        }
+<span class="fc" id="L151">        return uri;</span>
+    }
+    private static Set&lt;String&gt; ownerPrefixes(String kind) {
+<span class="pc bpc" id="L154" title="1 of 5 branches missed.">        return switch (kind) {</span>
+<span class="fc" id="L155">            case &quot;linkedresources&quot; -&gt; Set.of(&quot;pk_&quot;, &quot;el_&quot;); case &quot;taggedvalues&quot; -&gt; Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;at_&quot;, &quot;op_&quot;);</span>
+<span class="fc" id="L156">            case &quot;attributes&quot;, &quot;operations&quot; -&gt; Set.of(&quot;el_&quot;); case &quot;parameters&quot; -&gt; Set.of(&quot;op_&quot;);</span>
+<span class="nc" id="L157">            default -&gt; throw new IntegrationProblem(&quot;SPARX_AM_RESOURCE&quot;, 400, &quot;Unsupported feature endpoint&quot;);</span>
+        };
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

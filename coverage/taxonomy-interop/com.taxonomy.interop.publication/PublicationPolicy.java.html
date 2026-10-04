@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationPolicy.java</span></div><h1>PublicationPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.extension.api.integration.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Server-owned registrations. A remote declaration or descriptor bit cannot install a verified contract. */
+public final class PublicationPolicy {
+<span class="fc" id="L12">    public static final Set&lt;Guarantee&gt; REQUIRED_GUARANTEES = Set.of(Guarantee.values());</span>
+    public record VerifiedContract(String connectorId, String profileVersion, PublicationCapabilities capabilities) {
+<span class="fc" id="L14">        public VerifiedContract { text(connectorId); text(profileVersion); Objects.requireNonNull(capabilities); }</span>
+    }
+    private final List&lt;VerifiedContract&gt; contracts;
+    /** Production defaults deny every write until an adapter's contract is explicitly registered. */
+<span class="fc" id="L18">    public PublicationPolicy() { this(List.of()); }</span>
+<span class="fc" id="L19">    public PublicationPolicy(List&lt;VerifiedContract&gt; contracts) { this.contracts = List.copyOf(contracts); }</span>
+    public void requireVerified(IntegrationContext context, PublicationCapabilities capabilities) {
+<span class="pc bpc" id="L21" title="2 of 4 branches missed.">        if (capabilities == null || !CONTRACT_VERSION.equals(capabilities.contractVersion())</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">                || !context.externalScope().equals(capabilities.scope().externalScope())</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">                || !capabilities.guarantees().containsAll(REQUIRED_GUARANTEES)</span>
+<span class="fc bfc" id="L24" title="All 8 branches covered.">                || contracts.stream().noneMatch(c -&gt; c.connectorId().equals(context.profile()) &amp;&amp; c.profileVersion().equals(context.profileVersion()) &amp;&amp; c.capabilities().equals(capabilities)))</span>
+<span class="fc" id="L25">            throw IntegrationProblem.conflict(&quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;);</span>
+<span class="fc" id="L26">    }</span>
+    public void requireVerified(IntegrationContext context, LifecycleIntegrationConnector connector, PublicationCapabilities capabilities) {
+<span class="pc bpc" id="L28" title="2 of 4 branches missed.">        if (!(connector instanceof ConditionalPublicationConnector) || !connector.descriptor().id().equals(context.profile())</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">                || !connector.descriptor().version().equals(context.profileVersion())) throw IntegrationProblem.conflict(&quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;);</span>
+<span class="fc" id="L30">        requireVerified(context, capabilities);</span>
+<span class="fc" id="L31">    }</span>
+    public void requireAuthority(IntegrationContext context, PublicationMode mode) {
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">        if (mode == PublicationMode.SYNCHRONIZE ? context.authority() != AuthorityMode.BIDIRECTIONAL</span>
+<span class="pc bpc" id="L34" title="3 of 4 branches missed.">                : context.authority() != AuthorityMode.BIDIRECTIONAL &amp;&amp; context.authority() != AuthorityMode.PUBLISH_TARGET)</span>
+<span class="nc" id="L35">            throw new IntegrationProblem(&quot;PUBLICATION_AUTHORITY_DENIED&quot;, 403, &quot;This connection does not permit the requested publication mode&quot;);</span>
+<span class="fc" id="L36">    }</span>
+    public PublicationAvailability availability(IntegrationContext context, LifecycleIntegrationConnector connector, PublicationCapabilities capabilities) {
+        try {
+<span class="fc" id="L39">            requireVerified(context, connector, capabilities);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            Set&lt;PublicationMode&gt; modes = context.authority() == AuthorityMode.BIDIRECTIONAL ? Set.of(PublicationMode.values())</span>
+<span class="pc bnc" id="L41" title="All 2 branches missed.">                    : context.authority() == AuthorityMode.PUBLISH_TARGET ? Set.of(PublicationMode.PUSH) : Set.of();</span>
+<span class="pc bpc" id="L42" title="3 of 6 branches missed.">            return new PublicationAvailability(!modes.isEmpty(), modes, modes.isEmpty() ? Set.of() : capabilities.mutations(), modes.isEmpty() ? &quot;PUBLICATION_AUTHORITY_DENIED&quot; : null);</span>
+<span class="nc" id="L43">        } catch (IntegrationProblem problem) { return new PublicationAvailability(false, Set.of(), Set.of(), problem.code()); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

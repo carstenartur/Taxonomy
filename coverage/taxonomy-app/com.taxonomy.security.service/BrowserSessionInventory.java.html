@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BrowserSessionInventory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">BrowserSessionInventory.java</span></div><h1>BrowserSessionInventory.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import org.springframework.security.core.session.SessionInformation;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** A read-only, bounded projection of the actual local Spring Security registry. */
+@Service
+public class BrowserSessionInventory {
+    static final int MAX_ROWS = 200;
+    static final int MAX_DISPLAY_NAME_LENGTH = 256;
+    private final SessionRegistry registry;
+
+<span class="fc" id="L22">    public BrowserSessionInventory(SessionRegistry registry) {</span>
+<span class="fc" id="L23">        this.registry = registry;</span>
+<span class="fc" id="L24">    }</span>
+
+    public Snapshot snapshot() {
+<span class="fc" id="L27">        Map&lt;Identity, UserSessions&gt; users = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L28">        int totalSessions = 0;</span>
+<span class="fc" id="L29">        int unidentifiedSessions = 0;</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (Object principal : registry.getAllPrincipals()) {</span>
+<span class="fc" id="L31">            List&lt;SessionInformation&gt; sessions = registry.getAllSessions(principal, false);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            if (sessions.isEmpty()) continue;</span>
+<span class="fc" id="L33">            totalSessions += sessions.size();</span>
+<span class="fc" id="L34">            Identity identity = identity(principal);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (identity == null) {</span>
+<span class="fc" id="L36">                unidentifiedSessions += sessions.size();</span>
+<span class="fc" id="L37">                continue;</span>
+            }
+<span class="fc" id="L39">            Instant lastRequest = sessions.stream().map(session -&gt; session.getLastRequest().toInstant())</span>
+<span class="fc" id="L40">                    .max(Comparator.naturalOrder()).orElseThrow();</span>
+<span class="fc" id="L41">            String displayName = displayName(principal);</span>
+<span class="fc" id="L42">            UserSessions previous = users.get(identity);</span>
+<span class="fc" id="L43">            int count = sessions.size();</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (previous != null) {</span>
+<span class="nc" id="L45">                count += previous.sessionCount();</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">                if (previous.lastRequest().isAfter(lastRequest)) {</span>
+<span class="nc" id="L47">                    lastRequest = previous.lastRequest();</span>
+<span class="nc" id="L48">                    displayName = previous.username();</span>
+                }
+            }
+<span class="fc" id="L51">            users.put(identity, new UserSessions(displayName, identity.kind(), count, lastRequest));</span>
+<span class="fc" id="L52">        }</span>
+<span class="fc" id="L53">        List&lt;UserSessions&gt; rows = users.values().stream()</span>
+<span class="fc" id="L54">                .sorted(Comparator.comparing(UserSessions::username)</span>
+<span class="fc" id="L55">                        .thenComparing(UserSessions::authenticationType))</span>
+<span class="fc" id="L56">                .limit(MAX_ROWS).toList();</span>
+<span class="fc" id="L57">        return new Snapshot(Instant.now(), &quot;LOCAL_INSTANCE&quot;, users.size(), totalSessions,</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                unidentifiedSessions, users.size() &gt; rows.size(), rows);</span>
+    }
+
+    private static Identity identity(Object principal) {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (principal instanceof OidcUser oidc) {</span>
+            // Display names may collide or change. Issuer + subject is the identity;
+            // neither claims nor tokens are serialized by this projection.
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">            if (oidc.getIssuer() == null || oidc.getSubject() == null) return null;</span>
+<span class="fc" id="L66">            return new Identity(&quot;OIDC&quot;, oidc.getIssuer().toString(), oidc.getSubject());</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (principal instanceof UserDetails user) {</span>
+<span class="fc" id="L69">            return new Identity(&quot;LOCAL&quot;, &quot;&quot;, user.getUsername());</span>
+        }
+<span class="fc" id="L71">        return null; // Never fall back to arbitrary principal.toString().</span>
+    }
+
+    private static String displayName(Object principal) {
+        String name;
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (principal instanceof OidcUser oidc) {</span>
+<span class="fc" id="L77">            name = oidc.getPreferredUsername();</span>
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">            if (name == null || name.isBlank()) name = oidc.getSubject();</span>
+        } else {
+<span class="fc" id="L80">            name = ((UserDetails) principal).getUsername();</span>
+        }
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        return name.length() &lt;= MAX_DISPLAY_NAME_LENGTH</span>
+<span class="fc" id="L83">                ? name</span>
+<span class="fc" id="L84">                : name.substring(0, MAX_DISPLAY_NAME_LENGTH - 1) + &quot;…&quot;;</span>
+    }
+
+<span class="fc" id="L87">    private record Identity(String kind, String issuer, String subject) { }</span>
+<span class="fc" id="L88">    public record UserSessions(String username, String authenticationType, int sessionCount, Instant lastRequest) { }</span>
+<span class="fc" id="L89">    public record Snapshot(Instant timestamp, String scope, int userCount, int sessionCount,</span>
+                           int unidentifiedSessionCount, boolean truncated, List&lt;UserSessions&gt; users) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

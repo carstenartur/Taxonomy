@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureFigurePlanner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ArchitectureFigurePlanner.java</span></div><h1>ArchitectureFigurePlanner.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.diagram.*;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/** Deterministic, complete graph partitions; all limits are checked before raster allocation. */
+<span class="fc" id="L10">public final class ArchitectureFigurePlanner {</span>
+    public static final int MAX_NODES = 500, MAX_EDGES = 1000, MAX_PANELS = 250;
+    public static final double MAX_DETAIL_WIDTH = 1010, MAX_DETAIL_HEIGHT = 650;
+
+    public record Panel(
+            String id,
+            DiagramModel diagram,
+            DiagramScene scene,
+            List&lt;String&gt; nodeIds,
+            List&lt;String&gt; edgeIds,
+            boolean overview) {
+<span class="fc" id="L21">        public Panel {</span>
+<span class="fc" id="L22">            nodeIds = List.copyOf(nodeIds);</span>
+<span class="fc" id="L23">            edgeIds = List.copyOf(edgeIds);</span>
+<span class="fc" id="L24">        }</span>
+    }
+
+    public record Plan(Panel overview, List&lt;Panel&gt; details) {
+<span class="fc" id="L28">        public Plan {</span>
+<span class="fc" id="L29">            details = List.copyOf(details);</span>
+<span class="fc" id="L30">        }</span>
+    }
+
+<span class="fc" id="L33">    private final LayeredDiagramLayoutService layout = new LayeredDiagramLayoutService();</span>
+
+    public Plan plan(DiagramModel diagram, DiagramScene scene) {
+<span class="fc" id="L36">        validate(diagram, scene);</span>
+<span class="fc" id="L37">        Map&lt;String, DiagramNode&gt; nodes =</span>
+<span class="fc" id="L38">                diagram.nodes().stream()</span>
+<span class="fc" id="L39">                        .sorted(Comparator.comparing(DiagramNode::id))</span>
+<span class="fc" id="L40">                        .collect(</span>
+<span class="fc" id="L41">                                Collectors.toMap(</span>
+<span class="pc" id="L42">                                        DiagramNode::id, n -&gt; n, (a, b) -&gt; a, LinkedHashMap::new));</span>
+<span class="fc" id="L43">        List&lt;Panel&gt; panels = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">        List&lt;DiagramEdge&gt; current = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L45">        LinkedHashSet&lt;String&gt; ids = new LinkedHashSet&lt;&gt;();</span>
+        for (var edge :
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                diagram.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {</span>
+<span class="fc" id="L48">            var proposed = new LinkedHashSet&lt;&gt;(ids);</span>
+<span class="fc" id="L49">            proposed.add(edge.sourceId());</span>
+<span class="fc" id="L50">            proposed.add(edge.targetId());</span>
+<span class="fc" id="L51">            var proposedEdges = new ArrayList&lt;&gt;(current);</span>
+<span class="fc" id="L52">            proposedEdges.add(edge);</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">            if (!current.isEmpty() &amp;&amp; !fits(diagram, nodes, proposed, proposedEdges)) {</span>
+<span class="fc" id="L54">                panels.add(panel(diagram, nodes, ids, current, panels.size() + 1));</span>
+<span class="fc" id="L55">                current = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L56">                ids.clear();</span>
+            }
+<span class="fc" id="L58">            ids.add(edge.sourceId());</span>
+<span class="fc" id="L59">            ids.add(edge.targetId());</span>
+<span class="fc" id="L60">            current.add(edge);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">            if (!fits(diagram, nodes, ids, current))</span>
+<span class="nc" id="L62">                throw new IllegalArgumentException(</span>
+<span class="nc" id="L63">                        &quot;Word detail panel cannot meet layout bounds: &quot; + edge.id());</span>
+<span class="fc" id="L64">        }</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (!current.isEmpty()) panels.add(panel(diagram, nodes, ids, current, panels.size() + 1));</span>
+<span class="fc" id="L66">        Set&lt;String&gt; covered =</span>
+<span class="fc" id="L67">                panels.stream().flatMap(p -&gt; p.nodeIds().stream()).collect(Collectors.toSet());</span>
+<span class="fc" id="L68">        ids = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (String id : nodes.keySet()) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (covered.contains(id)) continue;</span>
+<span class="fc" id="L71">            var proposed = new LinkedHashSet&lt;&gt;(ids);</span>
+<span class="fc" id="L72">            proposed.add(id);</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">            if (!ids.isEmpty() &amp;&amp; !fits(diagram, nodes, proposed, List.of())) {</span>
+<span class="fc" id="L74">                panels.add(panel(diagram, nodes, ids, List.of(), panels.size() + 1));</span>
+<span class="fc" id="L75">                ids.clear();</span>
+            }
+<span class="fc" id="L77">            ids.add(id);</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (!ids.isEmpty()) panels.add(panel(diagram, nodes, ids, List.of(), panels.size() + 1));</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (panels.size() &gt; MAX_PANELS)</span>
+<span class="nc" id="L81">            throw new IllegalArgumentException(</span>
+                    &quot;Word document policy ceiling exceeded: detail panels&quot;);
+<span class="fc" id="L83">        Set&lt;String&gt; actualNodes =</span>
+<span class="fc" id="L84">                panels.stream().flatMap(p -&gt; p.nodeIds().stream()).collect(Collectors.toSet());</span>
+<span class="fc" id="L85">        Set&lt;String&gt; actualEdges =</span>
+<span class="fc" id="L86">                panels.stream().flatMap(p -&gt; p.edgeIds().stream()).collect(Collectors.toSet());</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (!actualNodes.equals(nodes.keySet())</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                || !actualEdges.equals(</span>
+<span class="fc" id="L89">                        diagram.edges().stream().map(DiagramEdge::id).collect(Collectors.toSet())))</span>
+<span class="nc" id="L90">            throw new IllegalArgumentException(&quot;Incomplete architecture detail coverage&quot;);</span>
+<span class="fc" id="L91">        return new Plan(</span>
+                new Panel(
+                        &quot;architecture-overview&quot;,
+                        diagram,
+                        scene,
+<span class="fc" id="L96">                        nodes.keySet().stream().toList(),</span>
+<span class="fc" id="L97">                        diagram.edges().stream().map(DiagramEdge::id).sorted().toList(),</span>
+                        true),
+                panels);
+    }
+
+    private boolean fits(
+            DiagramModel source,
+            Map&lt;String, DiagramNode&gt; nodes,
+            Set&lt;String&gt; ids,
+            List&lt;DiagramEdge&gt; edges) {
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">        if (ids.size() &gt; 12 || edges.size() &gt; 18) return false;</span>
+<span class="fc" id="L108">        DiagramScene scene = layout.layout(subset(source, nodes, ids, edges));</span>
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">        return scene.width() &lt;= MAX_DETAIL_WIDTH &amp;&amp; scene.height() &lt;= MAX_DETAIL_HEIGHT;</span>
+    }
+
+    private Panel panel(
+            DiagramModel source,
+            Map&lt;String, DiagramNode&gt; nodes,
+            Set&lt;String&gt; ids,
+            List&lt;DiagramEdge&gt; edges,
+            int number) {
+<span class="fc" id="L118">        DiagramModel model = subset(source, nodes, ids, edges);</span>
+<span class="fc" id="L119">        DiagramScene scene = layout.layout(model);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (ids.size() &gt; 12</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                || edges.size() &gt; 18</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                || scene.width() &gt; MAX_DETAIL_WIDTH</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                || scene.height() &gt; MAX_DETAIL_HEIGHT)</span>
+<span class="nc" id="L124">            throw new IllegalArgumentException(&quot;Word detail panel exceeds actual scene bounds&quot;);</span>
+<span class="fc" id="L125">        return new Panel(</span>
+                &quot;architecture-detail-&quot; + number,
+                model,
+                scene,
+<span class="fc" id="L129">                ids.stream().sorted().toList(),</span>
+<span class="fc" id="L130">                edges.stream().map(DiagramEdge::id).toList(),</span>
+                false);
+    }
+
+    private DiagramModel subset(
+            DiagramModel source,
+            Map&lt;String, DiagramNode&gt; nodes,
+            Set&lt;String&gt; ids,
+            List&lt;DiagramEdge&gt; edges) {
+<span class="fc" id="L139">        return new DiagramModel(</span>
+<span class="fc" id="L140">                source.title(),</span>
+<span class="fc" id="L141">                ids.stream().sorted().map(nodes::get).toList(),</span>
+<span class="fc" id="L142">                List.copyOf(edges),</span>
+<span class="fc" id="L143">                source.layout());</span>
+    }
+
+    public static void validate(DiagramModel model, DiagramScene scene) {
+<span class="pc bpc" id="L147" title="2 of 4 branches missed.">        if (model == null</span>
+                || scene == null
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                || model.nodes() == null</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                || model.nodes().isEmpty()</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                || model.edges() == null)</span>
+<span class="nc" id="L152">            throw new IllegalArgumentException(&quot;Missing frozen architecture graph&quot;);</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">        if (model.nodes().size() &gt; MAX_NODES || model.edges().size() &gt; MAX_EDGES)</span>
+<span class="fc" id="L154">            throw new IllegalArgumentException(</span>
+                    &quot;Word document policy ceiling exceeded: maximum 500 nodes and 1000 relations&quot;);
+<span class="fc" id="L156">        var nodeIds = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L157">        var edgeIds = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (var node : model.nodes())</span>
+<span class="pc bpc" id="L159" title="3 of 6 branches missed.">            if (node.id() == null || node.id().isBlank() || !nodeIds.add(node.id()))</span>
+<span class="nc" id="L160">                throw new IllegalArgumentException(&quot;Invalid architecture node ID&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (var edge : model.edges()) {</span>
+<span class="pc bpc" id="L162" title="3 of 6 branches missed.">            if (edge.id() == null || edge.id().isBlank() || !edgeIds.add(edge.id()))</span>
+<span class="nc" id="L163">                throw new IllegalArgumentException(&quot;Invalid architecture relation ID&quot;);</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">            if (!nodeIds.contains(edge.sourceId()) || !nodeIds.contains(edge.targetId()))</span>
+<span class="fc" id="L165">                throw new IllegalArgumentException(</span>
+<span class="fc" id="L166">                        &quot;Missing architecture relation endpoint: &quot; + edge.id());</span>
+<span class="fc" id="L167">        }</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (scene.nodes().size() != nodeIds.size()</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                || scene.edges().size() != edgeIds.size()</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                || !nodeIds.equals(</span>
+<span class="fc" id="L171">                        scene.nodes().stream()</span>
+<span class="fc" id="L172">                                .map(DiagramSceneNode::id)</span>
+<span class="fc" id="L173">                                .collect(Collectors.toSet()))</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || !edgeIds.equals(</span>
+<span class="fc" id="L175">                        scene.edges().stream()</span>
+<span class="fc" id="L176">                                .map(DiagramSceneEdge::id)</span>
+<span class="fc" id="L177">                                .collect(Collectors.toSet())))</span>
+<span class="nc" id="L178">            throw new IllegalArgumentException(&quot;Incomplete frozen architecture scene&quot;);</span>
+<span class="fc" id="L179">        Map&lt;String, DiagramNode&gt; canonical =</span>
+<span class="fc" id="L180">                model.nodes().stream().collect(Collectors.toMap(DiagramNode::id, n -&gt; n));</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (var n : scene.nodes())</span>
+<span class="fc" id="L182">            if (!new DiagramNode(</span>
+<span class="fc" id="L183">                            n.id(),</span>
+<span class="fc" id="L184">                            n.label(),</span>
+<span class="fc" id="L185">                            n.type(),</span>
+<span class="fc" id="L186">                            n.relevance(),</span>
+<span class="fc" id="L187">                            n.anchor(),</span>
+<span class="fc" id="L188">                            n.layer(),</span>
+<span class="fc" id="L189">                            n.depth(),</span>
+<span class="fc" id="L190">                            n.selectedForImpact(),</span>
+<span class="fc" id="L191">                            n.parentId(),</span>
+<span class="fc" id="L192">                            n.container())</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                    .equals(canonical.get(n.id())))</span>
+<span class="nc" id="L194">                throw new IllegalArgumentException(</span>
+<span class="nc" id="L195">                        &quot;Contradictory architecture scene node &quot; + n.id());</span>
+<span class="fc" id="L196">        Map&lt;String, DiagramEdge&gt; edges =</span>
+<span class="fc" id="L197">                model.edges().stream().collect(Collectors.toMap(DiagramEdge::id, e -&gt; e));</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (var e : scene.edges())</span>
+<span class="fc" id="L199">            if (!new DiagramEdge(</span>
+<span class="fc" id="L200">                            e.id(),</span>
+<span class="fc" id="L201">                            e.sourceId(),</span>
+<span class="fc" id="L202">                            e.targetId(),</span>
+<span class="fc" id="L203">                            e.relationType(),</span>
+<span class="fc" id="L204">                            e.relevance(),</span>
+<span class="fc" id="L205">                            e.relationCategory())</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                    .equals(edges.get(e.id())))</span>
+<span class="nc" id="L207">                throw new IllegalArgumentException(</span>
+<span class="nc" id="L208">                        &quot;Contradictory architecture scene relation &quot; + e.id());</span>
+<span class="fc" id="L209">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

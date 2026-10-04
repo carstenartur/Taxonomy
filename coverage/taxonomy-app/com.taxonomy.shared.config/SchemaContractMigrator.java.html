@@ -1,0 +1,635 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SchemaContractMigrator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">SchemaContractMigrator.java</span></div><h1>SchemaContractMigrator.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+
+/** Portable JDBC implementation behind {@link SchemaContractMigration}. */
+final class SchemaContractMigrator {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(SchemaContractMigrator.class);</span>
+    private static final String SHARED_SCOPE = &quot;__shared__&quot;;
+    private static final String UNSPECIFIED_SESSION_SCOPE = &quot;__unspecified__&quot;;
+
+<span class="fc" id="L31">    private static final Set&lt;String&gt; PROPOSAL_LEGACY_COLUMNS = Set.of(</span>
+            &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;);
+<span class="fc" id="L33">    private static final Set&lt;String&gt; PROPOSAL_WORKSPACE_NULLABLE_COLUMNS = Set.of(</span>
+            &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_id&quot;);
+<span class="fc" id="L35">    private static final Set&lt;String&gt; RELATION_WORKSPACE_NULLABLE_COLUMNS = Set.of(</span>
+            &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_id&quot;);
+<span class="fc" id="L37">    private static final Set&lt;String&gt; WORKSPACE_SCOPE_KEY_COLUMNS = Set.of(</span>
+            &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_scope_key&quot;);
+<span class="fc" id="L39">    private static final Set&lt;String&gt; REPOSITORY_SCOPE_KEY_COLUMNS = Set.of(</span>
+            &quot;repository_id&quot;, &quot;source_node_id&quot;, &quot;target_node_id&quot;,
+            &quot;relation_type&quot;, &quot;workspace_scope_key&quot;);
+<span class="fc" id="L42">    private static final Set&lt;String&gt; HYPOTHESIS_LEGACY_COLUMNS = Set.of(</span>
+            &quot;workspace_id&quot;, &quot;source_node_id&quot;, &quot;target_node_id&quot;,
+            &quot;relation_type&quot;, &quot;analysis_session_id&quot;);
+<span class="fc" id="L45">    private static final Set&lt;String&gt; HYPOTHESIS_TARGET_COLUMNS = Set.of(</span>
+            &quot;repository_id&quot;, &quot;workspace_scope_key&quot;, &quot;source_node_id&quot;,
+            &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;analysis_session_scope_key&quot;);
+
+    private final DataSource dataSource;
+
+<span class="fc" id="L51">    SchemaContractMigrator(DataSource dataSource) {</span>
+<span class="fc" id="L52">        this.dataSource = Objects.requireNonNull(dataSource, &quot;dataSource&quot;);</span>
+<span class="fc" id="L53">    }</span>
+
+    void migrate() {
+<span class="fc" id="L56">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L57">            boolean previousAutoCommit = connection.getAutoCommit();</span>
+<span class="fc" id="L58">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L60">                migrateScopedUniqueness(</span>
+                        connection,
+                        &quot;relation_proposal&quot;,
+                        &quot;uk_relation_proposal_scope&quot;,
+<span class="fc" id="L64">                        List.of(</span>
+                                PROPOSAL_LEGACY_COLUMNS,
+                                PROPOSAL_WORKSPACE_NULLABLE_COLUMNS,
+                                WORKSPACE_SCOPE_KEY_COLUMNS),
+                        REPOSITORY_SCOPE_KEY_COLUMNS);
+<span class="fc" id="L69">                migrateScopedUniqueness(</span>
+                        connection,
+                        &quot;taxonomy_relation&quot;,
+                        &quot;uk_taxonomy_relation_scope&quot;,
+<span class="fc" id="L73">                        List.of(</span>
+                                RELATION_WORKSPACE_NULLABLE_COLUMNS,
+                                WORKSPACE_SCOPE_KEY_COLUMNS),
+                        REPOSITORY_SCOPE_KEY_COLUMNS);
+<span class="fc" id="L77">                migrateHypothesisUniqueness(connection);</span>
+<span class="fc" id="L78">                ensurePasswordChangeColumn(connection);</span>
+<span class="fc" id="L79">                connection.commit();</span>
+<span class="fc" id="L80">                log.info(&quot;Verified repository, workspace, hypothesis and account schema contracts&quot;);</span>
+<span class="fc" id="L81">            } catch (SQLException | RuntimeException error) {</span>
+<span class="fc" id="L82">                rollbackQuietly(connection, error);</span>
+<span class="fc" id="L83">                throw new IllegalStateException(</span>
+                        &quot;Unable to migrate Taxonomy schema contracts safely&quot;, error);
+            } finally {
+<span class="fc" id="L86">                connection.setAutoCommit(previousAutoCommit);</span>
+            }
+<span class="nc" id="L88">        } catch (SQLException error) {</span>
+<span class="nc" id="L89">            throw new IllegalStateException(&quot;Unable to open database for schema migration&quot;, error);</span>
+<span class="fc" id="L90">        }</span>
+<span class="fc" id="L91">    }</span>
+
+    private void migrateScopedUniqueness(
+            Connection connection,
+            String logicalTableName,
+            String targetConstraint,
+            List&lt;Set&lt;String&gt;&gt; legacyColumnSets,
+            Set&lt;String&gt; targetColumns) throws SQLException {
+<span class="fc" id="L99">        TableRef table = findTable(connection, logicalTableName);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (table == null) {</span>
+<span class="fc" id="L101">            log.debug(&quot;Schema migration skipped: table {} does not exist&quot;, logicalTableName);</span>
+<span class="fc" id="L102">            return;</span>
+        }
+
+<span class="fc" id="L105">        normalizeWorkspaceScope(connection, table);</span>
+<span class="fc" id="L106">        ensureColumn(connection, table, &quot;repository_id&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L107">        bindLegacyRowsToRepositories(connection, table, logicalTableName);</span>
+<span class="fc" id="L108">        ensureRepositoryForeignKey(connection, table, logicalTableName);</span>
+<span class="fc" id="L109">        assertNoScopedDuplicates(connection, table);</span>
+<span class="fc" id="L110">        replaceLegacyUniqueIndexes(</span>
+                connection, table, logicalTableName, legacyColumnSets);
+
+<span class="fc" id="L113">        boolean targetExists = uniqueIndexes(connection, table).stream()</span>
+<span class="fc" id="L114">                .anyMatch(index -&gt; new LinkedHashSet&lt;&gt;(index.columns()).equals(targetColumns));</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (!targetExists) {</span>
+<span class="fc" id="L116">            execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L117">                    + &quot; ADD CONSTRAINT &quot; + quoted(connection, targetConstraint)</span>
+                    + &quot; UNIQUE (repository_id, source_node_id, target_node_id, &quot;
+                    + &quot;relation_type, workspace_scope_key)&quot;);
+<span class="fc" id="L120">            log.info(&quot;Created tenant-scoped unique constraint {} on {}&quot;,</span>
+                    targetConstraint, logicalTableName);
+        }
+<span class="fc" id="L123">    }</span>
+
+    private void migrateHypothesisUniqueness(Connection connection) throws SQLException {
+<span class="fc" id="L126">        String logicalTableName = &quot;relation_hypothesis&quot;;</span>
+<span class="fc" id="L127">        TableRef table = findTable(connection, logicalTableName);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (table == null) {</span>
+<span class="fc" id="L129">            log.debug(&quot;Schema migration skipped: table {} does not exist&quot;, logicalTableName);</span>
+<span class="fc" id="L130">            return;</span>
+        }
+
+<span class="fc" id="L133">        normalizeWorkspaceScope(connection, table);</span>
+<span class="fc" id="L134">        ensureColumn(connection, table, &quot;analysis_session_scope_key&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L135">        execute(connection, &quot;UPDATE &quot; + qualified(connection, table)</span>
+                + &quot; SET analysis_session_id = NULL&quot;
+                + &quot; WHERE analysis_session_id IS NOT NULL&quot;
+                + &quot; AND TRIM(analysis_session_id) = ''&quot;);
+<span class="fc" id="L139">        execute(connection, &quot;UPDATE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L140">                + &quot; SET analysis_session_scope_key = &quot; + sessionScopeExpression());</span>
+<span class="fc" id="L141">        ensureColumn(connection, table, &quot;repository_id&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L142">        bindLegacyRowsToRepositories(connection, table, logicalTableName);</span>
+<span class="fc" id="L143">        ensureRepositoryForeignKey(connection, table, logicalTableName);</span>
+<span class="fc" id="L144">        assertNoHypothesisDuplicates(connection, table);</span>
+<span class="fc" id="L145">        replaceLegacyUniqueIndexes(</span>
+                connection,
+                table,
+                logicalTableName,
+<span class="fc" id="L149">                List.of(HYPOTHESIS_LEGACY_COLUMNS));</span>
+
+<span class="fc" id="L151">        boolean targetExists = uniqueIndexes(connection, table).stream()</span>
+<span class="fc" id="L152">                .anyMatch(index -&gt; new LinkedHashSet&lt;&gt;(index.columns())</span>
+<span class="fc" id="L153">                        .equals(HYPOTHESIS_TARGET_COLUMNS));</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (!targetExists) {</span>
+<span class="fc" id="L155">            execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+                    + &quot; ADD CONSTRAINT &quot;
+<span class="fc" id="L157">                    + quoted(connection,</span>
+                            &quot;uq_hypothesis_repository_workspace_session_relation&quot;)
+                    + &quot; UNIQUE (repository_id, workspace_scope_key, source_node_id, &quot;
+                    + &quot;target_node_id, relation_type, analysis_session_scope_key)&quot;);
+<span class="fc" id="L161">            log.info(&quot;Created repository/session-scoped hypothesis uniqueness&quot;);</span>
+        }
+<span class="fc" id="L163">    }</span>
+
+    private void normalizeWorkspaceScope(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc" id="L168">        ensureColumn(connection, table, &quot;workspace_scope_key&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L169">        execute(connection, &quot;UPDATE &quot; + qualified(connection, table)</span>
+                + &quot; SET workspace_id = NULL&quot;
+                + &quot; WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''&quot;);
+<span class="fc" id="L172">        execute(connection, &quot;UPDATE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L173">                + &quot; SET workspace_scope_key = &quot; + workspaceScopeExpression());</span>
+<span class="fc" id="L174">    }</span>
+
+    private void replaceLegacyUniqueIndexes(
+            Connection connection,
+            TableRef table,
+            String logicalTableName,
+            List&lt;Set&lt;String&gt;&gt; legacyColumnSets) throws SQLException {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (IndexDefinition index : uniqueIndexes(connection, table)) {</span>
+<span class="fc" id="L182">            Set&lt;String&gt; columns = new LinkedHashSet&lt;&gt;(index.columns());</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (legacyColumnSets.contains(columns)) {</span>
+<span class="fc" id="L184">                dropConstraintOrIndex(connection, table, index.name());</span>
+<span class="fc" id="L185">                log.info(&quot;Dropped legacy unique constraint/index {} on {} columns {}&quot;,</span>
+<span class="fc" id="L186">                        index.name(), logicalTableName, index.columns());</span>
+            }
+<span class="fc" id="L188">        }</span>
+<span class="fc" id="L189">    }</span>
+
+    private void bindLegacyRowsToRepositories(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+<span class="fc" id="L195">        execute(connection, &quot;UPDATE &quot; + qualified(connection, tenantTable)</span>
+                + &quot; SET repository_id = NULL&quot;
+                + &quot; WHERE repository_id IS NOT NULL AND TRIM(repository_id) = ''&quot;);
+<span class="fc" id="L198">        bindWorkspaceRowsToSourceRepositories(connection, tenantTable, logicalTableName);</span>
+
+<span class="fc" id="L200">        long unboundWorkspaceRows = singleLong(connection, &quot;SELECT COUNT(*) FROM &quot;</span>
+<span class="fc" id="L201">                + qualified(connection, tenantTable)</span>
+                + &quot; WHERE repository_id IS NULL AND workspace_id IS NOT NULL&quot;);
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (unboundWorkspaceRows &gt; 0) {</span>
+<span class="fc" id="L204">            throw new IllegalStateException(</span>
+                    &quot;Cannot bind &quot; + unboundWorkspaceRows + &quot; existing workspace &quot;
+                            + logicalTableName + &quot; row(s): workspace source repository &quot;
+                            + &quot;provenance is missing or ambiguous&quot;);
+        }
+
+<span class="fc" id="L210">        long unboundCentralRows = singleLong(connection, &quot;SELECT COUNT(*) FROM &quot;</span>
+<span class="fc" id="L211">                + qualified(connection, tenantTable)</span>
+                + &quot; WHERE repository_id IS NULL AND workspace_id IS NULL&quot;);
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (unboundCentralRows == 0) {</span>
+<span class="fc" id="L214">            return;</span>
+        }
+
+<span class="fc" id="L217">        String primaryRepositoryId = requireExactlyOnePrimaryRepository(</span>
+                connection, logicalTableName, unboundCentralRows);
+<span class="fc" id="L219">        String update = &quot;UPDATE &quot; + qualified(connection, tenantTable)</span>
+                + &quot; SET repository_id = ?&quot;
+                + &quot; WHERE repository_id IS NULL AND workspace_id IS NULL&quot;;
+<span class="fc" id="L222">        try (PreparedStatement statement = connection.prepareStatement(update)) {</span>
+<span class="fc" id="L223">            statement.setString(1, primaryRepositoryId);</span>
+<span class="fc" id="L224">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L226">        log.info(&quot;Bound {} legacy central row(s) in {} to the primary repository&quot;,</span>
+<span class="fc" id="L227">                unboundCentralRows, logicalTableName);</span>
+<span class="fc" id="L228">    }</span>
+
+    private void bindWorkspaceRowsToSourceRepositories(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+<span class="fc" id="L234">        long unboundWorkspaceRows = singleLong(connection, &quot;SELECT COUNT(*) FROM &quot;</span>
+<span class="fc" id="L235">                + qualified(connection, tenantTable)</span>
+                + &quot; WHERE repository_id IS NULL AND workspace_id IS NOT NULL&quot;);
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        if (unboundWorkspaceRows == 0) {</span>
+<span class="fc" id="L238">            return;</span>
+        }
+
+<span class="fc" id="L241">        TableRef workspaceTable = findTable(connection, &quot;user_workspace&quot;);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (workspaceTable == null</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">                || !columnExists(connection, workspaceTable, &quot;source_repository_id&quot;)) {</span>
+<span class="nc" id="L244">            throw new IllegalStateException(</span>
+                    &quot;Cannot bind &quot; + unboundWorkspaceRows + &quot; existing workspace &quot;
+                            + logicalTableName + &quot; row(s): user_workspace source repository &quot;
+                            + &quot;provenance is unavailable&quot;);
+        }
+
+<span class="fc" id="L250">        Map&lt;String, String&gt; sourceRepositories = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L251">        String workspaceSelect = &quot;SELECT workspace_id, source_repository_id FROM &quot;</span>
+<span class="fc" id="L252">                + qualified(connection, workspaceTable);</span>
+<span class="fc" id="L253">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L254">             ResultSet result = statement.executeQuery(workspaceSelect)) {</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            while (result.next()) {</span>
+<span class="fc" id="L256">                String workspaceId = normalizeOptional(result.getString(&quot;workspace_id&quot;));</span>
+<span class="fc" id="L257">                String repositoryId = normalizeOptional(result.getString(&quot;source_repository_id&quot;));</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                if (workspaceId == null) {</span>
+<span class="nc" id="L259">                    continue;</span>
+                }
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                if (sourceRepositories.containsKey(workspaceId)</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">                        &amp;&amp; !Objects.equals(sourceRepositories.get(workspaceId), repositoryId)) {</span>
+<span class="nc" id="L263">                    throw new IllegalStateException(</span>
+                            &quot;Workspace &quot; + workspaceId
+                                    + &quot; has ambiguous source repository provenance&quot;);
+                }
+<span class="fc" id="L267">                sourceRepositories.put(workspaceId, repositoryId);</span>
+<span class="fc" id="L268">            }</span>
+        }
+
+<span class="fc" id="L271">        List&lt;WorkspaceTenantRow&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L272">        String rowSelect = &quot;SELECT id, workspace_id FROM &quot;</span>
+<span class="fc" id="L273">                + qualified(connection, tenantTable)</span>
+                + &quot; WHERE repository_id IS NULL AND workspace_id IS NOT NULL&quot;;
+<span class="fc" id="L275">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L276">             ResultSet result = statement.executeQuery(rowSelect)) {</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            while (result.next()) {</span>
+<span class="fc" id="L278">                rows.add(new WorkspaceTenantRow(</span>
+<span class="fc" id="L279">                        result.getObject(&quot;id&quot;),</span>
+<span class="fc" id="L280">                        normalizeOptional(result.getString(&quot;workspace_id&quot;))));</span>
+            }
+        }
+
+<span class="fc" id="L284">        String update = &quot;UPDATE &quot; + qualified(connection, tenantTable)</span>
+                + &quot; SET repository_id = ? WHERE id = ? AND repository_id IS NULL&quot;;
+<span class="fc" id="L286">        try (PreparedStatement statement = connection.prepareStatement(update)) {</span>
+<span class="fc" id="L287">            int batchSize = 0;</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">            for (WorkspaceTenantRow row : rows) {</span>
+<span class="fc" id="L289">                String repositoryId = sourceRepositories.get(row.workspaceId());</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                if (repositoryId == null) {</span>
+<span class="fc" id="L291">                    continue;</span>
+                }
+<span class="fc" id="L293">                statement.setString(1, repositoryId);</span>
+<span class="fc" id="L294">                statement.setObject(2, row.id());</span>
+<span class="fc" id="L295">                statement.addBatch();</span>
+<span class="fc" id="L296">                batchSize++;</span>
+<span class="fc" id="L297">            }</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (batchSize &gt; 0) {</span>
+<span class="fc" id="L299">                statement.executeBatch();</span>
+            }
+        }
+<span class="fc" id="L302">    }</span>
+
+    private String requireExactlyOnePrimaryRepository(
+            Connection connection,
+            String logicalTableName,
+            long unboundCentralRows) throws SQLException {
+<span class="fc" id="L308">        TableRef repositoryTable = findTable(connection, &quot;system_repository&quot;);</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">        if (repositoryTable == null) {</span>
+<span class="nc" id="L310">            throw new IllegalStateException(</span>
+                    &quot;Cannot bind legacy rows in &quot; + logicalTableName
+                            + &quot;: system_repository is missing&quot;);
+        }
+
+<span class="fc" id="L315">        String primaryRepositoryId = null;</span>
+<span class="fc" id="L316">        int primaryCount = 0;</span>
+<span class="fc" id="L317">        String select = &quot;SELECT repository_id, primary_repo FROM &quot;</span>
+<span class="fc" id="L318">                + qualified(connection, repositoryTable);</span>
+<span class="fc" id="L319">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L320">             ResultSet result = statement.executeQuery(select)) {</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            while (result.next()) {</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                if (result.getBoolean(&quot;primary_repo&quot;)) {</span>
+<span class="fc" id="L323">                    primaryCount++;</span>
+<span class="fc" id="L324">                    primaryRepositoryId = normalizeOptional(result.getString(&quot;repository_id&quot;));</span>
+                }
+            }
+        }
+<span class="pc bpc" id="L328" title="2 of 4 branches missed.">        if (primaryCount != 1 || primaryRepositoryId == null) {</span>
+<span class="nc" id="L329">            throw new IllegalStateException(</span>
+                    &quot;Cannot bind &quot; + unboundCentralRows + &quot; existing central &quot;
+                            + logicalTableName + &quot; row(s): expected exactly one primary &quot;
+                            + &quot;repository, found &quot; + primaryCount);
+        }
+<span class="fc" id="L334">        return primaryRepositoryId;</span>
+    }
+
+    private void ensureRepositoryForeignKey(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+<span class="fc" id="L341">        TableRef repositoryTable = findTable(connection, &quot;system_repository&quot;);</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">        if (repositoryTable == null) {</span>
+<span class="nc" id="L343">            throw new IllegalStateException(</span>
+                    &quot;Cannot enforce repository scope for &quot; + logicalTableName
+                            + &quot;: system_repository is missing&quot;);
+        }
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (hasImportedKey(</span>
+                connection,
+                tenantTable,
+                &quot;repository_id&quot;,
+                repositoryTable,
+                &quot;repository_id&quot;)) {
+<span class="fc" id="L353">            return;</span>
+        }
+<span class="fc" id="L355">        String constraintName = &quot;fk_&quot; + logicalTableName + &quot;_repository&quot;;</span>
+<span class="fc" id="L356">        execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, tenantTable)</span>
+<span class="fc" id="L357">                + &quot; ADD CONSTRAINT &quot; + quoted(connection, constraintName)</span>
+                + &quot; FOREIGN KEY (repository_id) REFERENCES &quot;
+<span class="fc" id="L359">                + qualified(connection, repositoryTable) + &quot; (repository_id)&quot;);</span>
+<span class="fc" id="L360">        log.info(&quot;Created repository foreign key {} on {}&quot;,</span>
+                constraintName, logicalTableName);
+<span class="fc" id="L362">    }</span>
+
+    private boolean hasImportedKey(
+            Connection connection,
+            TableRef sourceTable,
+            String sourceColumn,
+            TableRef targetTable,
+            String targetColumn) throws SQLException {
+<span class="fc" id="L370">        try (ResultSet keys = connection.getMetaData().getImportedKeys(</span>
+<span class="fc" id="L371">                sourceTable.catalog(), sourceTable.schema(), sourceTable.name())) {</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            while (keys.next()) {</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">                if (sourceColumn.equalsIgnoreCase(keys.getString(&quot;FKCOLUMN_NAME&quot;))</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">                        &amp;&amp; targetTable.name().equalsIgnoreCase(keys.getString(&quot;PKTABLE_NAME&quot;))</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">                        &amp;&amp; targetColumn.equalsIgnoreCase(keys.getString(&quot;PKCOLUMN_NAME&quot;))) {</span>
+<span class="fc" id="L376">                    return true;</span>
+                }
+            }
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L380">        return false;</span>
+    }
+
+    private void ensurePasswordChangeColumn(Connection connection) throws SQLException {
+<span class="fc" id="L384">        TableRef appUser = findTable(connection, &quot;app_user&quot;);</span>
+<span class="pc bpc" id="L385" title="1 of 4 branches missed.">        if (appUser == null || columnExists(connection, appUser, &quot;must_change_password&quot;)) {</span>
+<span class="fc" id="L386">            return;</span>
+        }
+
+<span class="nc" id="L389">        String product = connection.getMetaData().getDatabaseProductName()</span>
+<span class="nc" id="L390">                .toLowerCase(Locale.ROOT);</span>
+        String definition;
+<span class="nc bnc" id="L392" title="All 2 branches missed.">        if (product.contains(&quot;microsoft&quot;)) {</span>
+<span class="nc" id="L393">            definition = &quot;BIT DEFAULT 0 NOT NULL&quot;;</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        } else if (product.contains(&quot;oracle&quot;)) {</span>
+<span class="nc" id="L395">            definition = &quot;NUMBER(1) DEFAULT 0 NOT NULL&quot;;</span>
+        } else {
+<span class="nc" id="L397">            definition = &quot;BOOLEAN DEFAULT FALSE NOT NULL&quot;;</span>
+        }
+<span class="nc" id="L399">        ensureColumn(connection, appUser, &quot;must_change_password&quot;, definition);</span>
+<span class="nc" id="L400">        log.info(&quot;Added app_user.must_change_password with a safe false default&quot;);</span>
+<span class="nc" id="L401">    }</span>
+
+    private void ensureColumn(
+            Connection connection,
+            TableRef table,
+            String column,
+            String definition) throws SQLException {
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        if (columnExists(connection, table, column)) {</span>
+<span class="fc" id="L409">            return;</span>
+        }
+<span class="fc" id="L411">        execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+                + &quot; ADD &quot; + column + &quot; &quot; + definition);
+<span class="fc" id="L413">    }</span>
+
+    private void assertNoScopedDuplicates(
+            Connection connection,
+            TableRef table) throws SQLException {
+        String sql = &quot;SELECT COUNT(*) FROM (SELECT repository_id, &quot;
+                + &quot;source_node_id, target_node_id, relation_type, &quot;
+<span class="fc" id="L420">                + workspaceScopeExpression() + &quot; AS scope_key, COUNT(*) AS duplicate_count FROM &quot;</span>
+<span class="fc" id="L421">                + qualified(connection, table)</span>
+                + &quot; GROUP BY repository_id, source_node_id, target_node_id, relation_type, &quot;
+<span class="fc" id="L423">                + workspaceScopeExpression()</span>
+                + &quot; HAVING COUNT(*) &gt; 1) taxonomy_duplicates&quot;;
+<span class="fc" id="L425">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L426">             ResultSet result = statement.executeQuery(sql)) {</span>
+<span class="fc" id="L427">            result.next();</span>
+<span class="fc" id="L428">            long duplicateGroups = result.getLong(1);</span>
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">            if (duplicateGroups &gt; 0) {</span>
+<span class="nc" id="L430">                throw new IllegalStateException(&quot;Table &quot; + table.name()</span>
+                        + &quot; contains &quot; + duplicateGroups
+                        + &quot; duplicate repository/source/target/type/workspace groups. &quot;
+                        + &quot;Resolve them before starting the upgraded application.&quot;);
+            }
+        }
+<span class="fc" id="L436">    }</span>
+
+    private void assertNoHypothesisDuplicates(
+            Connection connection,
+            TableRef table) throws SQLException {
+        String sql = &quot;SELECT COUNT(*) FROM (SELECT repository_id, &quot;
+<span class="fc" id="L442">                + workspaceScopeExpression() + &quot; AS workspace_key, &quot;</span>
+                + &quot;source_node_id, target_node_id, relation_type, &quot;
+<span class="fc" id="L444">                + sessionScopeExpression() + &quot; AS session_key, COUNT(*) AS duplicate_count FROM &quot;</span>
+<span class="fc" id="L445">                + qualified(connection, table)</span>
+<span class="fc" id="L446">                + &quot; GROUP BY repository_id, &quot; + workspaceScopeExpression()</span>
+                + &quot;, source_node_id, target_node_id, relation_type, &quot;
+<span class="fc" id="L448">                + sessionScopeExpression()</span>
+                + &quot; HAVING COUNT(*) &gt; 1) hypothesis_duplicates&quot;;
+<span class="fc" id="L450">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L451">             ResultSet result = statement.executeQuery(sql)) {</span>
+<span class="fc" id="L452">            result.next();</span>
+<span class="fc" id="L453">            long duplicateGroups = result.getLong(1);</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">            if (duplicateGroups &gt; 0) {</span>
+<span class="fc" id="L455">                throw new IllegalStateException(&quot;Table &quot; + table.name()</span>
+                        + &quot; contains &quot; + duplicateGroups
+                        + &quot; duplicate repository/workspace/session relation groups. &quot;
+                        + &quot;Resolve them before starting the upgraded application.&quot;);
+            }
+        }
+<span class="fc" id="L461">    }</span>
+
+    private static String workspaceScopeExpression() {
+<span class="fc" id="L464">        return &quot;COALESCE(NULLIF(TRIM(workspace_id), ''), '&quot; + SHARED_SCOPE + &quot;')&quot;;</span>
+    }
+
+    private static String sessionScopeExpression() {
+<span class="fc" id="L468">        return &quot;COALESCE(NULLIF(TRIM(analysis_session_id), ''), '&quot;</span>
+                + UNSPECIFIED_SESSION_SCOPE + &quot;')&quot;;
+    }
+
+    private void dropConstraintOrIndex(
+            Connection connection,
+            TableRef table,
+            String name) throws SQLException {
+        SQLException constraintFailure;
+        try {
+<span class="fc" id="L478">            execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L479">                    + &quot; DROP CONSTRAINT &quot; + quoted(connection, name));</span>
+<span class="fc" id="L480">            return;</span>
+<span class="nc" id="L481">        } catch (SQLException error) {</span>
+<span class="nc" id="L482">            constraintFailure = error;</span>
+        }
+
+<span class="nc" id="L485">        String product = connection.getMetaData().getDatabaseProductName()</span>
+<span class="nc" id="L486">                .toLowerCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">        String sql = product.contains(&quot;microsoft&quot;)</span>
+<span class="nc" id="L488">                ? &quot;DROP INDEX &quot; + quoted(connection, name)</span>
+<span class="nc" id="L489">                        + &quot; ON &quot; + qualified(connection, table)</span>
+<span class="nc" id="L490">                : &quot;DROP INDEX &quot; + qualifiedIndex(connection, table, name);</span>
+        try {
+<span class="nc" id="L492">            execute(connection, sql);</span>
+<span class="nc" id="L493">        } catch (SQLException indexFailure) {</span>
+<span class="nc" id="L494">            indexFailure.addSuppressed(constraintFailure);</span>
+<span class="nc" id="L495">            throw indexFailure;</span>
+<span class="nc" id="L496">        }</span>
+<span class="nc" id="L497">    }</span>
+
+    private List&lt;IndexDefinition&gt; uniqueIndexes(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc" id="L502">        Map&lt;String, Map&lt;Short, String&gt;&gt; byName = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L503">        DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L504">        try (ResultSet indexes = metadata.getIndexInfo(</span>
+<span class="fc" id="L505">                table.catalog(), table.schema(), table.name(), true, false)) {</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">            while (indexes.next()) {</span>
+<span class="fc" id="L507">                String name = indexes.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="fc" id="L508">                String column = indexes.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="fc" id="L509">                short type = indexes.getShort(&quot;TYPE&quot;);</span>
+<span class="pc bpc" id="L510" title="3 of 6 branches missed.">                if (name == null || column == null</span>
+                        || type == DatabaseMetaData.tableIndexStatistic) {
+<span class="nc" id="L512">                    continue;</span>
+                }
+<span class="fc" id="L514">                short ordinal = indexes.getShort(&quot;ORDINAL_POSITION&quot;);</span>
+<span class="fc" id="L515">                byName.computeIfAbsent(name, ignored -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L516">                        .put(ordinal, column.toLowerCase(Locale.ROOT));</span>
+<span class="fc" id="L517">            }</span>
+        }
+<span class="fc" id="L519">        List&lt;IndexDefinition&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L520">        byName.forEach((name, columns) -&gt;</span>
+<span class="fc" id="L521">                result.add(new IndexDefinition(name, List.copyOf(columns.values()))));</span>
+<span class="fc" id="L522">        result.sort(Comparator.comparing(IndexDefinition::name));</span>
+<span class="fc" id="L523">        return result;</span>
+    }
+
+    private TableRef findTable(
+            Connection connection,
+            String logicalName) throws SQLException {
+<span class="fc" id="L529">        DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L530">        String preferredSchema = safeSchema(connection);</span>
+<span class="fc" id="L531">        List&lt;TableRef&gt; matches = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L532">        try (ResultSet tables = metadata.getTables(</span>
+<span class="fc" id="L533">                connection.getCatalog(), null, &quot;%&quot;, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">            while (tables.next()) {</span>
+<span class="fc" id="L535">                String name = tables.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="pc bpc" id="L536" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalName)) {</span>
+<span class="fc" id="L537">                    matches.add(new TableRef(</span>
+<span class="fc" id="L538">                            tables.getString(&quot;TABLE_CAT&quot;),</span>
+<span class="fc" id="L539">                            tables.getString(&quot;TABLE_SCHEM&quot;),</span>
+                            name));
+                }
+<span class="fc" id="L542">            }</span>
+        }
+<span class="fc" id="L544">        return matches.stream()</span>
+<span class="fc" id="L545">                .sorted(Comparator.comparing(table -&gt;</span>
+<span class="nc" id="L546">                        preferredSchema != null</span>
+<span class="nc bnc" id="L547" title="All 4 branches missed.">                                &amp;&amp; preferredSchema.equalsIgnoreCase(table.schema()) ? 0 : 1))</span>
+<span class="fc" id="L548">                .findFirst()</span>
+<span class="fc" id="L549">                .orElse(null);</span>
+    }
+
+    private boolean columnExists(
+            Connection connection,
+            TableRef table,
+            String logicalColumn) throws SQLException {
+<span class="fc" id="L556">        try (ResultSet columns = connection.getMetaData().getColumns(</span>
+<span class="fc" id="L557">                table.catalog(), table.schema(), table.name(), &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">            while (columns.next()) {</span>
+<span class="fc" id="L559">                String name = columns.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L560" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalColumn)) {</span>
+<span class="fc" id="L561">                    return true;</span>
+                }
+<span class="fc" id="L563">            }</span>
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L565">        return false;</span>
+    }
+
+    private long singleLong(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L569">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L570">             ResultSet result = statement.executeQuery(sql)) {</span>
+<span class="fc" id="L571">            result.next();</span>
+<span class="fc" id="L572">            return result.getLong(1);</span>
+        }
+    }
+
+    private void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L577">        log.debug(&quot;Schema migration SQL: {}&quot;, sql);</span>
+<span class="fc" id="L578">        try (Statement statement = connection.createStatement()) {</span>
+<span class="fc" id="L579">            statement.execute(sql);</span>
+        }
+<span class="fc" id="L581">    }</span>
+
+    private String qualified(Connection connection, TableRef table) throws SQLException {
+<span class="fc" id="L584">        String tableName = quoted(connection, table.name());</span>
+<span class="pc bpc" id="L585" title="2 of 4 branches missed.">        return table.schema() == null || table.schema().isBlank()</span>
+<span class="pc" id="L586">                ? tableName : quoted(connection, table.schema()) + &quot;.&quot; + tableName;</span>
+    }
+
+    private String qualifiedIndex(
+            Connection connection,
+            TableRef table,
+            String indexName) throws SQLException {
+<span class="nc" id="L593">        String quotedIndex = quoted(connection, indexName);</span>
+<span class="nc bnc" id="L594" title="All 4 branches missed.">        return table.schema() == null || table.schema().isBlank()</span>
+<span class="nc" id="L595">                ? quotedIndex : quoted(connection, table.schema()) + &quot;.&quot; + quotedIndex;</span>
+    }
+
+    private String quoted(Connection connection, String identifier) throws SQLException {
+<span class="fc" id="L599">        String quote = connection.getMetaData().getIdentifierQuoteString();</span>
+<span class="pc bpc" id="L600" title="2 of 4 branches missed.">        if (quote == null || quote.isBlank()) {</span>
+<span class="nc" id="L601">            return identifier;</span>
+        }
+<span class="fc" id="L603">        return quote + identifier.replace(quote, quote + quote) + quote;</span>
+    }
+
+    private String safeSchema(Connection connection) {
+        try {
+<span class="fc" id="L608">            return connection.getSchema();</span>
+<span class="nc" id="L609">        } catch (SQLException | AbstractMethodError ignored) {</span>
+<span class="nc" id="L610">            return null;</span>
+        }
+    }
+
+    private void rollbackQuietly(Connection connection, Throwable original) {
+        try {
+<span class="fc" id="L616">            connection.rollback();</span>
+<span class="nc" id="L617">        } catch (SQLException rollbackFailure) {</span>
+<span class="nc" id="L618">            original.addSuppressed(rollbackFailure);</span>
+<span class="fc" id="L619">        }</span>
+<span class="fc" id="L620">    }</span>
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L623" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+<span class="fc" id="L626">    private record WorkspaceTenantRow(Object id, String workspaceId) {</span>
+    }
+
+<span class="fc" id="L629">    private record TableRef(String catalog, String schema, String name) {</span>
+    }
+
+<span class="fc" id="L632">    private record IndexDefinition(String name, List&lt;String&gt; columns) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

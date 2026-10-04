@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ActuatorAdminTokenSecurityConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">ActuatorAdminTokenSecurityConfig.java</span></div><h1>ActuatorAdminTokenSecurityConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.DispatcherType;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+
+/**
+ * Lets the dedicated {@link ActuatorSecurityFilter} authenticate non-browser
+ * monitoring clients without weakening the ordinary form-login or Keycloak
+ * authorization rules.
+ *
+ * &lt;p&gt;When no admin token is configured this chain matches nothing, so sensitive
+ * Actuator endpoints retain the normal authenticated-user requirement. When a
+ * token is configured, the exact {@code /actuator} discovery root and all
+ * non-public {@code /actuator/**} paths enter this permit-all chain; the servlet
+ * filter remains the authoritative token validator.&lt;/p&gt;
+ *
+ * &lt;p&gt;The servlet filter has one explicit registration immediately after Spring
+ * Security's delegating filter proxy. That makes authorization select the
+ * correct chain first and prevents component scanning from registering the
+ * machine-token filter at an implicit or duplicate order.&lt;/p&gt;
+ *
+ * &lt;p&gt;CSRF protection remains enabled. The currently exposed token-authenticated
+ * Actuator endpoints are read-only; if a write-capable endpoint is exposed later,
+ * it must also satisfy Spring Security's CSRF protection.&lt;/p&gt;
+ */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L36">public class ActuatorAdminTokenSecurityConfig {</span>
+
+    static final int ACTUATOR_FILTER_ORDER =
+            SecurityFilterProperties.DEFAULT_FILTER_ORDER + 1;
+
+    @Bean
+    ActuatorSecurityFilter actuatorSecurityFilter(
+            @Value(&quot;${admin.token:}&quot;) String adminToken) {
+<span class="fc" id="L44">        return new ActuatorSecurityFilter(adminToken);</span>
+    }
+
+    @Bean(name = ActuatorSecurityFilter.REGISTRATION_NAME)
+    FilterRegistrationBean&lt;ActuatorSecurityFilter&gt;
+            actuatorSecurityFilterRegistration(ActuatorSecurityFilter filter) {
+<span class="fc" id="L50">        FilterRegistrationBean&lt;ActuatorSecurityFilter&gt; registration =</span>
+                new FilterRegistrationBean&lt;&gt;(filter);
+<span class="fc" id="L52">        registration.setName(ActuatorSecurityFilter.REGISTRATION_NAME);</span>
+<span class="fc" id="L53">        registration.addUrlPatterns(&quot;/*&quot;);</span>
+<span class="fc" id="L54">        registration.setDispatcherTypes(DispatcherType.REQUEST);</span>
+<span class="fc" id="L55">        registration.setOrder(ACTUATOR_FILTER_ORDER);</span>
+<span class="fc" id="L56">        return registration;</span>
+    }
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    SecurityFilterChain actuatorAdminTokenSecurityFilterChain(
+            HttpSecurity http,
+            @Value(&quot;${admin.token:}&quot;) String adminToken) throws Exception {
+<span class="fc" id="L64">        RequestMatcher tokenProtectedActuator = request -&gt;</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                adminToken != null</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                        &amp;&amp; !adminToken.isBlank()</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                        &amp;&amp; ActuatorSecurityFilter.isSensitiveActuatorPath(request);</span>
+
+<span class="fc" id="L69">        http.securityMatcher(tokenProtectedActuator)</span>
+<span class="fc" id="L70">                .authorizeHttpRequests(authorize -&gt; authorize.anyRequest().permitAll());</span>
+<span class="fc" id="L71">        return http.build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

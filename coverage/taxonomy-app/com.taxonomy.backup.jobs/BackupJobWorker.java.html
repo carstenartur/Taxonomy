@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobWorker.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.jobs</a> &gt; <span class="el_source">BackupJobWorker.java</span></div><h1>BackupJobWorker.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.jobs;
+
+import com.taxonomy.backup.BackupAuthorizationService;
+import com.taxonomy.backup.archive.*;
+import org.springframework.security.access.AccessDeniedException;
+import java.io.*;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+
+/** A worker owns one database-fenced claim and only that claim's private files. */
+public final class BackupJobWorker {
+    private final JdbcBackupJobStore store;
+    private final BackupAuthorizationService authorization;
+    private final BackupJobStorage storage;
+    private final BackupCaptureSource source;
+    private final BackupArchiveWriter writer;
+    public BackupJobWorker(JdbcBackupJobStore store, BackupAuthorizationService authorization, BackupJobStorage storage,
+<span class="fc" id="L19">                           BackupCaptureSource source, BackupArchiveWriter writer) {</span>
+<span class="fc" id="L20">        this.store = Objects.requireNonNull(store); this.authorization = Objects.requireNonNull(authorization);</span>
+<span class="fc" id="L21">        this.storage = Objects.requireNonNull(storage); this.source = Objects.requireNonNull(source); this.writer = Objects.requireNonNull(writer);</span>
+<span class="fc" id="L22">    }</span>
+    public boolean runNext() {
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (Thread.currentThread().isInterrupted()) return false;</span>
+<span class="fc" id="L25">        cleanup();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        var next = store.claim(UUID.randomUUID()); if (next.isEmpty()) return false;</span>
+<span class="fc" id="L27">        var claim = next.get(); var progress = new Progress(claim); BackupJobState stage = BackupJobState.CAPTURING;</span>
+<span class="fc" id="L28">        boolean published = false;</span>
+        try {
+<span class="fc" id="L30">            progress.force();</span>
+<span class="fc" id="L31">            Path work = storage.workDirectory(claim);</span>
+            BackupArchiveWriter.PublishedArchive archive;
+<span class="fc" id="L33">            try (var captured = source.capture(claim.job().authorization(), work.resolve(&quot;spool&quot;), progress)) {</span>
+<span class="fc" id="L34">                progress.force(); store.transition(claim, BackupJobState.WRITING); stage = BackupJobState.WRITING; progress.reset();</span>
+<span class="fc" id="L35">                archive = writer.write(captured, storage.archiveTarget(claim), progress, () -&gt; {</span>
+<span class="fc" id="L36">                    progress.force(); store.transition(claim, BackupJobState.VERIFYING); progress.reset();</span>
+<span class="fc" id="L37">                });</span>
+            }
+            // Capture is deleted before READY releases the temporary-space reservation.
+<span class="fc" id="L40">            Files.deleteIfExists(work.resolve(&quot;spool&quot;));</span>
+<span class="fc" id="L41">            progress.force();</span>
+<span class="fc" id="L42">            store.ready(claim, new BackupArtifact(claim.artifactName(), archive.length(), archive.sha256(), archive.encrypted()));</span>
+<span class="fc" id="L43">            published = true;</span>
+<span class="fc" id="L44">        } catch (IOException | RuntimeException failure) {</span>
+            // Never persist or log exception/source text. Interrupt is temporarily cleared only for terminal bookkeeping.
+<span class="fc" id="L46">            boolean interrupted = Thread.interrupted();</span>
+            try {
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">                var code = progress.failure != null ? progress.failure : failure instanceof AccessDeniedException ? BackupJobFailure.ACCESS_REVOKED</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                        : failure instanceof BackupCapacityException ? BackupJobFailure.STORAGE_FULL</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                        : stage == BackupJobState.CAPTURING ? BackupJobFailure.CAPTURE_FAILED : BackupJobFailure.ARCHIVE_INVALID;</span>
+<span class="pc" id="L51">                try { store.fail(claim, code); } catch (BackupJobFencedException expired) { store.recoverExpired(); }</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            } finally { if (interrupted) Thread.currentThread().interrupt(); }</span>
+        } finally {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (!published) {</span>
+<span class="fc" id="L55">                boolean interrupted = Thread.interrupted();</span>
+                try {
+<span class="fc" id="L57">                    storage.discard(claim.artifactName());</span>
+<span class="fc" id="L58">                    var job = store.find(claim.job().id());</span>
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">                    if (job.isPresent() &amp;&amp; !job.get().state().active())</span>
+<span class="fc" id="L60">                        store.storageCleaned(new JdbcBackupJobStore.Cleanup(claim.job().id(), claim.owner(), claim.attempt(), false));</span>
+<span class="nc" id="L61">                } catch (IOException | RuntimeException unavailable) { /* Durable pending reservation is retried by cleanup. */ }</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                finally { if (interrupted) Thread.currentThread().interrupt(); }</span>
+            }
+        }
+<span class="fc" id="L65">        return true;</span>
+    }
+    public void cleanup() {
+<span class="fc" id="L68">        store.recoverExpired();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (var item : store.cleanupCandidates()) {</span>
+            try {
+<span class="fc" id="L71">                storage.discard(item.directoryName());</span>
+<span class="fc" id="L72">                store.storageCleaned(item);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (item.expired()) store.removeExpired(item.id());</span>
+<span class="pc" id="L74">            } catch (IOException | BackupJobFencedException unavailable) { /* Another download/node can hold the file; retry on the next sweep. */ }</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+    private final class Progress implements ArchiveProgress {
+        final BackupJobClaim claim;
+<span class="fc" id="L79">        final long deadline = System.nanoTime() + Duration.ofHours(1).toNanos();</span>
+        long bytes, checked, checkedAt;
+        BackupJobFailure failure;
+<span class="fc" id="L82">        Progress(BackupJobClaim claim) { this.claim = claim; }</span>
+        public void check(long bytes) throws IOException {
+<span class="fc" id="L84">            this.bytes = bytes;</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">            if (Thread.currentThread().isInterrupted() || System.nanoTime() - deadline &gt;= 0) {</span>
+<span class="nc" id="L86">                failure = BackupJobFailure.WORKER_EXPIRED; throw interrupted();</span>
+            }
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">            if (System.nanoTime() - checkedAt &gt;= 250_000_000 || bytes - checked &gt;= 4L &lt;&lt; 20) force();</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">        void reset() throws IOException { bytes = 0; checked = 0; checkedAt = 0; force(); }</span>
+        void force() throws IOException {
+            try {
+<span class="fc" id="L93">                authorization.requireJobAccess(claim.job().authorization().principalId(), claim.job().authorization());</span>
+<span class="fc" id="L94">                store.heartbeat(claim, bytes); checkedAt = System.nanoTime(); checked = bytes;</span>
+<span class="nc" id="L95">            } catch (AccessDeniedException revoked) { failure = BackupJobFailure.ACCESS_REVOKED; throw interrupted(); }</span>
+<span class="nc" id="L96">            catch (BackupJobFencedException expired) { failure = BackupJobFailure.WORKER_EXPIRED; throw interrupted(); }</span>
+<span class="fc" id="L97">            catch (BackupJobCancelledException cancelled) { failure = BackupJobFailure.CAPTURE_FAILED; throw interrupted(); }</span>
+<span class="fc" id="L98">        }</span>
+        private InterruptedIOException interrupted() {
+<span class="fc" id="L100">            Thread.currentThread().interrupt(); return new InterruptedIOException(&quot;Backup processing stopped&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationPublicationEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationPublicationEntity.java</span></div><h1>IntegrationPublicationEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/**
+ * Owned exclusively by the scoped IntegrationStore transaction.
+ */
+@Entity
+@Table(name = &quot;interop_publication&quot;, indexes = { @Index(name = &quot;ix_interop_publication_scope&quot;, columnList = &quot;scope_id,connection_id&quot;) })
+public class IntegrationPublicationEntity {
+
+    @Id
+    @Column(name = &quot;id&quot;, nullable = false, length = 36)
+    String id;
+
+    @Column(name = &quot;scope_id&quot;, nullable = false, length = 64)
+    String scopeId;
+
+    @Column(name = &quot;connection_id&quot;, nullable = false, length = 36)
+    String connectionId;
+
+    @Column(name = &quot;schema_version&quot;, nullable = false)
+    int schemaVersion;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;request_json&quot;, nullable = false)
+    String requestJson;
+
+    @Column(name = &quot;config_fingerprint&quot;, nullable = false, length = 64)
+    String configFingerprint;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;preview_json&quot;)
+    String previewJson;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;plan_json&quot;)
+    String planJson;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;review_json&quot;)
+    String reviewJson;
+
+    @Column(name = &quot;phase&quot;, nullable = false, length = 40)
+    String phase;
+
+    @Column(name = &quot;predecessor_id&quot;, length = 36)
+    String predecessorId;
+
+    @Column(name = &quot;common_checkpoint_id&quot;, length = 36)
+    String commonCheckpointId;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;local_state_json&quot;)
+    String localStateJson;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;bindings_json&quot;)
+    String bindingsJson;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;completion_json&quot;)
+    String completionJson;
+
+    @Column(name = &quot;failure_code&quot;, length = 64)
+    String failureCode;
+
+    @Column(name = &quot;reserved_revision&quot;, nullable = false)
+    long reservedRevision;
+
+    @Column(name = &quot;lease_owner&quot;, length = 36)
+    String leaseOwner;
+
+    @Column(name = &quot;lease_until&quot;, length = 40)
+    String leaseUntil;
+
+    @Column(name = &quot;lease_epoch&quot;, nullable = false)
+    long leaseEpoch;
+
+    @Column(name = &quot;created_at&quot;, nullable = false, length = 40)
+    String createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false, length = 40)
+    String updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    long rowVersion;
+
+<span class="fc" id="L92">    protected IntegrationPublicationEntity() {</span>
+<span class="fc" id="L93">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

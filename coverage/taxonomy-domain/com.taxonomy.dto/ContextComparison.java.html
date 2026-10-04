@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContextComparison.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ContextComparison.java</span></div><h1>ContextComparison.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+
+/**
+ * Result of comparing two architecture contexts.
+ *
+ * &lt;p&gt;Provides a multi-level view of changes:
+ * &lt;ol&gt;
+ *   &lt;li&gt;&lt;b&gt;Summary&lt;/b&gt; — counts of added/changed/removed elements and relations&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Semantic changes&lt;/b&gt; — individual change descriptions&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Raw DSL diff&lt;/b&gt; — textual diff for expert users&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * @param left          the left (older/source) context reference
+ * @param right         the right (newer/target) context reference
+ * @param summary       change counts
+ * @param changes       individual semantic changes
+ * @param rawDslDiff    raw DSL text diff (optional, may be null)
+ */
+<span class="fc" id="L21">public record ContextComparison(</span>
+    ContextRef left,
+    ContextRef right,
+    DiffSummary summary,
+    List&lt;SemanticChange&gt; changes,
+    String rawDslDiff
+) {
+
+    /**
+     * Counts of changes grouped by category.
+     *
+     * @param elementsAdded    number of new elements
+     * @param elementsChanged  number of modified elements
+     * @param elementsRemoved  number of deleted elements
+     * @param relationsAdded   number of new relations
+     * @param relationsChanged number of modified relations
+     * @param relationsRemoved number of deleted relations
+     */
+<span class="fc" id="L39">    public record DiffSummary(</span>
+        int elementsAdded,
+        int elementsChanged,
+        int elementsRemoved,
+        int relationsAdded,
+        int relationsChanged,
+        int relationsRemoved
+    ) {
+        public int totalChanges() {
+<span class="fc" id="L48">            return elementsAdded + elementsChanged + elementsRemoved</span>
+                 + relationsAdded + relationsChanged + relationsRemoved;
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

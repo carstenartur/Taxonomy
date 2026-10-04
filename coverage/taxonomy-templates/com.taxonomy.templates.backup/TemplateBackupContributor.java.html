@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TemplateBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates.backup</a> &gt; <span class="el_source">TemplateBackupContributor.java</span></div><h1>TemplateBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.templates.DocumentTemplateGitRepository;
+
+import java.io.IOException;
+import java.util.*;
+
+/** Administrative, installation-owned templates must never leak into a workspace export. */
+public final class TemplateBackupContributor implements BackupDataContributor {
+    private static final String CURRENT_ROOT = &quot;data/templates/current/&quot;;
+    private final DocumentTemplateGitRepository repository;
+
+<span class="fc" id="L15">    public TemplateBackupContributor(DocumentTemplateGitRepository repository) {</span>
+<span class="fc" id="L16">        this.repository = Objects.requireNonNull(repository);</span>
+<span class="fc" id="L17">    }</span>
+
+<span class="nc" id="L19">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;templates&quot;); }</span>
+<span class="nc" id="L20">    @Override public int schemaVersion() { return 1; }</span>
+<span class="nc" id="L21">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;storage.git.document-templates&quot;); }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (!profile.isInstallation()) return List.of(&quot;templates: installation-owned administrative templates are outside the selected workspace scope&quot;);</span>
+<span class="nc bnc" id="L24" title="All 2 branches missed.">        if (profile == BackupProfile.INSTALLATION_CURRENT) return List.of(&quot;templates: earlier revisions and repository history are excluded from current state&quot;);</span>
+<span class="nc" id="L25">        return List.of();</span>
+    }
+
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L29">        var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (profile == BackupProfile.INSTALLATION_FULL) throw new IOException(&quot;Template repository history capture is required for INSTALLATION_FULL&quot;);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (!profile.isInstallation()) {</span>
+<span class="fc" id="L32">            PortableRows.document(sink, &quot;data/templates/inventory.json&quot;,</span>
+<span class="fc" id="L33">                    new Inventory(1, profile, Selection.OUTSIDE_SCOPE, null, List.of()));</span>
+<span class="fc" id="L34">            return;</span>
+        }
+<span class="fc" id="L36">        var captured = repository.captureCurrentTree(sink::checkpoint);</span>
+        // Check complete destination paths before emitting the first payload, including added prefixes.
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (var file : captured.files()) {</span>
+<span class="fc" id="L39">            sink.checkpoint();</span>
+<span class="fc" id="L40">            PortableGitPaths.requireFile(CURRENT_ROOT + file.path());</span>
+<span class="fc" id="L41">        }</span>
+<span class="fc" id="L42">        var files = new ArrayList&lt;FileRecord&gt;();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (var file : captured.files()) {</span>
+<span class="fc" id="L44">            sink.checkpoint();</span>
+<span class="fc" id="L45">            try (var input = repository.openCapturedFile(file)) {</span>
+<span class="fc" id="L46">                var entry = sink.write(CURRENT_ROOT + file.path(), input);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">                if (entry.length() != file.length()) throw new IOException(&quot;Template capture size mismatch&quot;);</span>
+<span class="fc" id="L48">                files.add(new FileRecord(file.path(), file.objectId(), entry));</span>
+            }
+<span class="fc" id="L50">        }</span>
+<span class="fc" id="L51">        PortableRows.document(sink, &quot;data/templates/inventory.json&quot;,</span>
+<span class="fc" id="L52">                new Inventory(1, profile, Selection.CURRENT_TREE, captured.commitId(), List.copyOf(files)));</span>
+<span class="fc" id="L53">    }</span>
+
+<span class="fc" id="L55">    public enum Selection { CURRENT_TREE, OUTSIDE_SCOPE }</span>
+<span class="fc" id="L56">    public record FileRecord(String sourcePath, String sourceObjectId, BackupEntry entry) { }</span>
+<span class="fc" id="L57">    public record Inventory(int schemaVersion, BackupProfile profile, Selection selection, String sourceCommit,</span>
+                            List&lt;FileRecord&gt; files) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

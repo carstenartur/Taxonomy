@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SubtaxonomyAnalysisTask.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">SubtaxonomyAnalysisTask.java</span></div><h1>SubtaxonomyAnalysisTask.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.List;
+import java.util.Objects;
+
+/** Score one taxonomy root (relevance plus hierarchical descent) for one requirement version. */
+public record SubtaxonomyAnalysisTask(AnalysisEnvelope envelope, TaxonomyShardRoot root)
+        implements AnalysisTaskMessage {
+
+<span class="fc" id="L10">    public SubtaxonomyAnalysisTask {</span>
+<span class="fc" id="L11">        Objects.requireNonNull(envelope, &quot;envelope&quot;);</span>
+<span class="fc" id="L12">        Objects.requireNonNull(root, &quot;root&quot;);</span>
+<span class="fc" id="L13">        envelope.requireType(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK);</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">        if (envelope.taskType() != AnalysisTaskType.SUBTAXONOMY_ANALYSIS</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">                || !AnalysisTaskId.subtaxonomy(envelope.operationId(), root).equals(envelope.taskId())</span>
+<span class="pc bpc" id="L16" title="1 of 2 branches missed.">                || !envelope.roots().equals(List.of(root))) {</span>
+<span class="fc" id="L17">            throw new IllegalArgumentException(&quot;Sub-taxonomy task identity does not match its root&quot;);</span>
+        }
+<span class="fc" id="L19">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

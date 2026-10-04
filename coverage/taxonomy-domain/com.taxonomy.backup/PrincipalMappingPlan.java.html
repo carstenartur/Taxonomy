@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalMappingPlan.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">PrincipalMappingPlan.java</span></div><h1>PrincipalMappingPlan.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.*;
+
+/** Read-only proposal until an authorized operator explicitly approves target assignments. */
+public final class PrincipalMappingPlan {
+<span class="fc" id="L7">    public enum Status { MATCHED, UNRESOLVED, CONFLICT }</span>
+    public record Entry(Status status, Set&lt;PrincipalId&gt; candidates) {
+<span class="fc" id="L9">        public Entry { Objects.requireNonNull(status); candidates = Set.copyOf(candidates); }</span>
+    }
+    private final Map&lt;PrincipalId, Entry&gt; entries;
+    private final Set&lt;PrincipalId&gt; enabledTargets;
+    private final PrincipalMapping mapping;
+
+<span class="fc" id="L15">    PrincipalMappingPlan(Map&lt;PrincipalId, Entry&gt; entries, Set&lt;PrincipalId&gt; enabledTargets, PrincipalMapping mapping) {</span>
+<span class="fc" id="L16">        this.entries = Map.copyOf(entries); this.enabledTargets = Set.copyOf(enabledTargets); this.mapping = mapping;</span>
+<span class="fc" id="L17">    }</span>
+<span class="fc" id="L18">    public Map&lt;PrincipalId, Entry&gt; entries() { return entries; }</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">    public boolean approved() { return mapping != null; }</span>
+    public void requireResolved() {
+<span class="pc bpc" id="L21" title="2 of 4 branches missed.">        if (entries.values().stream().anyMatch(e -&gt; e.status() != Status.MATCHED)) throw new IllegalStateException(&quot;Unresolved identity mappings&quot;);</span>
+<span class="nc" id="L22">    }</span>
+    /** Omitted source identities stay quarantined; names and suggested matches never auto-fill selections. */
+    public PrincipalMappingPlan approve(Map&lt;PrincipalId, PrincipalId&gt; selections, PrincipalId actor, String rationale) {
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">        if (!entries.keySet().containsAll(selections.keySet()) || !enabledTargets.containsAll(selections.values())) {</span>
+<span class="fc" id="L26">            throw new IllegalArgumentException(&quot;Unknown source or unavailable target principal&quot;);</span>
+        }
+<span class="fc" id="L28">        return new PrincipalMappingPlan(entries, enabledTargets, new PrincipalMapping(selections, actor, rationale));</span>
+    }
+    public PrincipalMapping toApprovedMapping() {
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (mapping == null) throw new IllegalStateException(&quot;Identity mapping requires explicit approval&quot;);</span>
+<span class="fc" id="L32">        return mapping;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

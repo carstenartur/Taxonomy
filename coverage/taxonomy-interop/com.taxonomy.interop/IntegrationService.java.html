@@ -1,0 +1,582 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationService.java</span></div><h1>IntegrationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.interop.planning.PlanningExchangeBridge;
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureCommand.StoreExchangeEvidence;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.exchange.ArchiMateExchangeCodec;
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.exchange.OslcRequirementsCodec;
+import com.taxonomy.interop.oslc.OslcTransport;
+import com.taxonomy.interop.sparx.SparxSnapshots;
+import com.taxonomy.interop.sparx.SparxOslcAmReader;
+import com.taxonomy.exchange.sparx.SparxOslcAmCodec;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.publication.IntegrationPublicationService;
+import com.taxonomy.interop.persistence.IntegrationStore;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.workspace.service.*;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.CommandMetadata;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Exact-scope reviewed operations. The ORM commit precedes the independently retryable Git checkpoint. */
+@Service
+public class IntegrationService {
+    private final IntegrationStore store;
+    private final ExchangeConnectorRegistry connectors;
+    private final IntegrationDomainAdapter domain;
+    private final WorkspaceArchitectureIntegrationPort editor;
+    private final IntegrationDiff diff;
+    private final IntegrationJson json;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService memberships;
+    private final OslcTransport remote;
+    private final SparxOslcAmReader sparxRemote;
+    private final WorkspaceAccessService workspaceAccess;
+    @org.springframework.beans.factory.annotation.Autowired private IntegrationPublicationService publicationService;
+
+    public IntegrationService(IntegrationStore store, ExchangeConnectorRegistry connectors, IntegrationDomainAdapter domain,
+                              WorkspaceArchitectureIntegrationPort editor, IntegrationDiff diff, IntegrationJson json,
+<span class="fc" id="L50">                              SystemRepositoryService repositories, RepositoryMembershipService memberships, OslcTransport remote, WorkspaceAccessService workspaceAccess) {</span>
+<span class="fc" id="L51">        this.store = store; this.connectors = connectors; this.domain = domain; this.editor = editor;</span>
+<span class="fc" id="L52">        this.diff = diff; this.json = json; this.repositories = repositories; this.memberships = memberships;</span>
+<span class="fc" id="L53">        this.remote = remote;</span>
+<span class="fc" id="L54">        this.sparxRemote = new SparxOslcAmReader(remote);</span>
+<span class="fc" id="L55">        this.workspaceAccess = workspaceAccess;</span>
+<span class="fc" id="L56">    }</span>
+    public record CreateConnection(UUID id, String name, String connectorId, AuthorityMode authority,
+                                   ExternalScope externalScope, Long projectId, String remoteProfile, String profileVersion) {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        public CreateConnection { profileVersion = profileVersion == null ? &quot;1&quot; : profileVersion; }</span>
+        public CreateConnection(UUID id, String name, String connectorId, AuthorityMode authority,
+                                ExternalScope externalScope, Long projectId, String remoteProfile) {
+<span class="fc" id="L62">            this(id, name, connectorId, authority, externalScope, projectId, remoteProfile, &quot;1&quot;);</span>
+<span class="fc" id="L63">        }</span>
+    }
+<span class="fc" id="L65">    public record PreviewRequest(UUID operationId, InternalState expected, String mediaType, boolean completeScope) {}</span>
+<span class="fc" id="L66">    public record ExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion) {}</span>
+<span class="fc" id="L67">    public record RemoteRequest(UUID operationId, InternalState expected, String resource, String expectedExternalVersion) {}</span>
+<span class="fc" id="L68">    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List&lt;OperationSummary&gt; history, String oslcCatalogPath, PublicationAvailability publicationAvailability) {</span>
+<span class="nc" id="L69">        public Overview(Connection connection, InternalState current, Checkpoint checkpoint, List&lt;OperationSummary&gt; history, String oslcCatalogPath) { this(connection, current, checkpoint, history, oslcCatalogPath, new PublicationAvailability(false, Set.of(), Set.of(), &quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;)); }</span>
+    }
+
+<span class="fc" id="L72">    public List&lt;IntegrationDescriptor&gt; profiles(RepositoryContext context) { authorize(context, false); return connectors.descriptors(); }</span>
+<span class="nc" id="L73">    public List&lt;Connection&gt; connections(RepositoryContext context) { authorize(context, false); return store.list(context); }</span>
+    public Connection create(RepositoryContext context, CreateConnection request) {
+<span class="fc" id="L75">        authorize(context, true);</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (request.id() == null || request.connectorId() == null</span>
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">                || request.authority() == null || request.externalScope() == null)</span>
+<span class="fc" id="L78">            throw new IllegalArgumentException(&quot;Connection identity, connector, authority and external scope are required&quot;);</span>
+<span class="pc bpc" id="L79" title="3 of 6 branches missed.">        if (request.name() == null || request.name().isBlank() || request.name().length() &gt; 160)</span>
+<span class="nc" id="L80">            throw new IllegalArgumentException(&quot;Connection name must have 1–160 characters&quot;);</span>
+<span class="fc" id="L81">        var descriptor = connectors.require(request.connectorId(), request.profileVersion()).descriptor();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (!Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.PUBLISH_TARGET).contains(request.authority())</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">                &amp;&amp; !descriptor.capabilities().contains(Capability.FILE_IMPORT) &amp;&amp; !descriptor.capabilities().contains(Capability.READ_LINK))</span>
+<span class="nc" id="L84">            throw new IllegalArgumentException(&quot;Profile has no inbound capability&quot;);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (Set.of(ReqifExchangeCodec.PROFILE, OslcRequirementsCodec.PROFILE).contains(request.connectorId())) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (request.projectId() == null) throw new IllegalArgumentException(&quot;ReqIF requires a project&quot;);</span>
+<span class="fc" id="L87">            domain.requireProject(context, request.projectId());</span>
+        }
+<span class="pc bpc" id="L89" title="2 of 6 branches missed.">        if (Set.of(OslcRequirementsCodec.PROFILE, SparxOslcAmCodec.PROFILE).contains(request.connectorId()) &amp;&amp; (request.remoteProfile() == null || !request.remoteProfile().matches(&quot;[A-Za-z0-9_-]{1,100}&quot;)))</span>
+<span class="nc" id="L90">            throw new IllegalArgumentException(&quot;OSLC requires a configured remote profile&quot;);</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        if (ArchiMateExchangeCodec.PROFILE.equals(request.connectorId()) &amp;&amp; request.projectId() != null) throw new IllegalArgumentException(&quot;ArchiMate targets a workspace model, not a requirements project&quot;);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (request.projectId() != null) domain.requireProject(context, request.projectId());</span>
+<span class="fc" id="L93">        var repository = repositories.getRepository(context.repositoryId());</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (SparxOslcAmCodec.PROFILE.equals(request.connectorId())) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (!Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.IMPORT_COPY, AuthorityMode.MIRROR_READ).contains(request.authority()))</span>
+<span class="nc" id="L96">                throw new IntegrationProblem(&quot;AUTHORITY_MODE&quot;, 409, &quot;PCS AM profile supports read and reviewed pull only&quot;);</span>
+<span class="fc" id="L97">            sparxRemote.validate(context, new Connection(request.id(), repository.getOwnerType() + &quot;:&quot; + repository.getOwnerId(),</span>
+<span class="fc" id="L98">                    request.name(), descriptor.id(), descriptor.version(), request.authority(), request.externalScope(),</span>
+<span class="fc" id="L99">                    request.projectId(), request.remoteProfile(), 0, null, null, context.username()), null);</span>
+        }
+<span class="fc" id="L101">        return store.create(context, request.id(), repository.getOwnerType() + &quot;:&quot; + repository.getOwnerId(), request.name(), descriptor.id(),</span>
+<span class="fc" id="L102">                descriptor.version(), request.authority(), request.externalScope(), request.projectId(), request.remoteProfile());</span>
+    }
+<span class="fc" id="L104">    public Overview overview(RepositoryContext context, UUID connectionId) { return overview(context, connectionId, null, null); }</span>
+    public Overview overview(RepositoryContext context, UUID connectionId, String rootResource, String selector) {
+<span class="fc" id="L106">        authorize(context, false); Connection connection = store.read(context, connectionId);</span>
+<span class="fc" id="L107">        return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),</span>
+<span class="fc" id="L108">                store.checkpoint(context, connectionId), store.history(context, connectionId), &quot;/oslc/scopes/&quot; + context.repositoryWorkspaceScopeKey()</span>
+<span class="pc bpc" id="L109" title="4 of 10 branches missed.">                + &quot;/catalog?repositoryId=&quot; + encode(context.repositoryId()) + &quot;&amp;workspaceId=&quot; + encode(context.workspaceId()) + &quot;&amp;branch=&quot; + encode(context.branch()), publicationService == null ? new PublicationAvailability(false, Set.of(), Set.of(), &quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;) : publicationService.availability(context, connectionId, rootResource == null || rootResource.isBlank() || selector == null || selector.isBlank() ? null : new PublicationScope(connection.externalScope(), rootResource, selector)));</span>
+    }
+<span class="fc" id="L111">    public PublicationOperation previewPublication(RepositoryContext context, UUID connection, PublicationPreviewRequest request) { return publicationService.previewPublication(context, connection, request); }</span>
+<span class="fc" id="L112">    public PublicationOperation publish(RepositoryContext context, UUID connection, PublicationReview review) { return publicationService.publish(context, connection, review); }</span>
+<span class="fc" id="L113">    public PublicationOperation publication(RepositoryContext context, UUID connection, UUID operation) { return publicationService.publication(context, connection, operation); }</span>
+<span class="fc" id="L114">    public PublicationOperation reconcilePublication(RepositoryContext context, UUID connection, UUID operation, ReconciliationPreviewRequest request) { return publicationService.previewPublicationReconciliation(context, connection, operation, request); }</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">    public Object retryOperation(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.retryPublication(context, connection, operation) : retry(context, connection, operation); }</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    public Object cancelOperation(RepositoryContext context, UUID connection, UUID operation, String rationale) { boolean publication = isPublication(context, connection, operation); var cancelled = cancel(context, connection, operation, rationale); return publication ? publicationService.publication(context, connection, operation) : cancelled; }</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">    public IntegrationDomainAdapter.EndpointIndex operationEndpointOptions(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.endpointOptions(context, connection, operation) : endpointOptions(context, connection, operation); }</span>
+<span class="fc" id="L118">    private boolean isPublication(RepositoryContext context, UUID connection, UUID id) { return Set.of(&quot;PUSH&quot;, &quot;SYNCHRONIZE&quot;).contains(operation(context, connection, id).direction()); }</span>
+    public Operation operation(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L120">        authorize(context, false); return store.operation(context, connectionId, operationId);</span>
+    }
+    public List&lt;Event&gt; events(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L123">        authorize(context, false); return store.events(context, connectionId, operationId);</span>
+    }
+    public List&lt;Identity&gt; identities(RepositoryContext context, UUID connectionId) {
+<span class="fc" id="L126">        authorize(context, false); return store.identities(context, connectionId);</span>
+    }
+    public Operation preview(RepositoryContext context, UUID connectionId, PreviewRequest request, byte[] content) {
+<span class="fc" id="L129">        authorize(context, true);</span>
+<span class="pc bpc" id="L130" title="2 of 4 branches missed.">        if (request.operationId() == null || request.expected() == null) throw precondition();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (content.length &gt; ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;PAYLOAD_LIMIT&quot;, 413, &quot;Exchange exceeds 16 MiB&quot;);</span>
+<span class="fc" id="L132">        Connection connection = store.read(context, connectionId); requireProfile(connection);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (connection.authority() == AuthorityMode.PUBLISH_TARGET) throw new IntegrationProblem(&quot;AUTHORITY_MODE&quot;, 409, &quot;Publish targets cannot import&quot;);</span>
+<span class="fc" id="L134">        var connector = connectors.require(connection.connectorId(), connection.profileVersion());</span>
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">        if (request.mediaType() == null || request.mediaType().isBlank()</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                || !connector.descriptor().capabilities().contains(Capability.FILE_IMPORT)</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                || !connector.descriptor().mediaTypes().contains(request.mediaType()))</span>
+<span class="fc" id="L138">            throw new IntegrationProblem(&quot;UNSUPPORTED_MEDIA&quot;, 415, &quot;Profile does not accept this media type&quot;);</span>
+<span class="fc" id="L139">        String fingerprint = json.fingerprint(Arrays.asList(connection.id(), context.username(), request, ReqifExchangeCodec.digest(content)));</span>
+        // Retry uses the frozen request, even after the accepted operation advanced the workspace.
+<span class="fc" id="L141">        Operation prior = store.locked(context, connectionId, session -&gt; session.find(request.operationId()));</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (prior != null) return replay(prior, fingerprint);</span>
+<span class="fc" id="L143">        IntegrationContext authority = authority(context, connection, request.expected());</span>
+<span class="fc" id="L144">        ExchangeDocument document = connector.previewInbound(new InboundRequest(authority, request.mediaType(), content,</span>
+<span class="fc" id="L145">                ReqifExchangeCodec.digest(content), request.completeScope()));</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (ReqifExchangeCodec.PROFILE.equals(connection.connectorId())) PlanningExchangeBridge.validateInbound(document);</span>
+<span class="fc" id="L147">        return store.locked(context, connectionId, session -&gt; {</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            Operation existing = session.find(request.operationId()); if (existing != null) return replay(existing, fingerprint);</span>
+<span class="fc" id="L149">            var state = domain.snapshot(context, session.connection(), session.identities(), read(context));</span>
+<span class="fc" id="L150">            expect(request.expected(), state.state());</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            ExchangeDocument described = ReqifExchangeCodec.PROFILE.equals(connection.connectorId())</span>
+<span class="fc" id="L152">                    ? PlanningExchangeBridge.describeInbound(document, state.items()) : document;</span>
+<span class="fc" id="L153">            return session.preview(request.operationId(), authority, &quot;INBOUND&quot;, fingerprint, described,</span>
+<span class="fc" id="L154">                    diff.compare(described, connection.authority(), session.identities(), state.items()));</span>
+        });
+    }
+
+    /** Read-only, exact-state native identities for explicit endpoint review controls. */
+    public IntegrationDomainAdapter.EndpointIndex endpointOptions(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L160">        authorize(context, false);</span>
+<span class="fc" id="L161">        Connection connection = store.read(context, connectionId);</span>
+<span class="fc" id="L162">        Operation operation = store.operation(context, connectionId, operationId);</span>
+<span class="fc" id="L163">        requireActor(context, operation); requireProfile(connection);</span>
+<span class="fc" id="L164">        return store.locked(context, connectionId, session -&gt; workspace(context, before -&gt; {</span>
+<span class="fc" id="L165">            var mappings = session.identities();</span>
+<span class="fc" id="L166">            var current = domain.snapshot(context, connection, mappings, before);</span>
+<span class="fc" id="L167">            expect(operation.context().internalState(), current.state());</span>
+<span class="fc" id="L168">            Map&lt;String, Artifact&gt; candidates = new TreeMap&lt;&gt;(current.items());</span>
+<span class="fc" id="L169">            candidates.putAll(ExchangeItems.flatten(operation.document()));</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">            var plans = domain.supportsNativePackages(connection)</span>
+<span class="pc" id="L171">                    ? domain.planRequirements(context, connection, candidates, mappings, before.dsl()) : Map.&lt;String, IntegrationPortfolioPort.RequirementApplyPlan&gt;of();</span>
+<span class="fc" id="L172">            return domain.indexEndpoints(connection, candidates, mappings, plans);</span>
+        }));
+    }
+
+    public Operation apply(RepositoryContext context, UUID connectionId, ReviewedChangeSet review) {
+<span class="fc" id="L177">        authorize(context, true);</span>
+<span class="fc" id="L178">        Connection external = store.read(context, connectionId);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (SparxOslcAmCodec.PROFILE.equals(external.connectorId())) {</span>
+<span class="fc" id="L180">            Operation preview = store.operation(context, connectionId, review.operationId());</span>
+<span class="fc" id="L181">            requireActor(context, preview); requireProfile(external);</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">            if (preview.reviewFingerprint() == null &amp;&amp; preview.status() == OperationStatus.PREVIEWED</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                    &amp;&amp; &quot;INBOUND&quot;.equals(preview.direction())) {</span>
+<span class="fc" id="L184">                RemoteRequest request = json.read(preview.document().metadata().get(&quot;remoteRequest&quot;), RemoteRequest.class);</span>
+<span class="fc" id="L185">                sparxRemote.read(context, external, request.resource(), preview.document().externalVersion());</span>
+            }
+        }
+<span class="fc" id="L188">        Operation result = store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L189">            Connection connection = session.connection(); requireProfile(connection);</span>
+<span class="fc" id="L190">            Operation operation = session.operation(review.operationId());</span>
+<span class="fc" id="L191">            requireActor(context, operation);</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (operation.reviewFingerprint() != null) {</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                if (!operation.reviewFingerprint().equals(json.fingerprint(review))) throw IntegrationProblem.conflict(&quot;REVIEW_ID_REUSED&quot;);</span>
+<span class="fc" id="L194">                return operation;</span>
+            }
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            if (!&quot;INBOUND&quot;.equals(operation.direction())) throw IntegrationProblem.conflict(&quot;OPERATION_DIRECTION&quot;);</span>
+<span class="fc" id="L197">            return workspace(context, before -&gt; {</span>
+<span class="fc" id="L198">            domain.lockProject(context, connection.projectId());</span>
+<span class="fc" id="L199">            List&lt;Identity&gt; mappings = session.identities();</span>
+<span class="fc" id="L200">            var current = domain.snapshot(context, connection, mappings, before);</span>
+<span class="fc" id="L201">            expect(operation.context().internalState(), current.state());</span>
+<span class="fc" id="L202">            Map&lt;String, Identity&gt; known = new TreeMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc" id="L203">            Map&lt;String, Artifact&gt; selected = select(operation, review, current.items(), known);</span>
+<span class="fc" id="L204">            boolean planningProfile = ReqifExchangeCodec.PROFILE.equals(connection.connectorId());</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">            Map&lt;String, Artifact&gt; incomingPlanning = planningProfile &amp;&amp; connection.authority() != AuthorityMode.LINK_ONLY</span>
+<span class="fc" id="L206">                    ? PlanningExchangeBridge.acceptedIncoming(operation.changes(), review.decisions(), selected) : Map.of();</span>
+<span class="fc bfc" id="L207" title="All 4 branches covered.">            if (planningProfile &amp;&amp; connection.authority() != AuthorityMode.LINK_ONLY)</span>
+<span class="fc" id="L208">                selected.replaceAll((key, value) -&gt; PlanningExchangeBridge.retainOmissions(value, current.items().get(key)));</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            boolean planningEntries = !incomingPlanning.isEmpty();</span>
+<span class="fc" id="L210">            ExchangeDocument resultDocument = ExchangeItems.expand(operation.document(), selected);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            boolean linked = connection.authority() == AuthorityMode.LINK_ONLY;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));</span>
+            // Validate the reviewed dependency closure and schema before mutating any canonical data.
+<span class="fc bfc" id="L214" title="All 4 branches covered.">            if (!linked &amp;&amp; changed) connectors.require(connection.connectorId(), connection.profileVersion()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));</span>
+<span class="pc bpc" id="L215" title="1 of 10 branches missed.">            String planningDsl = !linked &amp;&amp; changed &amp;&amp; (domain.supportsNativePackages(connection) || planningEntries) &amp;&amp; connection.projectId() != null</span>
+<span class="fc" id="L216">                    ? domain.portfolioContribution(context).apply(before.dsl()) : before.dsl();</span>
+<span class="pc bpc" id="L217" title="1 of 6 branches missed.">            Map&lt;String, IntegrationPortfolioPort.RequirementApplyPlan&gt; requirementPlans = !linked &amp;&amp; (domain.supportsNativePackages(connection) || planningEntries)</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                    ? domain.planRequirements(context, connection, domain.supportsNativePackages(connection) ? selected : incomingPlanning, mappings, planningDsl) : Map.of();</span>
+<span class="fc" id="L219">            var endpointIndex = domain.indexEndpoints(connection, selected, mappings, requirementPlans);</span>
+            // Selection already contains accepted endpoint choices and retained local approval.
+            // Raw review entries must not independently affect rejected/kept connectors.
+<span class="fc" id="L222">            List&lt;ArchitectureCommand&gt; commands = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L223" title="All 6 branches covered.">            if (!linked &amp;&amp; changed &amp;&amp; connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {</span>
+<span class="fc" id="L224">                commands.addAll(domain.architectureCommands(connection, planningDsl, current.items(), selected, mappings, endpointIndex, Map.of(), review.rationale()));</span>
+<span class="fc" id="L225">                domain.validateCompletePlan(planningDsl, commands, requirementPlans);</span>
+            }
+<span class="pc bpc" id="L227" title="1 of 6 branches missed.">            if (!linked &amp;&amp; changed &amp;&amp; planningEntries) {</span>
+<span class="nc" id="L228">                PlanningExchangeBridge.validateInbound(resultDocument);</span>
+<span class="nc" id="L229">                commands.addAll(PlanningExchangeBridge.commands(incomingPlanning, requirementPlans));</span>
+            }
+<span class="fc" id="L231">            session.beginReview(review);</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">            for (IntegrationChange change : operation.changes()) {</span>
+<span class="fc" id="L233">                Decision decision = review.decisions().get(change.id());</span>
+<span class="fc bfc" id="L234" title="All 4 branches covered.">                if (decision != Decision.ACCEPT &amp;&amp; decision != Decision.TAKE_EXTERNAL) continue;</span>
+<span class="fc" id="L235">                Artifact value = selected.get(change.externalId()); Identity previous = known.get(change.externalId());</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                String business = previous == null ? domain.businessId(connection, null, change.after()) : previous.businessIdentity();</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                Long requirementId = previous == null ? null : previous.requirementId();</span>
+<span class="fc" id="L238">                MappingOverride mapping = review.mappings().get(change.id());</span>
+<span class="pc bpc" id="L239" title="1 of 6 branches missed.">                if (linked &amp;&amp; mapping != null &amp;&amp; mapping.internalIdentity() != null) {</span>
+<span class="fc" id="L240">                    var target = domain.linkTarget(context, connection, before.dsl(), mapping.internalIdentity());</span>
+<span class="fc" id="L241">                    business = target.businessIdentity(); requirementId = target.requirementId();</span>
+                }
+<span class="pc bpc" id="L243" title="2 of 10 branches missed.">                if (!linked &amp;&amp; (value != null ? value.kind() == ArtifactKind.REQUIREMENT : previous != null &amp;&amp; previous.internal().kind() == ArtifactKind.REQUIREMENT)) {</span>
+<span class="fc" id="L244">                    var applied = domain.applyRequirement(context, connection, value, previous, review.rationale());</span>
+<span class="fc" id="L245">                    business = applied.businessIdentity(); requirementId = applied.requirementId();</span>
+<span class="pc bpc" id="L246" title="1 of 8 branches missed.">                } else if (!linked &amp;&amp; value != null &amp;&amp; value.kind() == ArtifactKind.RELATION &amp;&amp; connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL))</span>
+<span class="fc" id="L247">                    business = domain.relationBusinessId(value, endpointIndex, null);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                session.mapping(operation.id(), change.externalId(), business, requirementId, operation.document().externalVersion(), change.after(), value, value == null);</span>
+<span class="fc" id="L249">            }</span>
+<span class="fc" id="L250">            State resultContext = before.state();</span>
+<span class="fc bfc" id="L251" title="All 4 branches covered.">            if (!linked &amp;&amp; changed) {</span>
+                // Only reviewed evidence is put in canonical versions; rejected source remains in the scoped operation journal.
+<span class="fc" id="L253">                ExchangeDocument evidence = new ExchangeDocument(resultDocument.profile(), resultDocument.profileVersion(), resultDocument.externalVersion(),</span>
+<span class="fc" id="L254">                        resultDocument.completeScope(), &quot;&quot;, resultDocument.artifacts(), resultDocument.relations(), resultDocument.placements(), resultDocument.metadata(), resultDocument.losses());</span>
+<span class="fc" id="L255">                String encoded = json.write(evidence);</span>
+<span class="fc" id="L256">                commands.add(new StoreExchangeEvidence(&quot;integration-&quot; + connection.id(), connection.connectorId(), connection.profileVersion(), json.fingerprint(evidence), encoded));</span>
+                try {
+<span class="fc" id="L258">                    resultContext = editor.acceptIntegration(context, before.state(), metadata(operation.id(), review.rationale()), json.fingerprint(review), commands,</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                            connection.projectId() != null ? domain.portfolioContribution(context) : null, checkpointMetadata(operation.id(), review.rationale()));</span>
+<span class="pc" id="L260">                } catch (IOException failure) { throw new UncheckedIOException(failure); }</span>
+            }
+<span class="fc" id="L262">            String projectFingerprint = domain.projectFingerprint(context, connection);</span>
+<span class="fc" id="L263">            InternalState state = new InternalState(context.repositoryId(), resultContext.workspaceScopeKey(), context.branch(), resultContext.commitId(),</span>
+<span class="fc" id="L264">                    resultContext.semanticRevision(), connection.projectId(), projectFingerprint);</span>
+<span class="fc bfc" id="L265" title="All 4 branches covered.">            session.applied(operation.id(), state, resultDocument, !linked &amp;&amp; changed);</span>
+<span class="fc bfc" id="L266" title="All 4 branches covered.">            if (linked || !changed) session.complete(operation.id(), state, resultDocument.externalVersion(), json.fingerprint(semanticItems(selected)), true);</span>
+<span class="fc" id="L267">            return session.operation(operation.id());</span>
+            });
+        });
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        return result.status() == OperationStatus.CHECKPOINT_PENDING ? finish(context, connectionId, result) : result;</span>
+    }
+
+    /** A crash at any point after ORM commit resumes the same frozen Git intent, never reapplies model mutations. */
+    public Operation retry(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L275">        authorize(context, true); Operation operation = store.operation(context, connectionId, operationId); requireActor(context, operation);</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (operation.status() == OperationStatus.COMPLETED) return operation;</span>
+<span class="pc bpc" id="L277" title="2 of 4 branches missed.">        if (operation.status() == OperationStatus.FETCH_PENDING || operation.status() == OperationStatus.FETCH_FAILED)</span>
+<span class="fc" id="L278">            return fetchRemote(context, connectionId, operation);</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (operation.status() != OperationStatus.CHECKPOINT_PENDING) throw IntegrationProblem.conflict(&quot;NOT_RETRYABLE&quot;);</span>
+<span class="nc" id="L280">        return finish(context, connectionId, operation);</span>
+    }
+    private Operation finish(RepositoryContext context, UUID connectionId, Operation operation) {
+        try {
+<span class="fc" id="L284">            InternalState state = operation.resultState();</span>
+<span class="fc" id="L285">            var checkpoint = editor.checkpoint(context,</span>
+<span class="fc" id="L286">                    new State(state.workspaceScopeKey(), state.commitId(), state.semanticRevision()),</span>
+<span class="fc" id="L287">                    checkpointMetadata(operation.id(), operation.review().rationale()));</span>
+<span class="fc" id="L288">            InternalState completed = new InternalState(state.repositoryId(), state.workspaceScopeKey(), state.branch(), checkpoint.state().commitId(),</span>
+<span class="fc" id="L289">                    checkpoint.state().semanticRevision(), state.projectId(), state.projectFingerprint());</span>
+<span class="fc" id="L290">            return store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L291">                session.complete(operation.id(), completed, operation.document().externalVersion(), json.fingerprint(semanticItems(ExchangeItems.flatten(operation.resultDocument()))), true);</span>
+<span class="fc" id="L292">                return session.operation(operation.id());</span>
+            });
+<span class="fc" id="L294">        } catch (IOException | RuntimeException failure) {</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (rejectedCheckpoint(failure)) {</span>
+<span class="fc" id="L296">                store.locked(context, connectionId, session -&gt; { session.checkpointConflict(operation.id()); return null; });</span>
+<span class="fc" id="L297">                throw new IntegrationProblem(&quot;CHECKPOINT_CONFLICT&quot;, 409, &quot;Accepted model changes and their snapshot are durable; reconcile the moved Git version explicitly before starting a new integration review&quot;);</span>
+            }
+<span class="nc" id="L299">            store.locked(context, connectionId, session -&gt; { session.failure(operation.id(), &quot;CHECKPOINT_RETRY_REQUIRED&quot;); return null; });</span>
+<span class="nc" id="L300">            throw new IntegrationProblem(&quot;CHECKPOINT_RETRY_REQUIRED&quot;, 503, &quot;Model changes are durable; retry the pending checkpoint with the same operation identity&quot;);</span>
+        }
+    }
+    private static boolean rejectedCheckpoint(Throwable failure) {
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (WorkspaceArchitectureIntegrationPort.isRevisionConflict(failure)) return true;</span>
+        // Spring's repository exception translation may wrap a durable CommandProblem on retry.
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">        for (int depth = 0; failure != null &amp;&amp; depth &lt; 20; depth++, failure = failure.getCause())</span>
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">            if (failure instanceof ArchitectureDslCommands.CommandProblem problem &amp;&amp; Set.of(&quot;CHECKPOINT_CONFLICT&quot;, &quot;CHECKPOINT_REJECTED&quot;).contains(problem.code())) return true;</span>
+<span class="nc" id="L308">        return false;</span>
+    }
+    public Operation cancel(RepositoryContext context, UUID connectionId, UUID operationId, String rationale) {
+<span class="fc" id="L311">        authorize(context, true); metadata(operationId, rationale);</span>
+<span class="fc" id="L312">        return store.locked(context, connectionId, session -&gt; { requireActor(context, session.operation(operationId)); session.cancel(operationId, rationale); return session.operation(operationId); });</span>
+    }
+
+    public Operation previewRemote(RepositoryContext context, UUID connectionId, RemoteRequest request) {
+<span class="fc" id="L316">        authorize(context, true);</span>
+<span class="pc bpc" id="L317" title="2 of 4 branches missed.">        if (request.operationId() == null || request.expected() == null) throw precondition();</span>
+<span class="fc" id="L318">        Connection connection = store.read(context, connectionId); requireProfile(connection);</span>
+<span class="pc bpc" id="L319" title="2 of 4 branches missed.">        if (!Set.of(OslcRequirementsCodec.PROFILE, SparxOslcAmCodec.PROFILE).contains(connection.connectorId()) || connection.authority() == AuthorityMode.PUBLISH_TARGET)</span>
+<span class="nc" id="L320">            throw new IntegrationProblem(&quot;AUTHORITY_MODE&quot;, 409, &quot;Connection has no remote read capability&quot;);</span>
+<span class="fc" id="L321">        String expectedExternalVersion =</span>
+<span class="fc" id="L322">                OslcTransport.validateExpectedVersion(request.expectedExternalVersion());</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        String resource = (SparxOslcAmCodec.PROFILE.equals(connection.connectorId())</span>
+<span class="fc" id="L324">                ? sparxRemote.validate(context, connection, request.resource())</span>
+<span class="fc" id="L325">                : remote.validate(context, connection, request.resource())).toString();</span>
+<span class="fc" id="L326">        RemoteRequest frozenRequest = new RemoteRequest(</span>
+<span class="fc" id="L327">                request.operationId(), request.expected(), resource, expectedExternalVersion);</span>
+<span class="fc" id="L328">        String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), frozenRequest));</span>
+<span class="fc" id="L329">        Operation pending = store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">            Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);</span>
+<span class="fc" id="L331">            expect(request.expected(), domain.snapshot(context, connection, session.identities(), read(context)).state());</span>
+<span class="fc" id="L332">            var template = new ExchangeDocument(connection.connectorId(), connection.profileVersion(), expectedExternalVersion, false, &quot;&quot;,</span>
+<span class="fc" id="L333">                    List.of(), List.of(), List.of(), Map.of(&quot;resource&quot;, resource, &quot;remoteRequest&quot;, json.write(frozenRequest)), List.of());</span>
+<span class="fc" id="L334">            session.preview(request.operationId(), authority(context, connection, request.expected()), &quot;INBOUND&quot;, fingerprint, template, List.of());</span>
+<span class="fc" id="L335">            session.fetching(request.operationId()); return session.operation(request.operationId());</span>
+        });
+<span class="pc bpc" id="L337" title="1 of 4 branches missed.">        return pending.status() == OperationStatus.FETCH_PENDING || pending.status() == OperationStatus.FETCH_FAILED ? fetchRemote(context, connectionId, pending) : pending;</span>
+    }
+    private Operation fetchRemote(RepositoryContext context, UUID connectionId, Operation pending) {
+        try {
+<span class="fc" id="L341">            Connection connection = store.read(context, connectionId); requireProfile(connection);</span>
+<span class="fc" id="L342">            RemoteRequest request = json.read(pending.document().metadata().get(&quot;remoteRequest&quot;), RemoteRequest.class);</span>
+            ExchangeDocument received;
+            Map&lt;String, String&gt; metadata;
+<span class="fc bfc" id="L345" title="All 2 branches covered.">            if (SparxOslcAmCodec.PROFILE.equals(connection.connectorId())) {</span>
+<span class="fc" id="L346">                received = SparxSnapshots.identify(sparxRemote.read(context, connection, request.resource(), request.expectedExternalVersion()), connectionId);</span>
+<span class="fc" id="L347">                metadata = new TreeMap&lt;&gt;(received.metadata());</span>
+            } else {
+<span class="fc" id="L349">                var response = remote.read(context, connection, request.resource(), request.expectedExternalVersion());</span>
+<span class="fc" id="L350">                var codec = new OslcRequirementsCodec();</span>
+<span class="fc" id="L351">                received = codec.read(response.content(), response.resource(), response.etag(), connection.externalScope().configuration());</span>
+<span class="fc" id="L352">                metadata = new TreeMap&lt;&gt;(received.metadata());</span>
+<span class="fc" id="L353">                metadata.put(&quot;discovery&quot;, json.write(codec.discover(response.content(), response.resource(), response.etag(), connection.externalScope().configuration())));</span>
+            }
+<span class="fc" id="L355">            metadata.put(&quot;remoteRequest&quot;, json.write(request));</span>
+<span class="fc" id="L356">            ExchangeDocument document = new ExchangeDocument(received.profile(), received.profileVersion(), received.externalVersion(), false, received.source(),</span>
+<span class="fc" id="L357">                    received.artifacts(), received.relations(), received.placements(), metadata, received.losses());</span>
+<span class="fc" id="L358">            return store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L359">                Operation currentOperation = session.operation(pending.id());</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">                if (currentOperation.status() == OperationStatus.PREVIEWED) return currentOperation;</span>
+<span class="fc" id="L361">                var current = domain.snapshot(context, connection, session.identities(), read(context)); expect(pending.context().internalState(), current.state());</span>
+<span class="fc" id="L362">                session.fetched(pending.id(), document, diff.compare(document, connection.authority(), session.identities(), current.items()));</span>
+<span class="fc" id="L363">                return session.operation(pending.id());</span>
+            });
+<span class="fc" id="L365">        } catch (RuntimeException failure) {</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">            String code = failure instanceof IntegrationProblem problem ? problem.code() : &quot;REMOTE_FORMAT_REJECTED&quot;;</span>
+<span class="fc" id="L367">            store.locked(context, connectionId, session -&gt; { session.fetchFailed(pending.id(), code); return null; });</span>
+<span class="fc" id="L368">            throw failure;</span>
+        }
+    }
+
+    public Operation previewExport(RepositoryContext context, UUID connectionId, ExportRequest request) {
+<span class="fc" id="L373">        authorize(context, true);</span>
+<span class="pc bpc" id="L374" title="2 of 4 branches missed.">        if (request.operationId() == null || request.expected() == null) throw precondition();</span>
+<span class="fc" id="L375">        return store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L376">            Connection connection = session.connection(); requireProfile(connection);</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">            if (Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.MIRROR_READ).contains(connection.authority()))</span>
+<span class="nc" id="L378">                throw new IntegrationProblem(&quot;AUTHORITY_MODE&quot;, 409, &quot;This authority mode does not permit publication&quot;);</span>
+<span class="fc" id="L379">            var connector = connectors.require(connection.connectorId(), connection.profileVersion());</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">            if (!connector.descriptor().capabilities().contains(Capability.FILE_EXPORT)) throw new IntegrationProblem(&quot;CAPABILITY_UNAVAILABLE&quot;, 409, &quot;Profile has no file export capability&quot;);</span>
+<span class="fc" id="L381">            String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), request));</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">            Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);</span>
+<span class="fc" id="L383">            var document = read(context); List&lt;Identity&gt; mappings = session.identities();</span>
+<span class="fc" id="L384">            var current = domain.snapshot(context, connection, mappings, document); expect(request.expected(), current.state());</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            ExchangeDocument previous = connection.checkpointId() == null ? null : session.operation(connection.checkpointId()).resultDocument();</span>
+<span class="pc bpc" id="L386" title="1 of 4 branches missed.">            if (!Objects.equals(request.expectedExternalVersion(), previous == null ? null : previous.externalVersion())) throw IntegrationProblem.conflict(&quot;EXTERNAL_STATE_CHANGED&quot;);</span>
+<span class="fc" id="L387">            var authority = authority(context, connection, current.state());</span>
+<span class="fc" id="L388">            ExchangeDocument outgoing = domain.exportDocument(connection, current, document, mappings, previous);</span>
+<span class="fc bfc" id="L389" title="All 4 branches covered.">            if (outgoing.losses().stream().noneMatch(loss -&gt; loss.disposition() == LossDisposition.UNSUPPORTED)) {</span>
+<span class="fc" id="L390">            ExchangeFile file = connector.previewOutbound(new OutboundRequest(authority, outgoing, request.expectedExternalVersion()));</span>
+            // Normalize generated types and hierarchy now. The downloaded file is derived solely from this durable snapshot.
+<span class="fc" id="L392">            ExchangeDocument normalized = connector.previewInbound(new InboundRequest(authority, file.mediaType(), file.content(), outgoing.externalVersion(), true));</span>
+<span class="fc" id="L393">            List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;(outgoing.losses());</span>
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">            file.losses().forEach(loss -&gt; { if (!losses.contains(loss)) losses.add(loss); });</span>
+<span class="pc bnc" id="L395" title="All 2 branches missed.">            normalized.losses().forEach(loss -&gt; { if (!losses.contains(loss)) losses.add(loss); });</span>
+<span class="fc" id="L396">            outgoing = new ExchangeDocument(normalized.profile(), normalized.profileVersion(), normalized.externalVersion(), normalized.completeScope(), normalized.source(),</span>
+<span class="fc" id="L397">                    normalized.artifacts(), normalized.relations(), normalized.placements(), normalized.metadata(), losses);</span>
+            }
+<span class="fc" id="L399">            List&lt;IntegrationChange&gt; changes = ExchangeItems.flatten(outgoing).entrySet().stream().map(e -&gt; new IntegrationChange(e.getKey(), e.getKey(), ChangeKind.ADD,</span>
+<span class="fc" id="L400">                    ExchangeItems.fields(e.getValue()).keySet(), json.fingerprint(ExchangeItems.fields(e.getValue())), json.fingerprint(null), null, e.getValue(), List.of())).toList();</span>
+<span class="fc" id="L401">            return session.preview(request.operationId(), authority, &quot;OUTBOUND&quot;, fingerprint, outgoing, changes);</span>
+        });
+    }
+
+    /** Reviewed file delivery is not a remote publish acknowledgement and does not advance the synchronization baseline. */
+    public Operation prepareFile(RepositoryContext context, UUID connectionId, ReviewedChangeSet review) {
+<span class="fc" id="L407">        authorize(context, true);</span>
+<span class="fc" id="L408">        return store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L409">            Operation operation = session.operation(review.operationId()); requireActor(context, operation); requireProfile(session.connection());</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">            if (!&quot;OUTBOUND&quot;.equals(operation.direction())) throw IntegrationProblem.conflict(&quot;OPERATION_DIRECTION&quot;);</span>
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">            if (operation.reviewFingerprint() != null) {</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">                if (!operation.reviewFingerprint().equals(json.fingerprint(review))) throw IntegrationProblem.conflict(&quot;REVIEW_ID_REUSED&quot;);</span>
+<span class="nc" id="L413">                return operation;</span>
+            }
+<span class="fc" id="L415">            return workspace(context, before -&gt; {</span>
+<span class="fc" id="L416">            domain.lockProject(context, session.connection().projectId());</span>
+<span class="fc" id="L417">            List&lt;Identity&gt; known = session.identities();</span>
+<span class="fc" id="L418">            var current = domain.snapshot(context, session.connection(), known, before);</span>
+<span class="fc" id="L419">            expect(operation.context().internalState(), current.state());</span>
+<span class="fc" id="L420">            Map&lt;String, Artifact&gt; selected = select(operation, review, Map.of(), Map.of());</span>
+<span class="fc" id="L421">            ExchangeDocument result = ExchangeItems.expand(operation.document(), selected);</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">            boolean complete = selected.size() == operation.changes().size();</span>
+<span class="fc" id="L423">            result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), complete, result.source(), result.artifacts(), result.relations(), result.placements(), result.metadata(), result.losses());</span>
+<span class="fc" id="L424">            ExchangeFile file = connectors.require(operation.context().profile(), operation.context().profileVersion()).previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));</span>
+<span class="fc" id="L425">            session.beginReview(review); session.applied(operation.id(), operation.context().internalState(), result, false);</span>
+<span class="fc" id="L426">            Map&lt;String, IntegrationDomainAdapter.AppliedRequirement&gt; bindings = domain.exportBindings(session.connection(), current, before, selected);</span>
+<span class="fc" id="L427">            Set&lt;String&gt; existing = known.stream().map(Identity::externalId).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L428" title="All 6 branches covered.">            for (var entry : bindings.entrySet()) if (selected.containsKey(entry.getKey()) &amp;&amp; !existing.contains(entry.getKey()))</span>
+<span class="fc" id="L429">                session.mapping(operation.id(), entry.getKey(), entry.getValue().businessIdentity(), entry.getValue().requirementId(),</span>
+<span class="fc" id="L430">                        null, null, selected.get(entry.getKey()), false);</span>
+<span class="fc" id="L431">            session.file(operation.id(), file);</span>
+<span class="fc" id="L432">            session.complete(operation.id(), operation.context().internalState(), result.externalVersion(), json.fingerprint(result), false);</span>
+<span class="fc" id="L433">            return session.operation(operation.id());</span>
+            });
+        });
+    }
+    public ExchangeFile file(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L438">        authorize(context, false); Operation operation = store.operation(context, connectionId, operationId);</span>
+<span class="pc bpc" id="L439" title="2 of 4 branches missed.">        if (!&quot;OUTBOUND&quot;.equals(operation.direction()) || operation.status() != OperationStatus.COMPLETED) throw IntegrationProblem.conflict(&quot;FILE_NOT_READY&quot;);</span>
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">        if (operation.resultFile() == null) throw IntegrationProblem.conflict(&quot;FILE_NOT_READY&quot;);</span>
+<span class="fc" id="L441">        return operation.resultFile();</span>
+    }
+
+    private Map&lt;String, Artifact&gt; select(Operation operation, ReviewedChangeSet review, Map&lt;String, Artifact&gt; current, Map&lt;String, Identity&gt; known) {
+<span class="fc" id="L445">        Map&lt;String, Artifact&gt; selected = new TreeMap&lt;&gt;(current);</span>
+<span class="fc" id="L446">        Set&lt;String&gt; ids = new HashSet&lt;&gt;(); operation.changes().forEach(c -&gt; ids.add(c.id()));</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">        if (!ids.containsAll(review.decisions().keySet())) throw new IllegalArgumentException(&quot;Review contains unknown change identities&quot;);</span>
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">        if (!review.decisions().keySet().containsAll(review.endpoints().keySet())) throw new IllegalArgumentException(&quot;Endpoint mappings require an explicit item decision&quot;);</span>
+<span class="pc bpc" id="L449" title="2 of 6 branches missed.">        if (!review.endpoints().isEmpty() &amp;&amp; (!&quot;2&quot;.equals(operation.context().profileVersion()) || !SparxSnapshots.isSparx(operation.context().profile())))</span>
+<span class="nc" id="L450">            throw new IllegalArgumentException(&quot;Typed endpoint review requires Sparx version 2&quot;);</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">        if (!review.decisions().keySet().containsAll(review.mappings().keySet())) throw new IllegalArgumentException(&quot;Mappings require an explicit item decision&quot;);</span>
+<span class="pc bpc" id="L452" title="2 of 6 branches missed.">        if (operation.context().authority() != AuthorityMode.LINK_ONLY &amp;&amp; review.mappings().values().stream().anyMatch(m -&gt; m.internalIdentity() != null))</span>
+<span class="nc" id="L453">            throw new IllegalArgumentException(&quot;Internal trace targets require LINK_ONLY authority&quot;);</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">        for (IntegrationChange change : operation.changes()) {</span>
+<span class="fc" id="L455">            Decision decision = review.decisions().get(change.id());</span>
+<span class="pc bpc" id="L456" title="3 of 4 branches missed.">            if (decision == null &amp;&amp; change.kind() != ChangeKind.UNCHANGED) throw new IllegalArgumentException(&quot;Every proposed change needs an explicit decision&quot;);</span>
+<span class="pc bpc" id="L457" title="1 of 6 branches missed.">            if (decision == null || decision == Decision.REJECT || decision == Decision.KEEP_INTERNAL) continue;</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">            if (change.conflicts().contains(&quot;INTERNAL_IDENTITY_REUSED&quot;)) throw IntegrationProblem.conflict(&quot;IDENTITY_REMAP_REQUIRED&quot;);</span>
+<span class="fc bfc" id="L459" title="All 4 branches covered.">            if (change.kind() == ChangeKind.CONFLICT &amp;&amp; decision != Decision.TAKE_EXTERNAL) throw IntegrationProblem.conflict(&quot;CONFLICT_REQUIRES_EXPLICIT_RESOLUTION&quot;);</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">            if (change.after() == null) selected.remove(change.externalId());</span>
+            else {
+<span class="fc" id="L462">                Identity previous = known.get(change.externalId());</span>
+<span class="fc bfc" id="L463" title="All 4 branches covered.">                Artifact baseline = previous == null ? null : previous.external() == null ? previous.internal() : previous.external();</span>
+<span class="fc" id="L464">                Artifact selectedValue = ExchangeItems.merge(baseline, current.get(change.externalId()), change.after());</span>
+<span class="fc bfc" id="L465" title="All 4 branches covered.">                if (&quot;INBOUND&quot;.equals(operation.direction()) &amp;&amp; selectedValue.kind() == ArtifactKind.RELATION) {</span>
+<span class="fc" id="L466">                    selectedValue = reviewedEndpointAuthority(selectedValue, current.get(change.externalId()));</span>
+                }
+<span class="fc" id="L468">                MappingOverride mapping = review.mappings().get(change.id());</span>
+<span class="fc" id="L469">                Artifact mapped = remap(selectedValue, mapping);</span>
+<span class="fc" id="L470">                EndpointOverride endpoint = review.endpoints().get(change.id());</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">                if (endpoint != null) {</span>
+<span class="pc bpc" id="L472" title="2 of 4 branches missed.">                    if (mapped.kind() != ArtifactKind.RELATION || endpoint.projection() == null)</span>
+<span class="nc" id="L473">                        throw new IntegrationProblem(&quot;SPARX_ENDPOINT_MAPPING_REQUIRED&quot;, 422, &quot;Endpoint projection requires a relation and an explicit choice&quot;);</span>
+<span class="pc bpc" id="L474" title="1 of 6 branches missed.">                    if (mapping != null &amp;&amp; mapping.canonicalType() != null &amp;&amp; endpoint.canonicalType() != null</span>
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">                            &amp;&amp; !mapping.canonicalType().equals(endpoint.canonicalType()))</span>
+<span class="fc" id="L476">                        throw new IntegrationProblem(&quot;SPARX_ENDPOINT_MAPPING_REQUIRED&quot;, 422, &quot;Relation type and endpoint review must agree&quot;);</span>
+<span class="fc" id="L477">                    Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(mapped.extensions());</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">                    for (String key : List.of(&quot;nativeSource&quot;, &quot;nativeTarget&quot;, &quot;nativeType&quot;)) extensions.remove(key);</span>
+<span class="fc" id="L479">                    extensions.put(&quot;nativeProjection&quot;, endpoint.projection().name());</span>
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">                    if (endpoint.sourceInternalIdentity() != null) extensions.put(&quot;nativeSource&quot;, endpoint.sourceInternalIdentity());</span>
+<span class="pc bpc" id="L481" title="1 of 2 branches missed.">                    if (endpoint.targetInternalIdentity() != null) extensions.put(&quot;nativeTarget&quot;, endpoint.targetInternalIdentity());</span>
+<span class="fc" id="L482">                    mapped = new Artifact(mapped.id(), mapped.kind(), mapped.type(), mapped.title(), mapped.text(), mapped.attributes(), extensions);</span>
+<span class="fc bfc" id="L483" title="All 4 branches covered.">                    if (endpoint.projection() == RelationProjection.ARCHITECTURE_RELATION &amp;&amp; endpoint.canonicalType() != null) {</span>
+<span class="fc" id="L484">                        mapping = new MappingOverride(endpoint.canonicalType(), null, null, null);</span>
+<span class="fc" id="L485">                        mapped = remap(mapped, mapping);</span>
+                    }
+                }
+<span class="fc bfc" id="L488" title="All 4 branches covered.">                if (mapped.kind() == ArtifactKind.RELATION &amp;&amp; mapped.extensions().containsKey(&quot;nativeProjection&quot;)) {</span>
+                    // Persist the same effective type used by canonical planning and exchange export.
+<span class="fc" id="L490">                    Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(mapped.extensions());</span>
+<span class="fc" id="L491">                    extensions.remove(&quot;nativeType&quot;);</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">                    if (RelationProjection.ARCHITECTURE_RELATION.name().equals(extensions.get(&quot;nativeProjection&quot;))</span>
+<span class="pc bpc" id="L493" title="1 of 2 branches missed.">                            &amp;&amp; extensions.get(&quot;canonicalType&quot;) != null)</span>
+<span class="fc" id="L494">                        extensions.put(&quot;nativeType&quot;, extensions.get(&quot;canonicalType&quot;));</span>
+<span class="fc" id="L495">                    mapped = new Artifact(mapped.id(), mapped.kind(), mapped.type(), mapped.title(), mapped.text(), mapped.attributes(), extensions);</span>
+                }
+<span class="pc bpc" id="L497" title="1 of 6 branches missed.">                if (SparxSnapshots.isSparx(operation.context().profile()) &amp;&amp; mapping != null &amp;&amp; mapping.canonicalType() != null) {</span>
+<span class="pc bpc" id="L498" title="1 of 2 branches missed.">                    String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())</span>
+<span class="pc bpc" id="L499" title="1 of 2 branches missed.">                            : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                    if (type == null) throw new IntegrationProblem(&quot;SPARX_TYPE_MAPPING&quot;, 422,</span>
+                            &quot;The selected canonical relation type is not supported by this Sparx profile; choose a supported mapping or reject the change&quot;);
+<span class="fc" id="L502">                    Map&lt;String, String&gt; tags = new TreeMap&lt;&gt;(mapped.attributes());</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">                    tags.put(&quot;tag:taxonomy.&quot; + (mapped.kind() == ArtifactKind.ELEMENT ? &quot;elementType&quot; : &quot;relationType&quot;), mapping.canonicalType());</span>
+                    // V2 retains the scalar tag emitted for the generic taxonomy:RelationType extension.
+<span class="pc bpc" id="L505" title="2 of 4 branches missed.">                    if (&quot;2&quot;.equals(operation.context().profileVersion()) &amp;&amp; mapped.kind() == ArtifactKind.RELATION)</span>
+<span class="fc" id="L506">                        tags.put(&quot;tag:taxonomy.RelationType&quot;, mapping.canonicalType());</span>
+<span class="fc" id="L507">                    mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());</span>
+                }
+<span class="pc bpc" id="L509" title="3 of 6 branches missed.">                if (operation.direction().equals(&quot;OUTBOUND&quot;) &amp;&amp; operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">                        &amp;&amp; mapping != null &amp;&amp; mapping.canonicalType() != null) {</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">                    String type = mapped.kind() == ArtifactKind.ELEMENT ? IntegrationDomainAdapter.archimateType(mapping.canonicalType())</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">                            : mapped.kind() == ArtifactKind.RELATION ? IntegrationDomainAdapter.archimateRelation(mapping.canonicalType()) : mapped.type();</span>
+<span class="nc" id="L513">                    mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), mapped.attributes(), mapped.extensions());</span>
+                }
+<span class="fc" id="L515">                selected.put(change.externalId(), mapped);</span>
+            }
+<span class="fc" id="L517">        }</span>
+<span class="pc bpc" id="L518" title="2 of 4 branches missed.">        if (!selected.isEmpty() &amp;&amp; !selected.containsKey(&quot;METADATA:package&quot;))</span>
+<span class="nc" id="L519">            throw new IntegrationProblem(&quot;REVIEW_DEPENDENCY_REQUIRED&quot;, 422, &quot;Accepted exchange objects require their reviewed type and package metadata&quot;);</span>
+<span class="fc" id="L520">        return selected;</span>
+    }
+    /** Retain only locally accepted approval; incoming evidence cannot grant or clear it. */
+    static Artifact reviewedEndpointAuthority(Artifact incoming, Artifact accepted) {
+<span class="fc" id="L524">        Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(incoming.extensions());</span>
+<span class="fc bfc" id="L525" title="All 2 branches covered.">        for (String key : List.of(&quot;nativeProjection&quot;, &quot;nativeSource&quot;, &quot;nativeTarget&quot;, &quot;nativeType&quot;)) {</span>
+<span class="fc" id="L526">            extensions.remove(key);</span>
+<span class="fc bfc" id="L527" title="All 4 branches covered.">            if (accepted != null &amp;&amp; accepted.extensions().containsKey(key)) extensions.put(key, accepted.extensions().get(key));</span>
+<span class="fc" id="L528">        }</span>
+<span class="fc" id="L529">        return new Artifact(incoming.id(), incoming.kind(), incoming.type(), incoming.title(), incoming.text(), incoming.attributes(), extensions);</span>
+    }
+
+    private static Artifact remap(Artifact artifact, MappingOverride mapping) {
+<span class="fc" id="L533">        return IntegrationMappingFields.remap(artifact, mapping);</span>
+    }
+    private Map&lt;String, Map&lt;String, String&gt;&gt; semanticItems(Map&lt;String, Artifact&gt; items) {
+<span class="fc" id="L536">        Map&lt;String, Map&lt;String, String&gt;&gt; values = new TreeMap&lt;&gt;(); items.forEach((key, value) -&gt; values.put(key, ExchangeItems.fields(value))); return values;</span>
+    }
+    private IntegrationContext authority(RepositoryContext context, Connection connection, InternalState state) {
+<span class="fc" id="L539">        return new IntegrationContext(connection.id(), connection.authority(), connection.externalScope(), state, context.username(), connection.connectorId(), connection.profileVersion());</span>
+    }
+    private void requireProfile(Connection connection) {
+        try {
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">            if (!connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().version().equals(connection.profileVersion()))</span>
+<span class="nc" id="L544">                throw IntegrationProblem.conflict(&quot;PROFILE_VERSION_CHANGED&quot;);</span>
+<span class="fc" id="L545">        } catch (IntegrationProblem failure) {</span>
+<span class="pc bpc" id="L546" title="1 of 2 branches missed.">            if (&quot;UNKNOWN_CONNECTOR&quot;.equals(failure.code())) throw IntegrationProblem.conflict(&quot;PROFILE_VERSION_CHANGED&quot;);</span>
+<span class="nc" id="L547">            throw failure;</span>
+<span class="fc" id="L548">        }</span>
+<span class="fc" id="L549">    }</span>
+    private WorkspaceDocument read(RepositoryContext context) {
+<span class="pc" id="L551">        try { return editor.read(context, null); } catch (IOException failure) { throw new IntegrationProblem(&quot;VERSION_UNAVAILABLE&quot;, 503, &quot;Architecture state is temporarily unavailable&quot;); }</span>
+    }
+    private &lt;T&gt; T workspace(RepositoryContext context, java.util.function.Function&lt;WorkspaceDocument, T&gt; action) {
+<span class="pc" id="L554">        try { return editor.locked(context, action); } catch (IOException failure) { throw new IntegrationProblem(&quot;VERSION_UNAVAILABLE&quot;, 503, &quot;Architecture state is temporarily unavailable&quot;); }</span>
+    }
+    private void authorize(RepositoryContext context, boolean write) {
+<span class="pc bpc" id="L557" title="3 of 6 branches missed.">        if (context == null || context.username() == null || context.scope() != RepositoryScope.WORKSPACE) throw new IntegrationProblem(&quot;PRIVATE_WORKSPACE_REQUIRED&quot;, 403, &quot;Select an authorized private workspace&quot;);</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">        if (!workspaceAccess.canUsePrivateWorkspace(context)) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L559">        var repository = repositories.getRepository(context.repositoryId());</span>
+<span class="pc bpc" id="L560" title="2 of 6 branches missed.">        if (!(write ? memberships.canContribute(repository, context.username()) : memberships.canRead(repository, context.username()))) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L561">    }</span>
+    private static void expect(InternalState expected, InternalState actual) {
+<span class="pc bpc" id="L563" title="1 of 2 branches missed.">        if (expected == null) throw precondition();</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        if (!expected.equals(actual)) throw IntegrationProblem.conflict(&quot;INTERNAL_STATE_CHANGED&quot;);</span>
+<span class="fc" id="L565">    }</span>
+<span class="fc" id="L566">    private static String encode(String value) { return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8); }</span>
+<span class="nc" id="L567">    private static IntegrationProblem precondition() { return new IntegrationProblem(&quot;EXACT_STATE_REQUIRED&quot;, 428, &quot;An exact workspace revision and project fingerprint are required&quot;); }</span>
+    private static Operation replay(Operation prior, String fingerprint) {
+<span class="fc bfc" id="L569" title="All 2 branches covered.">        if (!prior.fingerprint().equals(fingerprint)) throw IntegrationProblem.conflict(&quot;OPERATION_ID_REUSED&quot;); return prior;</span>
+    }
+    private static void requireActor(RepositoryContext context, Operation operation) {
+<span class="pc bpc" id="L572" title="1 of 2 branches missed.">        if (!context.username().equals(operation.context().actor())) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L573">    }</span>
+    private static CommandMetadata metadata(UUID id, String rationale) {
+<span class="fc" id="L575">        return new CommandMetadata(id, id, id, rationale);</span>
+    }
+    private static CommandMetadata checkpointMetadata(UUID operation, String rationale) {
+<span class="fc" id="L578">        UUID id = UUID.nameUUIDFromBytes((operation + &quot;:checkpoint&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L579">        return new CommandMetadata(id, operation, operation, rationale);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxOslcAmCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxOslcAmCodec.java</span></div><h1>SparxOslcAmCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDF;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+import static com.taxonomy.exchange.OslcRdf.DCT;
+import static com.taxonomy.exchange.OslcRdf.OSLC;
+
+/** Documented PCS AM resource subset. No transport, credentials or proprietary model classes. */
+public final class SparxOslcAmCodec {
+    public static final String PROFILE = &quot;sparx-oslc-am-2.0&quot;;
+    public static final String VERSION = &quot;1&quot;;
+    public static final String AM = &quot;http://open-services.net/ns/am#&quot;;
+    public static final String SS = &quot;http://www.sparxsystems.com.au/oslc_am#&quot;;
+    public static final int MAX_PAGES = 20;
+    private final String profileVersion;
+<span class="fc" id="L23">    public SparxOslcAmCodec() { this(&quot;1&quot;); }</span>
+<span class="fc" id="L24">    public SparxOslcAmCodec(String version) { this.profileVersion = SparxMappingProfile.version(version); }</span>
+    /** A complete collection, identified by a fixed endpoint kind and validated owner identifier. */
+    public record Collection(String kind, String owner, List&lt;Page&gt; pages) {
+<span class="fc" id="L27">        public Collection { pages = List.copyOf(pages); }</span>
+    }
+<span class="fc" id="L29">    public List&lt;String&gt; rootIdentifiers(List&lt;Page&gt; pages, URI base) { return SparxAmV2Parser.roots(pages, base); }</span>
+<span class="fc" id="L30">    public List&lt;String&gt; featureIdentifiers(Collection collection, URI base) { return SparxAmV2Parser.featureIds(collection, base); }</span>
+    public Set&lt;String&gt; objectIdentities(byte[] bytes, URI base) {
+<span class="fc" id="L32">        var model = parse(bytes, base); Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (Resource resource : model.listResourcesWithProperty(model.createProperty(DCT + &quot;identifier&quot;)).toList()) {</span>
+<span class="fc" id="L34">            String identifier = literal(resource, DCT + &quot;identifier&quot;, true);</span>
+<span class="fc" id="L35">            identities.add(SparxMappingProfile.prefixedGuid(identifier,</span>
+<span class="fc" id="L36">                    Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;dg_&quot;, &quot;lt_&quot;, &quot;tv_&quot;, &quot;at_&quot;, &quot;attv_&quot;, &quot;op_&quot;, &quot;optv_&quot;, &quot;pr_&quot;)));</span>
+<span class="fc" id="L37">        }</span>
+<span class="fc" id="L38">        return Set.copyOf(identities);</span>
+    }
+<span class="fc" id="L40">    public long statementCount(byte[] bytes, URI base) { return parse(bytes, base).size(); }</span>
+    public ExchangeDocument read(List&lt;Page&gt; roots, List&lt;Collection&gt; collections, URI base) {
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (!&quot;2&quot;.equals(profileVersion)) throw invalid(&quot;PROFILE_VERSION_CHANGED&quot;);</span>
+<span class="fc" id="L43">        return SparxAmV2Parser.read(roots, collections, base);</span>
+    }
+    public record Page(URI resource, String etag, byte[] content) {
+<span class="fc" id="L46">        public Page { content = content.clone(); }</span>
+<span class="fc" id="L47">        @Override public byte[] content() { return content.clone(); }</span>
+    }
+
+    public URI queryBase(byte[] content, URI base) {
+<span class="fc" id="L51">        Model model = parse(content, base);</span>
+<span class="fc" id="L52">        Set&lt;URI&gt; queries = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (Resource query : model.listResourcesWithProperty(model.createProperty(OSLC + &quot;resourceType&quot;),</span>
+<span class="fc" id="L54">                model.createResource(AM + &quot;Resource&quot;)).toList()) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            for (Statement value : query.listProperties(model.createProperty(OSLC + &quot;queryBase&quot;)).toList()) {</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                if (!value.getObject().isURIResource()) throw invalid(&quot;SPARX_AM_DISCOVERY&quot;);</span>
+<span class="fc" id="L57">                queries.add(URI.create(value.getResource().getURI()));</span>
+<span class="fc" id="L58">            }</span>
+<span class="fc" id="L59">        }</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (queries.size() != 1) throw invalid(&quot;SPARX_AM_DISCOVERY&quot;);</span>
+<span class="fc" id="L61">        return queries.iterator().next();</span>
+    }
+
+<span class="fc" id="L64">    public URI nextPage(byte[] content, URI resource) { return nextPage(parse(content, resource)); }</span>
+    private URI nextPage(Model model) {
+<span class="fc" id="L66">        var values = model.listStatements(null, model.createProperty(OSLC + &quot;nextPage&quot;), (RDFNode) null).toList();</span>
+<span class="pc bpc" id="L67" title="2 of 6 branches missed.">        if (values.size() &gt; 1 || values.size() == 1 &amp;&amp; !values.getFirst().getObject().isURIResource())</span>
+<span class="nc" id="L68">            throw invalid(&quot;SPARX_AM_PAGING&quot;);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        return values.isEmpty() ? null : URI.create(values.getFirst().getResource().getURI());</span>
+    }
+
+    public ExchangeDocument read(List&lt;Page&gt; pages, URI base) {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (&quot;2&quot;.equals(profileVersion)) return read(pages, List.of(), base);</span>
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">        if (pages.isEmpty() || pages.size() &gt; MAX_PAGES) throw invalid(&quot;SPARX_AM_PAGE_LIMIT&quot;);</span>
+<span class="fc" id="L75">        Map&lt;String, Artifact&gt; artifacts = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L76">        Map&lt;String, String&gt; parents = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L77">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L78">        Set&lt;URI&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L79">        StringBuilder versions = new StringBuilder();</span>
+<span class="fc" id="L80">        long size = 0;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (int index = 0; index &lt; pages.size(); index++) {</span>
+<span class="fc" id="L82">            Page page = pages.get(index);</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">            if (!visited.add(page.resource()) || (size += page.content().length) &gt; ExchangeXml.MAX_BYTES)</span>
+<span class="nc" id="L84">                throw invalid(&quot;SPARX_AM_PAGE_LIMIT&quot;);</span>
+<span class="fc" id="L85">            Model model = parse(page.content(), page.resource());</span>
+<span class="fc" id="L86">            URI next = nextPage(model);</span>
+<span class="fc bfc" id="L87" title="All 4 branches covered.">            if (!Objects.equals(next, index + 1 &lt; pages.size() ? pages.get(index + 1).resource() : null))</span>
+<span class="fc" id="L88">                throw invalid(&quot;SPARX_AM_INCOMPLETE&quot;);</span>
+<span class="fc" id="L89">            versions.append(page.resource()).append('\n').append(page.etag()).append('\n')</span>
+<span class="fc" id="L90">                    .append(ReqifExchangeCodec.digest(page.content())).append('\n');</span>
+<span class="fc" id="L91">            List&lt;Resource&gt; resources = model.listResourcesWithProperty(RDF.type, model.createResource(AM + &quot;Resource&quot;)).toList();</span>
+<span class="pc bpc" id="L92" title="1 of 4 branches missed.">            if (resources.isEmpty() &amp;&amp; !model.isEmpty()) throw invalid(&quot;SPARX_AM_RESOURCE_REQUIRED&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            for (Resource resource : resources) {</span>
+<span class="fc" id="L94">                String prefixed = literal(resource, DCT + &quot;identifier&quot;, true);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (!prefixed.matches(&quot;(pk|el|dg)_\\{[0-9a-fA-F-]{36}}&quot;)) throw invalid(&quot;SPARX_GUID_REQUIRED&quot;);</span>
+<span class="fc" id="L96">                String guid = SparxMappingProfile.guid(prefixed.substring(3));</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                if (!resource.isURIResource()) throw invalid(&quot;SPARX_AM_IDENTITY&quot;);</span>
+<span class="fc" id="L98">                URI uri = URI.create(resource.getURI());</span>
+<span class="fc" id="L99">                URI expected = base.resolve(&quot;resource/&quot; + prefixed.replace(&quot;{&quot;, &quot;%7B&quot;).replace(&quot;}&quot;, &quot;%7D&quot;) + &quot;/&quot;);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                if (!expected.equals(uri)) throw invalid(&quot;SPARX_AM_IDENTITY&quot;);</span>
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">                if (artifacts.containsKey(guid) || parents.containsKey(guid)) throw invalid(&quot;DUPLICATE_IDENTITY&quot;);</span>
+<span class="fc" id="L102">                String parent = literal(resource, SS + &quot;parentresourceidentifier&quot;, false);</span>
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">                if (!parent.isEmpty() &amp;&amp; !parent.matches(&quot;pk_\\{[0-9a-fA-F-]{36}}&quot;)) throw invalid(&quot;SPARX_AM_PARENT&quot;);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                parents.put(guid, parent.isEmpty() ? &quot;&quot; : SparxMappingProfile.guid(parent.substring(3)));</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                if (prefixed.startsWith(&quot;dg_&quot;)) {</span>
+<span class="nc" id="L106">                    losses.add(loss(guid, &quot;diagram&quot;, &quot;SPARX_LAYOUT_EXCLUDED&quot;, &quot;Diagram resources are outside the semantic read profile&quot;));</span>
+<span class="nc" id="L107">                    continue;</span>
+                }
+<span class="fc" id="L109">                String type = literal(resource, DCT + &quot;type&quot;, true);</span>
+<span class="fc" id="L110">                Stereotypes stereotypes = stereotypes(resource);</span>
+<span class="fc bfc" id="L111" title="All 4 branches covered.">                String stereotype = stereotypes.unsupported() || stereotypes.names().isEmpty() ? &quot;&quot; : stereotypes.names().getFirst();</span>
+<span class="fc" id="L112">                boolean pkg = prefixed.startsWith(&quot;pk_&quot;);</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">                if (pkg &amp;&amp; !type.equals(&quot;Package&quot;)) throw invalid(&quot;SPARX_AM_TYPE&quot;);</span>
+<span class="fc" id="L114">                boolean requirement = type.equals(&quot;Requirement&quot;);</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">                ArtifactKind kind = pkg ? ArtifactKind.SPECIFICATION : requirement ? ArtifactKind.REQUIREMENT : ArtifactKind.ELEMENT;</span>
+<span class="fc" id="L116">                Map&lt;String, String&gt; attributes = new TreeMap&lt;&gt;(), extensions = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L117">                extensions.put(&quot;uri&quot;, uri.toString());</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                if (!stereotype.isBlank()) {</span>
+<span class="fc" id="L119">                    extensions.put(&quot;stereotype&quot;, stereotype);</span>
+<span class="fc" id="L120">                    attributes.put(SS + &quot;stereotype&quot;, stereotype);</span>
+                }
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (stereotypes.unsupported()) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                    for (int i = 0; i &lt; stereotypes.names().size(); i++)</span>
+<span class="fc" id="L124">                        attributes.put(&quot;stereotype:&quot; + i, stereotypes.names().get(i));</span>
+<span class="fc" id="L125">                    losses.add(loss(guid, &quot;stereotype&quot;, &quot;SPARX_AM_STEREOTYPE_UNMAPPED&quot;,</span>
+                            &quot;Multiple or unrecognized structured stereotypes need explicit review/remapping&quot;));
+                }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                String canonical = stereotypes.unsupported() ? null : SparxMappingProfile.elementType(type, stereotype, null);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                if (kind == ArtifactKind.ELEMENT) {</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                    if (canonical == null) losses.add(loss(guid, &quot;type&quot;, &quot;SPARX_ELEMENT_UNMAPPED&quot;, &quot;Reject or explicitly map this EA element type&quot;));</span>
+<span class="fc" id="L131">                    else extensions.put(&quot;canonicalType&quot;, canonical);</span>
+                }
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                for (Statement statement : resource.listProperties().toList()) {</span>
+<span class="fc" id="L134">                    String property = statement.getPredicate().getURI();</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                    if (Set.of(RDF.type.getURI(), DCT + &quot;title&quot;, DCT + &quot;description&quot;, DCT + &quot;type&quot;, DCT + &quot;identifier&quot;, SS + &quot;parentresourceidentifier&quot;, SS + &quot;stereotype&quot;).contains(property)) continue;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                    if (statement.getObject().isLiteral()) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                        if (attributes.putIfAbsent(property, statement.getString()) != null) throw invalid(&quot;SPARX_AM_PROPERTY&quot;);</span>
+<span class="nc" id="L138">                    } else losses.add(loss(guid, property, &quot;SPARX_AM_FEATURE_NOT_MAPPED&quot;, &quot;Linked or structured feature is not imported by this profile&quot;));</span>
+<span class="nc" id="L139">                }</span>
+<span class="fc" id="L140">                String description = literal(resource, DCT + &quot;description&quot;, false);</span>
+<span class="fc" id="L141">                Statement body = resource.getProperty(model.createProperty(DCT + &quot;description&quot;));</span>
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">                if (body != null &amp;&amp; RDF.dtXMLLiteral.getURI().equals(body.getLiteral().getDatatypeURI())) {</span>
+<span class="nc" id="L143">                    description = ExchangeXml.parse((&quot;&lt;div&gt;&quot; + description + &quot;&lt;/div&gt;&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent();</span>
+<span class="nc" id="L144">                    losses.add(new MappingLoss(guid, &quot;description&quot;, &quot;SPARX_AM_TEXT_FLATTENED&quot;, LossDisposition.TRANSFORMED, &quot;XML description was converted to plain text&quot;));</span>
+                }
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                artifacts.put(guid, new Artifact(guid, kind, requirement ? &quot;Class&quot; : type,</span>
+<span class="fc" id="L147">                        literal(resource, DCT + &quot;title&quot;, true), description, attributes, extensions));</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                if (artifacts.size() &gt; ExchangeXml.MAX_ARTIFACTS) throw invalid(&quot;ITEM_LIMIT&quot;);</span>
+<span class="fc" id="L149">            }</span>
+        }
+<span class="fc" id="L151">        String modelId = SparxMappingProfile.guid(UUID.nameUUIDFromBytes(base.toString().getBytes(StandardCharsets.UTF_8)).toString());</span>
+<span class="fc" id="L152">        List&lt;Placement&gt; placements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L153">        int position = 0;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (Artifact artifact : artifacts.values()) {</span>
+<span class="fc" id="L155">            String parent = parents.get(artifact.id());</span>
+<span class="pc bpc" id="L156" title="2 of 6 branches missed.">            if (!parent.isEmpty() &amp;&amp; (!artifacts.containsKey(parent) || artifacts.get(parent).kind() != ArtifactKind.SPECIFICATION))</span>
+<span class="nc" id="L157">                throw invalid(&quot;SPARX_AM_PARENT_MISSING&quot;);</span>
+<span class="fc" id="L158">            Set&lt;String&gt; seen = new HashSet&lt;&gt;(); String ancestor = artifact.id();</span>
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">            while (ancestor != null &amp;&amp; !ancestor.isEmpty()) {</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">                if (!seen.add(ancestor) || seen.size() &gt; 80) throw invalid(&quot;HIERARCHY_CYCLE&quot;);</span>
+<span class="fc" id="L161">                ancestor = parents.get(ancestor);</span>
+            }
+<span class="fc" id="L163">            placements.add(new Placement(&quot;placement:&quot; + artifact.id(), modelId,</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                    parent.isEmpty() ? null : &quot;placement:&quot; + parent, artifact.id(), position++, Map.of()));</span>
+<span class="fc" id="L165">        }</span>
+<span class="fc" id="L166">        losses.add(loss(null, &quot;features&quot;, &quot;SPARX_AM_FEATURES_NOT_FETCHED&quot;,</span>
+                &quot;This read profile imports package/element properties only; connectors, tags, attributes, operations and diagrams require a separate supported profile&quot;));
+<span class="fc" id="L168">        return new ExchangeDocument(PROFILE, VERSION, ReqifExchangeCodec.digest(versions.toString().getBytes(StandardCharsets.UTF_8)),</span>
+<span class="fc" id="L169">                false, &quot;&quot;, List.copyOf(artifacts.values()), List.of(), placements,</span>
+<span class="fc" id="L170">                Map.of(&quot;identifier&quot;, modelId, &quot;resource&quot;, base.toString(), &quot;collectionEvidence&quot;, &quot;EXHAUSTED_PAGES_NOT_AUTHORITATIVE&quot;), losses);</span>
+    }
+
+<span class="fc" id="L173">    private record Stereotypes(List&lt;String&gt; names, boolean unsupported) {}</span>
+    private static Stereotypes stereotypes(Resource resource) {
+        // PCS uses &lt;ss:stereotype&gt;&lt;ss:stereotypename&gt;&lt;ss:name&gt;...&lt;/ss:name&gt;
+        // &lt;/ss:stereotypename&gt;&lt;/ss:stereotype&gt;. In RDF this is a property pointing
+        // to a typed node with a direct ss:name property, not a scalar literal.
+<span class="fc" id="L178">        Set&lt;String&gt; names = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L179">        boolean unsupported = false;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        for (Statement statement : resource.listProperties(resource.getModel().createProperty(SS + &quot;stereotype&quot;)).toList()) {</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">            if (statement.getObject().isLiteral()) {</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                if (!statement.getString().isBlank()) names.add(statement.getString());</span>
+            } else {
+<span class="fc" id="L184">                var values = statement.getResource().listProperties(resource.getModel().createProperty(SS + &quot;name&quot;)).toList();</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                if (values.isEmpty()) unsupported = true;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                for (Statement name : values) {</span>
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">                    if (!name.getObject().isLiteral() || name.getString().isBlank()) unsupported = true;</span>
+<span class="fc" id="L188">                    else names.add(name.getString());</span>
+<span class="fc" id="L189">                }</span>
+            }
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (names.size() &gt; 32) throw invalid(&quot;SPARX_AM_PROPERTY_LIMIT&quot;);</span>
+<span class="fc" id="L192">        }</span>
+<span class="pc bpc" id="L193" title="1 of 4 branches missed.">        return new Stereotypes(List.copyOf(names), unsupported || names.size() &gt; 1);</span>
+    }
+
+    static Model parse(byte[] content, URI base) {
+<span class="fc" id="L197">        var xml = ExchangeXml.parse(content);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (var element : ExchangeXml.all(xml, &quot;*&quot;, &quot;*&quot;)) {</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (Set.of(&quot;useridentifier&quot;, &quot;accesstoken&quot;, &quot;refreshtoken&quot;).contains(element.getLocalName().toLowerCase(Locale.ROOT)))</span>
+<span class="fc" id="L200">                throw invalid(&quot;SPARX_AM_CREDENTIAL_REFLECTION&quot;);</span>
+            // PCS documentation spells GUID braces literally; RDF IRIs need escaping.
+<span class="fc bfc" id="L202" title="All 4 branches covered.">            for (String name : List.of(&quot;about&quot;, &quot;resource&quot;)) if (element.hasAttributeNS(OslcRdf.RDF, name)) {</span>
+<span class="fc" id="L203">                String uri = element.getAttributeNS(OslcRdf.RDF, name);</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                if (uri.toLowerCase(Locale.ROOT).matches(&quot;.*[?&amp;](useridentifier|token|access_token|password)=.*&quot;))</span>
+<span class="nc" id="L205">                    throw invalid(&quot;SPARX_AM_CREDENTIAL_REFLECTION&quot;);</span>
+<span class="fc" id="L206">                element.setAttributeNS(OslcRdf.RDF, &quot;rdf:&quot; + name, uri.replace(&quot;{&quot;, &quot;%7B&quot;).replace(&quot;}&quot;, &quot;%7D&quot;));</span>
+            }
+<span class="fc" id="L208">        }</span>
+<span class="fc" id="L209">        return OslcRequirementsCodec.parse(ExchangeXml.write(xml), base);</span>
+    }
+    static String literal(Resource resource, String property, boolean required) {
+<span class="fc" id="L212">        var values = resource.listProperties(resource.getModel().createProperty(property)).toList();</span>
+<span class="pc bpc" id="L213" title="2 of 6 branches missed.">        if (values.size() &gt; 1 || values.size() == 1 &amp;&amp; !values.getFirst().getObject().isLiteral()) throw invalid(&quot;SPARX_AM_PROPERTY&quot;);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        String value = values.isEmpty() ? &quot;&quot; : values.getFirst().getString();</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">        if (required &amp;&amp; value.isBlank()) throw invalid(&quot;SPARX_AM_PROPERTY&quot;);</span>
+<span class="fc" id="L216">        return value;</span>
+    }
+    private static MappingLoss loss(String id, String field, String code, String detail) {
+<span class="fc" id="L219">        return new MappingLoss(id, field, code, LossDisposition.UNSUPPORTED, detail);</span>
+    }
+<span class="fc" id="L221">    private static ExchangeFormatException invalid(String code) { return ExchangeXml.invalid(code, &quot;Response does not satisfy the bounded Sparx AM resource profile&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

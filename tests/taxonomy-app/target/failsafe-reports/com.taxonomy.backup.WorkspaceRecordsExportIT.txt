@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.backup.WorkspaceRecordsExportIT
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.620 s -- in com.taxonomy.backup.WorkspaceRecordsExportIT

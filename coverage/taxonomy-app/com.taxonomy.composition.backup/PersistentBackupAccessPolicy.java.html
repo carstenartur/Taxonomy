@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PersistentBackupAccessPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.backup</a> &gt; <span class="el_source">PersistentBackupAccessPolicy.java</span></div><h1>PersistentBackupAccessPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.backup;
+
+import com.taxonomy.backup.BackupAccessPolicy;
+import com.taxonomy.backup.BackupCapability;
+import com.taxonomy.backup.BackupRepositoryKey;
+import com.taxonomy.backup.BackupScope;
+import com.taxonomy.backup.PrincipalId;
+
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+
+/** Uses current persisted grants and the existing membership policy at every access boundary. */
+public final class PersistentBackupAccessPolicy implements BackupAccessPolicy {
+    private final PrincipalIdentityService identities;
+    private final SystemRepositoryRepository repositories;
+    private final UserWorkspaceRepository workspaces;
+    private final RepositoryMembershipService memberships;
+
+    public PersistentBackupAccessPolicy(PrincipalIdentityService identities, SystemRepositoryRepository repositories,
+<span class="fc" id="L23">                                       UserWorkspaceRepository workspaces, RepositoryMembershipService memberships) {</span>
+<span class="fc" id="L24">        this.identities = identities; this.repositories = repositories;</span>
+<span class="fc" id="L25">        this.workspaces = workspaces; this.memberships = memberships;</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="fc" id="L28">    @Override public boolean isEnabled(PrincipalId principal) { return identities.isEnabled(principal); }</span>
+
+    @Override public boolean hasCapability(PrincipalId principal, BackupCapability capability, BackupScope scope) {
+<span class="fc" id="L31">        return identities.hasCapability(principal, capability);</span>
+    }
+
+    @Override public boolean canRead(PrincipalId principal, BackupRepositoryKey selected) {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (!isEnabled(principal)) return false;</span>
+<span class="fc" id="L36">        var identity = identities.find(principal).orElseThrow();</span>
+<span class="fc" id="L37">        var repository = repositories.findByRepositoryId(selected.repositoryId());</span>
+<span class="pc bpc" id="L38" title="2 of 4 branches missed.">        if (repository.isEmpty() || !selected.repositoryId().equals(repository.get().getRepositoryId())</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                || !memberships.canRead(repository.get(), identity.scopeKey())) return false;</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (selected.workspaceId() == null) return true;</span>
+<span class="fc" id="L41">        return workspaces.findByWorkspaceId(selected.workspaceId())</span>
+<span class="fc" id="L42">                .filter(workspace -&gt; selected.workspaceId().equals(workspace.getWorkspaceId()))</span>
+<span class="fc" id="L43">                .filter(workspace -&gt; selected.repositoryId().equals(workspace.getSourceRepositoryId()))</span>
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">                .filter(workspace -&gt; !workspace.isArchived() &amp;&amp; workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY)</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">                .filter(workspace -&gt; workspace.isShared() || identity.scopeKey().equals(workspace.getUsername()))</span>
+<span class="fc" id="L46">                .isPresent();</span>
+    }
+
+    @Override public boolean canReadVersion(PrincipalId principal, BackupRepositoryKey repository, String commit) {
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">        return canRead(principal, repository) &amp;&amp; identities.hasVersionAccess(principal, repository, commit);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

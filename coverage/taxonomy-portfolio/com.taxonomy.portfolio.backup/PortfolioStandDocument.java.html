@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioStandDocument.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.backup</a> &gt; <span class="el_source">PortfolioStandDocument.java</span></div><h1>PortfolioStandDocument.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.backup;
+
+import com.taxonomy.dsl.ast.*;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import java.util.*;
+
+/** A Git tree is not necessarily history-free: the canonical portfolio embeds earlier versions and adoption ancestry. */
+public final class PortfolioStandDocument {
+    private PortfolioStandDocument() { }
+    public static String project(String dsl) {
+<span class="fc" id="L12">        requireSupportedSyntax(dsl);</span>
+<span class="fc" id="L13">        var document=new TaxDslParser().parse(dsl,&quot;portable-stand.taxdsl&quot;);</span>
+<span class="fc" id="L14">        var active=new HashMap&lt;RequirementKey,String&gt;();</span>
+<span class="fc" id="L15">        var versions=new HashMap&lt;RequirementKey,Set&lt;String&gt;&gt;();</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        for (var block:document.getBlocks()) {</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">            if (portfolioRequirement(block)) {</span>
+<span class="fc" id="L18">                var key=key(block,2);</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">                if (active.containsKey(key)) throw new IllegalArgumentException(&quot;Duplicate requirement in stand document&quot;);</span>
+<span class="fc" id="L20">                active.put(key,block.property(&quot;currentVersionNumber&quot;));</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">            } else if (block.getKind().equals(&quot;requirementVersion&quot;)) {</span>
+<span class="fc" id="L22">                var key=key(block,3);</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">                if (!versions.computeIfAbsent(key,k-&gt;new HashSet&lt;&gt;()).add(block.getHeaderTokens().get(2)))</span>
+<span class="nc" id="L24">                    throw new IllegalArgumentException(&quot;Duplicate requirement version in stand document&quot;);</span>
+            }
+<span class="fc" id="L26">        }</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (var item:versions.entrySet()) {</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            if (!active.containsKey(item.getKey())) throw new IllegalArgumentException(&quot;Requirement version has no parent&quot;);</span>
+<span class="fc" id="L29">            String selected=active.get(item.getKey());</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">            if (selected==null &amp;&amp; item.getValue().size()==1) { selected=item.getValue().iterator().next(); active.put(item.getKey(),selected); }</span>
+<span class="pc bpc" id="L31" title="1 of 4 branches missed.">            if (selected==null || !item.getValue().contains(selected)) throw new IllegalArgumentException(&quot;Stand document requires an unambiguous current requirement version&quot;);</span>
+<span class="fc" id="L32">        }</span>
+<span class="fc" id="L33">        var blocks=new ArrayList&lt;BlockAst&gt;();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var block:document.getBlocks()) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (block.getKind().equals(&quot;reformulationEvidence&quot;)) continue;</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">            if (block.getKind().equals(&quot;requirementVersion&quot;) &amp;&amp; !block.getHeaderTokens().get(2).equals(active.get(key(block,3)))) continue;</span>
+<span class="fc" id="L37">            var properties=new ArrayList&lt;PropertyAst&gt;();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            for (var property:block.getProperties()) {</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">                if (block.getKind().equals(&quot;requirementVersion&quot;) &amp;&amp; Set.of(&quot;originalText&quot;,&quot;changeReason&quot;).contains(property.key())) continue;</span>
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">                if (portfolioRequirement(block) &amp;&amp; Set.of(&quot;currentVersionId&quot;,&quot;currentVersionNumber&quot;).contains(property.key())) continue;</span>
+<span class="fc" id="L41">                properties.add(property);</span>
+<span class="fc" id="L42">            }</span>
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">            if (portfolioRequirement(block) &amp;&amp; active.get(key(block,2))!=null)</span>
+<span class="fc" id="L44">                properties.add(new PropertyAst(&quot;currentVersionNumber&quot;,active.get(key(block,2)),block.getSourceLocation()));</span>
+<span class="fc" id="L45">            rejectNestedHistory(block.getChildren());</span>
+<span class="fc" id="L46">            blocks.add(new BlockAst(block.getKind(),block.getHeaderTokens(),properties,block.getChildren(),block.getExtensions(),block.getSourceLocation()));</span>
+<span class="fc" id="L47">        }</span>
+<span class="fc" id="L48">        return new TaxDslSerializer().serialize(new DocumentAst(document.getMeta(),blocks));</span>
+    }
+    private static void rejectNestedHistory(List&lt;BlockAst&gt; blocks) {
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        for (var child:blocks) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">            if (Set.of(&quot;requirementVersion&quot;,&quot;reformulationEvidence&quot;).contains(child.getKind()))</span>
+<span class="nc" id="L53">                throw new IllegalArgumentException(&quot;Nested portfolio history is not a supported stand document&quot;);</span>
+<span class="nc" id="L54">            rejectNestedHistory(child.getChildren());</span>
+<span class="nc" id="L55">        }</span>
+<span class="fc" id="L56">    }</span>
+    private static void requireSupportedSyntax(String source) {
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (source == null) throw new IllegalArgumentException(&quot;Missing stand document&quot;);</span>
+<span class="fc" id="L59">        var property = java.util.regex.Pattern.compile(&quot;[A-Za-z_][\\w.-]*\\s*:\\s*(?:\&quot;(?:[^\&quot;\\\\]|\\\\.)*+\&quot;|[^\&quot;;]*)\\s*;&quot;);</span>
+<span class="fc" id="L60">        boolean inside = false;</span>
+<span class="fc" id="L61">        var keys = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (String original : source.lines().toList()) {</span>
+<span class="fc" id="L63">            String line = TaxDslParser.withoutComment(original).strip();</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">            if (line.isBlank() || line.startsWith(&quot;//&quot;)) continue;</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">            if (!inside &amp;&amp; TaxDslParser.blockDelimiter(line) == 1) { inside = true; keys.clear(); continue; }</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">            if (inside &amp;&amp; line.equals(&quot;}&quot;)) { inside = false; continue; }</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">            if (!inside || !property.matcher(line).matches())</span>
+<span class="fc" id="L68">                throw new IllegalArgumentException(&quot;Stand projection requires complete line-oriented TaxDSL syntax&quot;);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (!keys.add(line.substring(0,line.indexOf(':')).strip()))</span>
+<span class="nc" id="L70">                throw new IllegalArgumentException(&quot;Duplicate property in stand document&quot;);</span>
+<span class="fc" id="L71">        }</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (inside) throw new IllegalArgumentException(&quot;Unclosed block in stand document&quot;);</span>
+<span class="fc" id="L73">    }</span>
+    private static RequirementKey key(BlockAst block,int size) {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (block.getHeaderTokens().size()!=size) throw new IllegalArgumentException(&quot;Invalid portfolio identity in stand document&quot;);</span>
+<span class="fc" id="L76">        return new RequirementKey(block.getHeaderTokens().get(0),block.getHeaderTokens().get(1));</span>
+    }
+    private static boolean portfolioRequirement(BlockAst block) {
+        // A one-key architecture requirement is a different DSL type from project + requirement.
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        return block.getKind().equals(&quot;projectRequirement&quot;)</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">                || (block.getKind().equals(&quot;requirement&quot;) &amp;&amp; block.getHeaderTokens().size()!=1);</span>
+    }
+<span class="fc" id="L83">    private record RequirementKey(String project,String requirement) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

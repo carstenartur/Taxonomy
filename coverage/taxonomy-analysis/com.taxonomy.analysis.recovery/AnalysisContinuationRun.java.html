@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContinuationRun.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisContinuationRun.java</span></div><h1>AnalysisContinuationRun.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.type.SqlTypes;
+
+/** Durable state only; no live worker or security context is retained in this entity. */
+@Entity
+// Checkpoint bookkeeping must not rewrite the multi-megabyte frozen result LOB.
+// Only explicit result changes should allocate a new frozen-result LOB.
+@DynamicUpdate
+@Table(name = &quot;analysis_continuation&quot;, indexes = @Index(name = &quot;idx_analysis_cont_scope&quot;, columnList = &quot;workspace_id,username&quot;))
+public class AnalysisContinuationRun {
+    @Id @Column(length = 36) String id;
+    @Column(nullable = false, length = 160) String username;
+    @Column(name = &quot;workspace_id&quot;, nullable = false, length = 320) String workspaceId;
+    @Column(name = &quot;branch_name&quot;, nullable = false, length = 512) String branchName;
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 320) String repositoryId;
+    @Column(name = &quot;input_hash&quot;, nullable = false, length = 64) String inputHash;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;request_json&quot;, nullable = false) String requestJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;result_json&quot;) String resultJson;
+    @Column(nullable = false, length = 32) String state;
+    @Column(name = &quot;claim_token&quot;, length = 36) String claimToken;
+    @Column(name = &quot;claim_until&quot;, nullable = false) long claimUntil;
+    @Column(name = &quot;updated_at&quot;, nullable = false) long updatedAt;
+    @Column(name = &quot;payload_characters&quot;, nullable = false) long payloadCharacters;
+    @Column(name = &quot;current_node&quot;, length = 320) String currentNode;
+    @Version @Column(name = &quot;row_version&quot;, nullable = false) long version;
+<span class="fc" id="L30">    protected AnalysisContinuationRun() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

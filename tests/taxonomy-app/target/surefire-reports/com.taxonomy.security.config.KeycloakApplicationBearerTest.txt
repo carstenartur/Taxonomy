@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.security.config.KeycloakApplicationBearerTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.985 s -- in com.taxonomy.security.config.KeycloakApplicationBearerTest

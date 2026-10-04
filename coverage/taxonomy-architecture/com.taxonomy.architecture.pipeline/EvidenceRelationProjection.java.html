@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EvidenceRelationProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">EvidenceRelationProjection.java</span></div><h1>EvidenceRelationProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.*;
+import java.util.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** Projects verified evidence into the existing view DTOs, without relation propagation. */
+public final class EvidenceRelationProjection {
+    private EvidenceRelationProjection() { }
+
+    /** Effective scores without provenance do not establish an original model score. */
+    public static void apply(ArchitectureViewContext context, RelationSearchReport report) {
+<span class="fc" id="L13">        apply(context, report, Map.of());</span>
+<span class="fc" id="L14">    }</span>
+
+    public static void apply(ArchitectureViewContext context, RelationSearchReport report,
+                             Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+<span class="fc" id="L18">        Objects.requireNonNull(context); Objects.requireNonNull(report);</span>
+<span class="fc" id="L19">        Map&lt;String, AnalysisScoreDetail&gt; details = Map.copyOf(scoreDetails);</span>
+<span class="fc" id="L20">        Map&lt;String, RequirementElementView&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L21">        Map&lt;String, Node&gt; identities = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L22">        List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L23">        Map&lt;EdgeSignature, Set&lt;Edge&gt;&gt; grouped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L24">        List&lt;String&gt; notes = context.getView().getNotes();</span>
+<span class="fc" id="L25">        int omitted = 0, choices = 0;</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (Edge edge : report.result().edges()) {</span>
+<span class="fc" id="L27">            Node source = edge.contribution().source(), target = edge.target();</span>
+<span class="pc bpc" id="L28" title="2 of 6 branches missed.">            if (edge.evidence().outcome() != Outcome.VERIFIED || source.container() || target.container()</span>
+<span class="pc bpc" id="L29" title="2 of 4 branches missed.">                    || source.id().equals(target.id()) || !target.id().equals(edge.evidence().targetId())) {</span>
+<span class="fc" id="L30">                throw new IllegalArgumentException(&quot;Only verified, concrete, distinct endpoints can be projected&quot;);</span>
+            }
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (Node node : List.of(source, target)) {</span>
+<span class="fc" id="L33">                Node prior = identities.putIfAbsent(node.id(), node);</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">                if (prior != null &amp;&amp; !prior.equals(node)) throw new IllegalArgumentException(&quot;Conflicting catalogue endpoint identity&quot;);</span>
+<span class="fc" id="L35">            }</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">            if (edge.evidence().necessity() != Necessity.REQUIRED) choices++;</span>
+<span class="fc" id="L37">            EdgeSignature signature = new EdgeSignature(edge.sourceId(), edge.targetId(), edge.type());</span>
+<span class="fc" id="L38">            grouped.computeIfAbsent(signature, unused -&gt; new LinkedHashSet&lt;&gt;()).add(edge);</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (Set&lt;Edge&gt; evidence : grouped.values()) {</span>
+            // Group before filtering: options on an already-required signature remain
+            // inspectable, but options alone never create required nodes or relationships.
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            Edge edge = evidence.stream().filter(e -&gt; e.evidence().necessity() == Necessity.REQUIRED)</span>
+<span class="fc" id="L44">                    .findFirst().orElse(null);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            if (edge == null) continue;</span>
+<span class="fc" id="L46">            Node source = edge.contribution().source(), target = edge.target();</span>
+<span class="fc bfc" id="L47" title="All 4 branches covered.">            int needed = (elements.containsKey(source.id()) ? 0 : 1) + (elements.containsKey(target.id()) ? 0 : 1);</span>
+<span class="fc bfc" id="L48" title="All 4 branches covered.">            if (context.getMaxArchitectureNodes() &gt; 0 &amp;&amp; elements.size() + needed &gt; context.getMaxArchitectureNodes()) {</span>
+<span class="fc" id="L49">                omitted++; continue;</span>
+            }
+<span class="fc" id="L51">            elements.computeIfAbsent(source.id(), id -&gt; element(source, context.getScores(), details, edge.contribution().text()));</span>
+<span class="fc" id="L52">            elements.computeIfAbsent(target.id(), id -&gt; element(target, context.getScores(), details, edge.evidence().contribution()));</span>
+<span class="fc" id="L53">            RequirementRelationshipView relation = new RequirementRelationshipView();</span>
+<span class="fc" id="L54">            relation.setSourceCode(edge.sourceId()); relation.setTargetCode(edge.targetId()); relation.setRelationType(edge.type());</span>
+<span class="fc" id="L55">            relation.setOrigin(RelationOrigin.LLM_SUPPORTED);</span>
+<span class="fc" id="L56">            relation.setRequirementEvidence(List.copyOf(evidence));</span>
+<span class="fc" id="L57">            String reason = &quot;Proposed, separately checked against requirement: &quot; + edge.evidence().rationale()</span>
+<span class="fc" id="L58">                    + &quot; | Source contribution: &quot; + edge.contribution().text() + &quot; | Target contribution: &quot; + edge.evidence().contribution()</span>
+<span class="fc" id="L59">                    + &quot; | Evidence: &quot; + edge.contribution().quote() + &quot; / &quot; + edge.evidence().quote()</span>
+<span class="fc" id="L60">                    + &quot; | Conditions: &quot; + edge.contribution().condition() + &quot; / &quot; + edge.evidence().condition();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (evidence.size() &gt; 1) reason += &quot; | Additional requirement scopes and choices retained in structured evidence.&quot;;</span>
+<span class="fc" id="L62">            relation.setPresenceReason(summary(reason)); relation.setDerivationReason(summary(reason)); relation.setIncludedBecause(summary(reason));</span>
+            // Numeric confidence remains its legacy layout/index default, not measured evidence.
+<span class="fc" id="L64">            relationships.add(relation);</span>
+<span class="fc" id="L65">        }</span>
+        // Source evidence and relation evidence are different claims. Keep a
+        // concrete unconditional contribution visible even when its edges remain
+        // open. Verified edges take priority under a view-only node cap.
+<span class="fc" id="L69">        int sourceOnly = 0, omittedSources = 0;</span>
+<span class="fc" id="L70">        Set&lt;String&gt; seenSources = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (SourceAssessment assessment : report.sources()) {</span>
+<span class="fc" id="L72">            Node node = assessment.node();</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (!seenSources.add(node.id())) throw new IllegalArgumentException(&quot;Duplicate source assessment&quot;);</span>
+<span class="fc" id="L74">            Node prior = identities.putIfAbsent(node.id(), node);</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            if (prior != null &amp;&amp; !prior.equals(node)) throw new IllegalArgumentException(&quot;Conflicting source identity&quot;);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            for (Contribution contribution : assessment.contributions()) {</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                if (!node.equals(contribution.source())) {</span>
+<span class="fc" id="L78">                    throw new IllegalArgumentException(&quot;Contribution belongs to another source&quot;);</span>
+                }
+<span class="fc" id="L80">            }</span>
+<span class="fc bfc" id="L81" title="All 6 branches covered.">            if (node.container() || !assessment.question().isBlank() || elements.containsKey(node.id())) continue;</span>
+<span class="fc" id="L82">            List&lt;Contribution&gt; unconditional = assessment.contributions().stream()</span>
+<span class="fc" id="L83">                    .filter(c -&gt; c.condition().isBlank()).toList();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (unconditional.isEmpty()) continue;</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">            if (context.getMaxArchitectureNodes() &gt; 0 &amp;&amp; elements.size() &gt;= context.getMaxArchitectureNodes()) {</span>
+<span class="fc" id="L86">                omittedSources++; continue;</span>
+            }
+<span class="fc" id="L88">            String explanation = unconditional.stream().map(c -&gt; c.text() + &quot; | Original: &quot; + c.quote())</span>
+<span class="fc" id="L89">                    .collect(java.util.stream.Collectors.joining(&quot; | &quot;));</span>
+<span class="fc" id="L90">            RequirementElementView source = element(node, context.getScores(), details, explanation);</span>
+<span class="fc" id="L91">            source.setOrigin(NodeOrigin.REQUIREMENT_EVIDENCE);</span>
+<span class="fc" id="L92">            source.setSelectedForImpact(false);</span>
+<span class="fc" id="L93">            source.setPresenceReason(summary(&quot;SOURCE_ONLY: quoted requirement contribution proposal; &quot;</span>
+                    + &quot;no verified required relationship is implied. &quot; + explanation));
+<span class="fc" id="L95">            source.setIncludedBecause(source.getPresenceReason());</span>
+<span class="fc" id="L96">            elements.put(node.id(), source);</span>
+<span class="fc" id="L97">            sourceOnly++;</span>
+<span class="fc" id="L98">        }</span>
+<span class="fc" id="L99">        context.setAnchors(new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L100">        context.getElements().clear(); context.getElements().addAll(elements.values());</span>
+<span class="fc" id="L101">        context.getRelationships().clear(); context.getRelationships().addAll(relationships);</span>
+<span class="fc" id="L102">        RequirementArchitectureView view = context.getView();</span>
+<span class="fc" id="L103">        view.setRelationSearchReport(report);</span>
+<span class="fc" id="L104">        view.setAnchors(context.getAnchors()); view.setIncludedElements(context.getElements()); view.setIncludedRelationships(context.getRelationships());</span>
+<span class="fc" id="L105">        view.setTotalAnchors(0); view.setTotalElements(elements.size()); view.setTotalRelationships(relationships.size()); view.setMaxHopDistance(0);</span>
+<span class="fc" id="L106">        notes.add(&quot;Requirement-scoped relation proposals; not accepted into the active architecture. Confidence has not been calibrated.&quot;);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (relationships.isEmpty()) notes.add(&quot;No verified required relationships available; no score-product or catalogue-seed fallback was used.&quot;);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (choices &gt; 0) notes.add(&quot;DECISIONS_PENDING: &quot; + choices + &quot; optional/alternative contexts remain unaccepted in structured evidence; no optional-only edge is included in the required view.&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (omitted &gt; 0) notes.add(&quot;NODE_LIMIT: &quot; + omitted + &quot; relations omitted from this view; complete evidence is unchanged in the analysis report.&quot;);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (sourceOnly &gt; 0) notes.add(&quot;SOURCE_ONLY: &quot; + sourceOnly</span>
+                + &quot; quoted contribution proposals retained without verified required relationships; review their open dependencies.&quot;);
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (omittedSources &gt; 0) notes.add(&quot;NODE_LIMIT: &quot; + omittedSources</span>
+                + &quot; source contribution proposals omitted from this view; full source evidence is retained in the report.&quot;);
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (!report.isSearchExhausted()) notes.add(&quot;RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.&quot;);</span>
+<span class="fc" id="L115">    }</span>
+
+<span class="fc" id="L117">    private record EdgeSignature(String source, String target, String type) { }</span>
+
+    /** Queryable snapshot columns are bounded; complete quotes/scopes stay in the immutable report. */
+    private static String summary(String text) {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (text.length() &lt;= 1800) return text;</span>
+<span class="fc" id="L122">        int end = 1760;</span>
+<span class="pc bpc" id="L123" title="3 of 4 branches missed.">        if (Character.isHighSurrogate(text.charAt(end - 1)) &amp;&amp; Character.isLowSurrogate(text.charAt(end))) end--;</span>
+<span class="fc" id="L124">        return text.substring(0, end) + &quot; [full evidence in analysis report]&quot;;</span>
+    }
+
+    private static RequirementElementView element(Node node, Map&lt;String,Integer&gt; effectiveScores,
+            Map&lt;String, AnalysisScoreDetail&gt; details, String contribution) {
+<span class="fc" id="L129">        RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L130">        element.setNodeCode(node.id()); element.setTitle(node.name()); element.setTaxonomySheet(node.root());</span>
+<span class="fc" id="L131">        AnalysisScoreDetail detail = details.get(node.id());</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (detail != null &amp;&amp; !node.id().equals(detail.nodeCode())) {</span>
+<span class="nc" id="L133">            throw new IllegalArgumentException(&quot;Assessment belongs to another catalogue endpoint&quot;);</span>
+        }
+<span class="fc" id="L135">        element.setScoreDetail(detail);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());</span>
+<span class="fc" id="L137">        Integer effective = effectiveScores.get(node.id());</span>
+        // A numeric layout fallback is not an assessment; scoreDetail remains explicitly null.
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        element.setRelevance((detail != null ? detail.effectiveRelevance()</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                : effective == null ? 0 : Math.max(0, Math.min(100, effective))) / 100.0);</span>
+<span class="fc" id="L141">        element.setOrigin(NodeOrigin.RELATION_EVIDENCE); element.setSelectedForImpact(true);</span>
+<span class="fc" id="L142">        element.setIncludedBecause(summary(contribution)); element.setPresenceReason(summary(&quot;Requirement-scoped contribution: &quot; + contribution));</span>
+<span class="fc" id="L143">        return element;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

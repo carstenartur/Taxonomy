@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobsConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.jobs</a> &gt; <span class="el_source">BackupJobsConfiguration.java</span></div><h1>BackupJobsConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.jobs;
+
+import com.taxonomy.backup.BackupAuthorizationService;
+import com.taxonomy.backup.archive.*;
+import com.taxonomy.backup.snapshot.BackupMaintenanceLease;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+
+/** Runs after normal module composition, and only when the complete source inventory is available. */
+@AutoConfiguration
+@ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnBean({BackupMaintenanceLease.class, BackupCaptureSource.class})
+<span class="fc" id="L18">public class BackupJobsConfiguration {</span>
+    @Bean BackupJobLimits backupJobLimits(Environment environment) {
+<span class="fc" id="L20">        return new BackupJobLimits(integer(environment, &quot;heavy-concurrency&quot;, 1), integer(environment, &quot;current-concurrency&quot;, 2),</span>
+<span class="fc" id="L21">                integer(environment, &quot;queue-capacity&quot;, 64), Duration.ofSeconds(number(environment, &quot;lease-seconds&quot;, 30)),</span>
+<span class="fc" id="L22">                Duration.ofHours(number(environment, &quot;retention-hours&quot;, 24)), number(environment, &quot;max-retained-bytes&quot;, 64L &lt;&lt; 30),</span>
+<span class="fc" id="L23">                number(environment, &quot;max-temporary-bytes&quot;, 72L &lt;&lt; 30));</span>
+    }
+<span class="fc" id="L25">    @Bean JdbcBackupJobStore backupJobStore(BackupMaintenanceLease barrier, BackupJobLimits limits) { return barrier.jobs(limits); }</span>
+<span class="fc" id="L26">    @Bean BackupJobStorage backupJobStorage(Environment environment) throws IOException { return new BackupJobStorage(root(environment)); }</span>
+    @Bean @ConditionalOnMissingBean(ArchiveProtectionProvider.class)
+    ArchiveProtectionProvider backupArchiveProtection(Environment environment) {
+<span class="fc" id="L29">        String key = environment.getProperty(&quot;taxonomy.backup.keyset-file&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        return key.isBlank() ? ArchiveProtectionProvider.unprotected() : DeploymentArchiveProtection.load(Path.of(key), root(environment));</span>
+    }
+<span class="fc" id="L32">    @Bean BackupArchiveWriter backupArchiveWriter(ArchiveProtectionProvider protection) { return new BackupArchiveWriter(protection, ArchiveLimits.defaults()); }</span>
+    @Bean BackupJobService backupJobService(JdbcBackupJobStore store, BackupAuthorizationService authorization,
+                                          BackupJobStorage storage, ArchiveProtectionProvider protection) {
+<span class="fc" id="L35">        return new BackupJobService(store, authorization, storage, protection.encrypted());</span>
+    }
+    @Bean BackupJobWorker backupJobWorker(JdbcBackupJobStore store, BackupAuthorizationService authorization,
+                                        BackupJobStorage storage, BackupCaptureSource source, BackupArchiveWriter writer) {
+<span class="fc" id="L39">        return new BackupJobWorker(store, authorization, storage, source, writer);</span>
+    }
+<span class="fc" id="L41">    @Bean BackupJobRunner backupJobRunner(BackupJobWorker worker, BackupJobLimits limits) { return new BackupJobRunner(worker, limits); }</span>
+<span class="fc" id="L42">    private static Path root(Environment environment) { return Path.of(environment.getProperty(&quot;taxonomy.backup.directory&quot;, &quot;./data/backups&quot;)); }</span>
+<span class="fc" id="L43">    private static int integer(Environment e, String name, int fallback) { return e.getProperty(&quot;taxonomy.backup.jobs.&quot; + name, Integer.class, fallback); }</span>
+<span class="fc" id="L44">    private static long number(Environment e, String name, long fallback) { return e.getProperty(&quot;taxonomy.backup.jobs.&quot; + name, Long.class, fallback); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

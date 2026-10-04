@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExchangeXml.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange</a> &gt; <span class="el_source">ExchangeXml.java</span></div><h1>ExchangeXml.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.bootstrap.DOMImplementationRegistry;
+import org.w3c.dom.ls.DOMImplementationLS;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Shared bounded XML policy for exchange adapters. Uploaded schema locations never control validation. */
+public final class ExchangeXml {
+    public static final int MAX_BYTES = 16 * 1024 * 1024;
+    public static final int MAX_ARTIFACTS = 10_000;
+    private static final int MAX_ELEMENTS = 250_000;
+    private static final int MAX_DEPTH = 96;
+<span class="fc" id="L36">    private static final ConcurrentHashMap&lt;String, Schema&gt; SCHEMAS = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L37">    private static final Set&lt;String&gt; ARCHIMATE = Set.of(&quot;archimate3_Diagram.xsd&quot;, &quot;archimate3_View.xsd&quot;, &quot;archimate3_Model.xsd&quot;, &quot;dc.xsd&quot;, &quot;xml.xsd&quot;);</span>
+<span class="fc" id="L38">    private static final Set&lt;String&gt; REQIF = Set.of(&quot;reqif.xsd&quot;, &quot;driver.xsd&quot;, &quot;xml.xsd&quot;, &quot;xhtml-attribs-1.xsd&quot;,</span>
+            &quot;xhtml-blkphras-1.xsd&quot;, &quot;xhtml-blkpres-1.xsd&quot;, &quot;xhtml-blkstruct-1.xsd&quot;, &quot;xhtml-datatypes-1.xsd&quot;,
+            &quot;xhtml-edit-1.xsd&quot;, &quot;xhtml-framework-1.xsd&quot;, &quot;xhtml-hypertext-1.xsd&quot;, &quot;xhtml-inlphras-1.xsd&quot;,
+            &quot;xhtml-inlpres-1.xsd&quot;, &quot;xhtml-inlstruct-1.xsd&quot;, &quot;xhtml-inlstyle-1.xsd&quot;, &quot;xhtml-list-1.xsd&quot;,
+            &quot;xhtml-object-1.xsd&quot;, &quot;xhtml-param-1.xsd&quot;, &quot;xhtml-pres-1.xsd&quot;, &quot;xhtml-table-1.xsd&quot;, &quot;xhtml-text-1.xsd&quot;);
+    private ExchangeXml() {}
+
+    /** Reviewed subsets must retain complete occurrence ancestry; an unreachable node is never silently dropped. */
+    public static void validatePlacements(com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeDocument document) {
+<span class="fc" id="L47">        var placements = new java.util.HashMap&lt;String, com.taxonomy.extension.api.integration.IntegrationContracts.Placement&gt;();</span>
+<span class="fc" id="L48">        Set&lt;String&gt; containers = new java.util.HashSet&lt;&gt;(), objects = new java.util.HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (ArchiMateExchangeCodec.PROFILE.equals(document.profile())) containers.add(&quot;organizations&quot;);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (var artifact : document.artifacts()) {</span>
+<span class="fc" id="L51">            objects.add(artifact.id());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (artifact.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.SPECIFICATION</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                    || artifact.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.VIEW) containers.add(artifact.id());</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">        document.relations().forEach(relation -&gt; objects.add(relation.id()));</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        for (var placement : document.placements()) if (placements.putIfAbsent(placement.id(), placement) != null)</span>
+<span class="nc" id="L57">            throw invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;Duplicate occurrence identity&quot;);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (var placement : document.placements()) {</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            if (!containers.contains(placement.containerId()) || placement.position() &lt; 0</span>
+<span class="pc bpc" id="L60" title="2 of 6 branches missed.">                    || placement.artifactId() != null &amp;&amp; !placement.artifactId().isEmpty() &amp;&amp; !objects.contains(placement.artifactId()))</span>
+<span class="fc" id="L61">                throw invalid(&quot;HIERARCHY_REFERENCE&quot;, &quot;A reviewed occurrence has a missing container or target&quot;);</span>
+<span class="fc" id="L62">            Set&lt;String&gt; ancestry = new java.util.HashSet&lt;&gt;(); var node = placement;</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            while (node != null) {</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (!ancestry.add(node.id()) || ancestry.size() &gt; MAX_DEPTH) throw invalid(&quot;HIERARCHY_CYCLE&quot;, &quot;Occurrence ancestry is cyclic or exceeds the depth limit&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                String parent = node.parentId(); if (parent == null) break;</span>
+<span class="fc" id="L66">                node = placements.get(parent);</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                if (node == null || !node.containerId().equals(placement.containerId()))</span>
+<span class="fc" id="L68">                    throw invalid(&quot;HIERARCHY_REFERENCE&quot;, &quot;A reviewed occurrence has a missing or incompatible parent&quot;);</span>
+<span class="fc" id="L69">            }</span>
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">    }</span>
+
+    /** Namespace-aware semantic comparison; formatting and XML prefix choices are not model changes. */
+    public static String semantic(String source) {
+<span class="fc" id="L75">        StringBuilder result = new StringBuilder(); semantic(parse(source.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), result); return result.toString();</span>
+    }
+    private static void semantic(Element node, StringBuilder result) {
+<span class="fc" id="L78">        part(result, &quot;{&quot; + node.getNamespaceURI() + &quot;}&quot; + node.getLocalName());</span>
+<span class="fc" id="L79">        var attributes = new java.util.TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (int i = 0; i &lt; node.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L81">            Node attribute = node.getAttributes().item(i);</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">            if (!XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(attribute.getNamespaceURI()) &amp;&amp; !&quot;LAST-CHANGE&quot;.equals(attribute.getNodeName())) {</span>
+<span class="fc" id="L83">                String value = attribute.getNodeValue();</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">                if (XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI.equals(attribute.getNamespaceURI()) &amp;&amp; &quot;type&quot;.equals(attribute.getLocalName())) {</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                    int colon = value.indexOf(':'); String prefix = colon &lt; 0 ? null : value.substring(0, colon);</span>
+<span class="fc" id="L86">                    value = &quot;{&quot; + node.lookupNamespaceURI(prefix) + &quot;}&quot; + value.substring(colon + 1);</span>
+                }
+<span class="fc" id="L88">                attributes.put(&quot;{&quot; + attribute.getNamespaceURI() + &quot;}&quot; + attribute.getLocalName(), value);</span>
+            }
+        }
+<span class="fc" id="L91">        attributes.forEach((key, value) -&gt; { part(result, key); part(result, value); }); result.append('|');</span>
+<span class="fc" id="L92">        boolean rich = &quot;http://www.w3.org/1999/xhtml&quot;.equals(node.getNamespaceURI());</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (child instanceof Element element) semantic(element, result);</span>
+<span class="pc bpc" id="L95" title="3 of 6 branches missed.">            else if ((child.getNodeType() == Node.TEXT_NODE || child.getNodeType() == Node.CDATA_SECTION_NODE)</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    &amp;&amp; (rich || !child.getNodeValue().isBlank())) part(result, child.getNodeValue());</span>
+        }
+<span class="fc" id="L98">        result.append(';');</span>
+<span class="fc" id="L99">    }</span>
+<span class="fc" id="L100">    private static void part(StringBuilder target, String value) { target.append(value.length()).append(':').append(value); }</span>
+
+    public static Document parse(byte[] content) {
+<span class="pc bpc" id="L103" title="2 of 6 branches missed.">        if (content == null || content.length == 0 || content.length &gt; MAX_BYTES)</span>
+<span class="fc" id="L104">            throw invalid(&quot;PACKAGE_SIZE&quot;, &quot;Exchange file must contain between 1 byte and 16 MiB&quot;);</span>
+        try {
+<span class="fc" id="L106">            SAXParserFactory sax = SAXParserFactory.newInstance();</span>
+<span class="fc" id="L107">            sax.setNamespaceAware(true);</span>
+<span class="fc" id="L108">            sax.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);</span>
+<span class="fc" id="L109">            sax.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L110">            sax.setFeature(&quot;http://xml.org/sax/features/external-general-entities&quot;, false);</span>
+<span class="fc" id="L111">            sax.setFeature(&quot;http://xml.org/sax/features/external-parameter-entities&quot;, false);</span>
+<span class="fc" id="L112">            var reader = sax.newSAXParser().getXMLReader();</span>
+<span class="fc" id="L113">            reader.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L114">            reader.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L115">            var bounds = new DefaultHandler() {</span>
+                int depth, elements;
+                @Override public void startElement(String uri, String local, String name, org.xml.sax.Attributes attributes) throws SAXException {
+<span class="pc bpc" id="L118" title="2 of 6 branches missed.">                    if (++depth &gt; MAX_DEPTH || ++elements &gt; MAX_ELEMENTS || attributes.getLength() &gt; 128)</span>
+<span class="fc" id="L119">                        throw new SAXException(&quot;XML complexity limit&quot;);</span>
+<span class="fc" id="L120">                }</span>
+<span class="fc" id="L121">                @Override public void endElement(String uri, String local, String name) { depth--; }</span>
+<span class="nc" id="L122">                @Override public void error(SAXParseException e) throws SAXException { throw e; }</span>
+<span class="fc" id="L123">                @Override public void fatalError(SAXParseException e) throws SAXException { throw e; }</span>
+            };
+<span class="fc" id="L125">            reader.setContentHandler(bounds); reader.setErrorHandler(bounds);</span>
+<span class="fc" id="L126">            reader.parse(new org.xml.sax.InputSource(new ByteArrayInputStream(content)));</span>
+
+<span class="fc" id="L128">            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L129">            factory.setNamespaceAware(true); factory.setXIncludeAware(false); factory.setExpandEntityReferences(false);</span>
+<span class="fc" id="L130">            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);</span>
+<span class="fc" id="L131">            factory.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L132">            factory.setFeature(&quot;http://xml.org/sax/features/external-general-entities&quot;, false);</span>
+<span class="fc" id="L133">            factory.setFeature(&quot;http://xml.org/sax/features/external-parameter-entities&quot;, false);</span>
+<span class="fc" id="L134">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L135">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L136">            var builder = factory.newDocumentBuilder(); builder.setErrorHandler(bounds);</span>
+<span class="fc" id="L137">            Document document = builder.parse(new ByteArrayInputStream(content));</span>
+<span class="fc" id="L138">            passiveXhtml(document); return document;</span>
+<span class="fc" id="L139">        } catch (ExchangeFormatException rejected) { throw rejected; }</span>
+<span class="fc" id="L140">        catch (Exception rejected) { throw invalid(&quot;INVALID_XML&quot;, &quot;Malformed, unsafe or over-complex exchange XML&quot;); }</span>
+    }
+
+    private static void passiveXhtml(Document document) {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        for (Element element : all(document, &quot;http://www.w3.org/1999/xhtml&quot;, &quot;*&quot;)) {</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (Set.of(&quot;script&quot;, &quot;iframe&quot;, &quot;embed&quot;, &quot;link&quot;, &quot;style&quot;, &quot;form&quot;, &quot;input&quot;, &quot;button&quot;).contains(element.getLocalName().toLowerCase(java.util.Locale.ROOT)))</span>
+<span class="fc" id="L146">                throw invalid(&quot;ACTIVE_XHTML_REJECTED&quot;, &quot;Active rich-text content is outside the supported exchange profile&quot;);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            for (int i = 0; i &lt; element.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L148">                Node attribute = element.getAttributes().item(i);</span>
+<span class="fc" id="L149">                String name = attribute.getLocalName().toLowerCase(java.util.Locale.ROOT), value = attribute.getNodeValue().strip();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (name.startsWith(&quot;on&quot;)) throw invalid(&quot;ACTIVE_XHTML_REJECTED&quot;, &quot;Rich-text event handlers are not supported&quot;);</span>
+<span class="pc bpc" id="L151" title="2 of 6 branches missed.">                if (name.equals(&quot;style&quot;) &amp;&amp; (value.contains(&quot;\\&quot;) || value.toLowerCase(java.util.Locale.ROOT).matches(&quot;(?s).*(url\\s*\\(|expression|@import|behavior|-moz-binding).*&quot;)))</span>
+<span class="fc" id="L152">                    throw invalid(&quot;ACTIVE_XHTML_REJECTED&quot;, &quot;External or executable CSS is not supported&quot;);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                if (Set.of(&quot;href&quot;, &quot;src&quot;, &quot;data&quot;, &quot;action&quot;, &quot;background&quot;, &quot;codebase&quot;).contains(name)) {</span>
+                    java.net.URI uri;
+<span class="fc" id="L155">                    try { uri = java.net.URI.create(value); }</span>
+<span class="pc" id="L156">                    catch (IllegalArgumentException failure) { throw invalid(&quot;ACTIVE_XHTML_REJECTED&quot;, &quot;Invalid rich-text resource URI&quot;); }</span>
+<span class="pc bpc" id="L157" title="3 of 6 branches missed.">                    if (value.startsWith(&quot;//&quot;) || uri.getUserInfo() != null || uri.getScheme() != null</span>
+<span class="fc bfc" id="L158" title="All 4 branches covered.">                            &amp;&amp; !(name.equals(&quot;href&quot;) &amp;&amp; Set.of(&quot;https&quot;, &quot;http&quot;, &quot;mailto&quot;).contains(uri.getScheme().toLowerCase(java.util.Locale.ROOT))))</span>
+<span class="fc" id="L159">                        throw invalid(&quot;ACTIVE_XHTML_REJECTED&quot;, &quot;Only passive links and package-relative rich-text assets are supported&quot;);</span>
+                }
+            }
+<span class="fc" id="L162">        }</span>
+<span class="fc" id="L163">    }</span>
+
+    public static void validate(Document document, String profile) {
+        try {
+<span class="fc" id="L167">            var validator = SCHEMAS.computeIfAbsent(profile, ExchangeXml::schema).newValidator();</span>
+<span class="fc" id="L168">            validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L169">            validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L170">            validator.validate(new DOMSource(document));</span>
+<span class="fc" id="L171">        } catch (Exception rejected) { throw invalid(&quot;SCHEMA_INVALID&quot;, &quot;Exchange document does not satisfy the pinned supported schema&quot;); }</span>
+<span class="fc" id="L172">    }</span>
+
+    private static Schema schema(String profile) {
+<span class="pc bpc" id="L175" title="1 of 3 branches missed.">        String root = switch (profile) { case &quot;reqif-1.2&quot; -&gt; &quot;/reqif-1.2/&quot;; case &quot;archimate-3.1&quot; -&gt; &quot;/archimate-3.1/&quot;; default -&gt; throw invalid(&quot;UNKNOWN_PROFILE&quot;, &quot;Unknown exchange profile&quot;); };</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        Set&lt;String&gt; files = profile.equals(&quot;reqif-1.2&quot;) ? REQIF : ARCHIMATE;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        String entry = profile.equals(&quot;reqif-1.2&quot;) ? &quot;reqif.xsd&quot; : &quot;archimate3_Diagram.xsd&quot;;</span>
+        try {
+<span class="fc" id="L179">            SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);</span>
+<span class="fc" id="L180">            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);</span>
+<span class="fc" id="L181">            factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L182">            factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L183">            var implementation = (DOMImplementationLS) DOMImplementationRegistry.newInstance().getDOMImplementation(&quot;LS&quot;);</span>
+<span class="fc" id="L184">            factory.setResourceResolver((type, namespace, publicId, systemId, base) -&gt; {</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                String name = systemId == null ? &quot;&quot; : systemId.substring(systemId.lastIndexOf('/') + 1);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                if (!files.contains(name)) throw invalid(&quot;SCHEMA_REFERENCE&quot;, &quot;Unpinned schema reference&quot;);</span>
+<span class="fc" id="L187">                var input = implementation.createLSInput();</span>
+<span class="fc" id="L188">                input.setPublicId(publicId); input.setSystemId(root + name);</span>
+<span class="fc" id="L189">                input.setByteStream(ExchangeXml.class.getResourceAsStream(root + name));</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                if (input.getByteStream() == null) throw invalid(&quot;SCHEMA_MISSING&quot;, &quot;Pinned schema is missing&quot;);</span>
+<span class="fc" id="L191">                return input;</span>
+            });
+<span class="fc" id="L193">            try (var stream = ExchangeXml.class.getResourceAsStream(root + entry)) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                if (stream == null) throw invalid(&quot;SCHEMA_MISSING&quot;, &quot;Pinned schema is missing&quot;);</span>
+<span class="fc" id="L195">                return factory.newSchema(new StreamSource(stream, root + entry));</span>
+            }
+<span class="nc" id="L197">        } catch (Exception failure) { throw new IllegalStateException(&quot;Cannot load pinned exchange schema&quot;, failure); }</span>
+    }
+
+    public static byte[] write(Node node) {
+        try {
+<span class="fc" id="L202">            TransformerFactory factory = TransformerFactory.newInstance();</span>
+<span class="fc" id="L203">            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);</span>
+<span class="fc" id="L204">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L205">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, &quot;&quot;);</span>
+<span class="fc" id="L206">            var transformer = factory.newTransformer();</span>
+<span class="fc" id="L207">            transformer.setOutputProperty(OutputKeys.ENCODING, &quot;UTF-8&quot;);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, node instanceof Document ? &quot;no&quot; : &quot;yes&quot;);</span>
+<span class="fc" id="L209">            var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L210">            transformer.transform(new DOMSource(node), new StreamResult(output));</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            if (output.size() &gt; MAX_BYTES) throw invalid(&quot;PACKAGE_SIZE&quot;, &quot;Generated exchange exceeds 16 MiB&quot;);</span>
+<span class="fc" id="L212">            return output.toByteArray();</span>
+<span class="nc" id="L213">        } catch (ExchangeFormatException e) { throw e; }</span>
+<span class="nc" id="L214">        catch (Exception e) { throw invalid(&quot;XML_WRITE&quot;, &quot;Cannot serialize exchange document&quot;); }</span>
+    }
+
+<span class="fc" id="L217">    public static String xml(Node node) { return new String(write(node), StandardCharsets.UTF_8); }</span>
+    public static List&lt;Element&gt; children(Node node) {
+<span class="fc" id="L219">        List&lt;Element&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L220" title="All 4 branches covered.">        if (node != null) for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling())</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (child instanceof Element element) result.add(element);</span>
+<span class="fc" id="L222">        return result;</span>
+    }
+    public static Element child(Node parent, String local) {
+<span class="fc" id="L225">        return children(parent).stream().filter(e -&gt; local.equals(e.getLocalName())).findFirst().orElse(null);</span>
+    }
+    public static List&lt;Element&gt; all(Document doc, String namespace, String local) {
+<span class="fc" id="L228">        var nodes = doc.getElementsByTagNameNS(namespace, local); List&lt;Element&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (int i = 0; i &lt; nodes.getLength(); i++) result.add((Element) nodes.item(i));</span>
+<span class="fc" id="L230">        return result;</span>
+    }
+    public static String text(Node parent, String local) {
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        Element element = child(parent, local); return element == null ? &quot;&quot; : element.getTextContent();</span>
+    }
+    public static Element append(Node parent, String ns, String name) {
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        Document doc = parent instanceof Document d ? d : parent.getOwnerDocument();</span>
+<span class="fc" id="L237">        Element result = doc.createElementNS(ns, name); parent.appendChild(result); return result;</span>
+    }
+    public static Element text(Node parent, String ns, String name, String value) {
+<span class="fc" id="L240">        Element result = append(parent, ns, name); result.setTextContent(value); return result;</span>
+    }
+    public static String required(Element element, String attribute) {
+<span class="fc" id="L243">        String value = element.getAttribute(attribute);</span>
+<span class="pc bpc" id="L244" title="2 of 4 branches missed.">        if (value.isBlank() || value.length() &gt; 2048) throw invalid(&quot;INVALID_IDENTITY&quot;, &quot;Missing or oversized external identity&quot;);</span>
+<span class="fc" id="L245">        return value;</span>
+    }
+<span class="fc" id="L247">    public static ExchangeFormatException invalid(String code, String message) { return new ExchangeFormatException(code, message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

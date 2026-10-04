@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SetupChecks.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">SetupChecks.java</span></div><h1>SetupChecks.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.function.Function;
+
+/** Side-effect-free checks over effective Spring property names, not a second config store. */
+public final class SetupChecks {
+<span class="fc" id="L12">    public enum Status { OK, WARNING, ERROR, NOT_CHECKED }</span>
+
+    /** Findings deliberately contain only fixed messages and property names, never values. */
+<span class="fc" id="L15">    public record Finding(Status status, String key, String message) { }</span>
+
+<span class="fc" id="L17">    private enum Database {</span>
+<span class="fc" id="L18">        POSTGRES(&quot;jdbc:postgresql:&quot;, &quot;postgres&quot;),</span>
+<span class="fc" id="L19">        MSSQL(&quot;jdbc:sqlserver:&quot;, &quot;mssql&quot;),</span>
+<span class="fc" id="L20">        ORACLE(&quot;jdbc:oracle:&quot;, &quot;oracle&quot;),</span>
+<span class="fc" id="L21">        HSQLDB(&quot;jdbc:hsqldb:&quot;, &quot;hsqldb&quot;, &quot;hsqldb-file&quot;);</span>
+
+        private final String jdbcPrefix;
+        private final Set&lt;String&gt; profiles;
+
+<span class="fc" id="L26">        Database(String jdbcPrefix, String... profiles) {</span>
+<span class="fc" id="L27">            this.jdbcPrefix = jdbcPrefix;</span>
+<span class="fc" id="L28">            this.profiles = Set.of(profiles);</span>
+<span class="fc" id="L29">        }</span>
+
+<span class="fc" id="L31">        boolean accepts(String url) { return url.startsWith(jdbcPrefix); }</span>
+<span class="fc" id="L32">        boolean active(Set&lt;String&gt; activeProfiles) { return profiles.stream().anyMatch(activeProfiles::contains); }</span>
+    }
+
+<span class="fc" id="L35">    private static final List&lt;String&gt; SCHEMA_ACTION_PROPERTIES = List.of(</span>
+            &quot;spring.jpa.hibernate.ddl-auto&quot;,
+            &quot;spring.jpa.properties.hibernate.hbm2ddl.auto&quot;,
+            &quot;spring.jpa.properties.jakarta.persistence.schema-generation.database.action&quot;);
+<span class="fc" id="L39">    private static final Set&lt;String&gt; UNSAFE_PERSISTENT_SCHEMA_ACTIONS = Set.of(</span>
+            &quot;create&quot;, &quot;create-only&quot;, &quot;create-drop&quot;, &quot;drop&quot;, &quot;drop-and-create&quot;, &quot;truncate&quot;);
+
+    private SetupChecks() { }
+
+    public static List&lt;Finding&gt; check(Function&lt;String, String&gt; properties, Set&lt;String&gt; profiles) {
+<span class="fc" id="L45">        List&lt;Finding&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L46">        String url = value(properties, &quot;spring.datasource.url&quot;);</span>
+<span class="fc" id="L47">        boolean memory = url.startsWith(&quot;jdbc:hsqldb:mem:&quot;);</span>
+<span class="fc" id="L48">        boolean known = false;</span>
+<span class="fc" id="L49">        List&lt;Database&gt; activeDatabases = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (Database database : Database.values()) {</span>
+<span class="fc" id="L51">            known |= database.accepts(url);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (database.active(profiles)) { activeDatabases.add(database); }</span>
+        }
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (!known) {</span>
+<span class="nc" id="L55">            error(result, &quot;spring.datasource.url&quot;, &quot;Select a supported JDBC URL and matching database profile.&quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        } else if (memory) {</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">            result.add(new Finding(profiles.contains(&quot;production&quot;) || profiles.contains(&quot;kubernetes&quot;)</span>
+<span class="fc" id="L58">                    ? Status.ERROR : Status.WARNING, &quot;spring.datasource.url&quot;,</span>
+                    &quot;In-memory data is lost at shutdown; do not use this configuration for persistent operation.&quot;));
+        }
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (activeDatabases.size() &gt; 1) {</span>
+<span class="fc" id="L62">            error(result, &quot;spring.profiles.active&quot;, &quot;Choose database profiles for only one database engine.&quot;);</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        } else if (activeDatabases.size() == 1 &amp;&amp; !activeDatabases.getFirst().accepts(url)) {</span>
+<span class="fc" id="L64">            error(result, &quot;spring.datasource.url&quot;, &quot;The JDBC URL does not match the selected database profile and its driver/dialect.&quot;);</span>
+        }
+        // Check native Hibernate/JPA overrides too; they must not bypass ddl-auto validation.
+        // create-only does not drop first, but is still schema creation, not a safe existing-data check.
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (!memory) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            for (String property : SCHEMA_ACTION_PROPERTIES) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                if (UNSAFE_PERSISTENT_SCHEMA_ACTIONS.contains(value(properties, property).toLowerCase(Locale.ROOT))) {</span>
+<span class="fc" id="L71">                    error(result, property, &quot;Schema creation, dropping or truncation is not allowed for a persistent installation.&quot;);</span>
+                }
+<span class="fc" id="L73">            }</span>
+        }
+<span class="fc" id="L75">        result.addAll(checkAuthentication(properties, profiles));</span>
+<span class="fc" id="L76">        String port = value(properties, &quot;server.port&quot;);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (!port.isEmpty()) {</span>
+            try {
+<span class="fc" id="L79">                int number = Integer.parseInt(port);</span>
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">                if (number &lt; 1 || number &gt; 65535) { throw new NumberFormatException(); }</span>
+<span class="fc" id="L81">            } catch (NumberFormatException invalid) {</span>
+<span class="fc" id="L82">                error(result, &quot;server.port&quot;, &quot;Use a port between 1 and 65535.&quot;);</span>
+<span class="fc" id="L83">            }</span>
+        }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (String key : List.of(&quot;embedding.enabled&quot;, &quot;embedding.allow-download&quot;)) {</span>
+<span class="fc" id="L86">            String setting = value(properties, key);</span>
+<span class="fc bfc" id="L87" title="All 4 branches covered.">            if (!setting.isEmpty() &amp;&amp; !Set.of(&quot;true&quot;, &quot;false&quot;).contains(setting.toLowerCase(Locale.ROOT))) {</span>
+<span class="fc" id="L88">                error(result, key, &quot;Use true or false.&quot;);</span>
+            }
+<span class="fc" id="L90">        }</span>
+<span class="fc" id="L91">        String provider = value(properties, &quot;llm.provider&quot;).toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L92">        String customUrl = value(properties, &quot;custom.llm.url&quot;);</span>
+        // Validate configured endpoints even when provider selection is automatic or changes later.
+        // Do not duplicate provider-selection priority or require an API key for a local endpoint.
+<span class="fc bfc" id="L95" title="All 4 branches covered.">        if (!customUrl.isEmpty() || provider.equals(&quot;CUSTOM_OPENAI&quot;)) {</span>
+<span class="fc" id="L96">            endpoint(result, properties, &quot;custom.llm.url&quot;);</span>
+        }
+<span class="fc bfc" id="L98" title="All 6 branches covered.">        if (provider.equals(&quot;CUSTOM_OPENAI&quot;) || (provider.isEmpty() &amp;&amp; !customUrl.isEmpty())) {</span>
+<span class="fc" id="L99">            required(result, properties, &quot;custom.llm.model&quot;);</span>
+        }
+<span class="fc bfc" id="L101" title="All 3 branches covered.">        switch (provider) {</span>
+<span class="fc" id="L102">            case &quot;&quot;, &quot;LOCAL_ONNX&quot;, &quot;CUSTOM_OPENAI&quot; -&gt; { }</span>
+            case &quot;GEMINI&quot;, &quot;OPENAI&quot;, &quot;DEEPSEEK&quot;, &quot;QWEN&quot;, &quot;LLAMA&quot;, &quot;MISTRAL&quot; -&gt;
+<span class="fc" id="L104">                    required(result, properties, provider.toLowerCase(Locale.ROOT) + &quot;.api.key&quot;);</span>
+<span class="fc" id="L105">            default -&gt; error(result, &quot;llm.provider&quot;, &quot;Choose a supported provider; no provider is configured by this check.&quot;);</span>
+        }
+<span class="fc" id="L107">        boolean embeddings = Boolean.parseBoolean(value(properties, &quot;embedding.enabled&quot;));</span>
+<span class="fc bfc" id="L108" title="All 4 branches covered.">        if (provider.equals(&quot;LOCAL_ONNX&quot;) &amp;&amp; !embeddings) {</span>
+<span class="fc" id="L109">            error(result, &quot;embedding.enabled&quot;, &quot;LOCAL_ONNX requires explicitly enabled embeddings.&quot;);</span>
+        }
+<span class="fc bfc" id="L111" title="All 4 branches covered.">        if (embeddings &amp;&amp; value(properties, &quot;embedding.model.dir&quot;).isEmpty()</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                &amp;&amp; !Boolean.parseBoolean(value(properties, &quot;embedding.allow-download&quot;))) {</span>
+<span class="fc" id="L113">            error(result, &quot;embedding.model.dir&quot;, &quot;Provide a local model directory or explicitly permit downloads.&quot;);</span>
+        }
+<span class="fc" id="L115">        result.add(new Finding(Status.NOT_CHECKED, &quot;ai.inference&quot;, &quot;No inference, paid request or model download is performed.&quot;));</span>
+<span class="fc" id="L116">        result.add(new Finding(Status.NOT_CHECKED, &quot;database.schema&quot;, &quot;No schema migration, write-permission test or rollback test is performed.&quot;));</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        if (result.stream().noneMatch(f -&gt; f.status() == Status.ERROR)) {</span>
+<span class="fc" id="L118">            result.add(new Finding(Status.OK, &quot;configuration.static&quot;, &quot;Supported static configuration checks passed; this is not an installation acceptance test.&quot;));</span>
+        }
+<span class="fc" id="L120">        return List.copyOf(result);</span>
+    }
+
+    /** Shared by preflight and the production startup guard; does not contact the identity provider. */
+    public static List&lt;Finding&gt; checkAuthentication(Function&lt;String, String&gt; properties, Set&lt;String&gt; profiles) {
+<span class="fc" id="L125">        List&lt;Finding&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (profiles.contains(&quot;keycloak&quot;)) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (profiles.contains(&quot;local-user-management&quot;)) {</span>
+<span class="fc" id="L128">                error(result, &quot;spring.profiles.active&quot;, &quot;Choose central login or local user management, not both.&quot;);</span>
+            }
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (&quot;true&quot;.equalsIgnoreCase(value(properties, &quot;taxonomy.security.local-users-enabled&quot;))) {</span>
+<span class="nc" id="L131">                error(result, &quot;taxonomy.security.local-users-enabled&quot;, &quot;Local user administration must remain disabled with Keycloak.&quot;);</span>
+            }
+<span class="fc" id="L133">            endpoint(result, properties, &quot;spring.security.oauth2.client.provider.keycloak.issuer-uri&quot;);</span>
+<span class="fc" id="L134">            required(result, properties, &quot;spring.security.oauth2.client.registration.keycloak.client-id&quot;);</span>
+<span class="fc" id="L135">            required(result, properties, &quot;spring.security.oauth2.client.registration.keycloak.client-secret&quot;);</span>
+<span class="fc" id="L136">            result.add(new Finding(Status.NOT_CHECKED, &quot;authentication.roles&quot;,</span>
+                    &quot;Verify a real login and ROLE_USER/ROLE_ARCHITECT/ROLE_ADMIN mapping at the identity provider.&quot;));
+        } else {
+<span class="fc" id="L139">            result.add(new Finding(Status.NOT_CHECKED, &quot;authentication.bootstrap&quot;,</span>
+                    &quot;Check initial administrator provisioning or an existing administrator; no account is created by this check.&quot;));
+        }
+<span class="fc" id="L142">        return List.copyOf(result);</span>
+    }
+
+    static String value(Function&lt;String, String&gt; properties, String key) {
+<span class="fc" id="L146">        String result = properties.apply(key);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        return result == null ? &quot;&quot; : result.trim();</span>
+    }
+
+    static boolean safeEndpoint(String value) {
+        try {
+<span class="fc" id="L152">            URI uri = URI.create(value);</span>
+<span class="fc" id="L153">            String host = uri.getHost();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            boolean loopback = Set.of(&quot;localhost&quot;, &quot;127.0.0.1&quot;, &quot;[::1]&quot;).contains(host == null ? &quot;&quot; : host.toLowerCase(Locale.ROOT));</span>
+<span class="fc bfc" id="L155" title="All 8 branches covered.">            return host != null &amp;&amp; uri.getUserInfo() == null &amp;&amp; uri.getQuery() == null &amp;&amp; uri.getFragment() == null</span>
+<span class="pc bpc" id="L156" title="1 of 6 branches missed.">                    &amp;&amp; (&quot;https&quot;.equalsIgnoreCase(uri.getScheme()) || (loopback &amp;&amp; &quot;http&quot;.equalsIgnoreCase(uri.getScheme())));</span>
+<span class="fc" id="L157">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L158">            return false;</span>
+        }
+    }
+
+    private static void endpoint(List&lt;Finding&gt; result, Function&lt;String, String&gt; properties, String key) {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (!safeEndpoint(value(properties, key))) {</span>
+<span class="fc" id="L164">            error(result, key, &quot;Use HTTPS (HTTP only on loopback), without URL credentials, query or fragment.&quot;);</span>
+        }
+<span class="fc" id="L166">    }</span>
+
+    private static void required(List&lt;Finding&gt; result, Function&lt;String, String&gt; properties, String key) {
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (value(properties, key).isEmpty()) { error(result, key, &quot;A non-empty setting or Secret reference is required.&quot;); }</span>
+<span class="fc" id="L170">    }</span>
+
+    private static void error(List&lt;Finding&gt; result, String key, String message) {
+<span class="fc" id="L173">        result.add(new Finding(Status.ERROR, key, message));</span>
+<span class="fc" id="L174">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

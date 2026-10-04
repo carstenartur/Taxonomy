@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationBounds.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.integration</a> &gt; <span class="el_source">PublicationBounds.java</span></div><h1>PublicationBounds.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.integration;
+
+import java.lang.reflect.RecordComponent;
+import java.net.URI;
+import java.util.*;
+import java.util.regex.Pattern;
+
+/** Finite transport budgets shared by adapters and the journal. No payload appears in diagnostics. */
+public final class PublicationBounds {
+    public static final int SCHEMA_VERSION = 1;
+    public static final String CONTRACT_VERSION = &quot;taxonomy-publication-contract-v1&quot;;
+    public static final int MAX_SCOPE_ITEMS = 10_000, MAX_MUTATIONS = 1_024;
+    public static final int MAX_DOCUMENT_BYTES = 16 * 1024 * 1024, MAX_ITEM_BYTES = 1024 * 1024;
+    public static final int MAX_ATTEMPTS = 100;
+    public static final long INVOCATION_SECONDS = 30, CLAIM_LEASE_SECONDS = 30;
+<span class="fc" id="L16">    private static final Pattern ENCODED_DELIMITER = Pattern.compile(&quot;%(?:2e|2f|5c|40|3f|23|25)&quot;, Pattern.CASE_INSENSITIVE);</span>
+    private PublicationBounds() {}
+<span class="fc bfc" id="L18" title="All 2 branches covered.">    public static void schema(int value) { if (value != SCHEMA_VERSION) throw invalid(); }</span>
+<span class="pc bpc" id="L19" title="1 of 4 branches missed.">    public static void attempt(int value) { if (value &lt; 1 || value &gt; MAX_ATTEMPTS) throw invalid(); }</span>
+    public static String text(String value) {
+<span class="pc bpc" id="L21" title="2 of 8 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; 2048 || value.chars().anyMatch(Character::isISOControl)) throw invalid();</span>
+<span class="fc" id="L22">        return value;</span>
+    }
+    public static String token(String value) {
+<span class="fc" id="L25">        text(value);</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">        if (value.startsWith(&quot;W/&quot;) || !value.matches(&quot;[A-Za-z0-9._~:/+=\&quot;-]+&quot;)) throw invalid();</span>
+<span class="fc" id="L27">        return value;</span>
+    }
+    public static String resource(String value) {
+<span class="fc" id="L30">        text(value);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (ENCODED_DELIMITER.matcher(value).find()) throw invalid();</span>
+        try {
+<span class="fc" id="L33">            URI uri = URI.create(value);</span>
+<span class="pc bpc" id="L34" title="1 of 8 branches missed.">            if (uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null || value.contains(&quot;\\&quot;)</span>
+<span class="fc bfc" id="L35" title="All 4 branches covered.">                    || Arrays.asList(uri.getPath() == null ? new String[0] : uri.getPath().split(&quot;/&quot;)).contains(&quot;..&quot;)) throw invalid();</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">            if (uri.isAbsolute() &amp;&amp; !Set.of(&quot;https&quot;, &quot;http&quot;, &quot;urn&quot;).contains(uri.getScheme())) throw invalid();</span>
+<span class="fc" id="L37">        } catch (IllegalArgumentException failure) { throw invalid(); }</span>
+<span class="fc" id="L38">        return value;</span>
+    }
+    public static &lt;T&gt; List&lt;T&gt; list(List&lt;T&gt; values, int maximum) {
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        Objects.requireNonNull(values); if (values.size() &gt; maximum) throw invalid(); return List.copyOf(values);</span>
+    }
+    public static &lt;T&gt; Set&lt;T&gt; set(Set&lt;T&gt; values, int maximum) {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        Objects.requireNonNull(values); if (values.size() &gt; maximum) throw invalid(); return Set.copyOf(values);</span>
+    }
+    public static &lt;K,V&gt; Map&lt;K,V&gt; map(Map&lt;K,V&gt; values, int maximum) {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        Objects.requireNonNull(values); if (values.size() &gt; maximum) throw invalid(); return Map.copyOf(values);</span>
+    }
+    public static void document(IntegrationContracts.ExchangeDocument value) {
+<span class="fc" id="L50">        Objects.requireNonNull(value);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if ((long)value.artifacts().size() + value.relations().size() + value.placements().size() &gt; MAX_SCOPE_ITEMS) throw invalid();</span>
+<span class="fc" id="L52">        bounded(MAX_DOCUMENT_BYTES, value);</span>
+<span class="fc" id="L53">    }</span>
+    /** Counts JSON bytes directly, before serialization/canonical-tree allocation; stops at the limit. */
+    public static void bounded(int maximum, Object... values) {
+        // Reserve field-name/envelope overhead when constructors check components before their record exists.
+<span class="fc" id="L57">        Counter counter = new Counter(maximum - 2048L); counter.add(2);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (Object value : values) { counter.value(value, 0); counter.add(1); }</span>
+<span class="fc" id="L59">    }</span>
+<span class="fc" id="L60">    private static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid or oversized publication value&quot;); }</span>
+    private static final class Counter {
+        long remaining;
+<span class="fc" id="L63">        Counter(long maximum) { remaining = maximum; }</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        void add(long count) { remaining -= count; if (remaining &lt; 0) throw invalid(); }</span>
+        void string(String value) {
+<span class="fc" id="L66">            add(2);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L68">                char c = value.charAt(i);</span>
+<span class="pc bpc" id="L69" title="2 of 6 branches missed.">                if (c &lt; 32) add(6); else if (c == '&quot;' || c == '\\') add(2);</span>
+<span class="pc bpc" id="L70" title="3 of 4 branches missed.">                else if (c &lt; 128) add(1); else if (c &lt; 2048) add(2);</span>
+<span class="nc bnc" id="L71" title="All 6 branches missed.">                else if (Character.isHighSurrogate(c) &amp;&amp; i + 1 &lt; value.length() &amp;&amp; Character.isLowSurrogate(value.charAt(i + 1))) { add(4); i++; }</span>
+<span class="nc" id="L72">                else add(3);</span>
+            }
+<span class="fc" id="L74">        }</span>
+        void value(Object value, int depth) {
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            if (depth &gt; 32) throw invalid();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (value == null) { add(4); return; }</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (value instanceof String s) { string(s); return; }</span>
+<span class="fc bfc" id="L79" title="All 4 branches covered.">            if (value instanceof Number || value instanceof Boolean) { add(value.toString().length()); return; }</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (value instanceof Map&lt;?,?&gt; map) {</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                if (map.size() &gt; MAX_SCOPE_ITEMS) throw invalid(); add(2);</span>
+<span class="fc" id="L82">                map.forEach((key, item) -&gt; { string(key.toString()); add(2); value(item, depth + 1); }); return;</span>
+            }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (value instanceof Collection&lt;?&gt; collection) {</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                if (collection.size() &gt; MAX_SCOPE_ITEMS) throw invalid(); add(2);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                for (Object item : collection) { value(item, depth + 1); add(1); } return;</span>
+            }
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (value.getClass().isRecord()) {</span>
+<span class="fc" id="L89">                add(2);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                try { for (RecordComponent field : value.getClass().getRecordComponents()) { string(field.getName()); add(2); value(field.getAccessor().invoke(value), depth + 1); } }</span>
+<span class="pc" id="L91">                catch (ReflectiveOperationException e) { throw invalid(); } return;</span>
+            }
+<span class="pc bpc" id="L93" title="1 of 6 branches missed.">            if (value instanceof Enum&lt;?&gt; || value instanceof UUID || value instanceof java.time.Instant) { string(value.toString()); return; }</span>
+<span class="nc" id="L94">            throw invalid();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

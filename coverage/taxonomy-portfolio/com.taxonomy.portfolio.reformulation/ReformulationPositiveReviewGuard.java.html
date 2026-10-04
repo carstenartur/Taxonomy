@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationPositiveReviewGuard.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationPositiveReviewGuard.java</span></div><h1>ReformulationPositiveReviewGuard.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import com.taxonomy.reformulation.ValidationReport;
+import org.springframework.stereotype.Service;
+
+import java.util.Objects;
+
+/** Invoked only after the requirement aggregate lock; neither adoption nor a draft is approval. */
+@Service
+public class ReformulationPositiveReviewGuard {
+    private final ReformulationAdoptionRepository adoptions;
+    private final ReformulationPortableEvidenceRepository imports;
+    private final PortfolioJsonCodec json;
+    private final ReformulationEvidenceCodec codec;
+    private final ReformulationProposalRepository proposals;
+
+    public ReformulationPositiveReviewGuard(ReformulationAdoptionRepository adoptions,
+            ReformulationPortableEvidenceRepository imports, PortfolioJsonCodec json,
+<span class="fc" id="L27">            ReformulationEvidenceCodec codec, ReformulationProposalRepository proposals) {</span>
+<span class="fc" id="L28">        this.adoptions = adoptions;</span>
+<span class="fc" id="L29">        this.imports = imports;</span>
+<span class="fc" id="L30">        this.json = json;</span>
+<span class="fc" id="L31">        this.codec = codec;</span>
+<span class="fc" id="L32">        this.proposals = proposals;</span>
+<span class="fc" id="L33">    }</span>
+
+    public void requireReviewable(ArchitectureProject project, ProjectRequirement requirement, ProjectRequirementVersion current) {
+<span class="fc" id="L36">        String scope = requirement.getScopeKey();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var receipt : adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(requirement.getId(), current.getId(), scope)) {</span>
+<span class="fc" id="L38">            var preview = receipt.getPreview();</span>
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">            if (preview == null || !StableIdentityHash.sha256(preview.getPayload()).equals(preview.getContentHash()))</span>
+<span class="fc" id="L40">                throw PortfolioException.conflict(&quot;Stored adoption review evidence is inconsistent&quot;);</span>
+<span class="fc" id="L41">            var content = json.read(preview.getPayload(), ReformulationAdoptionDtos.PreviewContent.class);</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">            var previous = content == null || content.currentRequirement() == null ? null</span>
+<span class="fc" id="L43">                    : content.currentRequirement().currentVersion();</span>
+<span class="fc" id="L44">            var proposal = proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(</span>
+<span class="fc" id="L45">                    receipt.getProposalId(), project.getId(), requirement.getId(), scope)</span>
+<span class="pc" id="L46">                    .orElseThrow(() -&gt; PortfolioException.conflict(&quot;Stored adoption proposal is missing&quot;));</span>
+<span class="fc" id="L47">            ReformulationBaseline baseline = json.read(proposal.getBaselinePayload(), ReformulationBaseline.class);</span>
+<span class="fc" id="L48">            var result = json.read(receipt.getPayload(), ReformulationAdoptionDtos.Result.class);</span>
+<span class="pc bpc" id="L49" title="3 of 10 branches missed.">            if (content == null || content.revision() == null || previous == null || baseline == null || result == null</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                    || !Objects.equals(receipt.getScopeKey(), scope)</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                    || !Objects.equals(receipt.getRequirementId(), requirement.getId())</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                    || !Objects.equals(receipt.getTargetVersionId(), current.getId())</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                    || !Objects.equals(content.id(), receipt.getPreviewId())</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                    || !Objects.equals(content.proposalId(), receipt.getProposalId())</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                    || !Objects.equals(content.currentRequirement().id(), requirement.getId())</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                    || !Objects.equals(content.currentRequirement().projectId(), project.getId())</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                    || !Objects.equals(content.sourceVersionId(), baseline.sourceVersionId())</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                    || !Objects.equals(content.currentRequirement().currentVersionId(), previous.id())</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                    || !Objects.equals(result.previousVersionId(), previous.id())</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">                    || !Objects.equals(result.targetVersionId(), current.getId())</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                    || !Objects.equals(content.originalText(), baseline.originalText())</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">                    || content.originalText() == null || content.finalText() == null</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                    || !Objects.equals(StableIdentityHash.sha256(content.originalText()), baseline.originalTextHash())</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    || !Objects.equals(StableIdentityHash.sha256(content.finalText()), current.getContentHash()))</span>
+<span class="fc" id="L65">                throw PortfolioException.conflict(&quot;Stored adoption review evidence is incomplete&quot;);</span>
+<span class="fc" id="L66">            rejectBlocking(content.revision());</span>
+<span class="fc" id="L67">        }</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (var evidence : imports.findMatchingCurrent(</span>
+<span class="fc" id="L69">                scope, project.getProjectKey(), requirement.getRequirementKey(), current.getVersionNumber(), current.getContentHash())) {</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (!StableIdentityHash.sha256(evidence.getPayload()).equals(evidence.getEvidenceHash()))</span>
+<span class="nc" id="L71">                throw PortfolioException.conflict(&quot;Imported adoption review evidence is inconsistent&quot;);</span>
+<span class="fc" id="L72">            var payload = codec.payload(new ReformulationEvidenceCodec.Evidence(</span>
+<span class="fc" id="L73">                    evidence.getProjectKey(), evidence.getRequirementKey(), evidence.getTargetVersionNumber(),</span>
+<span class="fc" id="L74">                    evidence.getSchemaVersion(), evidence.getPayload(), evidence.getEvidenceHash(),</span>
+<span class="fc" id="L75">                    evidence.getTargetTextHash()));</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">            if (payload == null || payload.revision() == null</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                    || !Objects.equals(payload.projectKey(), evidence.getProjectKey())</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                    || !Objects.equals(payload.requirementKey(), evidence.getRequirementKey())</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                    || !sameBusinessKey(payload.projectKey(), project.getProjectKey())</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                    || !sameBusinessKey(payload.requirementKey(), requirement.getRequirementKey())</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                    || payload.targetVersionNumber() != current.getVersionNumber()</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                    || !Objects.equals(payload.targetContentHash(), current.getContentHash()))</span>
+<span class="nc" id="L83">                throw PortfolioException.conflict(&quot;Imported adoption review evidence is incomplete&quot;);</span>
+<span class="nc" id="L84">            rejectBlocking(payload.revision());</span>
+<span class="nc" id="L85">        }</span>
+<span class="fc" id="L86">    }</span>
+
+    private static boolean sameBusinessKey(String portable, String local) {
+<span class="pc bpc" id="L89" title="3 of 6 branches missed.">        return portable != null &amp;&amp; local != null &amp;&amp; portable.equalsIgnoreCase(local);</span>
+    }
+
+    private static void rejectBlocking(ReformulationDtos.Revision revision) {
+<span class="fc bfc" id="L93" title="All 4 branches covered.">        if (revision.questions().stream().anyMatch(q -&gt; q.state() == DecisionQuestion.State.CONFLICT)</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                || revision.validation().findings().stream().anyMatch(f -&gt;</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">                    f.kind() == ValidationReport.Kind.STRUCTURAL_LOSS || f.kind() == ValidationReport.Kind.CONFLICT))</span>
+<span class="fc" id="L96">            throw PortfolioException.conflict(&quot;Adopted reformulation has unresolved blocking review evidence&quot;);</span>
+<span class="fc" id="L97">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

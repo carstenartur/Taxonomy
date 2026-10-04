@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VerifiedBackup.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.archive</a> &gt; <span class="el_source">VerifiedBackup.java</span></div><h1>VerifiedBackup.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.archive;
+
+import com.taxonomy.backup.*;
+import org.apache.commons.compress.archivers.zip.*;
+import java.io.*;
+import java.security.MessageDigest;
+import java.util.*;
+import java.util.zip.CRC32;
+
+/** Only the complete reader verification can construct this handle; close releases the archive file. */
+public final class VerifiedBackup implements AutoCloseable {
+    private final String digest;
+    private final BackupManifest manifest;
+    private final ZipFile zip;
+    private final Map&lt;String, BackupEntry&gt; entries;
+    private final ArchiveIO.ReadGuard guard;
+
+<span class="fc" id="L18">    VerifiedBackup(String digest, BackupManifest manifest, ZipFile zip, ArchiveIO.ReadGuard guard) {</span>
+<span class="fc" id="L19">        this.digest = digest; this.manifest = manifest; this.zip = zip; this.guard = guard;</span>
+<span class="fc" id="L20">        entries = new HashMap&lt;&gt;(); manifest.entries().forEach(entry -&gt; entries.put(entry.path(), entry));</span>
+<span class="fc" id="L21">    }</span>
+<span class="fc" id="L22">    public BackupManifest manifest() { return manifest; }</span>
+<span class="fc" id="L23">    public String archiveSha256() { return digest; }</span>
+    public InputStream openEntry(String path) throws IOException {
+<span class="fc" id="L25">        var entry = entries.get(path);</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (entry == null) throw new IOException(&quot;Entry is not declared by the verified manifest&quot;);</span>
+<span class="fc" id="L27">        var archived = zip.getEntry(path);</span>
+<span class="fc" id="L28">        return new CheckedInput(zip.getInputStream(archived), entry.length(), entry.sha256(), archived.getCrc(), guard);</span>
+    }
+<span class="fc" id="L30">    @Override public void close() throws IOException { zip.close(); }</span>
+
+    static final class CheckedInput extends FilterInputStream {
+        private final long length, expectedCrc;
+        private final String expectedDigest;
+<span class="fc" id="L35">        private final MessageDigest digest = ArchiveIO.sha256();</span>
+<span class="fc" id="L36">        private final CRC32 crc = new CRC32();</span>
+        private final ArchiveIO.ReadGuard guard;
+        private long count;
+        private boolean complete, failed;
+        CheckedInput(InputStream stream, long length, String digest, long crc, ArchiveIO.ReadGuard guard) {
+<span class="fc" id="L41">            super(stream); this.length = length; expectedDigest = digest; expectedCrc = crc; this.guard = guard;</span>
+<span class="fc" id="L42">        }</span>
+        @Override public int read() throws IOException {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            byte[] one = new byte[1]; return read(one, 0, 1) &lt; 0 ? -1 : Byte.toUnsignedInt(one[0]);</span>
+        }
+        @Override public int read(byte[] bytes, int offset, int size) throws IOException {
+            try {
+<span class="fc" id="L48">                guard.check(); int n = in.read(bytes, offset, size);</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                if (n &gt; 0) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                    if (n &gt; length - count) throw new IOException(&quot;Archive entry length limit exceeded&quot;);</span>
+<span class="fc" id="L51">                    count += n; digest.update(bytes, offset, n); crc.update(bytes, offset, n); guard.check();</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">                } else if (n &lt; 0 &amp;&amp; !complete) {</span>
+<span class="pc bpc" id="L53" title="2 of 6 branches missed.">                    if (count != length || crc.getValue() != expectedCrc</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                            || expectedDigest != null &amp;&amp; !HexFormat.of().formatHex(digest.digest()).equals(expectedDigest))</span>
+<span class="fc" id="L55">                        throw new IOException(&quot;Archive entry digest or length mismatch&quot;);</span>
+<span class="fc" id="L56">                    complete = true;</span>
+                }
+<span class="fc" id="L58">                return n;</span>
+<span class="fc" id="L59">            } catch (IOException failure) { failed = true; throw failure; }</span>
+        }
+        @Override public long skip(long amount) throws IOException {
+<span class="fc" id="L62">            long remaining = Math.max(0, amount); byte[] bytes = new byte[8192];</span>
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">            while (remaining &gt; 0) { int n = read(bytes, 0, (int) Math.min(bytes.length, remaining)); if (n &lt; 0) break; remaining -= n; }</span>
+<span class="fc" id="L64">            return Math.max(0, amount) - remaining;</span>
+        }
+<span class="nc" id="L66">        @Override public boolean markSupported() { return false; }</span>
+<span class="nc" id="L67">        @Override public void reset() throws IOException { throw new IOException(&quot;Verified streams cannot be rewound&quot;); }</span>
+<span class="fc" id="L68">        void abort() { failed = true; }</span>
+        @Override public void close() throws IOException {
+<span class="fc bfc" id="L70" title="All 4 branches covered.">            try { if (!failed &amp;&amp; !complete) transferTo(OutputStream.nullOutputStream()); } finally { in.close(); }</span>
+<span class="fc" id="L71">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

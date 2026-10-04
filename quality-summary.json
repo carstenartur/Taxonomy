@@ -1,0 +1,44 @@
+{
+  "buildId": "37171974202.1",
+  "commit": "ce67dd13cac253444dadf49e3051abb315cc1672",
+  "coverage": {
+    "branchCovered": 25552,
+    "branchMissed": 8148,
+    "branchPercent": 75.82,
+    "classCovered": 2035,
+    "classMissed": 31,
+    "classPercent": 98.5,
+    "complexityCovered": 21420,
+    "complexityMissed": 8201,
+    "complexityPercent": 72.31,
+    "instructionCovered": 324299,
+    "instructionMissed": 30110,
+    "instructionPercent": 91.5,
+    "lineCovered": 56774,
+    "lineMissed": 4819,
+    "linePercent": 92.18,
+    "methodCovered": 11759,
+    "methodMissed": 805,
+    "methodPercent": 93.59
+  },
+  "generatedAt": "2026-10-04T04:09:43+00:00",
+  "schemaVersion": 2,
+  "sourceCommit": "ce67dd13cac253444dadf49e3051abb315cc1672",
+  "sourceTree": "f50981e07fb17aa08445365ee59595082673a90e",
+  "tests": {
+    "errors": 0,
+    "executed": 7350,
+    "failures": 0,
+    "passed": 7350,
+    "reportFiles": 1034,
+    "skipped": 79,
+    "tests": 7429
+  },
+  "tools": {
+    "codeql-action": "configured:github/codeql-action@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2",
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18 LTS",
+    "maven": "Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)",
+    "trivy-action": "v0.36.0"
+  },
+  "verifiedCommit": "ce67dd13cac253444dadf49e3051abb315cc1672"
+}

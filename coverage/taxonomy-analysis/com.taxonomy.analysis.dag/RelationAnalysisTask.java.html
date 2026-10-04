@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationAnalysisTask.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">RelationAnalysisTask.java</span></div><h1>RelationAnalysisTask.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.TreeSet;
+
+/**
+ * Relation work over the results of prerequisite sub-taxonomy tasks. The message
+ * references the prerequisite results by task identity instead of copying source
+ * trees, scores or prompts.
+ *
+ * @param targetRoots      roots whose taxonomy data the relation work evaluates
+ * @param prerequisiteTasks sub-taxonomy tasks whose persisted results are inputs
+ */
+public record RelationAnalysisTask(AnalysisEnvelope envelope, List&lt;TaxonomyShardRoot&gt; targetRoots,
+                                   List&lt;AnalysisTaskId&gt; prerequisiteTasks)
+        implements AnalysisTaskMessage {
+
+<span class="fc" id="L20">    public RelationAnalysisTask {</span>
+<span class="fc" id="L21">        Objects.requireNonNull(envelope, &quot;envelope&quot;);</span>
+<span class="fc" id="L22">        envelope.requireType(AnalysisMessageType.RELATION_ANALYSIS_TASK);</span>
+<span class="fc" id="L23">        targetRoots = List.copyOf(new TreeSet&lt;&gt;(Objects.requireNonNull(targetRoots, &quot;targetRoots&quot;)));</span>
+<span class="fc" id="L24">        prerequisiteTasks = List.copyOf(Objects.requireNonNull(prerequisiteTasks, &quot;prerequisiteTasks&quot;));</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        if (envelope.taskType() != AnalysisTaskType.RELATION_ANALYSIS</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                || !AnalysisTaskId.relation(envelope.operationId(), targetRoots).equals(envelope.taskId())</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                || !envelope.roots().equals(targetRoots)) {</span>
+<span class="nc" id="L28">            throw new IllegalArgumentException(&quot;Relation task identity does not match its target roots&quot;);</span>
+        }
+<span class="fc" id="L30">        var distinctPrerequisites = new HashSet&lt;AnalysisTaskId&gt;();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (AnalysisTaskId prerequisite : prerequisiteTasks) {</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            if (!prerequisite.operationId().equals(envelope.operationId())) {</span>
+<span class="fc" id="L33">                throw new IllegalArgumentException(&quot;Relation prerequisite belongs to another operation&quot;);</span>
+            }
+            // Reconstruct the canonical root-task identity, rejecting relation/unknown
+            // families, wildcard roots and root sets without duplicating the ID grammar.
+<span class="fc" id="L37">            String rootCode = prerequisite.value().substring(prerequisite.value().lastIndexOf(':') + 1);</span>
+<span class="fc" id="L38">            var root = TaxonomyShardRoot.of(rootCode);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (!AnalysisTaskId.subtaxonomy(envelope.operationId(), root).equals(prerequisite)) {</span>
+<span class="fc" id="L40">                throw new IllegalArgumentException(&quot;Relation prerequisite must be a sub-taxonomy task&quot;);</span>
+            }
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (!distinctPrerequisites.add(prerequisite)) {</span>
+<span class="fc" id="L43">                throw new IllegalArgumentException(&quot;Relation prerequisites must be distinct&quot;);</span>
+            }
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

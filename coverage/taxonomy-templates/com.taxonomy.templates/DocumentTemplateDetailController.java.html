@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateDetailController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateDetailController.java</span></div><h1>DocumentTemplateDetailController.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.io.IOException;
+import java.security.Principal;
+
+/** Accessible server-rendered history, comparison, inspection and restore workspace. */
+@Controller
+public final class DocumentTemplateDetailController {
+
+    private final DocumentTemplateService templates;
+    private final DocumentTemplateReportPreview preview;
+
+    public DocumentTemplateDetailController(
+            DocumentTemplateService templates,
+<span class="fc" id="L37">            DocumentTemplateReportPreview preview) {</span>
+<span class="fc" id="L38">        this.templates = templates;</span>
+<span class="fc" id="L39">        this.preview = preview;</span>
+<span class="fc" id="L40">    }</span>
+
+    /** The URL, download and upload all retain the same immutable starting revision. */
+    @GetMapping(&quot;/admin/document-templates/{templateId}/local-edit&quot;)
+    public String localEdit(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            Model model) throws IOException {
+<span class="fc" id="L48">        revision = canonicalImmutableRevision(revision);</span>
+        TemplateFile original;
+        try {
+<span class="fc" id="L51">            original = templates.download(templateId, revision);</span>
+<span class="fc" id="L52">        } catch (TemplateNotFoundException exception) {</span>
+<span class="fc" id="L53">            throw new ResponseStatusException(HttpStatus.NOT_FOUND,</span>
+                    &quot;The requested template starting revision does not exist&quot;, exception);
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        model.addAttribute(&quot;template&quot;, descriptor(original));</span>
+<span class="fc" id="L57">        model.addAttribute(&quot;maxArchiveBytes&quot;, OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);</span>
+<span class="fc" id="L58">        model.addAttribute(&quot;decisionReportTemplate&quot;,</span>
+<span class="fc" id="L59">                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));</span>
+<span class="fc" id="L60">        return &quot;document-template-local-edit&quot;;</span>
+    }
+
+    @GetMapping(&quot;/admin/document-templates/{templateId}&quot;)
+    public String detail(
+            @PathVariable String templateId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String partRevision,
+            @RequestParam(required = false) String partPath,
+            Model model) throws IOException {
+<span class="fc" id="L71">        TemplateFile current = templates.downloadCurrent(templateId);</span>
+<span class="fc" id="L72">        TemplateDescriptor descriptor = descriptor(current);</span>
+<span class="fc" id="L73">        model.addAttribute(&quot;template&quot;, descriptor);</span>
+<span class="fc" id="L74">        model.addAttribute(&quot;history&quot;, templates.history(templateId));</span>
+<span class="fc" id="L75">        model.addAttribute(&quot;decisionReportTemplate&quot;,</span>
+<span class="fc" id="L76">                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));</span>
+
+<span class="pc bpc" id="L78" title="3 of 4 branches missed.">        if (from != null &amp;&amp; !from.isBlank()) {</span>
+<span class="nc bnc" id="L79" title="All 4 branches missed.">            String right = to == null || to.isBlank() ? current.commitId() : to;</span>
+<span class="nc" id="L80">            TemplateDiff diff = templates.diff(templateId, from, right);</span>
+<span class="nc" id="L81">            model.addAttribute(&quot;diff&quot;, diff);</span>
+<span class="nc" id="L82">            model.addAttribute(&quot;fromRevision&quot;, from);</span>
+<span class="nc" id="L83">            model.addAttribute(&quot;toRevision&quot;, right);</span>
+        }
+<span class="pc bpc" id="L85" title="5 of 6 branches missed.">        if (partRevision != null &amp;&amp; !partRevision.isBlank()</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                &amp;&amp; partPath != null &amp;&amp; !partPath.isBlank()) {</span>
+<span class="nc" id="L87">            TemplatePartView part = templates.readPart(</span>
+                    templateId, partRevision, partPath);
+<span class="nc" id="L89">            model.addAttribute(&quot;part&quot;, part);</span>
+<span class="nc" id="L90">            model.addAttribute(&quot;partRevision&quot;, partRevision);</span>
+        }
+<span class="fc" id="L92">        return &quot;document-template-detail&quot;;</span>
+    }
+
+    /** A read-only, bookmarkable confirmation; reloading never replaces its precondition. */
+    @GetMapping(&quot;/admin/document-templates/{templateId}/restore&quot;)
+    public String confirmRestore(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestParam String expectedHead,
+            Model model) throws IOException {
+<span class="fc" id="L102">        revision = canonicalImmutableRevision(revision);</span>
+<span class="fc" id="L103">        expectedHead = canonicalImmutableRevision(expectedHead);</span>
+        try {
+<span class="fc" id="L105">            TemplateDescriptor target = templates.describe(templateId, revision);</span>
+<span class="fc" id="L106">            TemplateDescriptor current = templates.describeCurrent(templateId);</span>
+<span class="fc" id="L107">            model.addAttribute(&quot;template&quot;, current);</span>
+<span class="fc" id="L108">            model.addAttribute(&quot;restoreTarget&quot;, target);</span>
+<span class="fc" id="L109">            model.addAttribute(&quot;restoreRevision&quot;, revision);</span>
+<span class="fc" id="L110">            model.addAttribute(&quot;restoreExpectedHead&quot;, expectedHead);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            model.addAttribute(&quot;restoreConflict&quot;, !expectedHead.equals(current.headCommit()));</span>
+<span class="fc" id="L112">            return &quot;document-template-restore&quot;;</span>
+<span class="fc" id="L113">        } catch (TemplateNotFoundException exception) {</span>
+<span class="fc" id="L114">            throw missingRestoreVersion(exception);</span>
+        }
+    }
+
+    @PostMapping(&quot;/admin/document-templates/{templateId}/restore&quot;)
+    public String restore(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestParam String expectedHead,
+            @RequestParam(defaultValue = &quot;false&quot;) boolean confirmed,
+            Principal principal,
+            Model model,
+            HttpServletResponse response,
+            RedirectAttributes redirect) throws IOException {
+<span class="fc" id="L128">        revision = canonicalImmutableRevision(revision);</span>
+<span class="fc" id="L129">        expectedHead = canonicalImmutableRevision(expectedHead);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!confirmed) {</span>
+<span class="fc" id="L131">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,</span>
+                    &quot;Explicit confirmation is required to restore a template&quot;);
+        }
+        try {
+<span class="fc" id="L135">            TemplateDescriptor restored = templates.restore(</span>
+<span class="fc" id="L136">                    templateId, revision, expectedHead, principal.getName());</span>
+<span class="fc" id="L137">            redirect.addFlashAttribute(&quot;restoredRevision&quot;, restored.headCommit());</span>
+<span class="fc" id="L138">            return &quot;redirect:/admin/document-templates/&quot; + templateId;</span>
+<span class="fc" id="L139">        } catch (TemplateConflictException exception) {</span>
+            // Do not substitute the new head or retry the mutation. Preserve both original choices.
+<span class="fc" id="L141">            String view = confirmRestore(templateId, revision, expectedHead, model);</span>
+<span class="fc" id="L142">            model.addAttribute(&quot;restoreConflict&quot;, true);</span>
+<span class="fc" id="L143">            response.setStatus(HttpStatus.PRECONDITION_FAILED.value());</span>
+<span class="fc" id="L144">            return view;</span>
+<span class="nc" id="L145">        } catch (TemplateNotFoundException exception) {</span>
+<span class="nc" id="L146">            throw missingRestoreVersion(exception);</span>
+        }
+    }
+
+    private static String canonicalImmutableRevision(String revision) {
+<span class="fc bfc" id="L151" title="All 4 branches covered.">        if (revision == null || !revision.matches(&quot;[0-9a-fA-F]{40}&quot;)) {</span>
+<span class="fc" id="L152">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,</span>
+                    &quot;A full immutable template revision is required&quot;);
+        }
+<span class="fc" id="L155">        return revision.toLowerCase(java.util.Locale.ROOT);</span>
+    }
+
+    private static ResponseStatusException missingRestoreVersion(TemplateNotFoundException cause) {
+<span class="fc" id="L159">        return new ResponseStatusException(HttpStatus.NOT_FOUND,</span>
+                &quot;The requested template version does not exist&quot;, cause);
+    }
+
+    @GetMapping(&quot;/admin/document-templates/{templateId}/test.docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; testReport(@PathVariable String templateId) {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId)) {</span>
+<span class="nc" id="L166">            throw new IllegalArgumentException(</span>
+                    &quot;A generated test report is available only for the decision report template&quot;);
+        }
+<span class="fc" id="L169">        byte[] docx = preview.renderPreview();</span>
+<span class="fc" id="L170">        return ResponseEntity.ok()</span>
+<span class="fc" id="L171">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L172">                .contentType(MediaType.parseMediaType(</span>
+                        &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;))
+<span class="fc" id="L174">                .contentLength(docx.length)</span>
+<span class="fc" id="L175">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L176">                        ContentDisposition.attachment()</span>
+<span class="fc" id="L177">                                .filename(&quot;decision-rationale-template-test.docx&quot;)</span>
+<span class="fc" id="L178">                                .build().toString())</span>
+<span class="fc" id="L179">                .body(docx);</span>
+    }
+
+    private static TemplateDescriptor descriptor(TemplateFile file) {
+<span class="fc" id="L183">        var manifest = file.manifest();</span>
+<span class="fc" id="L184">        return new TemplateDescriptor(</span>
+<span class="fc" id="L185">                manifest.templateId(), manifest.displayName(), manifest.fileName(),</span>
+<span class="fc" id="L186">                file.commitId(), manifest.updatedAt(), manifest.updatedBy(),</span>
+<span class="fc" id="L187">                manifest.uncompressedSize(), manifest.partCount(), manifest.packageSha256());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

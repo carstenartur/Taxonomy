@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitTreeCapture.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitTreeCapture.java</span></div><h1>GitTreeCapture.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import com.taxonomy.backup.BackupEntry;
+import com.taxonomy.backup.BackupLimits;
+import com.taxonomy.backup.ComponentSink;
+import com.taxonomy.backup.PortableGitPaths;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.util.sha1.SHA1;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/** Read-only evidence for one exact Git tree. Selection and stand-document projection are caller-owned. */
+public final class GitTreeCapture {
+    private static final int MAX_COMMIT_BYTES = 1_048_576;
+    private static final int MAX_TREE_BYTES = 4 * 1_048_576;
+    private static final int MAX_METADATA_BYTES = 16 * 1_048_576;
+    private static final int BUFFER_BYTES = 8_192;
+    public record Limits(int maxFiles, long maxFileBytes, long maxTotalBytes) {
+<span class="fc" id="L30">        public Limits {</span>
+<span class="fc bfc" id="L31" title="All 8 branches covered.">            if (maxFiles &lt; 1 || maxFiles &gt; BackupLimits.MAX_ITEMS || maxFileBytes &lt; 0 || maxTotalBytes &lt; 0)</span>
+<span class="fc" id="L32">                throw new IllegalArgumentException(&quot;Invalid Git capture limits&quot;);</span>
+<span class="fc" id="L33">        }</span>
+    }
+<span class="fc" id="L35">    public record File(String path, String objectId, int mode, long length, String sha256) { }</span>
+
+    private final Repository repository;
+    private final String commit;
+    private final String tree;
+    private final List&lt;File&gt; files;
+    private final Set&lt;File&gt; membership;
+    private final BackupCheckpoint lifetime;
+
+<span class="fc" id="L44">    private GitTreeCapture(Repository repository, String commit, String tree, List&lt;File&gt; files, BackupCheckpoint lifetime) {</span>
+<span class="fc" id="L45">        this.repository = repository; this.commit = commit; this.tree = tree;</span>
+<span class="fc" id="L46">        this.files = List.copyOf(files); membership = Set.copyOf(files); this.lifetime = lifetime;</span>
+<span class="fc" id="L47">    }</span>
+
+    /** The caller keeps the explicitly selected repository open and holds the capture fence. No refs are resolved or changed. */
+    public static GitTreeCapture capture(Repository repository, String commit, Limits limits,
+                                         BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L52">        return capture(repository, commit, limits, checkpoint, () -&gt; { });</span>
+    }
+    static GitTreeCapture capture(Repository repository, String commit, Limits limits,
+                                   BackupCheckpoint checkpoint, BackupCheckpoint lifetime) throws IOException {
+        try {
+<span class="fc" id="L57">            checkpoint = guarded(lifetime, checkpoint);</span>
+<span class="fc" id="L58">            Objects.requireNonNull(limits); checkpoint.check();</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            if (commit == null || !commit.matches(&quot;[0-9a-f]{40}&quot;)) throw failure(&quot;Git capture requires a full commit ID&quot;);</span>
+<span class="fc" id="L60">            try (var reader = repository.newObjectReader()) {</span>
+<span class="fc" id="L61">                reader.setStreamFileThreshold(BUFFER_BYTES);</span>
+<span class="fc" id="L62">                var budget = new Budget(limits);</span>
+<span class="fc" id="L63">                byte[] raw = metadata(reader, ObjectId.fromString(commit), Constants.OBJ_COMMIT, MAX_COMMIT_BYTES, budget, checkpoint);</span>
+<span class="fc" id="L64">                var selected = RevCommit.parse(raw);</span>
+<span class="fc" id="L65">                var files = new ArrayList&lt;File&gt;();</span>
+<span class="fc" id="L66">                inspectTree(reader, selected.getTree(), &quot;&quot;, files, budget, checkpoint);</span>
+<span class="fc" id="L67">                try { PortableGitPaths.requireTree(files.stream().map(File::path).toList()); }</span>
+<span class="fc" id="L68">                catch (IllegalArgumentException invalid) { throw failure(&quot;Git capture has colliding or non-portable paths&quot;); }</span>
+<span class="fc" id="L69">                checkpoint.check();</span>
+<span class="fc" id="L70">                return new GitTreeCapture(repository, commit, selected.getTree().name(), files, lifetime);</span>
+            }
+<span class="fc" id="L72">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+<span class="fc" id="L74">    public String commit() { return commit; }</span>
+<span class="fc" id="L75">    public String tree() { return tree; }</span>
+<span class="fc" id="L76">    public List&lt;File&gt; files() { return files; }</span>
+
+    /** Copies raw captured bytes. Stand exporters must project embedded document history separately. Does not close output. */
+    public void copy(File file, OutputStream output, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L81">            checkpoint = guarded(lifetime, checkpoint);</span>
+<span class="fc" id="L82">            requireMember(file); Objects.requireNonNull(output); checkpoint.check();</span>
+<span class="fc" id="L83">            try (var reader = repository.newObjectReader()) {</span>
+<span class="fc" id="L84">                reader.setStreamFileThreshold(BUFFER_BYTES);</span>
+<span class="fc" id="L85">                var actual = blob(reader, ObjectId.fromString(file.objectId()), file.length(), output, checkpoint);</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (!file.sha256().equals(actual)) throw failure(&quot;Captured Git content checksum changed&quot;);</span>
+            }
+<span class="fc" id="L88">            checkpoint.check();</span>
+<span class="fc" id="L89">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L90">    }</span>
+
+    /** Uses the capture sink's protected streaming path and verifies both producer completion and its receipt. */
+    public BackupEntry writeFile(File file, String path, ComponentSink sink) throws IOException {
+        try {
+<span class="fc" id="L95">            requireMember(file);</span>
+<span class="fc" id="L96">            var expected = new BackupEntry(path, file.length(), file.sha256());</span>
+<span class="fc" id="L97">            return writeGenerated(expected, sink, output -&gt; copy(file, output, sink::checkpoint));</span>
+<span class="fc" id="L98">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+
+    static BackupEntry writeGenerated(BackupEntry expected, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+<span class="fc" id="L102">        return writeGenerated(expected.path(), expected, sink, producer);</span>
+    }
+
+    /** Generated Git containers have an unknown compressed length until their single streaming pass completes. */
+    static BackupEntry writeGenerated(String path, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+<span class="fc" id="L107">        return writeGenerated(path, null, sink, producer);</span>
+    }
+
+    private static BackupEntry writeGenerated(String path, BackupEntry expected, ComponentSink sink, ComponentSink.EntryWriter producer) throws IOException {
+<span class="fc" id="L111">        var active = new AtomicBoolean(true);</span>
+        try {
+<span class="fc" id="L113">            var owner = Thread.currentThread(); var invocations = new AtomicInteger(); boolean[] complete = {false};</span>
+<span class="fc" id="L114">            var digest = sha256(); long[] count = {0};</span>
+<span class="fc" id="L115">            BackupCheckpoint check = () -&gt; {</span>
+<span class="pc bpc" id="L116" title="1 of 6 branches missed.">                if (!active.get() || complete[0] || Thread.currentThread() != owner) throw failure(&quot;Invalid Git capture producer lifetime&quot;);</span>
+<span class="fc" id="L117">                sink.checkpoint();</span>
+<span class="fc" id="L118">            };</span>
+<span class="fc" id="L119">            var receipt = sink.writeGenerated(path, output -&gt; {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (invocations.incrementAndGet() != 1) throw failure(&quot;Invalid Git capture producer invocation&quot;);</span>
+<span class="fc" id="L121">                check.check();</span>
+<span class="fc" id="L122">                producer.write(new OutputStream() {</span>
+<span class="nc" id="L123">                    @Override public void write(int value) throws IOException { write(new byte[]{(byte) value}); }</span>
+                    @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+<span class="fc" id="L125">                        check.check(); Objects.checkFromIndexSize(offset, length, bytes.length);</span>
+<span class="fc" id="L126">                        long total = Math.addExact(count[0], length); output.write(bytes, offset, length);</span>
+<span class="fc" id="L127">                        digest.update(bytes, offset, length); count[0] = total; check.check();</span>
+<span class="fc" id="L128">                    }</span>
+<span class="fc" id="L129">                    @Override public void flush() throws IOException { check.check(); output.flush(); check.check(); }</span>
+                });
+<span class="fc" id="L131">                check.check(); complete[0] = true;</span>
+<span class="fc" id="L132">            });</span>
+<span class="fc" id="L133">            var observed = new BackupEntry(path, count[0], HexFormat.of().formatHex(digest.digest()));</span>
+<span class="pc bpc" id="L134" title="1 of 10 branches missed.">            if (invocations.get() != 1 || !complete[0] || !observed.equals(receipt) || expected != null &amp;&amp; !expected.equals(observed))</span>
+<span class="fc" id="L135">                throw failure(&quot;Git capture sink receipt mismatch&quot;);</span>
+<span class="fc" id="L136">            return receipt;</span>
+<span class="fc" id="L137">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L138">        finally { active.set(false); }</span>
+    }
+
+    private void requireMember(File file) throws IOException {
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">        if (file == null || !membership.contains(file)) throw failure(&quot;File is outside the captured Git tree&quot;);</span>
+<span class="fc" id="L143">    }</span>
+
+    private static BackupCheckpoint guarded(BackupCheckpoint lifetime, BackupCheckpoint checkpoint) {
+<span class="fc" id="L146">        return () -&gt; { lifetime.check(); checkpoint.check(); lifetime.check(); };</span>
+    }
+
+    private static void inspectTree(ObjectReader reader, ObjectId tree, String prefix, List&lt;File&gt; files,
+                                    Budget budget, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L151">        var parser = new CanonicalTreeParser();</span>
+<span class="fc" id="L152">        parser.reset(metadata(reader, tree, Constants.OBJ_TREE, MAX_TREE_BYTES, budget, checkpoint));</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        while (!parser.eof()) {</span>
+<span class="fc" id="L154">            checkpoint.check();</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">            if (++budget.entries &gt; budget.limits.maxFiles() * 33) throw failure(&quot;Git tree metadata entry limit exceeded&quot;);</span>
+<span class="fc" id="L156">            String name = parser.getEntryPathString(), path = prefix + name;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (!Arrays.equals(Arrays.copyOf(parser.getEntryPathBuffer(), parser.getEntryPathLength()), name.getBytes(StandardCharsets.UTF_8)))</span>
+<span class="fc" id="L158">                throw failure(&quot;Git path is not canonical UTF-8&quot;);</span>
+<span class="fc" id="L159">            try { PortableGitPaths.requireFile(path); }</span>
+<span class="fc" id="L160">            catch (IllegalArgumentException invalid) { throw failure(&quot;Git capture has a non-portable path&quot;); }</span>
+<span class="fc" id="L161">            int mode = parser.getEntryRawMode(); ObjectId id = parser.getEntryObjectId();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            if (mode == FileMode.TREE.getBits()) {</span>
+<span class="fc" id="L163">                inspectTree(reader, id, path + &quot;/&quot;, files, budget, checkpoint);</span>
+            } else {
+<span class="fc bfc" id="L165" title="All 4 branches covered.">                if (mode != FileMode.REGULAR_FILE.getBits() &amp;&amp; mode != FileMode.EXECUTABLE_FILE.getBits())</span>
+<span class="fc" id="L166">                    throw failure(&quot;Git capture requires regular files; symlinks and submodules are unsupported&quot;);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (files.size() &gt;= budget.limits.maxFiles()) throw failure(&quot;Git capture file limit exceeded&quot;);</span>
+<span class="fc" id="L168">                long length = reader.getObjectSize(id, Constants.OBJ_BLOB);</span>
+<span class="pc bpc" id="L169" title="1 of 6 branches missed.">                if (length &lt; 0 || length &gt; budget.limits.maxFileBytes() || length &gt; budget.limits.maxTotalBytes() - budget.bytes)</span>
+<span class="fc" id="L170">                    throw failure(&quot;Git capture byte limit exceeded&quot;);</span>
+<span class="fc" id="L171">                String hash = blob(reader, id, length, OutputStream.nullOutputStream(), checkpoint);</span>
+<span class="fc" id="L172">                files.add(new File(path, id.name(), mode, length, hash)); budget.bytes += length;</span>
+            }
+<span class="fc" id="L174">            parser.next();</span>
+<span class="fc" id="L175">        }</span>
+<span class="fc" id="L176">    }</span>
+
+    private static byte[] metadata(ObjectReader reader, ObjectId id, int type, int maximum,
+                                    Budget budget, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L180">        checkpoint.check(); long size = reader.getObjectSize(id, type);</span>
+<span class="pc bpc" id="L181" title="2 of 6 branches missed.">        if (size &lt; 0 || size &gt; maximum || size &gt; MAX_METADATA_BYTES - budget.metadata)</span>
+<span class="fc" id="L182">            throw failure(&quot;Git capture metadata byte limit exceeded&quot;);</span>
+<span class="fc" id="L183">        var loader = reader.open(id, type);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        if (loader.getSize() != size) throw failure(&quot;Git metadata size changed&quot;);</span>
+<span class="fc" id="L185">        byte[] bytes = loader.getBytes(maximum);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        if (bytes.length != size) throw failure(&quot;Git metadata size mismatch&quot;);</span>
+<span class="fc" id="L187">        var digest = gitDigest(type, size); digest.update(bytes);</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        if (!digest.toObjectId().equals(id)) throw failure(&quot;Git metadata object checksum mismatch&quot;);</span>
+<span class="fc" id="L189">        new ObjectChecker().check(id, type, bytes);</span>
+<span class="fc" id="L190">        budget.metadata += bytes.length; checkpoint.check(); return bytes;</span>
+    }
+
+    private static String blob(ObjectReader reader, ObjectId id, long length, OutputStream output,
+                                BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L195">        checkpoint.check(); var loader = reader.open(id, Constants.OBJ_BLOB);</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (loader.getSize() != length) throw failure(&quot;Captured Git blob size changed&quot;);</span>
+<span class="fc" id="L197">        var sha256 = sha256(); var git = gitDigest(Constants.OBJ_BLOB, length);</span>
+<span class="fc" id="L198">        byte[] buffer = new byte[BUFFER_BYTES], prefix = new byte[1_024]; int prefixLength = 0; long copied = 0;</span>
+<span class="fc" id="L199">        try (var input = loader.openStream()) {</span>
+            for (;;) {
+<span class="fc" id="L201">                checkpoint.check(); int count = input.read(buffer);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                if (count == -1) break;</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">                if (count == 0) {</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                    int single = input.read(); if (single &lt; 0) break; buffer[0] = (byte) single; count = 1;</span>
+                }
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                if (count &gt; length - copied) throw failure(&quot;Git blob exceeds its declared size&quot;);</span>
+<span class="fc" id="L207">                int keep = Math.min(count, prefix.length - prefixLength);</span>
+<span class="fc" id="L208">                System.arraycopy(buffer, 0, prefix, prefixLength, keep); prefixLength += keep;</span>
+<span class="fc" id="L209">                sha256.update(buffer, 0, count); git.update(buffer, 0, count);</span>
+<span class="fc" id="L210">                output.write(buffer, 0, count); copied += count; checkpoint.check();</span>
+<span class="fc" id="L211">            }</span>
+        }
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (copied != length) throw failure(&quot;Truncated captured Git blob&quot;);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!git.toObjectId().equals(id)) throw failure(&quot;Git blob object checksum mismatch&quot;);</span>
+<span class="fc" id="L215">        String first = new String(prefix, 0, prefixLength, StandardCharsets.US_ASCII).split(&quot;\\r?\\n&quot;, 2)[0];</span>
+<span class="fc bfc" id="L216" title="All 4 branches covered.">        if (first.equals(&quot;version https://git-lfs.github.com/spec/v1&quot;) || first.equals(&quot;version https://hawser.github.com/spec/v1&quot;))</span>
+<span class="fc" id="L217">            throw failure(&quot;Git LFS contents are not retained; a pointer is not a standalone file&quot;);</span>
+<span class="fc" id="L218">        checkpoint.check(); return HexFormat.of().formatHex(sha256.digest());</span>
+    }
+
+    private static SHA1 gitDigest(int type, long length) {
+<span class="fc" id="L222">        var digest = SHA1.newInstance().setDetectCollision(true);</span>
+<span class="fc" id="L223">        digest.update((Constants.typeString(type) + &quot; &quot; + length + &quot;\0&quot;).getBytes(StandardCharsets.US_ASCII)); return digest;</span>
+    }
+    private static MessageDigest sha256() {
+<span class="fc" id="L226">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L227">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+<span class="fc" id="L229">    static IOException failure(String message) { return new CaptureFailure(message); }</span>
+    /** Never propagate storage paths, credentials or suppressed provider cleanup diagnostics. */
+    static IOException sanitized(Throwable problem) {
+<span class="fc" id="L232">        var pending = new ArrayDeque&lt;Throwable&gt;(); pending.add(problem);</span>
+<span class="fc" id="L233">        var visited = Collections.newSetFromMap(new IdentityHashMap&lt;Throwable, Boolean&gt;());</span>
+<span class="fc" id="L234">        boolean interrupted = Thread.currentThread().isInterrupted();</span>
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">        while (!pending.isEmpty() &amp;&amp; visited.size() &lt; 100) {</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">            var next = pending.removeFirst(); if (!visited.add(next)) continue;</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">            interrupted |= next instanceof InterruptedIOException || next instanceof InterruptedException;</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            if (next.getCause() != null) pending.add(next.getCause());</span>
+<span class="fc" id="L239">            Collections.addAll(pending, next.getSuppressed());</span>
+<span class="fc" id="L240">        }</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (interrupted) {</span>
+<span class="fc" id="L242">            Thread.currentThread().interrupt(); return new InterruptedIOException(&quot;Git tree capture cancelled&quot;);</span>
+        }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        return new CaptureFailure(problem instanceof CaptureFailure ? problem.getMessage() : &quot;Cannot read or copy the captured Git tree&quot;);</span>
+    }
+    private static final class CaptureFailure extends IOException {
+<span class="fc" id="L247">        CaptureFailure(String message) { super(message); }</span>
+    }
+    private static final class Budget {
+        final Limits limits; long bytes; int metadata; int entries;
+<span class="fc" id="L251">        Budget(Limits limits) { this.limits = limits; }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

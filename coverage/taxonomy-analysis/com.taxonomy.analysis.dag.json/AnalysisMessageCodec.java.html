@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisMessageCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag.json</a> &gt; <span class="el_source">AnalysisMessageCodec.java</span></div><h1>AnalysisMessageCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag.json;
+
+import com.taxonomy.analysis.dag.AnalysisEnvelope;
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisMessageType;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.Objects;
+
+/**
+ * Explicitly versioned JSON contract of analysis messages.
+ *
+ * &lt;p&gt;The contract record is selected only from the declared
+ * {@link AnalysisMessageType} discriminator in the envelope. No Java
+ * serialization and no polymorphic class-name metadata are used. Unknown schema
+ * versions, unknown properties and oversized payloads are rejected before any
+ * effect.&lt;/p&gt;
+ */
+<span class="fc" id="L22">public final class AnalysisMessageCodec {</span>
+
+    /** Upper bound of one encoded message; messages carry identifiers, not prompts. */
+    public static final int MAX_MESSAGE_BYTES = 64 * 1024;
+
+<span class="fc" id="L27">    private final JsonMapper mapper = JsonMapper.builder()</span>
+<span class="fc" id="L28">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)</span>
+<span class="fc" id="L29">            .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)</span>
+<span class="fc" id="L30">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L31">            .build();</span>
+
+    public byte[] encode(AnalysisMessage message) {
+<span class="fc" id="L34">        Objects.requireNonNull(message, &quot;message&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (message.envelope().messageType().contract() != message.getClass()) {</span>
+<span class="nc" id="L36">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.INVALID_CONTRACT,</span>
+                    &quot;envelope type does not match the message contract&quot;, null);
+        }
+<span class="fc" id="L39">        byte[] encoded = mapper.writeValueAsBytes(message);</span>
+<span class="fc" id="L40">        requireBounded(encoded.length);</span>
+<span class="fc" id="L41">        return encoded;</span>
+    }
+
+    public AnalysisMessage decode(byte[] encoded) {
+<span class="fc" id="L45">        Objects.requireNonNull(encoded, &quot;encoded&quot;);</span>
+<span class="fc" id="L46">        requireBounded(encoded.length);</span>
+        JsonNode root;
+        try {
+<span class="fc" id="L49">            root = mapper.readTree(encoded);</span>
+<span class="fc" id="L50">        } catch (JacksonException malformed) {</span>
+<span class="fc" id="L51">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.MALFORMED,</span>
+                    &quot;message is not valid JSON&quot;, null);
+<span class="fc" id="L53">        }</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        JsonNode envelope = root == null ? null : root.get(&quot;envelope&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 4 branches missed.">        if (envelope == null || !envelope.isObject()) {</span>
+<span class="fc" id="L56">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.MALFORMED,</span>
+                    &quot;message has no envelope object&quot;, null);
+        }
+<span class="fc" id="L59">        JsonNode version = envelope.get(&quot;schemaVersion&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 6 branches missed.">        if (version == null || !version.isInt() || version.intValue() != AnalysisEnvelope.SCHEMA_VERSION) {</span>
+<span class="fc" id="L61">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.UNSUPPORTED_SCHEMA,</span>
+                    &quot;unsupported schema version&quot;, null);
+        }
+<span class="fc" id="L64">        AnalysisMessageType type = messageType(envelope.get(&quot;messageType&quot;));</span>
+        try {
+<span class="fc" id="L66">            return mapper.treeToValue(root, type.contract());</span>
+<span class="fc" id="L67">        } catch (JacksonException | IllegalArgumentException | NullPointerException invalid) {</span>
+<span class="fc" id="L68">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.INVALID_CONTRACT,</span>
+                    &quot;message violates the &quot; + type + &quot; contract&quot;, null);
+        }
+    }
+
+    private static AnalysisMessageType messageType(JsonNode node) {
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">        if (node != null &amp;&amp; node.isString()) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            for (AnalysisMessageType candidate : AnalysisMessageType.values()) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                if (candidate.name().equals(node.stringValue())) return candidate;</span>
+            }
+        }
+<span class="fc" id="L79">        throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.UNKNOWN_TYPE,</span>
+                &quot;unknown message type&quot;, null);
+    }
+
+    private static void requireBounded(int length) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (length &gt; MAX_MESSAGE_BYTES) {</span>
+<span class="fc" id="L85">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.TOO_LARGE,</span>
+                    &quot;message exceeds &quot; + MAX_MESSAGE_BYTES + &quot; bytes&quot;, null);
+        }
+<span class="fc" id="L88">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

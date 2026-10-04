@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyShardRoot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">TaxonomyShardRoot.java</span></div><h1>TaxonomyShardRoot.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/**
+ * Validated taxonomy root identity used for execution routing and data sharding.
+ *
+ * &lt;p&gt;The code is the catalogue's virtual root code (see the eight default roots
+ * {@code BP, BR, CP, CI, CO, CR, IP, UA}). Membership in the active catalogue is
+ * validated by {@link com.taxonomy.dto.AnalysisScope#validateRoots}; this type only
+ * guarantees a bounded, destination-safe identifier so roots are never carried as
+ * arbitrary free-form strings inside task contracts.&lt;/p&gt;
+ */
+public record TaxonomyShardRoot(String code) implements Comparable&lt;TaxonomyShardRoot&gt; {
+
+<span class="fc" id="L18">    private static final Pattern CODE = Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,63}&quot;);</span>
+
+    /** The eight catalogue roots in their catalogue order. */
+<span class="fc" id="L21">    public static final List&lt;TaxonomyShardRoot&gt; DEFAULT_ROOTS = List.of(</span>
+            new TaxonomyShardRoot(&quot;BP&quot;), new TaxonomyShardRoot(&quot;BR&quot;),
+            new TaxonomyShardRoot(&quot;CP&quot;), new TaxonomyShardRoot(&quot;CI&quot;),
+            new TaxonomyShardRoot(&quot;CO&quot;), new TaxonomyShardRoot(&quot;CR&quot;),
+            new TaxonomyShardRoot(&quot;IP&quot;), new TaxonomyShardRoot(&quot;UA&quot;));
+
+<span class="fc" id="L27">    public TaxonomyShardRoot {</span>
+<span class="fc" id="L28">        Objects.requireNonNull(code, &quot;code&quot;);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        if (!CODE.matcher(code).matches()) {</span>
+<span class="fc" id="L30">            throw new IllegalArgumentException(&quot;Invalid taxonomy root identifier&quot;);</span>
+        }
+<span class="fc" id="L32">    }</span>
+
+    public static TaxonomyShardRoot of(String code) {
+<span class="fc" id="L35">        return new TaxonomyShardRoot(code);</span>
+    }
+
+    public boolean defaultCatalogueRoot() {
+<span class="fc" id="L39">        return DEFAULT_ROOTS.contains(this);</span>
+    }
+
+    @Override
+    public int compareTo(TaxonomyShardRoot other) {
+<span class="fc" id="L44">        return code.compareTo(other.code);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L49">        return code;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

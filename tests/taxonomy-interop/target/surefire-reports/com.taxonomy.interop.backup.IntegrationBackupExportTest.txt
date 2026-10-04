@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.interop.backup.IntegrationBackupExportTest
+-------------------------------------------------------------------------------
+Tests run: 39, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 13.29 s -- in com.taxonomy.interop.backup.IntegrationBackupExportTest

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalMapping.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">PrincipalMapping.java</span></div><h1>PrincipalMapping.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.*;
+
+/** An explicitly approved identity mapping. Applying ownership remains a separate audited action. */
+public final class PrincipalMapping {
+    private final Map&lt;PrincipalId, PrincipalId&gt; targets;
+    private final PrincipalId approvedBy;
+    private final String rationale;
+
+<span class="fc" id="L11">    PrincipalMapping(Map&lt;PrincipalId, PrincipalId&gt; targets, PrincipalId approvedBy, String rationale) {</span>
+<span class="fc" id="L12">        this.targets = Map.copyOf(targets);</span>
+<span class="fc" id="L13">        this.approvedBy = Objects.requireNonNull(approvedBy);</span>
+<span class="fc" id="L14">        this.rationale = BackupChecks.text(rationale, &quot;mapping rationale&quot;);</span>
+<span class="fc" id="L15">    }</span>
+<span class="fc" id="L16">    public Optional&lt;PrincipalId&gt; targetOf(PrincipalId source) { return Optional.ofNullable(targets.get(source)); }</span>
+<span class="nc" id="L17">    public Map&lt;PrincipalId, PrincipalId&gt; targets() { return targets; }</span>
+<span class="nc" id="L18">    public PrincipalId approvedBy() { return approvedBy; }</span>
+<span class="nc" id="L19">    public String rationale() { return rationale; }</span>
+
+    public static PrincipalMappingPlan preview(SourceIdentitySet sources, TargetIdentityContext targets) {
+<span class="fc" id="L22">        var byBinding = new HashMap&lt;IdentityBinding, List&lt;TargetIdentityContext.Identity&gt;&gt;();</span>
+<span class="fc" id="L23">        var enabled = new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (var target : targets.identities()) {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            if (target.loginEnabled()) enabled.add(target.id());</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">            for (var binding : target.bindings()) byBinding.computeIfAbsent(binding, ignored -&gt; new ArrayList&lt;&gt;()).add(target);</span>
+<span class="fc" id="L27">        }</span>
+<span class="fc" id="L28">        var entries = new LinkedHashMap&lt;PrincipalId, PrincipalMappingPlan.Entry&gt;();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (var source : sources.identities()) {</span>
+<span class="fc" id="L30">            var candidates = new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc" id="L31">            boolean disabled = false;</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (var binding : source.bindings()) {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                for (var target : byBinding.getOrDefault(binding, List.of())) {</span>
+<span class="fc" id="L34">                    candidates.add(target.id());</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                    disabled |= !target.loginEnabled();</span>
+<span class="fc" id="L36">                }</span>
+<span class="fc" id="L37">            }</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            var status = candidates.isEmpty() ? PrincipalMappingPlan.Status.UNRESOLVED</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">                    : candidates.size() != 1 || disabled ? PrincipalMappingPlan.Status.CONFLICT : PrincipalMappingPlan.Status.MATCHED;</span>
+<span class="fc" id="L40">            entries.put(source.id(), new PrincipalMappingPlan.Entry(status, candidates));</span>
+<span class="fc" id="L41">        }</span>
+<span class="fc" id="L42">        return new PrincipalMappingPlan(entries, enabled, null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

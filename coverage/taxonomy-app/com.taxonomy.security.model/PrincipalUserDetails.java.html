@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalUserDetails.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.model</a> &gt; <span class="el_source">PrincipalUserDetails.java</span></div><h1>PrincipalUserDetails.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.model;
+
+import com.taxonomy.backup.PrincipalId;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import java.util.Collection;
+import java.util.UUID;
+
+/** Keeps the local login name compatible while carrying the separately verified stable identity. */
+public final class PrincipalUserDetails extends User implements StablePrincipal {
+    private final String stableId;
+    public PrincipalUserDetails(PrincipalId id, String username, String password, boolean enabled,
+                                Collection&lt;? extends GrantedAuthority&gt; authorities) {
+<span class="fc" id="L14">        super(username, password, enabled, true, true, true, authorities);</span>
+<span class="fc" id="L15">        stableId = id.value().toString();</span>
+<span class="fc" id="L16">    }</span>
+<span class="fc" id="L17">    @Override public PrincipalId principalId() { return new PrincipalId(UUID.fromString(stableId)); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoptionDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationAdoptionDtos.java</span></div><h1>ReformulationAdoptionDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import java.time.Instant;
+import java.util.List;
+
+/** Exact immutable review material; this contract never denotes an architecture approval. */
+public final class ReformulationAdoptionDtos {
+    private ReformulationAdoptionDtos() {}
+    public record PreviewContent(String id, String proposalId, long sourceVersionId, String originalText,
+            String analysisSnapshotId, RequirementView currentRequirement, long requirementRowVersion,
+            ReformulationDtos.Revision revision, String finalText, List&lt;String&gt; warnings,
+            List&lt;String&gt; blockingReasons, List&lt;String&gt; unresolvedQuestionIds, String actor, Instant createdAt) {
+<span class="fc" id="L14">        public PreviewContent { warnings=List.copyOf(warnings); blockingReasons=List.copyOf(blockingReasons); unresolvedQuestionIds=List.copyOf(unresolvedQuestionIds); }</span>
+    }
+<span class="fc" id="L16">    public record Preview(PreviewContent content, String hash) {}</span>
+<span class="fc" id="L17">    public record ConfirmRequest(String commandId, String previewId, String previewHash,</span>
+            boolean confirmed, boolean acknowledgeWarnings, String rationale) {}
+    public record Result(String commandId, String previewId, String proposalId, long proposalRevision,
+            long previousVersionId, long targetVersionId, int targetVersionNumber, boolean textChanged,
+            boolean analysisNeedsRefresh, List&lt;String&gt; unresolvedQuestionIds, String actor, Instant adoptedAt, String rationale, boolean warningsAcknowledged) {
+<span class="fc" id="L22">        public Result { unresolvedQuestionIds=List.copyOf(unresolvedQuestionIds); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupManifest.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupManifest.java</span></div><h1>BackupManifest.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.time.Instant;
+import java.util.*;
+
+/** Versioned wire contract. Parsing must use explicit DTOs, never class names from the input. */
+public record BackupManifest(int formatVersion, String applicationVersion, String build, BackupId backupId,
+                             String sourceInstallationId, BackupRequest request, Instant captureStartedAt,
+                             Instant captureCompletedAt, String consistencyEvidence,
+                             Set&lt;String&gt; requiredFeatures, List&lt;Component&gt; components,
+                             List&lt;Repository&gt; repositories, List&lt;BackupEntry&gt; entries,
+                             List&lt;String&gt; dependencies, List&lt;String&gt; omissions) {
+    public static final int FORMAT_VERSION = 1;
+<span class="fc" id="L14">    public static final Set&lt;String&gt; SUPPORTED_FEATURES = Set.of(&quot;component-sha256&quot;, &quot;explicit-scope&quot;, &quot;writer-barrier-v1&quot;);</span>
+
+    public record Component(BackupComponentId id, int version, BackupCompleteness completeness,
+                            List&lt;String&gt; entryPaths, Set&lt;BackupComponentId&gt; dependencies) {
+<span class="fc" id="L18">        public Component {</span>
+<span class="fc" id="L19">            Objects.requireNonNull(id); Objects.requireNonNull(completeness);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">            if (version &lt; 1) throw new IllegalArgumentException(&quot;Invalid component version&quot;);</span>
+<span class="fc" id="L21">            entryPaths = List.copyOf(entryPaths); dependencies = Set.copyOf(dependencies);</span>
+<span class="fc" id="L22">            BackupChecks.count(entryPaths.size()); BackupChecks.count(dependencies.size());</span>
+<span class="fc" id="L23">            entryPaths.forEach(path -&gt; BackupChecks.text(path, &quot;entryPath&quot;));</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">            if (new HashSet&lt;&gt;(entryPaths).size() != entryPaths.size()) throw new IllegalArgumentException(&quot;Duplicate component entry&quot;);</span>
+<span class="fc" id="L25">        }</span>
+    }
+    public record Repository(BackupRepositoryKey id, String archiveId, GitRepresentation representation,
+                             SnapshotContext.RepositoryState captured, BackupRepositoryKey sourceRepositoryId,
+                             String exportedHead, String sourceCommit) {
+<span class="fc" id="L30">        public Repository {</span>
+<span class="fc" id="L31">            Objects.requireNonNull(id);</span>
+<span class="fc" id="L32">            BackupChecks.archiveId(archiveId);</span>
+<span class="fc" id="L33">            Objects.requireNonNull(representation); Objects.requireNonNull(captured);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            if (exportedHead != null) BackupChecks.hash(exportedHead, 40, &quot;exportedHead&quot;);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (sourceCommit != null) BackupChecks.hash(sourceCommit, 40, &quot;sourceCommit&quot;);</span>
+<span class="fc" id="L36">        }</span>
+    }
+<span class="fc" id="L38">    public BackupManifest {</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (formatVersion != FORMAT_VERSION) throw new IllegalArgumentException(&quot;Unsupported backup format&quot;);</span>
+<span class="fc" id="L40">        BackupChecks.text(applicationVersion, &quot;applicationVersion&quot;); BackupChecks.text(build, &quot;build&quot;); Objects.requireNonNull(backupId);</span>
+<span class="fc" id="L41">        BackupChecks.text(sourceInstallationId, &quot;sourceInstallationId&quot;); Objects.requireNonNull(request);</span>
+<span class="fc" id="L42">        Objects.requireNonNull(captureStartedAt); Objects.requireNonNull(captureCompletedAt);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if (captureCompletedAt.isBefore(captureStartedAt)) throw new IllegalArgumentException(&quot;Invalid capture interval&quot;);</span>
+<span class="fc" id="L44">        BackupChecks.text(consistencyEvidence, &quot;consistencyEvidence&quot;); requiredFeatures = Set.copyOf(requiredFeatures);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (!SUPPORTED_FEATURES.containsAll(requiredFeatures)) throw new IllegalArgumentException(&quot;Unknown required feature&quot;);</span>
+<span class="fc" id="L46">        components = List.copyOf(components); repositories = List.copyOf(repositories); entries = List.copyOf(entries);</span>
+<span class="fc" id="L47">        dependencies = List.copyOf(dependencies); omissions = List.copyOf(omissions);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (var items : List.of(requiredFeatures, components, repositories, entries, dependencies, omissions)) BackupChecks.count(items.size());</span>
+<span class="fc" id="L49">        dependencies.forEach(value -&gt; BackupChecks.text(value, &quot;dependency&quot;));</span>
+<span class="fc" id="L50">        omissions.forEach(value -&gt; BackupChecks.text(value, &quot;omission&quot;));</span>
+<span class="fc" id="L51">        var ids = new HashSet&lt;BackupComponentId&gt;();</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">        for (var c : components) if (!ids.add(c.id())) throw new IllegalArgumentException(&quot;Duplicate component&quot;);</span>
+<span class="fc" id="L53">        var paths = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        for (var e : entries) if (!paths.add(e.path())) throw new IllegalArgumentException(&quot;Duplicate entry&quot;);</span>
+<span class="fc" id="L55">        var assigned = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var c : components) {</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (!ids.containsAll(c.dependencies())) throw new IllegalArgumentException(&quot;Missing component dependency&quot;);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if (!paths.containsAll(c.entryPaths())) throw new IllegalArgumentException(&quot;Missing component payload&quot;);</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            for (String p : c.entryPaths()) if (!assigned.add(p)) throw new IllegalArgumentException(&quot;Entry owned by multiple components&quot;);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (!assigned.equals(paths)) throw new IllegalArgumentException(&quot;Unclassified archive entries&quot;);</span>
+<span class="fc" id="L62">        var resolved = new HashSet&lt;BackupComponentId&gt;();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        while (resolved.size() &lt; components.size()) {</span>
+<span class="fc" id="L64">            int before = resolved.size();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            for (var component : components) {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (resolved.containsAll(component.dependencies())) resolved.add(component.id());</span>
+<span class="fc" id="L67">            }</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (resolved.size() == before) throw new IllegalArgumentException(&quot;Cyclic component dependencies&quot;);</span>
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">        var repos = new HashSet&lt;BackupRepositoryKey&gt;(); var archiveIds = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (var r : repositories) {</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">            if (!repos.add(r.id()) || !archiveIds.add(r.archiveId().toLowerCase(Locale.ROOT))) throw new IllegalArgumentException(&quot;Duplicate repository&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (r.representation() != request.gitRepresentation()) throw new IllegalArgumentException(&quot;Repository Git representation differs from the request&quot;);</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">            if (request.profile().includesHistory() &amp;&amp; r.representation() == GitRepresentation.NONE) throw new IllegalArgumentException(&quot;Missing history representation&quot;);</span>
+<span class="fc" id="L75">        }</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (!(request.scope() instanceof BackupScope.Installation) &amp;&amp; !repos.equals(request.scope().selectedRepositories())) {</span>
+<span class="nc" id="L77">            throw new IllegalArgumentException(&quot;Manifest repositories differ from selected scope&quot;);</span>
+        }
+<span class="fc" id="L79">    }</span>
+    /** First release supports exactly the same application version; converters must be explicit. */
+    public void requireCompatible(String targetApplicationVersion, Map&lt;BackupComponentId, Integer&gt; supportedComponents) {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (!applicationVersion.equals(targetApplicationVersion)) throw new IllegalArgumentException(&quot;Application version requires a converter&quot;);</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        for (var c : components) if (!Objects.equals(supportedComponents.get(c.id()), c.version())) {</span>
+<span class="fc" id="L84">            throw new IllegalArgumentException(&quot;Unsupported component version: &quot; + c.id().value());</span>
+        }
+<span class="fc" id="L86">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

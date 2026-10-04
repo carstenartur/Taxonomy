@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalScopeBackupSelector.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.backup</a> &gt; <span class="el_source">PrincipalScopeBackupSelector.java</span></div><h1>PrincipalScopeBackupSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import javax.sql.DataSource;
+import java.io.*;
+import java.util.*;
+
+/** Resolves explicit source compatibility mappings without creating login identities or grants. */
+public final class PrincipalScopeBackupSelector implements BackupPrincipalSelector {
+    private static final int MAX_SCOPES = 100_000, BATCH_SIZE = 200;
+    private final PortableRows rows;
+    private final List&lt;BackupPrincipalScopeSelector&gt; sources;
+    private final int maxScopes;
+<span class="fc" id="L15">    public PrincipalScopeBackupSelector(DataSource database, List&lt;BackupPrincipalScopeSelector&gt; sources) { this(database, sources, MAX_SCOPES); }</span>
+<span class="fc" id="L16">    public PrincipalScopeBackupSelector(DataSource database, List&lt;BackupPrincipalScopeSelector&gt; sources, int maxScopes) {</span>
+<span class="fc" id="L17">        rows = new PortableRows(database); this.sources = List.copyOf(sources);</span>
+<span class="fc bfc" id="L18" title="All 6 branches covered.">        if (maxScopes &lt; 1 || maxScopes &gt; MAX_SCOPES || sources.size() &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Invalid principal selection limits&quot;);</span>
+<span class="fc" id="L19">        this.maxScopes = maxScopes;</span>
+<span class="fc" id="L20">    }</span>
+    @Override public Set&lt;PrincipalId&gt; select(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L23">            BackupCheckpoint guarded = () -&gt; check(checkpoint); guarded.check();</span>
+<span class="fc" id="L24">            var scopes = new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            for (var source : sources) {</span>
+<span class="fc" id="L26">                guarded.check();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                for (String scope : source.scopes(snapshot, guarded)) {</span>
+<span class="fc" id="L28">                    guarded.check();</span>
+<span class="fc bfc" id="L29" title="All 8 branches covered.">                    if (scope == null || scope.isBlank() || scope.length() &gt; 255 || scope.chars().anyMatch(Character::isISOControl))</span>
+<span class="fc" id="L30">                        throw new IOException(&quot;Invalid source principal scope&quot;);</span>
+<span class="fc bfc" id="L31" title="All 4 branches covered.">                    if (scopes.add(scope) &amp;&amp; scopes.size() &gt; maxScopes) throw new IOException(&quot;Principal selection limit exceeded&quot;);</span>
+<span class="fc" id="L32">                }</span>
+<span class="fc" id="L33">            }</span>
+<span class="fc" id="L34">            var ordered = List.copyOf(scopes); var found = new HashMap&lt;String, PrincipalId&gt;(); var owners = new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            for (int offset = 0; offset &lt; ordered.size(); offset += BATCH_SIZE) {</span>
+<span class="fc" id="L36">                guarded.check(); var batch = ordered.subList(offset, Math.min(offset + BATCH_SIZE, ordered.size()));</span>
+<span class="fc" id="L37">                var query = new PortableRows.Query(&quot;select principal_id,scope_key from app_principal where scope_key in (&quot;</span>
+<span class="fc" id="L38">                        + String.join(&quot;,&quot;, Collections.nCopies(batch.size(), &quot;?&quot;)) + &quot;)&quot;, batch);</span>
+<span class="fc" id="L39">                rows.visit(query, row -&gt; {</span>
+<span class="fc" id="L40">                    guarded.check(); String scope = PortableRows.text(row, &quot;scope_key&quot;), raw = PortableRows.text(row, &quot;principal_id&quot;);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                    if (!batch.contains(scope)) throw new IOException(&quot;Source principal scope differs from the captured reference&quot;);</span>
+<span class="fc" id="L42">                    var id = new PrincipalId(UUID.fromString(raw));</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">                    if (!id.value().toString().equals(raw)) throw new IOException(&quot;Noncanonical source principal identity&quot;);</span>
+<span class="fc" id="L44">                    return new Mapping(scope, id);</span>
+                }, mapping -&gt; {
+<span class="fc bfc" id="L46" title="All 4 branches covered.">                    if (found.putIfAbsent(mapping.scope(), mapping.id()) != null || !owners.add(mapping.id()))</span>
+<span class="fc" id="L47">                        throw new IOException(&quot;Ambiguous source principal mapping&quot;);</span>
+<span class="fc" id="L48">                });</span>
+            }
+<span class="fc" id="L50">            guarded.check();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (!found.keySet().equals(scopes)) throw new IOException(&quot;A referenced source principal scope is unmapped&quot;);</span>
+<span class="fc" id="L52">            return Set.copyOf(owners);</span>
+<span class="fc" id="L53">        } catch (IOException | RuntimeException failure) {</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">            if (failure instanceof InterruptedIOException || Thread.currentThread().isInterrupted()) {</span>
+<span class="fc" id="L55">                Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Principal selection cancelled&quot;);</span>
+            }
+            // Source selectors and JDBC cleanup can carry private values; none become public diagnostics.
+<span class="fc" id="L58">            throw new IOException(&quot;Principal scope selection failed&quot;);</span>
+        }
+    }
+    private static void check(BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Principal selection cancelled&quot;);</span>
+<span class="fc" id="L63">        try { checkpoint.check(); }</span>
+<span class="fc" id="L64">        catch (InterruptedIOException failure) { Thread.currentThread().interrupt(); throw failure; }</span>
+<span class="fc" id="L65">    }</span>
+<span class="fc" id="L66">    private record Mapping(String scope, PrincipalId id) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserManagementController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">UserManagementController.java</span></div><h1>UserManagementController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import com.taxonomy.security.service.UserManagementService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
+
+/** Admin-only REST adapter for local user management. */
+@RestController
+@RequestMapping(&quot;/api/admin/users&quot;)
+@Profile(&quot;!keycloak&quot;)
+@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+@Tag(name = &quot;User Management&quot;, description = &quot;Admin-only user CRUD operations&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.security.local-users-enabled&quot;,
+        havingValue = &quot;true&quot;, matchIfMissing = true)
+public class UserManagementController {
+
+    private final UserManagementService userManagementService;
+
+<span class="fc" id="L36">    public UserManagementController(UserManagementService userManagementService) {</span>
+<span class="fc" id="L37">        this.userManagementService = userManagementService;</span>
+<span class="fc" id="L38">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;List all users&quot;, description = &quot;Returns all users without password hashes.&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; listUsers() {
+<span class="fc" id="L43">        return userManagementService.listUsers();</span>
+    }
+
+    @GetMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Get user by ID&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getUser(@PathVariable Long id) {
+<span class="fc" id="L49">        return userManagementService.getUser(id)</span>
+<span class="fc" id="L50">                .map(ResponseEntity::ok)</span>
+<span class="fc" id="L51">                .orElseGet(() -&gt; ResponseEntity.notFound().build());</span>
+    }
+
+    @PostMapping
+    @Operation(summary = &quot;Create a new user&quot;)
+    public ResponseEntity&lt;Object&gt; createUser(@RequestBody Map&lt;String, Object&gt; body,
+                                              Authentication authentication) {
+        try {
+<span class="fc" id="L59">            return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L60">                    .body(userManagementService.createUser(body, actor(authentication)));</span>
+<span class="fc" id="L61">        } catch (UserManagementService.ConflictException exception) {</span>
+<span class="fc" id="L62">            return ResponseEntity.status(HttpStatus.CONFLICT)</span>
+<span class="fc" id="L63">                    .body(Map.of(&quot;error&quot;, exception.getMessage()));</span>
+<span class="fc" id="L64">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L65">            return badRequest(exception.getMessage());</span>
+        }
+    }
+
+    @PutMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Update user details (roles, displayName, email, enabled)&quot;)
+    public ResponseEntity&lt;Object&gt; updateUser(@PathVariable Long id,
+                                              @RequestBody Map&lt;String, Object&gt; body,
+                                              Authentication authentication) {
+        try {
+<span class="fc" id="L75">            return ResponseEntity.ok(userManagementService.updateUser(id, body, actor(authentication)));</span>
+<span class="fc" id="L76">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L77">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L78">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L79">            return badRequest(exception.getMessage());</span>
+        }
+    }
+
+    @PutMapping(&quot;/{id}/password&quot;)
+    @Operation(summary = &quot;Change a user's password (admin action)&quot;)
+    public ResponseEntity&lt;Object&gt; changePassword(@PathVariable Long id,
+                                                  @RequestBody Map&lt;String, String&gt; body,
+                                                  Authentication authentication) {
+        try {
+<span class="fc" id="L89">            userManagementService.changePassword(id, body.get(&quot;password&quot;), actor(authentication));</span>
+<span class="fc" id="L90">            return ResponseEntity.ok(Map.of(&quot;message&quot;, &quot;Password changed successfully.&quot;));</span>
+<span class="fc" id="L91">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L92">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L93">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L94">            return badRequest(exception.getMessage());</span>
+        }
+    }
+
+    @DeleteMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Disable a user (soft delete)&quot;)
+    public ResponseEntity&lt;Object&gt; disableUser(@PathVariable Long id,
+                                               Authentication authentication) {
+        try {
+<span class="fc" id="L103">            String username = userManagementService.disableUser(id, actor(authentication));</span>
+<span class="fc" id="L104">            return ResponseEntity.ok(Map.of(</span>
+                    &quot;message&quot;, &quot;User '&quot; + username + &quot;' has been disabled.&quot;));
+<span class="fc" id="L106">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L107">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L108">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L109">            return badRequest(exception.getMessage());</span>
+        }
+    }
+
+    private String actor(Authentication authentication) {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        return authentication != null ? authentication.getName() : &quot;system&quot;;</span>
+    }
+
+    private ResponseEntity&lt;Object&gt; badRequest(String message) {
+<span class="fc" id="L118">        return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, message));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

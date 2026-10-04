@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxMappingProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxMappingProfile.java</span></div><h1>SparxMappingProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Immutable v1 mapping. No transport or proprietary SDK type enters the canonical model. */
+public final class SparxMappingProfile {
+    public static final String PROFILE = &quot;sparx-xmi-2.1&quot;;
+    public static final String VERSION = &quot;1&quot;;
+    public static final String XMI = &quot;http://schema.omg.org/spec/XMI/2.1&quot;;
+    public static final String UML = &quot;http://schema.omg.org/spec/UML/2.1&quot;;
+<span class="fc" id="L17">    public static final Set&lt;String&gt; CANONICAL_TYPES = Set.of(&quot;Capability&quot;, &quot;Process&quot;, &quot;CoreService&quot;, &quot;COIService&quot;,</span>
+            &quot;CommunicationsService&quot;, &quot;UserApplication&quot;, &quot;InformationProduct&quot;, &quot;BusinessRole&quot;, &quot;System&quot;, &quot;Component&quot;);
+<span class="fc" id="L19">    private static final Map&lt;String, String&gt; ELEMENTS = Map.of(&quot;Class&quot;, &quot;Component&quot;, &quot;Component&quot;, &quot;Component&quot;,</span>
+            &quot;Actor&quot;, &quot;BusinessRole&quot;, &quot;Activity&quot;, &quot;Process&quot;, &quot;UseCase&quot;, &quot;Capability&quot;, &quot;Interface&quot;, &quot;CoreService&quot;,
+            &quot;Node&quot;, &quot;System&quot;, &quot;Artifact&quot;, &quot;InformationProduct&quot;);
+<span class="fc" id="L22">    private static final Map&lt;String, String&gt; RELATIONS = Map.of(&quot;Dependency&quot;, &quot;DEPENDS_ON&quot;, &quot;Realization&quot;, &quot;REALIZES&quot;,</span>
+            &quot;InformationFlow&quot;, &quot;COMMUNICATES_WITH&quot;, &quot;Association&quot;, &quot;RELATED_TO&quot;, &quot;Usage&quot;, &quot;CONSUMES&quot;,
+            &quot;Composition&quot;, &quot;CONTAINS&quot;);
+
+<span class="fc" id="L26">    static final Set&lt;String&gt; FEATURE_SCALARS = Set.of(&quot;scope&quot;, &quot;classifierName&quot;, &quot;defaultValue&quot;, &quot;lowerBound&quot;, &quot;upperBound&quot;,</span>
+            &quot;paramDirection&quot;, &quot;alias&quot;, &quot;containment&quot;, &quot;isStatic&quot;, &quot;isCollection&quot;, &quot;isOrdered&quot;, &quot;isConst&quot;, &quot;allowDuplicates&quot;,
+            &quot;concurrency&quot;, &quot;isAbstract&quot;, &quot;isReturnArray&quot;, &quot;isQuery&quot;, &quot;isSynchronized&quot;, &quot;isPure&quot;, &quot;behavior&quot;, &quot;status&quot;,
+            &quot;complexity&quot;, &quot;phase&quot;, &quot;version&quot;, &quot;language&quot;);
+
+    private SparxMappingProfile() {}
+
+    public static String guid(String value) {
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (value == null) throw ExchangeXml.invalid(&quot;SPARX_GUID_REQUIRED&quot;, &quot;A stable EA GUID is required&quot;);</span>
+<span class="fc" id="L35">        String uuid = value;</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">        if (uuid.startsWith(&quot;EAID_&quot;) || uuid.startsWith(&quot;EAPK_&quot;)) uuid = uuid.substring(5).replace('_', '-');</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        if (uuid.startsWith(&quot;{&quot;) &amp;&amp; uuid.endsWith(&quot;}&quot;)) uuid = uuid.substring(1, uuid.length() - 1);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!uuid.matches(&quot;[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}&quot;))</span>
+<span class="fc" id="L39">            throw ExchangeXml.invalid(&quot;SPARX_GUID_REQUIRED&quot;, &quot;The object identity is not a supported EA GUID&quot;);</span>
+<span class="fc" id="L40">        return &quot;{&quot; + UUID.fromString(uuid).toString().toUpperCase(Locale.ROOT) + &quot;}&quot;;</span>
+    }
+
+    /** Strip exactly one allowed PCS kind prefix; generic GUID parsing intentionally stays unchanged. */
+    public static String prefixedGuid(String value, Set&lt;String&gt; allowedPrefixes) {
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">        if (value != null) for (String prefix : allowedPrefixes) {</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">            if (value.startsWith(prefix) &amp;&amp; value.substring(prefix.length()).matches(&quot;\\{[0-9a-fA-F-]{36}}&quot;))</span>
+<span class="fc" id="L47">                return guid(value.substring(prefix.length()));</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        throw ExchangeXml.invalid(&quot;SPARX_GUID_REQUIRED&quot;, &quot;Identity prefix does not match the expected Sparx feature kind&quot;);</span>
+    }
+
+    public static String version(String version) {
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (!Set.of(&quot;1&quot;, &quot;2&quot;).contains(version))</span>
+<span class="nc" id="L54">            throw ExchangeXml.invalid(&quot;PROFILE_VERSION_CHANGED&quot;, &quot;Select a supported immutable Sparx profile version&quot;);</span>
+<span class="fc" id="L55">        return version;</span>
+    }
+
+    public static String xmiId(String guid, boolean packageId) {
+<span class="fc" id="L59">        String value = guid(guid);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        return (packageId ? &quot;EAPK_&quot; : &quot;EAID_&quot;) + value.substring(1, value.length() - 1).replace('-', '_');</span>
+    }
+
+    public static String externalId(UUID connection, String identity) {
+<span class="fc" id="L64">        return guid(UUID.nameUUIDFromBytes((connection + &quot;\u0000&quot; + identity).getBytes(StandardCharsets.UTF_8)).toString());</span>
+    }
+
+    public static String elementType(String umlType, String stereotype, String declared) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (declared != null) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (!CANONICAL_TYPES.contains(declared)) throw ExchangeXml.invalid(&quot;SPARX_TYPE_MAPPING&quot;, &quot;Unsupported declared Taxonomy type&quot;);</span>
+<span class="fc" id="L70">            return declared;</span>
+        }
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (!ELEMENTS.containsKey(umlType)) return null;</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">        if (stereotype != null) for (String type : CANONICAL_TYPES)</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (type.equalsIgnoreCase(stereotype)) return type;</span>
+<span class="fc" id="L75">        return ELEMENTS.get(umlType);</span>
+    }
+
+    public static String umlType(String canonical) {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (!CANONICAL_TYPES.contains(canonical)) throw ExchangeXml.invalid(&quot;SPARX_TYPE_MAPPING&quot;, &quot;No explicit Sparx element mapping&quot;);</span>
+<span class="fc bfc" id="L80" title="All 6 branches covered.">        return switch (canonical) {</span>
+<span class="fc" id="L81">            case &quot;BusinessRole&quot; -&gt; &quot;Actor&quot;;</span>
+<span class="fc" id="L82">            case &quot;Process&quot; -&gt; &quot;Activity&quot;;</span>
+<span class="fc" id="L83">            case &quot;Capability&quot; -&gt; &quot;UseCase&quot;;</span>
+<span class="fc" id="L84">            case &quot;InformationProduct&quot; -&gt; &quot;Artifact&quot;;</span>
+<span class="fc" id="L85">            case &quot;CoreService&quot;, &quot;COIService&quot;, &quot;CommunicationsService&quot; -&gt; &quot;Interface&quot;;</span>
+<span class="fc" id="L86">            default -&gt; &quot;Component&quot;;</span>
+        };
+    }
+
+<span class="fc" id="L90">    public static String relationType(String eaType) { return RELATIONS.get(eaType); }</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">    public static boolean isRelation(String type) { return RELATIONS.containsKey(type) || Set.of(&quot;Abstraction&quot;, &quot;Generalization&quot;).contains(type); }</span>
+    public static String eaRelation(String canonical) {
+<span class="fc bfc" id="L93" title="All 7 branches covered.">        return switch (canonical) {</span>
+<span class="fc" id="L94">            case &quot;DEPENDS_ON&quot; -&gt; &quot;Dependency&quot;; case &quot;REALIZES&quot; -&gt; &quot;Realization&quot;;</span>
+<span class="fc" id="L95">            case &quot;COMMUNICATES_WITH&quot; -&gt; &quot;InformationFlow&quot;; case &quot;RELATED_TO&quot; -&gt; &quot;Association&quot;;</span>
+<span class="fc" id="L96">            case &quot;CONSUMES&quot; -&gt; &quot;Usage&quot;; case &quot;CONTAINS&quot; -&gt; &quot;Composition&quot;;</span>
+<span class="fc" id="L97">            default -&gt; null;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

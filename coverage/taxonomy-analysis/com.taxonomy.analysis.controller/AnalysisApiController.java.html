@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisApiController.java</span></div><h1>AnalysisApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
+import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.analysis.usecase.JustifyLeafCommand;
+import com.taxonomy.analysis.usecase.JustifyLeafResult;
+import com.taxonomy.analysis.usecase.JustifyLeafUseCase;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import java.net.URI;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.RejectedExecutionException;
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * HTTP/SSE transport adapter for requirement analysis. Business orchestration is
+ * delegated to typed application use cases.
+ */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Analysis&quot;)
+public class AnalysisApiController {
+
+    static final String ANALYSIS_OPERATION_ID_HEADER = &quot;X-Analysis-Operation-Id&quot;;
+
+<span class="fc" id="L78">    private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);</span>
+
+    @Autowired
+    private AnalysisProgressRegistry analysisProgressRegistry;
+
+    @Autowired(required = false)
+    private com.taxonomy.analysis.recovery.AnalysisContinuationService continuationService;
+
+    /**
+     * Optional live application settings port. The analysis module remains usable
+     * standalone, while the assembled application supplies PreferencesService.
+     */
+    @Autowired(required = false)
+    private AnalysisRuntimeSettings analysisRuntimeSettings;
+
+    private final TaxonomyService taxonomyService;
+    private final ExecutorService analysisExecutor;
+    private final ObjectMapper objectMapper;
+    private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
+    private final StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase;
+    private final AnalyzeNodeChildrenUseCase analyzeNodeChildrenUseCase;
+    private final JustifyLeafUseCase justifyLeafUseCase;
+    private final AnalysisSseEventMapper analysisSseEventMapper;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final MessageSource messageSource;
+
+    public AnalysisApiController(TaxonomyService taxonomyService,
+                                 ExecutorService analysisExecutor,
+                                 ObjectMapper objectMapper,
+                                 AnalyzeRequirementUseCase analyzeRequirementUseCase,
+                                 StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase,
+                                 AnalyzeNodeChildrenUseCase analyzeNodeChildrenUseCase,
+                                 JustifyLeafUseCase justifyLeafUseCase,
+                                 AnalysisSseEventMapper analysisSseEventMapper,
+                                 RepositoryStateService repositoryStateService,
+                                 WorkspaceResolver workspaceResolver,
+<span class="fc" id="L115">                                 MessageSource messageSource) {</span>
+<span class="fc" id="L116">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L117">        this.analysisExecutor = analysisExecutor;</span>
+<span class="fc" id="L118">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L119">        this.analyzeRequirementUseCase = analyzeRequirementUseCase;</span>
+<span class="fc" id="L120">        this.streamRequirementAnalysisUseCase = streamRequirementAnalysisUseCase;</span>
+<span class="fc" id="L121">        this.analyzeNodeChildrenUseCase = analyzeNodeChildrenUseCase;</span>
+<span class="fc" id="L122">        this.justifyLeafUseCase = justifyLeafUseCase;</span>
+<span class="fc" id="L123">        this.analysisSseEventMapper = analysisSseEventMapper;</span>
+<span class="fc" id="L124">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L125">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L126">        this.messageSource = messageSource;</span>
+<span class="fc" id="L127">    }</span>
+
+    @Operation(summary = &quot;Analyze business requirement&quot;,
+            description = &quot;Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.&quot;,
+            tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Analysis completed&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or the provider is unknown&quot;)
+    @PostMapping(&quot;/analyze&quot;)
+    public ResponseEntity&lt;AnalysisResult&gt; analyze(@RequestBody AnalysisRequest request) {
+<span class="fc" id="L136">        ResponseEntity&lt;AnalysisResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">        if (request == null || request.getBusinessText() == null</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                || request.getBusinessText().isBlank()) {</span>
+<span class="fc" id="L140">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L142">        enforceBusinessTextLimit(request.getBusinessText());</span>
+<span class="fc" id="L143">        AnalysisScope analysisScope = validateAnalysisScope(request.getAnalysisScope());</span>
+<span class="fc" id="L144">        int maxArchitectureNodes = resolveMaxArchitectureNodes(request);</span>
+
+<span class="fc" id="L146">        String operationId = newOperationId();</span>
+        try {
+<span class="fc" id="L148">            String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L149">            WorkspaceContext context = resolveWorkspaceContext(username);</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">            if (request.isResumable() &amp;&amp; continuationService == null) {</span>
+<span class="nc" id="L151">                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Durable continuation is unavailable&quot;);</span>
+            }
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            try (var continuation = request.isResumable()</span>
+<span class="fc" id="L154">                    ? continuationService.begin(request, username, context, maxArchitectureNodes) : null) {</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">            if (continuation != null &amp;&amp; continuation.replay() != null) {</span>
+<span class="nc" id="L156">                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())</span>
+<span class="nc" id="L157">                        .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());</span>
+            }
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            try (var run = analysisProgressRegistry == null ? null</span>
+<span class="fc" id="L160">                    : analysisProgressRegistry.open(operationId, username, context, null)) {</span>
+<span class="fc" id="L161">            AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(</span>
+                    new AnalyzeRequirementCommand(
+<span class="fc" id="L163">                            request.getBusinessText(),</span>
+<span class="fc" id="L164">                            request.isIncludeArchitectureView(),</span>
+                            maxArchitectureNodes,
+<span class="fc" id="L166">                            request.getProvider(),</span>
+                            username,
+                            context, null, analysisScope));
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (run != null) {</span>
+                // The continuation is the durable authority. Publishing live completion must
+                // follow its commit and must not mutate that already persisted response.
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                if (continuation == null) run.finish(response);</span>
+<span class="fc" id="L174">                else run.finish(response.getStatus());</span>
+            }
+<span class="fc" id="L176">            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())</span>
+<span class="fc" id="L177">                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)</span>
+<span class="fc" id="L178">                    .body(response);</span>
+            }
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            }</span>
+<span class="fc" id="L181">        } catch (UnknownAnalysisProviderException e) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            ResponseEntity&lt;AnalysisResult&gt; badProvider = (ResponseEntity&lt;AnalysisResult&gt;)
+<span class="fc" id="L184">                    (ResponseEntity&lt;?&gt;) ResponseEntity.badRequest()</span>
+<span class="fc" id="L185">                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)</span>
+<span class="fc" id="L186">                    .body(Map.of(</span>
+<span class="fc" id="L187">                            &quot;error&quot;, &quot;Unknown provider: &quot; + e.getProvider(),</span>
+<span class="fc" id="L188">                            &quot;validProviders&quot;, e.getValidProviders()));</span>
+<span class="fc" id="L189">            return badProvider;</span>
+        }
+    }
+
+    @Operation(summary = &quot;Streaming analysis (SSE)&quot;,
+            description = &quot;Emits phase, scores, expanding, complete, and error events as the taxonomy is processed. Every event carries one operation ID and a monotonic sequence.&quot;,
+            tags = {&quot;Analysis&quot;})
+    @GetMapping(value = &quot;/analyze-stream&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter analyzeStream(
+            @Parameter(description = &quot;Business requirement text to analyze&quot;)
+            @RequestParam String businessText,
+            @Parameter(description = &quot;LLM provider override&quot;)
+            @RequestParam(required = false) String provider,
+            @RequestParam(required = false) java.util.Set&lt;String&gt; taxonomyRoots,
+            @RequestParam(defaultValue = &quot;FULL&quot;) AnalysisMode analysisMode) {
+        AnalysisScope analysisScope;
+        try {
+<span class="fc" id="L206">            analysisScope = validateAnalysisScope(new AnalysisScope(taxonomyRoots, analysisMode));</span>
+<span class="nc" id="L207">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L208">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);</span>
+<span class="fc" id="L209">        }</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                &amp;&amp; attributes.getRequest().getHeader(&quot;Last-Event-ID&quot;) != null) {</span>
+<span class="nc" id="L212">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;A disconnected stream is not restarted. Observe the existing analysis operation instead.&quot;);
+        }
+        // The reserved operation owns the configured deadline, including executor-queue time.
+        // A second servlet deadline can expire first and discard the terminal partial result.
+        // Keep transport open until the worker's terminal event or client disconnect; provider
+        // request timeouts and the bounded admission/operation guards remain in force.
+<span class="fc" id="L219">        SseEmitter emitter = new SseEmitter(0L);</span>
+<span class="fc" id="L220">        AtomicBoolean completed = new AtomicBoolean();</span>
+<span class="fc" id="L221">        AtomicBoolean disconnected = new AtomicBoolean();</span>
+<span class="fc" id="L222">        AtomicReference&lt;Thread&gt; worker = new AtomicReference&lt;&gt;();</span>
+<span class="fc" id="L223">        AtomicReference&lt;AnalysisProgressRegistry.Reservation&gt; admission = new AtomicReference&lt;&gt;();</span>
+<span class="fc" id="L224">        Runnable cancelWorker = () -&gt; {</span>
+<span class="fc" id="L225">            synchronized (worker) {</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (completed.get()) return;</span>
+<span class="fc" id="L227">                disconnected.set(true);</span>
+<span class="fc" id="L228">                var reserved = admission.get();</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                if (reserved != null) reserved.cancel();</span>
+<span class="fc" id="L230">                Thread thread = worker.get();</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                if (thread != null) thread.interrupt();</span>
+<span class="fc" id="L232">            }</span>
+<span class="fc" id="L233">        };</span>
+<span class="fc" id="L234">        emitter.onTimeout(cancelWorker);</span>
+<span class="fc" id="L235">        emitter.onError(error -&gt; cancelWorker.run());</span>
+<span class="fc" id="L236">        emitter.onCompletion(cancelWorker);</span>
+<span class="fc" id="L237">        String operationId = newOperationId();</span>
+<span class="fc" id="L238">        AtomicLong eventSequence = new AtomicLong();</span>
+
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L241">            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                    &quot;status&quot;, &quot;ERROR&quot;,
+<span class="nc" id="L243">                    &quot;errorMessage&quot;, messageSource.getMessage(</span>
+                            &quot;error.loading&quot;, null,
+                            &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L246">                            LocaleContextHolder.getLocale()),</span>
+<span class="nc" id="L247">                    &quot;initStatus&quot;, taxonomyService.getInitStatus()));</span>
+<span class="nc" id="L248">            emitter.complete();</span>
+<span class="nc" id="L249">            return emitter;</span>
+        }
+<span class="pc bpc" id="L251" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L252">            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                    &quot;status&quot;, &quot;ERROR&quot;,
+                    &quot;errorMessage&quot;, &quot;businessText must not be blank&quot;));
+<span class="fc" id="L255">            emitter.complete();</span>
+<span class="fc" id="L256">            return emitter;</span>
+        }
+<span class="fc" id="L258">        int businessTextLimit = businessTextLimit();</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (businessText.length() &gt; businessTextLimit) {</span>
+<span class="fc" id="L260">            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                    &quot;status&quot;, &quot;ERROR&quot;,
+<span class="fc" id="L262">                    &quot;errorMessage&quot;, businessTextTooLongMessage(businessTextLimit)));</span>
+<span class="fc" id="L263">            emitter.complete();</span>
+<span class="fc" id="L264">            return emitter;</span>
+        }
+
+        // Resolve and validate the exact tab-pinned workspace while the request
+        // context is still available. Native EventSource cannot send the custom
+        // header, so WorkspaceContextResolver accepts its equivalent query value.
+<span class="fc" id="L270">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L271">        WorkspaceContext streamContext = resolveWorkspaceContext(username);</span>
+        // Unlike POST, legacy SSE is not routed through the DSL interceptor.
+        // Full analysis still requires the same isolated-workspace admission.
+<span class="pc bpc" id="L274" title="1 of 4 branches missed.">        if (streamContext.workspaceId() == null || streamContext.workspaceId().isBlank()) {</span>
+<span class="fc" id="L275">            throw new ResponseStatusException(HttpStatus.FORBIDDEN,</span>
+                    &quot;Full analysis requires an isolated workspace&quot;);
+        }
+
+<span class="fc" id="L279">        StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(</span>
+<span class="fc" id="L280">                businessText, provider, LocaleContextHolder.getLocale(), analysisScope);</span>
+        // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
+        // Reservation does not install thread-local control; the executor's worker claims that ownership.
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        var reservation = analysisProgressRegistry == null ? null</span>
+<span class="fc" id="L284">                : analysisProgressRegistry.reserve(operationId, username, streamContext, null);</span>
+<span class="fc" id="L285">        admission.set(reservation);</span>
+<span class="fc" id="L286">        boolean scheduled = false;</span>
+        try {
+<span class="fc" id="L288">        analysisExecutor.execute(() -&gt; {</span>
+<span class="fc" id="L289">            worker.set(Thread.currentThread());</span>
+<span class="fc" id="L290">            long startedNanos = System.nanoTime(); // Worker time, excluding the executor queue.</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">            try (var run = reservation == null ? null : reservation.open()) {</span>
+<span class="fc" id="L292">                com.taxonomy.analysis.usecase.AnalysisStreamEventHandler emit = event -&gt; {</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                    if (completed.get()) return;</span>
+<span class="fc" id="L294">                    event = withMeasuredDuration(event, startedNanos);</span>
+<span class="fc bfc" id="L295" title="All 4 branches covered.">                    boolean terminal = event instanceof AnalysisStreamEvent.Complete</span>
+                            || event instanceof AnalysisStreamEvent.Error;
+<span class="fc bfc" id="L297" title="All 2 branches covered.">                    if (disconnected.get()) {</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">                        if (terminal) { reconcileTerminal(event, run); completed.set(true); }</span>
+<span class="nc" id="L299">                        else AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L300">                        return;</span>
+                    }
+<span class="fc" id="L302">                    AnalysisStreamEvent outbound = event;</span>
+                    AnalysisSseEventMapper.MappedEvent mapped;
+                    try {
+                        // Preparing an envelope may load catalogue metadata and fail. Do not
+                        // publish a successful terminal decision until this step has succeeded.
+<span class="fc" id="L307">                        mapped = analysisSseEventMapper.map(outbound);</span>
+<span class="fc" id="L308">                    } catch (RuntimeException mappingFailure) {</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">                        if (!terminal) throw mappingFailure;</span>
+<span class="fc" id="L310">                        log.error(&quot;Could not render terminal analysis evidence&quot;, mappingFailure);</span>
+<span class="fc" id="L311">                        outbound = terminalMappingFailure(event);</span>
+<span class="fc" id="L312">                        mapped = minimalTerminalError((AnalysisStreamEvent.Error) outbound);</span>
+<span class="fc" id="L313">                    }</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                    if (terminal) {</span>
+                        // Freeze exactly once before sending bytes, then adjust only outcome
+                        // metadata. Neither reconciliation nor the fallback reloads the catalogue.
+<span class="fc" id="L317">                        outbound = reconcileTerminal(outbound, run);</span>
+<span class="fc" id="L318">                        mapped = withTerminalOutcome(mapped, outbound);</span>
+<span class="fc" id="L319">                        completed.set(true);</span>
+                    }
+<span class="fc" id="L321">                    Map&lt;String, Object&gt; scopedPayload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L322">                    ((Map&lt;?, ?&gt;) mapped.payload()).forEach((key, value) -&gt; scopedPayload.put(String.valueOf(key), value));</span>
+<span class="fc" id="L323">                    scopedPayload.put(&quot;analysisScope&quot;, analysisScope);</span>
+<span class="fc" id="L324">                    mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                    if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {</span>
+<span class="nc" id="L326">                        cancelWorker.run();</span>
+                    }
+<span class="fc bfc" id="L328" title="All 2 branches covered.">                    if (terminal) emitter.complete();</span>
+<span class="fc" id="L329">                };</span>
+                try {
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">                    if (disconnected.get()) {</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">                        if (reservation != null) reservation.cancel();</span>
+<span class="nc" id="L333">                        Thread.currentThread().interrupt();</span>
+                    }
+<span class="fc" id="L335">                    AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L336">                    streamRequirementAnalysisUseCase.stream(command, emit);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                    if (!completed.get()) emit.handle(new AnalysisStreamEvent.Error(&quot;ERROR&quot;,</span>
+<span class="fc" id="L338">                            &quot;Analysis ended without a terminal result&quot;, Map.of(), List.of(), List.of(), List.of()));</span>
+<span class="fc" id="L339">                } catch (AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L340">                    emit.handle(new AnalysisStreamEvent.Error(&quot;PARTIAL&quot;, stopped.getMessage(),</span>
+<span class="fc" id="L341">                            stopped.partialScores(), List.of(stopped.getMessage()),</span>
+<span class="fc" id="L342">                            stopped.partialDiscrepancies(), List.of(), stopped.partialReasons()));</span>
+<span class="fc" id="L343">                } catch (UnknownAnalysisProviderException failure) {</span>
+<span class="fc" id="L344">                    emit.handle(new AnalysisStreamEvent.Error(&quot;ERROR&quot;, &quot;Unknown provider: &quot; + failure.getProvider(),</span>
+<span class="fc" id="L345">                            Map.of(), List.of(), List.of(), List.of()));</span>
+<span class="fc" id="L346">                } catch (Exception failure) {</span>
+<span class="fc" id="L347">                    log.error(&quot;Streaming analysis failed&quot;, failure);</span>
+<span class="fc" id="L348">                    emit.handle(new AnalysisStreamEvent.Error(&quot;ERROR&quot;,</span>
+                            &quot;Analysis failed. Retry the operation or inspect administrator diagnostics.&quot;,
+<span class="fc" id="L350">                            Map.of(), List.of(), List.of(), List.of()));</span>
+<span class="fc" id="L351">                }</span>
+            } finally {
+<span class="fc" id="L353">                synchronized (worker) {</span>
+<span class="fc" id="L354">                    completed.set(true);</span>
+<span class="fc" id="L355">                    worker.set(null);</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">                    if (disconnected.get()) Thread.interrupted();</span>
+<span class="fc" id="L357">                }</span>
+            }
+<span class="fc" id="L359">        });</span>
+<span class="fc" id="L360">        scheduled = true;</span>
+<span class="fc" id="L361">        } catch (RejectedExecutionException full) {</span>
+<span class="fc" id="L362">            completed.set(true);</span>
+<span class="fc" id="L363">            emitter.complete();</span>
+<span class="fc" id="L364">            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,</span>
+                    &quot;Analysis queue is full; retry after an active run finishes.&quot;);
+        } finally {
+<span class="pc bpc" id="L367" title="1 of 4 branches missed.">            if (!scheduled &amp;&amp; reservation != null) reservation.close();</span>
+        }
+<span class="fc" id="L369">        return emitter;</span>
+    }
+
+    public SseEmitter analyzeStream(String businessText, String provider) {
+<span class="fc" id="L373">        return analyzeStream(businessText, provider, null, AnalysisMode.FULL);</span>
+    }
+
+    private AnalysisScope validateAnalysisScope(AnalysisScope requested) {
+<span class="fc" id="L377">        AnalysisScope scope = AnalysisScope.orDefault(requested);</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (!scope.taxonomyRoots().isEmpty()) {</span>
+            try {
+<span class="fc" id="L380">                scope.validateRoots(taxonomyService.getRootCodes());</span>
+<span class="fc" id="L381">            } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L382">                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);</span>
+<span class="fc" id="L383">            }</span>
+        }
+<span class="fc" id="L385">        return scope;</span>
+    }
+
+    @Operation(summary = &quot;Analyze single node children&quot;,
+            description = &quot;Analyzes the children of a taxonomy node against a requirement&quot;,
+            tags = {&quot;Analysis&quot;})
+    @GetMapping(&quot;/analyze-node&quot;)
+    public ResponseEntity&lt;AnalyzeNodeChildrenResult&gt; analyzeNode(
+            @RequestParam String parentCode,
+            @RequestParam String businessText,
+            @RequestParam(defaultValue = &quot;100&quot;) int parentScore) {
+<span class="fc" id="L396">        ResponseEntity&lt;AnalyzeNodeChildrenResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+        try {
+<span class="fc" id="L399">            return ResponseEntity.ok(analyzeNodeChildrenUseCase.analyze(</span>
+                    new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
+<span class="fc" id="L401">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L402">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+<span class="fc" id="L406">    public record JustifyLeafRequest(</span>
+            String nodeCode,
+            String businessText,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons) {
+    }
+
+    @Operation(summary = &quot;Generate leaf justification&quot;,
+            description = &quot;Generates a traceable explanation for a leaf-node match&quot;,
+            tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Justification generated&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Request is invalid&quot;)
+    @ApiResponse(responseCode = &quot;500&quot;, description = &quot;Justification generation failed&quot;)
+    @PostMapping(&quot;/justify-leaf&quot;)
+    public ResponseEntity&lt;?&gt; justifyLeaf(@RequestBody JustifyLeafRequest request) {
+<span class="fc" id="L421">        ResponseEntity&lt;JustifyLeafResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L422" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+        try {
+<span class="fc" id="L424">            JustifyLeafResult result = justifyLeafUseCase.justify(new JustifyLeafCommand(</span>
+<span class="fc" id="L425">                    request.nodeCode(), request.businessText(), request.scores(), request.reasons()));</span>
+<span class="fc" id="L426">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L427">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L428">            ProblemDetail problem = ProblemDetail.forStatusAndDetail(</span>
+<span class="fc" id="L429">                    HttpStatus.BAD_REQUEST, e.getMessage());</span>
+<span class="fc" id="L430">            problem.setTitle(&quot;Invalid leaf justification request&quot;);</span>
+<span class="fc" id="L431">            problem.setType(URI.create(&quot;urn:taxonomy:problem:invalid-justification-request&quot;));</span>
+<span class="fc" id="L432">            return ResponseEntity.badRequest().body(problem);</span>
+<span class="fc" id="L433">        } catch (Exception e) {</span>
+<span class="fc" id="L434">            log.error(&quot;Leaf justification failed for node {}&quot;,</span>
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">                    request != null ? request.nodeCode() : null, e);</span>
+<span class="fc" id="L436">            ProblemDetail problem = ProblemDetail.forStatusAndDetail(</span>
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    &quot;The leaf justification could not be generated. Retry the operation or inspect the administrator diagnostics.&quot;);
+<span class="fc" id="L439">            problem.setTitle(&quot;Leaf justification failed&quot;);</span>
+<span class="fc" id="L440">            problem.setType(URI.create(&quot;urn:taxonomy:problem:justification-failed&quot;));</span>
+<span class="fc" id="L441">            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);</span>
+        }
+    }
+
+    private boolean sendEvent(SseEmitter emitter,
+                           String operationId,
+                           long sequence,
+                           String eventName,
+                           Object data) {
+        try {
+<span class="fc" id="L451">            Map&lt;String, Object&gt; envelope = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L452">            envelope.put(&quot;operationId&quot;, operationId);</span>
+<span class="fc" id="L453">            envelope.put(&quot;sequence&quot;, sequence);</span>
+<span class="fc" id="L454">            envelope.put(&quot;emittedAt&quot;, Instant.now().toString());</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">            if (data instanceof Map&lt;?, ?&gt; dataMap) {</span>
+<span class="fc" id="L456">                dataMap.forEach((key, value) -&gt; envelope.put(String.valueOf(key), value));</span>
+            } else {
+<span class="nc" id="L458">                envelope.put(&quot;data&quot;, data);</span>
+            }
+<span class="fc" id="L460">            emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L461">                    .id(operationId + &quot;:&quot; + sequence)</span>
+<span class="fc" id="L462">                    .name(eventName)</span>
+<span class="fc" id="L463">                    .data(objectMapper.writeValueAsString(envelope)));</span>
+<span class="fc" id="L464">            return true;</span>
+<span class="nc" id="L465">        } catch (IOException e) {</span>
+<span class="nc" id="L466">            emitter.complete();</span>
+<span class="nc" id="L467">        } catch (Exception e) {</span>
+<span class="nc" id="L468">            emitter.completeWithError(e);</span>
+<span class="nc" id="L469">        }</span>
+<span class="nc" id="L470">        return false;</span>
+    }
+
+    /** Keep authoritative use-case timing; measure controller-generated terminal fallbacks once. */
+    private static AnalysisStreamEvent withMeasuredDuration(AnalysisStreamEvent event, long startedNanos) {
+<span class="fc bfc" id="L475" title="All 4 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete &amp;&amp; complete.analysisDurationMillis() == null) {</span>
+<span class="fc" id="L476">            return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),</span>
+<span class="fc" id="L477">                    complete.discrepancies(), complete.productCoverageGaps(),</span>
+<span class="fc" id="L478">                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));</span>
+        }
+<span class="fc bfc" id="L480" title="All 4 branches covered.">        if (event instanceof AnalysisStreamEvent.Error error &amp;&amp; error.analysisDurationMillis() == null) {</span>
+<span class="fc" id="L481">            return new AnalysisStreamEvent.Error(error.status(), error.errorMessage(), error.partialScores(),</span>
+<span class="fc" id="L482">                    error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons(),</span>
+<span class="fc" id="L483">                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));</span>
+        }
+<span class="fc" id="L485">        return event;</span>
+    }
+
+    private static AnalysisStreamEvent.Error terminalMappingFailure(AnalysisStreamEvent event) {
+<span class="fc" id="L489">        String message = &quot;The terminal result could not be fully rendered; collected raw evidence is retained.&quot;;</span>
+<span class="fc bfc" id="L490" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete) {</span>
+<span class="fc" id="L491">            return new AnalysisStreamEvent.Error(&quot;ERROR&quot;, message, complete.allScores(), complete.warnings(),</span>
+<span class="fc" id="L492">                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis());</span>
+        }
+<span class="fc" id="L494">        var error = (AnalysisStreamEvent.Error) event;</span>
+<span class="fc" id="L495">        String prior = error.errorMessage();</span>
+<span class="pc bpc" id="L496" title="2 of 4 branches missed.">        return new AnalysisStreamEvent.Error(&quot;ERROR&quot;, prior == null || prior.isBlank() ? message : prior + &quot; &quot; + message,</span>
+<span class="fc" id="L497">                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(),</span>
+<span class="fc" id="L498">                error.partialReasons(), error.analysisDurationMillis());</span>
+    }
+
+    /** No catalogue lookup, derived-score fabrication, or retry of the failed mapper. */
+    private static AnalysisSseEventMapper.MappedEvent minimalTerminalError(AnalysisStreamEvent.Error error) {
+<span class="fc" id="L503">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L504">        payload.put(&quot;rawScores&quot;, error.partialScores());</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">        payload.put(&quot;reasons&quot;, error.partialReasons() == null ? Map.of() : error.partialReasons());</span>
+<span class="fc" id="L506">        payload.put(&quot;discrepancies&quot;, error.discrepancies());</span>
+<span class="fc" id="L507">        payload.put(&quot;productCoverageGaps&quot;, error.productCoverageGaps());</span>
+<span class="fc" id="L508">        payload.put(&quot;scoreSemanticsUnavailable&quot;, true);</span>
+<span class="fc" id="L509">        payload.put(&quot;analysisDurationMillis&quot;, error.analysisDurationMillis());</span>
+<span class="fc" id="L510">        return new AnalysisSseEventMapper.MappedEvent(&quot;error&quot;, payload);</span>
+    }
+
+    private static AnalysisSseEventMapper.MappedEvent withTerminalOutcome(
+            AnalysisSseEventMapper.MappedEvent mapped, AnalysisStreamEvent event) {
+<span class="fc" id="L515">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L516">        ((Map&lt;?, ?&gt;) mapped.payload()).forEach((key, value) -&gt; payload.put(String.valueOf(key), value));</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete) {</span>
+<span class="fc" id="L518">            payload.put(&quot;status&quot;, complete.status());</span>
+<span class="fc" id="L519">            payload.put(&quot;warnings&quot;, complete.warnings());</span>
+<span class="fc" id="L520">            payload.put(&quot;analysisDurationMillis&quot;, complete.analysisDurationMillis());</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">        } else if (event instanceof AnalysisStreamEvent.Error error) {</span>
+<span class="fc" id="L522">            payload.put(&quot;status&quot;, error.status());</span>
+<span class="fc" id="L523">            payload.put(&quot;errorMessage&quot;, error.errorMessage());</span>
+<span class="fc" id="L524">            payload.put(&quot;warnings&quot;, error.warnings());</span>
+<span class="fc" id="L525">            payload.put(&quot;analysisDurationMillis&quot;, error.analysisDurationMillis());</span>
+        }
+<span class="fc" id="L527">        return new AnalysisSseEventMapper.MappedEvent(mapped.name(), payload);</span>
+    }
+
+    private static AnalysisStreamEvent reconcileTerminal(AnalysisStreamEvent event,
+            AnalysisProgressRegistry.Handle run) {
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (run == null) return event;</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete) {</span>
+<span class="fc" id="L534">            var terminal = run.finishAndGet(complete.status());</span>
+<span class="fc" id="L535">            return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),</span>
+<span class="fc" id="L536">                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),</span>
+<span class="fc" id="L537">                    complete.analysisDurationMillis());</span>
+        }
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">        if (event instanceof AnalysisStreamEvent.Error error) {</span>
+<span class="fc" id="L540">            var terminal = run.finishAndGet(error.status());</span>
+<span class="fc" id="L541">            return new AnalysisStreamEvent.Error(terminal.resultStatus(), terminal.message(error.errorMessage()),</span>
+<span class="fc" id="L542">                    error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),</span>
+<span class="fc" id="L543">                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());</span>
+        }
+<span class="nc" id="L545">        return event;</span>
+    }
+
+    private int businessTextLimit() {
+<span class="fc bfc" id="L549" title="All 2 branches covered.">        int configured = analysisRuntimeSettings != null</span>
+<span class="fc" id="L550">                ? analysisRuntimeSettings.getInt(&quot;limits.max-business-text&quot;, 5_000)</span>
+<span class="fc" id="L551">                : 5_000;</span>
+        // Invalid persisted/operator values must fail bounded rather than disabling the guard.
+<span class="fc" id="L553">        return Math.max(100, Math.min(100_000, configured));</span>
+    }
+
+    private void enforceBusinessTextLimit(String businessText) {
+<span class="fc" id="L557">        int limit = businessTextLimit();</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">        if (businessText.length() &gt; limit) {</span>
+<span class="fc" id="L559">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,</span>
+<span class="fc" id="L560">                    businessTextTooLongMessage(limit));</span>
+        }
+<span class="fc" id="L562">    }</span>
+
+    private String businessTextTooLongMessage(int limit) {
+<span class="fc" id="L565">        String fallback = &quot;Business requirement exceeds the configured limit of &quot;</span>
+                + limit + &quot; characters.&quot;;
+<span class="fc" id="L567">        String resolved = messageSource.getMessage(</span>
+                &quot;analysis.error.businessTextTooLong&quot;,
+<span class="fc" id="L569">                new Object[]{limit},</span>
+                fallback,
+<span class="fc" id="L571">                LocaleContextHolder.getLocale());</span>
+<span class="pc bpc" id="L572" title="3 of 4 branches missed.">        return resolved == null || resolved.isBlank() ? fallback : resolved;</span>
+    }
+
+    private int resolveMaxArchitectureNodes(AnalysisRequest request) {
+<span class="fc" id="L576">        Integer requested = request.getMaxArchitectureNodes();</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        if (requested != null) {</span>
+<span class="pc bpc" id="L578" title="1 of 4 branches missed.">            if (requested &lt; 1 || requested &gt; 1_000) {</span>
+<span class="fc" id="L579">                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,</span>
+                        &quot;maxArchitectureNodes must be between 1 and 1000.&quot;);
+            }
+<span class="fc" id="L582">            return requested;</span>
+        }
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        int configured = analysisRuntimeSettings != null</span>
+<span class="fc" id="L585">                ? analysisRuntimeSettings.getInt(&quot;limits.max-architecture-nodes&quot;, 50)</span>
+<span class="fc" id="L586">                : 50;</span>
+<span class="fc" id="L587">        return Math.max(1, Math.min(1_000, configured));</span>
+    }
+
+    private String newOperationId() {
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {</span>
+<span class="fc" id="L592">            String requested = attributes.getRequest().getHeader(ANALYSIS_OPERATION_ID_HEADER);</span>
+<span class="pc bpc" id="L593" title="1 of 4 branches missed.">            if (requested != null &amp;&amp; !requested.isBlank()) {</span>
+<span class="fc" id="L594">                return AnalysisProgressRegistry.canonicalId(requested);</span>
+            }
+        }
+<span class="fc" id="L597">        return UUID.randomUUID().toString();</span>
+    }
+
+    private WorkspaceContext resolveWorkspaceContext(String username) {
+        try {
+<span class="fc" id="L602">            repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L603">            return workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L604">        } catch (AccessDeniedException exception) {</span>
+            // An explicit tab pin is an authorization boundary. Never turn a
+            // denied or foreign workspace into an implicit shared analysis.
+<span class="fc" id="L607">            throw exception;</span>
+<span class="fc" id="L608">        } catch (ResponseStatusException exception) {</span>
+<span class="fc" id="L609">            throw exception;</span>
+<span class="fc" id="L610">        } catch (Exception e) {</span>
+<span class="fc" id="L611">            log.warn(&quot;Rejecting analysis because workspace context is unavailable for user '{}': {}&quot;,</span>
+<span class="fc" id="L612">                    username, e.toString(), e);</span>
+            // A fallback identity cannot be observed or cancelled through the scoped APIs.
+<span class="fc" id="L614">            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,</span>
+                    &quot;Workspace context is unavailable; analysis was not started&quot;, e);
+        }
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L621" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L622">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L623">            body.put(&quot;error&quot;, messageSource.getMessage(</span>
+                    &quot;error.loading&quot;, null,
+                    &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L626">                    LocaleContextHolder.getLocale()));</span>
+<span class="nc" id="L627">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L628">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L630">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

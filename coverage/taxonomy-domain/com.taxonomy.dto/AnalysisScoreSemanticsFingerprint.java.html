@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisScoreSemanticsFingerprint.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisScoreSemanticsFingerprint.java</span></div><h1>AnalysisScoreSemanticsFingerprint.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Map;
+
+/** Creates a stable SHA-256 digest of the complete typed analysis-score model. */
+public final class AnalysisScoreSemanticsFingerprint {
+
+    private static final String VERSION = &quot;analysis-score-semantics-v1&quot;;
+
+    private AnalysisScoreSemanticsFingerprint() {
+    }
+
+    /**
+     * Hashes node identity, score kind, raw evidence, effective relevance and parent evidence.
+     * Map iteration order has no effect on the result.
+     */
+    public static String sha256(Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+<span class="fc" id="L22">        MessageDigest digest = sha256Digest();</span>
+<span class="fc" id="L23">        update(digest, VERSION);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (scoreDetails != null) {</span>
+<span class="fc" id="L25">            scoreDetails.entrySet().stream()</span>
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">                    .filter(entry -&gt; entry.getKey() != null &amp;&amp; entry.getValue() != null)</span>
+<span class="fc" id="L27">                    .sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L28">                    .forEach(entry -&gt; updateDetail(digest, entry.getKey(), entry.getValue()));</span>
+        }
+<span class="fc" id="L30">        return HexFormat.of().formatHex(digest.digest());</span>
+    }
+
+    /**
+     * Extends an existing analysis digest with the typed score contract. Legacy reports without
+     * score details retain their original digest; typed reports receive a deterministic digest
+     * that changes whenever any score meaning or evidence changes.
+     */
+    public static String extend(
+            String baseFingerprint,
+            Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">        if (scoreDetails == null || scoreDetails.isEmpty()) {</span>
+<span class="nc" id="L42">            return baseFingerprint;</span>
+        }
+<span class="fc" id="L44">        MessageDigest digest = sha256Digest();</span>
+<span class="fc" id="L45">        update(digest, VERSION);</span>
+<span class="fc" id="L46">        update(digest, safe(baseFingerprint));</span>
+<span class="fc" id="L47">        update(digest, sha256(scoreDetails));</span>
+<span class="fc" id="L48">        return HexFormat.of().formatHex(digest.digest());</span>
+    }
+
+    private static void updateDetail(
+            MessageDigest digest,
+            String mapCode,
+            AnalysisScoreDetail detail) {
+<span class="fc" id="L55">        String canonical = String.join(&quot;\u001f&quot;,</span>
+<span class="fc" id="L56">                safe(mapCode).strip(),</span>
+<span class="fc" id="L57">                safe(detail.nodeCode()),</span>
+<span class="fc" id="L58">                detail.kind().name(),</span>
+<span class="fc" id="L59">                Integer.toString(detail.rawScore()),</span>
+<span class="fc" id="L60">                Integer.toString(detail.effectiveRelevance()),</span>
+<span class="fc" id="L61">                safe(detail.parentCode()),</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                detail.parentScore() == null ? &quot;&quot; : detail.parentScore().toString());</span>
+<span class="fc" id="L63">        update(digest, canonical);</span>
+<span class="fc" id="L64">    }</span>
+
+    private static MessageDigest sha256Digest() {
+        try {
+<span class="fc" id="L68">            return MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="nc" id="L69">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L70">            throw new IllegalStateException(&quot;SHA-256 is required by the Java platform&quot;, impossible);</span>
+        }
+    }
+
+    private static void update(MessageDigest digest, String value) {
+<span class="fc" id="L75">        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L76">        digest.update((byte) (bytes.length &gt;&gt;&gt; 24));</span>
+<span class="fc" id="L77">        digest.update((byte) (bytes.length &gt;&gt;&gt; 16));</span>
+<span class="fc" id="L78">        digest.update((byte) (bytes.length &gt;&gt;&gt; 8));</span>
+<span class="fc" id="L79">        digest.update((byte) bytes.length);</span>
+<span class="fc" id="L80">        digest.update(bytes);</span>
+<span class="fc" id="L81">    }</span>
+
+    private static String safe(String value) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

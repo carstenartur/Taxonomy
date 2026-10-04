@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InProcessAnalysisTaskTransport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag.inprocess</a> &gt; <span class="el_source">InProcessAnalysisTaskTransport.java</span></div><h1>InProcessAnalysisTaskTransport.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag.inprocess;
+
+import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
+import com.taxonomy.analysis.dag.AnalysisCompletionPublisher;
+import com.taxonomy.analysis.dag.AnalysisTaskHandler;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskPublisher;
+import com.taxonomy.analysis.dag.RelationAnalysisCompleted;
+import com.taxonomy.analysis.dag.RelationAnalysisTask;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Single-node compatibility transport: delivers a task synchronously on the
+ * publishing thread, so request-scoped provider selection, run control and
+ * checkpoint sessions behave exactly as in the former monolithic run.
+ *
+ * &lt;p&gt;Effects are idempotent by {@link AnalysisTaskId}: publishing a task whose
+ * completion is already recorded republishes that completion instead of executing
+ * the work again.&lt;/p&gt;
+ */
+public final class InProcessAnalysisTaskTransport implements AnalysisTaskPublisher {
+
+    private final AnalysisTaskHandler&lt;SubtaxonomyAnalysisTask, SubtaxonomyAnalysisCompleted&gt; subtaxonomyHandler;
+    private final AnalysisTaskHandler&lt;RelationAnalysisTask, RelationAnalysisCompleted&gt; relationHandler;
+    private final AnalysisCompletionPublisher completions;
+<span class="fc" id="L32">    private final Map&lt;AnalysisTaskId, AnalysisCompletionMessage&gt; recorded = new LinkedHashMap&lt;&gt;();</span>
+    private int executions;
+    private int idempotentReplays;
+
+    public InProcessAnalysisTaskTransport(
+            AnalysisTaskHandler&lt;SubtaxonomyAnalysisTask, SubtaxonomyAnalysisCompleted&gt; subtaxonomyHandler,
+            AnalysisTaskHandler&lt;RelationAnalysisTask, RelationAnalysisCompleted&gt; relationHandler,
+<span class="fc" id="L39">            AnalysisCompletionPublisher completions) {</span>
+<span class="fc" id="L40">        this.subtaxonomyHandler = subtaxonomyHandler;</span>
+<span class="fc" id="L41">        this.relationHandler = relationHandler;</span>
+<span class="fc" id="L42">        this.completions = Objects.requireNonNull(completions, &quot;completions&quot;);</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    public void publish(AnalysisTaskMessage task) {
+<span class="fc" id="L47">        Objects.requireNonNull(task, &quot;task&quot;);</span>
+<span class="fc" id="L48">        AnalysisCompletionMessage previous = recorded.get(task.taskId());</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (previous != null) {</span>
+<span class="fc" id="L50">            idempotentReplays++;</span>
+<span class="fc" id="L51">            completions.publish(previous);</span>
+<span class="fc" id="L52">            return;</span>
+        }
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        AnalysisCompletionMessage completion = switch (task) {</span>
+<span class="fc" id="L55">            case SubtaxonomyAnalysisTask subtaxonomy -&gt; handle(subtaxonomyHandler, subtaxonomy);</span>
+<span class="fc" id="L56">            case RelationAnalysisTask relation -&gt; handle(relationHandler, relation);</span>
+        };
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        if (completion == null || !task.taskId().equals(completion.taskId())) {</span>
+<span class="fc" id="L59">            throw new IllegalStateException(&quot;Handler returned no completion for &quot; + task.taskId());</span>
+        }
+<span class="fc" id="L61">        executions++;</span>
+<span class="fc" id="L62">        recorded.put(task.taskId(), completion);</span>
+<span class="fc" id="L63">        completions.publish(completion);</span>
+<span class="fc" id="L64">    }</span>
+
+    private static &lt;T extends AnalysisTaskMessage, C extends AnalysisCompletionMessage&gt; C handle(
+            AnalysisTaskHandler&lt;T, C&gt; handler, T task) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (handler == null) {</span>
+<span class="fc" id="L69">            throw new IllegalStateException(&quot;No in-process handler for &quot; + task.taskType());</span>
+        }
+<span class="fc" id="L71">        return handler.handle(task);</span>
+    }
+
+    /** Number of task executions (excluding idempotent replays). */
+    public int executions() {
+<span class="fc" id="L76">        return executions;</span>
+    }
+
+    public int idempotentReplays() {
+<span class="fc" id="L80">        return idempotentReplays;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

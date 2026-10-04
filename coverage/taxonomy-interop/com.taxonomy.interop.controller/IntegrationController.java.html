@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.controller</a> &gt; <span class="el_source">IntegrationController.java</span></div><h1>IntegrationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.controller;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.exchange.ExchangeFormatException;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.IntegrationService;
+import com.taxonomy.interop.IntegrationService.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceRevisionConflict;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Controller
+public class IntegrationController {
+    private final IntegrationService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L29">    public IntegrationController(IntegrationService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }</span>
+    @GetMapping(&quot;/integrations&quot;) public String page(jakarta.servlet.http.HttpServletRequest request, org.springframework.ui.Model model) {
+<span class="nc bnc" id="L31" title="All 4 branches missed.">        model.addAttribute(&quot;mayWrite&quot;, request.isUserInRole(&quot;ADMIN&quot;) || request.isUserInRole(&quot;ARCHITECT&quot;));</span>
+<span class="nc" id="L32">        return &quot;integrations&quot;;</span>
+    }
+    @GetMapping(&quot;/api/integrations/profiles&quot;) @ResponseBody
+<span class="fc" id="L35">    public List&lt;IntegrationDescriptor&gt; profiles() { return service.profiles(resolver.resolveCurrentRepositoryContext()); }</span>
+    @GetMapping(&quot;/api/integrations&quot;) @ResponseBody
+<span class="nc" id="L37">    public List&lt;Connection&gt; connections() { return service.connections(resolver.resolveCurrentRepositoryContext()); }</span>
+    @PostMapping(&quot;/api/integrations&quot;) @ResponseBody
+<span class="fc" id="L39">    public Connection create(@RequestBody CreateConnection request) { return service.create(resolver.resolveCurrentRepositoryContext(), request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}&quot;) @ResponseBody
+<span class="fc" id="L41">    public Overview overview(@PathVariable UUID connection, @RequestParam(required=false) String rootResource, @RequestParam(required=false) String selectorFingerprint) { return service.overview(resolver.resolveCurrentRepositoryContext(), connection, rootResource, selectorFingerprint); }</span>
+    @PostMapping(value=&quot;/api/integrations/{connection}/previews&quot;, consumes=&quot;multipart/form-data&quot;) @ResponseBody
+    public Operation preview(@PathVariable UUID connection, @RequestPart(&quot;request&quot;) PreviewRequest request, @RequestPart(&quot;file&quot;) MultipartFile file) throws IOException {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (file.getSize() &gt; com.taxonomy.exchange.ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;PAYLOAD_LIMIT&quot;, 413, &quot;Exchange exceeds 16 MiB&quot;);</span>
+<span class="fc" id="L45">        return service.preview(resolver.resolveCurrentRepositoryContext(), connection, request, file.getBytes());</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/export-previews&quot;) @ResponseBody
+<span class="fc" id="L48">    public Operation previewExport(@PathVariable UUID connection, @RequestBody ExportRequest request) { return service.previewExport(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/remote-previews&quot;) @ResponseBody
+<span class="nc" id="L50">    public Operation previewRemote(@PathVariable UUID connection, @RequestBody RemoteRequest request) { return service.previewRemote(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}&quot;) @ResponseBody
+<span class="nc" id="L52">    public Operation operation(@PathVariable UUID connection, @PathVariable UUID operation) { return service.operation(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/events&quot;) @ResponseBody
+<span class="nc" id="L54">    public List&lt;Event&gt; events(@PathVariable UUID connection, @PathVariable UUID operation) { return service.events(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/identities&quot;) @ResponseBody
+<span class="nc" id="L56">    public List&lt;Identity&gt; identities(@PathVariable UUID connection) { return service.identities(resolver.resolveCurrentRepositoryContext(), connection); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/apply&quot;) @ResponseBody
+<span class="fc" id="L58">    public Operation apply(@PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.apply(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/files&quot;) @ResponseBody
+<span class="fc" id="L60">    public Operation prepareFile(@PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.prepareFile(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/file&quot;) @ResponseBody
+    public ResponseEntity&lt;byte[]&gt; file(@PathVariable UUID connection, @PathVariable UUID operation) {
+<span class="fc" id="L63">        var context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L64">        var file = service.file(context, connection, operation); var authority = service.operation(context, connection, operation).context().internalState();</span>
+<span class="fc" id="L65">        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE, file.mediaType())</span>
+<span class="fc" id="L66">                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(file.filename(), java.nio.charset.StandardCharsets.UTF_8).build().toString())</span>
+<span class="fc" id="L67">                .header(HttpHeaders.CACHE_CONTROL, &quot;private, no-store&quot;).header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L68">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(authority.semanticRevision()))</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                .header(&quot;X-Taxonomy-Checkpoint&quot;, authority.commitId() == null ? &quot;none&quot; : authority.commitId()).body(file.content());</span>
+    }
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/endpoint-options&quot;) @ResponseBody
+    public com.taxonomy.interop.IntegrationDomainAdapter.EndpointIndex endpointOptions(@PathVariable UUID connection, @PathVariable UUID operation, @RequestParam(required=false) String branch) {
+<span class="fc" id="L73">        return service.operationEndpointOptions(operationContext(connection, operation, branch), connection, operation);</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/retry&quot;) @ResponseBody
+<span class="fc" id="L76">    public Object retry(@PathVariable UUID connection, @PathVariable UUID operation, @RequestParam(required=false) String branch) { return service.retryOperation(operationContext(connection, operation, branch), connection, operation); }</span>
+<span class="nc" id="L77">    public record Cancel(String rationale) {}</span>
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/cancel&quot;) @ResponseBody
+<span class="nc" id="L79">    public Object cancel(@PathVariable UUID connection, @PathVariable UUID operation, @RequestBody Cancel request, @RequestParam(required=false) String branch) { return service.cancelOperation(operationContext(connection, operation, branch), connection, operation, request.rationale()); }</span>
+
+    /** Nullable wire state is checked before constructing the strict bounded contract. */
+<span class="fc" id="L82">    public record PublicationInput(UUID operationId, InternalState expected, PublicationMode mode, PublicationScope scope, String expectedExternalRevision) {</span>
+        PublicationPreviewRequest request() {
+<span class="pc bpc" id="L84" title="2 of 6 branches missed.">            if (expected == null || expectedExternalRevision == null || expectedExternalRevision.isBlank()) throw new IntegrationProblem(&quot;EXACT_STATE_REQUIRED&quot;, 428, &quot;An exact local state and remote revision are required&quot;);</span>
+<span class="pc bpc" id="L85" title="3 of 6 branches missed.">            if (operationId == null || mode == null || scope == null) throw new IllegalArgumentException(&quot;Publication identity, mode and scope are required&quot;);</span>
+<span class="fc" id="L86">            return new PublicationPreviewRequest(operationId, expected, mode, scope, expectedExternalRevision);</span>
+        }
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/publication-previews&quot;) @ResponseBody
+<span class="fc" id="L90">    public PublicationOperation previewPublication(@PathVariable UUID connection, @RequestBody PublicationInput request, @RequestParam(required=false) String branch) { return service.previewPublication(publicationContext(branch), connection, request.request()); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/publish&quot;) @ResponseBody
+<span class="fc" id="L92">    public PublicationOperation publish(@PathVariable UUID connection, @RequestBody PublicationReview request, @RequestParam(required=false) String branch) { return service.publish(publicationContext(branch), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/publication&quot;) @ResponseBody
+<span class="fc" id="L94">    public PublicationOperation publication(@PathVariable UUID connection, @PathVariable UUID operation, @RequestParam(required=false) String branch) { return service.publication(publicationContext(branch), connection, operation); }</span>
+<span class="fc" id="L95">    public record ReconciliationInput(UUID predecessorOperationId, PublicationInput request, String rationale) {</span>
+        ReconciliationPreviewRequest checked() {
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (request == null) throw new IntegrationProblem(&quot;EXACT_STATE_REQUIRED&quot;, 428, &quot;An exact local state and remote revision are required&quot;);</span>
+<span class="fc" id="L98">            return new ReconciliationPreviewRequest(predecessorOperationId, request.request(), rationale);</span>
+        }
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/reconciliation-previews&quot;) @ResponseBody
+<span class="fc" id="L102">    public PublicationOperation reconcile(@PathVariable UUID connection, @PathVariable UUID operation, @RequestBody ReconciliationInput request, @RequestParam(required=false) String branch) { return service.reconcilePublication(publicationContext(branch), connection, operation, request.checked()); }</span>
+
+    private RepositoryContext publicationContext(String branch) {
+<span class="fc" id="L105">        return requirePublicationBranch(resolver.resolveCurrentRepositoryContext(), branch);</span>
+    }
+    private RepositoryContext operationContext(UUID connection, UUID operation, String branch) {
+<span class="fc" id="L108">        var context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L109">        var direction = service.operation(context, connection, operation).direction();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        return java.util.Set.of(&quot;PUSH&quot;, &quot;SYNCHRONIZE&quot;).contains(direction) ? requirePublicationBranch(context, branch) : context;</span>
+    }
+    private static RepositoryContext requirePublicationBranch(RepositoryContext context, String branch) {
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">        if (branch != null &amp;&amp; !context.branch().equals(branch))</span>
+<span class="fc" id="L114">            throw new IntegrationProblem(&quot;INTERNAL_STATE_CHANGED&quot;, 409, &quot;The requested branch differs from the authorized workspace branch&quot;);</span>
+<span class="fc" id="L115">        return context;</span>
+    }
+
+    @ExceptionHandler(IntegrationProblem.class) @ResponseBody
+<span class="fc" id="L119">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; problem(IntegrationProblem problem) { return ResponseEntity.status(problem.status()).body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(ExchangeFormatException.class) @ResponseBody
+<span class="nc" id="L121">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; format(ExchangeFormatException problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(CommandProblem.class) @ResponseBody
+<span class="nc" id="L123">    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; command(CommandProblem problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage(), &quot;dependencies&quot;, problem.dependencies())); }</span>
+    @ExceptionHandler(WorkspaceRevisionConflict.class) @ResponseBody
+<span class="nc" id="L125">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; revision() { return ResponseEntity.status(409).body(Map.of(&quot;code&quot;, &quot;INTERNAL_STATE_CHANGED&quot;, &quot;message&quot;, &quot;Refresh the exact workspace state and preview again&quot;)); }</span>
+    @ExceptionHandler(IllegalArgumentException.class) @ResponseBody
+<span class="nc" id="L127">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;, &quot;INVALID_REQUEST&quot;, &quot;message&quot;, &quot;Check the required bounded integration fields&quot;)); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

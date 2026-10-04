@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupManifestCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupManifestCodec.java</span></div><h1>BackupManifestCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.time.Instant;
+import java.util.*;
+
+/** Bounded explicit JSON binding. No class-name-based polymorphic deserialization. */
+<span class="fc" id="L15">public final class BackupManifestCodec {</span>
+    public static final int MAX_MANIFEST_BYTES = BackupLimits.MAX_MANIFEST_BYTES;
+<span class="fc" id="L17">    private final JsonMapper mapper = JsonMapper.builder(JsonFactory.builder()</span>
+<span class="fc" id="L18">                    .streamReadConstraints(StreamReadConstraints.builder()</span>
+<span class="fc" id="L19">                            .maxDocumentLength(MAX_MANIFEST_BYTES).maxNestingDepth(20)</span>
+<span class="fc" id="L20">                            .maxStringLength(8192).maxNameLength(512).maxNumberLength(32)</span>
+<span class="fc" id="L21">                            .maxTokenCount(500_000).build())</span>
+<span class="fc" id="L22">                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L23">                    .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build())</span>
+<span class="fc" id="L24">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,</span>
+                    DeserializationFeature.FAIL_ON_TRAILING_TOKENS,
+                    DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES,
+                    DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
+<span class="fc" id="L28">            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)</span>
+<span class="fc" id="L29">            .build();</span>
+
+    public BackupManifest read(byte[] bytes) {
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if (bytes == null || bytes.length &gt; MAX_MANIFEST_BYTES) throw new IllegalArgumentException(&quot;Invalid manifest size&quot;);</span>
+        try {
+<span class="fc" id="L34">            JsonNode document = mapper.readTree(bytes);</span>
+<span class="fc" id="L35">            validateWireLimits(document);</span>
+<span class="fc" id="L36">            return mapper.treeToValue(document, WireManifest.class).domain();</span>
+<span class="fc" id="L37">        } catch (RuntimeException failure) {</span>
+            // Do not echo package data: malformed input can contain secrets.
+<span class="fc" id="L39">            throw new IllegalArgumentException(&quot;Invalid or unsupported backup manifest&quot;);</span>
+        }
+    }
+
+    /** Count before binding to sets: duplicate input elements must not evade collection limits. */
+    private static void validateWireLimits(JsonNode value) {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (value == null) throw new IllegalArgumentException(&quot;Missing manifest&quot;);</span>
+<span class="fc bfc" id="L46" title="All 4 branches covered.">        if (value.isString() &amp;&amp; value.stringValue().codePointCount(0, value.stringValue().length()) &gt; BackupLimits.MAX_TEXT_LENGTH) {</span>
+<span class="fc" id="L47">            throw new IllegalArgumentException(&quot;Manifest string exceeds limit&quot;);</span>
+        }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (value.isContainer()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (value.size() &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Manifest collection exceeds limit&quot;);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            for (var child : value) validateWireLimits(child);</span>
+        }
+<span class="fc" id="L53">    }</span>
+
+    public byte[] write(BackupManifest manifest) {
+<span class="fc" id="L56">        byte[] bytes = mapper.writeValueAsBytes(WireManifest.from(Objects.requireNonNull(manifest)));</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (bytes.length &gt; MAX_MANIFEST_BYTES) throw new IllegalArgumentException(&quot;Manifest exceeds size limit&quot;);</span>
+        // A writer must never emit a document rejected by its own bounded reader (including token limits).
+<span class="fc" id="L59">        read(bytes);</span>
+<span class="fc" id="L60">        return bytes;</span>
+    }
+
+    public static final int MAX_REQUEST_BYTES = 64 * 1024;
+    public static final int MAX_AUTHORIZATION_BYTES = MAX_REQUEST_BYTES + 2048;
+
+    public BackupRequest readRequest(byte[] bytes) {
+<span class="fc" id="L67">        try { return readDocument(bytes, MAX_REQUEST_BYTES, WireRequest.class).domain(); }</span>
+<span class="fc" id="L68">        catch (RuntimeException failure) { throw new IllegalArgumentException(&quot;Invalid backup request document&quot;); }</span>
+    }
+    public byte[] writeRequest(BackupRequest request) {
+<span class="fc" id="L71">        byte[] bytes = mapper.writeValueAsBytes(WireRequest.from(request)); readRequest(bytes); return bytes;</span>
+    }
+<span class="nc" id="L73">    public WireRequest requestView(BackupRequest request) { return WireRequest.from(request); }</span>
+    public byte[] writeAuthorization(AuthorizedBackupRequest authorization) {
+<span class="fc" id="L75">        byte[] bytes = mapper.writeValueAsBytes(new WireAuthorization(WireRequest.from(authorization.request()),</span>
+<span class="fc" id="L76">                authorization.principalId().value().toString(), authorization.decisionId(), authorization.authorizedAt().toString(), authorization.capabilities()));</span>
+<span class="fc" id="L77">        readAuthorization(bytes); return bytes;</span>
+    }
+    public AuthorizedBackupRequest readAuthorization(byte[] bytes) {
+<span class="fc" id="L80">        var wire = readDocument(bytes, MAX_AUTHORIZATION_BYTES, WireAuthorization.class);</span>
+        try {
+<span class="fc" id="L82">            return new AuthorizedBackupRequest(wire.request().domain(), new PrincipalId(UUID.fromString(wire.principalId())),</span>
+<span class="fc" id="L83">                    wire.decisionId(), Instant.parse(wire.authorizedAt()), wire.capabilities());</span>
+<span class="nc" id="L84">        } catch (RuntimeException failure) { throw new IllegalArgumentException(&quot;Invalid backup authorization record&quot;); }</span>
+    }
+    private &lt;T&gt; T readDocument(byte[] bytes, int limit, Class&lt;T&gt; type) {
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">        if (bytes == null || bytes.length &gt; limit) throw new IllegalArgumentException(&quot;Backup request size limit exceeded&quot;);</span>
+        try {
+<span class="fc" id="L89">            var document = mapper.readTree(bytes);</span>
+<span class="pc bpc" id="L90" title="1 of 4 branches missed.">            if (document == null || !document.isObject()) throw new IllegalArgumentException(&quot;Object required&quot;);</span>
+<span class="fc" id="L91">            validateWireLimits(document); return mapper.treeToValue(document, type);</span>
+<span class="fc" id="L92">        } catch (RuntimeException failure) { throw new IllegalArgumentException(&quot;Invalid backup request document&quot;); }</span>
+    }
+<span class="fc" id="L94">    private record WireAuthorization(WireRequest request, String principalId, String decisionId,</span>
+                                     String authorizedAt, Set&lt;BackupCapability&gt; capabilities) { }
+
+<span class="fc" id="L97">    public enum ScopeKind { WORKSPACE, REPOSITORIES, INSTALLATION }</span>
+<span class="fc" id="L98">    public enum TimeKind { CURRENT, SELECTED_VERSION, HISTORY }</span>
+
+<span class="fc" id="L100">    public record WireScope(ScopeKind kind, String repositoryId, String workspaceId,</span>
+                            Map&lt;String, Set&lt;String&gt;&gt; workspacesByRepository) {
+        BackupScope domain() {
+<span class="fc" id="L103">            Objects.requireNonNull(workspacesByRepository);</span>
+<span class="pc bpc" id="L104" title="1 of 3 branches missed.">            return switch (kind) {</span>
+                case WORKSPACE -&gt; {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                    if (!workspacesByRepository.isEmpty()) throw new IllegalArgumentException(&quot;Conflicting workspace scope&quot;);</span>
+<span class="fc" id="L107">                    yield new BackupScope.Workspace(repositoryId, workspaceId);</span>
+                }
+                case REPOSITORIES -&gt; {
+<span class="nc bnc" id="L110" title="All 4 branches missed.">                    if (repositoryId != null || workspaceId != null) throw new IllegalArgumentException(&quot;Conflicting repository scope&quot;);</span>
+<span class="nc" id="L111">                    yield new BackupScope.Repositories(workspacesByRepository);</span>
+                }
+                case INSTALLATION -&gt; {
+<span class="pc bpc" id="L114" title="2 of 6 branches missed.">                    if (repositoryId != null || workspaceId != null || !workspacesByRepository.isEmpty()) {</span>
+<span class="fc" id="L115">                        throw new IllegalArgumentException(&quot;Conflicting installation scope&quot;);</span>
+                    }
+<span class="fc" id="L117">                    yield new BackupScope.Installation();</span>
+                }
+            };
+        }
+        static WireScope from(BackupScope scope) {
+<span class="pc bpc" id="L122" title="1 of 3 branches missed.">            return switch (scope) {</span>
+<span class="fc" id="L123">                case BackupScope.Workspace w -&gt; new WireScope(ScopeKind.WORKSPACE, w.repositoryId(), w.workspaceId(), Map.of());</span>
+<span class="nc" id="L124">                case BackupScope.Repositories r -&gt; new WireScope(ScopeKind.REPOSITORIES, null, null, r.workspacesByRepository());</span>
+<span class="fc" id="L125">                case BackupScope.Installation ignored -&gt; new WireScope(ScopeKind.INSTALLATION, null, null, Map.of());</span>
+            };
+        }
+    }
+
+<span class="fc" id="L130">    public record WireSelectedCommit(BackupRepositoryKey repository, String commit) { }</span>
+<span class="fc" id="L131">    public record WireTime(TimeKind kind, List&lt;WireSelectedCommit&gt; commitsByRepository) {</span>
+        BackupTime domain() {
+<span class="fc" id="L133">            Objects.requireNonNull(commitsByRepository);</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">            if (kind != TimeKind.SELECTED_VERSION &amp;&amp; !commitsByRepository.isEmpty()) throw new IllegalArgumentException(&quot;Unexpected selected commits&quot;);</span>
+<span class="fc bfc" id="L135" title="All 3 branches covered.">            return switch (kind) {</span>
+<span class="fc" id="L136">                case CURRENT -&gt; new BackupTime.Current();</span>
+<span class="fc" id="L137">                case HISTORY -&gt; new BackupTime.History();</span>
+                case SELECTED_VERSION -&gt; {
+<span class="fc" id="L139">                    var commits = new HashMap&lt;BackupRepositoryKey, String&gt;();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                    for (var selected : commitsByRepository) {</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">                        if (commits.put(Objects.requireNonNull(selected.repository()), Objects.requireNonNull(selected.commit())) != null) {</span>
+<span class="nc" id="L142">                            throw new IllegalArgumentException(&quot;Duplicate selected repository&quot;);</span>
+                        }
+<span class="fc" id="L144">                    }</span>
+<span class="fc" id="L145">                    yield new BackupTime.SelectedVersion(commits);</span>
+                }
+            };
+        }
+        static WireTime from(BackupTime time) {
+<span class="fc bfc" id="L150" title="All 3 branches covered.">            return switch (time) {</span>
+<span class="fc" id="L151">                case BackupTime.Current ignored -&gt; new WireTime(TimeKind.CURRENT, List.of());</span>
+<span class="fc" id="L152">                case BackupTime.History ignored -&gt; new WireTime(TimeKind.HISTORY, List.of());</span>
+<span class="fc" id="L153">                case BackupTime.SelectedVersion v -&gt; new WireTime(TimeKind.SELECTED_VERSION, v.commitsByRepository().entrySet().stream()</span>
+<span class="fc" id="L154">                        .map(e -&gt; new WireSelectedCommit(e.getKey(), e.getValue())).toList());</span>
+            };
+        }
+    }
+
+<span class="fc" id="L159">    public record WireRequest(BackupProfile profile, WireScope scope, WireTime time,</span>
+                              GitRepresentation gitRepresentation, SecretsSelection secrets) {
+<span class="fc" id="L161">        BackupRequest domain() { return new BackupRequest(profile, scope.domain(), time.domain(), gitRepresentation, secrets); }</span>
+        static WireRequest from(BackupRequest r) {
+<span class="fc" id="L163">            return new WireRequest(r.profile(), WireScope.from(r.scope()), WireTime.from(r.time()), r.gitRepresentation(), r.secrets());</span>
+        }
+    }
+
+<span class="fc" id="L167">    public record WireComponent(String id, int version, BackupCompleteness completeness,</span>
+                                List&lt;String&gt; entryPaths, Set&lt;String&gt; dependencies) {
+        BackupManifest.Component domain() {
+<span class="fc" id="L170">            return new BackupManifest.Component(new BackupComponentId(id), version, completeness, entryPaths,</span>
+<span class="fc" id="L171">                    dependencies.stream().map(BackupComponentId::new).collect(java.util.stream.Collectors.toSet()));</span>
+        }
+        static WireComponent from(BackupManifest.Component c) {
+<span class="fc" id="L174">            return new WireComponent(c.id().value(), c.version(), c.completeness(), c.entryPaths(),</span>
+<span class="fc" id="L175">                    c.dependencies().stream().map(BackupComponentId::value).collect(java.util.stream.Collectors.toSet()));</span>
+        }
+    }
+
+<span class="fc" id="L179">    public record WireManifest(int formatVersion, String applicationVersion, String build, String backupId,</span>
+                               String sourceInstallationId, WireRequest request, String captureStartedAt,
+                               String captureCompletedAt, String consistencyEvidence, Set&lt;String&gt; requiredFeatures,
+                               List&lt;WireComponent&gt; components, List&lt;BackupManifest.Repository&gt; repositories,
+                               List&lt;BackupEntry&gt; entries, List&lt;String&gt; dependencies, List&lt;String&gt; omissions) {
+        BackupManifest domain() {
+<span class="fc" id="L185">            return new BackupManifest(formatVersion, applicationVersion, build, new BackupId(UUID.fromString(backupId)),</span>
+<span class="fc" id="L186">                    sourceInstallationId, request.domain(), Instant.parse(captureStartedAt), Instant.parse(captureCompletedAt),</span>
+<span class="fc" id="L187">                    consistencyEvidence, requiredFeatures, components.stream().map(WireComponent::domain).toList(),</span>
+                    repositories, entries, dependencies, omissions);
+        }
+        static WireManifest from(BackupManifest m) {
+<span class="fc" id="L191">            return new WireManifest(m.formatVersion(), m.applicationVersion(), m.build(), m.backupId().value().toString(),</span>
+<span class="fc" id="L192">                    m.sourceInstallationId(), WireRequest.from(m.request()), m.captureStartedAt().toString(), m.captureCompletedAt().toString(),</span>
+<span class="fc" id="L193">                    m.consistencyEvidence(), new TreeSet&lt;&gt;(m.requiredFeatures()), m.components().stream().map(WireComponent::from).toList(),</span>
+<span class="fc" id="L194">                    m.repositories(), m.entries(), m.dependencies(), m.omissions());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

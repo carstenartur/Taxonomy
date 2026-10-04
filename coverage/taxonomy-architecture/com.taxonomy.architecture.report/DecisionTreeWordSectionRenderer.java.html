@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionTreeWordSectionRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">DecisionTreeWordSectionRenderer.java</span></div><h1>DecisionTreeWordSectionRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.architecture.decision.DecisionReportLabels;
+
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
+import java.util.List;
+
+<span class="fc" id="L9">public final class DecisionTreeWordSectionRenderer {</span>
+    public void write(XWPFDocument document, DecisionTreeOverview tree, String language) {
+<span class="fc" id="L11">        var labels = new DecisionReportLabels(language);</span>
+<span class="fc" id="L12">        var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L13">        writer.heading(labels.treeOverview(), 1, &quot;decision_tree&quot;);</span>
+<span class="fc" id="L14">        writer.caption(labels.treeOverview(), false);</span>
+<span class="fc" id="L15">        var table =</span>
+<span class="fc" id="L16">                writer.table(</span>
+<span class="fc" id="L17">                        List.of(</span>
+<span class="fc" id="L18">                                labels.node(),</span>
+<span class="fc" id="L19">                                labels.score(),</span>
+<span class="fc" id="L20">                                labels.disposition(),</span>
+<span class="fc" id="L21">                                labels.chapter()),</span>
+<span class="fc" id="L22">                        List.of());</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (var entry : tree.rows()) {</span>
+<span class="fc" id="L24">            var row = table.createRow();</span>
+<span class="fc" id="L25">            row.setCantSplitRow(true);</span>
+<span class="fc" id="L26">            var p = row.getCell(0).getParagraphs().getFirst();</span>
+<span class="fc" id="L27">            p.setIndentationLeft(Math.min(entry.depth(), 12) * 100);</span>
+<span class="fc" id="L28">            var run = p.createRun();</span>
+<span class="fc" id="L29">            run.setFontSize(9);</span>
+<span class="fc" id="L30">            run.setText(</span>
+<span class="fc" id="L31">                    entry.code()</span>
+                            + &quot; · &quot;
+<span class="fc" id="L33">                            + entry.title()</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                            + (entry.depth() &gt; 12</span>
+<span class="nc" id="L35">                                    ? &quot; (&quot; + labels.depth() + &quot; &quot; + entry.depth() + &quot;)&quot;</span>
+<span class="fc" id="L36">                                    : &quot;&quot;));</span>
+<span class="fc" id="L37">            writer.cell(</span>
+<span class="fc" id="L38">                    row.getCell(1),</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                    entry.score() == null ? labels.notEvaluated() : entry.score() + &quot;%&quot;);</span>
+<span class="fc" id="L40">            writer.cell(</span>
+<span class="fc" id="L41">                    row.getCell(2),</span>
+<span class="fc bfc" id="L42" title="All 4 branches covered.">                    switch (entry.disposition()) {</span>
+<span class="fc" id="L43">                        case CONTINUED -&gt; labels.continued();</span>
+<span class="fc" id="L44">                        case LEAF_CANDIDATE -&gt; labels.leafCandidate();</span>
+<span class="fc" id="L45">                        case REJECTED -&gt; labels.rejected();</span>
+<span class="fc" id="L46">                        case NOT_EVALUATED -&gt; labels.notEvaluated();</span>
+                    });
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (entry.bookmark() != null)</span>
+<span class="fc" id="L49">                writer.link(</span>
+<span class="fc" id="L50">                        row.getCell(3).getParagraphs().getFirst(),</span>
+<span class="fc" id="L51">                        entry.bookmark(),</span>
+<span class="fc" id="L52">                        labels.chapter() + &quot; &quot; + entry.chapterNumber());</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        writer.columnWidths(table, 48, 16, 24, 12);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        for (String code : tree.warnings()) writer.paragraph(labels.orphanWarning() + &quot;: &quot; + code);</span>
+<span class="fc" id="L56">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

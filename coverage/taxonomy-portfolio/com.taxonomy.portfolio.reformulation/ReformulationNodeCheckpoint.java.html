@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationNodeCheckpoint.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationNodeCheckpoint.java</span></div><h1>ReformulationNodeCheckpoint.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.time.Instant;
+
+/** Immutable validated step output. Never stores incomplete or failed provider responses. */
+@Entity
+@Table(name = &quot;reformulation_node_checkpoint&quot;, indexes = {
+        @Index(name = &quot;idx_reform_checkpoint_proposal&quot;, columnList = &quot;proposal_id,scope_key&quot;),
+        @Index(name = &quot;idx_reform_cp_run_order&quot;, columnList = &quot;run_id,created_at,id&quot;),
+        @Index(name = &quot;idx_reform_cp_run_kind&quot;, columnList = &quot;run_id,task_kind&quot;)
+})
+public class ReformulationNodeCheckpoint {
+    @Id @Column(length = 64, updatable = false) private String id;
+    @Column(name = &quot;proposal_id&quot;, nullable = false, updatable = false, length = 36) private String proposalId;
+    @Column(name = &quot;scope_key&quot;, nullable = false, updatable = false, length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH) private String scopeKey;
+    @Column(name = &quot;run_id&quot;, nullable = false, updatable = false, length = 36) private String runId;
+    @Column(name = &quot;task_kind&quot;, nullable = false, updatable = false, length = 16) private String taskKind;
+    @Column(name = &quot;input_fingerprint&quot;, nullable = false, updatable = false, length = 64) private String inputFingerprint;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;result_payload&quot;, nullable = false, updatable = false) private String resultPayload;
+    @Column(name = &quot;created_at&quot;, nullable = false, updatable = false) private Instant createdAt;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({@JoinColumn(name = &quot;proposal_id&quot;, referencedColumnName = &quot;id&quot;, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;, insertable = false, updatable = false)})
+    private ReformulationProposal proposal;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;run_id&quot;, insertable = false, updatable = false)
+    private ReformulationRun run;
+
+<span class="fc" id="L33">    protected ReformulationNodeCheckpoint() {}</span>
+    public ReformulationNodeCheckpoint(String id, String proposalId, String scopeKey, String runId,
+<span class="fc" id="L35">            String taskKind, String inputFingerprint, String resultPayload, Instant createdAt) {</span>
+<span class="fc" id="L36">        this.id = id; this.proposalId = proposalId; this.scopeKey = scopeKey; this.runId = runId;</span>
+<span class="fc" id="L37">        this.taskKind = taskKind; this.inputFingerprint = inputFingerprint; this.resultPayload = resultPayload; this.createdAt = createdAt;</span>
+<span class="fc" id="L38">    }</span>
+<span class="fc" id="L39">    public String getResultPayload() { return resultPayload; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

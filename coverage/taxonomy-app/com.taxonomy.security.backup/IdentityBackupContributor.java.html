@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IdentityBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.backup</a> &gt; <span class="el_source">IdentityBackupContributor.java</span></div><h1>IdentityBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.*;
+
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Source identity evidence never grants target login, ownership or administrative privileges. */
+public final class IdentityBackupContributor implements BackupDataContributor {
+    private static final int MAX_IDENTITIES = 100_000;
+    private final PortableRows rows;
+    private final BackupPrincipalSelector references;
+
+<span class="fc" id="L22">    public IdentityBackupContributor(DataSource database, BackupPrincipalSelector references) {</span>
+<span class="fc" id="L23">        rows = new PortableRows(database); this.references = Objects.requireNonNull(references);</span>
+<span class="fc" id="L24">    }</span>
+<span class="fc" id="L25">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;application&quot;); }</span>
+<span class="fc" id="L26">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L27">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;com.taxonomy.security.model.AppUser&quot;, &quot;com.taxonomy.security.model.AppRole&quot;,</span>
+            &quot;storage.security.user-roles&quot;, &quot;storage.security.principals&quot;, &quot;storage.security.backup-grants&quot;); }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L30">        var omissions = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (!profile.isInstallation()) omissions.add(&quot;identities: only referenced principals and their provider bindings are included; local accounts, roles and administrative grants require installation scope&quot;);</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (profile != BackupProfile.INSTALLATION_FULL) omissions.add(&quot;identities: historical access audit is excluded&quot;);</span>
+<span class="fc" id="L33">        omissions.add(&quot;identities: password hashes require explicit encrypted full-installation selection; sessions, tokens and target authority are never imported automatically&quot;);</span>
+<span class="fc" id="L34">        return List.copyOf(omissions);</span>
+    }
+
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L38">        var request = snapshot.authorization().request(); var profile = request.profile();</span>
+<span class="fc" id="L39">        var requested = new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!profile.isInstallation()) requested.addAll(references.select(snapshot, sink::checkpoint));</span>
+<span class="fc" id="L41">        requested.add(snapshot.authorization().principalId());</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">        if (requested.contains(null) || requested.size() &gt; MAX_IDENTITIES) throw new IOException(&quot;Invalid identity selection&quot;);</span>
+<span class="fc" id="L43">        var selection = new Selection(profile.isInstallation(), requested.stream().map(id -&gt; id.value().toString()).sorted().toList());</span>
+<span class="fc" id="L44">        var found = new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (String table : List.of(&quot;app_principal&quot;, &quot;app_user&quot;)) {</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            for (var query : selected(&quot;select principal_id from &quot; + table, &quot;1=1&quot;, &quot;principal_id&quot;, selection)) {</span>
+<span class="fc" id="L47">                rows.visit(query, r -&gt; { sink.checkpoint(); return new IdentityKey(principal(r, &quot;principal_id&quot;)); }, key -&gt; {</span>
+<span class="fc" id="L48">                    found.add(key.id());</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                    if (found.size() &gt; MAX_IDENTITIES) throw new IOException(&quot;Identity capture limit exceeded&quot;);</span>
+<span class="fc" id="L50">                });</span>
+<span class="fc" id="L51">            }</span>
+<span class="fc" id="L52">        }</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (!found.containsAll(requested)) throw new IOException(&quot;A referenced source principal is missing&quot;);</span>
+<span class="fc" id="L54">        var installation = new ArrayList&lt;InstallationRecord&gt;();</span>
+<span class="fc" id="L55">        rows.visit(new Query(&quot;select installation_id from principal_installation where registry_key='local'&quot;, List.of()),</span>
+<span class="fc" id="L56">                r -&gt; new InstallationRecord(canonicalUuid(r, &quot;installation_id&quot;, &quot;Invalid source installation ID&quot;).toString()), installation::add);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (installation.size() != 1) throw new IOException(&quot;Missing source identity installation&quot;);</span>
+<span class="fc" id="L58">        verifyDependencies(selection, profile, sink);</span>
+
+<span class="fc" id="L60">        var principalQueries = new ArrayList&lt;&gt;(selected(&quot;select p.principal_id,p.scope_key,p.enabled,u.display_name,u.email from app_principal p left join app_user u on u.principal_id=p.principal_id&quot;,</span>
+                &quot;1=1&quot;, &quot;p.principal_id&quot;, selection));
+        // Accounts created since the last migration may not have logged in yet. Preserve them without registering
+        // a binding or assigning their username as an ownership scope during this read-only operation.
+<span class="fc" id="L64">        principalQueries.addAll(selected(&quot;select u.principal_id,cast(null as varchar(255)) as scope_key,0 as enabled,u.display_name,u.email from app_user u&quot;,</span>
+                &quot;not exists (select 1 from app_principal p where p.principal_id=u.principal_id)&quot;, &quot;u.principal_id&quot;, selection));
+<span class="fc" id="L66">        write(sink, &quot;principals&quot;, profile, principalQueries, r -&gt; {</span>
+<span class="fc" id="L67">            String scope = text(r, &quot;scope_key&quot;);</span>
+<span class="fc" id="L68">            return new PrincipalRecord(principal(r, &quot;principal_id&quot;), scope,</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                    scope == null ? RegistryState.PENDING_LOCAL_ACCOUNT : RegistryState.REGISTERED,</span>
+<span class="fc" id="L70">                    flag(r, &quot;enabled&quot;), text(r, &quot;display_name&quot;), text(r, &quot;email&quot;), RestorePolicy.EXPLICIT_MAPPING);</span>
+        });
+<span class="fc" id="L72">        write(sink, &quot;bindings&quot;, profile, selected(&quot;select binding_key,principal_id,binding_kind,issuer,subject_id,enabled from principal_binding&quot;,</span>
+<span class="fc" id="L73">                &quot;1=1&quot;, &quot;principal_id&quot;, selection), r -&gt; new BindingRecord(reference(r, &quot;application.identity-binding&quot;, &quot;binding_key&quot;),</span>
+<span class="fc" id="L74">                principal(r, &quot;principal_id&quot;), new IdentityBinding(IdentityBinding.Kind.valueOf(text(r, &quot;binding_kind&quot;)),</span>
+<span class="fc" id="L75">                text(r, &quot;issuer&quot;), text(r, &quot;subject_id&quot;)), flag(r, &quot;enabled&quot;)));</span>
+<span class="fc" id="L76">        write(sink, &quot;local-accounts&quot;, profile, installation(profile,</span>
+                &quot;select id,principal_id,username,enabled,must_change_password,display_name,email from app_user order by id&quot;), r -&gt;
+<span class="fc" id="L78">                new AccountRecord(reference(r, &quot;application.local-account&quot;, &quot;id&quot;), principal(r, &quot;principal_id&quot;), text(r, &quot;username&quot;),</span>
+<span class="fc" id="L79">                        r.getBoolean(&quot;enabled&quot;), r.getBoolean(&quot;must_change_password&quot;), text(r, &quot;display_name&quot;), text(r, &quot;email&quot;)));</span>
+<span class="fc" id="L80">        write(sink, &quot;roles&quot;, profile, installation(profile, &quot;select id,name from app_role order by id&quot;),</span>
+<span class="fc" id="L81">                r -&gt; new RoleRecord(reference(r, &quot;application.role&quot;, &quot;id&quot;), text(r, &quot;name&quot;)));</span>
+<span class="fc" id="L82">        write(sink, &quot;user-roles&quot;, profile, installation(profile, &quot;select user_id,role_id from user_roles order by user_id,role_id&quot;),</span>
+<span class="fc" id="L83">                r -&gt; new UserRoleRecord(reference(r, &quot;application.local-account&quot;, &quot;user_id&quot;), reference(r, &quot;application.role&quot;, &quot;role_id&quot;)));</span>
+<span class="fc" id="L84">        write(sink, &quot;capability-grants&quot;, profile, installation(profile,</span>
+                &quot;select principal_id,capability from backup_capability_grant order by principal_id,capability&quot;),
+<span class="fc" id="L86">                r -&gt; new CapabilityGrant(principal(r, &quot;principal_id&quot;), BackupCapability.valueOf(text(r, &quot;capability&quot;))));</span>
+<span class="fc" id="L87">        write(sink, &quot;version-grants&quot;, profile, installation(profile,</span>
+                &quot;select principal_id,repository_id,workspace_key,commit_id from backup_version_grant order by principal_id,repository_id,workspace_key,commit_id&quot;), r -&gt; {
+<span class="fc" id="L89">            String workspace = text(r, &quot;workspace_key&quot;);</span>
+<span class="pc bpc" id="L90" title="4 of 8 branches missed.">            if (workspace == null || (!workspace.equals(&quot;C:&quot;) &amp;&amp; (!workspace.startsWith(&quot;W:&quot;) || workspace.length() == 2)))</span>
+<span class="nc" id="L91">                throw new IOException(&quot;Invalid source version-grant scope&quot;);</span>
+<span class="fc" id="L92">            String commit = text(r, &quot;commit_id&quot;);</span>
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">            if (commit == null || !commit.matches(&quot;[0-9a-f]{40}&quot;)) throw new IOException(&quot;Invalid source version grant&quot;);</span>
+<span class="fc" id="L94">            return new VersionGrant(principal(r, &quot;principal_id&quot;), new BackupRepositoryKey(text(r, &quot;repository_id&quot;),</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                    workspace.equals(&quot;C:&quot;) ? null : workspace.substring(2)), commit);</span>
+        });
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        write(sink, &quot;access-audit&quot;, profile, profile == BackupProfile.INSTALLATION_FULL ? List.of(new Query(</span>
+<span class="fc" id="L98">                &quot;select audit_id,actor_principal,target_principal,decision_kind,detail,occurred_at from principal_access_audit order by occurred_at,audit_id&quot;, List.of())) : List.of(),</span>
+<span class="fc" id="L99">                r -&gt; new AccessAudit(reference(r, &quot;application.identity-audit&quot;, &quot;audit_id&quot;), principal(r, &quot;actor_principal&quot;), principal(r, &quot;target_principal&quot;),</span>
+<span class="fc" id="L100">                        text(r, &quot;decision_kind&quot;), text(r, &quot;detail&quot;), Instant.ofEpochMilli(r.getLong(&quot;occurred_at&quot;)).toString()));</span>
+<span class="fc" id="L101">        PortableRows.document(sink, &quot;identities/installation.json&quot;, installation.getFirst());</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (request.secrets() == SecretsSelection.INCLUDE_ENCRYPTED) {</span>
+            // BackupRequest/AuthorizedBackupRequest require FULL + INCLUDE_SECRETS; the capture coordinator
+            // also requires encrypted staging. Keeping the hashes in this namespace enforces archive protection.
+<span class="fc" id="L105">            rows.writeBatchesAtPath(sink, &quot;protected/identities/password-hashes.ndjson&quot;, &quot;password-hashes&quot;, profile,</span>
+<span class="fc" id="L106">                    List.of(new Query(&quot;select id,principal_id,password_hash from app_user order by id&quot;, List.of())), r -&gt; {</span>
+<span class="fc" id="L107">                        sink.checkpoint();</span>
+<span class="fc" id="L108">                        return new PasswordHash(reference(r, &quot;application.local-account&quot;, &quot;id&quot;), principal(r, &quot;principal_id&quot;), text(r, &quot;password_hash&quot;));</span>
+                    });
+        }
+<span class="fc" id="L111">    }</span>
+
+    private void verifyDependencies(Selection selection, BackupProfile profile, ComponentSink sink) throws IOException {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (var query : selected(&quot;select b.binding_key from principal_binding b&quot;,</span>
+                &quot;not exists (select 1 from app_principal p where p.principal_id=b.principal_id)&quot;, &quot;b.principal_id&quot;, selection)) {
+<span class="fc" id="L116">            sink.checkpoint(); rows.requireEmpty(query);</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (!profile.isInstallation()) return;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        for (String sql : List.of(</span>
+                &quot;select user_id from user_roles ur where not exists (select 1 from app_user u where u.id=ur.user_id) or not exists (select 1 from app_role r where r.id=ur.role_id)&quot;,
+                &quot;select principal_id from backup_capability_grant g where not exists (select 1 from app_principal p where p.principal_id=g.principal_id)&quot;,
+                &quot;select principal_id from backup_version_grant g where not exists (select 1 from app_principal p where p.principal_id=g.principal_id)&quot;)) {
+<span class="fc" id="L123">            sink.checkpoint(); rows.requireEmpty(new Query(sql, List.of()));</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (profile == BackupProfile.INSTALLATION_FULL) {</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (String column : List.of(&quot;actor_principal&quot;, &quot;target_principal&quot;)) {</span>
+<span class="fc" id="L127">                sink.checkpoint();</span>
+<span class="fc" id="L128">                rows.requireEmpty(new Query(&quot;select audit_id from principal_access_audit a where not exists (select 1 from app_principal p where p.principal_id=a.&quot;</span>
+<span class="fc" id="L129">                        + column + &quot;) and not exists (select 1 from app_user u where u.principal_id=a.&quot; + column + &quot;)&quot;, List.of()));</span>
+<span class="fc" id="L130">            }</span>
+        }
+<span class="fc" id="L132">    }</span>
+
+    private &lt;T extends Record&gt; void write(ComponentSink sink, String kind, BackupProfile profile, List&lt;Query&gt; queries,
+                                          PortableRows.Mapper&lt;T&gt; mapper) throws IOException {
+<span class="fc" id="L136">        rows.writeBatchesAtPath(sink, &quot;identities/&quot; + kind + &quot;.ndjson&quot;, kind, profile, queries, r -&gt; {</span>
+<span class="fc" id="L137">            sink.checkpoint(); return mapper.read(r);</span>
+        });
+<span class="fc" id="L139">    }</span>
+    private static List&lt;Query&gt; installation(BackupProfile profile, String sql) {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        return profile.isInstallation() ? List.of(new Query(sql, List.of())) : List.of();</span>
+    }
+    private static List&lt;Query&gt; selected(String select, String condition, String column, Selection selection) {
+<span class="fc" id="L144">        String where = select + &quot; where (&quot; + condition + &quot;)&quot;;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (selection.installation()) return List.of(new Query(where + &quot; order by &quot; + column, List.of()));</span>
+<span class="fc" id="L146">        var queries = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (int start = 0; start &lt; selection.ids().size(); start += 200) {</span>
+<span class="fc" id="L148">            var ids = selection.ids().subList(start, Math.min(start + 200, selection.ids().size()));</span>
+<span class="fc" id="L149">            queries.add(new Query(where + &quot; and &quot; + column + &quot; in (&quot; + String.join(&quot;,&quot;, Collections.nCopies(ids.size(), &quot;?&quot;))</span>
+                    + &quot;) order by &quot; + column, ids));
+        }
+<span class="fc" id="L152">        return queries;</span>
+    }
+    private static PrincipalId principal(ResultSet row, String column) throws SQLException, IOException {
+<span class="fc" id="L155">        return new PrincipalId(canonicalUuid(row, column, &quot;Invalid source principal ID&quot;));</span>
+    }
+    private static UUID canonicalUuid(ResultSet row, String column, String diagnostic) throws SQLException, IOException {
+<span class="fc" id="L158">        String source = text(row, column);</span>
+        try {
+<span class="fc" id="L160">            UUID id = UUID.fromString(source);</span>
+            // UUID.fromString accepts abbreviations and uppercase text. Normalizing distinct stored keys
+            // would merge source identities in the archive, so require the storage contract verbatim.
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (id.toString().equals(source)) return id;</span>
+<span class="fc" id="L164">        } catch (IllegalArgumentException | NullPointerException invalid) {</span>
+            // Raw database values and parser diagnostics must not escape into job errors.
+<span class="fc" id="L166">        }</span>
+<span class="fc" id="L167">        throw new IOException(diagnostic);</span>
+    }
+    private static boolean flag(ResultSet row, String column) throws SQLException, IOException {
+<span class="fc" id="L170">        int value = row.getInt(column);</span>
+<span class="pc bpc" id="L171" title="2 of 6 branches missed.">        if (row.wasNull() || (value != 0 &amp;&amp; value != 1)) throw new IOException(&quot;Invalid source identity flag&quot;);</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        return value == 1;</span>
+    }
+<span class="fc" id="L174">    private record Selection(boolean installation, List&lt;String&gt; ids) { }</span>
+<span class="fc" id="L175">    private record IdentityKey(PrincipalId id) { }</span>
+<span class="fc" id="L176">    public enum RegistryState { REGISTERED, PENDING_LOCAL_ACCOUNT }</span>
+<span class="fc" id="L177">    public enum RestorePolicy { EXPLICIT_MAPPING }</span>
+<span class="fc" id="L178">    public record PrincipalRecord(PrincipalId id, String sourceScope, RegistryState registryState, boolean sourceEnabled,</span>
+                                  String displayName, String email, RestorePolicy restorePolicy) { }
+<span class="fc" id="L180">    public record BindingRecord(SourceRecordId sourceId, PrincipalId principal, IdentityBinding binding, boolean sourceEnabled) { }</span>
+<span class="fc" id="L181">    public record AccountRecord(SourceRecordId sourceId, PrincipalId principal, String username, boolean sourceEnabled,</span>
+                                boolean mustChangePassword, String displayName, String email) { }
+<span class="fc" id="L183">    public record RoleRecord(SourceRecordId sourceId, String name) { }</span>
+<span class="fc" id="L184">    public record UserRoleRecord(SourceRecordId account, SourceRecordId role) { }</span>
+<span class="fc" id="L185">    public record CapabilityGrant(PrincipalId principal, BackupCapability capability) { }</span>
+<span class="fc" id="L186">    public record VersionGrant(PrincipalId principal, BackupRepositoryKey repository, String commit) { }</span>
+<span class="fc" id="L187">    public record AccessAudit(SourceRecordId sourceId, PrincipalId actor, PrincipalId target, String decision, String detail, String occurredAt) { }</span>
+<span class="fc" id="L188">    public record InstallationRecord(String installationId) { }</span>
+<span class="fc" id="L189">    public record PasswordHash(SourceRecordId account, PrincipalId principal, String passwordHash) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

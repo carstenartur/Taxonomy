@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxDslExportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.export</a> &gt; <span class="el_source">TaxDslExportService.java</span></div><h1>TaxDslExportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.export;
+
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.dsl.model.*;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+
+/**
+ * Exports the current architecture state (taxonomy nodes and relations)
+ * as DSL text.
+ */
+@Service
+public class TaxDslExportService {
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+<span class="fc" id="L28">    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();</span>
+<span class="fc" id="L29">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+
+    public TaxDslExportService(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L32">                               TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L33">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L34">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Export the complete current architecture as a single DSL document.
+     *
+     * @param namespace the namespace for the meta block
+     * @return serialized DSL text
+     */
+    @Transactional(readOnly = true)
+    public String exportAll(String namespace) {
+<span class="fc" id="L45">        CanonicalArchitectureModel model = buildCanonicalModel();</span>
+<span class="fc" id="L46">        var doc = modelToAstMapper.toDocument(model, namespace);</span>
+<span class="fc" id="L47">        return serializer.serialize(doc);</span>
+    }
+
+    /**
+     * Build a canonical architecture model from the current database state.
+     */
+    @Transactional(readOnly = true)
+    public CanonicalArchitectureModel buildCanonicalModel() {
+<span class="fc" id="L55">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
+
+        // Export all non-root taxonomy nodes as elements
+<span class="fc" id="L58">        List&lt;TaxonomyNode&gt; allNodes = nodeRepository.findAll();</span>
+<span class="fc" id="L59">        Set&lt;String&gt; virtualRoots = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L60">        Set&lt;String&gt; elementIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (TaxonomyNode node : allNodes) {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (node.getLevel() == 0) virtualRoots.add(node.getCode());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (node.getLevel() &gt; 0) { // Skip virtual root nodes</span>
+<span class="fc" id="L64">                ArchitectureElement el = new ArchitectureElement();</span>
+<span class="fc" id="L65">                el.setId(node.getCode());</span>
+<span class="fc" id="L66">                el.setType(TaxonomyRootTypes.typeFor(node.getTaxonomyRoot()));</span>
+<span class="fc" id="L67">                el.setTitle(node.getNameEn());</span>
+<span class="fc" id="L68">                el.setDescription(node.getDescriptionEn());</span>
+<span class="fc" id="L69">                el.setTaxonomy(node.getTaxonomyRoot());</span>
+<span class="fc" id="L70">                model.getElements().add(el);</span>
+<span class="fc" id="L71">                elementIds.add(node.getCode());</span>
+            }
+<span class="fc" id="L73">        }</span>
+
+        // Category-root templates stay in the catalogue; they are not accepted
+        // relationships between architecture instances. Never synthesize virtual
+        // components just to make those templates exportable.
+<span class="fc" id="L78">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (TaxonomyRelation rel : allRelations) {</span>
+<span class="fc" id="L80">            String sourceId = rel.getSourceNode().getCode();</span>
+<span class="fc" id="L81">            String targetId = rel.getTargetNode().getCode();</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">            if (virtualRoots.contains(sourceId) || virtualRoots.contains(targetId)) continue;</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">            if (!elementIds.contains(sourceId) || !elementIds.contains(targetId)) {</span>
+<span class="fc" id="L84">                throw new IllegalStateException(&quot;Concrete catalogue relation has an absent endpoint: &quot;</span>
+                        + sourceId + &quot; -&gt; &quot; + targetId);
+            }
+<span class="fc" id="L87">            ArchitectureRelation archRel = new ArchitectureRelation();</span>
+<span class="fc" id="L88">            archRel.setSourceId(sourceId);</span>
+<span class="fc" id="L89">            archRel.setRelationType(rel.getRelationType().name());</span>
+<span class="fc" id="L90">            archRel.setTargetId(targetId);</span>
+<span class="fc" id="L91">            archRel.setStatus(&quot;accepted&quot;);</span>
+<span class="fc" id="L92">            archRel.setProvenance(rel.getProvenance());</span>
+<span class="fc" id="L93">            model.getRelations().add(archRel);</span>
+<span class="fc" id="L94">        }</span>
+
+<span class="fc" id="L96">        return model;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

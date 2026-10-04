@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationRecoveryLease.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationRecoveryLease.java</span></div><h1>ReformulationRecoveryLease.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.time.Instant;
+
+/** Execution ownership only. The existing run and proposal remain the result authorities. */
+@Entity
+@Table(name = &quot;reformulation_recovery_lease&quot;, indexes = @Index(name = &quot;idx_reform_recovery_due&quot;, columnList = &quot;active,lease_until&quot;))
+public class ReformulationRecoveryLease {
+    @Id @Column(name = &quot;run_id&quot;, length = 36) private String runId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;run_id&quot;, insertable = false, updatable = false, foreignKey = @jakarta.persistence.ForeignKey(name = &quot;fk_reform_recovery_run&quot;))
+    private ReformulationRun run;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;dispatch_payload&quot;, nullable = false, updatable = false) private String dispatchPayload;
+    @Column(name = &quot;owner_id&quot;, length = 36) private String ownerId;
+    @Column(name = &quot;lease_epoch&quot;, nullable = false) private long epoch;
+    @Column(name = &quot;lease_until&quot;) private Instant leaseUntil;
+<span class="fc" id="L29">    @Column(nullable = false) private boolean active = true;</span>
+    @Version @Column(name = &quot;row_version&quot;, nullable = false) private long version;
+
+<span class="fc" id="L32">    protected ReformulationRecoveryLease() {}</span>
+<span class="fc" id="L33">    ReformulationRecoveryLease(String runId, String payload) { this.runId = runId; this.dispatchPayload = payload; }</span>
+<span class="fc" id="L34">    String payload() { return dispatchPayload; }</span>
+<span class="fc" id="L35">    boolean active() { return active; }</span>
+<span class="fc" id="L36">    long epoch() { return epoch; }</span>
+<span class="pc bpc" id="L37" title="1 of 6 branches missed.">    boolean available(Instant now) { return active &amp;&amp; (leaseUntil == null || !leaseUntil.isAfter(now)); }</span>
+    boolean owns(String owner, long generation, Instant now) {
+<span class="pc bpc" id="L39" title="3 of 10 branches missed.">        return active &amp;&amp; owner.equals(ownerId) &amp;&amp; generation == epoch &amp;&amp; leaseUntil != null &amp;&amp; leaseUntil.isAfter(now);</span>
+    }
+<span class="fc" id="L41">    void claim(String owner, Instant until) { ownerId = owner; epoch++; leaseUntil = until; }</span>
+<span class="fc" id="L42">    void renew(Instant until) { leaseUntil = until; }</span>
+    /** Keep recovery active and preserve the fencing epoch when no work was admitted. */
+<span class="fc" id="L44">    void releaseUnadmitted() { ownerId = null; leaseUntil = null; }</span>
+<span class="fc" id="L45">    void retire() { active = false; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SourceRecordId.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">SourceRecordId.java</span></div><h1>SourceRecordId.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+/** An archive-local source reference, never a primary key to insert into the target database. */
+public record SourceRecordId(String kind, String value) {
+<span class="fc" id="L5">    public SourceRecordId {</span>
+<span class="pc bpc" id="L6" title="2 of 4 branches missed.">        if (kind == null || !kind.matches(&quot;[a-z][a-z0-9.-]{0,95}&quot;)) throw new IllegalArgumentException(&quot;Invalid record kind&quot;);</span>
+<span class="fc" id="L7">        BackupChecks.text(value, &quot;source record reference&quot;);</span>
+<span class="fc" id="L8">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

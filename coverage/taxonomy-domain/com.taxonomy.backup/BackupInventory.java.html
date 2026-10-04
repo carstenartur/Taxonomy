@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupInventory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupInventory.java</span></div><h1>BackupInventory.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.*;
+
+/** Fail-closed ownership catalogue, independent of any particular persistence framework. */
+public final class BackupInventory {
+    public record Category(String id, BackupComponentId owner, BackupStorageRule rule, String rationale) {
+<span class="fc" id="L8">        public Category { BackupChecks.text(id, &quot;category&quot;); Objects.requireNonNull(owner); Objects.requireNonNull(rule); BackupChecks.text(rationale, &quot;rationale&quot;); }</span>
+    }
+    private final Map&lt;String, Category&gt; categories;
+<span class="fc" id="L11">    public BackupInventory(Collection&lt;Category&gt; categories) {</span>
+<span class="fc" id="L12">        var copy = new TreeMap&lt;String, Category&gt;();</span>
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        for (var category : categories) {</span>
+<span class="fc bfc" id="L14" title="All 2 branches covered.">            if (copy.putIfAbsent(category.id(), category) != null) throw new IllegalArgumentException(&quot;Duplicate category: &quot; + category.id());</span>
+<span class="fc" id="L15">        }</span>
+<span class="fc" id="L16">        this.categories = Collections.unmodifiableMap(copy);</span>
+<span class="fc" id="L17">    }</span>
+<span class="fc" id="L18">    public Collection&lt;Category&gt; categories() { return categories.values(); }</span>
+    public void requireClassified(Set&lt;String&gt; persistentCategories) {
+<span class="fc" id="L20">        var missing = new TreeSet&lt;&gt;(persistentCategories); missing.removeAll(categories.keySet());</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (!missing.isEmpty()) throw new IllegalStateException(&quot;Unclassified persistent data: &quot; + missing);</span>
+<span class="fc" id="L22">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

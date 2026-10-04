@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserWorkspaceRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.repository</a> &gt; <span class="el_source">UserWorkspaceRepository.java</span></div><h1>UserWorkspaceRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.repository;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * JPA repository for {@link UserWorkspace} entities.
+ */
+@Repository
+public interface UserWorkspaceRepository extends JpaRepository&lt;UserWorkspace, Long&gt; {
+
+    List&lt;UserWorkspace&gt; findByUsername(String username);
+
+    Optional&lt;UserWorkspace&gt; findByWorkspaceId(String workspaceId);
+
+    /**
+     * Compatibility entry point for implicit private-workspace selection.
+     * Multiple workspaces are valid: prefer a non-archived default, then the
+     * most recently accessed active private workspace, with an ID tie-breaker.
+     * Explicit request pins and process-local active selection remain caller-owned.
+     *
+     * &lt;p&gt;The final ordering is deliberately performed in Java. Supported databases
+     * disagree about where {@code NULL} appears for descending timestamp ordering;
+     * a never-accessed row must never outrank a recently accessed row merely because
+     * of database-specific NULL placement.&lt;/p&gt;
+     */
+    default Optional&lt;UserWorkspace&gt; findByUsernameAndSharedFalse(String username) {
+<span class="fc" id="L39">        Comparator&lt;UserWorkspace&gt; selectionOrder = Comparator</span>
+<span class="fc" id="L40">                .comparing(UserWorkspace::isDefault).reversed()</span>
+<span class="fc" id="L41">                .thenComparing(UserWorkspace::getLastAccessedAt,</span>
+<span class="fc" id="L42">                        Comparator.nullsLast(Comparator.reverseOrder()))</span>
+<span class="fc" id="L43">                .thenComparing(UserWorkspace::getWorkspaceId,</span>
+<span class="fc" id="L44">                        Comparator.nullsLast(Comparator.naturalOrder()));</span>
+<span class="fc" id="L45">        return findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username).stream()</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                .filter(workspace -&gt; !workspace.isShared())</span>
+<span class="fc" id="L47">                .sorted(selectionOrder)</span>
+<span class="fc" id="L48">                .findFirst();</span>
+    }
+
+    Optional&lt;UserWorkspace&gt; findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(
+            String username);
+
+    Optional&lt;UserWorkspace&gt; findBySharedTrue();
+
+    boolean existsByUsername(String username);
+
+    List&lt;UserWorkspace&gt; findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(String username);
+
+    Optional&lt;UserWorkspace&gt; findByUsernameAndIsDefaultTrue(String username);
+
+    Optional&lt;UserWorkspace&gt; findByUsernameAndDisplayName(String username, String displayName);
+
+    long countByUsernameAndArchivedFalse(String username);
+
+    /** Claim a pending/retryable workspace atomically across application instances. */
+    @Transactional
+    @Modifying
+    @Query(&quot;&quot;&quot;
+            update UserWorkspace w set w.provisioningStatus = :inProgress
+            where w.workspaceId = :workspaceId and w.username = :username
+              and w.archived = false and w.shared = false
+              and w.provisioningStatus in :previousStates
+            &quot;&quot;&quot;)
+    int claimProvisioning(@Param(&quot;workspaceId&quot;) String workspaceId,
+                          @Param(&quot;username&quot;) String username,
+                          @Param(&quot;inProgress&quot;) WorkspaceProvisioningStatus inProgress,
+                          @Param(&quot;previousStates&quot;) Collection&lt;WorkspaceProvisioningStatus&gt; previousStates);
+
+
+    /**
+     * Count active, disclosure-authorized rows without materializing metadata.
+     * Archived, missing and unauthorized identifiers intentionally return zero.
+     * Archiving retains the row and Git history; it does not grant metadata access.
+     */
+    @Query(&quot;&quot;&quot;
+            select count(workspace)
+            from UserWorkspace workspace
+            where workspace.workspaceId = :workspaceId
+              and workspace.archived = false
+              and (workspace.username = :username or workspace.shared = true)
+            &quot;&quot;&quot;)
+    long countVisibleWorkspaceMetadata(
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;username&quot;) String username);
+
+    @Query(&quot;&quot;&quot;
+            select count(w) from UserWorkspace w
+            where w.workspaceId=:workspace and w.username=:actor and w.sourceRepositoryId=:repository
+              and w.shared=false and w.archived=false
+            &quot;&quot;&quot;)
+    long countOwnedPrivateWorkspace(@Param(&quot;workspace&quot;) String workspace, @Param(&quot;actor&quot;) String actor, @Param(&quot;repository&quot;) String repository);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

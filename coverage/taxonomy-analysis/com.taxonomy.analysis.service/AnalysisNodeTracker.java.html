@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisNodeTracker.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisNodeTracker.java</span></div><h1>AnalysisNodeTracker.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.AnalysisNodeProgress;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import java.util.*;
+
+/** Owned by one registry run; keeps scalar catalogue identities, never entity graphs. */
+<span class="fc" id="L9">final class AnalysisNodeTracker {</span>
+<span class="fc" id="L10">    private record Node(String code, String root, String parent) { }</span>
+<span class="fc" id="L11">    private record Root(String code, String en, String de) { }</span>
+<span class="fc" id="L12">    private final Map&lt;String, Node&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L13">    private final List&lt;Root&gt; roots = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L14">    private final Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
+    private boolean planned;
+    private AnalysisNodeProgress cached;
+
+    void plan(List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">        if (planned) return;</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">        for (var root : tree) {</span>
+<span class="fc" id="L21">            roots.add(new Root(root.getCode(), root.getNameEn(), root.getNameDe()));</span>
+<span class="fc" id="L22">            add(root, root.getCode(), null);</span>
+<span class="fc" id="L23">        }</span>
+<span class="fc" id="L24">        planned = true; cached = null;</span>
+<span class="fc" id="L25">    }</span>
+    private void add(TaxonomyNodeDto node, String root, String parent) {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (nodes.putIfAbsent(node.getCode(), new Node(node.getCode(), root, parent)) != null)</span>
+<span class="nc" id="L28">            throw new IllegalArgumentException(&quot;Duplicate progress catalogue node &quot; + node.getCode());</span>
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">        if (node.getChildren() != null) for (var child : node.getChildren()) add(child, root, node.getCode());</span>
+<span class="fc" id="L30">    }</span>
+    void accept(LlmCallDetail detail) {
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if (detail.getError() != null &amp;&amp; !detail.getError().isBlank()) return;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (detail.getScores() == null) return;</span>
+<span class="fc" id="L34">        detail.getScores().forEach((code, value) -&gt; {</span>
+<span class="pc bpc" id="L35" title="4 of 10 branches missed.">            if (code != null &amp;&amp; value != null &amp;&amp; value &gt;= 0 &amp;&amp; value &lt;= 100</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                    &amp;&amp; (!planned || nodes.containsKey(code))) scores.put(code, value);</span>
+<span class="fc" id="L37">        });</span>
+<span class="fc" id="L38">        cached = null;</span>
+<span class="fc" id="L39">    }</span>
+<span class="fc" id="L40">    int assessed() { return scores.size(); }</span>
+    AnalysisNodeProgress snapshot() {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (!planned) return null;</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (cached != null) return cached;</span>
+<span class="fc" id="L44">        Map&lt;String, int[]&gt; counts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L45">        Map&lt;String, Boolean&gt; pruned = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (Node node : nodes.values()) {</span>
+<span class="fc" id="L47">            int[] count = counts.computeIfAbsent(node.root(), unused -&gt; new int[3]);</span>
+<span class="fc" id="L48">            count[0]++;</span>
+<span class="fc" id="L49">            boolean excluded = Boolean.TRUE.equals(pruned.get(node.parent()));</span>
+<span class="fc" id="L50">            Integer score = scores.get(node.code());</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (score != null) count[1]++;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            else if (excluded) count[2]++;</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">            pruned.put(node.code(), excluded || Integer.valueOf(0).equals(score));</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">        List&lt;AnalysisNodeProgress.Taxonomy&gt; parts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L56">        int total = 0, assessed = 0, excluded = 0;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (Root root : roots) {</span>
+<span class="fc" id="L58">            int[] c = counts.get(root.code());</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (c == null) continue;</span>
+<span class="fc" id="L60">            parts.add(new AnalysisNodeProgress.Taxonomy(root.code(), root.en(), root.de(),</span>
+                    c[0], c[1], c[2], c[0] - c[1] - c[2]));
+<span class="fc" id="L62">            total += c[0]; assessed += c[1]; excluded += c[2];</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">        cached = new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);</span>
+<span class="fc" id="L65">        return cached;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

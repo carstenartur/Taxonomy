@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupPaths.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupPaths.java</span></div><h1>BackupPaths.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.text.Normalizer;
+import java.util.Locale;
+import java.util.Set;
+
+/** Portable entry names, including case/Unicode collisions on supported filesystems. */
+public final class BackupPaths {
+<span class="fc" id="L9">    private static final Set&lt;String&gt; ROOTS = Set.of(&quot;data&quot;, &quot;files&quot;, &quot;identities&quot;, &quot;configuration&quot;, &quot;protected&quot;, &quot;repositories&quot;, &quot;verification&quot;);</span>
+    private BackupPaths() { }
+
+    public static String requireEntry(String path) {
+<span class="fc" id="L13">        new BackupEntry(path, 0, &quot;0&quot;.repeat(64));</span>
+<span class="fc bfc" id="L14" title="All 2 branches covered.">        if (!Normalizer.isNormalized(path, Normalizer.Form.NFC)) throw new IllegalArgumentException(&quot;Noncanonical archive path&quot;);</span>
+<span class="fc" id="L15">        String[] parts = path.split(&quot;/&quot;);</span>
+<span class="pc bpc" id="L16" title="2 of 6 branches missed.">        if (parts.length &lt; 2 || parts.length &gt; 32 || !ROOTS.contains(parts[0])) throw new IllegalArgumentException(&quot;Unsupported archive entry path&quot;);</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (String part : parts) {</span>
+<span class="fc" id="L18">            String base = part.split(&quot;\\.&quot;, 2)[0].toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L19" title="3 of 6 branches missed.">            if (part.endsWith(&quot;.&quot;) || part.endsWith(&quot; &quot;) || part.matches(&quot;.*[&lt;&gt;\&quot;|?*].*&quot;)</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">                    || part.codePoints().anyMatch(Character::isISOControl)</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">                    || part.getBytes(java.nio.charset.StandardCharsets.UTF_8).length &gt; 255</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">                    || base.matches(&quot;CON|PRN|AUX|NUL|CLOCK\\$|COM[1-9¹²³]|LPT[1-9¹²³]&quot;))</span>
+<span class="fc" id="L23">                throw new IllegalArgumentException(&quot;Nonportable archive path&quot;);</span>
+        }
+<span class="fc" id="L25">        return path;</span>
+    }
+
+    public static String collisionKey(String path) {
+<span class="fc" id="L29">        return Normalizer.normalize(requireEntry(path).toUpperCase(Locale.ROOT), Normalizer.Form.NFC);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

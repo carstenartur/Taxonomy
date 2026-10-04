@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.backup</a> &gt; <span class="el_source">AnalysisBackupContributor.java</span></div><h1>AnalysisBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.backup;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.workspace.backup.BackupRowScope;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import com.taxonomy.analysis.backup.AnalysisRunSelection.Key;
+import com.taxonomy.analysis.backup.AnalysisRunSelection.Run;
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Captures persisted analysis work; worker ownership is never portable. */
+public final class AnalysisBackupContributor implements BackupDataContributor {
+    private static final String RUN_COLUMNS = &quot;r.id as run_id,r.username,r.workspace_id,r.branch_name,r.repository_id,r.input_hash as run_input_hash,r.updated_at,r.row_version,r.state as run_state,r.current_node&quot;;
+    private final PortableRows rows;
+    private final String principalScope;
+<span class="fc" id="L23">    public AnalysisBackupContributor(DataSource database,String principalScope) {</span>
+<span class="fc" id="L24">        rows = new PortableRows(database); this.principalScope = Objects.requireNonNull(principalScope);</span>
+<span class="fc" id="L25">    }</span>
+<span class="nc" id="L26">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;analysis&quot;); }</span>
+<span class="nc" id="L27">    @Override public int schemaVersion() { return 1; }</span>
+<span class="nc" id="L28">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;com.taxonomy.analysis.session.AnalysisWorkingDraft&quot;, &quot;com.taxonomy.analysis.recovery.AnalysisContinuationRun&quot;, &quot;com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint&quot;); }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        if (profile == BackupProfile.SELECTED_VERSION) return List.of(&quot;analysis: drafts and continuations are not versioned by Git and cannot be attributed to a selected historical commit&quot;);</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">        if (!profile.includesHistory()) return List.of(&quot;analysis: stale draft results, earlier continuations and unattached historical checkpoints are excluded&quot;, &quot;analysis: worker claims and live execution are excluded&quot;);</span>
+<span class="nc" id="L32">        return List.of(&quot;analysis: worker claims and live execution are excluded&quot;);</span>
+    }
+    @Override public void write(SnapshotContext snapshot,ComponentSink sink) throws IOException {
+<span class="fc" id="L35">        var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc" id="L36">        var currentTexts = new HashMap&lt;DraftKey,String&gt;();</span>
+<span class="fc" id="L37">        var drafts = scope.tenants(&quot;scope_key&quot;);</span>
+<span class="fc" id="L38">        var draftParameters = new ArrayList&lt;Object&gt;(drafts.parameters());</span>
+<span class="fc" id="L39">        String draftWhere = drafts.sql();</span>
+<span class="fc" id="L40">        String draftPrincipalScope=draftOwner(principalScope);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (!scope.installation()) { draftWhere += &quot; and username=?&quot;; draftParameters.add(draftPrincipalScope); }</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        rows.write(sink,&quot;analysis&quot;,&quot;drafts&quot;,profile,scope.selectedVersion() ? null : new Query(&quot;select id,scope_key,workspace_id,username,payload_json,created_at,updated_at from analysis_working_draft where &quot; + draftWhere + &quot; order by id&quot;,draftParameters),r -&gt; {</span>
+<span class="fc" id="L43">            String tenant=text(r,&quot;scope_key&quot;),owner=text(r,&quot;username&quot;),workspace=text(r,&quot;workspace_id&quot;);</span>
+<span class="fc" id="L44">            verifyOwner(scope,owner,draftPrincipalScope);</span>
+            // Installation scope must obey the draft writer's canonical owner format too.
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (!owner.equals(draftOwner(owner))) throw new IOException(&quot;Analysis draft owner is not canonical&quot;);</span>
+            try {
+<span class="fc" id="L48">                var identity=RepositoryTenantIdentity.parse(tenant);</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">                if (!tenant.equals(identity.scopeKey()) || !scope.includesTenant(tenant)</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                        || !identity.workspaceScope().equals(&quot;WORKSPACE:&quot;+workspace))</span>
+<span class="fc" id="L51">                    throw new IOException(&quot;Analysis draft scope is inconsistent&quot;);</span>
+<span class="fc" id="L52">            } catch (IllegalArgumentException | NullPointerException invalid) { throw new IOException(&quot;Analysis draft scope is inconsistent&quot;); }</span>
+<span class="fc" id="L53">            String payload=text(r,&quot;payload_json&quot;); var document=object(payload);</span>
+<span class="fc" id="L54">            String businessText=value(document,&quot;businessText&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if (currentTexts.size() &gt;= 100_000) throw new IOException(&quot;Analysis draft selection limit exceeded&quot;);</span>
+<span class="fc" id="L56">            currentTexts.put(new DraftKey(tenant,owner),textHash(businessText));</span>
+<span class="fc" id="L57">            return new DraftRecord(reference(r,&quot;analysis.draft&quot;,&quot;id&quot;),tenant,workspace,owner,</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                    draft(document),scope.history()?payload:null,instant(r,&quot;created_at&quot;),instant(r,&quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L60">        var runs = scope.repositories(&quot;r.repository_id&quot;,&quot;r.workspace_id&quot;);</span>
+<span class="fc" id="L61">        var runParameters = new ArrayList&lt;Object&gt;(runs.parameters());</span>
+<span class="fc" id="L62">        String runWhere=runs.sql();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (!scope.installation()) { runWhere += &quot; and r.username=?&quot;; runParameters.add(principalScope); }</span>
+        // Select from metadata, never from request/result bodies or a collation-sensitive SQL anti-join.
+<span class="fc" id="L65">        var selection = new AnalysisRunSelection(scope.history());</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        rows.visit(scope.selectedVersion()?null:new Query(&quot;select &quot;+RUN_COLUMNS+&quot; from analysis_continuation r where &quot;+runWhere+&quot; order by r.id&quot;,runParameters),</span>
+<span class="fc" id="L67">                r -&gt; run(r,scope),selection::accept);</span>
+<span class="fc" id="L68">        var pending = selection.selected();</span>
+<span class="fc" id="L69">        var includedRuns = new TreeMap&lt;String,Run&gt;();</span>
+<span class="fc" id="L70">        rows.writeBatches(sink,&quot;analysis&quot;,&quot;continuations&quot;,profile,batches(&quot;select &quot;+RUN_COLUMNS+&quot;,r.request_json,r.result_json from analysis_continuation r where r.id in (&quot;, &quot; order by r.id&quot;,pending.keySet()),r -&gt; {</span>
+<span class="fc" id="L71">            var run=run(r,scope);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (!run.equals(pending.remove(run.id()))) throw new IOException(&quot;Analysis continuation changed during capture&quot;);</span>
+<span class="fc" id="L73">            var key=run.key();</span>
+<span class="fc" id="L74">            String request=text(r,&quot;request_json&quot;);</span>
+<span class="fc" id="L75">            var requestDocument=object(request);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (!scope.history()) {</span>
+<span class="fc" id="L77">                String tenant=new RepositoryTenantIdentity(key.repository(),&quot;WORKSPACE:&quot;+key.workspace(),key.branch()).scopeKey();</span>
+<span class="fc" id="L78">                var draftKey = new DraftKey(tenant,draftOwner(key.owner()));</span>
+<span class="fc bfc" id="L79" title="All 4 branches covered.">                if (currentTexts.containsKey(draftKey) &amp;&amp; !Objects.equals(currentTexts.get(draftKey),textHash(value(requestDocument,&quot;businessText&quot;)))) return null;</span>
+<span class="fc bfc" id="L80" title="All 4 branches covered.">                if (!currentTexts.containsKey(draftKey) &amp;&amp; &quot;COMPLETED&quot;.equals(run.state())) return null;</span>
+            }
+<span class="fc" id="L82">            includedRuns.put(run.id(),run);</span>
+<span class="fc" id="L83">            return new ContinuationRecord(new SourceRecordId(&quot;analysis.continuation&quot;,run.id()),key.owner(),key.repository(),key.workspace(),key.branch(),run.inputHash(),request,text(r,&quot;result_json&quot;),</span>
+<span class="fc" id="L84">                    run.state(),ResumePolicy.REVIEW_REQUIRED,run.updatedAt(),run.currentNode());</span>
+        });
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (!pending.isEmpty()) throw new IOException(&quot;Analysis continuation disappeared during capture&quot;);</span>
+<span class="fc" id="L87">        rows.writeBatches(sink,&quot;analysis&quot;,&quot;questions&quot;,profile,batches(&quot;select &quot;+RUN_COLUMNS+&quot;,q.id,q.run_id as question_run_id,q.question_key,q.input_hash,q.provider,q.node_codes,q.detail_json,q.prompt_text,q.state,q.attempts,q.started_at from analysis_question_checkpoint q join analysis_continuation r on r.id=q.run_id where r.id in (&quot;, &quot; order by q.id&quot;,includedRuns.keySet()),r -&gt; {</span>
+<span class="fc" id="L88">            var run=run(r,scope);</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            if (!run.id().equals(text(r,&quot;question_run_id&quot;)) || !run.equals(includedRuns.get(run.id())))</span>
+<span class="fc" id="L90">                throw new IOException(&quot;Analysis question reference is inconsistent&quot;);</span>
+<span class="fc" id="L91">            return new QuestionRecord(reference(r,&quot;analysis.question&quot;,&quot;id&quot;),new SourceRecordId(&quot;analysis.continuation&quot;,run.id()),text(r,&quot;question_key&quot;),text(r,&quot;input_hash&quot;),text(r,&quot;provider&quot;),text(r,&quot;node_codes&quot;),text(r,&quot;detail_json&quot;),text(r,&quot;prompt_text&quot;),text(r,&quot;state&quot;),r.getInt(&quot;attempts&quot;),r.getLong(&quot;started_at&quot;));</span>
+        });
+<span class="fc" id="L93">    }</span>
+    private static String draftOwner(String owner) {
+        // Working drafts persist WorkspaceScope.username's normalized form; runs preserve the authenticated owner.
+<span class="fc" id="L96">        return owner.strip().toLowerCase(Locale.ROOT);</span>
+    }
+    private static void verifyOwner(BackupRowScope scope,String owner,String expectedOwner) throws IOException {
+<span class="pc bpc" id="L99" title="2 of 8 branches missed.">        if (owner==null || owner.isBlank() || (!scope.installation() &amp;&amp; !expectedOwner.equals(owner)))</span>
+<span class="fc" id="L100">            throw new IOException(&quot;Analysis owner is inconsistent&quot;);</span>
+<span class="fc" id="L101">    }</span>
+    private Run run(ResultSet row,BackupRowScope scope) throws SQLException,IOException {
+<span class="fc" id="L103">        var key=new Key(text(row,&quot;username&quot;),text(row,&quot;repository_id&quot;),text(row,&quot;workspace_id&quot;),text(row,&quot;branch_name&quot;));</span>
+<span class="fc" id="L104">        verifyOwner(scope,key.owner(),principalScope);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (!scope.includesWorkspace(key.repository(),key.workspace())) throw new IOException(&quot;Analysis continuation scope is inconsistent&quot;);</span>
+        try {
+<span class="fc" id="L107">            var tenant=new RepositoryTenantIdentity(key.repository(),&quot;WORKSPACE:&quot;+key.workspace(),key.branch());</span>
+<span class="pc bpc" id="L108" title="3 of 6 branches missed.">            if (key.workspace()==null || !tenant.repositoryId().equals(key.repository()) || !tenant.branch().equals(key.branch())</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                    || !tenant.workspaceScope().equals(&quot;WORKSPACE:&quot;+key.workspace())) throw new IllegalArgumentException();</span>
+<span class="pc" id="L110">        } catch (IllegalArgumentException invalid) { throw new IOException(&quot;Analysis continuation scope is inconsistent&quot;); }</span>
+<span class="fc" id="L111">        return new Run(text(row,&quot;run_id&quot;),key,text(row,&quot;run_input_hash&quot;),row.getLong(&quot;updated_at&quot;),row.getLong(&quot;row_version&quot;),text(row,&quot;run_state&quot;),text(row,&quot;current_node&quot;));</span>
+    }
+    private static List&lt;Query&gt; batches(String prefix,String suffix,Set&lt;String&gt; selectedIds) {
+<span class="fc" id="L114">        var ids=new ArrayList&lt;&gt;(selectedIds); var queries=new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (int start=0;start&lt;ids.size();start+=200) {</span>
+<span class="fc" id="L116">            var batch=ids.subList(start,Math.min(start+200,ids.size()));</span>
+<span class="fc" id="L117">            queries.add(new Query(prefix+String.join(&quot;,&quot;,Collections.nCopies(batch.size(),&quot;?&quot;))+&quot;)&quot;+suffix,batch));</span>
+        }
+<span class="fc" id="L119">        return queries;</span>
+    }
+    private static JsonNode object(String value) throws IOException {
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (value==null) throw new IOException(&quot;Missing analysis document&quot;);</span>
+<span class="fc" id="L123">        var document=json().readTree(value);</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">        if (document==null || !document.isObject()) throw new IOException(&quot;Invalid analysis document&quot;);</span>
+<span class="fc" id="L125">        return document;</span>
+    }
+    private static String value(JsonNode node,String field) throws IOException {
+<span class="fc" id="L128">        var value=node.get(field);</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">        if (value==null || value.isNull()) return null;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!value.isTextual()) throw new IOException(&quot;Invalid analysis text field&quot;);</span>
+<span class="fc" id="L131">        return value.textValue();</span>
+    }
+    private static DraftPayload draft(JsonNode node) throws IOException {
+<span class="fc" id="L134">        String current=value(node,&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">        boolean analyzed=current!=null &amp;&amp; current.equals(value(node,&quot;lastAnalyzedText&quot;));</span>
+<span class="fc" id="L136">        return new DraftPayload(1,value(node,&quot;draftState&quot;),current,value(node,&quot;currentView&quot;),node.get(&quot;analysisOptions&quot;),</span>
+<span class="fc bfc" id="L137" title="All 4 branches covered.">                analyzed?current:null,Objects.equals(current,value(node,&quot;storedBusinessText&quot;))?current:null,</span>
+<span class="fc bfc" id="L138" title="All 6 branches covered.">                analyzed?node.get(&quot;scores&quot;):null,analyzed?node.get(&quot;reasons&quot;):null,analyzed?node.get(&quot;discrepancies&quot;):null,</span>
+<span class="fc bfc" id="L139" title="All 6 branches covered.">                analyzed?node.get(&quot;architectureView&quot;):null,analyzed?node.get(&quot;provisionalRelations&quot;):null,analyzed?node.get(&quot;evaluatedNodes&quot;):null);</span>
+    }
+    private static String textHash(String value) {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc" id="L143">        try { return HexFormat.of().formatHex(java.security.MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L144">        catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+<span class="fc" id="L146">    private record DraftKey(String tenant,String principalScope) { }</span>
+<span class="fc" id="L147">    public enum ResumePolicy { REVIEW_REQUIRED }</span>
+<span class="fc" id="L148">    public record DraftPayload(int schemaVersion,String draftState,String businessText,String currentView,JsonNode analysisOptions,</span>
+                               String lastAnalyzedText,String storedBusinessText,JsonNode scores,JsonNode reasons,JsonNode discrepancies,
+                               JsonNode architectureView,JsonNode provisionalRelations,JsonNode evaluatedNodes) { }
+<span class="fc" id="L151">    public record DraftRecord(SourceRecordId sourceId,String tenant,String workspaceId,String principalScope,DraftPayload payload,String historicalPayload,String createdAt,String updatedAt) { }</span>
+<span class="fc" id="L152">    public record ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,</span>
+                                     String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode) { }
+<span class="fc" id="L154">    public record QuestionRecord(SourceRecordId sourceId,SourceRecordId run,String questionKey,String inputHash,String provider,String nodeCodesJson,</span>
+                                 String detailJson,String prompt,String sourceState,int attempts,long startedAtEpochMillis) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

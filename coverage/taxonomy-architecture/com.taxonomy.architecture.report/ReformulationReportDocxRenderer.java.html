@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationReportDocxRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ReformulationReportDocxRenderer.java</span></div><h1>ReformulationReportDocxRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.architecture.decision.DecisionReportLabels;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.reformulation.*;
+import com.taxonomy.reformulation.DecisionQuestion;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayOutputStream;
+import java.math.BigInteger;
+import java.util.*;
+
+/** POI adapter for the export-owned immutable reformulation and graph contracts. */
+@Component
+<span class="fc" id="L16">public final class ReformulationReportDocxRenderer implements ReformulationDocxPort {</span>
+    @Override public byte[] render(ReformulationReportRenderer.Input report, FrozenReformulationArchitecture architecture) {
+<span class="fc" id="L18">        try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L19">            standalonePage(document);</span>
+<span class="fc" id="L20">            var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()));</span>
+<span class="fc" id="L21">            var graphNodes = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L22">            architecture.graph().nodes().forEach(node -&gt; graphNodes.add(node.id()));</span>
+<span class="fc" id="L23">            var graphEdges = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L24">            architecture.graph().edges().forEach(edge -&gt; graphEdges.add(edge.id()));</span>
+<span class="fc" id="L25">            boolean de = report.language().equals(&quot;de&quot;);</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">            String title = report.adoptionReceipt() ? t(de, &quot;Neuformulierung — Übernahmebeleg&quot;, &quot;Reformulation — adoption receipt&quot;)</span>
+<span class="fc" id="L27">                    : t(de, &quot;Neuformulierungsangebot — gespeicherte Revision&quot;, &quot;Reformulation offer — saved revision&quot;);</span>
+<span class="fc" id="L28">            document.getProperties().getCoreProperties().setTitle(title);</span>
+<span class="fc" id="L29">            w.heading(title, 0, null);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            w.paragraph(report.adoptionReceipt()</span>
+<span class="fc" id="L31">                    ? t(de, &quot;Dokumentierte Übernahme zum angegebenen Zeitpunkt. Keine Aussage über die heute aktive Version oder fachliche Freigabe.&quot;,</span>
+                            &quot;Documented adoption at the stated time. Not a claim about today's active version or expert approval.&quot;)
+<span class="fc" id="L33">                    : t(de, &quot;Gespeicherter Vorschlag — nicht übernommen. Spätere Entscheidungen gehören nicht zu diesem Stand.&quot;,</span>
+                            &quot;Saved proposal — not adopted. Later decisions are not part of this record.&quot;));
+<span class="fc" id="L35">            var contents = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L36">            contents.put(&quot;rf_source&quot;, t(de, &quot;Original und Vorschlag&quot;, &quot;Original and proposal&quot;));</span>
+<span class="fc" id="L37">            contents.put(&quot;rf_questions&quot;, t(de, &quot;Fragen und Antworten&quot;, &quot;Questions and answers&quot;));</span>
+<span class="fc" id="L38">            contents.put(&quot;rf_statements&quot;, t(de, &quot;Aussagen und Herkunft&quot;, &quot;Statements and provenance&quot;));</span>
+<span class="fc" id="L39">            contents.put(&quot;rf_validation&quot;, t(de, &quot;Prüfung und übernommene Evidenz&quot;, &quot;Validation and inherited evidence&quot;));</span>
+<span class="fc" id="L40">            contents.put(&quot;architecture_figures&quot;, t(de, &quot;Gespeicherte Architektur&quot;, &quot;Saved architecture&quot;));</span>
+<span class="fc" id="L41">            contents.put(&quot;architecture_evidence&quot;, t(de, &quot;Architekturbeleg&quot;, &quot;Architecture provenance&quot;));</span>
+<span class="fc" id="L42">            w.contents(contents);</span>
+<span class="fc" id="L43">            w.heading(t(de, &quot;Original und Vorschlag&quot;, &quot;Original and proposal&quot;), 1, &quot;rf_source&quot;);</span>
+<span class="fc" id="L44">            w.heading(t(de, &quot;Originalanforderung&quot;, &quot;Original requirement&quot;), 2, null);</span>
+<span class="fc" id="L45">            w.paragraph(report.originalText());</span>
+<span class="fc" id="L46">            w.heading(t(de, &quot;Vollständiger Vorschlagstext&quot;, &quot;Complete proposed text&quot;), 2, null);</span>
+<span class="fc" id="L47">            w.paragraph(report.reviewedText());</span>
+<span class="fc" id="L48">            report.metadata().forEach((key, value) -&gt; w.paragraph(label(de, key) + &quot;: &quot; + value));</span>
+<span class="fc" id="L49">            w.heading(t(de, &quot;Fragen und Antworten&quot;, &quot;Questions and answers&quot;), 1, &quot;rf_questions&quot;);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (report.questions().isEmpty()) w.paragraph(t(de, &quot;Keine Fragen gespeichert; dies bedeutet keine Freigabe.&quot;,</span>
+                    &quot;No questions recorded; this does not imply approval.&quot;));
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            for (var question : report.questions()) {</span>
+<span class="fc" id="L53">                w.heading(question.id() + &quot; — &quot; + question.wording(), 2, bookmark(&quot;question&quot;, question.id()));</span>
+<span class="fc" id="L54">                w.paragraph(&quot;Status: &quot; + question.state());</span>
+<span class="fc" id="L55">                answerSchema(w, question.answerSchema(), de);</span>
+<span class="fc" id="L56">                w.paragraph(t(de, &quot;Auswirkungen: &quot;, &quot;Consequences: &quot;) + Objects.toString(question.consequences(), &quot;&quot;)</span>
+<span class="fc" id="L57">                        + &quot; · &quot; + t(de, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + question.affectedStatementIds()</span>
+<span class="fc" id="L58">                        + &quot; · &quot; + t(de, &quot;Vorausgesetzte Fragen: &quot;, &quot;Prerequisite questions: &quot;) + question.prerequisites()</span>
+<span class="fc" id="L59">                        + &quot; · &quot; + t(de, &quot;Abhängige Fragen: &quot;, &quot;Dependent questions: &quot;) + question.dependentQuestionIds());</span>
+<span class="fc" id="L60">                question.discoveries().forEach(discovery -&gt; {</span>
+<span class="fc" id="L61">                    w.paragraph(t(de, &quot;Entdeckung: &quot;, &quot;Discovery: &quot;)</span>
+<span class="fc" id="L62">                            + discovery.location() + &quot; · &quot; + discovery.context() + &quot; · &quot; + discovery.rationale());</span>
+<span class="fc" id="L63">                    references(w, discovery.nodeIds(), graphNodes, de);</span>
+<span class="fc" id="L64">                    references(w, discovery.edgeIds(), graphEdges, de);</span>
+<span class="fc" id="L65">                });</span>
+<span class="fc" id="L66">                question.origins().forEach(origin -&gt; {</span>
+<span class="fc" id="L67">                    w.paragraph(t(de, &quot;Ursprungsfrage: &quot;, &quot;Origin question: &quot;)</span>
+<span class="fc" id="L68">                            + origin.id() + &quot; · &quot; + origin.wording());</span>
+<span class="fc" id="L69">                    w.paragraph(t(de, &quot;Ursprungsstatus: &quot;, &quot;Origin state: &quot;) + origin.state()</span>
+<span class="fc" id="L70">                            + &quot; · &quot; + t(de, &quot;Thema: &quot;, &quot;Subject: &quot;) + origin.key().subject()</span>
+<span class="fc" id="L71">                            + &quot; · &quot; + t(de, &quot;Dimension: &quot;, &quot;Dimension: &quot;) + origin.key().dimension()</span>
+<span class="fc" id="L72">                            + &quot; · &quot; + t(de, &quot;Geltungsbereich: &quot;, &quot;Scope: &quot;) + origin.key().scope());</span>
+<span class="fc" id="L73">                    answerSchema(w, origin.answerSchema(), de);</span>
+<span class="fc" id="L74">                    w.paragraph(t(de, &quot;Auswirkungen: &quot;, &quot;Consequences: &quot;)</span>
+<span class="fc" id="L75">                            + Objects.toString(origin.consequences(), &quot;&quot;)</span>
+<span class="fc" id="L76">                            + &quot; · &quot; + t(de, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + origin.affectedStatementIds()</span>
+<span class="fc" id="L77">                            + &quot; · &quot; + t(de, &quot;Vorausgesetzte Fragen: &quot;, &quot;Prerequisite questions: &quot;)</span>
+<span class="fc" id="L78">                            + origin.prerequisites()</span>
+<span class="fc" id="L79">                            + &quot; · &quot; + t(de, &quot;Abhängige Fragen: &quot;, &quot;Dependent questions: &quot;)</span>
+<span class="fc" id="L80">                            + origin.dependentQuestionIds());</span>
+<span class="fc" id="L81">                    origin.discoveries().forEach(discovery -&gt; {</span>
+<span class="fc" id="L82">                        w.paragraph(t(de, &quot;Entdeckt bei: &quot;, &quot;Discovered at: &quot;) + discovery.location()</span>
+<span class="fc" id="L83">                                + &quot; · &quot; + t(de, &quot;Kontext: &quot;, &quot;Context: &quot;) + discovery.context()</span>
+<span class="fc" id="L84">                                + &quot; · &quot; + t(de, &quot;Begründung: &quot;, &quot;Rationale: &quot;) + discovery.rationale()</span>
+<span class="fc" id="L85">                                + &quot; · &quot; + t(de, &quot;Quellstellen: &quot;, &quot;Source spans: &quot;) + discovery.sourceSpans());</span>
+<span class="fc" id="L86">                        references(w, discovery.nodeIds(), graphNodes, de);</span>
+<span class="fc" id="L87">                        references(w, discovery.edgeIds(), graphEdges, de);</span>
+<span class="fc" id="L88">                    });</span>
+<span class="fc" id="L89">                });</span>
+<span class="pc" id="L90">                question.sourceResolutions().forEach(resolution -&gt; w.paragraph(t(de, &quot;Aus Original beantwortet: &quot;, &quot;Resolved from source: &quot;)</span>
+<span class="nc" id="L91">                        + resolution.values() + &quot; · &quot; + resolution.rationale() + &quot; · &quot; + resolution.sourceSpans()));</span>
+<span class="fc" id="L92">            }</span>
+<span class="fc" id="L93">            w.heading(t(de, &quot;Gespeicherte Antworten und Verlauf&quot;, &quot;Saved answers and history&quot;), 2, null);</span>
+<span class="fc" id="L94">            var active = com.taxonomy.reformulation.DecisionAnswer.active(report.answers());</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            for (var answer : report.answers()) w.paragraph(answer.questionId() + &quot; · &quot; + answer.state()</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    + (active.contains(answer) ? t(de, &quot; · wirksam&quot;, &quot; · active&quot;)</span>
+<span class="fc" id="L97">                            : t(de, &quot; · ersetzt&quot;, &quot; · superseded&quot;)) + &quot; · &quot; + answer.values()</span>
+<span class="fc" id="L98">                    + &quot; · &quot; + Objects.toString(answer.otherText(), &quot;&quot;) + &quot; · &quot; + answer.author() + &quot; · &quot;</span>
+<span class="fc" id="L99">                    + answer.occurredAt() + &quot; · &quot; + answer.rationale() + &quot; · &quot; + answer.disposition()</span>
+<span class="fc" id="L100">                    + &quot; · &quot; + t(de, &quot;ersetzt &quot;, &quot;supersedes &quot;) + answer.supersedes());</span>
+<span class="fc" id="L101">            w.heading(t(de, &quot;Aussagen und Herkunft&quot;, &quot;Statements and provenance&quot;), 1, &quot;rf_statements&quot;);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            for (var section : report.sections()) {</span>
+<span class="fc" id="L103">                w.heading(section.id() + &quot; — &quot; + section.title(), 2, bookmark(&quot;section&quot;, section.id()));</span>
+<span class="fc" id="L104">                w.paragraph(section.summary() + &quot; · &quot; + section.taxonomyCode() + &quot; · &quot; + section.children());</span>
+<span class="fc" id="L105">                w.paragraph(t(de, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + section.statementIds()</span>
+<span class="fc" id="L106">                        + &quot; · &quot; + t(de, &quot;Fragen: &quot;, &quot;Questions: &quot;) + section.questionIds());</span>
+<span class="fc" id="L107">            }</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            for (var statement : report.statements()) {</span>
+<span class="fc" id="L109">                w.heading(statement.id() + &quot; — &quot; + statement.provenance(), 2, bookmark(&quot;statement&quot;, statement.id()));</span>
+<span class="fc" id="L110">                w.paragraph(statement.wording());</span>
+<span class="fc" id="L111">                w.paragraph(statement.reviewState() + &quot; · &quot; + statement.editingOrigin() + &quot; · &quot;</span>
+<span class="fc" id="L112">                        + Objects.toString(statement.conditionalValidity(), &quot;&quot;) + &quot; · &quot;</span>
+<span class="fc" id="L113">                        + t(de, &quot;Architektur &quot;, &quot;architecture &quot;) + statement.architectureLinks()</span>
+<span class="fc" id="L114">                        + &quot; · &quot; + t(de, &quot;Fragen &quot;, &quot;questions &quot;) + statement.questionDependencies()</span>
+<span class="fc" id="L115">                        + &quot; · &quot; + t(de, &quot;Quellstellen &quot;, &quot;source &quot;) + statement.sourceSpans());</span>
+<span class="fc" id="L116">                references(w, statement.architectureLinks(), graphNodes, graphEdges, de);</span>
+<span class="fc" id="L117">            }</span>
+<span class="fc" id="L118">            w.heading(t(de, &quot;Prüfung und übernommene Evidenz&quot;, &quot;Validation and inherited evidence&quot;), 1, &quot;rf_validation&quot;);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (report.validation().findings().isEmpty()) w.paragraph(t(de,</span>
+                    &quot;Keine Prüfbefunde gespeichert; dies bedeutet keine fachliche Freigabe.&quot;,
+                    &quot;No validation findings recorded; this does not imply expert approval.&quot;));
+<span class="fc" id="L122">            report.validation().findings().forEach(f -&gt; w.paragraph(f.kind() + &quot; · &quot; + f.code() + &quot; · &quot;</span>
+<span class="fc" id="L123">                    + f.message() + &quot; · &quot; + f.statementIds() + &quot; · &quot; + f.sourceSpans()));</span>
+            // The raw archive remains in JSON export. Word presents the reviewable evidence above.
+<span class="fc" id="L125">            w.heading(t(de, &quot;Gespeicherte Architektur — Kontext&quot;, &quot;Saved architecture — context&quot;), 1, null);</span>
+<span class="fc" id="L126">            architecture.identity().forEach((key, value) -&gt; w.paragraph(label(de, key) + &quot;: &quot; + value));</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            w.paragraph(architecture.gapAnalysisAvailable()</span>
+<span class="fc" id="L128">                    ? t(de, &quot;Lückenanalyse gespeichert&quot;, &quot;Gap analysis recorded&quot;)</span>
+<span class="fc" id="L129">                    : t(de, &quot;Lückenanalyse nicht verfügbar — nicht als lückenfrei zu interpretieren&quot;,</span>
+                            &quot;Gap analysis unavailable — not evidence of completeness&quot;));
+<span class="fc" id="L131">            architecture.warnings().forEach(w::paragraph);</span>
+<span class="fc" id="L132">            architecture.elementDetails().forEach(w::paragraph);</span>
+<span class="fc" id="L133">            architecture.relationDetails().forEach(w::paragraph);</span>
+<span class="fc" id="L134">            var graph = architecture.graph();</span>
+<span class="fc" id="L135">            w.heading(t(de, &quot;Nachweisbare Architekturbezüge&quot;, &quot;Navigable architecture references&quot;), 2, null);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            for (var node : graph.nodes()) {</span>
+<span class="fc" id="L137">                var p = w.paragraph(node.id() + &quot; — &quot; + node.label());</span>
+<span class="fc" id="L138">                w.bookmark(p, referenceBookmark(node.id()));</span>
+<span class="fc" id="L139">            }</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            for (var edge : graph.edges()) {</span>
+<span class="fc" id="L141">                var p = w.paragraph(edge.id() + &quot; · &quot; + edge.sourceId() + &quot; → &quot; + edge.targetId()</span>
+<span class="fc" id="L142">                        + &quot; · &quot; + edge.relationType());</span>
+<span class="fc" id="L143">                w.bookmark(p, referenceBookmark(edge.id()));</span>
+<span class="fc" id="L144">            }</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (graph.nodes().isEmpty()) {</span>
+<span class="fc" id="L146">                w.heading(t(de, &quot;Gespeicherte Architektur&quot;, &quot;Saved architecture&quot;), 1, &quot;architecture_figures&quot;);</span>
+<span class="fc" id="L147">                w.paragraph(t(de, &quot;Kein Architekturgraph im ausgewählten Snapshot gespeichert.&quot;,</span>
+                        &quot;No architecture graph recorded in the selected snapshot.&quot;));
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                if (architecture.gapAnalysisAvailable()) {</span>
+<span class="fc" id="L150">                    w.heading(t(de, &quot;Gespeicherte Lücken&quot;, &quot;Saved gaps&quot;), 2, null);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                    if (architecture.gaps().isEmpty()) w.paragraph(t(de, &quot;Keine Lücken gespeichert.&quot;, &quot;No gaps recorded.&quot;));</span>
+<span class="fc" id="L152">                    else architecture.gaps().forEach(w::paragraph);</span>
+                }
+<span class="fc" id="L154">                w.heading(t(de, &quot;Architekturbeleg&quot;, &quot;Architecture provenance&quot;), 1, &quot;architecture_evidence&quot;);</span>
+<span class="fc" id="L155">                w.paragraph(&quot;SHA-256: &quot; + ArchitectureReportDocument.graphSha256(graph));</span>
+<span class="fc" id="L156">                document.write(output);</span>
+<span class="fc" id="L157">                return output.toByteArray();</span>
+            }
+<span class="fc" id="L159">            var source = architecture.source();</span>
+<span class="fc" id="L160">            var evidence = new ArchitectureReportDocument.SnapshotEvidence(</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">                    source == null ? null : source.projectId(), source == null ? null : source.requirementId(),</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">                    source == null ? null : source.versionId(), source == null ? null : source.versionNumber(),</span>
+<span class="fc" id="L163">                    architecture.identity().get(&quot;Snapshot&quot;), architecture.identity().get(&quot;Repository&quot;),</span>
+<span class="fc" id="L164">                    architecture.identity().get(&quot;Workspace&quot;), architecture.identity().get(&quot;Analysis based-on branch&quot;),</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                    architecture.identity().get(&quot;Analysis based-on commit&quot;), source == null ? null : source.provider(),</span>
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">                    source == null ? null : source.model(), source == null ? null : source.taxonomyFingerprint(),</span>
+<span class="fc" id="L167">                    ArchitectureReportDocument.graphSha256(graph));</span>
+<span class="fc" id="L168">            var architectureDocument = ArchitectureReportDocument.from(title, report.language(), report.originalText(),</span>
+<span class="fc" id="L169">                    architecture.identity().entrySet().stream()</span>
+<span class="fc" id="L170">                            .map(entry -&gt; label(de, entry.getKey()) + &quot;: &quot; + entry.getValue())</span>
+<span class="fc" id="L171">                            .collect(java.util.stream.Collectors.joining(&quot;; &quot;)),</span>
+<span class="fc" id="L172">                    t(de, &quot;Historischer Stand; keine fachliche Freigabe.&quot;,</span>
+                            &quot;Historical record; no expert approval.&quot;),
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                    architecture.gapAnalysisAvailable() ? architecture.gaps()</span>
+<span class="pc" id="L175">                            : List.of(t(de, &quot;Nicht verfügbar&quot;, &quot;Unavailable&quot;)), graph,</span>
+<span class="fc" id="L176">                    new LayeredDiagramLayoutService().layout(graph), null, evidence);</span>
+<span class="fc" id="L177">            new ArchitectureWordSectionRenderer().write(document, architectureDocument);</span>
+<span class="fc" id="L178">            document.write(output);</span>
+<span class="fc" id="L179">            return output.toByteArray();</span>
+<span class="pc" id="L180">        } catch (Exception exception) {</span>
+<span class="nc" id="L181">            throw new IllegalStateException(&quot;Could not render frozen reformulation Word report&quot;, exception);</span>
+        }
+    }
+    private static void answerSchema(WordDocumentWriter w, DecisionQuestion.AnswerSchema schema, boolean de) {
+<span class="fc" id="L185">        w.paragraph(t(de, &quot;Antworttyp: &quot;, &quot;Answer type: &quot;) + schema.kind()</span>
+<span class="fc" id="L186">                + &quot; · &quot; + t(de, &quot;Optionen: &quot;, &quot;Options: &quot;) + schema.options()</span>
+<span class="fc" id="L187">                + &quot; · &quot; + t(de, &quot;Einheit: &quot;, &quot;Unit: &quot;) + Objects.toString(schema.unit(), &quot;—&quot;)</span>
+<span class="fc" id="L188">                + &quot; · &quot; + t(de, &quot;Minimum: &quot;, &quot;Minimum: &quot;) + Objects.toString(schema.minimum(), &quot;—&quot;)</span>
+<span class="fc" id="L189">                + &quot; · &quot; + t(de, &quot;Maximum: &quot;, &quot;Maximum: &quot;) + Objects.toString(schema.maximum(), &quot;—&quot;));</span>
+<span class="fc" id="L190">        w.paragraph(t(de, &quot;Optionsbedeutungen: &quot;, &quot;Option meanings: &quot;)</span>
+<span class="fc" id="L191">                + new TreeMap&lt;&gt;(schema.optionMeanings()).entrySet().stream()</span>
+<span class="fc" id="L192">                        .map(entry -&gt; entry.getKey() + &quot;=&quot; + entry.getValue()).toList()</span>
+<span class="fc" id="L193">                + &quot; · &quot; + t(de, &quot;Unvereinbare Optionen: &quot;, &quot;Incompatible options: &quot;) + schema.incompatibleOptions()</span>
+<span class="fc" id="L194">                + &quot; · &quot; + t(de, &quot;Anwendbarkeit: &quot;, &quot;Applicability: &quot;)</span>
+<span class="fc" id="L195">                + schema.applicability().stream().map(condition -&gt; condition.questionId()</span>
+<span class="fc" id="L196">                        + &quot; → &quot; + condition.anyOf()).toList());</span>
+<span class="fc" id="L197">    }</span>
+    private static void standalonePage(XWPFDocument document) {
+<span class="fc" id="L199">        var styles = document.createStyles();</span>
+<span class="fc" id="L200">        var fonts = org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();</span>
+<span class="fc" id="L201">        fonts.setAscii(&quot;Aptos&quot;); fonts.setHAnsi(&quot;Aptos&quot;); fonts.setCs(&quot;Aptos&quot;); fonts.setEastAsia(&quot;Aptos&quot;);</span>
+<span class="fc" id="L202">        styles.setDefaultFonts(fonts);</span>
+<span class="fc" id="L203">        styles.getDefaultRunStyle().getRPr().addNewSz().setVal(BigInteger.valueOf(20));</span>
+<span class="fc" id="L204">        var section = document.getDocument().getBody().addNewSectPr();</span>
+<span class="fc" id="L205">        var size = section.addNewPgSz();</span>
+<span class="fc" id="L206">        size.setW(BigInteger.valueOf(11906)); size.setH(BigInteger.valueOf(16838));</span>
+<span class="fc" id="L207">        var margin = section.addNewPgMar();</span>
+<span class="fc" id="L208">        margin.setLeft(BigInteger.valueOf(1050)); margin.setRight(BigInteger.valueOf(1050));</span>
+<span class="fc" id="L209">        margin.setTop(BigInteger.valueOf(1020)); margin.setBottom(BigInteger.valueOf(1160));</span>
+<span class="fc" id="L210">        margin.setHeader(BigInteger.valueOf(420)); margin.setFooter(BigInteger.valueOf(560));</span>
+<span class="fc" id="L211">    }</span>
+    private static String label(boolean de, String key) {
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (!de) return key;</span>
+<span class="pc bpc" id="L214" title="2 of 31 branches missed.">        return switch (key) {</span>
+<span class="fc" id="L215">            case &quot;Proposal&quot; -&gt; &quot;Angebot&quot;;</span>
+<span class="fc" id="L216">            case &quot;Project / Requirement&quot; -&gt; &quot;Projekt / Anforderung&quot;;</span>
+<span class="fc" id="L217">            case &quot;Source version&quot; -&gt; &quot;Quellversion&quot;;</span>
+<span class="fc" id="L218">            case &quot;Source SHA-256&quot; -&gt; &quot;Quell-SHA-256&quot;;</span>
+<span class="fc" id="L219">            case &quot;Analysis snapshot&quot; -&gt; &quot;Analyse-Snapshot&quot;;</span>
+<span class="fc" id="L220">            case &quot;Proposal revision&quot; -&gt; &quot;Angebotsrevision&quot;;</span>
+<span class="fc" id="L221">            case &quot;Saved by&quot; -&gt; &quot;Gespeichert von&quot;;</span>
+<span class="fc" id="L222">            case &quot;Saved at&quot; -&gt; &quot;Gespeichert am&quot;;</span>
+<span class="fc" id="L223">            case &quot;Revision rationale&quot; -&gt; &quot;Begründung der Revision&quot;;</span>
+<span class="fc" id="L224">            case &quot;Adoption command&quot; -&gt; &quot;Übernahmebefehl&quot;;</span>
+<span class="fc" id="L225">            case &quot;Adopted by&quot; -&gt; &quot;Übernommen von&quot;;</span>
+<span class="fc" id="L226">            case &quot;Adopted at&quot; -&gt; &quot;Übernommen am&quot;;</span>
+<span class="fc" id="L227">            case &quot;Adoption rationale&quot; -&gt; &quot;Begründung der Übernahme&quot;;</span>
+<span class="fc" id="L228">            case &quot;Target version&quot; -&gt; &quot;Zielversion&quot;;</span>
+<span class="fc" id="L229">            case &quot;Warnings acknowledged&quot; -&gt; &quot;Warnungen bestätigt&quot;;</span>
+<span class="fc" id="L230">            case &quot;Unresolved question IDs&quot; -&gt; &quot;IDs offener Fragen&quot;;</span>
+<span class="fc" id="L231">            case &quot;Preview SHA-256&quot; -&gt; &quot;Vorschau-SHA-256&quot;;</span>
+<span class="nc" id="L232">            case &quot;Inherited decision context&quot; -&gt; &quot;Übernommener Entscheidungskontext&quot;;</span>
+<span class="fc" id="L233">            case &quot;Snapshot&quot; -&gt; &quot;Snapshot&quot;;</span>
+<span class="fc" id="L234">            case &quot;Repository&quot; -&gt; &quot;Repository&quot;;</span>
+<span class="fc" id="L235">            case &quot;Workspace&quot; -&gt; &quot;Arbeitsbereich&quot;;</span>
+<span class="fc" id="L236">            case &quot;Offer workspace branch&quot; -&gt; &quot;Angebotszweig&quot;;</span>
+<span class="fc" id="L237">            case &quot;Snapshot branch&quot; -&gt; &quot;Snapshot-Zweig&quot;;</span>
+<span class="fc" id="L238">            case &quot;Analysis based-on branch&quot; -&gt; &quot;Analyse-Ausgangszweig&quot;;</span>
+<span class="fc" id="L239">            case &quot;Analysis based-on commit&quot; -&gt; &quot;Analyse-Ausgangs-Commit&quot;;</span>
+<span class="fc" id="L240">            case &quot;Includes provisional relations&quot; -&gt; &quot;Vorläufige Beziehungen enthalten&quot;;</span>
+<span class="fc" id="L241">            case &quot;Projection stale&quot; -&gt; &quot;Projektion veraltet&quot;;</span>
+<span class="fc" id="L242">            case &quot;Index stale&quot; -&gt; &quot;Index veraltet&quot;;</span>
+<span class="fc" id="L243">            case &quot;Provider / model&quot; -&gt; &quot;Anbieter / Modell&quot;;</span>
+<span class="fc" id="L244">            case &quot;Status&quot; -&gt; &quot;Status&quot;;</span>
+<span class="nc" id="L245">            default -&gt; key;</span>
+        };
+    }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">    private static String t(boolean de, String german, String english) { return de ? german : english; }</span>
+    private static String bookmark(String kind, String id) {
+<span class="fc" id="L250">        return &quot;rf_&quot; + kind + &quot;_&quot; + Integer.toUnsignedString(id.hashCode(), 36);</span>
+    }
+    private static void references(WordDocumentWriter writer, List&lt;String&gt; ids, Set&lt;String&gt; nodes, boolean de) {
+<span class="fc" id="L253">        references(writer, ids, nodes, Set.of(), de);</span>
+<span class="fc" id="L254">    }</span>
+    private static void references(WordDocumentWriter writer, List&lt;String&gt; ids, Set&lt;String&gt; nodes,
+            Set&lt;String&gt; edges, boolean de) {
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (String id : ids) {</span>
+<span class="fc bfc" id="L258" title="All 4 branches covered.">            if (nodes.contains(id) || edges.contains(id)) {</span>
+<span class="fc" id="L259">                writer.link(writer.paragraph(t(de, &quot;Architekturbezug: &quot;, &quot;Architecture reference: &quot;)),</span>
+<span class="fc" id="L260">                        referenceBookmark(id), id);</span>
+            } else {
+<span class="fc" id="L262">                writer.paragraph(t(de, &quot;Bezug nicht im gespeicherten Graph verfügbar: &quot;,</span>
+                        &quot;Reference unavailable in saved graph: &quot;) + id);
+            }
+<span class="fc" id="L265">        }</span>
+<span class="fc" id="L266">    }</span>
+    private static String referenceBookmark(String id) {
+<span class="fc" id="L268">        StringBuilder out = new StringBuilder(&quot;rf_ref_&quot;);</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        for (int i = 0; i &lt; id.length(); i++) {</span>
+<span class="fc" id="L270">            char c = id.charAt(i);</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">            if (c == '-') out.append('_');</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">            else if (c == '_') out.append(&quot;_u&quot;);</span>
+<span class="pc bpc" id="L273" title="2 of 4 branches missed.">            else if (Character.isLetterOrDigit(c) &amp;&amp; c &lt; 128) out.append(c);</span>
+<span class="nc" id="L274">            else out.append(&quot;_x&quot;).append(Integer.toHexString(c));</span>
+        }
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        return out.length() &lt;= 40 ? out.toString()</span>
+<span class="nc" id="L277">                : &quot;rf_ref_&quot; + Integer.toUnsignedString(id.hashCode(), 36);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

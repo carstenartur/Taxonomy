@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalScopeCapture.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.backup</a> &gt; <span class="el_source">PrincipalScopeCapture.java</span></div><h1>PrincipalScopeCapture.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import java.io.*;
+import java.util.*;
+
+/** Bounded scope collection; each module still owns its queries and exact row-ownership checks. */
+public final class PrincipalScopeCapture {
+    private static final int MAX_SCOPES = 100_000;
+    private final PortableRows rows;
+    private final int maxScopes;
+<span class="fc" id="L12">    public PrincipalScopeCapture(PortableRows rows) { this(rows, MAX_SCOPES); }</span>
+<span class="fc" id="L13">    public PrincipalScopeCapture(PortableRows rows, int maxScopes) {</span>
+<span class="fc" id="L14">        this.rows = Objects.requireNonNull(rows);</span>
+<span class="fc bfc" id="L15" title="All 4 branches covered.">        if (maxScopes &lt; 1 || maxScopes &gt; MAX_SCOPES) throw new IllegalArgumentException(&quot;Invalid principal scope limit&quot;);</span>
+<span class="fc" id="L16">        this.maxScopes = maxScopes;</span>
+<span class="fc" id="L17">    }</span>
+    public Set&lt;String&gt; capture(List&lt;PortableRows.Query&gt; queries, PortableRows.Mapper&lt;Scope&gt; mapper, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L20">            check(checkpoint); var scopes = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">            for (var query : queries) {</span>
+<span class="fc" id="L22">                check(checkpoint);</span>
+<span class="fc" id="L23">                rows.visit(query, row -&gt; { check(checkpoint); return mapper.read(row); }, reference -&gt; {</span>
+<span class="fc" id="L24">                    String scope = reference.value();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">                    if (scope == null) return; // Optional owner fields carry no identity reference.</span>
+<span class="fc bfc" id="L26" title="All 6 branches covered.">                    if (scope.isBlank() || scope.length() &gt; 255 || scope.chars().anyMatch(Character::isISOControl))</span>
+<span class="fc" id="L27">                        throw new IOException(&quot;Invalid source principal scope&quot;);</span>
+<span class="fc bfc" id="L28" title="All 4 branches covered.">                    if (scopes.add(scope) &amp;&amp; scopes.size() &gt; maxScopes) throw new IOException(&quot;Principal scope limit exceeded&quot;);</span>
+<span class="fc" id="L29">                });</span>
+<span class="fc" id="L30">            }</span>
+<span class="fc" id="L31">            check(checkpoint); return Set.copyOf(scopes);</span>
+<span class="fc" id="L32">        } catch (IOException | RuntimeException failure) {</span>
+<span class="fc bfc" id="L33" title="All 4 branches covered.">            if (failure instanceof InterruptedIOException || Thread.currentThread().isInterrupted()) {</span>
+<span class="fc" id="L34">                Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Principal scope capture cancelled&quot;);</span>
+            }
+<span class="fc" id="L36">            throw new IOException(&quot;Principal scope capture failed&quot;);</span>
+        }
+    }
+    private static void check(BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Principal scope capture cancelled&quot;);</span>
+<span class="fc" id="L41">        try { checkpoint.check(); }</span>
+<span class="fc" id="L42">        catch (InterruptedIOException failure) { Thread.currentThread().interrupt(); throw failure; }</span>
+<span class="fc" id="L43">    }</span>
+<span class="fc" id="L44">    public record Scope(String value) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

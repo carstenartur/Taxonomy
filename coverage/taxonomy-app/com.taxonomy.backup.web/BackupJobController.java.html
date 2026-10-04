@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.web</a> &gt; <span class="el_source">BackupJobController.java</span></div><h1>BackupJobController.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.web;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.jobs.*;
+import jakarta.servlet.http.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import java.io.*;
+import java.util.*;
+
+@Controller
+@ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+public final class BackupJobController {
+    private final ObjectProvider&lt;BackupJobService&gt; services;
+    private final BackupPrincipalResolver principals;
+<span class="fc" id="L21">    private final BackupManifestCodec codec = new BackupManifestCodec();</span>
+<span class="fc" id="L22">    public BackupJobController(ObjectProvider&lt;BackupJobService&gt; services, BackupPrincipalResolver principals) {</span>
+<span class="fc" id="L23">        this.services = services; this.principals = principals;</span>
+<span class="fc" id="L24">    }</span>
+    @GetMapping(&quot;/backup-jobs&quot;) public String page(Authentication authentication, HttpServletResponse response) {
+<span class="fc" id="L26">        principals.require(authentication); response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;); return &quot;backup-jobs&quot;;</span>
+    }
+    @PostMapping(value = &quot;/api/backups/jobs&quot;, consumes = MediaType.APPLICATION_JSON_VALUE) @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; submit(Authentication authentication, HttpServletRequest request) throws IOException {
+<span class="fc" id="L30">        var actor = principals.require(authentication);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (request.getContentLengthLong() &gt; BackupManifestCodec.MAX_REQUEST_BYTES) throw new RequestTooLarge();</span>
+<span class="fc" id="L32">        byte[] document = request.getInputStream().readNBytes(BackupManifestCodec.MAX_REQUEST_BYTES + 1);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (document.length &gt; BackupManifestCodec.MAX_REQUEST_BYTES) throw new RequestTooLarge();</span>
+<span class="fc" id="L34">        var id = service().submit(codec.readRequest(document), actor);</span>
+<span class="fc" id="L35">        return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of(&quot;id&quot;, id.value().toString()));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs&quot;) @ResponseBody
+    public ResponseEntity&lt;List&lt;BackupJobService.JobView&gt;&gt; list(Authentication authentication) {
+<span class="nc" id="L39">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service().list(principals.require(authentication)));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs/{id}&quot;) @ResponseBody
+    public ResponseEntity&lt;BackupJobService.JobView&gt; status(@PathVariable String id, Authentication authentication) {
+<span class="nc" id="L43">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service().status(id(id), principals.require(authentication)));</span>
+    }
+    @PostMapping(&quot;/api/backups/jobs/{id}/cancel&quot;) @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; cancel(@PathVariable String id, Authentication authentication) {
+<span class="nc" id="L47">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(&quot;cancelled&quot;, service().cancel(id(id), principals.require(authentication))));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs/{id}/download&quot;)
+    public void download(@PathVariable String id, Authentication authentication, HttpServletResponse response) throws IOException {
+<span class="nc" id="L51">        try (var download = service().download(id(id), principals.require(authentication))) {</span>
+<span class="nc" id="L52">            response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;); response.setHeader(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;);</span>
+<span class="nc" id="L53">            response.setHeader(&quot;Content-Disposition&quot;, ContentDisposition.attachment().filename(download.filename()).build().toString());</span>
+<span class="nc" id="L54">            response.setContentType(&quot;application/octet-stream&quot;); response.setContentLengthLong(download.length());</span>
+<span class="nc" id="L55">            download.writeTo(response.getOutputStream());</span>
+        }
+<span class="nc" id="L57">    }</span>
+<span class="nc" id="L58">    @ExceptionHandler(AccessDeniedException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; denied() { return error(403, &quot;BACKUP_ACCESS_DENIED&quot;); }</span>
+<span class="nc" id="L59">    @ExceptionHandler(BackupCapacityException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; capacity() { return error(429, &quot;BACKUP_CAPACITY&quot;); }</span>
+<span class="fc" id="L60">    @ExceptionHandler(RequestTooLarge.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; tooLarge() { return error(413, &quot;BACKUP_REQUEST_TOO_LARGE&quot;); }</span>
+<span class="fc" id="L61">    @ExceptionHandler(IllegalArgumentException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return error(400, &quot;BACKUP_INVALID_REQUEST&quot;); }</span>
+<span class="fc" id="L62">    @ExceptionHandler({IllegalStateException.class, IOException.class}) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() { return error(503, &quot;BACKUP_UNAVAILABLE&quot;); }</span>
+    private ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(int status, String code) {
+<span class="fc" id="L64">        return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(Map.of(&quot;code&quot;, code));</span>
+    }
+    private BackupJobService service() {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        var service = services.getIfAvailable(); if (service == null) throw new IllegalStateException(&quot;Backup source is unavailable&quot;); return service;</span>
+    }
+<span class="nc" id="L69">    private static BackupJobId id(String id) { return new BackupJobId(UUID.fromString(id)); }</span>
+    private static final class RequestTooLarge extends RuntimeException { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePackageHierarchy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.model</a> &gt; <span class="el_source">ArchitecturePackageHierarchy.java</span></div><h1>ArchitecturePackageHierarchy.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.model;
+
+import java.util.*;
+import java.util.function.BiConsumer;
+
+/** Shared final-state validation for neutral package hierarchy and ordered membership. */
+public final class ArchitecturePackageHierarchy {
+    private ArchitecturePackageHierarchy() {}
+    public static void validate(CanonicalArchitectureModel model, BiConsumer&lt;String, String&gt; error) {
+<span class="fc" id="L10">        Map&lt;String, ArchitecturePackage&gt; packages = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L11">        Map&lt;String, SortedSet&lt;Integer&gt;&gt; positions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        for (ArchitecturePackage pkg : model.getPackages()) {</span>
+<span class="pc bpc" id="L13" title="2 of 4 branches missed.">            if (pkg.id() == null || !pkg.id().matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;)) error.accept(&quot;INVALID_ID&quot;, &quot;Invalid package identity&quot;);</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">            if (packages.putIfAbsent(pkg.id(), pkg) != null) error.accept(&quot;DUPLICATE_ID&quot;, &quot;Duplicate package identity&quot;);</span>
+<span class="fc" id="L15">        }</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        for (ArchitecturePackage pkg : model.getPackages()) {</span>
+<span class="fc" id="L17">            member(pkg.parentId(), pkg.position(), packages, positions, error);</span>
+<span class="fc" id="L18">            Set&lt;String&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L19">            ArchitecturePackage cursor = pkg;</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">            while (cursor != null) {</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">                if (!visited.add(cursor.id())) { error.accept(&quot;PACKAGE_CYCLE&quot;, &quot;Package hierarchy must be acyclic&quot;); break; }</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">                if (visited.size() &gt; 80) { error.accept(&quot;PACKAGE_DEPTH&quot;, &quot;Package hierarchy exceeds depth 80&quot;); break; }</span>
+<span class="fc" id="L23">                cursor = packages.get(cursor.parentId());</span>
+            }
+<span class="fc" id="L25">        }</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (ArchitectureElement element : model.getElements()) {</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            if (element.getPackageId() != null) member(element.getPackageId(), element.getPackagePosition(), packages, positions, error);</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            else if (element.getPackagePosition() != -1) error.accept(&quot;PACKAGE_POSITION&quot;, &quot;Detached element cannot have a position&quot;);</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (var scope : positions.values()) {</span>
+<span class="fc" id="L31">            int next = 0;</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">            for (int position : scope) if (position != next++) { error.accept(&quot;PACKAGE_POSITION&quot;, &quot;Sibling positions must be contiguous from zero&quot;); break; }</span>
+<span class="fc" id="L33">        }</span>
+<span class="fc" id="L34">    }</span>
+    private static void member(String parent, int position, Map&lt;String, ArchitecturePackage&gt; packages,
+                               Map&lt;String, SortedSet&lt;Integer&gt;&gt; positions, BiConsumer&lt;String, String&gt; error) {
+<span class="pc bpc" id="L37" title="2 of 6 branches missed.">        if (parent == null || !parent.isEmpty() &amp;&amp; !packages.containsKey(parent)) {</span>
+<span class="nc" id="L38">            error.accept(&quot;PACKAGE_PARENT&quot;, &quot;Package parent must be root or an existing package&quot;); return;</span>
+        }
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">        if (position &lt; 0 || !positions.computeIfAbsent(parent, ignored -&gt; new TreeSet&lt;&gt;()).add(position))</span>
+<span class="nc" id="L41">            error.accept(&quot;PACKAGE_POSITION&quot;, &quot;Sibling positions must be unique and nonnegative&quot;);</span>
+<span class="fc" id="L42">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

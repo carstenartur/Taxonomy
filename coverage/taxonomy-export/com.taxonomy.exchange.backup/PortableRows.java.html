@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortableRows.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.backup</a> &gt; <span class="el_source">PortableRows.java</span></div><h1>PortableRows.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.backup;
+
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.taxonomy.backup.*;
+
+import javax.sql.DataSource;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.sql.*;
+import java.time.*;
+import java.util.*;
+
+/** Bounded, pull-based NDJSON on the capture thread. Only explicitly constructed DTO records enter JSON. */
+public final class PortableRows {
+    public static final int MAX_RECORD_BYTES = 16 * 1024 * 1024;
+    private static final long MAX_ROWS = 1_000_000;
+<span class="fc" id="L23">    private static final JsonMapper JSON = JsonMapper.builder()</span>
+<span class="fc" id="L24">            .addModule(new SimpleModule().addSerializer(Instant.class, new JsonSerializer&lt;Instant&gt;() {</span>
+                @Override public void serialize(Instant value, JsonGenerator output, SerializerProvider provider) throws IOException {
+<span class="fc" id="L26">                    output.writeString(value.toString());</span>
+<span class="fc" id="L27">                }</span>
+            }))
+<span class="fc" id="L29">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();</span>
+<span class="fc" id="L30">    static { JSON.getFactory().setStreamReadConstraints(StreamReadConstraints.builder()</span>
+<span class="fc" id="L31">            .maxNestingDepth(100).maxStringLength(MAX_RECORD_BYTES).maxNumberLength(100).build()); }</span>
+    private final DataSource database;
+
+<span class="fc" id="L34">    public PortableRows(DataSource database) { this.database = Objects.requireNonNull(database); }</span>
+    @FunctionalInterface public interface Mapper&lt;T extends Record&gt; { T read(ResultSet row) throws SQLException, IOException; }
+    @FunctionalInterface public interface Visitor&lt;T extends Record&gt; { void accept(T record) throws IOException; }
+<span class="fc" id="L37">    public record Header(int schemaVersion, String kind, BackupProfile profile) { }</span>
+    public record Query(String sql, List&lt;?&gt; parameters) {
+<span class="fc" id="L39">        public Query { Objects.requireNonNull(sql); parameters = List.copyOf(parameters); }</span>
+    }
+
+    /** Reject a broken/unauthorized dependency rather than silently dropping its source record. */
+    public void requireEmpty(Query query) throws IOException {
+<span class="fc" id="L44">        cancelled();</span>
+<span class="fc" id="L45">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L46">            cancelled(); // Some drivers consume the interrupt when preparing/executing SQL.</span>
+<span class="fc" id="L47">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L48">            try (var statement = connection.prepareStatement(query.sql())) {</span>
+<span class="fc" id="L49">                statement.setMaxRows(1); statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                for (int i=0;i&lt;query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));</span>
+<span class="fc" id="L51">                try (var result = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                    if (result.next()) throw new IOException(&quot;Portable selection has a missing or cross-tenant dependency&quot;);</span>
+                }
+<span class="fc" id="L54">            } finally { connection.rollback(); }</span>
+<span class="pc" id="L55">        } catch (SQLException failure) { throw new IOException(&quot;Portable dependency verification failed&quot;); }</span>
+<span class="fc" id="L56">    }</span>
+
+    /** Dependency discovery retains only the identifiers requested by the caller. */
+    public &lt;T extends Record&gt; void visit(Query query, Mapper&lt;T&gt; mapper, Visitor&lt;T&gt; visitor) throws IOException {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (query == null) return;</span>
+<span class="fc" id="L61">        cancelled();</span>
+<span class="fc" id="L62">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L63">            cancelled();</span>
+<span class="fc" id="L64">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L65">            try (var statement = connection.prepareStatement(query.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {</span>
+<span class="fc" id="L66">                statement.setFetchSize(64); statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                for (int i=0;i&lt;query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));</span>
+<span class="fc" id="L68">                try (var result=statement.executeQuery()) {</span>
+<span class="fc" id="L69">                    long count=0;</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    while (result.next()) {</span>
+<span class="fc" id="L71">                        cancelled();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                        if (++count &gt; MAX_ROWS) throw new IOException(&quot;Portable row limit exceeded&quot;);</span>
+<span class="fc" id="L73">                        T record=mapper.read(result);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                        if (record!=null) visitor.accept(record);</span>
+<span class="fc" id="L75">                    }</span>
+                }
+<span class="fc" id="L77">            } finally { connection.rollback(); }</span>
+<span class="fc" id="L78">        } catch (SQLException failure) { throw new IOException(&quot;Portable dependency capture failed&quot;); }</span>
+<span class="fc" id="L79">    }</span>
+
+    /** Batches bound SQL parameter counts without holding DTO payloads in memory. */
+    public &lt;T extends Record&gt; void writeBatches(ComponentSink sink, String component, String kind, BackupProfile profile,
+                                               Iterable&lt;Query&gt; queries, Mapper&lt;T&gt; mapper) throws IOException {
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">        if (!component.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;) || !kind.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;))</span>
+<span class="nc" id="L85">            throw new IllegalArgumentException(&quot;Invalid dataset name&quot;);</span>
+<span class="fc" id="L86">        writeBatchesAtPath(sink, &quot;data/&quot;+component+&quot;/&quot;+kind+&quot;.ndjson&quot;, kind, profile, queries, mapper);</span>
+<span class="fc" id="L87">    }</span>
+
+    /** Typed datasets may also live in the identity and protected archive namespaces. */
+    public &lt;T extends Record&gt; void writeBatchesAtPath(ComponentSink sink, String path, String kind, BackupProfile profile,
+                                                     Iterable&lt;Query&gt; queries, Mapper&lt;T&gt; mapper) throws IOException {
+<span class="fc" id="L92">        new BackupEntry(path, 0, &quot;0&quot;.repeat(64));</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (!kind.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;)) throw new IllegalArgumentException(&quot;Invalid dataset name&quot;);</span>
+<span class="fc" id="L94">        try (var input=new BatchInput&lt;&gt;(new Header(1,kind,profile),queries.iterator(),mapper)) {</span>
+<span class="fc" id="L95">            sink.write(path,input);</span>
+        }
+<span class="fc" id="L97">    }</span>
+
+    public &lt;T extends Record&gt; void write(ComponentSink sink, String component, String kind, BackupProfile profile,
+                                        Query query, Mapper&lt;T&gt; mapper) throws IOException {
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">        if (!component.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;) || !kind.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;))</span>
+<span class="nc" id="L102">            throw new IllegalArgumentException(&quot;Invalid dataset name&quot;);</span>
+<span class="fc" id="L103">        String path = &quot;data/&quot; + component + &quot;/&quot; + kind + &quot;.ndjson&quot;;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (query == null) {</span>
+<span class="fc" id="L105">            try (var input = new ByteArrayInputStream(line(new Header(1, kind, profile)))) { sink.write(path, input); }</span>
+<span class="fc" id="L106">            return;</span>
+        }
+<span class="fc" id="L108">        cancelled();</span>
+<span class="fc" id="L109">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L110">            cancelled();</span>
+<span class="fc" id="L111">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L112">            try (var statement = connection.prepareStatement(query.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {</span>
+<span class="fc" id="L113">                statement.setFetchSize(64); statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                for (int i = 0; i &lt; query.parameters().size(); i++) statement.setObject(i + 1, query.parameters().get(i));</span>
+<span class="fc" id="L115">                try (var rows = statement.executeQuery(); var input = new RecordInput&lt;&gt;(new Header(1, kind, profile), rows, mapper)) {</span>
+<span class="fc" id="L116">                    sink.write(path, input);</span>
+                }
+<span class="fc" id="L118">            } finally { connection.rollback(); }</span>
+<span class="nc" id="L119">        } catch (SQLException failure) {</span>
+            // SQL, driver text and possibly bound source data are not public failure details.
+<span class="nc" id="L121">            throw new IOException(&quot;Portable dataset capture failed&quot;);</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">    }</span>
+
+    public static void document(ComponentSink sink, String path, Record document) throws IOException {
+<span class="fc" id="L126">        try (var input = new ByteArrayInputStream(line(document))) { sink.write(path, input); }</span>
+<span class="fc" id="L127">    }</span>
+<span class="fc" id="L128">    public static JsonMapper json() { return JSON.copy(); }</span>
+    public static SourceRecordId reference(ResultSet row, String kind, String column) throws SQLException, IOException {
+        // JDBC does not require numeric IDs to support getCharacterStream (HSQL deliberately rejects it).
+        // Identifier columns are bounded scalars, unlike the text/LOB columns handled by text().
+<span class="fc" id="L132">        String value = row.getString(column);</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">        if (value != null &amp;&amp; value.length() &gt; 1024) throw new IOException(&quot;Portable reference limit exceeded&quot;);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        return value == null ? null : new SourceRecordId(kind, value);</span>
+    }
+    /** Read LOB text through a bounded character stream; never allocate an unbounded driver String. */
+    public static String text(ResultSet row, String column) throws SQLException, IOException {
+<span class="fc" id="L138">        try (Reader input = row.getCharacterStream(column)) {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (input == null) return null;</span>
+<span class="fc" id="L140">            var value = new StringBuilder(); var buffer = new char[8192];</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            for (int count; (count = input.read(buffer)) != -1;) {</span>
+<span class="fc" id="L142">                cancelled();</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                if (count &gt; MAX_RECORD_BYTES / 2 - value.length()) throw new IOException(&quot;Portable text limit exceeded&quot;);</span>
+<span class="fc" id="L144">                value.append(buffer, 0, count);</span>
+            }
+<span class="fc" id="L146">            return value.toString();</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        }</span>
+    }
+    public static String instant(ResultSet row, String column) throws SQLException {
+<span class="fc" id="L150">        int index = row.findColumn(column);</span>
+<span class="fc" id="L151">        int type = row.getMetaData().getColumnType(index);</span>
+<span class="pc bpc" id="L152" title="2 of 6 branches missed.">        if (type == Types.TIMESTAMP_WITH_TIMEZONE || type == -101 || type == -155) {</span>
+            // JDBC 4.2 retains the stored offset. Calendar conversion on HSQL's zoned timestamps
+            // changes the instant by the process offset, so it must not be used for this type.
+<span class="fc" id="L155">            var value = row.getObject(column, OffsetDateTime.class);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            return value == null ? null : value.toInstant().toString();</span>
+        }
+<span class="fc" id="L158">        var timestamp = row.getTimestamp(column, Calendar.getInstance(TimeZone.getTimeZone(&quot;UTC&quot;)));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        return timestamp == null ? null : timestamp.toInstant().toString();</span>
+    }
+    public static Long number(ResultSet row, String column) throws SQLException {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        long value = row.getLong(column); return row.wasNull() ? null : value;</span>
+    }
+    public static String unframe(String source) throws IOException {
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (source == null || !source.startsWith(&quot;1:&quot;)) throw new IOException(&quot;Unsupported journal body version&quot;);</span>
+<span class="fc" id="L166">        return source.substring(2);</span>
+    }
+    private static byte[] line(Record record) throws IOException {
+<span class="fc" id="L169">        var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L170">        try (var bounded = new FilterOutputStream(output) {</span>
+            private int count;
+<span class="nc" id="L172">            @Override public void write(int value) throws IOException { check(1); out.write(value); }</span>
+<span class="fc" id="L173">            @Override public void write(byte[] bytes, int offset, int length) throws IOException { check(length); out.write(bytes, offset, length); }</span>
+            private void check(int length) throws IOException {
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                if (length &gt; MAX_RECORD_BYTES - count) throw new IOException(&quot;Portable record limit exceeded&quot;); count += length;</span>
+<span class="fc" id="L176">            }</span>
+<span class="fc" id="L177">        }) { JSON.writeValue(bounded, record); }</span>
+<span class="fc" id="L178">        output.write('\n'); return output.toByteArray();</span>
+    }
+    private static void cancelled() throws InterruptedIOException {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Portable capture cancelled&quot;);</span>
+<span class="fc" id="L182">    }</span>
+    private final class BatchInput&lt;T extends Record&gt; extends InputStream {
+        private final Iterator&lt;Query&gt; queries;
+        private final Mapper&lt;T&gt; mapper;
+        private byte[] current;
+        private int position;
+        private long count;
+        private Connection connection;
+        private PreparedStatement statement;
+        private ResultSet rows;
+<span class="fc" id="L192">        BatchInput(Header header, Iterator&lt;Query&gt; queries, Mapper&lt;T&gt; mapper) throws IOException {</span>
+<span class="fc" id="L193">            this.current=line(header); this.queries=queries; this.mapper=mapper;</span>
+<span class="fc" id="L194">        }</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        @Override public int read() throws IOException { return availableRecord() ? current[position++] &amp; 255 : -1; }</span>
+        @Override public int read(byte[] buffer,int offset,int length) throws IOException {
+<span class="fc" id="L197">            Objects.checkFromIndexSize(offset,length,buffer.length);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (length==0) return 0;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (!availableRecord()) return -1;</span>
+<span class="fc" id="L200">            int copy=Math.min(length,current.length-position);</span>
+<span class="fc" id="L201">            System.arraycopy(current,position,buffer,offset,copy); position+=copy; return copy;</span>
+        }
+        private boolean availableRecord() throws IOException {
+<span class="fc" id="L204">            cancelled();</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            while (position==current.length) {</span>
+                try {
+<span class="fc bfc" id="L207" title="All 4 branches covered.">                    if (rows==null || !rows.next()) {</span>
+<span class="fc" id="L208">                        closeBatch();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                        if (!queries.hasNext()) return false;</span>
+<span class="fc" id="L210">                        Query query=queries.next();</span>
+<span class="fc" id="L211">                        cancelled();</span>
+<span class="fc" id="L212">                        connection=database.getConnection();</span>
+<span class="fc" id="L213">                        cancelled();</span>
+<span class="fc" id="L214">                        connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L215">                        statement=connection.prepareStatement(query.sql(),ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY);</span>
+<span class="fc" id="L216">                        statement.setFetchSize(64); statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                        for (int i=0;i&lt;query.parameters().size();i++) statement.setObject(i+1,query.parameters().get(i));</span>
+<span class="fc" id="L218">                        rows=statement.executeQuery();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                        if (!rows.next()) continue;</span>
+                    }
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                    if (++count&gt;MAX_ROWS) throw new IOException(&quot;Portable row limit exceeded&quot;);</span>
+<span class="fc" id="L222">                    T record=mapper.read(rows);</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                    if (record==null) continue;</span>
+<span class="fc" id="L224">                    current=line(record); position=0;</span>
+<span class="pc" id="L225">                } catch (SQLException failure) { throw new IOException(&quot;Portable dataset capture failed&quot;); }</span>
+            }
+<span class="fc" id="L227">            return true;</span>
+        }
+        private void closeBatch() throws SQLException {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            try { if (rows!=null) rows.close(); }</span>
+<span class="fc" id="L231">            finally { rows=null;</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                try { if (statement!=null) statement.close(); }</span>
+<span class="fc" id="L233">                finally { statement=null;</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                    if (connection!=null) {</span>
+<span class="fc" id="L235">                        try { connection.rollback(); } finally { connection.close(); connection=null; }</span>
+                    }
+                }
+            }
+<span class="fc" id="L239">        }</span>
+        @Override public void close() throws IOException {
+<span class="pc" id="L241">            try { closeBatch(); } catch (SQLException failure) { throw new IOException(&quot;Portable capture cleanup failed&quot;); }</span>
+<span class="fc" id="L242">        }</span>
+    }
+
+    private static final class RecordInput&lt;T extends Record&gt; extends InputStream {
+        private final ResultSet rows;
+        private final Mapper&lt;T&gt; mapper;
+        private byte[] current;
+        private int position;
+        private long count;
+<span class="fc" id="L251">        RecordInput(Header header, ResultSet rows, Mapper&lt;T&gt; mapper) throws IOException {</span>
+<span class="fc" id="L252">            this.current = line(header); this.rows = rows; this.mapper = mapper;</span>
+<span class="fc" id="L253">        }</span>
+        @Override public int read() throws IOException {
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (!availableRecord()) return -1; return current[position++] &amp; 255;</span>
+        }
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+<span class="fc" id="L258">            Objects.checkFromIndexSize(offset, length, buffer.length);</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (length == 0) return 0;</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            if (!availableRecord()) return -1;</span>
+<span class="fc" id="L261">            int copy = Math.min(length, current.length - position);</span>
+<span class="fc" id="L262">            System.arraycopy(current, position, buffer, offset, copy); position += copy; return copy;</span>
+        }
+        private boolean availableRecord() throws IOException {
+<span class="fc" id="L265">            cancelled();</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">            while (position == current.length) {</span>
+                try {
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                    if (!rows.next()) return false;</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                    if (++count &gt; MAX_ROWS) throw new IOException(&quot;Portable row limit exceeded&quot;);</span>
+<span class="fc" id="L270">                    T record = mapper.read(rows);</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                    if (record == null) continue;</span>
+<span class="fc" id="L272">                    current = line(record); position = 0;</span>
+<span class="pc" id="L273">                } catch (SQLException failure) { throw new IOException(&quot;Portable row capture failed&quot;); }</span>
+            }
+<span class="fc" id="L275">            return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
