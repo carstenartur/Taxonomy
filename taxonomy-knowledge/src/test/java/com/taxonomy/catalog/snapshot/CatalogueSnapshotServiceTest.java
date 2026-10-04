@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 class CatalogueSnapshotServiceTest {
+    private static final String OVERLAY_DIGEST = "a".repeat(64);
     private static final CatalogueSourceIdentity CP_SOURCE =
             new CatalogueSourceIdentity("repo-a", "workspace-a", "branch-a", "commit-a");
     private static final CatalogueSourceIdentity IP_SOURCE =
@@ -189,7 +190,7 @@ class CatalogueSnapshotServiceTest {
                                 new CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false),
                         RootCatalogueSnapshot.Node.capture(node("shared-node", root, root, "Child"),
                                 metadata, product)),
-                new CatalogueOverlayService.OverlayMetadata(true, "frozen", "fixture", "v1", "digest", 1), provenance("digest"));
+                new CatalogueOverlayService.OverlayMetadata(true, "frozen", "fixture", "v1", OVERLAY_DIGEST, 1), provenance(OVERLAY_DIGEST));
     }
 
     static CatalogueSourceJournal sources(String overlayDigest) {

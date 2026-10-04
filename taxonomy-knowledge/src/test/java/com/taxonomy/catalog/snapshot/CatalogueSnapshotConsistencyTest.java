@@ -31,6 +31,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -67,7 +68,7 @@ class CatalogueSnapshotConsistencyTest {
 
     @Test
     void importBetweenRootReadsCannotProduceMixedGenerations() throws Exception {
-        try (var db = new Database(); var threads = Executors.newFixedThreadPool(2)) {
+        try (var db = new Database()) {
             db.importGeneration("generation-one");
             var firstRead = new CountDownLatch(1);
             var resumeRead = new CountDownLatch(1);
@@ -75,33 +76,43 @@ class CatalogueSnapshotConsistencyTest {
             db.afterRootRead = () -> {
                 if (first.compareAndSet(true, false)) { firstRead.countDown(); await(resumeRead); }
             };
-            var capture = threads.submit(db::capture);
-            assertThat(firstRead.await(5, TimeUnit.SECONDS)).isTrue();
-            var writerStarted = new CountDownLatch(1);
-            var writerFinished = new CountDownLatch(1);
-            var importing = threads.submit(() -> {
-                writerStarted.countDown();
-                try { return db.importGeneration("generation-two"); }
-                finally { writerFinished.countDown(); }
-            });
+            var threads = Executors.newFixedThreadPool(2,
+                    Thread.ofPlatform().daemon(true).name("catalogue-import-race-", 0).factory());
+            var tasks = new ArrayList<Future<?>>();
             try {
+                var capture = threads.submit(db::capture);
+                tasks.add(capture);
+                assertThat(firstRead.await(5, TimeUnit.SECONDS)).isTrue();
+                var writerStarted = new CountDownLatch(1);
+                var writerFinished = new CountDownLatch(1);
+                var importing = threads.submit(() -> {
+                    writerStarted.countDown();
+                    try { return db.importGeneration("generation-two"); }
+                    finally { writerFinished.countDown(); }
+                });
+                tasks.add(importing);
                 assertThat(writerStarted.await(5, TimeUnit.SECONDS)).isTrue();
                 // The unfixed capture lets the import commit while its first root is already read.
                 writerFinished.await(1, TimeUnit.SECONDS);
-            } finally { resumeRead.countDown(); }
-            var captured = capture.get(10, TimeUnit.SECONDS);
-            importing.get(10, TimeUnit.SECONDS);
-            assertThat(captured).hasSize(8);
-            assertThat(captured.stream().flatMap(root -> root.nodes().stream()).map(RootCatalogueSnapshot.Node::nameEn))
-                    .containsOnly("generation-one");
-            assertThat(db.capture().stream().flatMap(root -> root.nodes().stream()).map(RootCatalogueSnapshot.Node::nameEn))
-                    .containsOnly("generation-two");
+                resumeRead.countDown();
+                var captured = capture.get(10, TimeUnit.SECONDS);
+                importing.get(10, TimeUnit.SECONDS);
+                assertThat(captured).hasSize(8);
+                assertThat(captured.stream().flatMap(root -> root.nodes().stream()).map(RootCatalogueSnapshot.Node::nameEn))
+                        .containsOnly("generation-one");
+                assertThat(db.capture().stream().flatMap(root -> root.nodes().stream()).map(RootCatalogueSnapshot.Node::nameEn))
+                        .containsOnly("generation-two");
+            } finally {
+                resumeRead.countDown();
+                tasks.forEach(task -> task.cancel(true));
+                threads.shutdownNow();
+            }
         }
     }
 
     @Test
     void startupReconciliationTakesTheGenerationGateBeforeReadingCatalogueRows() throws Exception {
-        try (var db = new Database(); var threads = Executors.newFixedThreadPool(2)) {
+        try (var db = new Database()) {
             db.importGeneration("generation-one");
             var firstRead = new CountDownLatch(1);
             var resumeRead = new CountDownLatch(1);
@@ -111,19 +122,29 @@ class CatalogueSnapshotConsistencyTest {
                 if (first.compareAndSet(true, false)) { firstRead.countDown(); await(resumeRead); }
             };
             db.beforeCount = importerRead::countDown;
-            var capture = threads.submit(db::capture);
-            assertThat(firstRead.await(5, TimeUnit.SECONDS)).isTrue();
-            var importer = db.importer();
-            var importing = threads.submit(importer::initOnStartup);
+            var threads = Executors.newFixedThreadPool(2,
+                    Thread.ofPlatform().daemon(true).name("catalogue-startup-race-", 0).factory());
+            var tasks = new ArrayList<Future<?>>();
             try {
+                var capture = threads.submit(db::capture);
+                tasks.add(capture);
+                assertThat(firstRead.await(5, TimeUnit.SECONDS)).isTrue();
+                var importer = db.importer();
+                var importing = threads.submit(importer::initOnStartup);
+                tasks.add(importing);
                 assertThat(importerRead.await(200, TimeUnit.MILLISECONDS))
                         .as("Importer must acquire the catalogue gate before any row read or write")
                         .isFalse();
-            } finally { resumeRead.countDown(); }
-            assertThat(capture.get(10, TimeUnit.SECONDS)).hasSize(8);
-            importing.get(10, TimeUnit.SECONDS);
-            assertThat(importer.isInitialized()).isTrue();
-            assertThat(importerRead.getCount()).isZero();
+                resumeRead.countDown();
+                assertThat(capture.get(10, TimeUnit.SECONDS)).hasSize(8);
+                importing.get(10, TimeUnit.SECONDS);
+                assertThat(importer.isInitialized()).isTrue();
+                assertThat(importerRead.getCount()).isZero();
+            } finally {
+                resumeRead.countDown();
+                tasks.forEach(task -> task.cancel(true));
+                threads.shutdownNow();
+            }
         }
     }
 
