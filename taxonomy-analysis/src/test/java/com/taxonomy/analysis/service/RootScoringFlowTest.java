@@ -3,6 +3,11 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.EmbeddingModelIdentity;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.snapshot.*;
+import org.springframework.test.util.ReflectionTestUtils;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
@@ -110,6 +115,72 @@ class RootScoringFlowTest {
         assertEquals("SUCCESS", result.getStatus());
         assertEquals(20, result.getRawScores().get("BP"));
         assertTrue(gateway.prompts.isEmpty());
+    }
+
+    @Test
+    void frozenEmbeddingRootUsesOnlyFrozenCandidateVectorsAndRetainsIndependentTwenty() {
+        var embeddings = new FrozenEmbeddings(false);
+        var gateway = new Gateway();
+        try (var ignored = frozen(embeddings)) {
+            embeddings.validateFrozenModel();
+            AnalysisResult result = service(LlmProvider.LOCAL_ONNX, false, gateway, embeddings)
+                    .analyzeWithBudget("requirement");
+            assertEquals("SUCCESS", result.getStatus());
+            assertEquals(Map.of("BP", 20), result.getRawScores());
+            assertEquals(List.of("query: requirement", "frozen root text"), embeddings.texts);
+            assertTrue(gateway.prompts.isEmpty());
+        }
+    }
+
+    @Test
+    void failedFrozenInferenceRemainsAnExplicitPartialAssessmentWithNoInventedZero() {
+        var embeddings = new FrozenEmbeddings(true);
+        try (var ignored = frozen(embeddings)) {
+            embeddings.validateFrozenModel();
+            AnalysisResult result = service(LlmProvider.LOCAL_ONNX, false, new Gateway(), embeddings)
+                    .analyzeWithBudget("requirement");
+            assertEquals("PARTIAL", result.getStatus());
+            assertTrue(result.getRawScores().isEmpty());
+            assertFalse(result.getWarnings().isEmpty());
+        }
+    }
+
+    private static FrozenCatalogueContext.Scope frozen(FrozenEmbeddings embeddings) {
+        var source = new CatalogueSourceIdentity("repo", "workspace", "branch", "a".repeat(40));
+        var input = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_USED, null, 0);
+        var provenance = new CatalogueSourceJournal.Snapshot("00000000-0000-0000-0000-000000000001",
+                java.time.Instant.EPOCH, input, input, input);
+        var snapshot = new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, source, "BP",
+                List.of(RootCatalogueSnapshot.Node.capture(node("BP", null, "BP"),
+                        new CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false)),
+                new CatalogueOverlayService.OverlayMetadata(false, "fixture", "fixture", "v1", null, 1), provenance)
+                .withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION, source, "BP",
+                        source.sourceCommit(), RootEmbeddingSnapshot.TEXT_VERSION, embeddings.embeddingIdentity(),
+                        Map.of("BP", "frozen root text")));
+        return new CatalogueSnapshotService(null, null, new CatalogueRuntimePolicy("worker", "BP"), null)
+                .bind(source, java.util.Set.of("BP"), List.of(snapshot));
+    }
+
+    private static final class FrozenEmbeddings extends LocalEmbeddingService {
+        final List<String> texts = new ArrayList<>();
+        final boolean fail;
+        FrozenEmbeddings(boolean fail) {
+            this.fail = fail;
+            ReflectionTestUtils.setField(this, "embeddingEnabled", true);
+            ReflectionTestUtils.setField(this, "queryPrefix", "query: ");
+        }
+        @Override public EmbeddingModelIdentity embeddingIdentity() {
+            return new EmbeddingModelIdentity("a".repeat(64), "b".repeat(64), Map.of(),
+                    "query: ", EmbeddingModelIdentity.INFERENCE_VERSION);
+        }
+        @Override public float[] embed(String text) {
+            if (fail) throw new IllegalStateException("Fixture model inference failed");
+            texts.add(text);
+            float[] vector = new float[384];
+            if (text.startsWith("query:")) vector[0] = 1;
+            else { vector[0] = .2f; vector[1] = (float) Math.sqrt(.96); }
+            return vector;
+        }
     }
 
     @Test

@@ -3,9 +3,12 @@ package com.taxonomy.catalog.service;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -52,6 +55,9 @@ public class CatalogueOverlayService {
     private volatile LoadedOverlay loadedOverlay;
     private final Map<String, NodeMetadata> nodeMetadata = new ConcurrentHashMap<>();
 
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
+
     public CatalogueOverlayService(
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
@@ -76,6 +82,10 @@ public class CatalogueOverlayService {
             Map<String, TaxonomyNode> nodes,
             Map<String, String> uuidToCode,
             String baseCataloguePath) {
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        if (FrozenCatalogueContext.current() != null) {
+            throw new IllegalStateException("Cannot mutate the overlay during a frozen catalogue read");
+        }
         Objects.requireNonNull(nodes, "nodes");
         Objects.requireNonNull(uuidToCode, "uuidToCode");
 
@@ -119,11 +129,16 @@ public class CatalogueOverlayService {
     }
 
     public boolean isEnabled() {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.overlayMetadata().enabled();
         return enabled;
     }
 
     /** An overlay assignment is not evidence that the source defines semantic inheritance. */
     public boolean hasParentPatch(String code) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.requireNode(code).parentPatch();
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         if (!enabled || code == null) return false;
         loadOverlay();
         return nodeMetadata.containsKey(code);
@@ -142,6 +157,9 @@ public class CatalogueOverlayService {
     }
 
     public NodeMetadata getNodeMetadata(String code) {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.requireNode(code).metadata();
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         if (enabled) {
             loadOverlay();
         }
@@ -149,6 +167,9 @@ public class CatalogueOverlayService {
     }
 
     public OverlayMetadata getOverlayMetadata() {
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) return frozen.overlayMetadata();
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
         if (!enabled) {
             return new OverlayMetadata(false, overlayResource, null, null, null, 0);
         }
@@ -169,8 +190,10 @@ public class CatalogueOverlayService {
         }
         synchronized (this) {
             if (loadedOverlay == null) {
-                loadedOverlay = readOverlay();
-                rebuildMetadataIndex(loadedOverlay.definition());
+                LoadedOverlay complete = readOverlay();
+                rebuildMetadataIndex(complete.definition());
+                // Publish the digest only after every associated metadata entry is visible.
+                loadedOverlay = complete;
             }
             return loadedOverlay;
         }
@@ -559,6 +582,10 @@ public class CatalogueOverlayService {
             double confidence,
             boolean reviewRequired,
             String justification) {
+        public NodeMetadata {
+            secondaryClassificationCodes = List.copyOf(secondaryClassificationCodes);
+        }
+
         static NodeMetadata category() {
             return new NodeMetadata(ROLE_CATEGORY, List.of(), 1.0, false, null);
         }

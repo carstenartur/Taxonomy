@@ -2,9 +2,11 @@ package com.taxonomy.search;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.search.mapper.orm.Search;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,6 +25,9 @@ public class LocalEmbeddingIndexRebuilder {
     private final int loaderThreads;
     private final int batchSize;
 
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
+
     public LocalEmbeddingIndexRebuilder(
             EntityManagerFactory entityManagerFactory,
             @Value("${embedding.index.loader-threads:2}") int loaderThreads,
@@ -33,6 +38,7 @@ public class LocalEmbeddingIndexRebuilder {
     }
 
     public void rebuildNodeIndex() throws InterruptedException {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         Search.mapping(entityManagerFactory)
                 .scope(TaxonomyNode.class)
                 .massIndexer()
@@ -43,6 +49,7 @@ public class LocalEmbeddingIndexRebuilder {
     }
 
     public void rebuildRelationIndex() throws InterruptedException {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         Search.mapping(entityManagerFactory)
                 .scope(TaxonomyRelation.class)
                 .massIndexer()

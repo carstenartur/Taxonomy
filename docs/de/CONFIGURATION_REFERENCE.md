@@ -353,6 +353,7 @@ Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfiguri
 
 | Environment variable | Spring property | Default | Beschreibung |
 |---|---|---|---|
+| `TAXONOMY_ANALYSIS_RUNTIME_ROLE` | `taxonomy.analysis.runtime-role` | `all` | Katalog-/Indexrolle: `all` und `coordinator` behalten die bisherige Initialisierung bei; `worker` deaktiviert die globale Katalog-/Indexinitialisierung und benötigt für Katalogzugriffe gebundene eingefrorene Snapshots der exakten Quelle. Unbekannte Werte brechen den Start ab. |
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` führt die Analyse im Prozess aus (Standard, kein Broker). `artemis` aktiviert den externen Apache-Artemis-Aufgabentransport. Jeder andere Wert bricht den Start ab. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | leer | Im Modus `artemis` erforderlich. `tcp://` (oder Failover-Liste `(tcp://a,tcp://b)?ha=true`) bzw. `vm://`. Wird weder protokolliert noch im Health-Endpunkt angezeigt. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | leer | Broker-Benutzer; über ein Secret bereitstellen. |
@@ -362,7 +363,7 @@ Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfiguri
 | `TAXONOMY_ANALYSIS_ARTEMIS_CALL_TIMEOUT_MS` | `taxonomy.analysis.artemis.call-timeout-ms` | `30000` | Maximale Wartezeit auf eine Broker-Bestätigung (1000–300000 ms). Unbestätigte Aufgaben bleiben `WAITING_FOR_BROKER`. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX` | `taxonomy.analysis.artemis.destination-prefix` | `taxonomy.analysis` | Kleingeschriebenes, punktgetrenntes Präfix aller Analyse-Queues und -Adressen. |
 | `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Ob diese Instanz Aufgaben-Queues konsumiert. Ohne gebundene Handler wird keine Queue konsumiert. |
-| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | leer (alle acht Wurzeln) | Kommagetrennte Katalogwurzeln dieses Workers, z. B. `CP,IP`. Unbekannte oder doppelte Wurzeln brechen den Start ab. Nur Worker mit vollständigem Katalog übernehmen wurzelübergreifende Beziehungsarbeit. |
+| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | leer (alle acht Wurzeln) | Kommagetrennte Katalogwurzeln dieses Workers, z. B. `CP,IP`. Unbekannte oder doppelte Wurzeln brechen den Start ab. In der Laufzeitrolle `worker` muss jede Wurzel eines gebundenen Snapshots in dieser Menge enthalten sein. Nur Worker mit vollständigem Katalog übernehmen wurzelübergreifende Beziehungsarbeit. |
 | `TAXONOMY_ANALYSIS_WORKER_CONSUMERS_PER_SHARD` | `taxonomy.analysis.worker.consumers-per-shard` | `1` | Parallele Konsumenten je konfigurierter Queue (1–64). |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_BATCH` | `taxonomy.analysis.dispatch.recovery-batch` | `200` | Versandabsichten pro Wiederherstellungsseite. |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_LIMIT` | `taxonomy.analysis.dispatch.recovery-limit` | `5000` | Höchstzahl erneut veröffentlichter Absichten pro Lauf; der Rest wartet auf den nächsten Auslöser. |

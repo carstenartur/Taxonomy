@@ -2,6 +2,7 @@ package com.taxonomy.catalog.service;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;
@@ -9,6 +10,7 @@ import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
@@ -39,11 +41,15 @@ public class SearchService {
     @PersistenceContext
     private EntityManager entityManager;
 
+    @Autowired
+    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
+
     /**
      * Search the taxonomy index and return up to {@code maxResults} flat (no children) DTOs.
      */
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> search(String queryString, int maxResults) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (queryString == null || queryString.isBlank()) {
             return Collections.emptyList();
         }

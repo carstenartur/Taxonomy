@@ -48,16 +48,44 @@ public class CatalogueSourceJournal {
     @Transactional(readOnly = true)
     public Snapshot current() { return snapshot(em.find(CatalogueSourceState.class, STATE_ID)); }
 
+    /** Acquire before reading or changing any catalogue rows; held until the import commits. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockForMutation() { requireTransaction(); lockState(); }
+
+    /**
+     * Hold the same database gate as the importer while a complete scalar snapshot is read.
+     * Missing provenance fails closed rather than tagging unversioned current rows as a source.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Snapshot lockForCapture() {
+        requireTransaction();
+        var state = lockExistingState();
+        var current = state == null ? null : snapshot(state);
+        if (current == null) throw new IllegalStateException("Catalogue source generation is unavailable");
+        return current;
+    }
+
     private void requireTransaction() {
         if (!em.isJoinedToTransaction()) throw new IllegalStateException("Catalogue source retention requires the catalogue transaction");
     }
 
     private CatalogueSourceState lockState() {
-        var state = em.find(CatalogueSourceState.class, STATE_ID, LockModeType.PESSIMISTIC_WRITE);
+        var state = lockExistingState();
         if (state == null) {
             state = new CatalogueSourceState(); state.id = STATE_ID;
             em.persist(state); em.flush();
         }
+        return state;
+    }
+
+    private CatalogueSourceState lockExistingState() {
+        // A real row write serializes captures and imports even on MVCC providers
+        // whose SELECT FOR UPDATE can return a snapshot from before the lock wait.
+        int changed = em.createQuery("update CatalogueSourceState s set s.rowVersion=s.rowVersion+1 where s.id=:id")
+                .setParameter("id", STATE_ID).executeUpdate();
+        if (changed == 0) return null;
+        var state = em.find(CatalogueSourceState.class, STATE_ID);
+        em.refresh(state);
         return state;
     }
 
