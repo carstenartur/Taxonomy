@@ -7,6 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { verifyRestore } from './document-template-restore-acceptance.mjs';
+import { pageFitsViewport } from './document-template-layout.mjs';
 
 const exec = promisify(execFile);
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
@@ -401,7 +402,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
   }
 
   async function capture(target, directory, name) {
-    const fitsViewport = await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2);
+    const fitsViewport = await pageFitsViewport(target);
     if (!fitsViewport) {
       const layout = await target.evaluate(() => ({
         viewport: { width: innerWidth, height: innerHeight }, scrollWidth: document.documentElement.scrollWidth,
