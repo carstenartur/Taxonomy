@@ -47,6 +47,7 @@ public final class FrozenEmbeddingFootprintProbe {
             result.put("storage", "bounded candidate vector cache; no EntityManager or Lucene directory configured");
             result.put("bindAndPopulateMillis", elapsed);
             result.put("jvm", System.getProperty("java.runtime.version"));
+            result.put("jvmInputArguments", ManagementFactory.getRuntimeMXBean().getInputArguments());
             Files.writeString(Path.of(args[1]), mapper.writeValueAsString(result));
         }
         if (retained == null) throw new AssertionError("Probe must retain the measured worker state");

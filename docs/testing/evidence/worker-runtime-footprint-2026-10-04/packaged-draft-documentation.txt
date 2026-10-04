@@ -1,0 +1,92 @@
+# Whole-application worker startup footprint
+
+`WorkerRuntimeFootprintTest` complements the frozen snapshot/cache experiment with
+six fresh production Spring JVMs. Each connects over loopback TCP to an actual
+Artemis broker running outside the measured process and uses a fresh HSQLDB
+database. No production bean is mocked or replaced.
+
+| Configuration | Runtime role | Root consumers | Global catalogue and search |
+| --- | --- | --- | --- |
+| `CP` | `worker` | CP only | Must remain empty/disabled |
+| `ALL_WORKER` | `worker` | All eight roots | Must remain empty/disabled |
+| `FULL_CATALOGUE` | `all` | All eight roots | Must load and index all eight roots |
+
+Each configuration runs once with embeddings disabled (`COLD`) and once with the
+pinned native model enabled (`NATIVE`). The native worker cases execute actual
+384-dimensional inference. The native full-catalogue case also waits for global
+node and relation index readiness. These are separate processes, not a claimed
+within-process cold-to-warm memory delta.
+
+The harness records post-GC heap, committed/max heap, non-heap, process RSS and
+peak RSS, startup time, actual database node/root counts, indexed-node count,
+filesystem index bytes, native model load state, mapped ONNX Runtime library and
+candidate-cache population. It retains `jcmd VM.native_memory summary` and the
+Linux process status alongside each measurement. It checks actual broker consumer
+counts while the measured application is alive. A CP worker must have no consumer
+for any unrelated root and no global index files.
+
+## Reproduce through Maven
+
+Use JDK 21, including `jcmd`, and the repository's pinned model downloader. The
+existing `onnx` profile owns model provisioning and test selection; there is no
+additional CI lane or changed exclusion. Run from the repository root:
+
+```bash
+./.github/scripts/download-embedding-model.sh
+./mvnw -B -ntp -pl taxonomy-app -am test -Ponnx \
+  -Dtest=WorkerRuntimeFootprintTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dtaxonomy.footprint.output-directory="$(mktemp -d /tmp/taxonomy-worker-runtime.XXXXXX)"
+```
+
+Each application child uses exactly `-Xms128m -Xmx1536m -XX:+UseSerialGC
+-XX:ActiveProcessorCount=2 -XX:NativeMemoryTracking=summary`; the harness checks the
+reported JVM arguments and removes `JDK_JAVA_OPTIONS`, `JAVA_TOOL_OPTIONS` and
+`_JAVA_OPTIONS` from that child's environment. The production application uses
+explicit eager Spring initialization, the `hsqldb` profile, filesystem Hibernate
+Search indexes, one consumer per configured root and local ONNX with downloads
+disabled. The loopback fixture alone disables broker TLS/authentication. These
+settings are recorded with the measurements and are not deployment defaults.
+
+Each invocation needs a fresh output directory. A failed case retains its
+application log and cannot write the final `evidence.json`. The final file is
+written only after all six applications pass readiness, role/index assertions,
+subscription checks and clean shutdown. A completed measurement contains the
+pinned model and tokenizer SHA-256 digests and source identity.
+
+## Measure a packaged application
+
+The same Maven-owned test can launch a checksum-verified executable application
+JAR instead of the current reactor classpath. Build and stage the application
+from a known production source commit, then select that artifact explicitly:
+
+```bash
+./mvnw -B -ntp -pl taxonomy-app -am package -DskipTests
+GITHUB_SHA="$(git rev-parse HEAD)" ./.github/scripts/stage-ui-application.sh
+./mvnw -B -ntp -pl taxonomy-app -am test -Ponnx \
+  -Dtest=WorkerRuntimeFootprintTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dtaxonomy.footprint.application-jar="$PWD/target/ui-application/taxonomy-app-1.4.1-SNAPSHOT.jar" \
+  -Dtaxonomy.footprint.output-directory="$(mktemp -d /tmp/taxonomy-worker-runtime.XXXXXX)"
+```
+
+The adjacent `manifest.json` must match the JAR filename and actual SHA-256.
+Artifact-mode evidence retains that manifest's source commit/tree and hash. The
+only added launcher class is the measurement entry point, isolated from other
+test configurations. No application classes are overlaid on the packaged JAR.
+
+## Interpretation
+
+Startup workers have not received task snapshots, so both worker configurations
+are expected to retain no global catalogue, global search index or frozen
+candidate vectors. Any heap difference between CP and eight empty workers mainly
+reflects their runtime/subscription overhead. The full-catalogue baseline makes
+the retained global catalogue and index cost visible. The separate frozen-data
+experiment measures task/cache retention after work arrives.
+
+These are single sequential samples, with no hard-coded memory saving or capacity
+threshold. RSS includes native allocations and touched pages; JVM native-memory
+tracking cannot attribute every ONNX allocation. This test does not measure
+Kubernetes pod overhead, external database/server memory, TLS, concurrent work,
+steady-state throughput or provider capacity. It does not change or establish the
+5 GiB constrained-cluster resource budget.

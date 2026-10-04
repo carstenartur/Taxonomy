@@ -49,12 +49,26 @@ spec:
       labels: {app.kubernetes.io/name: taxonomy-smoke-postgres}
     spec:
       automountServiceAccountToken: false
+      # The pinned Alpine image defines postgres as UID/GID 70. PGDATA lives
+      # below the fsGroup-owned mount so the non-root user owns its directory.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
           image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
           env:
             - {name: POSTGRES_DB, value: taxonomy}
             - {name: POSTGRES_USER, value: taxonomy}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef: {name: taxonomy-artemis-smoke, key: SPRING_DATASOURCE_PASSWORD}
@@ -65,8 +79,14 @@ spec:
           readinessProbe:
             exec: {command: [pg_isready, -U, taxonomy, -d, taxonomy]}
             periodSeconds: 3
-          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
-      volumes: [{name: data, emptyDir: {}}]
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: socket, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: data, emptyDir: {}}
+        - {name: socket, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
 ---
 apiVersion: v1
 kind: Service
@@ -93,10 +113,20 @@ spec:
       labels: {app.kubernetes.io/name: taxonomy-smoke-broker}
     spec:
       automountServiceAccountToken: false
-      securityContext: {fsGroup: 1000}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: broker
           image: apache/artemis:2.53.0-alpine@sha256:ce784035e4c5c5c91c505d7bd8edb8842559b909f3d5c2fddff968a2accc612e
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
           env:
             - {name: ARTEMIS_USER, value: taxonomy-smoke}
             - name: ARTEMIS_PASSWORD
@@ -119,10 +149,12 @@ spec:
             periodSeconds: 3
           volumeMounts:
             - {name: data, mountPath: /var/lib/artemis-instance}
+            - {name: tmp, mountPath: /tmp}
             - {name: configuration, mountPath: /var/lib/artemis-instance/etc-override, readOnly: true}
             - {name: tls, mountPath: /etc/artemis/tls, readOnly: true}
       volumes:
         - {name: data, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
         - name: configuration
           secret: {secretName: taxonomy-artemis-broker-config}
         - name: tls

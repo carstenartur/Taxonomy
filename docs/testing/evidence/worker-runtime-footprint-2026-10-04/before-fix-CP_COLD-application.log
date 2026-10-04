@@ -1,0 +1,157 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+2026-10-05T02:39:30.844+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.c.a.a.WorkerRuntimeFootprintProbe    : Starting WorkerRuntimeFootprintProbe using Java 21.0.2 with PID 26 (/tmp/taxonomy-worker-runtime-measurement.r7NtsD/CP_COLD/probe-classes started by root in /workspace/scratch/4032f41896bf/Taxonomy-review-worker-footprint)
+2026-10-05T02:39:30.847+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.c.a.a.WorkerRuntimeFootprintProbe    : The following 1 profile is active: "hsqldb"
+2026-10-05T02:39:32.920+07:00  INFO 26 --- [taxonomy-analyzer] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-10-05T02:39:33.128+07:00  INFO 26 --- [taxonomy-analyzer] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 198 ms. Found 48 JPA repository interfaces.
+2026-10-05T02:39:34.286+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 0 (http)
+2026-10-05T02:39:34.307+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-05T02:39:34.308+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.25]
+2026-10-05T02:39:34.349+07:00  INFO 26 --- [taxonomy-analyzer] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 3433 ms
+2026-10-05T02:39:34.507+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.HikariDataSource       : taxonomy-hsqldb - Starting...
+2026-10-05T02:39:35.032+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.pool.PoolBase          : taxonomy-hsqldb - Driver does not support get/set network timeout for connections. (feature not supported)
+2026-10-05T02:39:35.033+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.pool.HikariPool        : taxonomy-hsqldb - Added connection org.hsqldb.jdbc.JDBCConnection@395abe85
+2026-10-05T02:39:35.034+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.HikariDataSource       : taxonomy-hsqldb - Start completed.
+2026-10-05T02:39:35.325+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.w.s.JgitStorageSchemaMigrationConfig : Installing JGit Core schema into empty HSQLDB database
+2026-10-05T02:39:35.346+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1 (HSQL Database Engine 2.7)
+2026-10-05T02:39:35.452+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+2026-10-05T02:39:35.457+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 9 migrations (execution time 00:00.036s)
+2026-10-05T02:39:35.467+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+2026-10-05T02:39:35.543+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "PUBLIC": << Empty Schema >>
+2026-10-05T02:39:35.557+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+2026-10-05T02:39:35.579+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+2026-10-05T02:39:35.589+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+2026-10-05T02:39:35.608+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+2026-10-05T02:39:35.616+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+2026-10-05T02:39:35.625+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+2026-10-05T02:39:35.635+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+2026-10-05T02:39:35.642+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: no data (SQL State: 02000 - Error Code: -1100)
+2026-10-05T02:39:35.643+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: no data (SQL State: 02000 - Error Code: -1100)
+2026-10-05T02:39:35.643+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: no data (SQL State: 02000 - Error Code: -1100)
+2026-10-05T02:39:35.651+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+2026-10-05T02:39:35.654+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: no data (SQL State: 02000 - Error Code: -1100)
+2026-10-05T02:39:35.659+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+2026-10-05T02:39:35.669+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.026s)
+2026-10-05T02:39:35.706+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1 (HSQL Database Engine 2.7)
+2026-10-05T02:39:35.714+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Schema history table "PUBLIC"."principal_schema_history" does not exist yet
+2026-10-05T02:39:35.715+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 3 migrations (execution time 00:00.002s)
+2026-10-05T02:39:35.718+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Creating Schema History table "PUBLIC"."principal_schema_history" with baseline ...
+2026-10-05T02:39:35.723+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbBaseline     : Successfully baselined schema with version: 0
+2026-10-05T02:39:35.726+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "PUBLIC": 0
+2026-10-05T02:39:35.726+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "1 - StablePrincipals"
+2026-10-05T02:39:35.733+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "2 - ExplicitBackupGrants"
+2026-10-05T02:39:35.750+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "3 - ReserveHistoricalScopes"
+2026-10-05T02:39:35.774+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 3 migrations to schema "PUBLIC", now at version v3 (execution time 00:00.023s)
+2026-10-05T02:39:35.795+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1 (HSQL Database Engine 2.7)
+2026-10-05T02:39:35.804+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Schema history table "PUBLIC"."catalogue_source_schema_history" does not exist yet
+2026-10-05T02:39:35.805+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 1 migration (execution time 00:00.002s)
+2026-10-05T02:39:35.809+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Creating Schema History table "PUBLIC"."catalogue_source_schema_history" with baseline ...
+2026-10-05T02:39:35.815+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbBaseline     : Successfully baselined schema with version: 0
+2026-10-05T02:39:35.819+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "PUBLIC": 0
+2026-10-05T02:39:35.820+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "PUBLIC" to version "1 - RetainedCatalogueSources"
+2026-10-05T02:39:35.829+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 1 migration to schema "PUBLIC", now at version v1 (execution time 00:00.003s)
+2026-10-05T02:39:35.870+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1 (HSQL Database Engine 2.7)
+2026-10-05T02:39:35.898+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 4 migrations (execution time 00:00.015s)
+2026-10-05T02:39:35.910+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "PUBLIC": 3
+2026-10-05T02:39:35.911+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.f.core.internal.command.DbMigrate      : Schema "PUBLIC" is up to date. No migration necessary.
+2026-10-05T02:39:36.283+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
+2026-10-05T02:39:36.390+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.4.5.Final
+2026-10-05T02:39:37.227+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-10-05T02:39:37.292+07:00  WARN 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.deprecation            : HHH90000025: HSQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-10-05T02:39:37.306+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-10-05T02:39:39.440+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-10-05T02:39:42.052+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-10-05T02:39:42.064+07:00  INFO 26 --- [taxonomy-analyzer] [           main] org.hibernate.orm.jdbc.batch             : HHH100501: Automatic JDBC statement batching enabled (maximum batch size 50)
+2026-10-05T02:39:42.167+07:00  INFO 26 --- [taxonomy-analyzer] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-10-05T02:39:42.255+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-10-05T02:39:42.718+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.workspace.storage.DslStorageConfig   : Creating HibernateRepositoryFactory for application-managed SessionFactory
+2026-10-05T02:39:44.866+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.workspace.storage.DslStorageConfig   : Creating DslGitRepositoryFactory backed by jgit-storage-hibernate-core
+2026-10-05T02:39:45.100+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.w.storage.DslGitRepositoryFactory    : Opening database-backed DslGitRepository 'taxonomy-dsl'
+2026-10-05T02:39:45.115+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.workspace.storage.DslGitRepository   : Initialised database-backed DslGitRepository (HibernateRepository)
+2026-10-05T02:39:45.217+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter disableContainerLoginRateLimitFilter was not registered (disabled)
+2026-10-05T02:39:45.218+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter disableContainerPasswordChangeRequiredFilter was not registered (disabled)
+2026-10-05T02:39:45.218+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter disableContainerWebDavApplicationCredentialFilter was not registered (disabled)
+2026-10-05T02:39:45.218+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter disableContainerRateLimitFilter was not registered (disabled)
+2026-10-05T02:39:45.633+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.a.pdfbox.pdmodel.font.PDType1Font      : Using fallback font LiberationSans for base font Helvetica
+2026-10-05T02:39:45.639+07:00  WARN 26 --- [taxonomy-analyzer] [           main] o.a.pdfbox.pdmodel.font.PDType1Font      : Using fallback font LiberationSans for base font Helvetica-Bold
+2026-10-05T02:39:45.913+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.w.service.SystemRepositoryService    : Created primary architecture repository catalog entry (storage=taxonomy-dsl, topology=INTERNAL_SHARED, branch=draft)
+2026-10-05T02:39:46.054+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.a.service.PromptTemplateService      : Loaded 18 prompt template(s) from classpath:prompts/
+2026-10-05T02:39:47.047+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.analysis.service.LlmGatewayRegistry  : LlmGatewayRegistry initialised with 7 gateways
+2026-10-05T02:39:47.240+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.p.PreferencesStorageConfig           : Creating database-backed PreferencesGitRepository
+2026-10-05T02:39:47.255+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.p.storage.PreferencesGitRepository   : Initialised database-backed PreferencesGitRepository
+2026-10-05T02:39:47.393+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.p.storage.PreferencesGitRepository   : Committed preferences to 'main': 14b33539223a2aef903e3ffa59d1bde46cee4405 (ref update: NEW)
+2026-10-05T02:39:47.393+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.preferences.PreferencesService       : Preferences initialised from defaults and committed to JGit
+2026-10-05T02:39:48.720+07:00  INFO 26 --- [taxonomy-analyzer] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name databaseUserDetailsService
+2026-10-05T02:39:48.803+07:00  WARN 26 --- [taxonomy-analyzer] [-broker-connect] io.netty.util.internal.MacAddressUtil    : Failed to find a usable hardware address from the network interfaces; using random bytes: 42:4a:1b:aa:c4:23:9e:46
+2026-10-05T02:39:49.121+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page template: index
+2026-10-05T02:39:49.228+07:00  INFO 26 --- [taxonomy-analyzer] [-broker-connect] c.t.c.a.a.ArtemisAnalysisConnection      : Analysis broker connection established
+2026-10-05T02:39:49.422+07:00  INFO 26 --- [taxonomy-analyzer] [-broker-connect] c.t.c.a.artemis.ArtemisAnalysisWorker    : Analysis worker consuming 2 queue(s) for shards [CP]
+2026-10-05T02:39:49.931+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 4 endpoints beneath base path '/actuator'
+2026-10-05T02:39:50.042+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 34755 (http) with context path '/'
+2026-10-05T02:39:50.053+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.c.a.a.WorkerRuntimeFootprintProbe    : Started WorkerRuntimeFootprintProbe in 19.646 seconds (process running for 20.252)
+2026-10-05T02:39:50.136+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.s.config.SchemaContractMigrator      : Created repository foreign key fk_relation_proposal_repository on relation_proposal
+2026-10-05T02:39:50.151+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.s.config.SchemaContractMigrator      : Created repository foreign key fk_taxonomy_relation_repository on taxonomy_relation
+2026-10-05T02:39:50.166+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.s.config.SchemaContractMigrator      : Created repository foreign key fk_relation_hypothesis_repository on relation_hypothesis
+2026-10-05T02:39:50.177+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.s.config.SchemaContractMigrator      : Verified repository, workspace, hypothesis and account schema contracts
+2026-10-05T02:39:50.229+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.s.config.CommitIndexSchemaMigrator   : Verified repository/workspace/branch commit-index schema contract
+2026-10-05T02:39:50.448+07:00  INFO 26 --- [taxonomy-analyzer] [           main] c.t.t.DefaultDocumentTemplateBootstrap   : Seeded required document template decision-rationale-report at commit 6fd64385b54dba5b5ee12ef886f873ad4469efd4
+2026-10-05T02:39:50.464+07:00  INFO 26 --- [taxonomy-analyzer] [           main] .s.b.a.l.ConditionEvaluationReportLogger :
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-10-05T02:39:50.479+07:00 ERROR 26 --- [taxonomy-analyzer] [           main] o.s.boot.SpringApplication               : Application run failed
+
+org.hibernate.search.util.common.SearchException: HSEARCH800001: Hibernate Search was not initialized.
+	at org.hibernate.search.mapper.orm.mapping.impl.HibernateSearchContextProviderService.get(HibernateSearchContextProviderService.java:45) ~[hibernate-search-mapper-orm-8.4.0.Final.jar!/:8.4.0.Final]
+	at org.hibernate.search.mapper.orm.Search.getSearchMapping(Search.java:132) ~[hibernate-search-mapper-orm-8.4.0.Final.jar!/:8.4.0.Final]
+	at org.hibernate.search.mapper.orm.Search.mapping(Search.java:51) ~[hibernate-search-mapper-orm-8.4.0.Final.jar!/:8.4.0.Final]
+	at com.taxonomy.versioning.service.CommitIndexSearchRebuilder.rebuildAll(CommitIndexSearchRebuilder.java:23) ~[taxonomy-workspace-1.4.1-SNAPSHOT.jar!/:1.4.1-SNAPSHOT]
+	at com.taxonomy.versioning.service.CommitIndexSearchLifecycle.run(CommitIndexSearchLifecycle.java:48) ~[taxonomy-workspace-1.4.1-SNAPSHOT.jar!/:1.4.1-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.lambda$callRunner$0(SpringApplication.java:788) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:82) ~[spring-core-7.0.9.jar!/:7.0.9]
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60) ~[spring-core-7.0.9.jar!/:7.0.9]
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:86) ~[spring-core-7.0.9.jar!/:7.0.9]
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:800) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:788) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at org.springframework.boot.SpringApplication.lambda$callRunners$0(SpringApplication.java:776) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184) ~[na:na]
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357) ~[na:na]
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510) ~[na:na]
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499) ~[na:na]
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151) ~[na:na]
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174) ~[na:na]
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234) ~[na:na]
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596) ~[na:na]
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:776) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:328) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at org.springframework.boot.builder.SpringApplicationBuilder.run(SpringApplicationBuilder.java:154) ~[spring-boot-4.1.1.jar!/:4.1.1]
+	at com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintProbe.main(WorkerRuntimeFootprintProbe.java:36) ~[probe-classes/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.boot.loader.launch.Launcher.launch(Launcher.java:106) ~[taxonomy-app-1.4.1-SNAPSHOT.jar:1.4.1-SNAPSHOT]
+	at org.springframework.boot.loader.launch.Launcher.launch(Launcher.java:64) ~[taxonomy-app-1.4.1-SNAPSHOT.jar:1.4.1-SNAPSHOT]
+	at org.springframework.boot.loader.launch.PropertiesLauncher.main(PropertiesLauncher.java:577) ~[taxonomy-app-1.4.1-SNAPSHOT.jar:1.4.1-SNAPSHOT]
+
+2026-10-05T02:39:50.487+07:00  INFO 26 --- [taxonomy-analyzer] [           main] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-05T02:39:50.494+07:00  INFO 26 --- [taxonomy-analyzer] [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-05T02:39:50.608+07:00  INFO 26 --- [taxonomy-analyzer] [           main] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-10-05T02:39:50.612+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.HikariDataSource       : taxonomy-hsqldb - Shutdown initiated...
+2026-10-05T02:39:50.620+07:00  INFO 26 --- [taxonomy-analyzer] [           main] com.zaxxer.hikari.HikariDataSource       : taxonomy-hsqldb - Shutdown completed.

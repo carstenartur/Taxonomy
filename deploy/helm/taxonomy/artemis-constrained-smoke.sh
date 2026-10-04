@@ -44,7 +44,41 @@ release_lock() {
     LOCK_PID=""
   fi
 }
+redact_diagnostics() {
+  if [[ -n "${PRIVATE_DIR}" && -f "${PRIVATE_DIR}/redactions.sed" ]]; then
+    sed -f "${PRIVATE_DIR}/redactions.sed"
+  else
+    cat
+  fi
+}
+collect_diagnostics() {
+  local output="${EVIDENCE_DIR}/diagnostics" pod
+  local -a pods=()
+  mkdir -p "${output}"
+  # Do not export Secret resources. Redact generated credentials if a failed
+  # client includes a connection URL or configuration value in its exception.
+  kubectl get pod,deployment,replicaset,service,networkpolicy,resourcequota,limitrange \
+    --namespace "${NAMESPACE}" --request-timeout=15s -o yaml 2>&1 \
+    | redact_diagnostics >"${output}/resources.yaml" || true
+  kubectl get events --namespace "${NAMESPACE}" --request-timeout=15s --sort-by=.lastTimestamp 2>&1 \
+    | redact_diagnostics >"${output}/events.txt" || true
+  mapfile -t pods < <(kubectl get pods --namespace "${NAMESPACE}" --request-timeout=15s \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+  for pod in "${pods[@]}"; do
+    [[ "${pod}" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || continue
+    kubectl describe pod "${pod}" --namespace "${NAMESPACE}" --request-timeout=15s 2>&1 \
+      | redact_diagnostics >"${output}/${pod}-describe.txt" || true
+    kubectl logs "${pod}" --namespace "${NAMESPACE}" --request-timeout=15s \
+      --all-containers=true --timestamps=true --tail=1000 2>&1 \
+      | redact_diagnostics >"${output}/${pod}-current.log" || true
+    kubectl logs "${pod}" --namespace "${NAMESPACE}" --request-timeout=15s \
+      --all-containers=true --timestamps=true --tail=1000 --previous 2>&1 \
+      | redact_diagnostics >"${output}/${pod}-previous.log" || true
+  done
+}
 cleanup() {
+  local status=$?
+  if [[ "${status}" != 0 && "${NAMESPACE_CREATED}" == true ]]; then collect_diagnostics || true; fi
   release_lock
   for pid in "${BACKGROUND_PIDS[@]}"; do kill "${pid}" >/dev/null 2>&1 || true; wait "${pid}" 2>/dev/null || true; done
   if [[ -n "${PRIVATE_DIR}" ]]; then rm -rf -- "${PRIVATE_DIR}"; fi
@@ -52,13 +86,14 @@ cleanup() {
     helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" >/dev/null 2>&1 || true
     kubectl delete namespace "${NAMESPACE}" --wait=false >/dev/null 2>&1 || true
   fi
+  return "${status}"
 }
 trap cleanup EXIT
 
 # A failed or render-only rerun must not leave a previous live success marker.
 mkdir -p "${EVIDENCE_DIR}"
 rm -f -- "${EVIDENCE_DIR}/evidence.json"
-rm -rf -- "${EVIDENCE_DIR}/startup"
+rm -rf -- "${EVIDENCE_DIR}/startup" "${EVIDENCE_DIR}/diagnostics"
 [[ "${MODE}" == live || "${MODE}" == --render-only ]] || fail "Usage: $0 [--render-only]"
 [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "SOURCE_SHA must be a full Git commit"
 [[ "${IMAGE_TAG}" == "sha-${SOURCE_SHA}" ]] || fail "IMAGE_TAG must identify SOURCE_SHA exactly"
@@ -101,6 +136,8 @@ admin_token=$(random_secret)
 db_password=$(random_secret)
 broker_password=$(random_secret)
 tls_password=$(random_secret)
+printf 's/%s/[REDACTED]/g\n' "${admin_password}" "${admin_token}" "${db_password}" \
+  "${broker_password}" "${tls_password}" >"${PRIVATE_DIR}/redactions.sed"
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=smoke-broker \
   -addext 'subjectAltName=DNS:smoke-broker,DNS:smoke-broker.taxonomy-artemis-smoke.svc' \
   -keyout "${PRIVATE_DIR}/broker.key" -out "${PRIVATE_DIR}/broker.crt" >/dev/null 2>&1
@@ -142,9 +179,10 @@ broker_stats() {
     jq -e '.status == 200 and (.value.DeliveringCount | type == "number")' "${PRIVATE_DIR}/broker-stats.json" >/dev/null
 }
 await_until 90 "authenticated broker management" broker_stats
+# Keep failed pods until the EXIT handler captures their logs; cleanup owns removal.
 helm upgrade --install "${RELEASE}" "${CHART_DIR}" --namespace "${NAMESPACE}" \
   --values "${CHART_DIR}/values-artemis-smoke.yaml" \
-  --set "image.repository=${IMAGE_REPOSITORY}" --set "image.tag=${IMAGE_TAG}" --atomic --wait --timeout 12m
+  --set "image.repository=${IMAGE_REPOSITORY}" --set "image.tag=${IMAGE_TAG}" --wait --timeout 12m
 kubectl port-forward --namespace "${NAMESPACE}" service/taxonomy-artemis 18081:80 >"${EVIDENCE_DIR}/web-forward.log" 2>&1 &
 BACKGROUND_PIDS+=("$!")
 web_ready() { curl --fail --silent --connect-timeout 2 --max-time 5 http://127.0.0.1:18081/actuator/health/readiness >"${EVIDENCE_DIR}/web-readiness.json"; }

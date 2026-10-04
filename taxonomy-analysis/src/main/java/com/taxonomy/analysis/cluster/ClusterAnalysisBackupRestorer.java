@@ -72,7 +72,8 @@ public final class ClusterAnalysisBackupRestorer {
                 }
                 boolean unfinished = Set.of("QUEUED", "RUNNING").contains(work.sourceState());
                 restored.state = unfinished ? "STOPPED" : work.sourceState(); restored.settled = work.settled();
-                restored.failureReason = work.failureReason() == null && work.resultJson() == null ? INTERRUPTED : work.failureReason();
+                restored.failureReason = interrupted && work.failureReason() == null && work.resultJson() == null
+                        ? INTERRUPTED : work.failureReason();
                 // Historical attempts remain in the archive DTO, never become a new live attempt.
                 restored.attempts = 0; restored.startedAt = null; restored.finishedAt = unfinished ? Long.valueOf(now) : work.finishedAt(); em.persist(restored);
             }

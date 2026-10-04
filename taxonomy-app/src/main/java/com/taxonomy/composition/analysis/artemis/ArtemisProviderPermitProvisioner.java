@@ -49,8 +49,12 @@ public final class ArtemisProviderPermitProvisioner {
     public static void main(String[] args) {
         if (args.length != 2) throw new IllegalArgumentException("Usage: ArtemisProviderPermitProvisioner <quota-group> <capacity>");
         var env = System.getenv();
+        String requireTls = env.getOrDefault("TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS", "true");
+        if (!"true".equalsIgnoreCase(requireTls) && !"false".equalsIgnoreCase(requireTls)) {
+            throw new IllegalArgumentException("TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS must be 'true' or 'false'");
+        }
         var settings = new ArtemisAnalysisSettings(env.get("TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL"),
-                Boolean.parseBoolean(env.getOrDefault("TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS", "true")), 1000, 30_000);
+                Boolean.parseBoolean(requireTls), 1000, 30_000);
         try (var factory = ArtemisAnalysisTransportConfiguration.connectionFactory(settings,
                 env.get("TAXONOMY_ANALYSIS_ARTEMIS_USER"), env.get("TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD"))) {
             factory.setInitialConnectAttempts(0);

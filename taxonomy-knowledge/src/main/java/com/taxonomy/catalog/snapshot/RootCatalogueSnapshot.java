@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.snapshot;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.service.CatalogueOverlayService.NodeMetadata;
 import com.taxonomy.catalog.service.CatalogueOverlayService.OverlayMetadata;
@@ -72,11 +73,25 @@ public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity s
                 || provenance.createdAt() == null || provenance.workbook() == null || provenance.relations() == null)
             throw new IllegalArgumentException("Invalid catalogue generation evidence");
         var recorded = Objects.requireNonNull(provenance.overlay(), "catalogueProvenance.overlay");
+        requireInputReference(provenance.workbook());
+        requireInputReference(recorded);
+        requireInputReference(provenance.relations());
         boolean matches = overlay.enabled()
                 ? recorded.use() == CatalogueSourceJournal.Use.APPLIED && recorded.sha256() != null
                     && recorded.sha256().equals(overlay.sha256())
                 : recorded.use() == CatalogueSourceJournal.Use.NOT_USED && recorded.sha256() == null;
         if (!matches) throw new IllegalArgumentException("Runtime overlay differs from retained catalogue generation");
+    }
+
+    private static void requireInputReference(CatalogueSourceJournal.InputReference reference) {
+        if (reference.use() == null) throw new IllegalArgumentException("Catalogue input use is required");
+        boolean valid = switch (reference.use()) {
+            case APPLIED, PARSE_FAILED -> reference.sha256() != null
+                    && reference.sha256().matches("[0-9a-f]{64}")
+                    && reference.length() >= 0 && reference.length() <= CatalogueSourceBytes.MAX_BYTES;
+            case NOT_USED, NOT_RETAINED -> reference.sha256() == null && reference.length() == 0;
+        };
+        if (!valid) throw new IllegalArgumentException("Invalid retained catalogue input reference");
     }
 
     /** Official catalogue fields and frozen overlay semantics; every collection is immutable. */

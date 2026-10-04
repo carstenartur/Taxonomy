@@ -90,12 +90,17 @@ class FrozenEmbeddingFootprintTest {
                     FrozenEmbeddingFootprintProbe.class.getName(), input.toString(), result.toString())
                     .redirectErrorStream(true).redirectOutput(output.resolve(label + "-process.log").toFile());
             process.environment().remove("JDK_JAVA_OPTIONS");
+            process.environment().remove("JAVA_TOOL_OPTIONS");
+            process.environment().remove("_JAVA_OPTIONS");
             Process running = process.start();
             boolean done = running.waitFor(30, TimeUnit.SECONDS);
             if (!done) running.destroyForcibly();
             assertThat(done).as("fresh JVM %s completed", label).isTrue();
             assertThat(running.exitValue()).as("fresh JVM %s exit; see %s", label, output).isZero();
             Map<String, Object> value = mapper.readValue(Files.readString(result), new TypeReference<>() { });
+            assertThat(value.get("jvmInputArguments"))
+                    .as("fresh JVM %s uses only the declared measurement options", label)
+                    .isEqualTo(List.of("-Xms128m", "-Xmx256m", "-XX:+UseSerialGC"));
             assertThat(((Number) value.get("cachedVectors")).intValue())
                     .isEqualTo(selection.stream().mapToInt(root -> root.nodes().size()).sum());
             measurements.put(label, value);

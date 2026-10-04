@@ -14,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Clock;
 
 import static com.taxonomy.analysis.cluster.ClusterAnalysisBackupRecords.*;
 import static com.taxonomy.analysis.cluster.ClusterAnalysisStoreTest.*;
@@ -28,7 +29,7 @@ class ClusterAnalysisBackupRestoreTest {
             var original = context("source"); source.admit(original);
             source.store.accept(source.complete(source.task(CP), result("CP", 70)));
             source.store.start(source.task(IP));
-            var archive = archive(source, original.operationId());
+            var archive = exportedArchive(source);
             var restored = targetContext("restored");
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
             var snapshot = target.store.snapshot(restored);
@@ -36,6 +37,10 @@ class ClusterAnalysisBackupRestoreTest {
             assertEquals(Map.of("CP", 70), snapshot.result().getRawScores());
             assertEquals("PARTIAL", snapshot.result().getStatus());
             assertTrue(snapshot.result().getWarnings().stream().anyMatch(w -> w.contains("RESTORE_INTERRUPTED")));
+            var restoredArchive = archive(target, restored.operationId());
+            assertEquals("RESTORE_INTERRUPTED", restoredArchive.work().stream()
+                    .filter(work -> work.root().equals("IP")).findFirst().orElseThrow().failureReason());
+            assertEquals(archive.run().revision() + 1, restoredArchive.run().revision());
             assertEquals("{\"root\":\"IP\"}", target.store.shard(restored, IP));
             assertTrue(snapshot.tasks().stream().noneMatch(w -> Set.of("QUEUED", "RUNNING").contains(w.state())));
             assertEquals(AnalysisProgressPhase.OPERATION_STOPPED, target.store.events(restored, 0, 100).getLast().phase());
@@ -65,6 +70,32 @@ class ClusterAnalysisBackupRestoreTest {
             assertEquals(List.of("COMPLETED", "STOPPED"), snapshot.tasks().stream().map(ClusterAnalysisStore.TaskView::state).toList());
             assertEquals(AnalysisProgressPhase.OPERATION_STOPPED, target.store.events(restored, 0, 100).getLast().phase());
             assertStoppedObservation(target, restored, 1);
+            assertTerminalProvenance(archive, archive(target, restored.operationId()));
+            assertNoOperationalState(target);
+        }
+    }
+
+    @Test void cooperativeStopExportsAndRestoresOriginalFailureProvenance() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("time-limited-source"); source.admit(original);
+            source.store.start(source.task(IP));
+            var task = source.task(CP);
+            var stopped = new AnalysisMessageFactory(original, Clock.systemUTC())
+                    .completed(task, AnalysisTaskOutcome.STOPPED, null, 0, "TIME_LIMIT");
+            source.completions.commit(new PreparedAnalysisCompletion<>(stopped,
+                    () -> source.store.persistFailure(task, "TIME_LIMIT")));
+            assertTrue(source.store.accept(stopped));
+            var archive = exportedArchive(source);
+            assertEquals("PARTIAL", archive.run().sourceState());
+            assertEquals(Arrays.asList("TIME_LIMIT", null), archive.work().stream().map(Work::failureReason).toList());
+            assertEquals(List.of("FAILED", "STOPPED"), archive.work().stream().map(Work::sourceState).toList());
+            var restored = targetContext("restored-time-limited");
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+            var snapshot = target.store.snapshot(restored);
+            assertEquals(ClusterAnalysisState.PARTIAL, snapshot.state());
+            assertEquals("TIME_LIMIT: remaining analysis work was stopped", snapshot.result().getErrorMessage());
+            assertFalse(snapshot.result().getWarnings().stream().anyMatch(warning -> warning.contains("RESTORE_INTERRUPTED")));
+            assertTerminalProvenance(archive, archive(target, restored.operationId()));
             assertNoOperationalState(target);
         }
     }
@@ -221,6 +252,15 @@ class ClusterAnalysisBackupRestoreTest {
                     .map(e -> new Event(new SourceRecordId("analysis.cluster-event", e.id), reference, e.revision, e.eventJson)).toList();
             return new Archive(run, work, inputs, events);
         });
+    }
+    private static void assertTerminalProvenance(Archive original, Archive restored) {
+        assertEquals(original.run().sourceState(), restored.run().sourceState());
+        assertEquals(original.run().resultJson(), restored.run().resultJson());
+        assertEquals(original.run().revision(), restored.run().revision(), "A terminal restore must not append an interruption event");
+        assertEquals(original.work().stream().map(Work::failureReason).toList(),
+                restored.work().stream().map(Work::failureReason).toList(), "Terminal task failure provenance must remain unchanged");
+        assertEquals(original.work().stream().map(Work::sourceState).toList(), restored.work().stream().map(Work::sourceState).toList());
+        assertEquals(original.work().stream().map(Work::finishedAt).toList(), restored.work().stream().map(Work::finishedAt).toList());
     }
     private static AnalysisOperationContext targetContext(String id) {
         return new AnalysisOperationContext(id, new AnalysisSourceAuthority("restored-repository", "restored-workspace", "restored-branch", "restored-commit"), RequirementReference.adHoc("requirement"), id);

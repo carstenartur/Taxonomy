@@ -46,10 +46,19 @@ allowed database/broker egress and denied broker-management egress. The script
 records actual fixture heap/RSS/configuration, and cannot report success from
 render-only, failed preflight or stale evidence. Existing namespaces are refused.
 
-The live command was attempted locally and stopped at the missing Docker
-prerequisite, without producing a success marker. The workflow is implemented,
-but its live result, image startup and remote Jolokia authentication remain
-unverified here. See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
+The local live command stops at the missing Docker prerequisite without producing
+a success marker. The first [remote Artemis attempt](https://github.com/carstenartur/Taxonomy/actions/runs/37227702067)
+started PostgreSQL and the TLS broker, authenticated broker management, and made
+the coordinator ready. Both workers repeatedly exited; the 12-minute Helm wait
+failed. Its atomic rollback removed the application pods before their logs could
+be retained. A separate full-application run against that exact CI artifact
+reproduced fatal `HSEARCH800001`: the commit-index startup runner accessed global
+Hibernate Search after the worker role disabled it. The corrected lifecycle
+passes seven Spring-context regressions and the six complete process measurements
+below. The smoke now captures bounded current/previous logs and resources before
+cleanup, redacting fixture credentials. Three failing-path regressions pass with
+the original timeout and exit status retained. The corrected live scenario still
+requires its remote rerun. See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md).
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
 
@@ -61,6 +70,48 @@ records CP frozen data/cache heap at **966,896 bytes** and all eight roots at
 These are fresh-JVM measurements of the frozen data stage. They exclude Spring,
 native model memory, database connections and whole-pod RSS. They must not be
 presented as a measured production pod-startup footprint or a capacity promise.
+
+The additional [whole-process experiment](worker-runtime-footprint.md) executes
+six complete Spring/Hibernate application JVMs against a real external-process
+TCP Artemis broker: CP worker, eight-root worker, and full-catalogue application,
+each with embeddings disabled and with actual native ONNX inference. All six
+reach readiness and verify their real queue consumers. Both worker variants have
+zero global catalogue rows and zero index bytes; the full baseline loads and
+indexes all 2,572 nodes. Native CP/eight-root workers use **96.99/97.05 MiB heap**
+and **789.37/790.79 MiB RSS**; the native full baseline uses **203.29 MiB heap**,
+**1,299.66 MiB RSS**, and **4,614,146 index bytes**. The Maven-owned test passes
+with no failures/errors/skips (282.2 seconds for all six cases).
+
+These are single sequential samples with fresh HSQLDB, fixed JVM flags and the
+pinned model, including retained NMT reports and artifact/source checksums. Empty
+CP and eight-root worker startup is intentionally similar: admitted task data is
+loaded on demand. This does not establish Kubernetes limits, external-database
+capacity, provider throughput or a repeated-sample memory budget.
+
+## Review corrections
+
+Focused red-to-green runs cover strict provisioner TLS parsing (28 tests),
+duplicate-root and durable input-reference validation plus bounded detached
+catalogue reads (78 tests), worker commit-index startup (seven tests), and
+preservation of terminal archive provenance on restore (ten tests). Catalogue
+race tests now cancel daemon workers and release their gates on failure; memory
+probes clear all three Java-option injection variables and verify actual flags.
+
+The first remote security scan rejected the smoke fixtures' missing non-root and
+read-only filesystem settings. Both pinned images now run with their actual
+image UIDs, dropped capabilities, read-only roots and explicit writable volumes.
+A fresh local Trivy **0.70.0** configuration scan reports **23 successful checks,
+zero failures**, with the same HIGH/CRITICAL threshold. The combined chart passes
+the existing full Helm verification, including all three new diagnostics cases.
+The complete remote security workflow still needs to validate the updated head.
+
+The final combined focused reactor passes **357 executions, zero failures,
+errors or skips**, across all 16 modules (2 minutes 38 seconds). It covers the
+changed catalogue, concurrency, scoring/relation and restore boundaries, the
+actual Artemis production execution path, strict provisioner CLI, startup
+lifecycle, Helm rendering, workflow/Python policies and required module guards.
+The separate six-process native matrix and full Helm/Trivy checks above also
+pass. These are targeted revision checks, not a completed canonical remote gate.
 
 ## Remaining environment acceptance
 
@@ -78,8 +129,9 @@ not a green canonical gate.
 
 The current workspace has no Docker, Kubernetes or CNI runtime. PostgreSQL,
 Oracle and SQL Server execution, real constrained multi-pod operation, broker HA
-failover and whole-worker startup memory still require the existing CI/deployment
-lanes. No thresholds, test exclusions or required checks were weakened.
+failover and production capacity still require the existing CI/deployment lanes.
+The local whole-process measurement above is complete. No thresholds, test
+exclusions or required checks were weakened.
 
 ## Review series
 

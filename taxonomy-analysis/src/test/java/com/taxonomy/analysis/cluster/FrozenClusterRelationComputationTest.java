@@ -26,11 +26,12 @@ import static org.mockito.Mockito.*;
 
 class FrozenClusterRelationComputationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String OVERLAY_SHA256 = "a".repeat(64);
 
     private static CatalogueSourceJournal.Snapshot provenance() {
         var unknown = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_RETAINED, null, 0);
         return new CatalogueSourceJournal.Snapshot("00000000-0000-0000-0000-000000000001", java.time.Instant.EPOCH,
-                unknown, new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.APPLIED, "digest", 0), unknown);
+                unknown, new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.APPLIED, OVERLAY_SHA256, 0), unknown);
     }
 
     @Test void preparationRanksSourcesByEffectiveRelevanceBeforeApplyingSourceLimit() {
@@ -204,7 +205,7 @@ class FrozenClusterRelationComputationTest {
                 if (root.code().equals("BP")) nodes.add(node("process", "BP", "BP"));
                 if (root.code().equals("IP")) nodes.add(node("evidence", "IP", "IP"));
                 store.snapshots.put(root.code(), JSON.writeValueAsString(new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, identity, root.code(), nodes,
-                        new CatalogueOverlayService.OverlayMetadata(true, "fixture", "fixture", "v1", "digest", 1), provenance())));
+                        new CatalogueOverlayService.OverlayMetadata(true, "fixture", "fixture", "v1", OVERLAY_SHA256, 1), provenance())));
             }
         }
         void productScores() {

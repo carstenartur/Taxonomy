@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.*;
 
@@ -33,48 +34,68 @@ import static org.assertj.core.api.Assertions.*;
 class DerivedMetadataCatalogueConsistencyTest {
     @Test
     void concurrentImportRetainsItsCatalogueColumnsAndJournalIdentity() throws Exception {
-        try (var db = new Database(); var threads = Executors.newFixedThreadPool(2)) {
+        try (var db = new Database()) {
             var metadataRead = new CountDownLatch(1);
             var resumeMetadata = new CountDownLatch(1);
             db.afterNodeRead = () -> { metadataRead.countDown(); await(resumeMetadata); };
-            var metadata = threads.submit(db.service::recomputeAll);
-            assertThat(metadataRead.await(5, TimeUnit.SECONDS)).isTrue();
-            var importFinished = new CountDownLatch(1);
-            var importing = threads.submit(() -> {
-                try { return db.tx.execute(status -> {
-                    db.journal.lockForMutation();
-                    db.nodes.findByCode("CP").orElseThrow().setNameEn("generation-two");
-                    return db.journal.initialize(bytes("generation-two"), SourceUse.notUsed(), SourceUse.notUsed());
-                }); } finally { importFinished.countDown(); }
-            });
-            try { importFinished.await(1, TimeUnit.SECONDS); }
-            finally { resumeMetadata.countDown(); }
-            assertThat(metadata.get(10, TimeUnit.SECONDS)).isEqualTo(1);
-            var imported = importing.get(10, TimeUnit.SECONDS);
-            var actual = db.nodes.findByCode("CP").orElseThrow();
-            assertThat(actual.getNameEn()).isEqualTo("generation-two");
-            assertThat(actual.getGraphRole()).isEqualTo("isolated");
-            assertThat(db.journal.current()).isEqualTo(imported);
+            var threads = Executors.newFixedThreadPool(2,
+                    Thread.ofPlatform().daemon(true).name("derived-metadata-race-", 0).factory());
+            var tasks = new ArrayList<Future<?>>();
+            try {
+                var metadata = threads.submit(db.service::recomputeAll);
+                tasks.add(metadata);
+                assertThat(metadataRead.await(5, TimeUnit.SECONDS)).isTrue();
+                var importFinished = new CountDownLatch(1);
+                var importing = threads.submit(() -> {
+                    try { return db.tx.execute(status -> {
+                        db.journal.lockForMutation();
+                        db.nodes.findByCode("CP").orElseThrow().setNameEn("generation-two");
+                        return db.journal.initialize(bytes("generation-two"), SourceUse.notUsed(), SourceUse.notUsed());
+                    }); } finally { importFinished.countDown(); }
+                });
+                tasks.add(importing);
+                importFinished.await(1, TimeUnit.SECONDS);
+                resumeMetadata.countDown();
+                assertThat(metadata.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+                var imported = importing.get(10, TimeUnit.SECONDS);
+                var actual = db.nodes.findByCode("CP").orElseThrow();
+                assertThat(actual.getNameEn()).isEqualTo("generation-two");
+                assertThat(actual.getGraphRole()).isEqualTo("isolated");
+                assertThat(db.journal.current()).isEqualTo(imported);
+            } finally {
+                resumeMetadata.countDown();
+                tasks.forEach(task -> task.cancel(true));
+                threads.shutdownNow();
+            }
         }
     }
 
     @Test
     void waitsForCatalogueGateBeforeTraversingRelationNodes() throws Exception {
-        try (var db = new Database(); var threads = Executors.newSingleThreadExecutor()) {
+        try (var db = new Database()) {
             var relationRead = new CountDownLatch(1);
             db.beforeRelationRead = relationRead::countDown;
-            Future<Integer> result = db.tx.execute(status -> {
-                db.journal.lockForCapture();
-                var running = threads.submit(db.service::recomputeAll);
-                try {
-                    assertThat(relationRead.await(200, TimeUnit.MILLISECONDS))
-                            .as("No relation traversal can load managed catalogue nodes before the gate")
-                            .isFalse();
-                } catch (InterruptedException failure) { throw new AssertionError(failure); }
-                return running;
-            });
-            assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo(1);
-            assertThat(relationRead.getCount()).isZero();
+            var threads = Executors.newSingleThreadExecutor(
+                    Thread.ofPlatform().daemon(true).name("derived-metadata-gate-", 0).factory());
+            var tasks = new ArrayList<Future<?>>();
+            try {
+                Future<Integer> result = db.tx.execute(status -> {
+                    db.journal.lockForCapture();
+                    var running = threads.submit(db.service::recomputeAll);
+                    tasks.add(running);
+                    try {
+                        assertThat(relationRead.await(200, TimeUnit.MILLISECONDS))
+                                .as("No relation traversal can load managed catalogue nodes before the gate")
+                                .isFalse();
+                    } catch (InterruptedException failure) { throw new AssertionError(failure); }
+                    return running;
+                });
+                assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+                assertThat(relationRead.getCount()).isZero();
+            } finally {
+                tasks.forEach(task -> task.cancel(true));
+                threads.shutdownNow();
+            }
         }
     }
 
