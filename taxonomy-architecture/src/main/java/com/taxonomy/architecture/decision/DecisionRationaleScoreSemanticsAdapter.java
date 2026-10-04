@@ -79,7 +79,9 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 .map(leaf -> adaptLeaf(leaf, details, german))
                 .toList();
         ReportMetadata metadata = report.metadata();
-        boolean alreadyAdapted = !details.isEmpty() && details.equals(report.scoreDetails());
+        String detailFingerprint = AnalysisScoreSemanticsFingerprint.extend("", details);
+        boolean alreadyAdapted = detailFingerprint.equals(report.scope().scoreSemanticsFingerprint())
+                || (!details.isEmpty() && details.equals(report.scoreDetails()));
         if (metadata != null && !alreadyAdapted && !details.isEmpty()) {
             metadata = metadata.withAnalysisSnapshotFingerprintSha256(
                     AnalysisScoreSemanticsFingerprint.extend(
@@ -99,7 +101,12 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 report.productCoverageGaps(),
                 report.discrepancies(),
                 report.viewContext(),
-                details, report.architecture());
+                details.entrySet().stream()
+                        .filter(entry -> report.scope().selectedNodeCodes().isEmpty()
+                                || report.scope().selectedNodeCodes().contains(entry.getKey()))
+                        .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                                (left, right) -> left, LinkedHashMap::new)),
+                report.architecture(), report.scope().withScoreSemanticsFingerprint(detailFingerprint));
     }
 
     private DecisionChapter adaptChapter(

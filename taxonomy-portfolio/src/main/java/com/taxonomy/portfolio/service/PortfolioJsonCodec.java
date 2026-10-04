@@ -44,6 +44,18 @@ public class PortfolioJsonCodec {
         }
     }
 
+    /** Read recorded evidence without a DTO constructor inventing a default for an absent/null field. */
+    public <T> T readField(String json, String field, Class<T> type) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            var root = objectMapper.readTree(json);
+            var value = root.get(field);
+            return value == null || value.isNull() ? null : objectMapper.treeToValue(value, type);
+        } catch (Exception exception) {
+            throw PortfolioException.analysisFailed("Could not deserialize recorded field " + field, exception);
+        }
+    }
+
     /** Evidence trust boundary: neither duplicate keys nor trailing values are recoverable. */
     public <T> T readStrictEvidence(String value, Class<T> type) {
         if (value == null || value.isBlank()) return null;

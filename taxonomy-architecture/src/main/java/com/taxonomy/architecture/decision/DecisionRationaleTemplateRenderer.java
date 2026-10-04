@@ -102,7 +102,7 @@ public final class DecisionRationaleTemplateRenderer {
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             contract.validateDocument(document);
             replaceTokens(document, tokenValues(report, labels, template));
-            removeBodyMarker(document);
+            removeBodyMarker(document, report.scope().options().includes(DecisionReportOptions.Section.TITLE_PAGE));
 
             delegate.writeReportBody(document, report, labels);
             writeTemplateProvenanceProperties(document, provenance);
@@ -270,7 +270,7 @@ public final class DecisionRationaleTemplateRenderer {
         }
     }
 
-    private static void removeBodyMarker(XWPFDocument document) {
+    private static void removeBodyMarker(XWPFDocument document, boolean keepCover) {
         List<IBodyElement> elements = new ArrayList<>(document.getBodyElements());
         for (int index = 0; index < elements.size(); index++) {
             IBodyElement element = elements.get(index);
@@ -280,6 +280,34 @@ public final class DecisionRationaleTemplateRenderer {
             XWPFParagraph paragraph = (XWPFParagraph) element;
             if (DecisionRationaleTemplateContract.BODY_MARKER
                     .equals(paragraph.getText().strip())) {
+                if (!keepCover) {
+                    // The validated prefix is the cover. Keep the package (styles, headers,
+                    // footers and template provenance), removing only those body elements.
+                    var body = document.getDocument().getBody();
+                    org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr inherited = null;
+                    for (int prefix = 0; prefix < index; prefix++) {
+                        if (elements.get(prefix) instanceof XWPFParagraph p && p.getCTP().isSetPPr()
+                                && p.getCTP().getPPr().isSetSectPr()) {
+                            var current = p.getCTP().getPPr().getSectPr();
+                            if (inherited == null) inherited = (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr) current.copy();
+                            else {
+                                if (current.isSetPgSz()) inherited.setPgSz(current.getPgSz());
+                                if (current.isSetPgMar()) inherited.setPgMar(current.getPgMar());
+                                if (current.sizeOfHeaderReferenceArray() > 0) inherited.setHeaderReferenceArray(current.getHeaderReferenceArray());
+                                if (current.sizeOfFooterReferenceArray() > 0) inherited.setFooterReferenceArray(current.getFooterReferenceArray());
+                            }
+                        }
+                    }
+                    if (inherited != null) {
+                        var finalSection = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();
+                        if (!finalSection.isSetPgSz() && inherited.isSetPgSz()) finalSection.setPgSz(inherited.getPgSz());
+                        if (!finalSection.isSetPgMar() && inherited.isSetPgMar()) finalSection.setPgMar(inherited.getPgMar());
+                        if (finalSection.sizeOfHeaderReferenceArray() == 0) finalSection.setHeaderReferenceArray(inherited.getHeaderReferenceArray());
+                        if (finalSection.sizeOfFooterReferenceArray() == 0) finalSection.setFooterReferenceArray(inherited.getFooterReferenceArray());
+                    }
+                    for (int prefix = index; prefix >= 0; prefix--) document.removeBodyElement(prefix);
+                    return;
+                }
                 document.removeBodyElement(index);
                 // The generated section heading owns the body page break. A trailing
                 // empty hard-break paragraph can overflow the cover and skip a page.

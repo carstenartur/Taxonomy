@@ -215,7 +215,7 @@ class CompleteCopilotSessionIT {
         wait.until(ExpectedConditions.visibilityOfElementLocated(
                 By.id("snapshotResultOverview")));
         wait.until(browser -> browser.findElements(
-                By.cssSelector("[data-decision-report-format]")).size() == 3);
+                By.cssSelector("[data-decision-report-format]")).size() == 1);
 
         assertThat(driver.findElements(By.cssSelector(
                 "#snapshotList [data-snapshot-id].active[aria-current='true']")))
@@ -348,7 +348,11 @@ class CompleteCopilotSessionIT {
                 """);
 
         for (String format : List.of("docx", "html", "json")) {
-            click(By.cssSelector("[data-decision-report-format='" + format + "']"));
+            click(By.cssSelector("[data-decision-report-format='docx']"));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".decision-export-dialog")));
+            new Select(driver.findElement(By.cssSelector(".decision-export-dialog [name='format']"))).selectByValue(format);
+            wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".decision-export-dialog [type='submit']")));
+            click(By.cssSelector(".decision-export-dialog [type='submit']"));
             wait.until(browser -> {
                 List<WebElement> surfaces = browser.findElements(By.id("requirementExportOperation"));
                 if (surfaces.isEmpty()) return false;
@@ -357,7 +361,7 @@ class CompleteCopilotSessionIT {
                         && surface.getText().toLowerCase(Locale.ROOT).contains(format);
             });
             WebElement control = driver.findElement(
-                    By.cssSelector("[data-decision-report-format='" + format + "']"));
+                    By.cssSelector("[data-decision-report-format='docx']"));
             assertThat(control.getAttribute("data-session-test-outcome")).isEqualTo("export");
         }
 

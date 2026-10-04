@@ -83,6 +83,14 @@ class ArchitectureFigurePlannerTest {
     }
 
     @Test
+    void structuredEvidenceCanExceedWordRenderingCeilingsWithoutWeakeningWordPolicy() {
+        var graph = graph(501, false);
+        var scene = new LayeredDiagramLayoutService().layout(graph);
+        assertThatCode(() -> ArchitectureFigurePlanner.validateEvidence(graph, scene)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> ArchitectureFigurePlanner.validate(graph, scene)).hasMessageContaining("policy ceiling");
+    }
+
+    @Test
     void chainAndDisconnectedIsolatesRetainNodeMetadataAndAllActualSceneBounds() {
         var base = graph(40, false);
         var edges = new ArrayList<DiagramEdge>();

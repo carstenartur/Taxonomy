@@ -96,6 +96,7 @@ Modellqualität. Siehe [Gruppierung und Bewertung](TAXONOMY_SCORING.md).
 9. [Arbeiten mit Beziehungsvorschlägen](#9-working-with-relation-proposals)
 10. [Ergebnisse exportieren](#10-exporting-results)
     - [Berichte erstellen (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
+    - [Entscheidungsbericht konfigurieren (Word/HTML/JSON)](#configurable-decision-report)
 11. [Suche](#11-search)
     - [Qualitäts-Dashboard](#11a-quality-dashboard)
     - [Beziehungs-Browser](#11b-relations-browser)
@@ -694,6 +695,8 @@ Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformate
 
 ![Export-Tab — Gesamtansicht](../images/33-export-tab.png)
 
+Diese ältere Übersicht zeigt die allgemeinen Exportgruppen. Die aktuelle Auswahl für Entscheidungsberichte ist unten unter [Entscheidungsbericht konfigurieren](#configurable-decision-report) mit neuen Abbildungen beschrieben.
+
 Der [Referenzablauf](../testing/scenario-acceptance.md) erklärt die Copilot- und Workbench-Bedienelemente an einer nachvollziehbaren Hochwasseranforderung und beschreibt die zugehörige Export-QA.
 
 > **Unterstützungsgrenze:** Browser-/SVG-/Vektor-PDF-Ansichten sind menschenlesbare Ansichten des ausgewählten Ergebnisses. Mermaid und JSON sind zweckgebundene Projektionen. ArchiMate-3.1- und Visio-2012-Downloads sind experimentelle begrenzte Teilmengen; Interoperabilität mit benannten Drittwerkzeugen sowie Öffnen/Bearbeiten/Speichern/erneutes Öffnen in Microsoft Visio Desktop sind nicht zertifiziert. Diese Bedienelemente belegen allein keine Gleichheit mit einem persistierten Snapshot; dafür ist ein ausdrücklich Snapshot-gebundener Architektur-Workbench-Endpunkt zu verwenden. Siehe die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) sowie [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966) und [#967](https://github.com/carstenartur/Taxonomy/issues/967).
@@ -713,6 +716,8 @@ Klicken Sie auf **📥 PDF**, um den Druckdialog des Browsers auszulösen, der v
 ### CSV (Bewertungen)
 
 Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die alle Knoten-Codes, Namen und ihre Analyse-Bewertungen enthält. Öffnen Sie die Datei in einer Tabellenkalkulationsanwendung zur weiteren Analyse oder Berichterstellung.
+
+Die Spalten `AnalysisTaxonomies` und `AnalysisMode` nennen den aufgezeichneten Analyseumfang. Bei älteren Ergebnissen ohne diese Information bleiben sie leer. Die Auswahl im Entscheidungsbericht-Dialog bezieht sich auf dessen Word-/HTML-/JSON-Bericht; CSV wird weiterhin über seine eigene Aktion erzeugt.
 
 ### Experimentelle Visio-2012-VSDX-Teilmenge
 
@@ -809,6 +814,52 @@ Jeder Bericht enthält:
 - Zusammenfassende Statistiken (Gesamtzahl bewerteter Knoten, Top-Kategorien).
 
 > **Hinweis:** Die Bericht-Schaltflächen erscheinen nur, wenn Analysebewertungen vorhanden sind — dieselbe Bedingung wie bei den anderen Export-Schaltflächen (siehe [Wann Export-Schaltflächen erscheinen](#wann-export-schaltflächen-erscheinen)).
+
+<a id="configurable-decision-report"></a>
+### 10b. Entscheidungsbericht konfigurieren (Word/HTML/JSON)
+
+Öffnen Sie **Entscheidungsbericht …** im Exportbereich unter **Decision Evidence**, auf der Detailseite einer gespeicherten Anforderung oder in deren Architekturansicht. Alle drei Einstiege verwenden denselben Dialog. Aus einer einzelnen Baumansicht wird die aktuelle Teil-Taxonomie vorausgewählt. Bei einem gespeicherten Ergebnis beziehen sich Auswahl und Bericht auf den ausgewählten Analysesnapshot.
+
+#### Einen kurzen Word-Bericht für eine Teil-Taxonomie erstellen
+
+1. Öffnen Sie das gewünschte Analyseergebnis und anschließend **Entscheidungsbericht …**.
+2. Wählen Sie **Word (.docx)** und den Umfang **Kompakt**.
+3. Markieren Sie unter **Taxonomien im Bericht** die benötigte Teil-Taxonomie, beispielsweise **CP**. Für eine kleine Auswahl können Sie mehrere Taxonomien markieren. Mindestens eine muss ausgewählt bleiben.
+4. Prüfen Sie die Quellenangabe und den **aufgezeichneten Analyseumfang**. Taxonomien außerhalb dieses Umfangs sind nicht auswählbar.
+5. Öffnen Sie bei Bedarf **Weitere Optionen**. Wählen Sie **Kurz – Hauptabschnitte** oder **Keines** für das Inhaltsverzeichnis und **Automatisch (Querformat)** für den Entscheidungsbaum.
+6. Klicken Sie auf **Herunterladen**. Der Export verwendet vorhandene Bewertungen und Begründungen; er startet keine neue Analyse.
+
+Die folgenden Abbildungen zeigen die aktuelle Dialogkomponente mit gekennzeichneten Beispieldaten.
+
+![Entscheidungsbericht: Word, kompakter Umfang und ausgewählte Teil-Taxonomie CP; IP liegt außerhalb des Analyseumfangs](../images/decision-export-dialog-de.png)
+
+#### Umfang und weitere Optionen
+
+| Umfang | Voreingestellte Inhalte |
+|---|---|
+| **Kompakt** | Kurze Zusammenfassung mit wesentlichen gespeicherten Begründungen je ausgewählter Taxonomie und vollständiger gespeicherter Entscheidungsbaum; ohne Deckblatt und ausführlichen Nachweisanhang |
+| **Standard** | Zusätzlich Entscheidungsbegründungen und verfügbare gespeicherte Architektur |
+| **Vollständig** | Zusätzlich Deckblatt und ausführliche Nachweise |
+
+Unter **Weitere Optionen** können Sie die Abschnitte einzeln wählen. Das Inhaltsverzeichnis lässt sich auf Hauptabschnitte verkürzen, ausführlich ausgeben oder weglassen. Bei einer reinen Taxonomieanalyse ist der Abschnitt für gespeicherte Architektur deaktiviert. Verfügbare Quellangaben, Status und Warnungen bleiben auch in einem kurzen Bericht sichtbar.
+
+![Weitere Exportoptionen: kurzes Inhaltsverzeichnis, A4-Querformat und einzeln wählbare Berichtsabschnitte](../images/decision-export-options-de.png)
+
+**Automatisch (Querformat)** setzt einen kleinen Baum auf eine A4-Querformatseite, verwendet bei Bedarf A3 und verteilt größere Bäume vollständig auf lesbare Folgeseiten. **A4 quer – eine Seite** und **A3 quer – eine Seite** gelten jeweils pro ausgewählter Taxonomie. Wenn der vollständige Baum dort nicht lesbar hineinpasst, wird ein Hinweis angezeigt. Wählen Sie dann **Automatisch**, **A3** oder **Tabelle**. Bei mehreren Taxonomien erhält jeder Baum seinen eigenen Seitenbereich. Die kurze Einleitung kann zusätzlich eine Hochformatseite beanspruchen.
+
+Die Baumdarstellung berücksichtigt die gespeicherten Entscheidungen einschließlich verworfener und offener Alternativen. Ein zugeklappter Zweig im Browser kürzt den Bericht nicht. Ein gewählter Ausschnitt macht eine unvollständige Gesamtanalyse nicht vollständig; deren Status und Warnungen bleiben erhalten.
+
+#### Andere Formate, kleine Bildschirme und erneuter Versuch
+
+**HTML** übernimmt die Inhaltsauswahl und zeigt den Baum als Vektorgrafik oder Tabelle. Das Drucklayout hängt vom Browser ab. **JSON** enthält die vollständigen strukturierten Nachweise der gewählten Taxonomien; Inhaltsumfang und Seitenlayout werden dafür ausgeblendet. Der JSON-Entscheidungsbericht ist ein eigener Export neben der vorhandenen Aktion zum Speichern von Analysebewertungen.
+
+Auf einem schmalen Bildschirm bleibt derselbe Dialog verfügbar. Die häufig benötigten Angaben stehen zuerst; zusätzliche Einstellungen öffnen Sie über **Weitere Optionen**.
+
+![Exportdialog auf einem schmalen Bildschirm mit Format, Umfang, Taxonomieauswahl und Download-Aktion](../images/decision-export-mobile-de.png)
+
+Schlägt ein Download fehl, bleiben Ihre Einstellungen im geöffneten Dialog erhalten. Lesen Sie den Hinweis, passen Sie gegebenenfalls das Seitenformat an und wählen Sie erneut **Herunterladen**. Wenn der gespeicherte Umfang nicht geladen werden konnte, verwenden Sie **Erneut laden**. **Abbrechen** oder die Escape-Taste schließen den Dialog, solange kein Download läuft.
+
+Weitere Einzelheiten zu Quellen, Formatgrenzen und Screenshot-Herkunft stehen in den [Exportverträgen und Prüfnachweisen](../testing/contextual-exports.md).
 
 ---
 

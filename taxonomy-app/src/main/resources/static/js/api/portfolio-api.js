@@ -208,8 +208,12 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson(projectPath(projectId) + '/snapshots/'
                 + encodeURIComponent(String(snapshotId)));
         },
-        downloadDecisionReport: function (projectId, snapshotId, format, language) {
-            const query = new URLSearchParams();
+        decisionReportOptions: function (projectId, snapshotId, language) {
+            return getJson(projectPath(projectId) + '/snapshots/' + encodeURIComponent(String(snapshotId))
+                + '/decision-report/options' + (language ? '?language=' + encodeURIComponent(language) : ''));
+        },
+        downloadDecisionReport: function (projectId, snapshotId, format, language, options) {
+            const query = new URLSearchParams(window.TaxonomyDecisionExport?.query(options) || '');
             if (language) query.set('language', String(language));
             const suffix = query.toString();
             return getResponse(projectPath(projectId) + '/snapshots/'

@@ -185,6 +185,12 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         for (var button : buttons.entrySet()) {
             Set<String> beforeDownload = downloadedFiles();
             click(By.id(button.getKey()));
+            if (button.getKey().equals("downloadDecisionWord")) {
+                wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".decision-export-dialog")));
+                new Select(driver.findElement(By.cssSelector(".decision-export-dialog [name='profile']"))).selectByValue("FULL");
+                wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".decision-export-dialog [type='submit']")));
+                click(By.cssSelector(".decision-export-dialog [type='submit']"));
+            }
             String name;
             try {
                 name = wait.withMessage("Actual download from " + button.getKey()).until(browser -> downloadedFiles().stream()

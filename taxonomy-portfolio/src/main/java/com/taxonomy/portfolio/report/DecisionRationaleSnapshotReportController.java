@@ -1,6 +1,9 @@
 package com.taxonomy.portfolio.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionReportOptions;
+import com.taxonomy.architecture.decision.DecisionReportScope;
+import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** Download API for reports generated from immutable project-analysis snapshots. */
 @RestController
@@ -62,6 +66,23 @@ public class DecisionRationaleSnapshotReportController {
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID);
     }
 
+    public record AvailableOptions(String snapshotId, AnalysisScope analysisScope, List<DecisionReportScope.Root> roots) {}
+
+    @GetMapping("/options")
+    public ResponseEntity<AvailableOptions> options(@PathVariable Long projectId, @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
+        var context = workspaceResolver.resolveCurrentContext();
+        var report = snapshotReportService.generate(projectId, snapshotId, workspaceResolver.resolveCurrentUsername(), context,
+                resolveLocale(language), new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, null, null, null, null));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AvailableOptions(
+                report.metadata().analysisSnapshotId(), report.scope().analysisScope(), report.scope().availableRoots()));
+    }
+
+    /** Existing Java callers and unconfigured links retain their established full-report behavior. */
+    public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language) {
+        return export(projectId, snapshotId, formatId, language, null, null, null, null, null);
+    }
+
     @GetMapping("/{formatId}")
     @Operation(
             summary = "Download a hierarchical decision rationale for one immutable snapshot",
@@ -72,7 +93,14 @@ public class DecisionRationaleSnapshotReportController {
             @PathVariable String snapshotId,
             @PathVariable String formatId,
             @Parameter(description = "Optional BCP-47 report language such as de or en")
-            @RequestParam(required = false) String language) {
+            @RequestParam(required = false) String language,
+            @RequestParam(required = false) DecisionReportOptions.Profile profile,
+            @RequestParam(required = false) Set<String> taxonomyRoots,
+            @RequestParam(required = false) DecisionReportOptions.Contents contents,
+            @RequestParam(required = false) DecisionReportOptions.TreeLayout treeLayout,
+            @RequestParam(required = false) Set<DecisionReportOptions.Section> sections) {
+        DecisionReportOptions options = profile == null && taxonomyRoots == null && contents == null && treeLayout == null && sections == null
+                ? null : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections);
         ReportRendererExtension renderer = reportRendererRegistry.findByFormatId(
                         DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId)
                 .orElseThrow(() -> PortfolioException.notFound(
@@ -80,9 +108,16 @@ public class DecisionRationaleSnapshotReportController {
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
         ReportFormatDescriptor format = renderer.descriptor();
-        DecisionRationaleReport report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
-                ? wordReportService.load(projectId,snapshotId,username,context,resolveLocale(language)).decision()
-                : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));
+        DecisionRationaleReport report;
+        if (options == null) {
+            report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
+                    ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language)).decision()
+                    : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));
+        } else if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && wordReportService != null) {
+            report = ("docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
+                    ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language), options)
+                    : wordReportService.loadEvidence(projectId, snapshotId, username, context, resolveLocale(language), options)).decision();
+        } else report = snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language), options);
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
         String filename = DecisionRationaleReportPlugin.BASE_FILENAME
                 + "-v" + valueOrUnknown(report.metadata().requirementVersionNumber())

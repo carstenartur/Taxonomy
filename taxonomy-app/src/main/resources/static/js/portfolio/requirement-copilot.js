@@ -517,7 +517,11 @@
         event.stopImmediatePropagation();
         const format = String(button.dataset.decisionReportFormat || '').toLowerCase();
         markExportControls();
-        await runDecisionReportExport(button, format);
+        const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
+        if (!snapshotId) { await runDecisionReportExport(button, format); return; }
+        window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: locale, format,
+            api: window.TaxonomyPortfolioApi,
+            submit: selection => runDecisionReportExport(button, selection.format, selection.options)});
     }
 
     function markExportControls() {
@@ -527,7 +531,7 @@
         });
     }
 
-    async function runDecisionReportExport(button, format) {
+    async function runDecisionReportExport(button, format, options) {
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
         const operationId = 'export-' + Date.now().toString(36) + '-' + format;
@@ -541,7 +545,9 @@
         dispatchExport(operationId, format, 'RUNNING');
         try {
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
-                projectId, snapshotId, format, locale);
+                projectId, snapshotId, format, locale, options);
+            if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
+                    || !response.headers.get('X-Taxonomy-Analysis-SHA256'))) throw new Error('Snapshot report provenance is missing or differs.');
             const blob = await response.blob();
             const disposition = response.headers.get('Content-Disposition') || '';
             const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
@@ -559,6 +565,7 @@
         } catch (error) {
             renderExportState(surface, operationId, 'FAILED', t('exportFailed'), error?.message || String(error));
             dispatchExport(operationId, format, 'FAILED', { error: error?.message || String(error) });
+            if (options) throw error;
         } finally {
             setExportControlsDisabled(false);
         }

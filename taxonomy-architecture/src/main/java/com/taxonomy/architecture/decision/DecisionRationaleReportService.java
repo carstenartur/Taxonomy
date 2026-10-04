@@ -12,6 +12,9 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisCoverage;
+import com.taxonomy.architecture.report.DecisionTreeOverview;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -83,7 +86,39 @@ public class DecisionRationaleReportService {
   List<TaxonomyNodeDto> taxonomyTree,
   AnalysisSnapshotProvenance snapshotProvenance,
   Map<String, AnalysisScoreDetail> scoreDetails,
-            Long analysisDurationMillis) {
+            Long analysisDurationMillis,
+            AnalysisScope analysisScope,
+            AnalysisCoverage analysisCoverage,
+            Map<String, String> recordedReasons) {
+        public DecisionAnalysisInput(String businessText, Map<String, Integer> scores,
+                Map<String, String> reasons, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                List<TaxonomyNodeDto> taxonomyTree, AnalysisSnapshotProvenance snapshotProvenance,
+                Map<String, AnalysisScoreDetail> scoreDetails, Long analysisDurationMillis,
+                AnalysisScope analysisScope, AnalysisCoverage analysisCoverage) {
+            this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps,
+                    taxonomyTree, snapshotProvenance, scoreDetails, analysisDurationMillis, analysisScope, analysisCoverage, reasons);
+        }
+        public DecisionAnalysisInput(String businessText, Map<String, Integer> scores,
+                Map<String, String> reasons, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                List<TaxonomyNodeDto> taxonomyTree, AnalysisSnapshotProvenance snapshotProvenance,
+                Map<String, AnalysisScoreDetail> scoreDetails, Long analysisDurationMillis) {
+            this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps,
+                    taxonomyTree, snapshotProvenance, scoreDetails, analysisDurationMillis, null, null);
+        }
+
+        public DecisionAnalysisInput withScope(AnalysisScope scope, AnalysisCoverage coverage) {
+            return new DecisionAnalysisInput(businessText, scores, reasons, provider, analysisStatus,
+                    discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails,
+                    analysisDurationMillis, scope, coverage, recordedReasons);
+        }
+        /** Preserve unmodified source reasons independently of score-semantic display additions. */
+        public DecisionAnalysisInput withRecordedReasons(Map<String, String> original) {
+            return new DecisionAnalysisInput(businessText, scores, reasons, provider, analysisStatus,
+                    discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails,
+                    analysisDurationMillis, analysisScope, analysisCoverage, original);
+        }
         public DecisionAnalysisInput(
   String businessText,
   Map<String, Integer> scores,
@@ -104,6 +139,7 @@ public class DecisionRationaleReportService {
       throw new IllegalArgumentException("Analysis duration must not be negative");
   scores = scores == null ? Map.of() : Map.copyOf(scores);
   reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
+  recordedReasons = recordedReasons == null ? Map.of() : Map.copyOf(recordedReasons);
   discrepancies = discrepancies == null ? List.of() : List.copyOf(discrepancies);
   productCoverageGaps = productCoverageGaps == null
           ? List.of() : List.copyOf(productCoverageGaps);
@@ -186,6 +222,12 @@ public class DecisionRationaleReportService {
             WorkspaceContext workspaceContext,
             ViewContext viewContext,
             Locale locale) {
+        return generate(input, workspaceContext, viewContext, locale, DecisionReportOptions.full());
+    }
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(DecisionAnalysisInput input, WorkspaceContext workspaceContext,
+            ViewContext viewContext, Locale locale, DecisionReportOptions requestedOptions) {
         Objects.requireNonNull(input, "input must not be null");
         Objects.requireNonNull(workspaceContext, "workspaceContext must not be null");
 
@@ -193,7 +235,7 @@ public class DecisionRationaleReportService {
         boolean german = "de".equalsIgnoreCase(effectiveLocale.getLanguage());
         var labels = new DecisionReportLabels(effectiveLocale.toLanguageTag());
         Map<String, Integer> scores = sanitizeScores(input.scores());
-        Map<String, String> reasons = sanitizeReasons(input.reasons());
+        Map<String, String> recordedReasons = sanitizeReasons(input.recordedReasons());
 
         HierarchyData hierarchy = input.taxonomyTree().isEmpty()
                 ? currentHierarchy()
@@ -201,23 +243,46 @@ public class DecisionRationaleReportService {
         List<TaxonomyNode> roots = hierarchy.roots();
         Map<String, List<TaxonomyNode>> childrenMap = hierarchy.childrenMap();
         Map<String, TaxonomyNode> nodesByCode = indexNodes(roots, childrenMap);
-        List<TaxonomyNode> hierarchyOrder = preOrder(roots, childrenMap);
+        DecisionReportOptions options = requestedOptions == null ? DecisionReportOptions.full() : requestedOptions;
+        Set<String> knownRoots = roots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet());
+        AnalysisScope effectiveScope = AnalysisScope.orDefault(input.analysisScope());
+        effectiveScope.validateRoots(knownRoots);
+        List<TaxonomyNode> analysisRoots = roots.stream().filter(root -> effectiveScope.selects(root.getCode())).toList();
+        Set<String> analysisRootCodes = analysisRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet());
+        if (!analysisRootCodes.containsAll(options.taxonomyRoots()))
+            throw new IllegalArgumentException("Export roots must belong to the recorded analysis scope");
+        List<TaxonomyNode> reportRoots = analysisRoots.stream()
+                .filter(root -> options.taxonomyRoots().isEmpty() || options.taxonomyRoots().contains(root.getCode())).toList();
+        List<TaxonomyNode> analysisOrder = preOrder(analysisRoots, childrenMap);
+        if (input.analysisScope() != null) {
+            Set<String> analyzedCodes = analysisOrder.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet());
+            if (!analyzedCodes.containsAll(scores.keySet()) || (input.analysisCoverage() != null
+                    && input.analysisCoverage().nodes().entrySet().stream().anyMatch(entry ->
+                            entry.getValue().state() != AnalysisCoverage.State.UNKNOWN
+                                    && !analyzedCodes.contains(entry.getKey())))) {
+                throw new IllegalArgumentException("Supplied assessments contradict the recorded analysis scope");
+            }
+        }
+        List<TaxonomyNode> hierarchyOrder = preOrder(reportRoots, childrenMap);
+        Set<String> selectedCodes = hierarchyOrder.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet());
         List<ProductCoverageGap> productCoverageGaps = validateProductCoverageGaps(
                 input.productCoverageGaps(), nodesByCode, childrenMap, scores);
 
         Completeness completeness = assessCompleteness(
-                roots, hierarchyOrder, childrenMap, scores, productCoverageGaps);
+                analysisRoots, analysisOrder, childrenMap, scores, productCoverageGaps);
+        Completeness selectedCompleteness = assessCompleteness(
+                reportRoots, hierarchyOrder, childrenMap, scores, productCoverageGaps);
         List<DecisionChapter> chapters = buildChapters(
-                hierarchyOrder, childrenMap, scores, reasons, german);
+                hierarchyOrder, childrenMap, scores, recordedReasons, german);
         List<LeafCandidate> leaves = findLeadingLeaves(
-                hierarchyOrder, childrenMap, scores, reasons, german);
+                hierarchyOrder, childrenMap, scores, recordedReasons, german);
         LeafCandidate leadingLeaf = leaves.isEmpty() ? null : leaves.get(0);
         List<PathStep> leadingPath = leadingLeaf == null
                 ? List.of()
-                : buildPath(leadingLeaf.code(), nodesByCode, scores, reasons, german);
+                : buildPath(leadingLeaf.code(), nodesByCode, scores, recordedReasons, german);
 
         List<String> warnings = new ArrayList<>(buildWarnings(
-                input, viewContext, completeness, scores, reasons, leaves,
+                input, viewContext, completeness, scores, recordedReasons, leaves,
                 nodesByCode.keySet(), childrenMap, productCoverageGaps, german));
         Instant generatedAt = Instant.now();
 
@@ -229,7 +294,7 @@ public class DecisionRationaleReportService {
                 ? taxonomyService.toFingerprintTree(nodesByCode.values()) : input.taxonomyTree();
         String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);
         String analysisSnapshotFingerprint = fingerprintAnalysis(
-                input, scores, reasons, productCoverageGaps);
+                input, scores, recordedReasons, productCoverageGaps);
         if (input.snapshotProvenance() != null
                 && input.snapshotProvenance().taxonomyFingerprintSha256() != null
                 && !input.snapshotProvenance().taxonomyFingerprintSha256().isBlank()
@@ -245,7 +310,7 @@ public class DecisionRationaleReportService {
                 completeness.complete(), input.analysisStatus(), leaves, warnings,
                 input.discrepancies());
 
-        int suppliedReasonCount = (int) reasons.values().stream()
+        int suppliedReasonCount = (int) recordedReasons.values().stream()
                 .filter(reason -> reason != null && !reason.isBlank())
                 .count();
         int positiveNodeCount = (int) scores.values().stream().filter(value -> value > 0).count();
@@ -317,6 +382,16 @@ public class DecisionRationaleReportService {
                 conciseConclusion(leadingLeaf, leadingPath, german),
                 methodologyNote(german));
 
+        var scope = new DecisionReportScope(input.analysisScope(), input.analysisCoverage(),
+                roots.stream().map(root -> new DecisionReportScope.Root(root.getCode(), displayName(root, german),
+                        analysisRootCodes.contains(root.getCode()))).toList(),
+                reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toCollection(LinkedHashSet::new)),
+                selectedCodes, DecisionTreeOverview.fromEvidence(fingerprintTree, scores, chapters,
+                        reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet()), german),
+                options, completeness.complete() && (input.analysisCoverage() == null || !input.analysisCoverage().hasOpenEvaluations()),
+                selectedCompleteness.complete()).withRecordedReasons(recordedReasons.entrySet().stream()
+                        .filter(entry -> selectedCodes.contains(entry.getKey()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         return new DecisionRationaleReport(
                 german ? "Hierarchischer Entscheidungs- und Begründungsbericht"
                         : "Hierarchical Decision Rationale Report",
@@ -328,9 +403,9 @@ public class DecisionRationaleReportService {
                 chapters,
                 leaves,
                 warnings,
-                productCoverageGaps,
-                input.discrepancies(),
-                viewContext);
+                productCoverageGaps.stream().filter(gap -> selectedCodes.contains(gap.productFamilyCode())).toList(),
+                input.discrepancies().stream().filter(discrepancy -> selectedCodes.contains(discrepancy.parentCode())).toList(),
+                viewContext).withScope(scope).withAnalysisCoverage(input.analysisCoverage());
     }
 
     private HierarchyData currentHierarchy() {
@@ -785,7 +860,7 @@ public class DecisionRationaleReportService {
                             node.getCode(),
                             displayName(node, german),
                             scores.get(node.getCode()),
-                            normalized(node.getTaxonomyRoot(), rootFromCode(node.getCode())),
+                            path.isEmpty() ? rootFromCode(node.getCode()) : path.getFirst().getCode(),
                             node.getLevel(),
                             path.stream().map(TaxonomyNode::getCode).collect(Collectors.joining(" → ")),
                             reason.text(),
@@ -1189,6 +1264,15 @@ public class DecisionRationaleReportService {
             updateDigest(digest, "requirement", normalized(input.businessText(), ""));
             updateDigest(digest, "provider", normalized(input.provider(), "unknown"));
             updateDigest(digest, "status", normalized(input.analysisStatus(), "UNKNOWN"));
+            if (input.analysisScope() != null) {
+                updateDigest(digest, "analysis-mode", input.analysisScope().mode().name());
+                input.analysisScope().taxonomyRoots().stream().sorted()
+                        .forEach(root -> updateDigest(digest, "analysis-root", root));
+            }
+            if (input.analysisCoverage() != null) {
+                input.analysisCoverage().nodes().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .forEach(entry -> updateDigest(digest, "coverage:" + entry.getKey(), entry.getValue().toString()));
+            }
             if (input.snapshotProvenance() != null) {
                 updateDigest(digest, "snapshot-id",
                         normalized(input.snapshotProvenance().snapshotId(), ""));

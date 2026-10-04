@@ -61,6 +61,31 @@ See [the scenario acceptance guide](../docs/testing/scenario-acceptance.md) and
 
 ## Adding a new screenshot
 
+### Focused decision-export component illustrations
+
+The six unnumbered `decision-export-{dialog,options,mobile}-{de,en}.png` images
+belong to the existing `.github/scripts/decision-export-browser.mjs` contract.
+It renders the production shared dialog with explicitly labelled example input,
+then captures basic choices, expanded options and a narrow-screen view in both
+languages. These images illustrate the component; they are not full-application,
+persisted-snapshot or live-provider acceptance evidence. The image/source hashes
+and capture environment are recorded in `docs/images/decision-export-screenshots.json`.
+
+Regenerate from the repository root with the project's Playwright browser installed:
+
+```bash
+TAXONOMY_DOC_SCREENSHOTS="$PWD/docs/images" npm --prefix .github run verify:decision-export-dialog
+```
+
+The ordinary contract does not write documentation images unless that variable is
+set. Inspect and commit all six images with the manifest and the relevant guide
+changes. See [contextual exports](../docs/testing/contextual-exports.md) for the
+illustrated guide links and environment overrides. This opt-in component capture
+does not change the full-application screenshot owners described above or their
+Maven/CI workflows.
+
+### Full-application screenshots
+
 1. **Add a test method** to `ScreenshotGeneratorIT.java`:
    - Annotate with `@Test` and `@Order(N)` where `N` continues the existing sequence.
    - If the screenshot requires a live LLM, add `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null, "Skipping: GEMINI_API_KEY not set");` as the first line.
