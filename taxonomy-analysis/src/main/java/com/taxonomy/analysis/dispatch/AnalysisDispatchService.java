@@ -13,8 +13,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Closes the database-commit → broker-send gap without making polling the scheduler.
@@ -47,8 +45,10 @@ public final class AnalysisDispatchService {
     private final AnalysisTaskPublisher publisher;
     private final int recoveryBatch;
     private final int recoveryLimit;
-    private final AtomicBoolean recovering = new AtomicBoolean();
-    private final AtomicReference<AnalysisDispatchRecoveryTrigger> requestedAgain = new AtomicReference<>();
+    // Only ownership and event handoff use this monitor; never database or broker I/O.
+    private final Object recoveryMonitor = new Object();
+    private boolean recovering;
+    private AnalysisDispatchRecoveryTrigger requestedAgain;
 
     public AnalysisDispatchService(AnalysisDispatchStore store, AnalysisTaskPublisher publisher,
                                    int recoveryBatch, int recoveryLimit) {
@@ -130,20 +130,44 @@ public final class AnalysisDispatchService {
      */
     public RecoveryReport recover(AnalysisDispatchRecoveryTrigger trigger) {
         Objects.requireNonNull(trigger, "trigger");
-        if (!recovering.compareAndSet(false, true)) {
-            requestedAgain.set(trigger);
-            return new RecoveryReport(trigger, 0, 0, 0, 0, false, false);
-        }
-        RecoveryReport report;
-        try {
-            report = scan(trigger);
-            AnalysisDispatchRecoveryTrigger again;
-            while (!report.brokerUnavailable() && (again = requestedAgain.getAndSet(null)) != null) {
-                report = scan(again);
+        synchronized (recoveryMonitor) {
+            if (recovering) {
+                requestedAgain = trigger;
+                return new RecoveryReport(trigger, 0, 0, 0, 0, false, false);
             }
-        } finally {
-            recovering.set(false);
+            recovering = true;
         }
+        RecoveryReport report = null;
+        RuntimeException failure = null;
+        for (;;) {
+            try {
+                report = scan(trigger);
+            } catch (RuntimeException scanFailure) {
+                // Preserve the failure for this caller, but do not strand an event
+                // already accepted from another caller while this scan was active.
+                if (failure == null) failure = scanFailure;
+                else if (scanFailure != failure) failure.addSuppressed(scanFailure);
+            } catch (Error fatal) {
+                synchronized (recoveryMonitor) {
+                    recovering = false;
+                }
+                throw fatal;
+            }
+            synchronized (recoveryMonitor) {
+                if (requestedAgain == null) {
+                    // Checking the queue and releasing ownership are one operation.
+                    // A later caller either queues its event or becomes the new owner.
+                    recovering = false;
+                    break;
+                }
+                trigger = requestedAgain;
+                requestedAgain = null;
+            }
+            // An explicitly queued reconnect may supersede a failed exchange.
+            // Without another event there is no retry, even when the broker is down.
+        }
+        if (failure != null) throw failure;
+        Objects.requireNonNull(report, "recovery report");
         if (report.scanned() > 0) {
             log.info("Analysis dispatch recovery ({}): scanned={}, dispatched={}, waiting={}, failed={}, truncated={}",
                     report.trigger(), report.scanned(), report.dispatched(), report.waiting(), report.failed(),
