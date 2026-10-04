@@ -98,6 +98,16 @@ public record AnalysisEnvelope(
                 requirement, roots, attempt + 1, causationId, correlationId, createdAt, deadline);
     }
 
+    /**
+     * Envelope as observed on delivery {@code deliveryAttempt} (1-based), e.g. a
+     * broker's delivery count. Identities are unchanged.
+     */
+    public AnalysisEnvelope withAttempt(int deliveryAttempt) {
+        if (deliveryAttempt == attempt) return this;
+        return new AnalysisEnvelope(schemaVersion, messageType, operationId, taskId, taskType, authority,
+                requirement, roots, deliveryAttempt, causationId, correlationId, createdAt, deadline);
+    }
+
     public boolean redelivered() {
         return attempt > 1;
     }
