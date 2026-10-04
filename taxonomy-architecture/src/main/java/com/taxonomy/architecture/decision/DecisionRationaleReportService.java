@@ -235,7 +235,6 @@ public class DecisionRationaleReportService {
         boolean german = "de".equalsIgnoreCase(effectiveLocale.getLanguage());
         var labels = new DecisionReportLabels(effectiveLocale.toLanguageTag());
         Map<String, Integer> scores = sanitizeScores(input.scores());
-        Map<String, String> reasons = sanitizeReasons(input.reasons());
         Map<String, String> recordedReasons = sanitizeReasons(input.recordedReasons());
 
         HierarchyData hierarchy = input.taxonomyTree().isEmpty()
@@ -295,7 +294,7 @@ public class DecisionRationaleReportService {
                 ? taxonomyService.toFingerprintTree(nodesByCode.values()) : input.taxonomyTree();
         String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);
         String analysisSnapshotFingerprint = fingerprintAnalysis(
-                input, scores, reasons, productCoverageGaps);
+                input, scores, recordedReasons, productCoverageGaps);
         if (input.snapshotProvenance() != null
                 && input.snapshotProvenance().taxonomyFingerprintSha256() != null
                 && !input.snapshotProvenance().taxonomyFingerprintSha256().isBlank()
