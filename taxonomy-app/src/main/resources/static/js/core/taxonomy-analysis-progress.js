@@ -8,6 +8,7 @@
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
         var seen = false, cancelPending = false, cancelInFlight = false, cancelAcknowledged = false, cancelUncertain = false;
         var cleanupStarted = false, observedTerminal = false, finalRead = null, finalRequest = null;
+        var stream = null, clusterScope = null, resultRead = null, resultRequest = null;
         var id = options.id;
         function sameContext() {
             var now = options.context();
@@ -21,7 +22,104 @@
             timer = null;
             if (request) request.abort();
             if (finalRequest) finalRequest.abort();
+            if (resultRequest) resultRequest.abort();
+            if (stream) stream.close();
+            stream = null;
             request = null;
+        }
+
+        function matchesAuthority(scope) {
+            if (!scope || typeof scope.repositoryId !== 'string' || !scope.repositoryId
+                    || !Object.prototype.hasOwnProperty.call(scope, 'branch')
+                    || !Object.prototype.hasOwnProperty.call(scope, 'sourceCommit')
+                    || (scope.workspaceId || '') !== (initial.workspaceId || '')) return false;
+            return ['workspaceId', 'repositoryId', 'branch', 'sourceCommit'].every(function (key) {
+                if (clusterScope) return scope[key] === clusterScope[key];
+                return initial[key] === undefined || key === 'workspaceId' || scope[key] === initial[key];
+            });
+        }
+
+        function recoverResult() {
+            if (resultRead) return resultRead;
+            if (!clusterScope || !observedTerminal || !sameContext()) return Promise.resolve(null);
+            var controller = new AbortController();
+            resultRequest = controller;
+            var deadline = options.setTimeout(function () { controller.abort(); }, 5000);
+            resultRead = (async function () {
+                try {
+                    var response = await options.api.getRunResult(id, {
+                        workspaceId: initial.workspaceId, signal: controller.signal
+                    });
+                    var result = await response.json();
+                    if (!sameContext() || controller.signal.aborted) return null;
+                    if (options.onResult) options.onResult(result);
+                    return result;
+                } finally {
+                    options.clearTimeout(deadline);
+                    if (resultRequest === controller) resultRequest = null;
+                }
+            }()).catch(function (error) {
+                // Retrying this explicit read is safe; it never starts another run.
+                resultRead = null;
+                throw error;
+            });
+            return resultRead;
+        }
+
+        async function acceptSnapshot(data, eventId, fromStream) {
+            if (!current()) { if (!stopped) cancelAndStop(); return false; }
+            if (!data || data.operationId !== id || !Number.isSafeInteger(data.sequence)
+                    || data.sequence < sequence || (fromStream && data.sequence === sequence)) return false;
+            if (fromStream && (data.transport !== 'artemis'
+                    || !/^[0-9]+$/.test(eventId) || Number(eventId) !== data.sequence)) return false;
+            if (data.transport === 'artemis') {
+                if (!matchesAuthority(data.scope)) return false;
+                if (!clusterScope) clusterScope = Object.assign({}, data.scope);
+            } else if (clusterScope) return false;
+            var changed = data.sequence > sequence;
+            sequence = data.sequence;
+            seen = true;
+            observedTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0;
+            options.onSnapshot(data, changed);
+            if (observedTerminal) {
+                cancelPending = false;
+                stop();
+                if (clusterScope && options.onResult) {
+                    try { await recoverResult(); }
+                    catch (error) { if (sameContext()) options.onUnavailable('RESULT_UNAVAILABLE'); }
+                }
+            } else {
+                if (clusterScope && !stream) openStream();
+                if (cancelPending && (data.status === 'RUNNING' || data.status === 'QUEUED')) {
+                    cancelPending = false;
+                    await cancel();
+                }
+            }
+            return true;
+        }
+
+        function openStream() {
+            if (timer !== null) options.clearTimeout(timer);
+            timer = null;
+            stream = options.api.openRunEvents(id, { workspaceId: initial.workspaceId, afterSequence: sequence });
+            function receive(event) {
+                if (!current()) { if (!stopped) cancelAndStop(); return; }
+                var data;
+                try { data = JSON.parse(event.data); }
+                catch (_) { return; }
+                acceptSnapshot(data, event.lastEventId, true).catch(function () {
+                    if (current()) options.onUnavailable('CONNECTION_LOST');
+                });
+            }
+            stream.addEventListener('snapshot', receive);
+            stream.addEventListener('progress', receive);
+            stream.addEventListener('error', function () {
+                if (!current()) { if (!stopped) cancelAndStop(); return; }
+                // The native EventSource reconnects with Last-Event-ID. A closed
+                // connection remains explicit; neither state resumes DB polling.
+                options.onUnavailable('CONNECTION_LOST', stream.readyState === 2);
+                if (stream.readyState === 2) stop();
+            });
         }
         async function cancel() {
             if (stopped || cancelling || cancelPending) return false;
@@ -54,6 +152,23 @@
             if (cleanupStarted || stopped) return false;
             cleanupStarted = true;
             stop();
+            if (clusterScope) {
+                // Durable registration is already known. Departure needs one pinned
+                // cancel write, never a second status-polling lifecycle.
+                if (!cancelAcknowledged && !cancelUncertain && !cancelInFlight) {
+                    cancelInFlight = true;
+                    var clusterCancel = new AbortController();
+                    var clusterDeadline = options.setTimeout(function () { clusterCancel.abort(); }, 5000);
+                    options.api.cancelRun(id, { workspaceId: initial.workspaceId, signal: clusterCancel.signal })
+                        .then(function () { cancelAcknowledged = true; })
+                        .catch(function () { cancelUncertain = true; })
+                        .finally(function () {
+                            cancelInFlight = false;
+                            options.clearTimeout(clusterDeadline);
+                        });
+                }
+                return true;
+            }
             var done = false, cleanupTimer = null, cleanupRequest = null, readTimeout = null;
             var cleanupSeen = seen;
             var deadline = options.setTimeout(endCleanup, 30000);
@@ -127,20 +242,7 @@
                 }
                 var data = await response.json();
                 if (!current()) return;
-                if (data.operationId !== id || !Number.isSafeInteger(data.sequence)
-                        || data.sequence < sequence) return;
-                var changed = data.sequence > sequence;
-                sequence = data.sequence;
-                seen = true;
-                observedTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0;
-                options.onSnapshot(data, changed);
-                if (observedTerminal) {
-                    cancelPending = false;
-                    stop();
-                } else if (cancelPending && (data.status === 'RUNNING' || data.status === 'QUEUED')) {
-                    cancelPending = false;
-                    await cancel();
-                }
+                await acceptSnapshot(data, null, false);
             } catch (error) {
                 if (current()) {
                     var reason = error.status === 404 && !seen ? 'WAITING_FOR_RUN'
@@ -154,7 +256,7 @@
             } finally {
                 options.clearTimeout(timeout);
                 request = null;
-                if (current()) timer = options.setTimeout(poll, 1000);
+                if (current() && !clusterScope) timer = options.setTimeout(poll, 1000);
             }
         }
         // The authoritative HTTP result stops score polling immediately. Retrieve the
@@ -175,6 +277,7 @@
                     var data = await response.json();
                     if (!sameContext()) return null;
                     if (data.operationId !== id || !Number.isSafeInteger(data.sequence)
+                            || (clusterScope && !matchesAuthority(data.scope))
                             || data.sequence < sequence
                             || ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) < 0) {
                         throw new Error('FINAL_STATUS_UNAVAILABLE');
@@ -203,7 +306,8 @@
             return data;
         }
         timer = options.setTimeout(poll, 0);
-        return { stop: stop, cancel: cancel, cancelAndStop: cancelAndStop, detail: detail, isCurrent: current, finalSnapshot: finalSnapshot, isInScope: sameContext };
+        return { stop: stop, cancel: cancel, cancelAndStop: cancelAndStop, detail: detail,
+            isCurrent: current, finalSnapshot: finalSnapshot, recoverResult: recoverResult, isInScope: sameContext };
     }
 
     function context() {
@@ -240,6 +344,8 @@
             + (p.step !== 'SOURCES' ? text(' · Tiefe ', ' · depth ') + c.depth : '');
     }
     function workSummary(snapshot) {
+        if (snapshot.cluster) return text('Teiltaxonomien: ', 'Taxonomy roots: ')
+            + countLabel(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
         var r = snapshot.relationProgress, n = snapshot.nodeProgress;
         if (r) return relationLabel(r) + (r.current ? ' · ' + currentRelation(r) : '');
         return n ? text('Knotenbewertung: ', 'Node assessment: ') + countLabel(n.assessed + n.excluded, n.total) : '';
@@ -339,6 +445,19 @@
                 progress.setAttribute('aria-label', countLabel(done, total));
                 work.append(progress);
             }
+            if (snapshot.cluster) {
+                work.append(node('div', workSummary(snapshot), 'fw-bold'));
+                bar(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
+                (snapshot.cluster.tasks || []).forEach(function (task) {
+                    var family = task.taskType === 'RELATION_ANALYSIS'
+                        ? text('Relationsprüfung', 'Relationship search') : text('Knotenbewertung', 'Node assessment');
+                    work.append(node('div', family + ' · ' + (task.root ? task.root.code : text('Vorbereitung', 'Preparation')) + ' · '
+                        + task.queued + text(' wartend · ', ' queued · ')
+                        + task.running + text(' aktiv · ', ' running · ')
+                        + task.completed + text(' erledigt', ' complete')
+                        + (task.failed ? ' · ' + task.failed + text(' fehlgeschlagen', ' failed') : ''), 'small'));
+                });
+            }
             if (n) {
                 work.append(node('div', text('Knotenbewertung: ', 'Node assessment: ')
                     + countLabel(n.assessed + n.excluded, n.total), 'fw-bold'));
@@ -392,12 +511,16 @@
         var warning = node('div', '', 'fw-bold');
         var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-danger mt-2');
         button.type = 'button';
+        var retryResult = node('button', text('Ergebnis erneut abrufen', 'Retry result'),
+            'btn btn-sm btn-outline-primary mt-2 ms-2');
+        retryResult.type = 'button';
+        retryResult.hidden = true;
         function cancelState(disabled, label) {
             button.disabled = disabled;
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, work, queueDuration, duration, resources, warning, button);
+        panel.append(title, state, work, queueDuration, duration, resources, warning, button, retryResult);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -431,16 +554,19 @@
             SCORING: ['Bewertungen auswerten', 'Processing scores'],
             RELATIONS: ['Relationshypothesen erstellen', 'Generating relation hypotheses'],
             ARCHITECTURE: ['Architekturansicht erstellen', 'Building architecture view'],
+            FINALIZING: ['Analyse abschließen', 'Finalizing analysis'],
             STOPPING: ['Analyse wird kontrolliert gestoppt', 'Stopping analysis cooperatively'],
             FINISHED: ['Analyse beendet', 'Analysis finished']
         };
         return {
             button: button,
+            retryResult: retryResult,
             finalDiagnosticsUnavailable: function () {
                 omitted.textContent += text(' Abschlussprotokoll nicht verfügbar; angezeigt bleibt der zuletzt beobachtete Stand.',
                     ' Final diagnostic status unavailable; showing the last observed state.');
             },
             finished: function (status, measuredDuration) {
+                retryResult.hidden = true;
                 if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) terminalDuration = measuredDuration;
                 // A running estimate may include admission/connection time. Only an
                 // authoritative result or measured terminal snapshot can finalize it.
@@ -453,6 +579,13 @@
                 cancelState(true, text('Analyse beendet', 'Analysis finished'));
             },
             unavailable: function (reason, terminal) {
+                if (reason === 'RESULT_UNAVAILABLE') {
+                    retryResult.hidden = false;
+                    retryResult.disabled = false;
+                    state.textContent = text('Gespeichertes Ergebnis konnte nicht abgerufen werden. Erneut versuchen.',
+                        'The saved result could not be retrieved. Try again.');
+                    return;
+                }
                 if (terminal) {
                     cancelState(true, text('Nicht verfügbar', 'Unavailable'));
                     showDuration(terminalDuration);
@@ -488,8 +621,8 @@
                 state.textContent = snapshot.status === 'QUEUED'
                     ? text('Auftrag angenommen; wartet auf freien Analyseplatz. Noch keine LLM-Anfrage gestartet.',
                         'Request accepted; waiting for an analysis slot. No LLM request started yet.')
-                    : snapshot.status + ' · ' + snapshot.evaluatedNodes
-                    + text(' Knoten bewertet', ' nodes evaluated') + ' · ' + elapsed + ' s · '
+                    : snapshot.status + ' · ' + (snapshot.cluster ? workSummary(snapshot)
+                        : snapshot.evaluatedNodes + text(' Knoten bewertet', ' nodes evaluated')) + ' · ' + elapsed + ' s · '
                     + text('letzter Arbeitsschritt vor ', 'last activity ') + quiet + ' s'
                     + (snapshot.node ? ' · ' + snapshot.node : '')
                     + text(' · Server-Lebenszeichen empfangen', ' · server heartbeat received');
@@ -557,18 +690,24 @@
             }
         };
     }
-    function start(id, onScores) {
+    function start(id, onScores, onResult, expectedScope) {
         if (active) active.cancelAndStop();
+        clearRecent();
         var view = presentation();
         var monitor = createMonitor({
-            id: id, context: context, api: window.TaxonomyAnalysisSessionApi,
+            id: id, context: function () { return Object.assign({}, expectedScope || {}, context()); },
+            api: window.TaxonomyAnalysisSessionApi,
             setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
             onSnapshot: function (snapshot, changed) {
                 view.render(snapshot, monitor);
                 document.dispatchEvent(new CustomEvent('taxonomy:analysis-progress', { detail: snapshot }));
                 if (changed && onScores) onScores(snapshot);
             },
-            onUnavailable: view.unavailable, onCancelling: view.cancelling
+            onUnavailable: view.unavailable, onCancelling: view.cancelling,
+            onResult: onResult ? function (result) {
+                if (active !== monitor || !monitor.isInScope()) return;
+                onResult(result);
+            } : null
         });
         // Result ownership outlives polling: a terminal snapshot may arrive before the
         // complete HTTP envelope, but a replacement operation must never accept it.
@@ -593,15 +732,100 @@
             });
         };
         view.button.addEventListener('click', monitor.cancel);
+        view.retryResult.addEventListener('click', async function () {
+            if (active !== monitor || !monitor.isInScope() || view.retryResult.disabled) return;
+            view.retryResult.disabled = true;
+            try {
+                await monitor.recoverResult();
+                if (active === monitor && monitor.isInScope()) view.retryResult.hidden = true;
+            } catch (_) {
+                if (active === monitor && monitor.isInScope()) view.unavailable('RESULT_UNAVAILABLE');
+            }
+        });
         active = monitor;
         return monitor;
     }
-    window.TaxonomyAnalysisProgress = { createMonitor: createMonitor, start: start, workSummary: workSummary };
+    var recentLoaded = null, recentRead = null, recentEpoch = 0;
+    function clearRecent() {
+        recentEpoch++; recentLoaded = null; recentRead = null;
+        var panel = document.getElementById('analysisRecentRuns');
+        if (panel) panel.remove();
+    }
+    function refreshRecent(force) {
+        var session = window.TaxonomyAnalysisSession;
+        if (!session || !session.state().ready || active && active.isCurrent()) return Promise.resolve(false);
+        var initial = context(), epoch = recentEpoch;
+        var key = JSON.stringify([initial.workspaceId, initial.generation]);
+        if (recentRead) return recentRead;
+        if (!force && recentLoaded === key) return Promise.resolve(false);
+        var controller = new AbortController();
+        var deadline = window.setTimeout(function () { controller.abort(); }, 5000);
+        function valid() {
+            var now = context();
+            return recentEpoch === epoch && now.workspaceId === initial.workspaceId
+                && now.generation === initial.generation && !now.invalidating && session.state().ready;
+        }
+        recentRead = window.TaxonomyAnalysisSessionApi.getRecentRuns({
+            workspaceId: initial.workspaceId, signal: controller.signal
+        }).then(function (response) { return response.json(); }).then(function (runs) {
+            if (!valid() || active && active.isCurrent()) return false;
+            recentLoaded = key;
+            var previous = document.getElementById('analysisRecentRuns');
+            if (previous) previous.remove();
+            runs = (Array.isArray(runs) ? runs : []).filter(function (run) {
+                return run.transport === 'artemis' && run.scope
+                    && (run.scope.workspaceId || '') === (initial.workspaceId || '');
+            }).sort(function (left, right) {
+                function running(run) { return ['QUEUED', 'RUNNING', 'CANCELLING'].indexOf(run.status) >= 0 ? 1 : 0; }
+                return running(right) - running(left) || right.startedAt - left.startedAt;
+            }).slice(0, 10);
+            if (!runs.length) return false;
+            var panel = node('section', undefined, 'alert alert-secondary mt-2'); panel.id = 'analysisRecentRuns';
+            panel.append(node('strong', text('Gespeicherte Analyseläufe', 'Saved analysis runs')),
+                node('div', text('Auswählen stellt die ursprüngliche Anforderung wieder her und ersetzt den aktuellen Arbeitsentwurf.',
+                    'Choosing a run restores its original requirement and replaces the current working draft.'), 'small'));
+            runs.forEach(function (run) {
+                var terminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(run.status) >= 0;
+                var row = node('div', undefined, 'd-flex flex-wrap align-items-center gap-2 mt-2');
+                row.append(node('span', run.status + ' · ' + workSummary(run) + ' · ' + run.operationId, 'small'));
+                var button = node('button', terminal ? text('Ergebnis abrufen', 'Retrieve result')
+                    : text('Beobachtung fortsetzen', 'Resume observation'), 'btn btn-sm btn-outline-primary');
+                button.type = 'button';
+                button.addEventListener('click', async function () {
+                    if (!valid() || !window.TaxonomyScoring || button.disabled) return;
+                    button.disabled = true;
+                    try {
+                        if (await window.TaxonomyScoring.resumeAnalysis(run.operationId, run.scope)) panel.remove();
+                    } catch (_) {
+                        if (valid()) panel.append(node('div', text('Wiederherstellung nicht verfügbar. Erneut versuchen.',
+                            'Recovery unavailable. Try again.'), 'small text-danger'));
+                    } finally { button.disabled = false; }
+                });
+                row.append(button); panel.append(row);
+            });
+            var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
+            if (anchor) anchor.insertAdjacentElement('afterend', panel);
+            return true;
+        }).catch(function () { return false; }).finally(function () {
+            window.clearTimeout(deadline);
+            if (epoch === recentEpoch) recentRead = null;
+        });
+        return recentRead;
+    }
+    window.TaxonomyAnalysisProgress = { createMonitor: createMonitor, start: start,
+        workSummary: workSummary, refreshRecent: refreshRecent };
+    if (window.TaxonomyAnalysisSessionReady && typeof window.TaxonomyAnalysisSessionReady.then === 'function') {
+        window.TaxonomyAnalysisSessionReady.then(function (ready) { if (ready) refreshRecent(); });
+    }
     if (typeof document !== 'undefined' && document.addEventListener) {
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
             document.addEventListener(name, function () {
                 if (active) { active.cancelAndStop(); active = null; }
+                clearRecent();
             });
+        });
+        document.addEventListener('taxonomy:analysis-draft-restored', function () {
+            window.setTimeout(function () { refreshRecent(); }, 0);
         });
     }
 }());

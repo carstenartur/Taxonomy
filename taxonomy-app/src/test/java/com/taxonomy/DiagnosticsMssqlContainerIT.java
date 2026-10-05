@@ -7,18 +7,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
+ * Runs diagnostics, API and durable cluster execution contracts
  * but against a <strong>Microsoft SQL Server</strong> database backend.
  * <p>
- * Tagged with {@code db-mssql} — included in the default {@code mvn verify}
- * run (requires Docker). Execute explicitly with:
+ * Included in the Maven-owned SQL Server compatibility lane (requires Docker):
  * <pre>
- * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsMssqlContainerIT
+ * ./mvnw -B verify -Pdatabase-mssql
  * </pre>
  */
 @Testcontainers
 @Tag("db-mssql")
-class DiagnosticsMssqlContainerIT extends AbstractDatabaseContainerIT {
+class DiagnosticsMssqlContainerIT extends AbstractExternalDatabaseContainerIT {
 
     static Network network = Network.newNetwork();
 
@@ -34,5 +33,10 @@ class DiagnosticsMssqlContainerIT extends AbstractDatabaseContainerIT {
     @Override
     protected GenericContainer<?> getAppContainer() {
         return app;
+    }
+
+    @Override
+    protected org.testcontainers.containers.JdbcDatabaseContainer<?> getDatabaseContainer() {
+        return db;
     }
 }

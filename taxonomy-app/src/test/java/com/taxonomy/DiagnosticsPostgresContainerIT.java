@@ -7,18 +7,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
+ * Runs diagnostics, API and durable cluster execution contracts
  * but against a <strong>PostgreSQL</strong> database backend.
  * <p>
- * Tagged with {@code db-postgres} — included in the default {@code mvn verify}
- * run (requires Docker). Execute explicitly with:
+ * Included in the Maven-owned PostgreSQL compatibility lane (requires Docker):
  * <pre>
- * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsPostgresContainerIT
+ * ./mvnw -B verify -Pdatabase-postgres
  * </pre>
  */
 @Testcontainers
 @Tag("db-postgres")
-class DiagnosticsPostgresContainerIT extends AbstractDatabaseContainerIT {
+class DiagnosticsPostgresContainerIT extends AbstractExternalDatabaseContainerIT {
 
     static Network network = Network.newNetwork();
 
@@ -34,5 +33,10 @@ class DiagnosticsPostgresContainerIT extends AbstractDatabaseContainerIT {
     @Override
     protected GenericContainer<?> getAppContainer() {
         return app;
+    }
+
+    @Override
+    protected org.testcontainers.containers.JdbcDatabaseContainer<?> getDatabaseContainer() {
+        return db;
     }
 }

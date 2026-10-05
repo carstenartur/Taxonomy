@@ -1,0 +1,89 @@
+
+Native Memory Tracking:
+
+(Omitting categories weighting less than 1KB)
+
+Total: reserved=3239423KB, committed=919859KB
+       malloc: 104891KB #725406
+       mmap:   reserved=3134532KB, committed=814968KB
+
+-                 Java Heap (reserved=1572864KB, committed=563576KB)
+                            (mmap: reserved=1572864KB, committed=563576KB)
+
+-                     Class (reserved=1052280KB, committed=27128KB)
+                            (classes #34864)
+                            (  instance classes #32738, array classes #2126)
+                            (malloc=3704KB #98656) (peak=3845KB #103234)
+                            (mmap: reserved=1048576KB, committed=23424KB)
+                            (  Metadata:   )
+                            (    reserved=196608KB, committed=154048KB)
+                            (    used=152985KB)
+                            (    waste=1063KB =0.69%)
+                            (  Class space:)
+                            (    reserved=1048576KB, committed=23424KB)
+                            (    used=22405KB)
+                            (    waste=1019KB =4.35%)
+
+-                    Thread (reserved=47395KB, committed=4991KB)
+                            (thread #47)
+                            (stack: reserved=47240KB, committed=4836KB)
+                            (malloc=101KB #288) (peak=110KB #292)
+                            (arena=53KB #92) (peak=2990KB #32)
+
+-                      Code (reserved=252121KB, committed=58681KB)
+                            (malloc=4433KB #20844) (peak=5823KB #24229)
+                            (mmap: reserved=247688KB, committed=54248KB)
+
+-                        GC (reserved=5150KB, committed=1862KB)
+                            (malloc=22KB #80) (peak=837KB #284)
+                            (mmap: reserved=5128KB, committed=1840KB)
+
+-                  Compiler (reserved=2395KB, committed=2395KB)
+                            (malloc=244KB #2021) (peak=256KB #2396)
+                            (arena=2151KB #10) (peak=36262KB #13)
+
+-                  Internal (reserved=1662KB, committed=1662KB)
+                            (malloc=1626KB #56317) (at peak)
+                            (mmap: reserved=36KB, committed=36KB)
+
+-                     Other (reserved=1632KB, committed=1632KB)
+                            (malloc=1632KB #31) (at peak)
+
+-                    Symbol (reserved=61385KB, committed=61385KB)
+                            (malloc=57605KB #501260) (at peak)
+                            (arena=3780KB #1) (at peak)
+
+-    Native Memory Tracking (reserved=11538KB, committed=11538KB)
+                            (malloc=203KB #3684) (at peak)
+                            (tracking overhead=11334KB)
+
+-        Shared class space (reserved=16384KB, committed=12952KB, readonly=0KB)
+                            (mmap: reserved=16384KB, committed=12952KB)
+
+-               Arena Chunk (reserved=13086KB, committed=13086KB)
+                            (malloc=13086KB #686) (peak=37389KB #968)
+
+-                   Tracing (reserved=32KB, committed=32KB)
+                            (arena=32KB #1) (at peak)
+
+-                    Module (reserved=304KB, committed=304KB)
+                            (malloc=304KB #5624) (at peak)
+
+-                 Safepoint (reserved=8KB, committed=8KB)
+                            (mmap: reserved=8KB, committed=8KB)
+
+-           Synchronization (reserved=3547KB, committed=3547KB)
+                            (malloc=3547KB #34896) (at peak)
+
+-            Serviceability (reserved=17KB, committed=17KB)
+                            (malloc=17KB #15) (peak=22KB #27)
+
+-                 Metaspace (reserved=197566KB, committed=155006KB)
+                            (malloc=958KB #700) (at peak)
+                            (mmap: reserved=196608KB, committed=154048KB)
+
+-      String Deduplication (reserved=1KB, committed=1KB)
+                            (malloc=1KB #8) (at peak)
+
+-           Object Monitors (reserved=57KB, committed=57KB)
+                            (malloc=57KB #282) (at peak)

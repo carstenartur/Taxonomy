@@ -23,6 +23,10 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 
 | Category / entity | Module owner | Rule | Database table | Contract |
 |---|---|---|---|---|
+| `com.taxonomy.analysis.cluster.ClusterAnalysisRun` | analysis | PORTABLE_PRIMARY | `analysis_cluster_run` | Durable frozen operation authority and terminal result; restore in-flight work interrupted without dispatch |
+| `com.taxonomy.analysis.cluster.ClusterAnalysisWork` | analysis | PORTABLE_PRIMARY | `analysis_cluster_work` | Expected tasks and committed effects; restore only settled evidence, never reactivate execution |
+| `com.taxonomy.analysis.cluster.ClusterAnalysisInput` | analysis | PORTABLE_PRIMARY | `analysis_cluster_input` | Exact immutable catalogue shard inputs owned by the captured run |
+| `com.taxonomy.analysis.cluster.ClusterAnalysisEvent` | analysis | PORTABLE_PRIMARY | `analysis_cluster_event` | Durable content-free monotonic progress owned by the captured run |
 | `com.taxonomy.analysis.dispatch.AnalysisDispatchIntent` | analysis | TRANSIENT | `analysis_dispatch_intent` | Broker dispatch bookkeeping only; restore never republishes tasks or reactivates broker state |
 | `com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord` | analysis | TRANSIENT | `analysis_task_completion` | Idempotency ledger for broker redelivery; durable results live in the owning operation records |
 | `com.taxonomy.analysis.recovery.AnalysisContinuationRun` | analysis | PORTABLE_PRIMARY | `analysis_continuation` | Durable work/status retained; restore interrupted, never restore leases or automatically start external work |

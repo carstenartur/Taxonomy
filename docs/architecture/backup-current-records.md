@@ -97,6 +97,44 @@ profiles compare the selected request with the current draft text and exclude
 completed work without a draft; history profiles retain authorized earlier runs.
 Selected-version capture reads no present-day analysis rows.
 
+Clustered analysis adds four explicit datasets: `cluster-runs`, `cluster-work`,
+`cluster-inputs`, and `cluster-events`. The run owns the exact source authority,
+request, saved result and relation preparation; its children own committed root
+and relation effects, immutable catalogue inputs, and monotonic content-free
+progress. Scoped capture rechecks the exact owner and repository/workspace before
+reading request bodies. Current profiles select the latest exact
+owner/repository/workspace/branch/project/requirement tuple, across its snapshot
+versions, ordered by admission (`createdAt`) and then exact source ID. A late
+update from an older request cannot displace a newer admission; `updatedAt`
+remains captured evidence. Project requirement lineages remain independent of each other and of
+the editor's ad-hoc text; their terminal results remain available. Ad-hoc runs
+apply the same current-draft text rule as continuations. Historical profiles retain earlier authorized runs.
+Selected-version capture emits empty dataset headers without querying present-day
+cluster tables. Child references, task envelopes, frozen-root closure, settled
+root counts and consecutive progress revisions must agree with the selected run;
+concurrent changes or incomplete closure abort capture.
+
+`ClusterAnalysisBackupRestorer` is an internal persistence API for an already
+authorized, verified aggregate. It does not add a general archive upload/import
+route. Its caller supplies fresh operation, repository/workspace and requirement
+identities; the exact captured request text, analysis scope and options must remain
+unchanged. The helper maps child database keys, task/prerequisite IDs, relation
+preparation/grant references and progress envelopes, and participates in the
+caller's transaction. A failure rolls back the whole aggregate. Terminal result
+snapshots remain terminal. An in-flight run becomes `CANCELLED` with a `PARTIAL`
+result and `RESTORE_INTERRUPTED` warning, retaining committed root scores and
+relation search evidence. Missing work never becomes a zero score or an exhausted
+search. Queued/running tasks become cancelled, live attempt/start fields are
+cleared, and a final durable stop event is appended. Restoring creates no dispatch
+intent, completion-idempotency ledger, broker delivery or provider token. Starting
+new external work requires a new explicit analysis request.
+
+Restore bounds are eight frozen roots, at most 521 planned tasks, 100,000 progress
+events, 8 Mi characters per stored text value, and 64 million characters across
+one aggregate. Oversized or inconsistent evidence is rejected rather than
+truncated. These bounds are checked independently of archive verification and
+do not establish a production import endpoint or authorize an identity mapping.
+
 Selected continuation bodies and their questions are read in batches of at most
 200 IDs, with a 100,000-selected-run limit. Each body must still match its selected
 metadata; missing or changed runs abort capture. Questions must reference an

@@ -12,7 +12,11 @@ public sealed interface AnalysisStreamEvent
         AnalysisStreamEvent.Scores,
         AnalysisStreamEvent.Expanding,
         AnalysisStreamEvent.Complete,
-        AnalysisStreamEvent.Error {
+        AnalysisStreamEvent.Error,
+        AnalysisStreamEvent.DurableSnapshot {
+
+    /** Already persisted evidence; adapters must not re-read current catalogue semantics. */
+    record DurableSnapshot(com.taxonomy.analysis.cluster.ClusterAnalysisStore.Snapshot snapshot) implements AnalysisStreamEvent { }
 
     record Phase(String message, int progressPercent) implements AnalysisStreamEvent { }
 

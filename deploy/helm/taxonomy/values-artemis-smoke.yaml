@@ -1,0 +1,69 @@
+# Additive live acceptance fixture, not a production capacity recommendation.
+replicaCount: 1
+fullnameOverride: taxonomy-artemis
+image:
+  repository: taxonomy-smoke
+  tag: ""
+  digest: ""
+  pullPolicy: Never
+existingSecret: taxonomy-artemis-smoke
+resources:
+  requests: {cpu: 100m, memory: 512Mi}
+  limits: {cpu: 500m, memory: 1Gi}
+analysis:
+  transportMode: artemis
+  runtimeRole: coordinator
+  artemis:
+    existingSecret: taxonomy-artemis-smoke
+    brokerUrlSecretKey: ARTEMIS_BROKER_URL
+    requireTls: true
+    tlsSecret: taxonomy-artemis-client-tls
+    egress:
+      - to:
+          - podSelector:
+              matchLabels: {app.kubernetes.io/name: taxonomy-smoke-broker}
+        ports: [{port: 61617, protocol: TCP}]
+  workerSets:
+    - name: cp
+      replicas: 1
+      shards: [CP]
+      consumersPerShard: 1
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 768Mi}
+    - name: ip
+      replicas: 1
+      shards: [IP]
+      consumersPerShard: 1
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 768Mi}
+networkPolicy:
+  enabled: true
+  egressMode: restricted
+  allowSameNamespaceEgress: false
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: taxonomy-smoke-postgres}
+      ports: [{port: 5432, protocol: TCP}]
+config:
+  SPRING_PROFILES_ACTIVE: postgres,kubernetes
+  TAXONOMY_DDL_AUTO: validate
+  TAXONOMY_INIT_ASYNC: "true"
+  TAXONOMY_INIT_RELOAD_EXISTING: "false"
+  TAXONOMY_REQUIRE_PASSWORD_CHANGE: "false"
+  TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
+  TAXONOMY_SEARCH_SYNC_STRATEGY: sync
+  TAXONOMY_EMBEDDING_ENABLED: "false"
+  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  LLM_MOCK: "true"
+  JAVA_OPTS: -XX:+UseSerialGC -XX:MaxRAMPercentage=60.0 -XX:InitialRAMPercentage=15.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
+startupProbe:
+  failureThreshold: 120
+  periodSeconds: 5
+  timeoutSeconds: 3
+readinessProbe:
+  failureThreshold: 9
+  periodSeconds: 5
+  timeoutSeconds: 3

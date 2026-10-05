@@ -78,7 +78,6 @@ class AnalyzeRequirementUseCaseTest {
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
         var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
         var result = useCase.analyze(command).analysisResult();
         assertThat(result.getAnalysisScope()).isEqualTo(scope);
         assertThat(result.getProvisionalRelations()).isEmpty();
@@ -87,6 +86,35 @@ class AnalyzeRequirementUseCaseTest {
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
                 architectureViewService, preferencesService);
         verify(llmService).clearRequestProvider();
+    }
+
+    @Test
+    void clusterCallerCapturesTheAuthorizedBranchWithoutAnActiveWorkspace() {
+        var cluster = org.mockito.Mockito.mock(com.taxonomy.analysis.cluster.ClusterAnalysisExecution.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "clusterExecution", cluster);
+        var selected = new WorkspaceContext("alice", "alice-ws", "main", "repository");
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                selected, null, new AnalysisScope(java.util.Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY));
+        when(repositoryStateService.getViewContext(org.mockito.ArgumentMatchers.eq("alice"),
+                any(), org.mockito.ArgumentMatchers.eq(selected))).thenAnswer(i -> {
+            String branch = i.getArgument(1);
+            return new ViewContext("main".equals(branch) ? "main-commit" : null,
+                    branch, null, false, false, false);
+        });
+        when(cluster.execute(any(), any(), any(), any())).thenAnswer(i -> {
+            com.taxonomy.analysis.dag.AnalysisOperationContext operation = i.getArgument(0);
+            ViewContext captured = i.getArgument(2);
+            assertThat(operation.authority().branch()).isEqualTo("main");
+            assertThat(operation.authority().sourceCommit()).isEqualTo("main-commit");
+            assertThat(captured.basedOnBranch()).isEqualTo("main");
+            return new AnalysisResult(Map.of("CP", 71), List.of());
+        });
+
+        assertThat(useCase.analyze(command).analysisResult().getRawScores()).containsEntry("CP", 71);
+
+        verify(repositoryStateService).getViewContext("alice", "main", selected);
+        verify(repositoryStateService, never()).resolveWorkspaceBranch(any());
+        verifyNoInteractions(llmService);
     }
 
     @Test
@@ -101,7 +129,6 @@ class AnalyzeRequirementUseCaseTest {
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
         when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenReturn(report);
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
         var result = useCase.analyze(command).analysisResult();
         assertThat(result.getAnalysisScope()).isEqualTo(scope);
         assertThat(result.getRelationSearchReport()).isSameAs(report);
@@ -121,7 +148,6 @@ class AnalyzeRequirementUseCaseTest {
         when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenThrow(
                 new com.taxonomy.analysis.service.AnalysisStoppedException(
                         com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED));
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
 
         var result = useCase.analyze(command).analysisResult();
 
@@ -130,7 +156,8 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getArchitectureView()).isNull();
         verifyNoInteractions(architectureViewService, preferencesService);
         // Exact read authority is resolved once and reported on the result.
-        verify(repositoryStateService, org.mockito.Mockito.times(1)).resolveWorkspaceBranch("alice");
+        verify(repositoryStateService, org.mockito.Mockito.times(1))
+                .getViewContext("alice", "draft", command.workspaceContext());
         assertThat(com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation.current()).isEmpty();
     }
 
@@ -156,7 +183,6 @@ class AnalyzeRequirementUseCaseTest {
                 command.maxArchitectureNodes(),
                 provisionalRelations)).thenReturn(architectureView);
         when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
         when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
 
         AnalyzeRequirementResult result = useCase.analyze(command);
@@ -204,7 +230,6 @@ class AnalyzeRequirementUseCaseTest {
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
         when(analysisRelationGenerator.generate(analysisResult.getScores()))
                 .thenReturn(provisionalRelations);
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
         when(repositoryStateService.getViewContext("alice", "draft", workspace))
                 .thenReturn(viewContext);
 
@@ -232,7 +257,6 @@ class AnalyzeRequirementUseCaseTest {
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
         when(analysisRelationGenerator.generate(analysisResult.getScores())).thenReturn(List.of());
-        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
         when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
 
         AnalyzeRequirementResult result = useCase.analyze(command);
@@ -264,7 +288,7 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
-    void analyzeUsesWorkspaceContextUsernameForBranchResolutionWhenSharedFallback() {
+    void analyzeUsesTheExplicitSharedContextForViewResolution() {
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                 "Need secure voice comms", false, 20, null,
                 "alice", WorkspaceContext.SHARED);
@@ -274,7 +298,6 @@ class AnalyzeRequirementUseCaseTest {
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
         when(analysisRelationGenerator.generate(analysisResult.getScores())).thenReturn(List.of());
-        when(repositoryStateService.resolveWorkspaceBranch("system")).thenReturn("draft");
         when(repositoryStateService.getViewContext("system", "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
 
         AnalyzeRequirementResult result = useCase.analyze(command);
@@ -282,7 +305,7 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.analysisResult().getViewContext()).isSameAs(viewContext);
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());
-        verify(repositoryStateService).resolveWorkspaceBranch("system");
+        verify(repositoryStateService, never()).resolveWorkspaceBranch(any());
         verify(repositoryStateService).getViewContext("system", "draft", WorkspaceContext.SHARED);
         verify(llmService).clearRequestProvider();
     }

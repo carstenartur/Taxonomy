@@ -65,6 +65,39 @@ public class RequirementRelationSearchService {
                 .search(original, scores, options());
     }
 
+    /** Source preparation must receive the admission snapshot; there is no live-catalogue fallback. */
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map<String, Integer> scores,
+            List<String> sourceResultIds, RequirementRelationSearch.InputCatalogue frozenCatalogue,
+            boolean includeRelations) {
+        // Version-two transport identities admit ordinals 0..511. Retain the
+        // complete intent plan, but bound distributed admission independently of
+        // a larger local continuation setting; excess work remains WORK_LIMIT.
+        var configured = options();
+        var limits = configured.limits();
+        var distributed = new RequirementRelationSearch.Options(new Limits(limits.maxCalls(), limits.maxDepth(),
+                limits.batchSize(), Math.min(512, limits.maxWorkItems())), configured.maxSources());
+        var engine = new RequirementRelationSearch(Objects.requireNonNull(frozenCatalogue), rules, this::complete,
+                AnalysisRunControl::checkpoint, llm.getActiveProviderName());
+        if (includeRelations && !llm.supportsGenerativeCompletion()) {
+            var disabled = engine.prepare(preparationId, original, scores, sourceResultIds, distributed, false);
+            String reason = "GENERATION_UNSUPPORTED: " + llm.getActiveProvider().name()
+                    + " provides embeddings, not requirement-scoped relation assessments; "
+                    + "all relationships remain unassessed.";
+            return new RelationSearchDistribution.Plan(disabled.schemaVersion(), disabled.preparationId(),
+                    disabled.originalSha256(), disabled.sourceResultIds(), disabled.options(), List.of(), List.of(),
+                    List.of(), List.of(), 0, disabled.durationMillis(), List.of(reason), reason, true);
+        }
+        return engine.prepare(preparationId, original, scores, sourceResultIds, distributed, includeRelations);
+    }
+
+    /** Target workers load only the exact frozen target shard and the persisted preparation. */
+    public RelationSearchDistribution.WorkResult evaluate(String original, RelationSearchDistribution.Plan plan,
+            RelationSearchDistribution.Work work, RequirementRelationSearch.InputCatalogue frozenTargetCatalogue) {
+        if (!llm.supportsGenerativeCompletion()) throw new IllegalStateException("GENERATION_UNSUPPORTED");
+        return new RequirementRelationSearch(Objects.requireNonNull(frozenTargetCatalogue), rules, this::complete,
+                AnalysisRunControl::checkpoint, llm.getActiveProviderName()).evaluate(original, plan, work);
+    }
+
     public String recoveryPolicyFingerprint() {
         return "relation-downwalk-v2/complete-plan/resumable-exchanges/" + enabled + "/" + options();
     }

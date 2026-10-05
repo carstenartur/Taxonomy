@@ -18,15 +18,11 @@ import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
-import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
 import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
 import com.taxonomy.analysis.dag.RelationAnalysisTask;
-import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
-import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.ViewContext;
-import com.taxonomy.workspace.service.WorkspaceContext;
 
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +30,9 @@ import java.util.UUID;
 
 @Service
 public class AnalyzeRequirementUseCase {
+
+    @Autowired(required = false)
+    private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
 
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
@@ -73,6 +72,10 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
+            ViewContext view = resolveViewContext(command);
+            return analyze(command, operationContext(command, view), view);
+        }
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
             return analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
         }
@@ -83,6 +86,15 @@ public class AnalyzeRequirementUseCase {
             run.finish(result.analysisResult());
             return result;
         }
+    }
+
+    /** The HTTP adapter supplies the operation ID before durable admission. */
+    public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command, AnalysisOperationContext context,
+                                             ViewContext view) {
+        if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
+        promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
+        // Root scoring, relation work and rendering have already been persisted when this returns.
+        return new AnalyzeRequirementResult(clusterExecution.execute(context, command, view, ignored -> { }));
     }
 
     private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
@@ -138,17 +150,7 @@ public class AnalyzeRequirementUseCase {
                                                              ViewContext viewContext) {
         String runId = AnalysisRunControl.currentOperationId();
         String operationId = runId != null ? runId : UUID.randomUUID().toString();
-        WorkspaceContext workspace = command.workspaceContext();
-        String branch = viewContext != null && viewContext.basedOnBranch() != null
-                ? viewContext.basedOnBranch() : workspace.currentBranch();
-        var authority = new AnalysisSourceAuthority(workspace.repositoryId(), workspace.workspaceId(), branch,
-                viewContext == null ? null : viewContext.basedOnCommit());
-        AnalysisProvenance provenance = command.provenance();
-        var requirement = provenance == null
-                ? RequirementReference.adHoc(command.businessText())
-                : RequirementReference.of(provenance.projectId(), provenance.requirementId(),
-                        provenance.snapshotId(), command.businessText());
-        return new AnalysisOperationContext(operationId, authority, requirement, operationId);
+        return AnalysisOperationContexts.create(operationId, command, viewContext);
     }
 
     /** Executes relation work as the operation's {@link RelationAnalysisTask}. */
@@ -251,7 +253,7 @@ public class AnalyzeRequirementUseCase {
 
     private ViewContext resolveViewContext(AnalyzeRequirementCommand command) {
         String effectiveUsername = command.workspaceContext().username();
-        String branch = repositoryStateService.resolveWorkspaceBranch(effectiveUsername);
+        String branch = command.workspaceContext().currentBranch();
         return repositoryStateService.getViewContext(
                 effectiveUsername,
                 branch,

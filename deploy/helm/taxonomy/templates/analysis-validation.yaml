@@ -1,0 +1,85 @@
+{{- $analysis := .Values.analysis -}}
+{{- if not (has $analysis.transportMode (list "local" "artemis")) -}}
+{{- fail "analysis.transportMode must be local or artemis" -}}
+{{- end -}}
+{{- if not (has $analysis.runtimeRole (list "all" "coordinator")) -}}
+{{- fail "analysis.runtimeRole must be all or coordinator; worker-only workloads belong in analysis.workerSets" -}}
+{{- end -}}
+{{- if and (eq $analysis.transportMode "local") (or (ne $analysis.runtimeRole "all") (not (empty $analysis.workerSets))) -}}
+{{- fail "Coordinator and worker sets require analysis.transportMode=artemis" -}}
+{{- end -}}
+{{- if and (not (empty $analysis.workerSets)) (ne $analysis.runtimeRole "coordinator") -}}
+{{- fail "analysis.workerSets requires analysis.runtimeRole=coordinator" -}}
+{{- end -}}
+{{- if and (not (empty $analysis.workerSets)) (has "hsqldb" (splitList "," (.Values.config.SPRING_PROFILES_ACTIVE | default ""))) -}}
+{{- fail "Artemis worker sets require a shared external database; per-pod HSQLDB is unsupported" -}}
+{{- end -}}
+{{- range list "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/component" "taxonomy.io/worker-set" -}}
+{{- if hasKey $.Values.podLabels . -}}{{- fail (printf "podLabels must not override workload selector %s" .) -}}{{- end -}}
+{{- end -}}
+{{- if eq $analysis.transportMode "artemis" -}}
+{{- $broker := $analysis.artemis -}}
+{{- if or (and (empty $broker.brokerUrl) (empty $broker.brokerUrlSecretKey)) (and $broker.brokerUrl $broker.brokerUrlSecretKey) -}}
+{{- fail "Artemis requires exactly one of analysis.artemis.brokerUrl or brokerUrlSecretKey" -}}
+{{- end -}}
+{{- if or (empty $broker.existingSecret) (empty $broker.userKey) (empty $broker.passwordKey) -}}
+{{- fail "Artemis requires analysis.artemis.existingSecret, userKey and passwordKey" -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*){0,7}$" $broker.destinationPrefix) -}}
+{{- fail "analysis.artemis.destinationPrefix must be a valid lower-case dotted destination prefix" -}}
+{{- end -}}
+{{- if $broker.brokerUrl -}}
+{{- $url := $broker.brokerUrl -}}
+{{- if or (regexMatch "(?i)(@|[[:space:]#\\\\]|password|passwd|pwd|user=)" $url) (not (regexMatch "^(tcp://[^,()]+|\\(tcp://[^()]+\\)(\\?[^()]*)?)$" $url)) -}}
+{{- fail "analysis.artemis.brokerUrl must use external tcp connectors without credentials; use brokerUrlSecretKey for sensitive TLS options" -}}
+{{- end -}}
+{{- $connectors := $url -}}
+{{- if hasPrefix "(" $url -}}
+{{- $connectors = regexFind "^[^)]*" (trimPrefix "(" $url) -}}
+{{- end -}}
+{{- range splitList "," $connectors -}}
+{{- if not (regexMatch "^tcp://[^/?@:]+:[0-9]+(\\?[^?]*)?$" .) -}}
+{{- fail "Every analysis.artemis.brokerUrl connector must contain an external host and TCP port" -}}
+{{- end -}}
+{{- if and $broker.requireTls (or (ne (len (regexFindAll "[?&]sslEnabled=" . -1)) 1) (not (regexMatch "[?&]sslEnabled=true(&|$)" .))) -}}
+{{- fail "Every Artemis connector must set sslEnabled=true exactly once when requireTls=true" -}}
+{{- end -}}
+{{- end -}}
+{{- if and $broker.requireTls (or (regexMatch "(?i)(sslEnabled=false|trustAll=true|verifyHost=false)" $url) (contains "%" $url)) -}}
+{{- fail "Artemis TLS values must preserve certificate/hostname verification; encoded connector options require brokerUrlSecretKey and runtime validation" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled (eq .Values.networkPolicy.egressMode "restricted") (empty $broker.egress) -}}
+{{- fail "Restricted Artemis deployment requires explicit analysis.artemis.egress for every broker endpoint" -}}
+{{- end -}}
+{{- range $index, $rule := $broker.egress -}}
+{{- if not (kindIs "map" $rule) -}}{{- fail "analysis.artemis.egress entries must be mappings" -}}{{- end -}}
+{{- if or (empty (get $rule "to")) (empty (get $rule "ports")) -}}
+{{- fail "analysis.artemis.egress must constrain both destinations and TCP ports" -}}
+{{- end -}}
+{{- range $rule.to -}}
+{{- if or (empty .) (and (hasKey . "namespaceSelector") (empty .namespaceSelector) (empty .podSelector)) (and (hasKey . "podSelector") (empty .podSelector) (not (hasKey . "namespaceSelector"))) -}}
+{{- fail "analysis.artemis.egress requires specific broker peers" -}}
+{{- end -}}
+{{- end -}}
+{{- range $rule.ports -}}
+{{- if or (empty .port) (ne (.protocol | default "TCP") "TCP") -}}{{- fail "analysis.artemis.egress requires explicit TCP ports" -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $names := dict -}}
+{{- range $worker := $analysis.workerSets -}}
+{{- if or (not (regexMatch "^[a-z][a-z0-9-]{0,18}[a-z0-9]$|^[a-z]$" $worker.name)) (hasKey $names $worker.name) -}}
+{{- fail "analysis.workerSets names must be unique DNS labels of 1-20 characters" -}}
+{{- end -}}
+{{- $_ := set $names $worker.name true -}}
+{{- if or (not (hasKey $worker "replicas")) (lt (int $worker.replicas) 0) -}}{{- fail "Each analysis worker set requires replicas >= 0" -}}{{- end -}}
+{{- if or (empty $worker.shards) (ne (len $worker.shards) (len (uniq $worker.shards))) -}}{{- fail "Each analysis worker set requires a non-empty unique shards list" -}}{{- end -}}
+{{- range $worker.shards -}}
+{{- if not (has . (list "BP" "BR" "CP" "CI" "CO" "CR" "IP" "UA")) -}}{{- fail "Unknown analysis worker shard; allowed roots are BP,BR,CP,CI,CO,CR,IP,UA" -}}{{- end -}}
+{{- end -}}
+{{- if or (lt (int $worker.consumersPerShard) 1) (gt (int $worker.consumersPerShard) 64) -}}{{- fail "analysis.workerSets consumersPerShard must be within 1..64" -}}{{- end -}}
+{{- end -}}
+{{- if and .Values.serviceMonitor.enabled (not (empty $analysis.workerSets)) .Values.networkPolicy.enabled (empty $analysis.workerMetricsIngressFrom) -}}
+{{- fail "Worker ServiceMonitor requires analysis.workerMetricsIngressFrom for monitoring peers" -}}
+{{- end -}}

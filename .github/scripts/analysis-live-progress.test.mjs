@@ -10,7 +10,7 @@ const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resource
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     const scope = { workspaceId, generation: 1, analysisGeneration: 1, invalidating: false };
-    const timers = new Map(), calls = [], snapshots = [], unavailable = [];
+    const timers = new Map(), calls = [], snapshots = [], unavailable = [], streams = [], results = [];
     let serial = 0;
     const authFailures = [];
     const schedule = (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; };
@@ -43,6 +43,15 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         dispatchEvent(event) { authFailures.push(event.detail); }
     };
     const window = {
+        EventSource: class {
+            constructor(url) { this.url = url; this.listeners = new Map(); this.readyState = 0; streams.push(this); }
+            addEventListener(name, listener) { this.listeners.set(name, listener); }
+            close() { this.closed = true; this.readyState = 2; }
+            async emit(name, value, eventId = value?.sequence) {
+                this.listeners.get(name)?.({ data: JSON.stringify(value), lastEventId: String(eventId ?? '') });
+                await new Promise(resolve => setImmediate(resolve));
+            }
+        },
         setTimeout: schedule, clearTimeout: unschedule,
         location: { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' },
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
@@ -63,7 +72,8 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         id, context: () => ({ ...scope }), api: window.TaxonomyAnalysisSessionApi,
         setTimeout: schedule, clearTimeout: unschedule,
         onSnapshot: (value, changed) => snapshots.push({ value, changed }),
-        onUnavailable: message => unavailable.push(message)
+        onUnavailable: message => unavailable.push(message),
+        onResult: value => results.push(value)
     });
     async function step(delay) {
         const entry = [...timers].find(([, item]) => item.delay === delay);
@@ -72,7 +82,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { window, scope, timers, calls, snapshots, unavailable, authFailures, elements, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+    return { window, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step };
 }
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
@@ -81,6 +91,203 @@ function snapshot(sequence = 1, status = 'RUNNING') {
     return { operationId: id, sequence, status, phase: 'LLM_REQUEST', calls: [{ id: 1, status: 'STARTED' }],
         rawScores: { CP: 80 }, memory: { percent: 81, warning: true } };
 }
+
+function clusterSnapshot(sequence = 1, status = 'RUNNING') {
+    return { ...snapshot(sequence, status), transport: 'artemis', evaluatedNodes: 0, calls: [],
+        memory: null, databaseStorage: 'EXTERNAL_OR_UNKNOWN', indexStorage: 'EXTERNAL_OR_UNKNOWN',
+        startedAt: 1000, lastActivityAt: 2000, serverTime: 2000, elapsedMillis: 1000,
+        executionStartedAt: 1000, queueWaitMillis: 0, executionMillis: 1000,
+        scope: { workspaceId: 'workspace-a', repositoryId: 'repo-a', branch: 'draft', sourceCommit: 'commit-a' },
+        cluster: { completedRoots: 1, totalRoots: 2, tasks: [
+            { taskType: 'SUBTAXONOMY_ANALYSIS', root: { code: 'CP' }, queued: 0, running: 1, completed: 0, failed: 0 },
+            { taskType: 'RELATION_ANALYSIS', root: { code: 'IP' }, queued: 3, running: 0, completed: 0, failed: 0 }
+        ] } };
+}
+
+test('cluster registration switches to durable SSE without recurring status reads', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)));
+    await f.step(0);
+    assert.equal(f.streams.length, 1);
+    const target = new URL(f.streams[0].url, f.window.location.href);
+    assert.equal(target.pathname, `/api/analysis-runs/${id}/events`);
+    assert.equal(target.searchParams.get('workspaceId'), 'workspace-a');
+    assert.equal(target.searchParams.get('afterSequence'), '5');
+    assert.equal(f.timers.size, 0, 'live SSE must replace the status polling timer');
+    await f.streams[0].emit('progress', clusterSnapshot(6));
+    assert.deepEqual(f.snapshots.map(item => item.value.sequence), [5, 6]);
+    assert.equal(f.calls.length, 1);
+    f.monitor.stop();
+    assert.equal(f.streams[0].closed, true);
+});
+
+test('event and recovered-result URLs keep the original workspace and external application base path', async () => {
+    const f = fixture(async () => response({ status: 'SUCCESS' }));
+    f.window.TaxonomyI18n = { getBasePath: () => '/taxonomy',
+        resolveUrl: url => url.startsWith('/taxonomy/') ? url : '/taxonomy' + url };
+    f.window.__TaxonomyAnalysisSessionContext.installWorkspaceEventSourceRouting();
+    f.scope.workspaceId = 'workspace-b';
+    const stream = f.api.openRunEvents(id, { workspaceId: 'workspace-a', afterSequence: 7 });
+    const target = new URL(stream.url, f.window.location.href);
+    assert.equal(target.pathname, `/taxonomy/api/analysis-runs/${id}/events`);
+    assert.equal(target.searchParams.get('workspaceId'), 'workspace-a');
+    assert.equal(target.searchParams.get('afterSequence'), '7');
+    await f.api.getRunResult(id, { workspaceId: 'workspace-a' });
+    assert.equal(new URL(f.calls[0].url, f.window.location.href).searchParams.get('workspaceId'), 'workspace-a');
+    assert.equal(f.calls[0].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
+    const central = f.api.openRunEvents(id, { workspaceId: null, afterSequence: 0 });
+    assert.equal(new URL(central.url, f.window.location.href).searchParams.get('workspaceId'), '');
+    f.monitor.stop();
+});
+
+test('cluster replay rejects duplicate reverse foreign and changed-authority events before rendering', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)));
+    await f.step(0);
+    const stream = f.streams[0];
+    assert.ok(stream, 'cluster observation must open a stream');
+    for (const value of [clusterSnapshot(5), clusterSnapshot(4),
+        { ...clusterSnapshot(6), operationId: 'foreign-operation' },
+        ...['workspaceId', 'repositoryId', 'branch', 'sourceCommit'].map(field => ({
+            ...clusterSnapshot(6), scope: { ...clusterSnapshot(6).scope, [field]: 'foreign' }
+        }))]) await stream.emit('progress', value);
+    await stream.emit('progress', clusterSnapshot(6), 8);
+    assert.deepEqual(f.snapshots.map(item => item.value.sequence), [5]);
+    await stream.emit('snapshot', clusterSnapshot(7));
+    assert.deepEqual(f.snapshots.map(item => item.value.sequence), [5, 7]);
+    f.monitor.stop();
+});
+
+test('EventSource reconnect uses durable replay and never falls back to periodic polling', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)));
+    await f.step(0);
+    const stream = f.streams[0];
+    assert.ok(stream, 'cluster observation must open a stream');
+    await stream.emit('error');
+    assert.deepEqual(f.unavailable, ['CONNECTION_LOST']);
+    assert.equal(f.timers.size, 0);
+    assert.equal(stream.closed, undefined, 'native EventSource must retain its Last-Event-ID reconnect');
+    await stream.emit('open');
+    await stream.emit('snapshot', clusterSnapshot(8));
+    assert.deepEqual(f.snapshots.map(item => item.value.sequence), [5, 8]);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.streams.length, 1);
+    f.monitor.stop();
+});
+
+for (const field of ['workspaceId', 'generation', 'invalidating']) {
+    test(`cluster ${field} invalidation closes SSE without applying late progress`, async () => {
+        const f = fixture(async () => response(clusterSnapshot(5)));
+        await f.step(0);
+        const stream = f.streams[0];
+        assert.ok(stream, 'cluster observation must open a stream');
+        f.scope[field] = field === 'invalidating' ? true : field === 'generation' ? 2 : 'workspace-b';
+        await stream.emit('progress', clusterSnapshot(6));
+        assert.equal(stream.closed, true);
+        assert.deepEqual(f.snapshots.map(item => item.value.sequence), [5]);
+        f.monitor.stop();
+    });
+}
+
+test('cluster cancellation stays scoped and ends on its durable terminal event', async () => {
+    const f = fixture(async (url, options) => response(clusterSnapshot(options.method === 'POST' ? 6 : 5,
+        options.method === 'POST' ? 'CANCELLED' : 'RUNNING')));
+    await f.step(0);
+    await f.monitor.cancel();
+    await f.monitor.cancel();
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+    assert.equal(f.calls[1].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
+    assert.ok(f.streams[0], 'cluster observation must open a stream');
+    await f.streams[0].emit('progress', clusterSnapshot(6, 'CANCELLED'));
+    assert.equal(f.streams[0].closed, true);
+    assert.equal(f.timers.size, 0);
+    assert.equal(f.snapshots.at(-1).value.status, 'CANCELLED');
+});
+
+test('departure from an observed cluster run sends one scoped cancellation without polling', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)));
+    await f.step(0);
+    f.scope.workspaceId = 'workspace-b';
+    f.monitor.cancelAndStop();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.calls[1].options.method, 'POST');
+    assert.match(f.calls[1].url, /\/cancel\?workspaceId=workspace-a$/);
+    assert.equal(f.timers.size, 0, 'cluster cleanup must not restart periodic status reads');
+    assert.equal(f.streams[0].closed, true);
+});
+
+test('reopened completed cluster run retrieves one persisted result without starting analysis', async () => {
+    const f = fixture(async url => response(url.includes('/result')
+        ? { status: 'SUCCESS', rawScores: { CP: 80, IP: 65 } } : clusterSnapshot(10, 'COMPLETED')));
+    await f.step(0);
+    assert.equal(f.results.length, 1);
+    assert.equal(f.results[0].rawScores.IP, 65);
+    assert.equal(f.calls.length, 2);
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
+    assert.match(f.calls[1].url, /\/result\?workspaceId=workspace-a$/);
+    assert.equal(f.streams.length, 0);
+    assert.equal(f.timers.size, 0);
+});
+
+test('late persisted result cannot overwrite a changed workspace', async () => {
+    let finishResult;
+    const f = fixture(async url => url.includes('/result')
+        ? new Promise(resolve => { finishResult = resolve; }) : response(clusterSnapshot(10, 'COMPLETED')));
+    const pending = f.step(0);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof finishResult, 'function', 'terminal observation must retrieve the persisted result');
+    f.scope.workspaceId = 'workspace-b';
+    finishResult(response({ status: 'SUCCESS', rawScores: { IP: 65 } }));
+    await pending;
+    assert.equal(f.results.length, 0);
+});
+
+test('persisted result retrieval can be explicitly retried after a lost response without starting new work', async () => {
+    let resultReads = 0;
+    const f = fixture(async url => {
+        if (!url.includes('/result')) return response(clusterSnapshot(10, 'COMPLETED'));
+        if (++resultReads === 1) throw new Error('connection lost');
+        return response({ status: 'SUCCESS', rawScores: { CP: 80 } });
+    });
+    await f.step(0);
+    assert.deepEqual(f.unavailable, ['RESULT_UNAVAILABLE']);
+    assert.equal(f.timers.size, 0);
+    assert.equal((await f.monitor.recoverResult()).status, 'SUCCESS');
+    assert.equal(f.results.length, 1);
+    assert.equal(f.calls.length, 3);
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
+});
+
+test('cluster progress view shows known root totals and queued/running work by task family and root', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)), 'workspace-a', true);
+    await f.step(0);
+    const text = f.elements.get('analysisWorkProgress').textContent;
+    assert.match(text, /1 of 2/);
+    assert.match(text, /CP.*1.*running/);
+    assert.match(text, /IP.*3.*queued/);
+    assert.match(text, /Relationship/);
+    assert.doesNotMatch(f.elements.get('analysisLiveProgress').textContent, /0 nodes evaluated/);
+    f.monitor.stop();
+});
+
+test('shared relation preparation remains visible before target-shard work is known', async () => {
+    const value = clusterSnapshot(5);
+    value.cluster.tasks = [{ taskType: 'RELATION_ANALYSIS', root: null, queued: 0, running: 1, completed: 0, failed: 0 }];
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /Relationship search.*Preparation.*1.*running/);
+    f.monitor.stop();
+});
+
+test('cluster finalization stays observable and cancellable until the enriched result is ready', async () => {
+    const value = { ...clusterSnapshot(7), phase: 'FINALIZING' };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    const panel = f.elements.get('analysisLiveProgress');
+    assert.match(panel.textContent, /Finalizing analysis/);
+    assert.equal(panel.children.find(child => child.tag === 'button').disabled, false);
+    assert.equal(f.streams.length, 1);
+    f.monitor.stop();
+});
 
 test('shows fixed node totals and distinguishes direct assessments from pruned descendants', async () => {
     const f = fixture(async () => response({ ...snapshot(), nodeProgress: {
@@ -498,7 +705,8 @@ test('final HTTP result closes the panel immediately and refreshes the last LLM 
     final = true;
     f.monitor.finish('SUCCESS');
     assert.match(f.elements.get('analysisLiveProgress').textContent, /Complete result received/);
-    assert.equal(f.elements.get('analysisLiveProgress').children.at(-1).disabled, true);
+    assert.equal(f.elements.get('analysisLiveProgress').children.find(child =>
+        child.tag === 'button' && child.textContent === 'Analysis finished').disabled, true);
     await flush();
     assert.match(f.elements.get('llmCommLogContent').textContent, /COMPLETED/);
     assert.equal(f.snapshots.length, 1, 'final preview must never replace the complete HTTP score envelope');

@@ -284,4 +284,6 @@ grep -Fq 'publish-helm-oci.yml' "${ROOT_DIR}/.mvn/verification-suites.json"
 grep -Fq 'upgrade.strategy' "${CHART_DIR}/questions.yaml"
 grep -Fq 'ADMIN_TOKEN' "${CHART_DIR}/questions.yaml"
 
+node --test "${CHART_DIR}/verify-artemis-smoke.test.mjs"
+
 printf 'Helm chart verification passed. Rendered evidence: %s\n' "${OUTPUT_FILE}"

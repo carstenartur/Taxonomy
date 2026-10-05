@@ -1,0 +1,164 @@
+{{- range $worker := .Values.analysis.workerSets }}
+{{- $context := dict "Root" $ "Worker" $worker }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "taxonomy.workerName" $context }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "taxonomy.workerSelectorLabels" $context | nindent 4 }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+spec:
+  replicas: {{ $worker.replicas }}
+  revisionHistoryLimit: {{ $.Values.revisionHistoryLimit }}
+  progressDeadlineSeconds: {{ $.Values.progressDeadlineSeconds }}
+  strategy:
+    type: {{ $.Values.upgrade.strategy }}
+    {{- if eq $.Values.upgrade.strategy "RollingUpdate" }}
+    rollingUpdate:
+      {{- toYaml $.Values.upgrade.rollingUpdate | nindent 6 }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "taxonomy.workerSelectorLabels" $context | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taxonomy.workerSelectorLabels" $context | nindent 8 }}
+        {{- with $.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "taxonomy.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- with $.Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: taxonomy
+          image: {{ include "taxonomy.image" $ | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $.Values.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- include "taxonomy.environment" (merge (dict "AnalysisWorker" $worker) $) | nindent 12 }}
+          {{- with $.Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            {{- toYaml $.Values.startupProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            {{- toYaml $.Values.livenessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($worker.resources | default $.Values.resources) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /app/data
+            {{- include "taxonomy.brokerVolumeMount" $ | nindent 12 }}
+            {{- with $.Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            {{- with $.Values.tmpVolume.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+        - name: data
+          emptyDir: {}
+        {{- include "taxonomy.brokerVolume" $ | nindent 8 }}
+        {{- with $.Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $.Values.serviceMonitor.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taxonomy.workerName" $context }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "taxonomy.workerSelectorLabels" $context | nindent 4 }}
+    taxonomy.io/metrics: {{ include "taxonomy.fullname" $ | quote }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "taxonomy.workerSelectorLabels" $context | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $.Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- if $.Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taxonomy.workerName" $context }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taxonomy.workerSelectorLabels" $context | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  {{- if and $.Values.serviceMonitor.enabled $.Values.analysis.workerMetricsIngressFrom }}
+  ingress:
+    - from:
+        {{- toYaml $.Values.analysis.workerMetricsIngressFrom | nindent 8 }}
+      ports:
+        - port: {{ $.Values.service.targetPort }}
+          protocol: TCP
+  {{- else }}
+  ingress: []
+  {{- end }}
+  {{- include "taxonomy.networkEgress" $ }}
+{{- end }}
+{{- end }}

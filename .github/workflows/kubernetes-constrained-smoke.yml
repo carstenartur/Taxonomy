@@ -2,7 +2,7 @@ name: Kubernetes Constrained Smoke
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/artemis-execution-base ]
     paths:
       - 'Dockerfile'
       - 'pom.xml'
@@ -15,6 +15,11 @@ on:
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
       - 'taxonomy-interop/**'
+      - 'taxonomy-analysis/**'
+      - 'taxonomy-knowledge/**'
+      - 'taxonomy-architecture/**'
+      - 'taxonomy-build/**'
+      - 'deploy/artemis/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   push:
@@ -31,6 +36,11 @@ on:
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
       - 'taxonomy-interop/**'
+      - 'taxonomy-analysis/**'
+      - 'taxonomy-knowledge/**'
+      - 'taxonomy-architecture/**'
+      - 'taxonomy-build/**'
+      - 'deploy/artemis/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   workflow_dispatch:
@@ -56,6 +66,12 @@ jobs:
 
       - name: Verify Docker availability
         run: docker info
+
+      - name: Set up Java 21 for Maven metadata and fixture trust stores
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: temurin
 
       - name: Install verified kind 0.31.0
         env:
@@ -108,6 +124,14 @@ jobs:
           KEEP_RESOURCES: 'true'
         shell: bash
         run: bash deploy/helm/taxonomy/constrained-smoke.sh
+
+      - name: Verify external Artemis, shared database and worker-loss recovery
+        env:
+          KIND_CLUSTER_NAME: taxonomy-smoke
+          SOURCE_SHA: ${{ github.sha }}
+          KEEP_RESOURCES: 'true'
+        shell: bash
+        run: bash deploy/helm/taxonomy/artemis-constrained-smoke.sh
 
       - name: Collect secret-free cluster diagnostics
         if: always()

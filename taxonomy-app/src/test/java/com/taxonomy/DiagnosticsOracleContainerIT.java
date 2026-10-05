@@ -10,18 +10,17 @@ import org.testcontainers.oracle.OracleContainer;
 import java.time.Duration;
 
 /**
- * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
+ * Runs diagnostics, API and durable cluster execution contracts
  * but against an <strong>Oracle Database Free</strong> backend.
  * <p>
- * Tagged with {@code db-oracle} — included in the default {@code mvn verify}
- * run (requires Docker). Execute explicitly with:
+ * Included in the Maven-owned Oracle compatibility lane (requires Docker):
  * <pre>
- * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsOracleContainerIT
+ * ./mvnw -B verify -Pdatabase-oracle
  * </pre>
  */
 @Testcontainers
 @Tag("db-oracle")
-class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
+class DiagnosticsOracleContainerIT extends AbstractExternalDatabaseContainerIT {
 
     static Network network = Network.newNetwork();
 
@@ -36,5 +35,10 @@ class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
     @Override
     protected GenericContainer<?> getAppContainer() {
         return app;
+    }
+
+    @Override
+    protected org.testcontainers.containers.JdbcDatabaseContainer<?> getDatabaseContainer() {
+        return db;
     }
 }

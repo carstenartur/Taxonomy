@@ -231,7 +231,9 @@ class CurrentStateExportIT {
             for (var type : List.of(EditorWorkspace.class, EditorOperation.class, EditorCheckpoint.class,
                     SystemRepository.class, UserWorkspace.class, RepositoryMembership.class, SyncState.class,
                     com.taxonomy.versioning.model.ArchitectureCommitIndex.class, com.taxonomy.versioning.model.ContextHistoryRecord.class,
-                    AnalysisWorkingDraft.class, AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class))
+                    AnalysisWorkingDraft.class, AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class,
+                    com.taxonomy.analysis.cluster.ClusterAnalysisRun.class, com.taxonomy.analysis.cluster.ClusterAnalysisWork.class,
+                    com.taxonomy.analysis.cluster.ClusterAnalysisInput.class, com.taxonomy.analysis.cluster.ClusterAnalysisEvent.class))
                 configuration.addAnnotatedClass(type);
             try (var inventory = CurrentStateExportIT.class.getResourceAsStream("/backup/coverage-inventory.tsv")) {
                 for (String line : new String(Objects.requireNonNull(inventory).readAllBytes(), StandardCharsets.UTF_8).split("\n")) {

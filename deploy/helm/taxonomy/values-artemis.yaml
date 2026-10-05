@@ -1,0 +1,35 @@
+# Overlay on the normal external PostgreSQL deployment. Substitute reviewed
+# broker/DB/provider peers and create Secrets separately before installation.
+analysis:
+  transportMode: artemis
+  runtimeRole: coordinator
+  artemis:
+    brokerUrl: "(tcp://artemis-primary.messaging.svc:61617?sslEnabled=true&verifyHost=true,tcp://artemis-backup.messaging.svc:61617?sslEnabled=true&verifyHost=true)?ha=true"
+    existingSecret: taxonomy-artemis
+    requireTls: true
+    egress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: messaging
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: artemis
+        ports:
+          - port: 61617
+            protocol: TCP
+  workerSets:
+    - name: cp
+      replicas: 2
+      shards: [CP]
+      consumersPerShard: 1
+    - name: general
+      replicas: 1
+      shards: [BP, BR, CI, CO, CR, IP, UA]
+      consumersPerShard: 1
+
+networkPolicy:
+  egressMode: restricted
+  allowSameNamespaceEgress: false
+  # Database, provider, OIDC and OTLP endpoints require their own reviewed rules.
+  egress: []

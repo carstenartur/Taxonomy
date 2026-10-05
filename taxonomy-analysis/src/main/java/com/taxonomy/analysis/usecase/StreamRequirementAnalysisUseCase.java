@@ -17,6 +17,9 @@ import java.util.Map;
 @Service
 public class StreamRequirementAnalysisUseCase {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
+
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
 
@@ -28,6 +31,9 @@ public class StreamRequirementAnalysisUseCase {
     }
 
     public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
+        if (clusterExecution != null) {
+            throw new IllegalStateException("Cluster streaming requires an exact workspace operation context");
+        }
         long startedNanos = System.nanoTime();
         Locale previousLocale = LocaleContextHolder.getLocale();
         try {
@@ -89,6 +95,28 @@ public class StreamRequirementAnalysisUseCase {
             } finally {
                 LocaleContextHolder.setLocale(previousLocale);
             }
+        }
+    }
+
+    /** Observes the durable operation; a detached handler never cancels that operation. */
+    public void stream(StreamRequirementAnalysisCommand command,
+                       com.taxonomy.analysis.dag.AnalysisOperationContext context,
+                       AnalyzeRequirementCommand analyzeCommand, com.taxonomy.dto.ViewContext view,
+                       AnalysisStreamEventHandler handler) {
+        if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
+        if (!command.businessText().equals(analyzeCommand.businessText())
+                || !java.util.Objects.equals(command.provider(), analyzeCommand.provider())
+                || !command.analysisScope().equals(analyzeCommand.analysisScope())) {
+            throw new IllegalArgumentException("Streaming request does not match durable analysis input");
+        }
+        Locale previousLocale = LocaleContextHolder.getLocale();
+        try {
+            applyRequestLocale(command.requestLocale());
+            promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
+            clusterExecution.execute(context, analyzeCommand, view,
+                    snapshot -> handler.handle(new AnalysisStreamEvent.DurableSnapshot(snapshot)));
+        } finally {
+            LocaleContextHolder.setLocale(previousLocale);
         }
     }
 

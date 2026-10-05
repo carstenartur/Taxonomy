@@ -57,7 +57,8 @@ public final class AnalysisMessageCodec {
                     "message has no envelope object", null);
         }
         JsonNode version = envelope.get("schemaVersion");
-        if (version == null || !version.isInt() || version.intValue() != AnalysisEnvelope.SCHEMA_VERSION) {
+        if (version == null || !version.isInt()
+                || (version.intValue() != AnalysisEnvelope.SCHEMA_VERSION && version.intValue() != 2)) {
             throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.UNSUPPORTED_SCHEMA,
                     "unsupported schema version", null);
         }

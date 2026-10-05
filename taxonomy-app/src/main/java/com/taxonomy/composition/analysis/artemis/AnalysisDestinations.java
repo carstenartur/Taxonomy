@@ -61,6 +61,9 @@ public record AnalysisDestinations(String prefix) {
     public String rejected() {
         return prefix + ".rejected";
     }
+    public String deadLetter() { return prefix + ".dlq"; }
+    public String expiry() { return prefix + ".expiry"; }
+    public String failed() { return prefix + ".failed"; }
 
     /** Queue that owns {@code task}: its family plus its single routing root. */
     public String queueFor(AnalysisTaskMessage task) {

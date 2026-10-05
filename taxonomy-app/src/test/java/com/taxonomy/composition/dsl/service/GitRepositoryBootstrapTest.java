@@ -5,10 +5,15 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.AppInitializationStateService.State;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -17,6 +22,7 @@ import org.springframework.core.env.MapPropertySource;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -33,7 +39,19 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class GitRepositoryBootstrapTest {
-    private static final String DSL = "meta { namespace: \"bootstrap\"; }\n";
+    private static final String DSL = """
+            meta {
+              language: "taxdsl";
+              version: "2.0";
+              namespace: "bootstrap";
+            }
+            element CP-1000 type Capability {
+              title: "Global capability";
+            }
+            element IP-1000 type InformationProduct {
+              title: "Global information product";
+            }
+            """;
     private static AtomicBoolean bootstrapGuard;
     private static boolean originalGuardValue;
 
@@ -55,15 +73,17 @@ class GitRepositoryBootstrapTest {
         bootstrapGuard.set(originalGuardValue);
     }
 
-    @Test
-    void earlyApplicationReadyDefersUntilInitializationReadyAndRepeatedEventsStayIdempotent()
+    @ParameterizedTest
+    @ValueSource(strings = {"all", "coordinator"})
+    void earlyApplicationReadyDefersUntilInitializationReadyAndRepeatedEventsStayIdempotent(String role)
             throws IOException {
         try (DslGitRepository repository = new DslGitRepository()) {
             DslGitRepositoryFactory factory = factoryReturning(repository);
             TaxDslExportService exporter = exporterReturning(DSL);
             AppInitializationStateService state = new AppInitializationStateService();
 
-            try (AnnotationConfigApplicationContext context = context(factory, exporter, state, Map.of())) {
+            try (AnnotationConfigApplicationContext context = context(factory, exporter, state,
+                    Map.of("taxonomy.analysis.runtime-role", role))) {
                 assertThat(context.getBeansOfType(GitRepositoryBootstrap.class)).hasSize(1);
 
                 publishApplicationReady(context);
@@ -92,17 +112,57 @@ class GitRepositoryBootstrapTest {
         }
     }
 
-    @Test
-    void readyAtApplicationStartBootstrapsOnApplicationReady() throws IOException {
+    @ParameterizedTest
+    @ValueSource(strings = {"all", "coordinator"})
+    void readyAtApplicationStartBootstrapsOnApplicationReady(String role) throws IOException {
         try (DslGitRepository repository = new DslGitRepository()) {
             DslGitRepositoryFactory factory = factoryReturning(repository);
             TaxDslExportService exporter = exporterReturning(DSL);
             AppInitializationStateService state = readyState();
 
-            try (AnnotationConfigApplicationContext context = context(factory, exporter, state, Map.of())) {
+            try (AnnotationConfigApplicationContext context = context(factory, exporter, state,
+                    Map.of("taxonomy.analysis.runtime-role", role))) {
                 publishApplicationReady(context);
                 assertThat(repository.getDslAtHead("draft")).isEqualTo(DSL);
                 assertThat(repository.getCommitCount("draft")).isEqualTo(1);
+            }
+        }
+    }
+
+    @Test
+    void workerSnapshotReadinessDoesNotMaterializeGlobalDraftOrConsumeCoordinatorBootstrap() throws IOException {
+        try (DslGitRepository repository = new DslGitRepository()) {
+            DslGitRepositoryFactory factory = factoryReturning(repository);
+            TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
+            TaxonomyRelationRepository relations = mock(TaxonomyRelationRepository.class);
+            when(nodes.findAll()).thenReturn(List.of());
+            when(relations.findAll()).thenReturn(List.of());
+            TaxDslExportService workerExporter = spy(new TaxDslExportService(nodes, relations));
+            AppInitializationStateService workerState = new AppInitializationStateService();
+            workerState.update(State.READY, "Catalogue worker is ready for exact-source root snapshots");
+
+            try (AnnotationConfigApplicationContext worker = context(factory, workerExporter, workerState,
+                    Map.of("taxonomy.analysis.runtime-role", "worker", "taxonomy.analysis.worker.shards", "IP"))) {
+                publishApplicationReady(worker);
+                workerState.update(State.READY, "Catalogue worker is still ready for exact-source root snapshots");
+
+                assertThat(workerState.isReady()).isTrue();
+                assertThat(repository.getHeadCommit("draft")).isNull();
+                assertThat(bootstrapGuard).isFalse();
+                verifyNoInteractions(workerExporter, nodes, relations);
+            }
+
+            TaxDslExportService coordinatorExporter = exporterReturning(DSL);
+            AppInitializationStateService coordinatorState = new AppInitializationStateService();
+            try (AnnotationConfigApplicationContext coordinator = context(factory, coordinatorExporter, coordinatorState,
+                    Map.of("taxonomy.analysis.runtime-role", "coordinator"))) {
+                publishApplicationReady(coordinator);
+                assertThat(repository.getHeadCommit("draft")).isNull();
+
+                coordinatorState.update(State.READY, "Global taxonomy is loaded");
+                assertThat(repository.getDslAtHead("draft")).isEqualTo(DSL);
+                assertThat(repository.getCommitCount("draft")).isEqualTo(1);
+                verify(coordinatorExporter).exportAll("default");
             }
         }
     }
@@ -226,7 +286,7 @@ class GitRepositoryBootstrapTest {
         context.registerBean(DslGitRepositoryFactory.class, () -> factory);
         context.registerBean(TaxDslExportService.class, () -> exporter);
         context.registerBean(AppInitializationStateService.class, () -> state);
-        context.register(GitRepositoryBootstrap.class);
+        context.register(CatalogueRuntimePolicy.class, GitRepositoryBootstrap.class);
         context.refresh();
         return context;
     }

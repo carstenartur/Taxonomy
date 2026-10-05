@@ -5,6 +5,34 @@ replicaCount: 1
 scaling:
   allowMultipleReplicas: false
 
+# The external broker and database are operated independently of this chart.
+# Local/all preserves the single-process installation. See values-artemis.yaml.
+analysis:
+  transportMode: local
+  runtimeRole: all
+  artemis:
+    brokerUrl: ""
+    # Use either brokerUrl or brokerUrlSecretKey (never both). A Secret URL is
+    # useful when TLS connector options themselves contain credentials.
+    brokerUrlSecretKey: ""
+    existingSecret: ""
+    userKey: ARTEMIS_USER
+    passwordKey: ARTEMIS_PASSWORD
+    requireTls: true
+    destinationPrefix: taxonomy.analysis
+    # Optional PKCS12/JKS trust/key stores, mounted read-only at the path below.
+    tlsSecret: ""
+    tlsMountPath: /var/run/taxonomy-artemis
+    # Explicit broker destinations AND TCP ports, merged into restricted egress
+    # for both web and workers. Include every HA endpoint advertised by Artemis.
+    egress: []
+  # No fixed eight-Deployment topology: a set can own one or several roots.
+  # Each set has name, replicas, shards and consumersPerShard; resources is optional.
+  workerSets: []
+  # Workers have no ingress/Service by default. If ServiceMonitor is enabled,
+  # metrics Services remain ClusterIP and only these peers may reach workers.
+  workerMetricsIngressFrom: []
+
 image:
   repository: ghcr.io/carstenartur/taxonomy
   # Source-tree rendering requires vX.Y.Z or sha-<commit>. A packaged release

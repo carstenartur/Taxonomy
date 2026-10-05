@@ -2,7 +2,7 @@ name: Database Compatibility
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/artemis-execution-base ]
   push:
     tags:
       - 'v*'

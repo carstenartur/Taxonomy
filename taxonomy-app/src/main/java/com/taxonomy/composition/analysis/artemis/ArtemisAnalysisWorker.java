@@ -89,10 +89,14 @@ public final class ArtemisAnalysisWorker implements AutoCloseable {
 
     /** Subscribe once the broker connection is usable; idempotent. */
     public synchronized void start() {
+        start(true, shards.roots().containsAll(TaxonomyShardRoot.DEFAULT_ROOTS));
+    }
+
+    public synchronized void start(boolean rootWork, boolean sharedPreparation) {
         if (started || closed) return;
         started = true;
         try {
-            for (TaxonomyShardRoot root : shards.roots()) {
+            for (TaxonomyShardRoot root : rootWork ? shards.roots() : List.<TaxonomyShardRoot>of()) {
                 if (handlers.handles(AnalysisTaskType.SUBTAXONOMY_ANALYSIS)) {
                     subscribe(destinations.subtaxonomy(root), AnalysisTaskType.SUBTAXONOMY_ANALYSIS, root);
                 }
@@ -101,7 +105,7 @@ public final class ArtemisAnalysisWorker implements AutoCloseable {
                 }
             }
             if (handlers.handles(AnalysisTaskType.RELATION_ANALYSIS)
-                    && shards.roots().containsAll(TaxonomyShardRoot.DEFAULT_ROOTS)) {
+                    && sharedPreparation) {
                 // Multi-root relation work needs every root's data: only full-catalogue workers take it.
                 subscribe(destinations.generalRelation(), AnalysisTaskType.RELATION_ANALYSIS, null);
             }

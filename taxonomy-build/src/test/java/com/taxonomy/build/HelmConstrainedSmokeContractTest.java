@@ -25,7 +25,7 @@ class HelmConstrainedSmokeContractTest {
         String constrained = read(root.resolve(
                 "deploy/helm/taxonomy/values-constrained-smoke.yaml"));
         String resources = read(root.resolve(
-                "deploy/helm/taxonomy/templates/resources.yaml"));
+                "deploy/helm/taxonomy/templates/_network.tpl"));
         String validation = read(root.resolve(
                 "deploy/helm/taxonomy/templates/validation.yaml"));
 

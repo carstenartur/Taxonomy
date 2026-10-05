@@ -171,6 +171,15 @@ class ArtemisProviderConcurrencyPermitsTest {
     }
 
     @Test
+    void awaitReturnsAfterObservingATransientCondition() {
+        var observations = new AtomicInteger();
+
+        await(() -> observations.incrementAndGet() == 2);
+
+        assertThat(observations.get()).isEqualTo(2);
+    }
+
+    @Test
     void interruptedReceiverPreservesCooperativeCancellationAndInterruptFlag() throws Exception {
         provision(1);
         var holder = permits(connect(), 5000).acquire(LlmProvider.OPENAI, () -> {});
@@ -365,10 +374,12 @@ class ArtemisProviderConcurrencyPermitsTest {
 
     private static void await(BooleanSupplier condition) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
+        boolean observed = condition.getAsBoolean();
+        while (!observed && System.nanoTime() < deadline) {
             try { Thread.sleep(10); }
             catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+            observed = condition.getAsBoolean();
         }
-        assertThat(condition.getAsBoolean()).isTrue();
+        assertThat(observed).isTrue();
     }
 }

@@ -1,0 +1,59 @@
+Name:	java
+Umask:	0022
+State:	S (sleeping)
+Tgid:	384100
+Ngid:	0
+Pid:	384100
+PPid:	382131
+TracerPid:	0
+Uid:	0	0	0	0
+Gid:	0	0	0	0
+FDSize:	512
+Groups:
+NStgid:	384100	440
+NSpid:	384100	440
+NSpgid:	381341	1
+NSsid:	381341	1
+Kthread:	0
+VmPeak:	 8711152 kB
+VmSize:	 8651772 kB
+VmLck:	       0 kB
+VmPin:	       0 kB
+VmHWM:	  808312 kB
+VmRSS:	  808312 kB
+RssAnon:	  765496 kB
+RssFile:	   42816 kB
+RssShmem:	       0 kB
+VmData:	 1247456 kB
+VmStk:	     136 kB
+VmExe:	       4 kB
+VmLib:	   48632 kB
+VmPTE:	    2332 kB
+VmSwap:	       0 kB
+HugetlbPages:	       0 kB
+CoreDumping:	0
+THP_enabled:	1
+untag_mask:	0xffffffffffffffff
+Threads:	76
+SigQ:	0/39792
+SigPnd:	0000000000000000
+ShdPnd:	0000000000000000
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+SigCgt:	2000000101005ccf
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+Seccomp_filters:	1
+Speculation_Store_Bypass:	vulnerable
+SpeculationIndirectBranch:	always enabled
+Cpus_allowed:	1ff
+Cpus_allowed_list:	0-8
+Mems_allowed:	00000000,00000001
+Mems_allowed_list:	0
+voluntary_ctxt_switches:	2
+nonvoluntary_ctxt_switches:	0
