@@ -23,6 +23,7 @@ provider fixtures; no remote paid inference was invoked.
 | Security route coverage omitted the real bulk endpoint. | The authorization test listed bulk subroutes but not `/api/proposals/bulk`. | Add the actual route to the ordinary-user mutation-denial test. |
 | Oversized external idempotency keys could overflow projection/recovery columns after Git mutation. | 129/255/256-character keys were accepted by bulk and single proposal review; the per-item suffix increased their size further. | Bound external keys to 128 visible ASCII characters before mutation, retaining room for bulk suffixes. Keep the optional legacy fallback and apply the same boundary to required-header Git mutation routes. |
 | Interrupted backup restoration discarded committed assessment coverage. | Real exported archives restored scores but lost modern coverage; foreign frozen source identities and duplicate unknown nodes escaped coverage validation. | Reuse the live coverage policy before target writes. Resolve unknown nodes against the original archived source, including when the destination authority changes; preserve the legacy compatibility policy. |
+| Opening a large architecture graph made its nodes almost invisible. | With the actual 2,564-node catalogue, initial nodes measured about 1.35 CSS pixels wide on desktop and 0.57 on a 390px viewport. Selected mobile nodes had 5px-high labels. | Use readable initial framing and selection focus based on the rendered SVG scale. Desktop/mobile nodes measure 238 × 82 CSS pixels with 16px-high labels. Explicit full-model fitting, complete export geometry and the 200-node/400-edge rendering limits remain unchanged. Tiny/hidden viewport controls prevent invalid scales. |
 
 ## Template read measurements
 
@@ -58,14 +59,19 @@ The complete verification below uses the normal SBOM and test selections.
 | Focused interrupted-restore follow-up | 52 tests passed; no failures, errors or skips. Includes nine new archive cases, live aggregation, finalization, relation coordination and durable observation. |
 | Focused proposal key-boundary follow-up | 54 tests passed; no failures, errors or skips. Covers single/bulk mutation boundaries, valid maximum keys, exact suffix identity and legacy compatibility. |
 | Expanded Git HTTP mutation boundary follow-up | 101 tests passed; no failures, errors or skips. Covers all five required-header mutation routes and existing proposal/relation controller contracts alongside the optional legacy routes. |
+| Reviewed architecture inventory follow-up | 57 tests passed; no failures, errors or skips. The unchanged dependency ratchet, cycle boundary and exception ledger all pass. |
+| Packaged editor browser follow-up | 17 checks passed with no page errors. Includes the actual USER editor acceptance, eight real-D3 renderer combinations, hidden/30px controls, selection focus, explicit Fit, unchanged export scene, keyboard behavior and Axe. The real catalogue is checked at 1440px and 390px; the initial red run had nine intended geometry failures. |
 | Full templates reactor: `./mvnw -B -pl taxonomy-templates -am test -Dmaven.build.cache.enabled=false -Dcyclonedx.skip=true` | 773 tests passed across the selected reactor; 156 in templates, including nine new regressions. |
-| Full Docker-free reactor: `./mvnw -B clean verify -Ptest-local -Dmaven.build.cache.enabled=false` | Completion evidence is recorded in the associated PR description; focused results above do not certify this gate. |
+| Full Docker-free reactor: `./mvnw -B clean verify -Ptest-local -Dmaven.build.cache.enabled=false` | Not certified: the initial run exposed the architecture inventory mismatch and then exceeded this environment's 8 GiB memory limit during the browser scenario. The ratchet is corrected and verified separately. Subsequent focused scenario and authoritative CI results are recorded in the associated PR description. |
 | PR CI/CD, security and compatibility gates | Authoritative status is recorded by the associated PR's exact-commit checks. |
 
 The local runtime supplies matching Chrome/ChromeDriver and a Mockito premain
 agent because dynamic self-attachment is unavailable. The environment's proxy CA
 is added to a local trust store; TLS validation remains enabled. These are local
 prerequisites, not repository changes or relaxed assertions.
+The local memory limit recorded an OOM kill; subsequent local JVMs are bounded to
+fit that environment. No timeout, assertion or memory-acceptance threshold is
+relaxed to compensate.
 
 The architecture ratchet reported one intentional structural change, reviewed
 independently before updating its exact count from 18 to 23. The new class pairs
@@ -91,6 +97,8 @@ exception. All 173 package edges remain checked by the unchanged ratchet.
   the application or close the broader logging/security issue #857.
 - This preserves durable result evidence and safe partial-result handling. It
   does not complete the broader continuation/HA lifecycle epic #808.
+- Graph geometry checks measure rendered CSS pixels and viewport reflow. They do
+  not certify native browser zoom or every possible display configuration.
 - No security baseline, timeout, test assertion or CI gate was weakened. The
   reviewed architecture inventory adjustment above records the exact new class
   references. Unrelated backup/release work was not included.
