@@ -350,6 +350,7 @@ The legacy SSE connection has no independent servlet timeout. The configured ana
 
 | Environment variable | Spring property | Default | Description |
 |---|---|---|---|
+| `TAXONOMY_ANALYSIS_RUNTIME_ROLE` | `taxonomy.analysis.runtime-role` | `all` | Catalogue/index role: `all` and `coordinator` retain existing initialization; `worker` disables global catalogue/index initialization and requires bound exact-source frozen snapshots for catalogue reads. Unknown values fail startup. |
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` keeps analysis in-process (default, no broker). `artemis` enables the external Apache Artemis task transport. Any other value fails startup. |
 | `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_ENABLED` | `taxonomy.analysis.provider-permits.enabled` | `false` | Enables cluster-wide concurrency permits for physical provider requests. Requires `artemis` mode, explicit provider-group mappings and provisioned permit queues. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | empty | Required in `artemis` mode. `tcp://` (or a failover list `(tcp://a,tcp://b)?ha=true`) or `vm://`. Never logged or shown in health output. |
@@ -360,7 +361,7 @@ The legacy SSE connection has no independent servlet timeout. The configured ana
 | `TAXONOMY_ANALYSIS_ARTEMIS_CALL_TIMEOUT_MS` | `taxonomy.analysis.artemis.call-timeout-ms` | `30000` | Maximum wait for a broker acknowledgement (1000–300000 ms). An unacknowledged send leaves the task `WAITING_FOR_BROKER`. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX` | `taxonomy.analysis.artemis.destination-prefix` | `taxonomy.analysis` | Lower-case dotted prefix of all analysis queues and addresses. |
 | `TAXONOMY_ANALYSIS_WORKER_ENABLED` | `taxonomy.analysis.worker.enabled` | `true` | Whether this instance consumes task queues. Without bound task handlers no queue is consumed. |
-| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | empty (all eight roots) | Comma-separated catalogue roots this worker consumes, e.g. `CP,IP`. Unknown or duplicate roots fail startup. Only full-catalogue workers consume multi-root relation work. |
+| `TAXONOMY_ANALYSIS_WORKER_SHARDS` | `taxonomy.analysis.worker.shards` | empty (all eight roots) | Comma-separated catalogue roots this worker consumes, e.g. `CP,IP`. Unknown or duplicate roots fail startup. In runtime role `worker`, every bound snapshot root must be in this set. Only full-catalogue workers consume multi-root relation work. |
 | `TAXONOMY_ANALYSIS_WORKER_CONSUMERS_PER_SHARD` | `taxonomy.analysis.worker.consumers-per-shard` | `1` | Concurrent consumers per configured queue (1–64). |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_BATCH` | `taxonomy.analysis.dispatch.recovery-batch` | `200` | Dispatch intents read per recovery page. |
 | `TAXONOMY_ANALYSIS_DISPATCH_RECOVERY_LIMIT` | `taxonomy.analysis.dispatch.recovery-limit` | `5000` | Maximum intents one recovery run republishes; the rest wait for the next trigger. |

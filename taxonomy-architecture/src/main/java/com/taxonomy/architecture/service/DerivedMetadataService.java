@@ -1,6 +1,7 @@
 package com.taxonomy.architecture.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.relations.repository.RequirementCoverageRepository;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
@@ -37,13 +38,16 @@ public class DerivedMetadataService {
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
     private final RequirementCoverageRepository coverageRepository;
+    private final CatalogueSourceJournal catalogueSources;
 
     public DerivedMetadataService(TaxonomyNodeRepository nodeRepository,
                                   TaxonomyRelationRepository relationRepository,
-                                  RequirementCoverageRepository coverageRepository) {
+                                  RequirementCoverageRepository coverageRepository,
+                                  CatalogueSourceJournal catalogueSources) {
         this.nodeRepository = nodeRepository;
         this.relationRepository = relationRepository;
         this.coverageRepository = coverageRepository;
+        this.catalogueSources = catalogueSources;
     }
 
     /**
@@ -53,6 +57,9 @@ public class DerivedMetadataService {
      */
     @Transactional
     public int recomputeAll() {
+        // Relation traversal can already load catalogue entities. Take the gate first:
+        // a later full-row ORM update must not restore fields from an older import.
+        catalogueSources.lockForMutation();
         log.info("Recomputing derived metadata for all nodes…");
 
         Map<String, Integer> incomingCounts = new HashMap<>();

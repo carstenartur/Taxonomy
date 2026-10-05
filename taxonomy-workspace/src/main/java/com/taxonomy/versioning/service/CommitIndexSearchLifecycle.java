@@ -3,6 +3,7 @@ package com.taxonomy.versioning.service;
 import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,6 +30,9 @@ public class CommitIndexSearchLifecycle implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(
             CommitIndexSearchLifecycle.class);
 
+    @Value("${taxonomy.analysis.runtime-role:all}")
+    private String runtimeRole = "all";
+
     private final ArchitectureCommitIndexRepository indexRepository;
     private final CommitIndexSearchRebuilder searchRebuilder;
 
@@ -41,6 +45,11 @@ public class CommitIndexSearchLifecycle implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        // Catalogue workers disable Hibernate Search and operate on admitted snapshots only.
+        if ("worker".equalsIgnoreCase(runtimeRole.trim())) {
+            log.info("Catalogue worker skips the global commit search index rebuild");
+            return;
+        }
         if (indexRepository.count() > 0) {
             return;
         }
