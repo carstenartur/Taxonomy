@@ -215,6 +215,7 @@
         state.failed.forEach(function (outcome) {
             renderFailed(outcome.command, outcome.status);
         });
+        refreshBulkActions();
 
         if (state.pending) {
             renderPending(state.pending.command, state.pending.body);
@@ -240,6 +241,7 @@
     function fail(error, commands) {
         busy = false;
         setBusy(commands, false);
+        refreshBulkActions();
         if (error.kind === 'CONFLICT') {
             showStatus('warning', error.message
                 + ' Run the analysis again to refresh the review queue.');
@@ -272,6 +274,7 @@
                 if (row) row.classList.add('table-info');
                 replaceActions(command,
                     '<span class="badge bg-info">Session only</span>');
+                refreshBulkActions();
                 showStatus('info', 'Applied for this analysis session: '
                     + hypothesis.sourceCode + ' → ' + hypothesis.targetCode);
             })
@@ -292,6 +295,12 @@
                     hypothesis.status === 'ACCEPTED' ? 'ACCEPT' : 'REJECT', true);
             }
         });
+    }
+
+    function refreshBulkActions() {
+        // Refresh only the header: replacing all rows would lose partial
+        // recovery/error outcomes and their existing Git Undo listeners.
+        window.TaxonomyScoring?.refreshSuggestedRelationsBulkActions?.();
     }
 
     function renderCompleted(command, action, offerUndo) {

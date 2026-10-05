@@ -12,7 +12,7 @@ The follow-up starts at `ce78dad9d2f9a52211fd7a1459364b1d8f7f08b5`.
 | PDF/DOCX parsing | Successful imports copied the uploaded filename into INFO diagnostics. | Retain page/candidate counts and truncation flags; return the original filename and extracted content to the importing caller as before. |
 | Document import | Five parser, registration, AI extraction, mapping and candidate-confirmation failure paths copied filenames or raw exceptions into logs. | Keep severity and fixed error codes without private inputs or throwable payloads. Existing HTTP status and response contracts remain intact. |
 | Central exception handling | Validation, conflict, access-denied, generic, MVC and disconnect diagnostics included exception text, request paths or nested causes. | Fixed operation/status/category metadata replaces payloads, including DEBUG/TRACE disconnect diagnostics. Spring's disconnect classifier, response localization and headers remain authoritative. |
-| Restored hypothesis review | Rendering a saved draft ignored accepted/rejected status and the session-applied flag, reoffered completed actions and lost Git Undo. | Render stored decisions, reinstall the existing Undo command and guard repeated review/apply requests. Unsupported statuses remain read-only. Bulk review is offered only when eligible persisted hypotheses remain. |
+| Restored hypothesis review | Rendering a saved draft ignored accepted/rejected status and the session-applied flag, reoffered completed actions and lost Git Undo. The live bulk action also stayed visible after the last eligible decision. | Render stored decisions, reinstall the existing Undo command and guard repeated review/apply requests. Unsupported statuses remain read-only. Refresh bulk eligibility after live decisions and Undo without replacing row-level pending/error outcomes. |
 
 ## Verification approach
 
@@ -28,8 +28,11 @@ error was corrected before that app RED run and is not counted as defect evidenc
 The review-state regressions load the real renderer, command adapter, payload
 serializer and draft lifecycle. The initial suite failed five restoration cases;
 three additional bulk-control cases then exposed inappropriate completed-row
-actions. The resulting Preferences suite passes twelve cases. Its combined draft,
-startup and relationship selection passes fifty-nine cases.
+actions. Three further live-decision cases cover sequential reject/apply/Undo,
+bulk acceptance and partial pending/error outcomes before any draft rerender;
+two failed before the header-only refresh correction. The resulting Preferences
+suite passes fifteen cases. Its combined draft, startup and relationship
+selection passes sixty-two cases.
 
 Independent Java review additionally found Spring's inherited committed-response
 warning and a test logger blind spot. A real-handler regression reproduced that
@@ -43,10 +46,12 @@ fixes and now pass. Logger configuration is unchanged.
 |---|---|
 | Focused Maven search, document, handler, Preferences and review-contract selection | 111 tests passed, no failures, errors or skips. |
 | Final Maven handler selection after the additional 405 correction (`GlobalExceptionHandlerDiagnosticPrivacyTest`, `GlobalExceptionHandlerTest`, `GlobalExceptionHandlerDisconnectTest`, `DecisionReportTemplateExceptionHandlerTest`) | 36 tests passed, including all 14 handler privacy/contract cases; no failures, errors or skips. This overlaps the previous selection and is not an additional 36 unique cases. |
-| Actual renderer/adapter/draft JavaScript selection | 59 tests passed, including 12 Preferences/restoration cases. |
+| Actual renderer/adapter/draft JavaScript selection | 62 tests passed, including 15 Preferences/restoration/live-decision cases. |
 | Browser fixture/evidence support tests | 7 tests passed. |
-| Workspace fixture path, lifecycle, readiness and request-gate contracts | 12 tests passed; combined with the 12 Preferences/restoration cases, 24 passed. This selection overlaps those cases above. |
+| Workspace fixture path, lifecycle, readiness, request-gate and persisted-decision contracts | 17 tests passed; combined with the 15 Preferences/restoration cases, 32 passed. This selection overlaps those cases above. |
+| Real workspace materialization/commit contract | 1 Maven integration test passed without mocks or an enclosing test transaction; explicit provisioning, real catalogue identities, complete MVC response and fresh persisted reads. The same test passed while packaging the final browser application. |
 | Maven-owned `primary/primary-admin-chromium` browser selection | Not executed locally: the pinned Chromium download returned a 195-byte HTML “Site Unavailable” page instead of an archive. The required CI browser lane supplies runtime acceptance. |
+| Explicit local Chrome 138 diagnostic of the actual full Admin workflow | Passed with the freshly Maven-packaged application, 35 checks and no audit error; includes reject/apply, Preferences 50→150, pending autosave/restore, reload, real Git Undo and cleanup. The final run used normal production transport; the diagnostic clone-consuming control was removed. This is diagnostic evidence, not pinned-browser CI acceptance. |
 
 The browser scenario now materializes two authored hypotheses using identifiers
 discovered from the real catalogue and their actual persisted IDs. In a disposable
@@ -77,6 +82,23 @@ missing request method and pattern on failure. Five focused cases cover missing
 GET/PUT requests, early observations, timer cleanup, other methods and release on
 disposal. Static phase messages make any subsequent interrupted run diagnosable
 without printing request payloads or workspace identifiers.
+
+An explicit local Chrome 138 diagnostic then reproduced the actual hang at
+Playwright's `response.json()` for the successful apply-session command. The
+application inspects its status without consuming its body; unrelated browser
+requests continued normally. A diagnostic control that consumed a clone of that
+body immediately released the wait. The fixture now requires the matched POST
+and HTTP 200, then verifies the exact persisted hypothesis decision through a
+fresh workspace-pinned GET. Five regressions first failed, then passed, including
+failed reads, missing/wrong identities and unapplied decisions. Git revision,
+ETag and idempotency assertions remain unchanged. This does not change production
+transport behavior or establish a backend deadlock.
+
+The released browser flow also exposed the stale live bulk button. A dedicated
+header slot now shares the initial renderer's eligibility predicate and is
+refreshed after review, session application and Undo. Row badges, recovery/error
+messages and Undo listeners are retained. Independent reviews approved both the
+fixture correction and the live header correction.
 
 Local Maven uses Java 21, the repository wrapper, a trusted proxy CA and bounded
 JVM heaps. Disabling npm's inheritance of Maven proxy command-line arguments

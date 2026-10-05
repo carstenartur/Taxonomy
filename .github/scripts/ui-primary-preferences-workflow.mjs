@@ -108,21 +108,28 @@ async function hypothesisCommand(page, id, action, click, assert) {
   await click();
   const result = await response;
   assert(result.status() === 200, `Hypothesis ${action} did not complete: HTTP ${result.status()}`);
+  if (action === 'apply-session') {
+    // The application only needs the command status and does not consume this
+    // response body. Chromium can therefore leave Playwright's response.json()
+    // waiting for body completion. Verify the actual persisted decision in a
+    // fresh workspace-pinned read instead of depending on that browser detail.
+    const current = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
+    assert(current.status === 200 && Array.isArray(current.json)
+        && current.json.some(hypothesis => hypothesis.id === id
+          && hypothesis.appliedInCurrentAnalysis === true),
+    'Apply-session did not persist the expected hypothesis decision');
+    return;
+  }
   const body = await result.json();
   assert(body.id === id, `Hypothesis ${action} addressed an unexpected persisted identity`);
-  if (action !== 'apply-session') {
-    const request = result.request();
-    const headers = await request.allHeaders();
-    assert(Boolean(headers['if-match']) && Boolean(headers['idempotency-key'])
-        && Boolean(result.headers().etag), `Git ${action} omitted its optimistic authority headers`);
-    assert(body.action === action.toUpperCase() && body.commitCreated === true
-        && /^[0-9a-f]{40}$/.test(body.authoritativeCommitId)
-        && result.headers().etag === `"${body.authoritativeCommitId}"`,
-    `Hypothesis ${action} did not create the expected authoritative Git revision`);
-  } else {
-    assert(body.appliedInCurrentAnalysis === true,
-      'Apply-session response did not confirm the persisted session decision');
-  }
+  const request = result.request();
+  const headers = await request.allHeaders();
+  assert(Boolean(headers['if-match']) && Boolean(headers['idempotency-key'])
+      && Boolean(result.headers().etag), `Git ${action} omitted its optimistic authority headers`);
+  assert(body.action === action.toUpperCase() && body.commitCreated === true
+      && /^[0-9a-f]{40}$/.test(body.authoritativeCommitId)
+      && result.headers().etag === `"${body.authoritativeCommitId}"`,
+  `Hypothesis ${action} did not create the expected authoritative Git revision`);
 }
 
 async function assertHypothesisDecisions(page, hypotheses, assert) {

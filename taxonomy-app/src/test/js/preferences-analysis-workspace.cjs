@@ -209,7 +209,7 @@ test('Preferences change while initial draft restore is pending does not turn sa
 
 // Keep these behavioral regressions in the Maven-owned preferences-workspace
 // selection: restore must preserve the presentation of actual manual decisions.
-function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter = false} = {}) {
+function hypothesisFixture({reviewStatus = 200, reviewStatuses = [], applyStatus = 200, lateAdapter = false} = {}) {
     const rows = new Map(), calls = [];
     const input = {value: 'Authored hypothesis restore fixture', classList: {add() {}}};
     const panel = {style: {}}, badge = {};
@@ -222,9 +222,11 @@ function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter =
             } : null;
         return actions;
     }
+    const bulkActions = {innerHTML: ''};
     const content = {
         set innerHTML(html) {
             this.html = html;
+            bulkActions.innerHTML = html.match(/<span id="suggestedRelationsBulkActions">([\s\S]*?)<\/span>/)?.[1] || '';
             rows.clear();
             for (const match of html.matchAll(/<tr id="suggested-row-(\d+)">([\s\S]*?)<\/tr>/g)) {
                 const actions = actionsElement(match[2].match(/<td class="text-nowrap">([\s\S]*)<\/td>$/)[1]);
@@ -233,10 +235,12 @@ function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter =
                     querySelectorAll: () => []});
             }
         },
-        get innerHTML() {return this.html;}
+        get innerHTML() {return this.html.replace(
+            /(<span id="suggestedRelationsBulkActions">)[\s\S]*?(<\/span>)/,
+            (_, start, end) => start + bulkActions.innerHTML + end);}
     };
     const nodes = {businessText: input, suggestedRelationsPanel: panel,
-        suggestedRelationsContent: content, suggestedRelationsBadge: badge};
+        suggestedRelationsContent: content, suggestedRelationsBadge: badge, suggestedRelationsBulkActions: bulkActions};
     const document = {readyState: 'complete', documentElement: {lang: 'en'},
         getElementById: id => id.startsWith('suggested-row-')
             ? rows.get(Number(id.slice('suggested-row-'.length))) : nodes[id] || null,
@@ -264,13 +268,13 @@ function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter =
         }},
         TaxonomyHypothesesApi: {readHead: async () => response(200),
             review: async (id, action, headers) => {
-                assert.equal(id, 5);
+                assert.ok([5, 6, 7].includes(id));
                 assert.equal(headers['If-Match'], '"head-1"');
                 assert.ok(headers['Idempotency-Key']);
                 calls.push(action);
-                return response(reviewStatus);
+                return response(reviewStatuses.length ? reviewStatuses.shift() : reviewStatus);
             },
-            applyForSession: async id => {assert.equal(id, 5); calls.push('APPLY'); return response(applyStatus);}}
+            applyForSession: async id => {assert.ok([5, 6, 7].includes(id)); calls.push('APPLY'); return response(applyStatus);}}
     };
     const context = vm.createContext({window, document, console: window.console,
         TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: value => String(value ?? '')},
@@ -285,10 +289,11 @@ function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter =
     const installAdapter = () => run('relations/taxonomy-hypotheses-git-commands.js');
     if (!lateAdapter) installAdapter();
     return {window, C, calls, installAdapter,
-        render(fields = {}) {window.TaxonomyScoring.renderSuggestedRelations([{hypothesisId: 5,
+        render(fields = {}) {window.TaxonomyScoring.renderSuggestedRelations((Array.isArray(fields) ? fields : [fields])
+            .map((value, index) => ({hypothesisId: 5 + index,
             sourceCode: 'BP', targetCode: 'BR', relationType: 'SUPPORTS', confidence: 0.82,
-            reasoning: 'Authored fixture', status: 'PROVISIONAL', ...fields}]);},
-        actions: () => rows.get(0).querySelector('td:last-child'),
+            reasoning: 'Authored fixture', status: 'PROVISIONAL', ...value})));},
+        actions: (index = 0) => rows.get(index).querySelector('td:last-child'),
         html: () => content.innerHTML,
         async roundTrip() {
             assert.equal(await C.saveDraft(), true);
@@ -296,6 +301,46 @@ function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter =
             return copy(stored.payload.provisionalRelations[0]);
         }};
 }
+
+test('live reject and session apply remove bulk acceptance; Git Undo restores eligibility without rerendering rows', async () => {
+    const f = hypothesisFixture(); f.render([{}, {}]);
+    assert.match(f.html(), /_acceptAllHighConfidence/);
+    f.window._rejectHypothesis(0); await settled();
+    assert.match(f.html(), /_acceptAllHighConfidence/, 'Other provisional hypothesis keeps bulk eligibility');
+    f.window._applyForSession(1); await settled();
+    assert.doesNotMatch(f.html(), /_acceptAllHighConfidence/, 'Completed manual decisions must remove the live bulk control');
+    assert.match(f.actions().innerHTML, /Rejected/);
+    assert.match(f.actions(1).innerHTML, /Session only/);
+    f.actions().querySelector('.hypothesis-undo').click(); await settled();
+    assert.match(f.html(), /_acceptAllHighConfidence/, 'Undo restores high-confidence provisional eligibility');
+    assert.match(f.actions().innerHTML, /Provisional/);
+    assert.match(f.actions(1).innerHTML, /Session only/, 'Header refresh must preserve the other row decision');
+    assert.deepEqual(f.calls, ['REJECT', 'APPLY', 'REVERT']);
+});
+
+test('live bulk completion removes bulk control and preserves each actual Undo', async () => {
+    const f = hypothesisFixture(); f.render([{}, {}]);
+    f.window._acceptAllHighConfidence(); await settled();
+    assert.doesNotMatch(f.html(), /_acceptAllHighConfidence/);
+    assert.match(f.actions().innerHTML, /Accepted/);
+    assert.match(f.actions(1).innerHTML, /Accepted/);
+    assert.ok(f.actions().querySelector('.hypothesis-undo'));
+    assert.ok(f.actions(1).querySelector('.hypothesis-undo'));
+    assert.deepEqual(f.calls, ['ACCEPT', 'ACCEPT']);
+});
+
+test('bulk eligibility refresh preserves partial pending and failed row outcomes', async () => {
+    for (const [status, label] of [[202, /Recovery pending/], [503, /Rejected \(HTTP 503\)/]]) {
+        const f = hypothesisFixture({reviewStatuses: [200, status]}); f.render([{}, {}]);
+        f.window._acceptAllHighConfidence(); await settled();
+        assert.match(f.actions().innerHTML, /Accepted/);
+        assert.ok(f.actions().querySelector('.hypothesis-undo'));
+        assert.match(f.actions(1).innerHTML, label);
+        assert.match(f.html(), /_acceptAllHighConfidence/, 'Uncompleted hypothesis retains existing bulk eligibility');
+        assert.equal(f.window._currentProvisionalRelations[0].status, 'ACCEPTED');
+        assert.equal(f.window._currentProvisionalRelations[1].status, 'PROVISIONAL');
+    }
+});
 
 for (const [action, status, label] of [['REJECT', 'REJECTED', 'Rejected'], ['ACCEPT', 'ACCEPTED', 'Accepted']]) {
     test('restored ' + status + ' hypothesis retains its badge and Git Undo without repeat review controls', async () => {

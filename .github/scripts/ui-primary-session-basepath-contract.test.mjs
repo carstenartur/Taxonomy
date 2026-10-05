@@ -16,6 +16,58 @@ vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export
   workflowContext);
 const selectAnalysisWorkspace = vm.runInContext('selectAnalysisWorkspace', workflowContext);
 
+async function applySessionCommandHarness(authority) {
+  const calls = [];
+  const context = vm.createContext({
+    URL,
+    csrfJson: async (_page, endpoint, options) => {
+      calls.push([endpoint, options.method]);
+      return authority;
+    }
+  });
+  vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  const response = {
+    status: () => 200,
+    json: async () => { throw new Error('Browser has not consumed the apply-session response body'); }
+  };
+  const page = {
+    waitForResponse: async predicate => {
+      const request = method => ({ method: () => method });
+      const candidate = (id, method) => ({
+        request: () => request(method),
+        url: () => `https://qa.example/taxonomy/api/dsl/hypotheses/${id}/apply-session`
+      });
+      assert.equal(predicate(candidate(42, 'GET')), false);
+      assert.equal(predicate(candidate(43, 'POST')), false);
+      assert.equal(predicate(candidate(42, 'POST')), true);
+      return response;
+    }
+  };
+  await vm.runInContext('hypothesisCommand', context)(
+    page, 42, 'apply-session', async () => { calls.push('click'); }, assert);
+  return calls;
+}
+
+test('Preferences session application verifies the persisted identity without waiting on an unconsumed browser response', async () => {
+  const calls = await applySessionCommandHarness({
+    status: 200,
+    json: [{ id: 42, appliedInCurrentAnalysis: true }]
+  });
+  assert.deepEqual(calls, ['click', ['/api/dsl/hypotheses', 'GET']]);
+});
+
+for (const [label, authority] of [
+  ['failed authority read', { status: 503, json: null }],
+  ['missing persisted identity', { status: 200, json: [] }],
+  ['another persisted identity', { status: 200, json: [{ id: 43, appliedInCurrentAnalysis: true }] }],
+  ['unapplied persisted identity', { status: 200, json: [{ id: 42, appliedInCurrentAnalysis: false }] }]
+]) {
+  test(`Preferences session application rejects ${label} despite HTTP 200 from the command`, async () => {
+    await assert.rejects(applySessionCommandHarness(authority),
+      /Apply-session did not persist the expected hypothesis decision/);
+  });
+}
+
 async function requestGateHarness(method) {
   const timers = new Map();
   let nextTimer = 0;

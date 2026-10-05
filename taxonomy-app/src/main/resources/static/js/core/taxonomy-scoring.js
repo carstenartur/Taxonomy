@@ -1786,6 +1786,22 @@
         });
     }
 
+    function suggestedRelationsBulkActionsHtml(provisionalRelations) {
+        var eligible = (provisionalRelations || []).some(function (hypothesis) {
+            var status = hypothesis.status || 'PROVISIONAL';
+            var id = Number(hypothesis.hypothesisId);
+            return (status === 'PROVISIONAL' || status === 'PROPOSED')
+                && hypothesis.appliedInCurrentAnalysis !== true
+                && hypothesis.confidence >= 0.8 && Number.isSafeInteger(id) && id > 0;
+        });
+        return eligible ? '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>' : '';
+    }
+
+    function refreshSuggestedRelationsBulkActions() {
+        var actions = document.getElementById('suggestedRelationsBulkActions');
+        if (actions) actions.innerHTML = suggestedRelationsBulkActionsHtml(window._currentProvisionalRelations);
+    }
+
     /**
      * Renders the Suggested Relationships panel from provisional relation hypotheses.
      */
@@ -1805,15 +1821,8 @@
         var html = '';
         html += '<div class="d-flex justify-content-between align-items-center mb-2">';
         html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
-        if (provisionalRelations.some(function (hypothesis) {
-            var status = hypothesis.status || 'PROVISIONAL';
-            var id = Number(hypothesis.hypothesisId);
-            return (status === 'PROVISIONAL' || status === 'PROPOSED')
-                && hypothesis.appliedInCurrentAnalysis !== true
-                && hypothesis.confidence >= 0.8 && Number.isSafeInteger(id) && id > 0;
-        })) {
-            html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
-        }
+        html += '<span id="suggestedRelationsBulkActions">'
+            + suggestedRelationsBulkActionsHtml(provisionalRelations) + '</span>';
         html += '</div>';
         html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
         html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
@@ -2131,6 +2140,7 @@
         renderRelationSearchReport: renderRelationSearchReport,
         renderArchitectureView: renderArchitectureView,
         renderSuggestedRelations: renderSuggestedRelations,
+        refreshSuggestedRelationsBulkActions: refreshSuggestedRelationsBulkActions,
         renderSummaryView: renderSummaryView,
         escapeHtml: escapeHtml
     };
