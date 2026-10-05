@@ -351,6 +351,7 @@ The legacy SSE connection has no independent servlet timeout. The configured ana
 | Environment variable | Spring property | Default | Description |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` keeps analysis in-process (default, no broker). `artemis` enables the external Apache Artemis task transport. Any other value fails startup. |
+| `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_ENABLED` | `taxonomy.analysis.provider-permits.enabled` | `false` | Enables cluster-wide concurrency permits for physical provider requests. Requires `artemis` mode, explicit provider-group mappings and provisioned permit queues. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | empty | Required in `artemis` mode. `tcp://` (or a failover list `(tcp://a,tcp://b)?ha=true`) or `vm://`. Never logged or shown in health output. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | empty | Broker user; supply through a secret. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` | `taxonomy.analysis.artemis.password` | empty | Broker password; supply through a secret, never through images or committed files. |

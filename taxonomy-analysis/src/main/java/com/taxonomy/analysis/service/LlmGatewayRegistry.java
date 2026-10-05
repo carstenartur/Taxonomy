@@ -99,6 +99,15 @@ public class LlmGatewayRegistry {
                 environment.getProperty("taxonomy.llm." + key, Integer.class, fallback));
     }
 
+    /** Optional cluster capacity; configured once before any gateway is used. */
+    @Autowired(required = false)
+    public void configureProviderPermits(ProviderConcurrencyPermits permits) {
+        for (LlmGateway gateway : transports) {
+            if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureProviderPermits(permits);
+            else if (gateway instanceof GeminiGateway gemini) gemini.configureProviderPermits(permits);
+        }
+    }
+
     private void register(LlmProvider provider, LlmGateway gateway, AiPromptBudgetPolicy promptBudgetPolicy) {
         transports.add(gateway);
         gateways.put(provider, promptBudgetPolicy == null

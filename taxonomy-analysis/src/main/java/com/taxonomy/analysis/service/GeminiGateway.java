@@ -48,6 +48,7 @@ public class GeminiGateway implements LlmGateway {
     }
 
     void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }
+    void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }
 
     @Override public String providerName() { return "GEMINI"; }
 

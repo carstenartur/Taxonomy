@@ -354,6 +354,7 @@ Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfiguri
 | Environment variable | Spring property | Default | Beschreibung |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` führt die Analyse im Prozess aus (Standard, kein Broker). `artemis` aktiviert den externen Apache-Artemis-Aufgabentransport. Jeder andere Wert bricht den Start ab. |
+| `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_ENABLED` | `taxonomy.analysis.provider-permits.enabled` | `false` | Aktiviert clusterweite Parallelitäts-Permits für physische Provider-Anfragen. Erfordert den Modus `artemis`, explizite Provider-Gruppenzuordnungen und provisionierte Permit-Queues. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | leer | Im Modus `artemis` erforderlich. `tcp://` (oder Failover-Liste `(tcp://a,tcp://b)?ha=true`) bzw. `vm://`. Wird weder protokolliert noch im Health-Endpunkt angezeigt. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | leer | Broker-Benutzer; über ein Secret bereitstellen. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` | `taxonomy.analysis.artemis.password` | leer | Broker-Passwort; nur über ein Secret, nie über Images oder eingecheckte Dateien. |
