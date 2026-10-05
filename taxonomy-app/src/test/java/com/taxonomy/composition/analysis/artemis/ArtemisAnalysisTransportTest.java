@@ -541,6 +541,22 @@ class ArtemisAnalysisTransportTest {
 
     @Test void eightRootWorkersOverlapAndCoordinatorReplaysPersistedCompletionsAfterRestart() throws Exception {
         var db = clusteredDatabase(true);
+        var releaseFinalAcceptance = new CountDownLatch(1);
+        var progressPublisher = publisher(connect());
+        db.store().eventPublisher(event -> {
+            progressPublisher.progress(event);
+            if (event.phase() == com.taxonomy.analysis.dag.AnalysisProgressPhase.OPERATION_COMPLETED) {
+                // The durable terminal state and live event precede accept() returning
+                // to the coordinator, which then updates its local accepted counter.
+                try {
+                    if (!releaseFinalAcceptance.await(30, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Final acceptance was not released");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+            }
+        });
         var entered = new CountDownLatch(8); var computations = new AtomicInteger();
         for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {
             var service = new ClusterAnalysisService(db.store(), (input, task, cancelled) -> {
@@ -568,7 +584,15 @@ class ArtemisAnalysisTransportTest {
             var second = coordinator(db, new ClusterAnalysisSignals(), true);
             assertThat(complete.await(20, TimeUnit.SECONDS)).as("other pod receives live completion").isTrue();
             await(() -> db.store().snapshot(context).state().terminal(), "durable aggregate");
+            await(() -> first.accepted() + second.accepted() == 7,
+                    "seven coordinator counters before the final after-commit callback returns");
+            assertThat(db.store().snapshot(context).completedRoots()).isEqualTo(8);
+            releaseFinalAcceptance.countDown();
+            await(() -> first.accepted() + second.accepted() == 8,
+                    "eight accepted coordinator completions");
             assertThat(first.accepted() + second.accepted()).isEqualTo(8);
+        } finally {
+            releaseFinalAcceptance.countDown();
         }
         var snapshot = db.store().snapshot(context);
         assertThat(snapshot.completedRoots()).isEqualTo(8);

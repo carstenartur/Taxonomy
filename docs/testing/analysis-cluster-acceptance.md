@@ -293,6 +293,63 @@ authority/provenance and worker isolation, root/relation execution, both fixture
 corrections, direct transaction races, real TCP Artemis and mandatory guards.
 The final combined revision requires its own CI results.
 
+## Completed vendor/live checkpoint and coordinator observation correction
+
+On execution head `d2e42e283e2cd6aad976bd5570f08d5f3f720210`, the complete
+[database matrix](https://github.com/carstenartur/Taxonomy/actions/runs/37244435764)
+passes **52 PostgreSQL, 32 Oracle and 32 SQL Server cases**, with zero failures,
+errors or skips. Each vendor's actual Failsafe XML contains successful executions
+of all three cluster contracts: large-payload persistence, concurrent duplicate
+completion with rollback and one effect, and exact authority scoping.
+Independently downloaded artifact hashes match GitHub:
+
+| Vendor | Artifact | ZIP SHA-256 |
+| --- | --- | --- |
+| PostgreSQL | `11319038279` | `65c1b68df1bbf998827d654471d5f07250be745359dc1f7c56b490431fd6aea8` |
+| Oracle | `11318854625` | `0c0f96639889fc80fa96a62bc889795c52c0bb07ac0c3e163b401fc669845f91` |
+| SQL Server | `11319926763` | `3e1a737517206e8e25102c3439543ac7265ae921bfa8d3632dd23d8f952bf588` |
+
+The same head's [constrained live run](https://github.com/carstenartur/Taxonomy/actions/runs/37244435676)
+also passes both scenarios. Artifact `11319215202` has verified SHA-256
+`d21d43fd536a517b2b0c73ca737c46a4455433186122263f6700e012a4095627`.
+Tested merge `984bf7ce6b1152c869f7db747b1d406a35f6d641` has exactly the head's
+tree `99c5c37087b93349511e1339e70c321dca343c7b`. Retained counters again establish
+zero broker/database connections before lock release, CP **2** / IP **1**
+delivery attempts, one durable effect per root, and **425** durable scores equal
+to the response. Scaling, replacement identities, progress and egress pass.
+
+The [canonical core](https://github.com/carstenartur/Taxonomy/actions/runs/37244435801)
+then exposes a separate observation race in the eight-root transport test:
+**6,911 cases, one failure, no errors or skips** in the retained partial reports.
+Artifact `11319833086` has verified SHA-256
+`b20bedb6c31d56c43743bb6655c6d674c494156d904b611dcc03014aec906e07`.
+The test sees seven local coordinator counters after observing the terminal live
+event and committed database state. `ClusterAnalysisStore.accept()` publishes
+that event in its synchronous `afterCommit`; only after it returns does the
+coordinator increment its local counter. The event is therefore not a barrier
+for the counter update, nor is this counter an acknowledgement-completion metric.
+
+A deterministic regression now holds that existing event publisher after the
+real JMS send. It observes eight durable roots while the local counters remain
+at seven, reproducing the old assertion failure. After releasing the callback,
+the test waits within its existing bound for exactly eight accepted completions.
+All original result, overlap and exactly-eight-computation assertions remain.
+The latch has a bounded wait and unconditional cleanup; no production hook,
+timeout extension, weakened equality or excluded test is introduced. Independent
+review found no important issue. This test correction requires a fresh canonical
+gate; the failed run is not accepted as green.
+
+The fresh combined Java 21 reactor passes **233 executions across all 16 modules**
+with zero failures, errors or skips in **1 minute 45 seconds**: 11 transport,
+two production-computation and seven metric cases plus all 213 mandatory module
+guards. The deterministic single-case run failed before the observation fix.
+
+P05 `31e1a03` now passes all applicable workflows, including its full canonical
+gate, native ONNX and all vendor databases. Final canonical artifact `11319633502`
+contains **7,691 cases, zero failures/errors and 79 optional-profile skips**;
+its SHA-256 is `40f13114c51f73f0d3cd79207b51afad6d137df7b9fb9b499b45b47700a42f9a`.
+The native run executes **7,129 cases with no failures, errors or skips**.
+
 ## Remaining environment acceptance
 
 The complete canonical gate is `./mvnw -B verify -Pci -DrunOnnxTests=true`.
@@ -307,10 +364,11 @@ project's supported local Chrome mode and bounded JVM heaps (Maven 640 MiB, test
 JVM 1,536 MiB). The 130-execution rerun is green; the interrupted full attempt is
 not a green canonical gate.
 
-The current workspace has no Docker, Kubernetes or CNI runtime. Remote PostgreSQL
-and constrained multi-pod evidence is recorded above; Oracle and SQL Server still
-require successful corrected-head vendor reports. Broker HA failover and
-production capacity require their target-environment acceptance.
+The current workspace has no Docker, Kubernetes or CNI runtime. Successful remote
+PostgreSQL, Oracle, SQL Server and constrained multi-pod evidence is recorded
+above with its exact source revision. A new revision still requires its own
+applicable CI results. Broker HA failover and production capacity require their
+target-environment acceptance.
 The local whole-process measurement above is complete. No thresholds, test
 exclusions or required checks were weakened.
 
