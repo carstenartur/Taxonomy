@@ -350,6 +350,66 @@ contains **7,691 cases, zero failures/errors and 79 optional-profile skips**;
 its SHA-256 is `40f13114c51f73f0d3cd79207b51afad6d137df7b9fb9b499b45b47700a42f9a`.
 The native run executes **7,129 cases with no failures, errors or skips**.
 
+## Canonical completion and CodeQL follow-through
+
+Execution checkpoint `8e817b6e2bb410f89748dd28c4deeae04c8e113d` passes all
+**13 jobs** of [canonical run 37249070342](https://github.com/carstenartur/Taxonomy/actions/runs/37249070342).
+Independently verified final artifact `11322456187` has SHA-256
+`be75a2a16115554a86ad6d92a07b78f1d1a9728e57985d60318b04c1df27999c`.
+Its tested merge `fcfa51d562ed8b6b27ad27f200ebbb420c1222f7` has exactly the
+head's source tree `e3ed15d3b1691bc9734c8fffb9f8bdc7f03eafa8`.
+
+The authoritative Maven/quality summary declares **7,877 cases in 1,101 XML
+reports**, zero failures/errors and **79 optional-profile skips**: three mock
+score generators, 75 screenshot generators and the document E2E that passes in
+its separate workflow. Direct XML enumeration finds 7,880 testcase elements;
+the sole difference is `LlmResponseParserTest`, whose header declares 46 but
+contains 49 entries. None contains a failure/error/skip marker. The transport
+suite (11), production execution (2), backup restore (10), performance (1) and
+whole-worker runtime probe (1, all six cold/native measurements) execute without
+skips. All 16 Maven modules succeed.
+
+This checkpoint also passes the complete vendor matrix (52 PostgreSQL, 32
+Oracle and 32 SQL Server cases, no failures/errors/skips) and the constrained
+Kubernetes worker-loss/redelivery scenario on the exact source tree. Current
+PR descriptions and the issue tracker retain the independently checked artifact
+hashes and actual three-vendor cluster contract results.
+
+The complete commit-check inventory additionally identifies failed **push**
+[CodeQL run 37249067314](https://github.com/carstenartur/Taxonomy/actions/runs/37249067314).
+It was absent from the limited recent-workflow listing; a separately skipped
+pull-request CodeQL run is not a replacement for the push gate. Java artifact
+`11320985366` has SHA-256
+`c3e30ddc331cb2e5762d4317bd0f968b8767f02717047d8c4654233e4ad93c95`;
+JavaScript artifact `11320257097` has SHA-256
+`4fc8afe107886dd022804436cae4f1ade76c251075280327659c8cd370a0d517`.
+Their unchanged severity gate reports three `java/user-controlled-bypass`
+findings and one `js/file-system-race`. This checkpoint is therefore not a
+fully green execution revision.
+
+All three Java paths identify the immutable `AnalysisOperationContext.authority()`
+record accessor inside the input-validation disjunction. Invalid requirement
+text short-circuits those accessor calls, but also rejects the entire admission
+before any persistence; it does not create an accepted authority-bypass path.
+The correction captures the immutable authority once before request-dependent
+validation, matching the existing durable-execution boundary. The JavaScript
+finding concerns a separate `statSync(path)` and `readFileSync(path)` pair in the
+smoke evidence reader; it now reads directly and only treats an actual `EISDIR`
+as a directory traversal case. Other read errors remain visible.
+
+The unchanged Java implementation passes the eight-case store baseline,
+including two new tests covering eleven rejected identity variants with zero
+database/publication effects and exact admission replay/source-change fencing.
+After the refactor, the combined Java 21 reactor passes **271 executions across
+all 16 modules**, zero failures/errors/skips, in **3 minutes 25 seconds**. It
+includes those authority cases, restore/observation, direct transaction races,
+actual TCP Artemis and all 213 mandatory module guards. A local deterministic
+file-replacement reproducer fails one of two cases before the JavaScript fix
+and passes both afterward; all ten existing smoke tests and full Helm
+verification also pass. Independent review found no important issue. Fresh
+CodeQL and current-head CI results remain required; no baseline, threshold,
+workflow selector or test exclusion was changed.
+
 ## Remaining environment acceptance
 
 The complete canonical gate is `./mvnw -B verify -Pci -DrunOnnxTests=true`.

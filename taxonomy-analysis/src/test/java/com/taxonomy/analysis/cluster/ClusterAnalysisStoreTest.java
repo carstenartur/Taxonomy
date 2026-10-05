@@ -40,6 +40,69 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void rejectsEveryAdmissionIdentityMismatchWithoutDurableOrPublishedEffects() {
+        try (var db = new Database()) {
+            var context = context("rejected-admission");
+            var workspace = command("requirement").workspaceContext();
+            var progress = new ArrayList<AnalysisProgressEvent>();
+            db.store.eventPublisher(progress::add);
+            record InvalidInput(String name, String text, String username, WorkspaceContext workspace) { }
+            var invalidInputs = List.of(
+                    new InvalidInput("missing text", null, "alice", workspace),
+                    new InvalidInput("changed text", "changed", "alice", workspace),
+                    new InvalidInput("missing owner", "requirement", null, workspace),
+                    new InvalidInput("blank owner", "requirement", " ", workspace),
+                    new InvalidInput("different owner", "requirement", "bob", workspace),
+                    new InvalidInput("different workspace owner", "requirement", "alice",
+                            new WorkspaceContext("bob", "workspace", "draft", "repo")),
+                    new InvalidInput("different repository", "requirement", "alice",
+                            new WorkspaceContext("alice", "workspace", "draft", "other")),
+                    new InvalidInput("different workspace", "requirement", "alice",
+                            new WorkspaceContext("alice", "other", "draft", "repo")),
+                    new InvalidInput("central scope substitution", "requirement", "alice",
+                            new WorkspaceContext("alice", null, "draft", "repo")),
+                    new InvalidInput("different branch", "requirement", "alice",
+                            new WorkspaceContext("alice", "workspace", "other", "repo")),
+                    new InvalidInput("missing branch", "requirement", "alice",
+                            new WorkspaceContext("alice", "workspace", null, "repo")));
+            for (var input : invalidInputs) {
+                var command = new AnalyzeRequirementCommand(input.text(), false, 20, "MOCK", input.username(),
+                        input.workspace(), null, new AnalysisScope(Set.of("CP", "IP"), AnalysisMode.TAXONOMIES_ONLY));
+                assertThrows(IllegalStateException.class,
+                        () -> db.store.admit(context, command, null, Map.of(CP, "{}", IP, "{}")), input.name());
+            }
+            assertTrue(db.sent.isEmpty());
+            assertTrue(progress.isEmpty());
+            for (String entity : List.of("ClusterAnalysisRun", "ClusterAnalysisWork", "ClusterAnalysisInput",
+                    "ClusterAnalysisEvent", "AnalysisDispatchIntent")) {
+                assertEquals(0L, db.em.createQuery("select count(e) from " + entity + " e", Long.class).getSingleResult(),
+                        "Rejected admission must not write " + entity);
+            }
+        }
+    }
+
+    @Test void exactAdmissionReplayPreservesEvidenceAndRejectsChangedSourceIdentity() {
+        try (var db = new Database()) {
+            var context = context("replayed-admission");
+            var progress = new ArrayList<AnalysisProgressEvent>();
+            db.store.eventPublisher(progress::add);
+            db.admit(context);
+            var before = db.store.snapshot(context);
+            var events = db.store.events(context, 0, 100);
+
+            db.admit(context);
+            var changedSource = new AnalysisOperationContext(context.operationId(),
+                    new AnalysisSourceAuthority("repo", "workspace", "draft", "other-source"),
+                    context.requirement(), context.correlationId());
+            assertThrows(IllegalStateException.class, () -> db.admit(changedSource));
+
+            assertEquals(before, db.store.snapshot(context));
+            assertEquals(events, db.store.events(context, 0, 100));
+            assertEquals(2, db.sent.size());
+            assertEquals(1, progress.size());
+        }
+    }
+
     @Test void reverseAndDuplicateCompletionsAggregateExactlyOnce() {
         try (var db = new Database()) {
             var context = context("reverse"); db.admit(context);

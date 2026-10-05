@@ -70,11 +70,15 @@ if (name === 'helm') {
 }
 `;
 
-function evidenceText(directory) {
-  return readdirSync(directory).map(name => {
-    const path = join(directory, name);
-    return statSync(path).isDirectory() ? evidenceText(path) : readFileSync(path, 'utf8');
-  }).join('\n');
+function evidenceText(path) {
+  // Act on the read itself; a separate stat could describe an entry that has
+  // already changed by the time it is opened. Preserve every non-directory error.
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    if (error.code !== 'EISDIR') throw error;
+  }
+  return readdirSync(path).map(name => evidenceText(join(path, name))).join('\n');
 }
 
 for (const [keep, missingCurrent] of [[false, false], [true, false], [false, true]]) {

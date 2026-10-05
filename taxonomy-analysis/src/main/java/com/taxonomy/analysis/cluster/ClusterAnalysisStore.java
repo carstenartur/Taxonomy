@@ -521,11 +521,13 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                                       Map<TaxonomyShardRoot, String> shards) {
         Objects.requireNonNull(context); Objects.requireNonNull(command); Objects.requireNonNull(shards);
         var workspace = Objects.requireNonNull(command.workspaceContext());
+        // Bind the immutable source identity before evaluating caller-supplied input.
+        var authority = context.authority();
         if (!context.requirement().matches(command.businessText()) || command.username() == null || command.username().isBlank()
                 || !command.username().equals(workspace.username())
-                || !context.authority().repositoryId().equals(workspace.repositoryId())
-                || !Objects.equals(context.authority().workspaceId(), workspace.workspaceId())
-                || !Objects.equals(context.authority().branch(), workspace.currentBranch()))
+                || !authority.repositoryId().equals(workspace.repositoryId())
+                || !Objects.equals(authority.workspaceId(), workspace.workspaceId())
+                || !Objects.equals(authority.branch(), workspace.currentBranch()))
             throw new IllegalStateException("Operation input does not match its immutable authority");
         if (shards.isEmpty() || shards.size() > 8 || shards.keySet().stream().anyMatch(r -> !r.defaultCatalogueRoot()
                 || !command.analysisScope().selects(r.code()))) throw new IllegalArgumentException("Invalid selected catalogue shards");
