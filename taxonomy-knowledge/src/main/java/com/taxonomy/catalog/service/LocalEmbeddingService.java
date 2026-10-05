@@ -528,8 +528,7 @@ public class LocalEmbeddingService {
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
         } catch (Exception exception) {
-            log.error("Semantic search failed for query '{}': {}",
-                    queryText, exception.getMessage());
+            log.error("Semantic search failed (code=SEMANTIC_SEARCH_FAILED)");
             return Collections.emptyList();
         }
     }

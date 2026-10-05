@@ -206,3 +206,174 @@ test('Preferences change while initial draft restore is pending does not turn sa
     assertWorkPreserved(f, expected);
     assert.equal(f.runtime.version, 4);
 });
+
+// Keep these behavioral regressions in the Maven-owned preferences-workspace
+// selection: restore must preserve the presentation of actual manual decisions.
+function hypothesisFixture({reviewStatus = 200, applyStatus = 200, lateAdapter = false} = {}) {
+    const rows = new Map(), calls = [];
+    const input = {value: 'Authored hypothesis restore fixture', classList: {add() {}}};
+    const panel = {style: {}}, badge = {};
+    function actionsElement(html) {
+        const actions = {innerHTML: html, undo: null};
+        actions.querySelector = selector => selector === '.hypothesis-undo'
+            && /hypothesis-undo/.test(actions.innerHTML) ? {
+                addEventListener(name, handler) {actions.undo = handler;},
+                click() {actions.undo?.();}
+            } : null;
+        return actions;
+    }
+    const content = {
+        set innerHTML(html) {
+            this.html = html;
+            rows.clear();
+            for (const match of html.matchAll(/<tr id="suggested-row-(\d+)">([\s\S]*?)<\/tr>/g)) {
+                const actions = actionsElement(match[2].match(/<td class="text-nowrap">([\s\S]*)<\/td>$/)[1]);
+                rows.set(Number(match[1]), {style: {}, classList: {add() {}, remove() {}},
+                    setAttribute() {}, querySelector: () => actions,
+                    querySelectorAll: () => []});
+            }
+        },
+        get innerHTML() {return this.html;}
+    };
+    const nodes = {businessText: input, suggestedRelationsPanel: panel,
+        suggestedRelationsContent: content, suggestedRelationsBadge: badge};
+    const document = {readyState: 'complete', documentElement: {lang: 'en'},
+        getElementById: id => id.startsWith('suggested-row-')
+            ? rows.get(Number(id.slice('suggested-row-'.length))) : nodes[id] || null,
+        querySelector: () => null, querySelectorAll: () => [],
+        addEventListener() {}, dispatchEvent() {}};
+    const state = {taxonomyData: [{code: 'BP'}], currentScores: {BP: 77},
+        currentRawScores: {BP: 91}, currentEffectiveScores: {BP: 77},
+        lastAnalyzedText: input.value, evaluatedNodes: new Set(['BP'])};
+    let stored = null;
+    const response = (status, body = {}) => ({ok: status >= 200 && status < 300, status,
+        headers: {get: key => key === 'ETag' ? '"head-1"' : 'application/json'},
+        json: async () => copy(body)});
+    const window = {TaxonomyState: state, console: {warn() {}, error() {}},
+        clearTimeout() {}, setTimeout: () => 1,
+        TaxonomyBrowse: {renderView() {}, updateExportGroupVisibility() {}, showStatus() {}},
+        TaxonomyAnalysisSessionApi: {request: async (url, request) => {
+            assert.equal(url, '/api/analysis-drafts/ws-hypotheses');
+            assert.equal(request.method, 'PUT');
+            assert.equal(request.headers['X-Taxonomy-Workspace-Id'], 'ws-hypotheses');
+            const body = JSON.parse(request.body);
+            assert.equal(body.expectedVersion, stored?.version ?? null);
+            stored = {workspaceId: 'ws-hypotheses', version: (stored?.version ?? 0) + 1,
+                payload: body.payload};
+            return response(200, stored);
+        }},
+        TaxonomyHypothesesApi: {readHead: async () => response(200),
+            review: async (id, action, headers) => {
+                assert.equal(id, 5);
+                assert.equal(headers['If-Match'], '"head-1"');
+                assert.ok(headers['Idempotency-Key']);
+                calls.push(action);
+                return response(reviewStatus);
+            },
+            applyForSession: async id => {assert.equal(id, 5); calls.push('APPLY'); return response(applyStatus);}}
+    };
+    const context = vm.createContext({window, document, console: window.console,
+        TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: value => String(value ?? '')},
+        CustomEvent: class {constructor(type) {this.type = type;}}});
+    const run = name => vm.runInContext(readFileSync(path.join(resources, 'static/js', name), 'utf8'),
+        context, {filename: name});
+    run('core/taxonomy-analysis-session-core.js');
+    run('core/taxonomy-scoring.js');
+    run('core/taxonomy-analysis-session-draft.js');
+    const C = window.__TaxonomyAnalysisSessionContext;
+    C.runtime.workspaceId = 'ws-hypotheses';
+    const installAdapter = () => run('relations/taxonomy-hypotheses-git-commands.js');
+    if (!lateAdapter) installAdapter();
+    return {window, C, calls, installAdapter,
+        render(fields = {}) {window.TaxonomyScoring.renderSuggestedRelations([{hypothesisId: 5,
+            sourceCode: 'BP', targetCode: 'BR', relationType: 'SUPPORTS', confidence: 0.82,
+            reasoning: 'Authored fixture', status: 'PROVISIONAL', ...fields}]);},
+        actions: () => rows.get(0).querySelector('td:last-child'),
+        html: () => content.innerHTML,
+        async roundTrip() {
+            assert.equal(await C.saveDraft(), true);
+            C.applyDraft(copy(stored));
+            return copy(stored.payload.provisionalRelations[0]);
+        }};
+}
+
+for (const [action, status, label] of [['REJECT', 'REJECTED', 'Rejected'], ['ACCEPT', 'ACCEPTED', 'Accepted']]) {
+    test('restored ' + status + ' hypothesis retains its badge and Git Undo without repeat review controls', async () => {
+        const f = hypothesisFixture(); f.render();
+        f.window[action === 'REJECT' ? '_rejectHypothesis' : '_acceptHypothesis'](0);
+        await settled();
+        assert.equal((await f.roundTrip()).status, status);
+        assert.match(f.actions().innerHTML, new RegExp(label));
+        assert.doesNotMatch(f.actions().innerHTML, /_acceptHypothesis|_rejectHypothesis|_applyForSession/);
+        assert.doesNotMatch(f.html(), /_acceptAllHighConfidence/);
+        f.window._acceptHypothesis(0); f.window._rejectHypothesis(0);
+        f.window._applyForSession(0); f.window._acceptAllHighConfidence();
+        await settled();
+        assert.deepEqual(f.calls, [action]);
+        f.actions().querySelector('.hypothesis-undo').click();
+        await settled();
+        assert.deepEqual(f.calls, [action, 'REVERT']);
+        assert.equal((await f.roundTrip()).status, 'PROVISIONAL');
+        assert.match(f.actions().innerHTML, /_acceptHypothesis/);
+    });
+}
+
+test('restored session-applied hypothesis keeps Session only and prevents another application or review', async () => {
+    const f = hypothesisFixture(); f.render(); f.window._applyForSession(0); await settled();
+    assert.equal((await f.roundTrip()).appliedInCurrentAnalysis, true);
+    assert.match(f.actions().innerHTML, /Session only|scoring.badge.session.only/);
+    assert.doesNotMatch(f.actions().innerHTML, /_acceptHypothesis|_rejectHypothesis|_applyForSession/);
+    assert.doesNotMatch(f.html(), /_acceptAllHighConfidence/);
+    f.window._applyForSession(0); f.window._acceptHypothesis(0); f.window._acceptAllHighConfidence();
+    await settled(); assert.deepEqual(f.calls, ['APPLY']);
+});
+
+test('unreviewed hypotheses remain actionable after draft restore; false apply flags stay false', async () => {
+    for (const fields of [{}, {status: undefined}, {status: 'PROPOSED'}, {appliedInCurrentAnalysis: false},
+            {appliedInCurrentAnalysis: 'false'}]) {
+        const f = hypothesisFixture(); f.render(fields); await f.roundTrip();
+        assert.match(f.actions().innerHTML, /_acceptHypothesis/);
+        assert.match(f.actions().innerHTML, /_rejectHypothesis/);
+        assert.match(f.actions().innerHTML, /_applyForSession/);
+        assert.match(f.html(), /_acceptAllHighConfidence/);
+    }
+});
+
+test('review status takes priority over a session flag and unsupported APPROVED state is not actionable', async () => {
+    for (const [status, label] of [['REJECTED', 'Rejected'], ['ACCEPTED', 'Accepted'], ['APPROVED', 'APPROVED']]) {
+        const f = hypothesisFixture(); f.render({status, appliedInCurrentAnalysis: true}); await f.roundTrip();
+        assert.match(f.actions().innerHTML, new RegExp(label));
+        assert.doesNotMatch(f.actions().innerHTML, /_acceptHypothesis|_rejectHypothesis|_applyForSession/);
+        f.window._acceptHypothesis(0); f.window._rejectHypothesis(0); f.window._applyForSession(0);
+        f.window._acceptAllHighConfidence(); await settled(); assert.deepEqual(f.calls, []);
+        if (status === 'APPROVED') assert.equal(f.actions().querySelector('.hypothesis-undo'), null);
+    }
+});
+
+test('failed server review and application do not become completed decisions after restore', async () => {
+    for (const action of ['REJECT', 'APPLY']) {
+        const f = hypothesisFixture({reviewStatus: 503, applyStatus: 503}); f.render();
+        f.window[action === 'REJECT' ? '_rejectHypothesis' : '_applyForSession'](0); await settled();
+        const restored = await f.roundTrip();
+        assert.equal(restored.status, 'PROVISIONAL');
+        assert.notEqual(restored.appliedInCurrentAnalysis, true);
+        assert.match(f.actions().innerHTML, /_applyForSession/);
+    }
+});
+
+test('late adapter initialization restores the rejected badge and Undo without changing draft evidence', async () => {
+    const f = hypothesisFixture({lateAdapter: true}); f.render({status: 'REJECTED'});
+    const payload = await f.roundTrip(); f.installAdapter();
+    assert.match(f.actions().innerHTML, /Rejected/);
+    assert.ok(f.actions().querySelector('.hypothesis-undo'));
+    assert.deepEqual(copy(f.C.currentPayload().provisionalRelations[0]), payload);
+});
+
+test('restored completed evidence without a persisted identity does not invent an Undo command', async () => {
+    const f = hypothesisFixture(); f.render({hypothesisId: undefined, status: 'REJECTED'});
+    await f.roundTrip();
+    assert.match(f.actions().innerHTML, /scoring.badge.dismissed/);
+    assert.equal(f.actions().querySelector('.hypothesis-undo'), null);
+    f.window._rejectHypothesis(0); f.window._applyForSession(0); await settled();
+    assert.deepEqual(f.calls, []);
+});

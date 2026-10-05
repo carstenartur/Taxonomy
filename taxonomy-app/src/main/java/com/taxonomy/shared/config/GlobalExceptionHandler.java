@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -38,8 +39,6 @@ import java.util.Map;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-    private static final DisconnectedClientHelper disconnectedClients =
-            new DisconnectedClientHelper(GlobalExceptionHandler.class.getName());
     private static final String DEFAULT_INTERNAL_MESSAGE =
             "An internal error occurred. Please try again or check the server logs.";
 
@@ -62,7 +61,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadRequest(
             IllegalArgumentException exception,
             WebRequest request) {
-        log.warn("Bad request: {}", exception.getMessage());
+        log.warn("Bad request: status=400, type=BAD_REQUEST");
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 clientErrorMessage(exception, HttpStatus.BAD_REQUEST),
@@ -74,8 +73,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAnalysisDraftValidation(
             AnalysisDraftValidationException exception,
             WebRequest request) {
-        log.warn("Invalid analysis draft on {}: {}",
-                request.getDescription(false), exception.getMessage());
+        log.warn("Invalid analysis draft: status=400, type=ANALYSIS_DRAFT_VALIDATION");
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 clientErrorMessage(exception, HttpStatus.BAD_REQUEST),
@@ -90,8 +88,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAnalysisDraftConflict(
             AnalysisDraftConflictException exception,
             WebRequest request) {
-        log.warn("Analysis draft conflict on {}: {}",
-                request.getDescription(false), exception.getMessage());
+        log.warn("Analysis draft conflict: status=409, type=ANALYSIS_DRAFT_CONFLICT");
         return buildErrorResponse(
                 HttpStatus.CONFLICT,
                 clientErrorMessage(exception, HttpStatus.CONFLICT),
@@ -106,8 +103,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAccessDenied(
             AccessDeniedException exception,
             WebRequest request) {
-        log.warn("Access denied on {}: {}",
-                request.getDescription(false), exception.getMessage());
+        log.warn("Access denied: status=403, type=ACCESS_DENIED");
         Locale locale = LocaleContextHolder.getLocale();
         String message = messageSource.getMessage(
                 "error.forbidden", null, "Access denied.", locale);
@@ -122,11 +118,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public @Nullable ResponseEntity<Map<String, Object>> handleGenericException(
             Exception exception,
             WebRequest request) {
-        if (disconnectedClients.checkAndLogClientDisconnectedException(exception)) {
+        if (logClientDisconnect(exception)) {
             return null;
         }
-        log.error("Unhandled exception on {}: {}",
-                request.getDescription(false), exception.getMessage(), exception);
+        log.error("Unhandled exception: status=500, type=INTERNAL_ERROR");
         if (responseCommitted(request)) {
             return null;
         }
@@ -134,6 +129,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 internalErrorMessage(),
                 request);
+    }
+
+    /**
+     * Retain the 405 contract without Spring's warning containing the request method.
+     */
+    @Override
+    protected @Nullable ResponseEntity<Object> handleHttpRequestMethodNotSupported(
+            HttpRequestMethodNotSupportedException exception,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request) {
+        return handleExceptionInternal(exception, null, headers, statusCode, request);
     }
 
     /**
@@ -149,7 +156,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             WebRequest request) {
         // JSON converters can wrap a servlet disconnect several causes deep. Do not
         // report a serialization bug or attempt a second write to the closed connection.
-        if (disconnectedClients.checkAndLogClientDisconnectedException(exception)) {
+        if (logClientDisconnect(exception)) {
             return null;
         }
         HttpStatus status = HttpStatus.resolve(statusCode.value());
@@ -159,13 +166,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         String message;
         if (status.is5xxServerError()) {
-            log.error("Spring MVC exception on {}",
-                    request.getDescription(false), exception);
+            log.error("Spring MVC exception: status={}, type=MVC_SERVER_ERROR", status.value());
             message = internalErrorMessage();
         } else {
-            log.warn("Spring MVC exception on {}: {}",
-                    request.getDescription(false), exception.getMessage());
+            log.warn("Spring MVC exception: status={}, type=MVC_CLIENT_ERROR", status.value());
             message = clientErrorMessage(exception, status);
+        }
+
+        // Spring's committed-response warning formats the exception itself.
+        // Log only the metadata above and avoid its secondary private diagnostic.
+        if (responseCommitted(request)) {
+            return null;
         }
 
         Map<String, Object> errorBody = new LinkedHashMap<>();
@@ -174,8 +185,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorBody.put("error", status.getReasonPhrase());
         errorBody.put("message", message);
         errorBody.put("path", request.getDescription(false).replace("uri=", ""));
-        // Retain Spring's committed-response guard and servlet error attributes.
+        // Retain Spring's uncommitted-response handling and servlet error attributes.
         return super.handleExceptionInternal(exception, errorBody, headers, status, request);
+    }
+
+    private static boolean logClientDisconnect(Exception exception) {
+        if (!DisconnectedClientHelper.isClientDisconnectedException(exception)) {
+            return false;
+        }
+        // Spring's logging helper includes exception payloads at both DEBUG and TRACE.
+        // Retain its classification and level choice without logging private causes.
+        if (log.isTraceEnabled()) {
+            log.trace("Client disconnected: type=CLIENT_DISCONNECTED");
+        } else {
+            log.debug("Client disconnected: type=CLIENT_DISCONNECTED");
+        }
+        return true;
     }
 
     private static boolean responseCommitted(WebRequest request) {

@@ -1805,7 +1805,15 @@
         var html = '';
         html += '<div class="d-flex justify-content-between align-items-center mb-2">';
         html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
-        html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
+        if (provisionalRelations.some(function (hypothesis) {
+            var status = hypothesis.status || 'PROVISIONAL';
+            var id = Number(hypothesis.hypothesisId);
+            return (status === 'PROVISIONAL' || status === 'PROPOSED')
+                && hypothesis.appliedInCurrentAnalysis !== true
+                && hypothesis.confidence >= 0.8 && Number.isSafeInteger(id) && id > 0;
+        })) {
+            html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
+        }
         html += '</div>';
         html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
         html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
@@ -1813,6 +1821,21 @@
         provisionalRelations.forEach(function (h, idx) {
             var confPct = (h.confidence * 100).toFixed(0);
             var confClass = h.confidence >= 0.8 ? 'text-success fw-bold' : (h.confidence >= 0.5 ? 'text-warning' : 'text-danger');
+            var status = h.status || 'PROVISIONAL';
+            var actions;
+            if (status === 'ACCEPTED' || status === 'REJECTED') {
+                actions = '<span class="badge bg-' + (status === 'ACCEPTED' ? 'success' : 'danger')
+                    + '">' + escapeHtml(t(status === 'ACCEPTED'
+                        ? 'scoring.badge.accepted' : 'scoring.badge.dismissed')) + '</span>';
+            } else if (status !== 'PROVISIONAL' && status !== 'PROPOSED') {
+                actions = '<span class="badge bg-secondary">' + escapeHtml(status) + '</span>';
+            } else if (h.appliedInCurrentAnalysis === true) {
+                actions = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.session.only')) + '</span>';
+            } else {
+                actions = '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept permanently" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
+                    '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="Apply for this analysis only" aria-label="Apply relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + ' for this session">📌</button>' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>';
+            }
             html += '<tr id="suggested-row-' + idx + '">' +
                 '<td>' + escapeHtml(h.sourceCode) + (h.sourceName ? '<br><small class="text-muted">' + escapeHtml(h.sourceName) + '</small>' : '') + '</td>' +
                 '<td>→</td>' +
@@ -1820,11 +1843,7 @@
                 '<td><span class="badge bg-secondary">' + escapeHtml(h.relationType) + '</span></td>' +
                 '<td class="' + confClass + '">' + confPct + '%</td>' +
                 '<td><small>' + escapeHtml(h.reasoning || '') + '</small></td>' +
-                '<td class="text-nowrap">' +
-                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept permanently" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
-                '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="Apply for this analysis only" aria-label="Apply relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + ' for this session">📌</button>' +
-                '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>' +
-                '</td></tr>';
+                '<td class="text-nowrap">' + actions + '</td></tr>';
         });
 
         html += '</tbody></table></div>';
@@ -1833,6 +1852,8 @@
 
         // Store for action handlers
         window._currentProvisionalRelations = provisionalRelations;
+        // The Git adapter owns Undo commands and reinstalls them on restored rows.
+        window.TaxonomyHypothesisReview?.renderRestoredState();
     }
 
     /**

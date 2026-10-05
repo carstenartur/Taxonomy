@@ -88,13 +88,12 @@ public class DocumentImportController {
                     "error", error.getCode(),
                     "message", error.getMessage()));
         } catch (IOException error) {
-            log.warn("Document upload rejected for file '{}': {}",
-                    safeFileName(file), error.getMessage());
+            log.warn("Document upload rejected (code=DOCUMENT_PARSE_FAILED)");
             return ResponseEntity.unprocessableEntity().body(Map.of(
                     "error", "DOCUMENT_PARSE_FAILED",
                     "message", "The document could not be parsed as PDF or DOCX"));
         } catch (RuntimeException error) {
-            log.error("Document upload failed for file '{}'", safeFileName(file), error);
+            log.error("Document upload failed (code=DOCUMENT_IMPORT_FAILED)");
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "DOCUMENT_IMPORT_FAILED",
                     "message", "The document could not be registered"));
@@ -128,7 +127,7 @@ public class DocumentImportController {
                     "error", "DOCUMENT_PARSE_FAILED",
                     "message", "The document could not be parsed as PDF or DOCX"));
         } catch (RuntimeException error) {
-            log.error("AI extraction failed for file '{}'", safeFileName(file), error);
+            log.error("AI extraction failed (code=AI_EXTRACTION_FAILED)");
             return ResponseEntity.unprocessableEntity().body(Map.of(
                     "error", "AI_EXTRACTION_FAILED",
                     "message", "AI-assisted extraction could not be completed"));
@@ -158,7 +157,7 @@ public class DocumentImportController {
                     "error", "DOCUMENT_PARSE_FAILED",
                     "message", "The document could not be parsed as PDF or DOCX"));
         } catch (RuntimeException error) {
-            log.error("Regulation mapping failed for file '{}'", safeFileName(file), error);
+            log.error("Regulation mapping failed (code=REGULATION_MAPPING_FAILED)");
             return ResponseEntity.unprocessableEntity().body(Map.of(
                     "error", "REGULATION_MAPPING_FAILED",
                     "message", "Regulation mapping could not be completed"));
@@ -214,7 +213,7 @@ public class DocumentImportController {
                     "error", error.getCode(),
                     "message", error.getMessage()));
         } catch (RuntimeException error) {
-            log.error("Failed to confirm document candidates", error);
+            log.error("Candidate confirmation failed (code=CANDIDATE_CONFIRMATION_FAILED)");
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "CANDIDATE_CONFIRMATION_FAILED"));
         }

@@ -73,7 +73,7 @@ public class SearchService {
 
             return hits.stream().map(this::toFlatDto).collect(Collectors.toList());
         } catch (Exception e) {
-            log.error("Hibernate Search full-text search failed for '{}': {}", queryString, e.getMessage());
+            log.error("Full-text search failed (code=SEARCH_BACKEND_FAILED)");
             return Collections.emptyList();
         }
     }
