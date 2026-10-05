@@ -21,6 +21,8 @@ provider fixtures; no remote paid inference was invoked.
 | Private identifiers and exception contents entered lifecycle logs. | 21 log-capture tests found seeded private values in relation, hypothesis, and DSL materialization events. | Log bounded operations, counts, scopes and error codes. Do not pass raw throwable content to the after-commit warning. Existing writes and tenant scope are unchanged. |
 | Template version discovery repeatedly walked Git history per item. | A 12-template fixture needed 90 commit reads for both cold and unchanged lists, 14 for a warm read, and 203 for warm depth-1 PROPFIND. | Resolve versions in one first-parent walk and keep a per-repository-handle, 1,024-entry cache keyed by immutable HEAD and template ID. Preserve individual ETags, cross-handle freshness, negative lookups and eviction. |
 | Security route coverage omitted the real bulk endpoint. | The authorization test listed bulk subroutes but not `/api/proposals/bulk`. | Add the actual route to the ordinary-user mutation-denial test. |
+| Oversized external idempotency keys could overflow projection/recovery columns after Git mutation. | 129/255/256-character keys were accepted by bulk and single proposal review; the per-item suffix increased their size further. | Bound external keys to 128 visible ASCII characters before mutation, retaining room for bulk suffixes. Keep the optional legacy fallback and apply the same boundary to required-header Git mutation routes. |
+| Interrupted backup restoration discarded committed assessment coverage. | Real exported archives restored scores but lost modern coverage; foreign frozen source identities and duplicate unknown nodes escaped coverage validation. | Reuse the live coverage policy before target writes. Resolve unknown nodes against the original archived source, including when the destination authority changes; preserve the legacy compatibility policy. |
 
 ## Template read measurements
 
@@ -53,6 +55,9 @@ The complete verification below uses the normal SBOM and test selections.
 | Full UI contract command: `cd .github && npm run verify:ui-contracts` | 795 tests passed; no failures or skips. |
 | Focused reactor regression run through `taxonomy-app -am test` | 111 tests passed; no failures, errors or skips. Includes all new Java regressions and adjacent scope/lifecycle tests. |
 | Focused export/status follow-up reactor | 78 tests passed; no failures or errors. Includes HTTP score exchange, frozen finalization, legacy workbench diagrams and unchanged open-coverage projection. |
+| Focused interrupted-restore follow-up | 52 tests passed; no failures, errors or skips. Includes nine new archive cases, live aggregation, finalization, relation coordination and durable observation. |
+| Focused proposal key-boundary follow-up | 54 tests passed; no failures, errors or skips. Covers single/bulk mutation boundaries, valid maximum keys, exact suffix identity and legacy compatibility. |
+| Expanded Git HTTP mutation boundary follow-up | 101 tests passed; no failures, errors or skips. Covers all five required-header mutation routes and existing proposal/relation controller contracts alongside the optional legacy routes. |
 | Full templates reactor: `./mvnw -B -pl taxonomy-templates -am test -Dmaven.build.cache.enabled=false -Dcyclonedx.skip=true` | 773 tests passed across the selected reactor; 156 in templates, including nine new regressions. |
 | Full Docker-free reactor: `./mvnw -B clean verify -Ptest-local -Dmaven.build.cache.enabled=false` | Completion evidence is recorded in the associated PR description; focused results above do not certify this gate. |
 | PR CI/CD, security and compatibility gates | Authoritative status is recorded by the associated PR's exact-commit checks. |

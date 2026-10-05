@@ -631,12 +631,7 @@ public class ProposalApiController {
         if (value == null || value.isBlank()) {
             return null;
         }
-        String normalized = value.strip();
-        if (normalized.indexOf('\n') >= 0 || normalized.indexOf('\r') >= 0) {
-            throw new IllegalArgumentException(
-                    "Idempotency-Key must be one line");
-        }
-        return normalized;
+        return GitHttpIdempotencyKey.require(value);
     }
 
     private static boolean isApplicationAdmin() {

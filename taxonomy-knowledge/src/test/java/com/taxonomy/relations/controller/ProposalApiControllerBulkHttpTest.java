@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -259,15 +260,82 @@ class ProposalApiControllerBulkHttpTest {
         verifyNoInteractions(mutations, proposals);
     }
 
-    @Test
-    void malformedIdempotencyKeyIsBadRequestBeforeAnyMutation() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"request\nforged", "request\tforged", "request key", "request-\u007f", "request-\u00e9"})
+    void malformedIdempotencyKeyIsBadRequestBeforeAnyMutation(String key) throws Exception {
         mvc.perform(post("/api/proposals/bulk")
-                        .header("Idempotency-Key", "request\nforged")
+                        .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"ids\":[42],\"action\":\"ACCEPT\"}"))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(mutations, proposals);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "/api/proposals/bulk, 129", "/api/proposals/bulk, 255", "/api/proposals/bulk, 256",
+            "/api/proposals/42/accept, 129", "/api/proposals/42/accept, 255", "/api/proposals/42/accept, 256"
+    })
+    void oversizedIdempotencyKeyIsRejectedBeforeGitOrProposalChanges(String endpoint, int length) {
+        assertAll(
+                () -> mvc.perform(post(endpoint)
+                                .header("Idempotency-Key", "a".repeat(length))
+                                .header(HttpHeaders.IF_MATCH, '"' + HEAD_A + '"')
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"ids\":[42],\"action\":\"ACCEPT\"}"))
+                        .andExpect(status().isBadRequest()),
+                () -> verifyNoInteractions(mutations, proposals),
+                () -> assertThat(activeProposals.get(42L).getStatus()).isEqualTo(ProposalStatus.PENDING),
+                () -> assertThat(currentHead).isEqualTo(HEAD_A));
+    }
+
+    @Test
+    void maximumExternalKeyLeavesRoomForBulkSuffixAndPreservesItsIdentity() throws Exception {
+        String key = "a".repeat(128);
+        mvc.perform(post("/api/proposals/bulk")
+                        .header("Idempotency-Key", " " + key + " ")
+                        .header(HttpHeaders.IF_MATCH, '"' + HEAD_A + '"')
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[42,9223372036854775807],\"action\":\"ACCEPT\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projected").value(2));
+
+        ArgumentCaptor<CommandMetadata> metadata = ArgumentCaptor.forClass(CommandMetadata.class);
+        verify(mutations, times(2)).upsert(eq(CONTEXT), anyString(), any(), metadata.capture());
+        assertThat(metadata.getAllValues()).extracting(CommandMetadata::causationId)
+                .containsExactly(key + ":0:42", key + ":1:" + Long.MAX_VALUE);
+        assertThat(metadata.getValue().causationId()).hasSizeLessThanOrEqualTo(255);
+    }
+
+    @Test
+    void maximumExternalKeyIsPreservedForSingleReview() throws Exception {
+        String key = "b".repeat(128);
+        mvc.perform(post("/api/proposals/42/accept")
+                        .header("Idempotency-Key", " " + key + " ")
+                        .header(HttpHeaders.IF_MATCH, '"' + HEAD_A + '"'))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<CommandMetadata> metadata = ArgumentCaptor.forClass(CommandMetadata.class);
+        verify(mutations).upsert(eq(CONTEXT), eq(HEAD_A), any(), metadata.capture());
+        assertThat(metadata.getValue().causationId()).isEqualTo(key);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " \t "})
+    void blankOptionalKeyRetainsTheCompatibilityFallback(String key) throws Exception {
+        mvc.perform(post("/api/proposals/bulk")
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[42],\"action\":\"ACCEPT\"}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<CommandMetadata> metadata = ArgumentCaptor.forClass(CommandMetadata.class);
+        verify(mutations).upsert(eq(CONTEXT), eq(HEAD_A), any(), metadata.capture());
+        assertThat(metadata.getValue().causationId())
+                .startsWith("legacy-proposal-bulk-accept-" + HEAD_A)
+                .endsWith(":0:42")
+                .hasSizeLessThanOrEqualTo(255);
     }
 
     @Test

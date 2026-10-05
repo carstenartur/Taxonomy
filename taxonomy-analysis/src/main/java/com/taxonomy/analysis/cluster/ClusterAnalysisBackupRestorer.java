@@ -5,6 +5,7 @@ import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.backup.SourceRecordId;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import jakarta.persistence.EntityManager;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -164,10 +165,12 @@ public final class ClusterAnalysisBackupRestorer {
         var scores = new LinkedHashMap<String, Integer>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>(); var tree = new ArrayList<TaxonomyNodeDto>();
         var warnings = new ArrayList<String>(); var discrepancies = new ArrayList<TaxonomyDiscrepancy>(); var gaps = new ArrayList<ProductCoverageGap>();
+        var coverage = new ClusterAnalysisCoverage();
         String provider = null;
         for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {
-            if (work.resultJson() == null) { warnings.add(work.root() + ": " + Objects.toString(work.failureReason(), INTERRUPTED) + "; no negative finding"); continue; }
-            var result = read(work.resultJson(), AnalysisResult.class);
+            var result = work.resultJson() == null ? null : read(work.resultJson(), AnalysisResult.class);
+            coverage.add(work.root(), result);
+            if (result == null) { warnings.add(work.root() + ": " + Objects.toString(work.failureReason(), INTERRUPTED) + "; no negative finding"); continue; }
             for (var score : result.getRawScores().entrySet()) require(scores.putIfAbsent(score.getKey(), score.getValue()) == null, "Conflicting archived root evidence");
             reasons.putAll(result.getReasons()); contexts.putAll(result.getScoreSemanticsContext());
             if (result.getTree() != null) tree.addAll(result.getTree());
@@ -175,6 +178,10 @@ public final class ClusterAnalysisBackupRestorer {
             if (!"SUCCESS".equals(result.getStatus())) warnings.add(work.root() + ": " + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
         var result = new AnalysisResult(scores, tree); result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+        // Inputs retain their archived identity; target authority is remapped only after aggregation.
+        result.setAnalysisCoverage(coverage.combine(archive.run().context().authority(), root -> read(
+                archive.inputs().stream().filter(input -> input.root().equals(root)).findFirst().orElseThrow().inputJson(),
+                RootCatalogueSnapshot.class)));
         result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); result.setProvider(provider);
         if (archive.run().relationPlanJson() != null) result.setRelationSearchReport(RelationSearchDistribution.combine(
                 read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class), relationEffects(archive)));

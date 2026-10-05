@@ -99,7 +99,8 @@ public class GitRelationCommandApiController {
                             payload.confidence(),
                             payload.provenance(),
                             payload.extensions()),
-                    new CommandMetadata(causationId, payload.rationale()));
+                    new CommandMetadata(
+                            GitHttpIdempotencyKey.require(causationId), payload.rationale()));
             HttpStatus status = result.authority().changeKind() == ChangeKind.ADDED
                     ? HttpStatus.CREATED : HttpStatus.OK;
             return authoritative(status, result);
@@ -144,7 +145,7 @@ public class GitRelationCommandApiController {
                     context,
                     expectedHead,
                     identity(sourceCode, relationType, targetCode),
-                    new CommandMetadata(causationId));
+                    new CommandMetadata(GitHttpIdempotencyKey.require(causationId)));
             return authoritative(HttpStatus.OK, result);
         } catch (GitHttpPrecondition.PreconditionRequiredException error) {
             return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();

@@ -5,9 +5,16 @@ import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.backup.*;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.AnalysisCoverage;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
@@ -35,6 +42,7 @@ class ClusterAnalysisBackupRestoreTest {
             var snapshot = target.store.snapshot(restored);
             assertEquals(ClusterAnalysisState.CANCELLED, snapshot.state());
             assertEquals(Map.of("CP", 70), snapshot.result().getRawScores());
+            assertNull(snapshot.result().getAnalysisCoverage(), "Legacy evidence must retain its original coverage contract");
             assertEquals("PARTIAL", snapshot.result().getStatus());
             assertTrue(snapshot.result().getWarnings().stream().anyMatch(w -> w.contains("RESTORE_INTERRUPTED")));
             var restoredArchive = archive(target, restored.operationId());
@@ -49,6 +57,123 @@ class ClusterAnalysisBackupRestoreTest {
             assertStoppedObservation(target, restored, 1);
             assertNull(new TransactionTemplate(target.transactions).execute(status -> target.em.find(ClusterAnalysisRun.class, "source")));
             assertNoOperationalState(target);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void interruptedRestoreRetainsModernCoverageAndUnassessedFrozenNodes(boolean emptyCommittedResult) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("covered-source"); source.admitFrozen(original);
+            var cp = coveredResult("CP", 70);
+            source.store.accept(source.complete(source.task(CP), cp));
+            if (emptyCommittedResult) {
+                var failed = new AnalysisResult(Map.of(), List.of()); failed.setStatus("ERROR");
+                source.complete(source.task(IP), failed); // Durable effect exists before coordinator settlement.
+            } else source.store.start(source.task(IP));
+            var archive = exportedArchive(source);
+            var restored = targetContext("covered-restored");
+            assertNotEquals(original.authority(), restored.authority());
+
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+
+            var result = target.store.snapshot(restored).result();
+            var coverage = result.getAnalysisCoverage();
+            assertNotNull(coverage, "Interrupted archive restore must preserve committed modern assessment evidence");
+            assertEquals(cp.getAnalysisCoverage().nodes().get("CP"), coverage.nodes().get("CP"));
+            assertEquals(Set.of("CP", "IP", "fixture-ip-child"), coverage.nodes().keySet());
+            for (String code : List.of("IP", "fixture-ip-child")) {
+                var node = coverage.nodes().get(code);
+                assertEquals(AnalysisCoverage.State.UNKNOWN, node.state());
+                assertNull(node.score()); assertNull(node.effectiveRelevance());
+                assertEquals("INTERRUPTED:ROOT_ANALYSIS_UNAVAILABLE", node.reason());
+            }
+            assertEquals(AnalysisCoverage.Descendants.UNASSESSED, coverage.nodes().get("IP").descendants());
+            assertEquals(AnalysisCoverage.Descendants.COMPLETE, coverage.nodes().get("fixture-ip-child").descendants());
+            assertEquals(1, coverage.assessedNodes()); assertEquals(2, coverage.unknownNodes());
+            assertEquals(2, coverage.failedOrBlockedNodes()); assertTrue(coverage.hasOpenEvaluations());
+            assertEquals(Map.of("CP", 70), result.getRawScores()); assertEquals("PARTIAL", result.getStatus());
+            assertExportable(result);
+            assertEquals(source.store.shard(original, IP), target.store.shard(restored, IP),
+                    "Frozen inputs retain the original source even when restore remaps the target authority");
+            assertTrue(source.store.cancel(original));
+            assertEquals(source.store.snapshot(original).result().getAnalysisCoverage(), coverage,
+                    "Live cancellation and interrupted restore must agree on assessment evidence");
+            assertStoppedObservation(target, restored, 1);
+            assertNoOperationalState(target);
+        }
+    }
+
+    @Test void interruptedRestoreDoesNotInventCoverageForMixedLegacyAndModernEvidence() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("mixed-source"); source.admit(original);
+            source.store.accept(source.complete(source.task(CP), coveredResult("CP", 70)));
+            source.complete(source.task(IP), result("IP", 30));
+            var archive = exportedArchive(source); var restored = targetContext("mixed-restored");
+
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+
+            var result = target.store.snapshot(restored).result();
+            assertNull(result.getAnalysisCoverage(), "A modern subset cannot describe legacy scored evidence");
+            assertEquals(Map.of("CP", 70, "IP", 30), result.getRawScores());
+            assertEquals("PARTIAL", result.getStatus()); assertExportable(result);
+            assertNoOperationalState(target);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"repository", "workspace", "branch", "commit", "root"})
+    void interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String mismatch) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("guarded-coverage"); source.admitFrozen(original);
+            source.store.accept(source.complete(source.task(CP), coveredResult("CP", 70)));
+            var archive = exportedArchive(source);
+            var input = archive.inputs().stream().filter(value -> value.root().equals("IP")).findFirst().orElseThrow();
+            var frozen = JSON.readValue(input.inputJson(), RootCatalogueSnapshot.class);
+            var identity = frozen.source();
+            var foreign = new CatalogueSourceIdentity(
+                    mismatch.equals("repository") ? "foreign-repository" : identity.repositoryId(),
+                    mismatch.equals("workspace") ? "foreign-workspace" : identity.workspaceId(),
+                    mismatch.equals("branch") ? "foreign-branch" : identity.branch(),
+                    mismatch.equals("commit") ? "foreign-commit" : identity.sourceCommit());
+            var changed = mismatch.equals("root")
+                    ? JSON.readValue(source.store.shard(original, CP), RootCatalogueSnapshot.class)
+                    : new RootCatalogueSnapshot(frozen.schemaVersion(), foreign, frozen.rootCode(), frozen.nodes(),
+                            frozen.overlayMetadata(), frozen.catalogueProvenance());
+            var corrupted = new Archive(archive.run(), archive.work(), archive.inputs().stream()
+                    .map(value -> value == input ? new Input(value.sourceId(), value.run(), value.root(), JSON.writeValueAsString(changed)) : value)
+                    .toList(), archive.events());
+
+            var failure = assertThrows(IllegalStateException.class, () ->
+                    new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON)
+                            .restore(corrupted, targetContext("foreign-coverage"), targetCommand()));
+
+            assertEquals("Frozen coverage source differs from admitted authority", failure.getMessage());
+            assertRestoredClosureEmpty(target); assertNoOperationalState(target);
+        }
+    }
+
+    @Test void interruptedRestoreRejectsDuplicateUnknownCoverageBeforeWriting() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("duplicate-coverage"); source.admitFrozen(original);
+            var unknown = new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                    AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:fixture");
+            for (var root : List.of(CP, IP)) {
+                var result = coveredResult(root.code(), 70);
+                var nodes = new LinkedHashMap<>(result.getAnalysisCoverage().nodes());
+                nodes.put("fixture-duplicate", unknown);
+                result.setAnalysisCoverage(new AnalysisCoverage(nodes, 1, 1, 1));
+                var completion = source.complete(source.task(root), result);
+                if (root.equals(CP)) source.store.accept(completion);
+            }
+            var archive = exportedArchive(source);
+
+            var failure = assertThrows(IllegalStateException.class, () ->
+                    new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON)
+                            .restore(archive, targetContext("duplicate-restored"), targetCommand()));
+
+            assertEquals("Conflicting catalogue identities across root coverage", failure.getMessage());
+            assertRestoredClosureEmpty(target); assertNoOperationalState(target);
         }
     }
 
@@ -299,6 +424,23 @@ class ClusterAnalysisBackupRestoreTest {
     }
     private static AnalyzeRequirementCommand targetCommand() {
         return new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "bob", new WorkspaceContext("bob", "restored-workspace", "restored-branch", "restored-repository"), null, command("requirement").analysisScope());
+    }
+    private static AnalysisResult coveredResult(String code, int score) {
+        var result = result(code, score);
+        result.setAnalysisCoverage(AnalysisCoverage.derive(result.getTree(), result.getRawScores(), result.getScores(), Map.of()));
+        return result;
+    }
+    private static void assertExportable(AnalysisResult result) {
+        var saved = new SavedAnalysis(); saved.setVersion(result.getAnalysisCoverage() == null ? 2 : 3);
+        saved.setScores(result.getScores()); saved.setRawScores(result.getRawScores());
+        saved.setAnalysisCoverage(result.getAnalysisCoverage()); saved.setAnalysisStatus(result.getStatus());
+        assertDoesNotThrow(saved::validateCoverageEvidence);
+    }
+    private static void assertRestoredClosureEmpty(Database target) {
+        new TransactionTemplate(target.transactions).executeWithoutResult(status -> {
+            for (String entity : List.of("ClusterAnalysisRun", "ClusterAnalysisWork", "ClusterAnalysisInput", "ClusterAnalysisEvent"))
+                assertEquals(0L, target.em.createQuery("select count(r) from " + entity + " r", Long.class).getSingleResult());
+        });
     }
     private static void assertNoOperationalState(Database target) {
         assertTrue(target.sent.isEmpty());
