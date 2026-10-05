@@ -336,7 +336,20 @@ async function installRequestGate(page, pattern, method) {
   };
   await page.route(pattern, handler);
   return {
-    seen,
+    get seen() {
+      // Start the deadline only when the caller awaits observation, not when
+      // installing the gate before navigation or state setup. The underlying
+      // seen promise stays sticky for requests observed before that await.
+      let timer;
+      return Promise.race([
+        seen,
+        new Promise((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(
+            `Timed out after 30000 ms waiting for ${method} ${pattern} request in Preferences regression`
+          )), 30_000);
+        })
+      ]).finally(() => clearTimeout(timer));
+    },
     release() {
       if (released) return;
       released = true;
@@ -430,6 +443,7 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
   await page.waitForFunction(() => window._currentProvisionalRelations?.[1]?.appliedInCurrentAnalysis === true);
   assert(await saveDraftNow(page) === true,
     'Unable to persist the preference-preservation analysis draft');
+  console.log('Preferences QA: persisted review decisions saved in the analysis draft');
   let sentinelState = await page.evaluate(workingStateExpression());
 
   await navigateToPage(page, 'preferences');
@@ -453,6 +467,7 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
     // repository instead of exercising only a quiescent page.
     const autosaveGate = await installRequestGate(
       page, '**/api/analysis-drafts/**', 'PUT');
+    console.log('Preferences QA: verifying Preferences during a pending draft save');
     try {
       await page.evaluate(() => {
         window.TaxonomyState.currentReasons = {
@@ -525,6 +540,7 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
     // must hydrate the exact current draft without an obsolete restore choice.
     const restoreGate = await installRequestGate(
       page, '**/api/analysis-drafts/**', 'GET');
+    console.log('Preferences QA: verifying Preferences during initial draft restoration');
     try {
       await page.reload({ waitUntil: 'domcontentloaded' });
       await restoreGate.seen;
@@ -666,13 +682,17 @@ export async function runPreferencesWorkflow(workflow) {
     assert(created.status === 200 && created.json?.workspaceId,
       `Unable to create isolated Preferences fixture workspace: HTTP ${created.status}`);
     fixtureWorkspaceId = created.json.workspaceId;
+    console.log('Preferences QA: provisioning the isolated fixture workspace');
     await provisionAnalysisWorkspace(page, fixtureWorkspaceId, assert);
     await selectAnalysisWorkspace(page, fixtureWorkspaceId, assert);
+    console.log('Preferences QA: ready workspace selected; creating persisted hypotheses');
     const hypotheses = await createPersistedHypotheses(page, assert);
+    console.log('Preferences QA: persisted hypotheses created; exercising decision restoration');
     await runPreferencesPreservationWorkflow(workflow, hypotheses);
   } finally {
     try {
       if (fixtureWorkspaceId) {
+        console.log('Preferences QA: restoring the original workspace and removing the fixture');
         // This Maven UI mutation scenario owns a fresh application/database. Delete
         // the disposable workspace/Git namespace and restore the original selection;
         // fixture hypothesis/document rows expire with the launcher's DB teardown.

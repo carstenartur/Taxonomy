@@ -45,7 +45,7 @@ fixes and now pass. Logger configuration is unchanged.
 | Final Maven handler selection after the additional 405 correction (`GlobalExceptionHandlerDiagnosticPrivacyTest`, `GlobalExceptionHandlerTest`, `GlobalExceptionHandlerDisconnectTest`, `DecisionReportTemplateExceptionHandlerTest`) | 36 tests passed, including all 14 handler privacy/contract cases; no failures, errors or skips. This overlaps the previous selection and is not an additional 36 unique cases. |
 | Actual renderer/adapter/draft JavaScript selection | 59 tests passed, including 12 Preferences/restoration cases. |
 | Browser fixture/evidence support tests | 7 tests passed. |
-| Workspace fixture path, lifecycle and readiness contracts | 7 tests passed; combined with the 12 Preferences/restoration cases, 19 passed. This selection overlaps those cases above. |
+| Workspace fixture path, lifecycle, readiness and request-gate contracts | 12 tests passed; combined with the 12 Preferences/restoration cases, 24 passed. This selection overlaps those cases above. |
 | Maven-owned `primary/primary-admin-chromium` browser selection | Not executed locally: the pinned Chromium download returned a 195-byte HTML “Site Unavailable” page instead of an archive. The required CI browser lane supplies runtime acceptance. |
 
 The browser scenario now materializes two authored hypotheses using identifiers
@@ -68,6 +68,15 @@ workspace instead of global network silence; readiness timeouts are unchanged.
 The stateful regression executes the actual workflow and reproduced four failures
 before the lifecycle correction. It also checks that incomplete provisioning
 stops before loading hypotheses and still restores the original workspace.
+
+The second CI attempt completed the other five browser shards while the extended
+Admin scenario continued running. Review identified an unbounded request-gate
+observation path, without establishing it as the cause of that runtime delay.
+Both observations now use the same 30-second readiness budget and identify the
+missing request method and pattern on failure. Five focused cases cover missing
+GET/PUT requests, early observations, timer cleanup, other methods and release on
+disposal. Static phase messages make any subsequent interrupted run diagnosable
+without printing request payloads or workspace identifiers.
 
 Local Maven uses Java 21, the repository wrapper, a trusted proxy CA and bounded
 JVM heaps. Disabling npm's inheritance of Maven proxy command-line arguments

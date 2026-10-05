@@ -16,6 +16,86 @@ vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export
   workflowContext);
 const selectAnalysisWorkspace = vm.runInContext('selectAnalysisWorkspace', workflowContext);
 
+async function requestGateHarness(method) {
+  const timers = new Map();
+  let nextTimer = 0;
+  let handler;
+  let continued = 0;
+  let unrouted = false;
+  const context = vm.createContext({
+    URL,
+    setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, {callback, delay}); return id; },
+    clearTimeout(id) { timers.delete(id); }
+  });
+  vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  const pattern = '**/api/analysis-drafts/**';
+  const page = {
+    route: async (routePattern, callback) => { assert.equal(routePattern, pattern); handler = callback; },
+    unroute: async (routePattern, callback) => {
+      assert.equal(routePattern, pattern); assert.equal(callback, handler); unrouted = true;
+    }
+  };
+  const gate = await vm.runInContext('installRequestGate', context)(page, pattern, method);
+  return {
+    gate, timers, isUnrouted: () => unrouted, continued: () => continued,
+    request: requestMethod => handler({
+      request: () => ({ method: () => requestMethod }),
+      continue: async () => { continued++; }
+    })
+  };
+}
+
+for (const method of ['PUT', 'GET']) {
+  test(`Preferences ${method} gate fails clearly after 30s without a matching request and releases its timer`, async () => {
+    const {gate, timers, isUnrouted} = await requestGateHarness(method);
+    assert.equal(timers.size, 0, 'Installing a gate must not start a rejecting timer before observation is awaited');
+    const observation = gate.seen;
+    const rejected = assert.rejects(observation,
+      new RegExp(`Timed out after 30000 ms waiting for ${method} .*analysis-drafts.* request`));
+    assert.equal(timers.size, 1, 'A missing request needs a bounded observation');
+    const timer = [...timers.values()][0];
+    assert.equal(timer.delay, 30_000);
+    timer.callback();
+    await rejected;
+    assert.equal(timers.size, 0, 'Timeout must clear its timer');
+    await gate.dispose();
+    assert.equal(isUnrouted(), true);
+  });
+
+  test(`Preferences ${method} gate remembers a request observed before awaiting and continues once released`, async () => {
+    const {gate, timers, request, continued} = await requestGateHarness(method);
+    const intercepted = request(method);
+    assert.equal(timers.size, 0);
+    assert.equal(continued(), 0, 'Matching request stays held before release');
+    await gate.seen;
+    assert.equal(timers.size, 0, 'Successful observation must clear its timer');
+    gate.release();
+    gate.release();
+    await intercepted;
+    assert.equal(continued(), 1);
+    await gate.seen;
+    assert.equal(timers.size, 0, 'Seen remains sticky after release');
+    await gate.dispose();
+  });
+}
+
+test('Preferences gate ignores other methods and disposal releases an intercepted request', async () => {
+  const {gate, timers, request, continued, isUnrouted} = await requestGateHarness('PUT');
+  await request('GET');
+  assert.equal(continued(), 1);
+  let seen = false;
+  const observation = gate.seen.then(() => { seen = true; });
+  await Promise.resolve();
+  assert.equal(seen, false, 'GET must not satisfy a PUT gate');
+  const intercepted = request('PUT');
+  await observation;
+  assert.equal(timers.size, 0);
+  await gate.dispose();
+  await intercepted;
+  assert.equal(continued(), 2);
+  assert.equal(isUnrouted(), true);
+});
+
 test('authoritative reset draft verification resolves the application base path', () => {
   assert.match(source,
     /const path = `\/api\/analysis-drafts\/\$\{encodeURIComponent\(state\.workspaceId\)\}`/);
