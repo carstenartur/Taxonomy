@@ -51,6 +51,7 @@ fixes and now pass. Logger configuration is unchanged.
 | Browser fixture/evidence support tests | 7 tests passed. |
 | Workspace fixture path, lifecycle, readiness, request-gate and persisted-decision contracts | 17 tests passed; combined with the 15 Preferences/restoration cases, 32 passed. This selection overlaps those cases above. |
 | Real workspace materialization/commit contract | 1 Maven integration test passed without mocks or an enclosing test transaction; explicit provisioning, real catalogue identities, complete MVC response and fresh persisted reads. The same test passed while packaging the final browser application. |
+| Document-import controller boundary contracts and diagnostic privacy | 33 tests passed: 28 controller cases and the existing 5 privacy cases. A separate, fresh JaCoCo data file reports 132/136 covered source lines (97.06%) and 48/50 branches (96.00%) for `DocumentImportController`, above the unchanged 75%/60% changed-critical-source requirements. This focused measurement does not replace the full reactor gate. |
 | Maven-owned `primary/primary-admin-chromium` browser selection | Passed with pinned Node 24.18.0, Playwright 1.61.1 and Chromium 149.0.7827.55: 822 UI contracts, 35 Admin checks, one actual browser scenario/application start. The identical documented command had previously skipped browser execution; its postcondition failed before the POM correction. |
 | Explicit local Chrome 138 diagnostic of the actual full Admin workflow | Passed with the freshly Maven-packaged application, 35 checks and no audit error; includes reject/apply, Preferences 50→150, pending autosave/restore, reload, real Git Undo and cleanup. The final run used normal production transport; the diagnostic clone-consuming control was removed. This is diagnostic evidence, not pinned-browser CI acceptance. |
 
@@ -124,6 +125,20 @@ the canonical `./mvnw -B verify -Pci -DrunOnnxTests=true` lifecycle, its six UI
 shards and evidence aggregate, or the separate PostgreSQL/SQL Server/Oracle matrix.
 No verification selector, security baseline, coverage threshold or timeout is
 relaxed for this change.
+
+The canonical run for `02f368c5f71c7c04025ef469a299a4c257afa42e`
+completed the functional tests but failed the changed-critical-source coverage
+gate: `DocumentImportController` had 61.76% line and 44.00% branch coverage,
+below its required 75% and 60%. Aggregate coverage and the other critical
+packages passed. The additional controller contracts exercise successful
+extraction/mapping, exact and exceeded provider-input budgets, preservation of
+all review candidates, file I/O before registration, typed validation/limit
+propagation, source-identifier rejection and complete confirmation batches.
+They complement the existing real MVC, parser and transactional persistence
+tests with deterministic boundary doubles; they do not claim to prove database
+atomicity or provider inference. Independent review approved the assertions.
+No production change, coverage-policy exception or selector change was needed.
+The PR records the new exact-head CI result after this test-only correction.
 
 ## Boundaries
 
