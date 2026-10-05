@@ -20,6 +20,11 @@ ChromeDriver passt. Der lokale Adapter setzt das echte Downloadverzeichnis auch
 über das Browserprotokoll, damit Downloads unabhängig von Chrome-Profilpräferenzen
 funktionieren. Der unten gezeigte `BrowserSessionIT` prüft den Dateidownload und
 seinen Inhalt mit dem tatsächlich ausgewählten Browser.
+Jede lokale Browsersitzung erhält ein eigenes Downloadverzeichnis. Beim Abruf
+wird die Datei in den angegebenen Nachweisordner kopiert; vorhandene Dateien aus
+früheren Testläufen zählen deshalb nicht als Downloads der neuen Sitzung.
+Containerdownloads werden ebenfalls erst in ein frisches Transferverzeichnis
+abgerufen und danach in den Nachweisordner kopiert.
 
 ```bash
 export CHROME_BIN=/absolute/path/chrome

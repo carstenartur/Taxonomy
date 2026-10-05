@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +20,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("browser")
 class BrowserSessionIT {
     @TempDir Path downloads;
+
+    @Test void repeatedSessionsDistinguishNewDownloadsFromExistingEvidence() throws Exception {
+        Files.writeString(downloads.resolve("report.json"), "older evidence");
+        var requests = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("0.0.0.0", 0), 0);
+        server.createContext("/", exchange -> {
+            boolean download = exchange.getRequestURI().getPath().equals("/report");
+            byte[] body = (download ? "{\"revision\":" + requests.incrementAndGet() + "}"
+                    : "<!doctype html><a href='/report'>Download report</a>")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", download ? "application/json" : "text/html");
+            if (download) exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=report.json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var stream = exchange.getResponseBody()) { stream.write(body); }
+        });
+        server.start();
+        try {
+            for (int revision = 1; revision <= 2; revision++) {
+                try (var session = BrowserSession.open(server.getAddress().getPort(), downloads)) {
+                    assertThat(session.downloadedFiles()).as("Downloads belong to the current browser session").isEmpty();
+                    var driver = session.driver();
+                    driver.get(session.origin());
+                    driver.findElement(By.linkText("Download report")).click();
+                    new WebDriverWait(driver, Duration.ofSeconds(20))
+                            .until(ignored -> session.downloadedFiles().contains("report.json"));
+                    assertThat(session.download("report.json")).isEqualTo(downloads.resolve("report.json"));
+                    assertThat(Files.readString(downloads.resolve("report.json")))
+                            .isEqualTo("{\"revision\":" + revision + "}");
+                }
+            }
+            assertThat(requests).hasValue(2);
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test void browserRendersDownloadsCapturesEvidenceAndReleasesItsSession() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("0.0.0.0", 0), 0);

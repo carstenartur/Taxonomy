@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.List;
 import java.util.Properties;
@@ -32,15 +33,17 @@ public final class BrowserSession implements AutoCloseable {
     private final Runtime runtime;
     private final String origin;
     private final Path downloads;
+    private final Path localDownloads;
     private boolean closed;
 
     BrowserSession(RemoteWebDriver driver, Runnable stopInfrastructure, Runtime runtime,
-                   String origin, Path downloads) {
+                   String origin, Path downloads, Path localDownloads) {
         this.driver = driver;
         this.stopInfrastructure = stopInfrastructure;
         this.runtime = runtime;
         this.origin = origin;
         this.downloads = downloads;
+        this.localDownloads = localDownloads;
     }
 
     static Runtime runtime(Properties properties) {
@@ -70,8 +73,10 @@ public final class BrowserSession implements AutoCloseable {
                 options.setBinary(executable(properties, "scenario.chrome.binary").toString());
             }
             Files.createDirectories(directory);
+            // Match managed container downloads: old evidence is not a new session's download.
+            Path localDownloads = Files.createTempDirectory(directory, "session-");
             options.setExperimentalOption("prefs", Map.of(
-                    "download.default_directory", directory.toString(),
+                    "download.default_directory", localDownloads.toString(),
                     "download.prompt_for_download", false,
                     "plugins.always_open_pdf_externally", true));
             var service = new ChromeDriverService.Builder()
@@ -82,9 +87,9 @@ public final class BrowserSession implements AutoCloseable {
                     // Headless Shell does not apply Chrome's profile download preferences.
                     // Set the same real download destination through the browser protocol.
                     driver.executeCdpCommand("Browser.setDownloadBehavior", Map.of(
-                            "behavior", "allow", "downloadPath", directory.toString()));
+                            "behavior", "allow", "downloadPath", localDownloads.toString()));
                     return new BrowserSession(driver, service::stop,
-                            runtime, "http://localhost:" + port, directory);
+                            runtime, "http://localhost:" + port, directory, localDownloads);
                 } catch (RuntimeException | Error failure) {
                     stopAfterFailure(driver::quit, failure);
                     throw failure;
@@ -112,7 +117,7 @@ public final class BrowserSession implements AutoCloseable {
         try {
             container.start();
             return new BrowserSession(new RemoteWebDriver(container.getSeleniumAddress(), options),
-                    container::close, runtime, origin, directory);
+                    container::close, runtime, origin, directory, directory);
         } catch (RuntimeException | Error failure) {
             stopAfterFailure(container::close, failure);
             throw failure;
@@ -135,7 +140,7 @@ public final class BrowserSession implements AutoCloseable {
 
     public Set<String> downloadedFiles() {
         if (runtime == Runtime.CONTAINER) return new TreeSet<>(driver.getDownloadableFiles());
-        try (var files = Files.list(downloads)) {
+        try (var files = Files.list(localDownloads)) {
             return new TreeSet<>(files.filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
                     .filter(name -> !name.endsWith(".crdownload") && !name.endsWith(".tmp")).toList());
@@ -147,7 +152,13 @@ public final class BrowserSession implements AutoCloseable {
     public Path download(String name) throws IOException {
         Path destination = downloads.resolve(name).normalize();
         if (!downloads.equals(destination.getParent())) throw new IllegalArgumentException("Expected a download filename: " + name);
-        if (runtime == Runtime.CONTAINER) driver.downloadFile(name, downloads);
+        Path source = localDownloads.resolve(name);
+        if (runtime == Runtime.CONTAINER) {
+            Path transfer = Files.createTempDirectory(downloads, "transfer-");
+            driver.downloadFile(name, transfer);
+            source = transfer.resolve(name);
+        }
+        Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
         return destination;
     }
 
