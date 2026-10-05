@@ -67,6 +67,15 @@ agent because dynamic self-attachment is unavailable. The environment's proxy CA
 is added to a local trust store; TLS validation remains enabled. These are local
 prerequisites, not repository changes or relaxed assertions.
 
+The architecture ratchet reported one intentional structural change, reviewed
+independently before updating its exact count from 18 to 23. The new class pairs
+are `ClusterAnalysisStore` and `ClusterAnalysisBackupRestorer` to
+`RootCatalogueSnapshot`, and `ClusterAnalysisCoverage` to `RootCatalogueSnapshot`,
+`RootCatalogueSnapshot.Node` and `CatalogueSourceIdentity`. These consume the
+existing immutable catalogue snapshot contract to retain original source identity;
+they introduce no new package direction, module dependency, reverse edge or cycle
+exception. All 173 package edges remain checked by the unchanged ratchet.
+
 ## Boundaries
 
 - `test-local` is the documented Docker-free gate. Container execution,
@@ -82,5 +91,6 @@ prerequisites, not repository changes or relaxed assertions.
   the application or close the broader logging/security issue #857.
 - This preserves durable result evidence and safe partial-result handling. It
   does not complete the broader continuation/HA lifecycle epic #808.
-- No dependency, security baseline, timeout, test assertion or CI gate was
-  weakened. Unrelated backup/release work was not included.
+- No security baseline, timeout, test assertion or CI gate was weakened. The
+  reviewed architecture inventory adjustment above records the exact new class
+  references. Unrelated backup/release work was not included.
