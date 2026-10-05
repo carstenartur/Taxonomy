@@ -1,23 +1,44 @@
 import { csrfJson, navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
+async function provisionAnalysisWorkspace(page, workspaceId, assert) {
+  // A new explicit workspace cannot load its draft until its repository is
+  // READY. Provision that fixture before selecting/reloading the browser tab.
+  const { headers, path } = await page.evaluate(id => {
+    const token = document.querySelector('meta[name="_csrf"]')?.content;
+    const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
+    const headers = { 'X-Taxonomy-Workspace-Id': id };
+    if (token) headers[header] = token;
+    const path = '/api/workspace/provision';
+    return { headers, path: window.TaxonomyI18n?.resolveUrl?.(path) || path };
+  }, workspaceId);
+  const response = await page.request.post(new URL(path, page.url()).href, {headers});
+  const status = response.status();
+  const body = status === 200 ? await response.json() : null;
+  assert(status === 200 && body?.status === 'READY',
+    `Preferences fixture workspace provisioning failed: HTTP ${status}, status ${body?.status || 'missing'}`);
+}
+
 async function selectAnalysisWorkspace(page, workspaceId, assert) {
   // The production fetch wrapper reloads automatically on /switch. Use the
   // authenticated request context so it cannot race our explicit reload below.
-  const headers = await page.evaluate(() => {
+  const { headers, path } = await page.evaluate(id => {
     const token = document.querySelector('meta[name="_csrf"]')?.content;
     const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
     const headers = { 'X-Taxonomy-Workspace-Id': window.TaxonomyAnalysisSession.state().workspaceId };
     if (token) headers[header] = token;
-    return headers;
-  });
-  const endpoint = new URL(`/api/workspace/${encodeURIComponent(workspaceId)}/switch`, page.url()).href;
+    const path = `/api/workspace/${encodeURIComponent(id)}/switch`;
+    return { headers, path: window.TaxonomyI18n?.resolveUrl?.(path) || path };
+  }, workspaceId);
+  const endpoint = new URL(path, page.url()).href;
   const switched = await page.request.post(endpoint, {headers});
   assert(switched.status() === 200, `Unable to select QA analysis workspace: HTTP ${switched.status()}`);
   await page.evaluate(id => {
     const context = window.__TaxonomyAnalysisSessionContext;
     context.rememberWorkspaceId(id);
   }, workspaceId);
-  await page.reload({ waitUntil: 'networkidle' });
+  // Background status reads do not define analysis readiness. Wait for the
+  // document, then require the visible UI and exact ready workspace below.
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
   await page.waitForFunction(id => {
@@ -645,10 +666,7 @@ export async function runPreferencesWorkflow(workflow) {
     assert(created.status === 200 && created.json?.workspaceId,
       `Unable to create isolated Preferences fixture workspace: HTTP ${created.status}`);
     fixtureWorkspaceId = created.json.workspaceId;
-    await selectAnalysisWorkspace(page, fixtureWorkspaceId, assert);
-    const provisioned = await csrfJson(page, '/api/workspace/provision');
-    assert(provisioned.status === 200 && provisioned.json?.status === 'READY',
-      `Preferences fixture workspace provisioning failed: HTTP ${provisioned.status}`);
+    await provisionAnalysisWorkspace(page, fixtureWorkspaceId, assert);
     await selectAnalysisWorkspace(page, fixtureWorkspaceId, assert);
     const hypotheses = await createPersistedHypotheses(page, assert);
     await runPreferencesPreservationWorkflow(workflow, hypotheses);

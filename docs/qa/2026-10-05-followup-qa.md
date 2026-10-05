@@ -45,6 +45,7 @@ fixes and now pass. Logger configuration is unchanged.
 | Final Maven handler selection after the additional 405 correction (`GlobalExceptionHandlerDiagnosticPrivacyTest`, `GlobalExceptionHandlerTest`, `GlobalExceptionHandlerDisconnectTest`, `DecisionReportTemplateExceptionHandlerTest`) | 36 tests passed, including all 14 handler privacy/contract cases; no failures, errors or skips. This overlaps the previous selection and is not an additional 36 unique cases. |
 | Actual renderer/adapter/draft JavaScript selection | 59 tests passed, including 12 Preferences/restoration cases. |
 | Browser fixture/evidence support tests | 7 tests passed. |
+| Workspace fixture path, lifecycle and readiness contracts | 7 tests passed; combined with the 12 Preferences/restoration cases, 19 passed. This selection overlaps those cases above. |
 | Maven-owned `primary/primary-admin-chromium` browser selection | Not executed locally: the pinned Chromium download returned a 195-byte HTML “Site Unavailable” page instead of an archive. The required CI browser lane supplies runtime acceptance. |
 
 The browser scenario now materializes two authored hypotheses using identifiers
@@ -55,6 +56,18 @@ values, restored visible decisions, repeat-command suppression, optimistic Git
 headers, commit identity and authoritative draft state. It restores the original
 workspace and working state; residual fixture rows expire with the isolated
 launcher's database. No remote model inference is required.
+
+The first follow-up CI run exposed a fixture initialization error: it selected an
+unprovisioned workspace before waiting for a ready analysis session. Explicitly
+pinned non-lifecycle APIs correctly returned HTTP 409. The fixture now provisions
+its exact workspace through the authenticated request context before selecting
+and reloading it, and requires HTTP 200 plus `READY`. Native lifecycle URLs use
+the application's canonical resolver, including deployments under `/taxonomy`.
+Navigation waits for the document, visible UI, translations and the exact ready
+workspace instead of global network silence; readiness timeouts are unchanged.
+The stateful regression executes the actual workflow and reproduced four failures
+before the lifecycle correction. It also checks that incomplete provisioning
+stops before loading hypotheses and still restores the original workspace.
 
 Local Maven uses Java 21, the repository wrapper, a trusted proxy CA and bounded
 JVM heaps. Disabling npm's inheritance of Maven proxy command-line arguments
