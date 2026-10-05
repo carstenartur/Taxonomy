@@ -5,6 +5,7 @@ import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
@@ -419,11 +420,17 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();
+        var coverage = new ClusterAnalysisCoverage();
         String provider = null;
         for (var work : works(run.id)) {
             if (!work.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) continue;
-            if (work.resultJson == null) { warnings.add(work.root + ": " + Objects.toString(work.failureReason, "unexecuted root") + "; no negative finding"); continue; }
+            if (work.resultJson == null) {
+                coverage.add(work.root, null);
+                warnings.add(work.root + ": " + Objects.toString(work.failureReason, "unexecuted root") + "; no negative finding");
+                continue;
+            }
             var result = read(work.resultJson, AnalysisResult.class);
+            coverage.add(work.root, result);
             for (var score : result.getRawScores().entrySet()) {
                 if (scores.putIfAbsent(score.getKey(), score.getValue()) != null)
                     throw new IllegalStateException("Conflicting catalogue identities across root results");
@@ -436,6 +443,9 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
         var result = new AnalysisResult(scores, tree); result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+        var context = read(run.contextJson, AnalysisOperationContext.class);
+        result.setAnalysisCoverage(coverage.combine(context.authority(),
+                root -> read(shard(context, TaxonomyShardRoot.of(root)), RootCatalogueSnapshot.class)));
         for (var work : works(run.id)) if (work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name()) && work.failureReason != null)
             warnings.add(work.failureReason + ": relation work incomplete; no negative finding");
         if (run.relationPlanJson != null) {

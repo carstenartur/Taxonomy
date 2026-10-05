@@ -131,22 +131,24 @@ public class GitProposalReviewApiController {
             String expectedHead = GitHttpPrecondition.expectedHead(
                     ifMatch, ifNoneMatch);
             String rationale = body == null ? null : body.rationale();
+            CommandMetadata metadata = new CommandMetadata(
+                    GitHttpIdempotencyKey.require(causationId), rationale);
             ReviewResult result = switch (action) {
                 case ACCEPT -> reviewService.accept(
                         proposalId,
                         context,
                         expectedHead,
-                        new CommandMetadata(causationId, rationale));
+                        metadata);
                 case REJECT -> reviewService.reject(
                         proposalId,
                         context,
                         expectedHead,
-                        new CommandMetadata(causationId, rationale));
+                        metadata);
                 case REVERT -> reviewService.revert(
                         proposalId,
                         context,
                         expectedHead,
-                        new CommandMetadata(causationId, rationale));
+                        metadata);
             };
             return projected(result);
         } catch (GitHttpPrecondition.PreconditionRequiredException error) {

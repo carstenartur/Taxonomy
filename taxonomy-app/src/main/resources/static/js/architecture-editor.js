@@ -424,7 +424,7 @@
             var workspace = await api.createWorkspace(context());
             selected = null; pending = null;
             await load({ repositoryId: workspace.sourceRepositoryId, workspaceScopeKey: workspace.workspaceId, branch: workspace.currentBranch }, null);
-            renderer.fit();
+            renderer.fit({ initial: true });
         } catch (error) { report(error); }
         finally { busy = false; permissions(); el('editorWorkspace').disabled = false; }
     };
@@ -437,5 +437,5 @@
         document.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = t(node.getAttribute('data-i18n')); });
         selected = new URLSearchParams(location.search).get('element');
         return load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision'));
-    }).then(function (ok) { if (ok) { renderer.fit(); if (selected) renderer.focus(); } });
+    }).then(function (ok) { if (ok) { renderer.fit({ initial: true }); if (selected) renderer.focus(); } });
 }());

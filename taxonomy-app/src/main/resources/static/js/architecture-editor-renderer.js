@@ -63,13 +63,45 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
         onSummary(visible.length, scene.nodes.length);
     }
 
-    function fit() {
+    function readableFrame(node) {
+        var matrix = element.getScreenCTM();
+        var screenScale = matrix ? Math.min(Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d)) : 1;
+        screenScale = screenScale || 1;
+        var padding = Math.min(10 / screenScale, 420 / 4);
+        var extent = zoom.scaleExtent();
+        return { padding: padding, scale: Math.max(extent[0], Math.min(extent[1], 1 / screenScale,
+            (1000 - 2 * padding) / node.width, (420 - 2 * padding) / node.height)) };
+    }
+    function frameInitial() {
+        var first = scene.nodes[0];
+        var frame = readableFrame(first);
+        var left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        scene.nodes.forEach(function (node) {
+            left = Math.min(left, node.x); top = Math.min(top, node.y);
+            right = Math.max(right, node.x + node.width); bottom = Math.max(bottom, node.y + node.height);
+        });
+        var x = frame.padding - first.x * frame.scale;
+        var y = frame.padding - first.y * frame.scale;
+        // Keep compact models together; large models open on a readable neighborhood.
+        if ((right - left) * frame.scale <= 1000 - 2 * frame.padding
+                && (bottom - top) * frame.scale <= 420 - 2 * frame.padding) {
+            x = 500 - (left + right) / 2 * frame.scale;
+            y = 210 - (top + bottom) / 2 * frame.scale;
+        }
+        svg.call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(frame.scale));
+    }
+    function fit(options) {
+        if (options && options.initial === true && scene.nodes.length) { frameInitial(); return; }
         var scale = Math.min(1, 980 / Math.max(1, scene.width), 400 / Math.max(1, scene.height));
         svg.call(zoom.transform, d3.zoomIdentity.translate(10, 10).scale(scale));
     }
     function focus() {
         var node = scene.nodes.find(function (candidate) { return candidate.id === selected; });
-        if (node) svg.call(zoom.transform, d3.zoomIdentity.translate(500 - node.x - node.width / 2, 210 - node.y - node.height / 2));
+        if (node) {
+            var scale = readableFrame(node).scale;
+            svg.call(zoom.transform, d3.zoomIdentity.translate(500 - (node.x + node.width / 2) * scale,
+                210 - (node.y + node.height / 2) * scale).scale(scale));
+        }
     }
     function onKeyDown(event) {
         var moves = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };

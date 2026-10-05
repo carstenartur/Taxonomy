@@ -155,6 +155,8 @@ public class ExportFacade {
         AnalysisResult result = llmService.analyzeWithBudget(businessText);
         RequirementArchitectureView view = architectureViewService.build(
                 result.getScores(), businessText, 20);
+        view.setAnalysisCoverage(result.getAnalysisCoverage());
+        view.setAnalysisStatus(result.getStatus());
         String title = businessText.length() > 60
                 ? businessText.substring(0, 57) + "..."
                 : businessText;

@@ -2,6 +2,64 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+export async function measureEditorFrame(page, selected = false) {
+  return page.locator('#editorGraph').evaluate(async (svg, selected) => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const node = svg.querySelector(selected ? '.editor-node[aria-pressed="true"]' : '.editor-node');
+    const box = element => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    return { viewport: box(svg), node: node && box(node.querySelector('rect')),
+      label: node && box(node.querySelector('text')), nodes: svg.querySelectorAll('.editor-node').length,
+      edges: svg.querySelectorAll('.editor-edge').length };
+  }, selected);
+}
+
+export function assertReadableEditorFrame(frame, description) {
+  assert.ok(frame.node && frame.node.width >= 180 && frame.node.height >= 50,
+    `${description}: the first framed node must have readable physical size: ${JSON.stringify(frame)}`);
+  assert.ok(frame.label.height >= 10, `${description}: the label must remain legible`);
+  assert.ok(frame.node.x >= frame.viewport.x - 1 && frame.node.y >= frame.viewport.y - 1
+    && frame.node.right <= frame.viewport.right + 1 && frame.node.bottom <= frame.viewport.bottom + 1,
+  `${description}: the framed node must be fully inside the graph`);
+  assert.ok(frame.nodes <= 200 && frame.edges <= 400, 'Framing must retain rendering budgets');
+}
+
+export async function verifyConstrainedEditorFrames(page) {
+  const frames = await page.evaluate(async () => {
+    const frames = [];
+    for (const width of [0, 30]) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 1000 420');
+      svg.style.cssText = `position:absolute;left:-2000px;width:${width}px;height:420px`;
+      document.body.append(svg);
+      const adapter = window.ArchitectureEditorRenderer(svg, () => {}, () => {}, () => {});
+      try {
+        adapter.render({ width: 760, height: 420, edges: [], nodes: [
+          { id: 'viewport-fixture', label: 'Viewport fixture', x: 52, y: 52, width: 238, height: 82 }
+        ] }, 'viewport-fixture');
+        adapter.fit({ initial: true });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const initialScale = window.d3.zoomTransform(svg).k;
+        adapter.focus();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        frames.push({ width, initialScale, focusScale: window.d3.zoomTransform(svg).k,
+          rendered: svg.querySelectorAll('.editor-node').length });
+      } finally { adapter.destroy(); svg.remove(); }
+    }
+    return frames;
+  });
+  for (const frame of frames) {
+    assert.ok(Number.isFinite(frame.initialScale) && frame.initialScale >= 0.01 && frame.initialScale <= 4,
+      `Initial framing must keep a valid scale in a constrained viewport: ${JSON.stringify(frame)}`);
+    assert.ok(Number.isFinite(frame.focusScale) && frame.focusScale >= 0.01 && frame.focusScale <= 4,
+      `Selection focus must keep a valid scale in a constrained viewport: ${JSON.stringify(frame)}`);
+    assert.equal(frame.rendered, 1, 'A constrained viewport must not invert culling and lose the selected node');
+  }
+  return frames;
+}
+
 /** Real authenticated UI commands, sharing the existing role/engine/reflow application fixture. */
 export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures }) {
   const failureStart = httpFailures.length;
@@ -21,6 +79,11 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   assert.ok(initial.document.context.workspaceScopeKey);
   assert.ok(initial.document.context.actor);
   const measurements = { role, initialElements: initial.model.elements.length, commands: [], expectedFailures, reflow: [] };
+  if (initial.scene.nodes.length) {
+    measurements.initialFrame = await measureEditorFrame(page);
+    assertReadableEditorFrame(measurements.initialFrame, 'Initial catalogue graph');
+  }
+  measurements.constrainedFrames = await verifyConstrainedEditorFrames(page);
 
   async function expectFailure(action, endpoint, status, code) {
     const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(endpoint) && r.status() === status);
@@ -259,12 +322,12 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   measurements.renderer = await page.evaluate(async () => {
     const measurements = [];
     const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    for (const count of [309, 1000, 5000]) {
+    for (const count of [2, 309, 1000, 5000]) for (const width of [300, 1000]) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('viewBox', '0 0 1000 420');
       svg.setAttribute('tabindex', '0');
       svg.setAttribute('aria-hidden', 'true');
-      svg.style.cssText = 'position:absolute;left:-2000px;width:1000px;height:420px';
+      svg.style.cssText = `position:absolute;left:-2000px;width:${width}px;height:420px`;
       document.body.append(svg);
       const scene = { width: Math.ceil(count / 5) * 262 + 104, height: 684, edges: [], nodes: [] };
       for (let i = 0; i < count; i++) scene.nodes.push({ id: `scene-fixture-${i}`, label: `Scene ${i}`, type: 'System',
@@ -277,7 +340,20 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       const started = performance.now();
       const adapter = window.ArchitectureEditorRenderer(svg, () => {}, () => {}, () => {});
       try {
-        adapter.render(scene, null); adapter.fit(); await settle();
+        const originalScene = JSON.stringify(scene);
+        adapter.render(scene, null); adapter.fit({ initial: true }); await settle();
+        const initialRect = svg.querySelector('.editor-node rect').getBoundingClientRect();
+        const initialLabel = svg.querySelector('.editor-node text').getBoundingClientRect();
+        const graphRect = svg.getBoundingClientRect();
+        const initialFrame = { viewport: { x: graphRect.x, y: graphRect.y, right: graphRect.right, bottom: graphRect.bottom },
+          node: { x: initialRect.x, y: initialRect.y, right: initialRect.right, bottom: initialRect.bottom,
+            width: initialRect.width, height: initialRect.height }, label: { height: initialLabel.height },
+          nodes: svg.querySelectorAll('.editor-node').length, edges: svg.querySelectorAll('.editor-edge').length };
+        adapter.fit(); await settle();
+        const fitTransform = window.d3.zoomTransform(svg);
+        const completeModelFits = fitTransform.x >= 0 && fitTransform.y >= 0
+          && fitTransform.x + scene.width * fitTransform.k <= 1000
+          && fitTransform.y + scene.height * fitTransform.k <= 420;
         const renderMs = Math.round(performance.now() - started);
         const visibleNodes = svg.querySelectorAll('.editor-node').length;
         const markerId = svg.querySelector('marker').id;
@@ -287,17 +363,23 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         const focusStarted = performance.now();
         adapter.select(scene.nodes[count - 1].id); adapter.focus(); await settle();
         const focusMs = Math.round(performance.now() - focusStarted);
+        const selectedRect = svg.querySelector('.editor-node[aria-pressed="true"] rect').getBoundingClientRect();
+        const selectedLabel = svg.querySelector('.editor-node[aria-pressed="true"] text').getBoundingClientRect();
         const beforePan = svg.querySelector('g').getAttribute('transform');
         svg.querySelector('.editor-node').focus({ preventScroll: true });
         svg.querySelector('.editor-node').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
         await settle();
         const afterPan = svg.querySelector('g').getAttribute('transform');
         const keyboardFocusRetained = document.activeElement === svg;
-        svg.querySelector('.editor-edge').dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }));
+        const zoomTarget = svg.querySelector('.editor-edge') || svg.querySelector('.editor-node');
+        zoomTarget.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }));
         await settle();
         const afterZoom = svg.querySelector('g').getAttribute('transform');
-        const measurement = { count, renderMs, focusMs, visibleNodes, markerIsUnique, edgesUseOwnMarker,
-          keyboardPanFromNode: beforePan !== afterPan, keyboardZoomFromEdge: afterPan !== afterZoom,
+        const measurement = { count, width, renderMs, focusMs, visibleNodes, markerIsUnique, edgesUseOwnMarker,
+          initialFrame, completeModelFits, sceneUnchanged: JSON.stringify(scene) === originalScene,
+          selectedNodeWidth: selectedRect.width, selectedLabelHeight: selectedLabel.height,
+          keyboardPanFromNode: beforePan !== afterPan, keyboardZoomFromObject: afterPan !== afterZoom,
+          keyboardZoomTarget: zoomTarget.classList.contains('editor-edge') ? 'edge' : 'node',
           keyboardFocusRetained,
           domElements: svg.querySelectorAll('*').length,
           selectedVisible: Boolean(svg.querySelector('.editor-node[aria-pressed="true"]')) };
@@ -312,13 +394,20 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     return measurements;
   });
   for (const measurement of measurements.renderer) {
+    assertReadableEditorFrame(measurement.initialFrame, `Initial ${measurement.count}-node graph at ${measurement.width}px`);
+    assert.equal(measurement.completeModelFits, true, 'Explicit Fit model must still cover the complete server scene');
+    assert.equal(measurement.sceneUnchanged, true, 'Local framing must not change complete scene or export geometry');
+    assert.ok(measurement.selectedNodeWidth >= 180 && measurement.selectedLabelHeight >= 10,
+      'Focus selection must remain readable after a complete-model fit');
     assert.ok(measurement.visibleNodes <= 200 && measurement.domElements <= 1100);
     assert.equal(measurement.selectedVisible, true);
     assert.equal(measurement.markerIsUnique, true, 'Concurrent editor renderers must have distinct SVG marker IDs');
     assert.equal(measurement.edgesUseOwnMarker, true, 'Edges must reference the marker owned by their renderer');
     assert.equal(measurement.keyboardPanFromNode, true, 'Node focus must permit keyboard panning');
     assert.equal(measurement.keyboardFocusRetained, true, 'Navigation must retain keyboard control as visible nodes change');
-    assert.equal(measurement.keyboardZoomFromEdge, true, 'Edge focus must permit keyboard zooming');
+    assert.equal(measurement.keyboardZoomFromObject, true, 'Focused graph objects must permit keyboard zooming');
+    if (measurement.width === 1000) assert.equal(measurement.keyboardZoomTarget, 'edge',
+      'The wider viewport must retain keyboard zoom coverage from an edge');
     assert.equal(measurement.keyboardHandlerReleased, true, 'Destroy must release the keyboard handler');
     assert.equal(measurement.rendererDomReleased, true, 'Destroy must release the renderer-owned SVG content');
     assert.ok(measurement.renderMs < 1500 && measurement.focusMs < 1500,

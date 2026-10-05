@@ -37,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -242,22 +243,37 @@ public class ProposalApiController {
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> bulkAction(
             Map<String, Object> body) {
-        return bulkAction(body, null);
+        return bulkAction(body, null, null);
+    }
+
+    /** Compatibility overload used by focused unit tests and in-process callers. */
+    public ResponseEntity<Map<String, Object>> bulkAction(
+            Map<String, Object> body,
+            String idempotencyKey) {
+        return bulkAction(body, null, idempotencyKey);
     }
 
     @Operation(summary = "Ordered Git-first bulk action on proposals")
     @PostMapping("/proposals/bulk")
     public ResponseEntity<Map<String, Object>> bulkAction(
             @RequestBody Map<String, Object> body,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
             @RequestHeader(value = IDEMPOTENCY_KEY, required = false)
             String idempotencyKey) {
-        @SuppressWarnings("unchecked")
-        List<Number> ids = body.get("ids") instanceof List<?> list
-                ? (List<Number>) list : null;
+        List<?> suppliedIds = body.get("ids") instanceof List<?> list
+                ? list : null;
         String actionText = body.get("action") instanceof String value
                 ? value : null;
-        if (ids == null || ids.isEmpty()
+        if (suppliedIds == null || suppliedIds.isEmpty()
                 || actionText == null || actionText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        List<Long> ids;
+        try {
+            ids = validateBulkIds(suppliedIds);
+        } catch (IllegalArgumentException error) {
             return ResponseEntity.badRequest().build();
         }
 
@@ -276,7 +292,14 @@ public class ProposalApiController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        String expectedHead = currentHead(context);
+        String expectedHead;
+        String bulkKey;
+        try {
+            expectedHead = expectedHead(context, ifMatch);
+            bulkKey = normalizeIdempotencyKey(idempotencyKey);
+        } catch (IllegalArgumentException error) {
+            return ResponseEntity.badRequest().build();
+        }
         if (expectedHead == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .header(RelationApiController.PROJECTION_STATE_HEADER,
@@ -285,7 +308,6 @@ public class ProposalApiController {
                     .build();
         }
 
-        String bulkKey = normalizeIdempotencyKey(idempotencyKey);
         if (bulkKey == null) {
             bulkKey = "legacy-proposal-bulk-"
                     + action.name().toLowerCase(Locale.ROOT)
@@ -298,13 +320,12 @@ public class ProposalApiController {
         int failed = 0;
         boolean stop = false;
         for (int index = 0; index < ids.size() && !stop; index++) {
-            Number idNumber = ids.get(index);
-            if (idNumber == null) {
+            Long proposalId = ids.get(index);
+            if (proposalId == null) {
                 failed++;
                 itemResults.add(itemFailure(null, "INVALID_ID", null));
                 continue;
             }
-            long proposalId = idNumber.longValue();
             String itemKey = bulkKey + ":" + index + ":" + proposalId;
             try {
                 ReviewResult result = executeReview(
@@ -324,9 +345,7 @@ public class ProposalApiController {
                 stop = true;
             } catch (BranchHeadConflictException error) {
                 failed++;
-                if (error.getActualHeadCommit() != null) {
-                    expectedHead = error.getActualHeadCommit();
-                }
+                expectedHead = error.getActualHeadCommit();
                 itemResults.add(itemFailure(
                         proposalId,
                         "PRECONDITION_FAILED",
@@ -372,6 +391,34 @@ public class ProposalApiController {
                     GitHttpPrecondition.etag(expectedHead));
         }
         return response.body(result);
+    }
+
+    private static List<Long> validateBulkIds(List<?> suppliedIds) {
+        List<Long> ids = new ArrayList<>(suppliedIds.size());
+        for (Object value : suppliedIds) {
+            // Null retains its existing per-item INVALID_ID result.
+            if (value == null) {
+                ids.add(null);
+                continue;
+            }
+            // Decimal JSON values may already have rounded during decoding.
+            // Only integer representations can identify an exact proposal row.
+            if (!(value instanceof Byte || value instanceof Short
+                    || value instanceof Integer || value instanceof Long
+                    || value instanceof BigInteger)
+                    || value instanceof BigInteger integer
+                    && integer.bitLength() > 63) {
+                throw new IllegalArgumentException(
+                        "Proposal IDs must be positive 64-bit integers");
+            }
+            long proposalId = ((Number) value).longValue();
+            if (proposalId <= 0) {
+                throw new IllegalArgumentException(
+                        "Proposal IDs must be positive 64-bit integers");
+            }
+            ids.add(proposalId);
+        }
+        return ids;
     }
 
     private ResponseEntity<Map<String, Object>> reviewProposal(
@@ -584,12 +631,7 @@ public class ProposalApiController {
         if (value == null || value.isBlank()) {
             return null;
         }
-        String normalized = value.strip();
-        if (normalized.indexOf('\n') >= 0 || normalized.indexOf('\r') >= 0) {
-            throw new IllegalArgumentException(
-                    "Idempotency-Key must be one line");
-        }
-        return normalized;
+        return GitHttpIdempotencyKey.require(value);
     }
 
     private static boolean isApplicationAdmin() {

@@ -1,6 +1,9 @@
 package com.taxonomy.testsupport;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -59,11 +62,30 @@ class BrowserSessionTest {
         doThrow(failure).when(driver).quit();
         var stops = new AtomicInteger();
         var session = new BrowserSession(driver, stops::incrementAndGet,
-                BrowserSession.Runtime.LOCAL, "http://localhost:12345", output);
+                BrowserSession.Runtime.LOCAL, "http://localhost:12345", output, output);
         assertThatThrownBy(session::close).isSameAs(failure);
         session.close();
         assertThat(stops).hasValue(1);
         verify(driver, times(1)).quit();
+    }
+
+    @Test void retrievesContainerDownloadsBeforeReplacingExistingEvidence() throws Exception {
+        Path report = output.resolve("report.json");
+        Files.writeString(report, "previous report");
+        var driver = mock(RemoteWebDriver.class);
+        doAnswer(invocation -> {
+            assertThat(Files.readString(report)).isEqualTo("previous report");
+            Path directory = invocation.getArgument(1);
+            // Selenium's binary download transport copies without REPLACE_EXISTING.
+            try (var bytes = new ByteArrayInputStream("current report".getBytes(StandardCharsets.UTF_8))) {
+                Files.copy(bytes, directory.resolve("report.json"));
+            }
+            return null;
+        }).when(driver).downloadFile(eq("report.json"), any(Path.class));
+        var session = new BrowserSession(driver, () -> {}, BrowserSession.Runtime.CONTAINER,
+                "http://host.testcontainers.internal:12345", output, output);
+        assertThat(session.download("report.json")).isEqualTo(report);
+        assertThat(Files.readString(report)).isEqualTo("current report");
     }
 
     @Test void retainsBothShutdownFailuresForDiagnosis() {
@@ -72,7 +94,7 @@ class BrowserSessionTest {
         var infrastructureFailure = new IllegalStateException("infrastructure failed");
         doThrow(driverFailure).when(driver).quit();
         var session = new BrowserSession(driver, () -> { throw infrastructureFailure; },
-                BrowserSession.Runtime.CONTAINER, "http://host.testcontainers.internal:12345", output);
+                BrowserSession.Runtime.CONTAINER, "http://host.testcontainers.internal:12345", output, output);
         assertThatThrownBy(session::close).isSameAs(driverFailure)
                 .hasSuppressedException(infrastructureFailure);
     }

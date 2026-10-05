@@ -95,6 +95,71 @@ test('exports a frozen copy of the current architecture with visible busy state'
     assert.match(f.elements.get('diagramExportStatusText').textContent,/ready/i);
     assert.equal(JSON.stringify(f.state),original);
 });
+for (const coverage of [null, {nodes:{}, assessedNodes:0, unknownNodes:0, failedOrBlockedNodes:0}]) {
+    test(`current diagram retains top-level PARTIAL with ${coverage ? 'empty' : 'missing'} coverage`, async () => {
+        const f = fixture();
+        f.state.lastAnalysisStatus = 'PARTIAL'; f.state.analysisCoverage = coverage;
+        const original = JSON.stringify(f.state);
+
+        const pending = f.run(); await Promise.resolve();
+
+        const body = JSON.parse(f.requests[0].options.body);
+        assert.equal(body.analysisStatus, 'PARTIAL');
+        if (coverage) assert.deepEqual(body.analysisCoverage, coverage);
+        assert.deepEqual(body.includedElements, f.state.currentArchView.includedElements);
+        assert.equal(JSON.stringify(f.state), original, 'Export must not mutate the working view');
+        f.state.lastAnalysisStatus = 'SUCCESS';
+        assert.equal(JSON.parse(f.requests[0].options.body).analysisStatus, 'PARTIAL', 'The request freezes its evidence');
+        f.resolve(binaryResponse()); await pending;
+    });
+}
+test('current diagram retains open coverage independently of a successful top-level status', async () => {
+    const f = fixture();
+    f.state.lastAnalysisStatus = 'SUCCESS';
+    f.state.analysisCoverage = {nodes:{BP:{state:'UNKNOWN',descendants:'UNASSESSED',reason:'LEFT_OPEN:q'}},
+        assessedNodes:0,unknownNodes:1,failedOrBlockedNodes:1};
+    const original = JSON.stringify(f.state);
+
+    const pending = f.run(); await Promise.resolve();
+
+    assert.deepEqual(JSON.parse(f.requests[0].options.body).analysisCoverage, f.state.analysisCoverage);
+    assert.equal(JSON.stringify(f.state), original);
+    f.resolve(binaryResponse()); await pending;
+});
+for (const importedStatus of ['SUCCESS', 'IMPORTED']) {
+    test(`current diagram preserves its PARTIAL status after ${importedStatus} scores replace top-level evidence`, async () => {
+        const f = fixture();
+        f.state.currentArchView.analysisStatus = 'PARTIAL';
+        f.state.lastAnalysisStatus = importedStatus;
+        f.state.analysisCoverage = {nodes:{}, assessedNodes:0, unknownNodes:0, failedOrBlockedNodes:0};
+        const original = JSON.stringify(f.state);
+
+        const pending = f.run(); await Promise.resolve();
+
+        assert.equal(JSON.parse(f.requests[0].options.body).analysisStatus, 'PARTIAL');
+        assert.equal(JSON.stringify(f.state), original, 'Export must preserve both source snapshots');
+        f.resolve(binaryResponse()); await pending;
+    });
+}
+for (const openSource of ['view', 'state']) {
+    test(`current diagram retains open ${openSource} coverage when the other source reports no open assessments`, async () => {
+        const f = fixture();
+        const open = {nodes:{BP:{state:'UNKNOWN',descendants:'UNASSESSED',reason:'LEFT_OPEN:q'}},
+            assessedNodes:0,unknownNodes:1,failedOrBlockedNodes:1};
+        const closed = {nodes:{},assessedNodes:0,unknownNodes:0,failedOrBlockedNodes:0};
+        f.state.currentArchView.analysisStatus = 'SUCCESS';
+        f.state.lastAnalysisStatus = 'SUCCESS';
+        f.state.currentArchView.analysisCoverage = openSource === 'view' ? open : closed;
+        f.state.analysisCoverage = openSource === 'state' ? open : closed;
+        const original = JSON.stringify(f.state);
+
+        const pending = f.run(); await Promise.resolve();
+
+        assert.deepEqual(JSON.parse(f.requests[0].options.body).analysisCoverage, open);
+        assert.equal(JSON.stringify(f.state), original);
+        f.resolve(binaryResponse()); await pending;
+    });
+}
 test('main SVG export posts the frozen architecture model instead of serializing the live viewport',async()=>{
     const f=fixture();const work=f.api.exportSvg();await Promise.resolve();
     assert.equal(f.requests[0].url,'/api/diagram/current/svg');

@@ -55,14 +55,7 @@ public class RelationReviewService {
         proposal.setStatus(ProposalStatus.ACCEPTED);
         proposal.setReviewedAt(Instant.now());
         proposalRepository.save(proposal);
-        log.info("Accepted proposal {}: {} → {} [{}] "
-                        + "(repository={}, workspace={})",
-                proposalId,
-                proposal.getSourceNode().getCode(),
-                proposal.getTargetNode().getCode(),
-                proposal.getRelationType(),
-                tenant.repositoryId(),
-                tenant.workspaceId());
+        log.info("Accepted proposal (scope={}, count=1)", tenant.scope());
         return relation;
     }
 
@@ -80,14 +73,7 @@ public class RelationReviewService {
         proposal.setStatus(ProposalStatus.REJECTED);
         proposal.setReviewedAt(Instant.now());
         proposalRepository.save(proposal);
-        log.info("Rejected proposal {}: {} → {} [{}] "
-                        + "(repository={}, workspace={})",
-                proposalId,
-                proposal.getSourceNode().getCode(),
-                proposal.getTargetNode().getCode(),
-                proposal.getRelationType(),
-                tenant.repositoryId(),
-                tenant.workspaceId());
+        log.info("Rejected proposal (scope={}, count=1)", tenant.scope());
         return proposalService.toDto(proposal);
     }
 
@@ -116,15 +102,8 @@ public class RelationReviewService {
         proposal.setStatus(ProposalStatus.PENDING);
         proposal.setReviewedAt(null);
         proposalRepository.save(proposal);
-        log.info("Reverted proposal {} from {} to PENDING: {} → {} [{}] "
-                        + "(repository={}, workspace={})",
-                proposalId,
-                oldStatus,
-                proposal.getSourceNode().getCode(),
-                proposal.getTargetNode().getCode(),
-                proposal.getRelationType(),
-                tenant.repositoryId(),
-                tenant.workspaceId());
+        log.info("Reverted proposal (scope={}, count=1, previousStatus={}, status=PENDING)",
+                tenant.scope(), oldStatus);
         return proposalService.toDto(proposal);
     }
 

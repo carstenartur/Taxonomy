@@ -41,7 +41,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 18
+      "classDependencyCount": 23
     },
     {
       "fromContext": "analysis",

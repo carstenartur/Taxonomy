@@ -33,9 +33,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
@@ -60,10 +62,16 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_WRITE_ATTEMPTS = 5;
+    private static final int MAX_VERSION_CACHE_ENTRIES = 1_024;
 
     private final HibernateGitStorage storageHandle;
     private final Repository repository;
     private final boolean closeRepository;
+    // Owned by this repository handle, keyed by immutable HEAD, never by a mutable
+    // branch name. Each bounded entry retains only an ID (at most 80 characters)
+    // and two commit identities, not manifests or package bytes.
+    private final LinkedHashMap<TemplateVersionKey, String> versionCache =
+            new LinkedHashMap<>(16, 0.75f, true);
 
     @org.springframework.beans.factory.annotation.Autowired
     public DocumentTemplateGitRepository(HibernateRepositoryFactory storageFactory) {
@@ -192,7 +200,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             return List.of();
         }
         Map<String, byte[]> manifests = readManifestFiles(head);
-        List<TemplateDescriptor> templates = new ArrayList<>();
+        List<TemplateManifest> storedManifests = new ArrayList<>();
         for (Map.Entry<String, byte[]> file : manifests.entrySet()) {
             String pathTemplateId = templateIdFromManifestPath(file.getKey());
             if (pathTemplateId == null) {
@@ -201,7 +209,13 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             TemplateManifest manifest = JSON.readValue(
                     file.getValue(), TemplateManifest.class);
             validateStoredManifest(pathTemplateId, manifest, null);
-            String version = currentTemplateVersion(pathTemplateId, head);
+            storedManifests.add(manifest);
+        }
+        Map<String, String> versions = currentTemplateVersions(
+                storedManifests.stream().map(TemplateManifest::templateId).toList(), head);
+        List<TemplateDescriptor> templates = new ArrayList<>();
+        for (TemplateManifest manifest : storedManifests) {
+            String version = versions.get(manifest.templateId());
             if (version == null) {
                 continue;
             }
@@ -333,32 +347,94 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
 
     private String currentTemplateVersion(String templateId, ObjectId head)
             throws IOException {
+        return currentTemplateVersions(List.of(templateId), head).get(templateId);
+    }
+
+    /** Resolve all requested subtrees with one first-parent walk, preserving per-template ETags. */
+    private Map<String, String> currentTemplateVersions(List<String> templateIds, ObjectId head)
+            throws IOException {
         if (head == null) {
-            return null;
+            return Map.of();
         }
-        String path = templateDirectoryPath(templateId);
-        try (RevWalk walk = new RevWalk(repository)) {
-            RevCommit commit = walk.parseCommit(head);
-            if (pathObjectId(commit.getTree(), path) == null) {
-                return null;
+        synchronized (versionCache) {
+            Map<String, String> versions = new LinkedHashMap<>();
+            Set<String> unresolved = new LinkedHashSet<>();
+            for (String templateId : templateIds) {
+                TemplateVersionKey key = new TemplateVersionKey(head, templateId);
+                if (versionCache.containsKey(key)) {
+                    versions.put(templateId, versionCache.get(key));
+                } else {
+                    unresolved.add(templateId);
+                }
             }
-            while (true) {
-                ObjectId current = pathObjectId(commit.getTree(), path);
-                RevCommit parentCommit = null;
-                ObjectId parent = null;
-                if (commit.getParentCount() > 0) {
-                    parentCommit = walk.parseCommit(commit.getParent(0));
-                    parent = pathObjectId(parentCommit.getTree(), path);
+            if (unresolved.isEmpty()) {
+                return versions;
+            }
+            try (RevWalk walk = new RevWalk(repository)) {
+                RevCommit commit = walk.parseCommit(head);
+                Map<String, ObjectId> current = templateTreeIds(commit.getTree(), unresolved);
+                // A template absent at the captured HEAD has no current version,
+                // regardless of whether it existed earlier in history.
+                unresolved.retainAll(current.keySet());
+                while (!unresolved.isEmpty()) {
+                    RevCommit parent = commit.getParentCount() == 0 ? null
+                            : walk.parseCommit(commit.getParent(0));
+                    Map<String, ObjectId> previous = parent == null ? Map.of()
+                            : templateTreeIds(parent.getTree(), unresolved);
+                    var iterator = unresolved.iterator();
+                    while (iterator.hasNext()) {
+                        String templateId = iterator.next();
+                        if (!Objects.equals(current.get(templateId), previous.get(templateId))) {
+                            versions.put(templateId, commit.name());
+                            iterator.remove();
+                        }
+                    }
+                    commit = parent;
+                    current = previous;
                 }
-                if (!Objects.equals(current, parent)) {
-                    return commit.name();
+            }
+            // Null values cache missing templates too. A write from any application
+            // changes HEAD, so it cannot reuse an old positive or negative result.
+            for (String templateId : templateIds) {
+                versionCache.put(new TemplateVersionKey(head.copy(), templateId),
+                        versions.get(templateId));
+                while (versionCache.size() > MAX_VERSION_CACHE_ENTRIES) {
+                    versionCache.remove(versionCache.keySet().iterator().next());
                 }
-                if (parentCommit == null) {
-                    return null;
+            }
+            return versions;
+        }
+    }
+
+    private Map<String, ObjectId> templateTreeIds(RevTree root, Set<String> templateIds)
+            throws IOException {
+        if (templateIds.size() == 1) {
+            String templateId = templateIds.iterator().next();
+            ObjectId treeId = pathObjectId(root, templateDirectoryPath(templateId));
+            return treeId == null ? Map.of() : Map.of(templateId, treeId);
+        }
+        ObjectId templates;
+        try (TreeWalk path = TreeWalk.forPath(
+                repository, ROOT.substring(0, ROOT.length() - 1), root)) {
+            if (path == null || !FileMode.TREE.equals(path.getFileMode(0))) {
+                return Map.of();
+            }
+            templates = path.getObjectId(0).copy();
+        }
+        Map<String, ObjectId> result = new LinkedHashMap<>();
+        try (TreeWalk tree = new TreeWalk(repository)) {
+            tree.addTree(templates);
+            while (tree.next()) {
+                String templateId = tree.getNameString();
+                if (templateIds.contains(templateId)) {
+                    result.put(templateId, tree.getObjectId(0).copy());
                 }
-                commit = parentCommit;
             }
         }
+        return result;
+    }
+
+    private record TemplateVersionKey(ObjectId head, String templateId) {
     }
 
     private static void requireTemplatePrecondition(

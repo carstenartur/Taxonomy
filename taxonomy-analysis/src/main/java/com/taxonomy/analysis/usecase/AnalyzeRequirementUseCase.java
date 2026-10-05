@@ -248,6 +248,8 @@ public class AnalyzeRequirementUseCase {
         archView.setViewDescription(meta.viewDescription());
         archView.setContainmentEnabled(meta.containmentEnabled());
         archView.setActiveRules(meta.activeRules());
+        archView.setAnalysisCoverage(result.getAnalysisCoverage());
+        archView.setAnalysisStatus(result.getStatus());
         result.setArchitectureView(archView);
     }
 

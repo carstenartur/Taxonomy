@@ -171,6 +171,7 @@ class SecurityTests {
             "/api/proposals/999/accept",
             "/api/proposals/999/reject",
             "/api/proposals/999/revert",
+            "/api/proposals/bulk",
             "/api/proposals/bulk/accept",
             "/api/proposals/bulk/reject"
     })

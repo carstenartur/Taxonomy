@@ -192,6 +192,7 @@ public class AnalysisContinuationStore {
         result.setAnalysisCoverage(AnalysisCoverage.derive(analysisScope.selectedTree(tree), result.getRawScores(), result.getScores(), missing, interruption));
         if (result.getArchitectureView() != null) {
             var view = result.getArchitectureView(); view.setAnalysisCoverage(result.getAnalysisCoverage());
+            view.setAnalysisStatus(result.getStatus());
             if (!open.isEmpty()) {
                 var notes = new ArrayList<>(view.getNotes() == null ? List.<String>of() : view.getNotes());
                 notes.add("PARTIAL ANALYSIS / TEILANALYSE: " + open.size()

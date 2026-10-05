@@ -58,6 +58,7 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                     : scoredView(command, result);
             metadata.applyTo(view);
             view.setAnalysisCoverage(result.getAnalysisCoverage());
+            view.setAnalysisStatus(result.getStatus());
             result.setArchitectureView(view);
         } catch (DataAccessException databaseFailure) {
             throw databaseFailure;

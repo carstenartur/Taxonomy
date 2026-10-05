@@ -166,9 +166,7 @@ public class HypothesisService {
                         persisted, effectiveSessionId, tenant);
             }
         }
-        log.info("Persisted {} hypotheses for session {} in repository {} workspace {}",
-                persisted.size(), effectiveSessionId,
-                tenant.repositoryId(), tenant.workspaceId());
+        log.info("Persisted hypotheses (scope={}, count={})", tenant.scope(), persisted.size());
         return persisted;
     }
 
@@ -216,19 +214,16 @@ public class HypothesisService {
                     tenant);
             relationCreated = true;
         } else {
-            log.warn("Could not create relation for hypothesis {}: source or target node not found",
-                    hypothesisId);
+            log.warn("Could not create relation for hypothesis (scope={}, count=1, reason=NODE_NOT_FOUND)",
+                    tenant.scope());
         }
 
         hypothesis.setStatus(HypothesisStatus.ACCEPTED);
         hypothesisRepository.save(hypothesis);
         commitHypothesesAsDsl(List.of(hypothesis), "accepted-" + hypothesisId, tenant);
 
-        log.info("Accepted hypothesis {} in repository {} workspace {}: {} --[{}]--> {} "
-                        + "(relation created: {})",
-                hypothesisId, tenant.repositoryId(), tenant.workspaceId(),
-                hypothesis.getSourceNodeId(), hypothesis.getRelationType(),
-                hypothesis.getTargetNodeId(), relationCreated);
+        log.info("Accepted hypothesis (scope={}, count=1, relationCreated={})",
+                tenant.scope(), relationCreated);
         return hypothesis;
     }
 
@@ -352,12 +347,10 @@ public class HypothesisService {
                             // The database is already authoritative and committed.
                             // Keep the snapshot valid, but make the projection gap
                             // operationally visible for reconciliation.
-                            log.error("Failed to publish committed hypotheses for session {} "
-                                            + "in repository {} workspace {}",
-                                    sessionId,
-                                    context.repositoryId(),
-                                    context.workspaceId(),
-                                    failure);
+                            // Storage failures can carry credentials or private DSL in their cause chain.
+                            log.error("Failed to publish committed hypotheses "
+                                            + "(scope={}, count={}, reason=PUBLICATION_FAILED)",
+                                    context.scope(), committedHypotheses.size());
                         }
                     }
                 });
@@ -372,15 +365,13 @@ public class HypothesisService {
                 .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
                 ? "accepted" : "draft";
         try {
-            String commitId = dslPublication.publishSnapshot(
+            dslPublication.publishSnapshot(
                     context,
                     branch,
                     dslText,
                     "Auto-generated from analysis session " + sessionId);
-            log.info("Committed {} hypotheses as canonical DSL to repository {} workspace {} "
-                            + "branch '{}': {}",
-                    hypotheses.size(), context.repositoryId(), context.workspaceId(),
-                    branch, commitId);
+            log.info("Committed hypotheses as canonical DSL (scope={}, branch={}, count={})",
+                    context.scope(), branch, hypotheses.size());
         } catch (IOException e) {
             throw new IllegalStateException("Failed to commit canonical hypothesis DSL", e);
         }

@@ -166,6 +166,38 @@ for(const [method,panel] of [['runGapAnalysis','gapAnalysisContent'],
     'Clicking a blocked action must not silently do nothing');
  });
 }
+for (const [method, panel, urls] of [
+ ['runGapAnalysis', 'gapAnalysisContent', ['/api/gap/analyze']],
+ ['runPatternDetection', 'patternDetectionContent', ['/api/patterns/detect']],
+ ['runRecommendation', 'recommendationContent', ['/api/recommend']],
+ ['runCopilotFlow', 'copilotContent', ['/api/gap/analyze', '/api/patterns/detect', '/api/recommend']]
+]) {
+ for (const [label, coverage] of [
+  ['missing', undefined], ['null', null], ['incomplete', {nodes:{}}],
+  ['without known failures', {failedOrBlockedNodes:0, nodes:{}}]
+ ]) {
+  test(`${method} blocks legacy PARTIAL evidence with ${label} coverage`, async () => {
+   const h = harness(); h.loadAnalysis();
+   h.S.currentScores = {BP:100}; h.S.lastAnalysisStatus = 'PARTIAL';
+   h.S.analysisCoverage = coverage;
+   h.emit('taxonomy:analysis-evidence-imported');
+
+   await h.window.TaxonomyAnalysis[method](); await settle();
+
+   assert.deepEqual(h.derivedRequests, [], 'A partial status cannot authorize global conclusions');
+   assert.match(h.fields[panel].innerHTML || '', /partial|unassessed/i);
+   assert.deepEqual(h.S.currentScores, {BP:100}, 'Blocking enrichment retains valid local scores');
+  });
+ }
+ test(`${method} retains completed legacy evidence without coverage`, async () => {
+  const h = harness(); h.loadAnalysis();
+  h.S.currentScores = {BP:100}; h.S.lastAnalysisStatus = 'SUCCESS';
+
+  await h.window.TaxonomyAnalysis[method](); await settle();
+
+  assert.deepEqual(h.derivedRequests, urls);
+ });
+}
 test('a failed follow-up checkpoint pauses and retry persists the result without repeating the operation',async()=>{
  const h=harness();h.recovery.startCopilot();h.complete();await settle();let calls=0;
  h.window.TaxonomyAnalysisSession.saveNow=async()=>false;

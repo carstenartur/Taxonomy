@@ -133,6 +133,9 @@ public class DiagramProjectionService {
             // architecture node to represent analysis metadata. Full coverage travels in JSON.
             title = title + " — PARTIAL / TEILERGEBNIS: " + coverage.failedOrBlockedNodes()
                     + " unassessed / unbewertet (" + open + ")";
+        } else if ("PARTIAL".equals(view.getAnalysisStatus())) {
+            // Legacy partial outcomes do not supply an honest count of missing assessments.
+            title = title + " — PARTIAL / TEILERGEBNIS";
         }
 
         // Build a lookup for parentId resolution from hierarchy paths

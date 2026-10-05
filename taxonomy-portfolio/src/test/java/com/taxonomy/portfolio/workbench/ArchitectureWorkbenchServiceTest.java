@@ -108,6 +108,19 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void restoredLegacyPartialSnapshotLabelsItsDiagramWithoutCoverage() {
+        var snapshot = snapshotWithArchitecture();
+        snapshot.analysis().setStatus("PARTIAL");
+        assertThat(snapshot.analysis().getAnalysisCoverage()).isNull();
+        assertThat(snapshot.analysis().getArchitectureView().getAnalysisCoverage()).isNull();
+        prepareSnapshot(snapshot);
+
+        String svg = service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+
+        assertThat(svg).contains("PARTIAL", "CP-1", "CR-1").doesNotContain("0 unassessed");
+    }
+
+    @Test
     void failsClearlyWhenSnapshotContainsNoArchitecture() {
         AnalysisResult analysis = new AnalysisResult(Map.of("CP-1", 90), List.of());
         analysis.setStatus("SUCCESS");

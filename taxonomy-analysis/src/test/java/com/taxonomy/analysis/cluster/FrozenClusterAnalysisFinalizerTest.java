@@ -11,7 +11,10 @@ import com.taxonomy.catalog.snapshot.*;
 import com.taxonomy.dto.*;
 import com.taxonomy.export.DiagramSelectionConfig;
 import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.export.DiagramProjectionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.dao.TransientDataAccessResourceException;
 import tools.jackson.databind.ObjectMapper;
@@ -33,6 +36,26 @@ class FrozenClusterAnalysisFinalizerTest {
             CatalogueRuntimePolicy.fullCatalogue(), mock(CatalogueSourceJournal.class));
     private final FrozenClusterAnalysisFinalizer finalizer = new FrozenClusterAnalysisFinalizer(
             store, snapshots, architecture, metadata, mapper);
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void partialResultRemainsLabelledAfterFinalizationAndRestoreWithoutOpenCoverage(boolean hasCoverage) {
+        var context = prepare();
+        var original = store.snapshot(context).result();
+        original.setStatus("PARTIAL");
+        if (hasCoverage) original.setAnalysisCoverage(new AnalysisCoverage(Map.of(), 0, 0, 0));
+
+        finalizer.accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(result -> {
+            var restored = mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class);
+            var diagram = new DiagramProjectionService().projectRaw(restored.getArchitectureView(), "Frozen result");
+            assertThat(diagram.title()).contains("PARTIAL").doesNotContain("0 unassessed");
+            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP"));
+            assertThat(restored.getRawScores()).isEqualTo(original.getRawScores());
+            return true;
+        }));
+    }
 
     @Test
     void finalizesBoundedFrozenElementsAndMetadataBeforePublishingTerminalResult() {
