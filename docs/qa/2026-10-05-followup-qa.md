@@ -13,6 +13,7 @@ The follow-up starts at `ce78dad9d2f9a52211fd7a1459364b1d8f7f08b5`.
 | Document import | Five parser, registration, AI extraction, mapping and candidate-confirmation failure paths copied filenames or raw exceptions into logs. | Keep severity and fixed error codes without private inputs or throwable payloads. Existing HTTP status and response contracts remain intact. |
 | Central exception handling | Validation, conflict, access-denied, generic, MVC and disconnect diagnostics included exception text, request paths or nested causes. | Fixed operation/status/category metadata replaces payloads, including DEBUG/TRACE disconnect diagnostics. Spring's disconnect classifier, response localization and headers remain authoritative. |
 | Restored hypothesis review | Rendering a saved draft ignored accepted/rejected status and the session-applied flag, reoffered completed actions and lost Git Undo. The live bulk action also stayed visible after the last eligible decision. | Render stored decisions, reinstall the existing Undo command and guard repeated review/apply requests. Unsupported statuses remain read-only. Refresh bulk eligibility after live decisions and Undo without replacing row-level pending/error outcomes. |
+| Local browser verification | The documented `-Pui-tests -DskipTests` command returned `BUILD SUCCESS` while the frontend plugin silently skipped both required verification executions. | Those two frontend executions explicitly disable their generic `skipTests` shortcut; `taxonomy.ui.skip` continues to govern browser/transport execution independently of Java test selection. |
 
 ## Verification approach
 
@@ -50,7 +51,7 @@ fixes and now pass. Logger configuration is unchanged.
 | Browser fixture/evidence support tests | 7 tests passed. |
 | Workspace fixture path, lifecycle, readiness, request-gate and persisted-decision contracts | 17 tests passed; combined with the 15 Preferences/restoration cases, 32 passed. This selection overlaps those cases above. |
 | Real workspace materialization/commit contract | 1 Maven integration test passed without mocks or an enclosing test transaction; explicit provisioning, real catalogue identities, complete MVC response and fresh persisted reads. The same test passed while packaging the final browser application. |
-| Maven-owned `primary/primary-admin-chromium` browser selection | Not executed locally: the pinned Chromium download returned a 195-byte HTML “Site Unavailable” page instead of an archive. The required CI browser lane supplies runtime acceptance. |
+| Maven-owned `primary/primary-admin-chromium` browser selection | Passed with pinned Node 24.18.0, Playwright 1.61.1 and Chromium 149.0.7827.55: 822 UI contracts, 35 Admin checks, one actual browser scenario/application start. The identical documented command had previously skipped browser execution; its postcondition failed before the POM correction. |
 | Explicit local Chrome 138 diagnostic of the actual full Admin workflow | Passed with the freshly Maven-packaged application, 35 checks and no audit error; includes reject/apply, Preferences 50→150, pending autosave/restore, reload, real Git Undo and cleanup. The final run used normal production transport; the diagnostic clone-consuming control was removed. This is diagnostic evidence, not pinned-browser CI acceptance. |
 
 The browser scenario now materializes two authored hypotheses using identifiers
@@ -102,8 +103,20 @@ fixture correction and the live header correction.
 
 Local Maven uses Java 21, the repository wrapper, a trusted proxy CA and bounded
 JVM heaps. Disabling npm's inheritance of Maven proxy command-line arguments
-corrected a local Playwright installer argument error; the remaining download
-failure above is recorded as a missing prerequisite, not a passing browser test.
+corrected a local Playwright installer argument error. The initial pinned browser
+download returned a 195-byte HTML page. Installation subsequently succeeded by
+redirecting Playwright's supported Chromium download-host override to Google's
+official archives for the exact locked version; Playwright installed the actual
+browser and headless-shell artifacts. Its normal FFmpeg fallback also succeeded.
+
+Once the download prerequisite was resolved, the documented browser-only Maven
+command exposed the frontend plugin's generic `skipTests` shortcut at the
+integration-test phase. A postcondition requiring actual Admin acceptance failed
+despite Maven's success exit. The two execution-local overrides above now allow
+the same command to run the real transport/UI contracts and selected browser
+scenario. The final run completed in 2:15, including 79 seconds for application
+startup and browser execution. Java tests were intentionally skipped for that
+browser-only command; this is not a substitute for the complete reactor gate.
 
 The associated follow-up PR records the final focused commands, real browser
 result and exact-commit CI/database/security gates. Focused tests do not replace
