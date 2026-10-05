@@ -15,6 +15,12 @@ installiert und die entpackten Programme ausführbar sein. Es wird kein Browser
 automatisch heruntergeladen und bei fehlenden Voraussetzungen kein Test still
 übersprungen.
 
+`CHROME_BIN` kann auch auf `chrome-headless-shell` zeigen, wenn es zur Version von
+ChromeDriver passt. Der lokale Adapter setzt das echte Downloadverzeichnis auch
+über das Browserprotokoll, damit Downloads unabhängig von Chrome-Profilpräferenzen
+funktionieren. Der unten gezeigte `BrowserSessionIT` prüft den Dateidownload und
+seinen Inhalt mit dem tatsächlich ausgewählten Browser.
+
 ```bash
 export CHROME_BIN=/absolute/path/chrome
 export CHROMEDRIVER=/absolute/path/chromedriver

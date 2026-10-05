@@ -77,8 +77,18 @@ public final class BrowserSession implements AutoCloseable {
             var service = new ChromeDriverService.Builder()
                     .usingDriverExecutable(executable.toFile()).usingAnyFreePort().build();
             try {
-                return new BrowserSession(new ChromeDriver(service, options), service::stop,
-                        runtime, "http://localhost:" + port, directory);
+                var driver = new ChromeDriver(service, options);
+                try {
+                    // Headless Shell does not apply Chrome's profile download preferences.
+                    // Set the same real download destination through the browser protocol.
+                    driver.executeCdpCommand("Browser.setDownloadBehavior", Map.of(
+                            "behavior", "allow", "downloadPath", directory.toString()));
+                    return new BrowserSession(driver, service::stop,
+                            runtime, "http://localhost:" + port, directory);
+                } catch (RuntimeException | Error failure) {
+                    stopAfterFailure(driver::quit, failure);
+                    throw failure;
+                }
             } catch (RuntimeException | Error failure) {
                 stopAfterFailure(service::stop, failure);
                 throw failure;
