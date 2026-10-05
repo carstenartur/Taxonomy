@@ -42,7 +42,9 @@
             return true;
         }
         var recovery = window.TaxonomyAnalysisRecovery;
-        if (!recovery?.hasOpenEvaluations() && !window.TaxonomyState?.analysisCoverage?.failedOrBlockedNodes) return false;
+        if (window.TaxonomyState?.lastAnalysisStatus !== 'PARTIAL'
+                && !recovery?.hasOpenEvaluations()
+                && !window.TaxonomyState?.analysisCoverage?.failedOrBlockedNodes) return false;
         var message = recovery?.partialResultMessage?.() || t('relation.search.partial');
         if (contentId === 'copilotContent') renderPartialCopilot(message);
         else showPanelError(contentId, message);

@@ -5,6 +5,7 @@ import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
@@ -419,11 +420,21 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();
+        List<AnalysisCoverage> coverage = new ArrayList<>();
+        List<ClusterAnalysisWork> unassessedRoots = new ArrayList<>();
+        boolean legacyEvidence = false;
         String provider = null;
         for (var work : works(run.id)) {
             if (!work.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) continue;
-            if (work.resultJson == null) { warnings.add(work.root + ": " + Objects.toString(work.failureReason, "unexecuted root") + "; no negative finding"); continue; }
+            if (work.resultJson == null) {
+                unassessedRoots.add(work);
+                warnings.add(work.root + ": " + Objects.toString(work.failureReason, "unexecuted root") + "; no negative finding");
+                continue;
+            }
             var result = read(work.resultJson, AnalysisResult.class);
+            if (result.getAnalysisCoverage() != null) coverage.add(result.getAnalysisCoverage());
+            else if (result.getRawScores().isEmpty()) unassessedRoots.add(work);
+            else legacyEvidence = true;
             for (var score : result.getRawScores().entrySet()) {
                 if (scores.putIfAbsent(score.getKey(), score.getValue()) != null)
                     throw new IllegalStateException("Conflicting catalogue identities across root results");
@@ -436,6 +447,12 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
         var result = new AnalysisResult(scores, tree); result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+        // A partial v3 map cannot represent legacy scored evidence. Retain the
+        // legacy export contract rather than inventing its assessment history.
+        if (!legacyEvidence && !coverage.isEmpty()) {
+            for (var work : unassessedRoots) coverage.add(unassessedCoverage(run, work));
+            result.setAnalysisCoverage(combineCoverage(coverage));
+        }
         for (var work : works(run.id)) if (work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name()) && work.failureReason != null)
             warnings.add(work.failureReason + ": relation work incomplete; no negative finding");
         if (run.relationPlanJson != null) {
@@ -461,6 +478,45 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
         return result;
+    }
+
+    /** Missing worker results leave every node in the admitted frozen root open. */
+    private AnalysisCoverage unassessedCoverage(ClusterAnalysisRun run, ClusterAnalysisWork work) {
+        var context = read(run.contextJson, AnalysisOperationContext.class);
+        var snapshot = read(shard(context, TaxonomyShardRoot.of(work.root)), RootCatalogueSnapshot.class);
+        var authority = context.authority();
+        if (!work.root.equals(snapshot.rootCode())
+                || !Objects.equals(authority.repositoryId(), snapshot.source().repositoryId())
+                || !Objects.equals(authority.workspaceId(), snapshot.source().workspaceId())
+                || !Objects.equals(authority.branch(), snapshot.source().branch())
+                || !Objects.equals(authority.sourceCommit(), snapshot.source().sourceCommit()))
+            throw new IllegalStateException("Frozen coverage source differs from admitted authority");
+        var parents = new HashSet<String>();
+        for (var node : snapshot.nodes()) if (node.parentCode() != null) parents.add(node.parentCode());
+        var nodes = new LinkedHashMap<String, AnalysisCoverage.NodeAssessment>();
+        for (var node : snapshot.nodes()) {
+            nodes.put(node.code(), new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                    parents.contains(node.code()) ? AnalysisCoverage.Descendants.UNASSESSED : AnalysisCoverage.Descendants.COMPLETE,
+                    "INTERRUPTED:ROOT_ANALYSIS_UNAVAILABLE"));
+        }
+        return new AnalysisCoverage(nodes, 0, nodes.size(), nodes.size());
+    }
+
+    /** Preserve worker evidence, including unknown nodes; legacy results have no inferred coverage. */
+    private static AnalysisCoverage combineCoverage(List<AnalysisCoverage> roots) {
+        if (roots.isEmpty()) return null;
+        var nodes = new LinkedHashMap<String, AnalysisCoverage.NodeAssessment>();
+        int assessed = 0, unknown = 0, unresolved = 0;
+        for (var root : roots) {
+            for (var node : root.nodes().entrySet()) {
+                if (nodes.putIfAbsent(node.getKey(), node.getValue()) != null)
+                    throw new IllegalStateException("Conflicting catalogue identities across root coverage");
+            }
+            assessed += root.assessedNodes();
+            unknown += root.unknownNodes();
+            unresolved += root.failedOrBlockedNodes();
+        }
+        return new AnalysisCoverage(nodes, assessed, unknown, unresolved);
     }
 
     private void appendEvent(ClusterAnalysisRun run, AnalysisProgressPhase phase) {

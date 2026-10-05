@@ -111,20 +111,14 @@ public class TaxonomyRelationService {
         RepositoryContext tenant = requireContext(context);
         TaxonomyNode source = nodeRepository.findByCode(sourceCode)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Source node not found: " + sourceCode));
+                        "Source node not found"));
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Target node not found: " + targetCode));
+                        "Target node not found"));
 
         if (relationExistsVisibleInContext(sourceCode, targetCode, type, tenant)) {
-            throw new IllegalArgumentException(String.format(
-                    "Relation already exists: %s --[%s]--> %s "
-                            + "(repository=%s, workspace=%s)",
-                    sourceCode,
-                    type,
-                    targetCode,
-                    tenant.repositoryId(),
-                    tenant.workspaceId()));
+            throw new IllegalArgumentException(
+                    "Relation already exists in active repository/workspace");
         }
 
         TaxonomyRelation relation = new TaxonomyRelation();
@@ -138,13 +132,7 @@ public class TaxonomyRelationService {
         relation.setOwnerUsername(tenant.username());
 
         TaxonomyRelation saved = relationRepository.save(relation);
-        log.info(
-                "Created relation: {} --[{}]--> {} (repository={}, workspace={})",
-                sourceCode,
-                type,
-                targetCode,
-                tenant.repositoryId(),
-                tenant.workspaceId());
+        log.info("Created relation (scope={}, count=1)", tenant.scope());
         return toDto(saved);
     }
 
@@ -155,13 +143,9 @@ public class TaxonomyRelationService {
         TaxonomyRelation relation = relationRepository.findByIdInRepositoryWorkspace(
                         tenant.repositoryId(), id, tenant.workspaceId())
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Relation not found in active repository/workspace: " + id));
+                        "Relation not found in active repository/workspace"));
         relationRepository.delete(relation);
-        log.info(
-                "Deleted relation with id: {} (repository={}, workspace={})",
-                id,
-                tenant.repositoryId(),
-                tenant.workspaceId());
+        log.info("Deleted relation (scope={}, count=1)", tenant.scope());
     }
 
     /** Delete matches only from the exact repository and exact workspace scope. */
@@ -184,15 +168,8 @@ public class TaxonomyRelationService {
                                 type);
         if (!matches.isEmpty()) {
             relationRepository.deleteAll(matches);
-            log.info(
-                    "Deleted {} relation(s): {} --[{}]--> {} "
-                            + "(repository={}, workspace={})",
-                    matches.size(),
-                    sourceCode,
-                    type,
-                    targetCode,
-                    tenant.repositoryId(),
-                    tenant.workspaceId());
+            log.info("Deleted relations (scope={}, count={})",
+                    tenant.scope(), matches.size());
         }
     }
 

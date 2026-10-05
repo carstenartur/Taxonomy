@@ -119,6 +119,13 @@ public class ArchitectureWorkbenchService {
                 || policyTitleKey != null
                 ? fallbackTitle
                 : persistedTitle.strip();
+        // Older snapshots retain outcome/coverage only on the enclosing analysis result.
+        if (architectureView.getAnalysisStatus() == null || "PARTIAL".equals(analysis.getStatus())) {
+            architectureView.setAnalysisStatus(analysis.getStatus());
+        }
+        if (architectureView.getAnalysisCoverage() == null) {
+            architectureView.setAnalysisCoverage(analysis.getAnalysisCoverage());
+        }
         DiagramModel diagram = PersistedDiagramProjection.project(
                 diagramProjectionService, architectureView, title);
         if (diagram.nodes() == null || diagram.nodes().isEmpty()) {

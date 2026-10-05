@@ -9,6 +9,11 @@ public class RequirementArchitectureView {
     public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
     public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }
 
+    /** Retains partial outcomes when legacy results have no node coverage. */
+    private String analysisStatus;
+    public String getAnalysisStatus() { return analysisStatus; }
+    public void setAnalysisStatus(String value) { analysisStatus = value; }
+
     /** Full immutable evidence behind this proposal view; filters do not mutate this report. */
     private RelationSearchReport relationSearchReport;
     public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }

@@ -436,7 +436,14 @@
         var body;
         try {
             // Freeze exactly the current view at the click, not a later mutable state.
-            body = JSON.stringify(state.currentArchView);
+            var exportView = Object.assign({}, state.currentArchView);
+            if (state.lastAnalysisStatus && exportView.analysisStatus !== 'PARTIAL') {
+                exportView.analysisStatus = state.lastAnalysisStatus;
+            }
+            if (state.analysisCoverage && !(exportView.analysisCoverage?.failedOrBlockedNodes > 0)) {
+                exportView.analysisCoverage = state.analysisCoverage;
+            }
+            body = JSON.stringify(exportView);
         } catch (error) {
             diagramStatus(exportMessage('The architecture could not be serialized.',
                 'Die Architektur konnte nicht serialisiert werden.'), false, true);

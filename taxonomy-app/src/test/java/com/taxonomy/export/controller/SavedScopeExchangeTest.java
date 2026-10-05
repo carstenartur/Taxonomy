@@ -10,12 +10,16 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Exchange scope is optional provenance; selected evidence must use catalogue membership. */
 class SavedScopeExchangeTest {
@@ -86,6 +90,26 @@ class SavedScopeExchangeTest {
         var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
         assertThat(imported.getStatusCode().value()).isEqualTo(200);
         assertThat(imported.getBody().get("analysisScope")).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, PARTIAL", "2, PARTIAL", "1, SUCCESS", "2, SUCCESS"})
+    void legacyCoverageFreeStatusSurvivesHttpExportAndImport(int version, String analysisStatus) throws Exception {
+        var saved = evidence(version);
+        saved.setScores(Map.of("BP", 70, "IP", 40));
+        saved.setAnalysisStatus(analysisStatus);
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
+        var exported = mvc.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(saved)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var output = mapper.readTree(exported);
+        assertThat(output.path("version").asInt()).isEqualTo(2);
+        assertThat(output.path("analysisCoverage").isNull()).isTrue();
+        assertThat(output.path("analysisStatus").asString()).isEqualTo(analysisStatus);
+        var imported = mvc.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON).content(exported))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(imported).path("analysisStatus").asString()).isEqualTo(analysisStatus);
+        assertThat(mapper.readTree(imported).path("scores").size()).isEqualTo(2);
     }
 
     @ParameterizedTest

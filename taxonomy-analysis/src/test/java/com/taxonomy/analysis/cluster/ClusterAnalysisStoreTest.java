@@ -179,6 +179,132 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void aggregationPreservesIndependentAssessmentAndDescendantCoverageAcrossRoots() {
+        try (var db = new Database()) {
+            var context = context("coverage-aggregation"); db.admit(context);
+            var cp = result("CP", 80);
+            var assessed = new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.RELEVANT, 80, 80,
+                    AnalysisCoverage.Descendants.PARTIAL, null);
+            var unresolved = new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                    AnalysisCoverage.Descendants.UNASSESSED, "INTERRUPTED:TIMEOUT");
+            cp.setAnalysisCoverage(new AnalysisCoverage(Map.of("CP", assessed, "fixture-child", unresolved), 1, 1, 1));
+            cp.setStatus("PARTIAL");
+            cp.setErrorMessage("TIMEOUT");
+            var ip = result("IP", 0);
+            var excluded = new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.NOT_RELEVANT, 0, 0,
+                    AnalysisCoverage.Descendants.COMPLETE, null);
+            ip.setAnalysisCoverage(new AnalysisCoverage(Map.of("IP", excluded), 1, 0, 0));
+
+            db.store.accept(db.complete(db.task(IP), ip));
+            db.store.accept(db.complete(db.task(CP), cp));
+
+            var coverage = db.store.snapshot(context).result().getAnalysisCoverage();
+            assertNotNull(coverage, "Cluster aggregation must retain the workers' assessment evidence");
+            assertEquals(Map.of("CP", assessed, "fixture-child", unresolved, "IP", excluded), coverage.nodes());
+            assertEquals(2, coverage.assessedNodes());
+            assertEquals(1, coverage.unknownNodes());
+            assertEquals(1, coverage.failedOrBlockedNodes());
+            assertTrue(coverage.hasOpenEvaluations());
+            var restarted = new ClusterAnalysisStore(db.em, db.transactions, new ObjectMapper(), db.dispatch);
+            assertEquals(coverage, restarted.snapshot(context).result().getAnalysisCoverage());
+        }
+    }
+
+    @Test void cancellationRetainsCoverageOfCommittedRootEvidence() {
+        try (var db = new Database()) {
+            var context = context("coverage-cancellation"); db.admitFrozen(context);
+            var cp = result("CP", 75);
+            var coverage = AnalysisCoverage.derive(cp.getTree(), cp.getRawScores(), cp.getScores(), Map.of());
+            cp.setAnalysisCoverage(coverage);
+            db.store.accept(db.complete(db.task(CP), cp));
+            db.store.cancel(context);
+
+            var combined = db.store.snapshot(context).result().getAnalysisCoverage();
+            assertEquals(coverage.nodes().get("CP"), combined.nodes().get("CP"));
+            assertNotNull(combined.nodes().get("IP"), "The unexecuted admitted root must remain visible");
+            assertNotNull(combined.nodes().get("fixture-ip-child"), "Frozen descendants must remain visible");
+            assertEquals(AnalysisCoverage.State.UNKNOWN, combined.nodes().get("IP").state());
+            assertEquals(AnalysisCoverage.State.UNKNOWN, combined.nodes().get("fixture-ip-child").state());
+            assertNull(combined.nodes().get("IP").score());
+            assertTrue(combined.hasOpenEvaluations());
+            assertEquals(2, combined.unknownNodes());
+            assertFalse(db.store.snapshot(context).result().getRawScores().containsKey("IP"));
+        }
+    }
+
+    @Test void failedRootWithoutEvidenceRemainsOpenBesideCompleteCoverage() {
+        try (var db = new Database()) {
+            var context = context("coverage-failure"); db.admitFrozen(context);
+            var cp = result("CP", 75);
+            cp.setAnalysisCoverage(AnalysisCoverage.derive(cp.getTree(), cp.getRawScores(), cp.getScores(), Map.of()));
+            db.store.accept(db.complete(db.task(CP), cp));
+            var failed = new AnalysisResult(Map.of(), List.of()); failed.setStatus("ERROR");
+            db.store.accept(db.complete(db.task(IP), failed));
+            var combined = db.store.snapshot(context).result();
+            assertEquals("PARTIAL", combined.getStatus());
+            assertTrue(combined.getAnalysisCoverage().hasOpenEvaluations());
+            assertEquals(AnalysisCoverage.State.UNKNOWN, combined.getAnalysisCoverage().nodes().get("IP").state());
+            assertFalse(combined.getRawScores().containsKey("IP"));
+            assertExportable(combined);
+        }
+    }
+
+    @Test void mixedLegacyAndCurrentResultsRemainExportableWithoutInventingCoverage() {
+        try (var db = new Database()) {
+            var context = context("coverage-mixed"); db.admit(context);
+            var cp = result("CP", 75);
+            var nodes = new LinkedHashMap<>(AnalysisCoverage.derive(cp.getTree(), cp.getRawScores(), cp.getScores(), Map.of()).nodes());
+            nodes.put("fixture-open", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                    AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:fixture"));
+            cp.setAnalysisCoverage(new AnalysisCoverage(nodes, 1, 1, 1));
+            cp.setStatus("PARTIAL");
+            db.store.accept(db.complete(db.task(CP), cp));
+            db.store.accept(db.complete(db.task(IP), result("IP", 30)));
+            var combined = db.store.snapshot(context).result();
+            assertExportable(combined);
+            assertNull(combined.getAnalysisCoverage(), "Legacy evidence cannot be promoted to complete version 3 coverage");
+            assertEquals("PARTIAL", combined.getStatus());
+            assertEquals(Map.of("CP", 75, "IP", 30), combined.getRawScores());
+        }
+    }
+
+    @Test void allLegacyResultsRetainAbsentCoverage() {
+        try (var db = new Database()) {
+            var context = context("coverage-legacy"); db.admit(context);
+            db.store.accept(db.complete(db.task(CP), result("CP", 75)));
+            db.store.accept(db.complete(db.task(IP), result("IP", 30)));
+            var combined = db.store.snapshot(context).result();
+            assertNull(combined.getAnalysisCoverage());
+            assertExportable(combined);
+        }
+    }
+
+    @Test void duplicateUnknownIdentitiesAcrossRootCoverageAreRejected() {
+        try (var db = new Database()) {
+            var context = context("coverage-duplicate"); db.admit(context);
+            var unknown = new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                    AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:fixture");
+            var cp = result("CP", 75); var ip = result("IP", 30);
+            for (var result : List.of(cp, ip)) {
+                var nodes = new LinkedHashMap<>(AnalysisCoverage.derive(result.getTree(), result.getRawScores(), result.getScores(), Map.of()).nodes());
+                nodes.put("fixture-duplicate", unknown);
+                result.setAnalysisCoverage(new AnalysisCoverage(nodes, 1, 1, 1));
+            }
+            db.store.accept(db.complete(db.task(CP), cp));
+            var completion = db.complete(db.task(IP), ip);
+            assertThrows(IllegalStateException.class, () -> db.store.accept(completion));
+            assertFalse(db.store.snapshot(context).state().terminal());
+        }
+    }
+
+    private static void assertExportable(AnalysisResult result) {
+        var saved = new SavedAnalysis();
+        saved.setVersion(result.getAnalysisCoverage() == null ? 2 : 3);
+        saved.setScores(result.getScores()); saved.setRawScores(result.getRawScores());
+        saved.setAnalysisCoverage(result.getAnalysisCoverage()); saved.setAnalysisStatus(result.getStatus());
+        assertDoesNotThrow(saved::validateCoverageEvidence);
+    }
+
     @Test void concurrentDeliveriesAndResultRollbackPreserveOneDurableEffect() throws Exception {
         try (var db = new Database(); var pool = Executors.newFixedThreadPool(2)) {
             var context = context("duplicate"); db.admit(context);
@@ -245,6 +371,21 @@ class ClusterAnalysisStoreTest {
         }
         void admit(AnalysisOperationContext context) {
             store.admit(context, command("requirement"), null, Map.of(CP, "{\"root\":\"CP\"}", IP, "{\"root\":\"IP\"}"));
+        }
+        void admitFrozen(AnalysisOperationContext context) {
+            var source = DurableClusterAnalysisExecutionTest.source(context);
+            var cp = DurableClusterAnalysisExecutionTest.root(source, "CP");
+            var ip = DurableClusterAnalysisExecutionTest.root(source, "IP");
+            var child = new com.taxonomy.catalog.model.TaxonomyNode();
+            child.setCode("fixture-ip-child"); child.setTaxonomyRoot("IP"); child.setParentCode("IP");
+            child.setLevel(1); child.setNameEn("Unexecuted fixture child");
+            var nodes = new ArrayList<>(ip.nodes());
+            nodes.add(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node.capture(child, ip.nodes().getFirst().metadata(), false));
+            ip = new com.taxonomy.catalog.snapshot.RootCatalogueSnapshot(ip.schemaVersion(), source, "IP", nodes,
+                    ip.overlayMetadata(), ip.catalogueProvenance());
+            var mapper = new ObjectMapper();
+            store.admit(context, command("requirement"), null,
+                    Map.of(CP, mapper.writeValueAsString(cp), IP, mapper.writeValueAsString(ip)));
         }
         SubtaxonomyAnalysisTask task(TaxonomyShardRoot root) {
             return sent.stream().filter(t -> t.routingRoot().equals(root)).map(SubtaxonomyAnalysisTask.class::cast).findFirst().orElseThrow();

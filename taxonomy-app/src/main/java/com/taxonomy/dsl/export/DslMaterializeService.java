@@ -129,8 +129,7 @@ public class DslMaterializeService {
                             "Materialized from DSL", "dsl-materialize", context);
                     relationsCreated++;
                 } catch (IllegalArgumentException error) {
-                    log.warn("Skipped relation {} → {}: {}",
-                            relation.getSourceId(), relation.getTargetId(), error.getMessage());
+                    log.warn("Skipped DSL relation (reason=INVALID_ARGUMENT)");
                 }
             } else if ("proposed".equals(status) || "provisional".equals(status)) {
                 try {
@@ -143,8 +142,7 @@ public class DslMaterializeService {
                             context));
                     hypothesesCreated++;
                 } catch (IllegalArgumentException error) {
-                    log.warn("Skipped hypothesis {} → {}: {}",
-                            relation.getSourceId(), relation.getTargetId(), error.getMessage());
+                    log.warn("Skipped DSL hypothesis (reason=INVALID_ARGUMENT)");
                 }
             }
         }
@@ -164,10 +162,8 @@ public class DslMaterializeService {
 
         ArchitectureDslDocument saved = documentRepository.save(document);
 
-        log.info("Materialized DSL document '{}' in repository {} workspace {}: "
-                        + "{} relations, {} hypotheses",
-                path, context.repositoryId(), context.workspaceId(),
-                relationsCreated, hypothesesCreated);
+        log.info("Materialized DSL document (scope={}, relations={}, hypotheses={})",
+                context.scope(), relationsCreated, hypothesesCreated);
 
         if (repositoryStateService != null && commitId != null) {
             repositoryStateService.recordProjection(context.username(), commitId, branch);
@@ -264,10 +260,8 @@ public class DslMaterializeService {
             }
         }
 
-        log.info("Incremental materialization in repository {} workspace {}: "
-                        + "{} relations, {} hypotheses, {} changes total",
-                context.repositoryId(), context.workspaceId(),
-                relationsCreated, hypothesesCreated, diff.totalChanges());
+        log.info("Incremental materialization (scope={}, relations={}, hypotheses={}, changes={})",
+                context.scope(), relationsCreated, hypothesesCreated, diff.totalChanges());
 
         return new MaterializeResult(true, List.of(), warnings,
                 relationsCreated, hypothesesCreated, afterDocId);

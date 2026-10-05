@@ -234,6 +234,10 @@ public class ExportApiController {
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        // Legacy and mixed worker evidence can be partial without v3 coverage.
+        if (body.get("analysisStatus") instanceof String analysisStatus) {
+            exported.setAnalysisStatus(analysisStatus);
+        }
         if (body.get("analysisScope") != null) {
             try {
                 exported.setAnalysisScope(recoveryObjectMapper.convertValue(body.get("analysisScope"), com.taxonomy.dto.AnalysisScope.class));
