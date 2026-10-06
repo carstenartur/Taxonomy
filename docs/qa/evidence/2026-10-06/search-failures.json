@@ -1,11 +1,11 @@
 {
-  "recordedAt": "2026-10-06T16:30:40.172203+00:00",
+  "recordedAt": "2026-10-06T17:38:33.055636+00:00",
   "baseCommit": "74b3d55082ddbb5b38c0c7309349e371bdc016ab",
   "java": {
-    "command": "./mvnw -B -pl taxonomy-build -am clean test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest,ArchitectureContextDependencyRatchetTest,ArchitectureTest,SupplyChainPinPolicyRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
+    "command": "./mvnw -B -pl taxonomy-build -am clean test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest,ArchitectureContextDependencyRatchetTest,ArchitectureTest,SupplyChainPinPolicyRepositoryTest,ClusterAnalysisDatabaseContractTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
     "exitCode": 0,
     "totals": {
-      "tests": 370,
+      "tests": 376,
       "failures": 0,
       "errors": 0,
       "skipped": 0
@@ -42,6 +42,13 @@
       {
         "name": "com.taxonomy.ArchitectureTest",
         "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.ClusterAnalysisDatabaseContractTest",
+        "tests": 6,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -220,7 +227,10 @@
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeEmbeddingStatusTest.java": "ed2abb27cfc7259498d143e3e4c526b32773465f96bb00cc2f65356e2aeb82ca",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeReadinessRaceTest.java": "b6efdb3063b27959708d025d4a7cc10c63c0b552f79308e199cab0bbf3113803",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeResultLimitTest.java": "b156f5329e8ef43e2ebe867ae8af4408c8d562d96692bfe6abbdd66aef91ed3a",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e"
+    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e",
+    "taxonomy-app/src/test/java/com/taxonomy/AbstractExternalDatabaseContainerIT.java": "1374a5030c2c96ad54c0dd6065e4947743045765e6e3b17c076787c92d458d3a",
+    "taxonomy-app/src/test/java/com/taxonomy/ClusterAnalysisDatabaseContract.java": "2e17c9a72193b5f6681c57c1f881a4977e77b7b2effc4a9787ae84386b2f1e58",
+    "taxonomy-app/src/test/java/com/taxonomy/ClusterAnalysisDatabaseContractTest.java": "0191ec63ef4497fd6b0be34476979cd7f4fdf203193d18e41f215af59beb2268"
   },
   "verificationBoundary": [
     "Controlled inference failures and authored entities; not model-quality evidence.",
@@ -249,5 +259,37 @@
     "physicalOwnershipFailingRun": "https://github.com/carstenartur/Taxonomy/actions/runs/37494513835",
     "contextOwnershipUnchanged": true,
     "buildPolicyTests": 214
+  },
+  "databaseFixtureConnections": {
+    "oracleFailingRun": "https://github.com/carstenartur/Taxonomy/actions/runs/37496495201",
+    "oracleFailingJob": 112382469225,
+    "oracleError": "ORA-12516 during repeated history setup; exact listener resource limit unobserved.",
+    "red": {
+      "command": "./mvnw -B -pl taxonomy-app -am test -Dtest=ClusterAnalysisDatabaseContractTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
+      "tests": 5,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "physicalConnectionsOpened": 458
+    },
+    "poolMaximumConnections": 4,
+    "historyPhysicalOpenBudgetIncludingInitialization": 8,
+    "localContractTests": 6,
+    "coverage": [
+      "bounded physical opens during the unchanged history workload",
+      "owned connections closed after normal use and failed schema validation",
+      "borrowed persistence factory does not close the original pool",
+      "independent concurrent completion transactions and rollback",
+      "original scope isolation, history limit and persisted data checks"
+    ],
+    "boundary": "Local HSQL evidence; native Oracle/PostgreSQL/SQL Server acceptance requires the database workflow on the updated head."
+  },
+  "postgresInfrastructureFailure": {
+    "run": "https://github.com/carstenartur/Taxonomy/actions/runs/37496495201",
+    "job": 112382469049,
+    "artifact": "org.eclipse.sisu:org.eclipse.sisu.plexus:0.9.0.M4",
+    "status": 500,
+    "laterDownloadStatus": 200,
+    "databaseTestsExecuted": false
   }
 }

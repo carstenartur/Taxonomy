@@ -67,7 +67,7 @@ only the node index is ready.
 
 The [machine-readable record](evidence/2026-10-06/search-failures.json) records the
 final focused commands, test counts and source digests. The final local Java run
-passed all 370 selected tests, including the mandatory architecture and build-policy
+passed all 376 selected tests, including the mandatory architecture and build-policy
 checks; the Maven-owned UI contract phase passed 851 tests,
 including five new search-mode regressions. Both completed with zero failures,
 errors or skipped tests. These focused results do not replace canonical CI.
@@ -126,6 +126,30 @@ implementation dependency without increasing the reviewed dependency baseline,
 changing context ownership or exempting the handler from architecture checks.
 The final focused command includes `taxonomy-build` so its mandatory physical
 ownership, graph and selector checks execute with the current reactor outputs.
+
+## Database fixture connection lifetime
+
+In [database run 37496495201](https://github.com/carstenartur/Taxonomy/actions/runs/37496495201),
+the Oracle browser cases passed, but the final diagnostics history-scope case
+failed with `ORA-12516` while opening a JDBC connection inside its 55-row foreign
+history setup. The listener refusal alone does not identify its resource limit.
+The fixture used `DriverManagerDataSource`, which opens a physical connection on
+every call. A local regression running the same history contract measured **458
+physical opens** and failed the new connection-budget assertion.
+
+The fixture now owns a Hikari pool limited to four connections. Reopened persistence
+factories borrow that pool, and closing a borrowed factory leaves the original
+fixture usable. Normal shutdown and failed schema validation close owned pools.
+The HSQL contract covers the same pool lifecycle locally, including genuinely
+concurrent completion transactions, rollback, scope filtering and persisted data
+read by a second factory. The measured history workload must use at most eight
+physical opens including initialization and leave no open connections afterward.
+The original 55-row history case, concurrent insert barriers and timeouts remain
+unchanged. Native Oracle acceptance still belongs to the required database lane.
+
+The PostgreSQL job in that run failed before executing database tests because Maven
+Central returned HTTP 500 for `org.eclipse.sisu.plexus:0.9.0.M4`. A later download
+check returned HTTP 200. This infrastructure failure is not counted as a test pass.
 
 ## Verification boundaries and open investigations
 
