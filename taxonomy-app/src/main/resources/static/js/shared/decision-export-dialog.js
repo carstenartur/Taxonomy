@@ -8,10 +8,11 @@
     };
     const types = {docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', json: 'application/json'};
     let active = null;
+    function reportText(en, de) {return String(document.documentElement.lang).startsWith('de') ? de : en;}
     function selection(input) {
         const roots = input.selectedRoots || [];
         const available = new Set((input.roots || []).filter(r => r.inAnalysisScope !== false).map(r => r.code));
-        if (!roots.length || roots.some(code => !available.has(code))) throw new Error('Select at least one available taxonomy.');
+        if (!roots.length || roots.some(code => !available.has(code))) throw new Error(reportText('Select at least one available taxonomy.', 'Wählen Sie mindestens eine verfügbare Taxonomie.'));
         return {profile: input.profile || 'COMPACT', taxonomyRoots: [...new Set(roots)],
             contents: input.contents || 'SHORT', treeLayout: input.treeLayout || 'AUTO',
             sections: input.sections || presets[input.profile || 'COMPACT']};
@@ -24,18 +25,20 @@
         });
         return params.toString();
     }
-    async function download(response, format, snapshotId) {
+    async function download(response, format, snapshotId, signal) {
+        if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
         if (!response.ok) {
             const problem = await response.json().catch(() => null);
             throw new Error(problem?.detail || problem?.message || ('HTTP ' + response.status));
         }
         const type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
         if (response.redirected || type !== types[format] || !response.headers.get('X-Taxonomy-Analysis-SHA256'))
-            throw new Error('The response is not a decision report. Please check your session and retry.');
+            throw new Error(reportText('The response is not a decision report. Please check your session and retry.', 'Die Antwort ist kein Entscheidungsbericht. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut.'));
         if (snapshotId && response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId)
-            throw new Error('The report does not belong to the selected snapshot.');
+            throw new Error(reportText('The report does not belong to the selected snapshot.', 'Der Bericht gehört nicht zum ausgewählten Snapshot.'));
         const blob = await response.blob();
-        if (!blob.size) throw new Error('The report is empty.');
+        if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
+        if (!blob.size) throw new Error(reportText('The report is empty.', 'Der Bericht ist leer.'));
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -101,7 +104,7 @@
         const actions = el('div',null,{class:'export-actions'}); form.append(actions);
         const cancel = el('button', t('Cancel','Abbrechen'), {type:'button'});
         const submit = el('button', t('Download','Herunterladen'), {type:'submit'});actions.append(cancel,submit);
-        let roots = [], checks = [], busy = false, ready = false;
+        let roots = [], checks = [], busy = false, ready = false, exportController = null;
         async function load() {
             ready=false; submit.disabled=true; retry.hidden=true;error.textContent='';
             sourceScope.textContent=t('Loading saved scope…','Gespeicherten Umfang laden …');
@@ -129,12 +132,13 @@
                     : t('The original scope was not recorded. Export selection does not change the analysis.', 'Der ursprüngliche Umfang wurde nicht aufgezeichnet. Die Exportauswahl verändert die Analyse nicht.');
                 ready=available.length>0;submit.disabled=!ready;
                 if (!ready) throw new Error(t('No reportable taxonomy is available.','Keine exportierbare Taxonomie verfügbar.'));
-            } catch (err) { error.textContent=err.message;retry.hidden=false; }
+            } catch (err) { if(dialog.open){error.textContent=err.message;retry.hidden=false;} }
         }
         retry.addEventListener('click',load);
-        cancel.addEventListener('click',()=>{if(!busy) dialog.close();});
-        dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
-        dialog.addEventListener('close',()=>{active=null;dialog.remove();opener?.focus();});
+        function abortExport(){if(exportController)exportController.abort();}
+        cancel.addEventListener('click',()=>{abortExport();dialog.close();});
+        dialog.addEventListener('cancel',abortExport);
+        dialog.addEventListener('close',()=>{abortExport();if(active===dialog)active=null;dialog.remove();opener?.focus();});
         form.addEventListener('submit',async event=>{
             event.preventDefault();if(busy||!ready)return;
             const selected = checks.filter(c=>c.checked&&!c.disabled).map(c=>c.value);
@@ -143,11 +147,20 @@
             if(format.value!=='json'&&!included.length){error.textContent=t('Select at least one section.','Wählen Sie mindestens einen Abschnitt.');return;}
             const options = selection({roots,selectedRoots:selected,profile:profile.value,contents:contents.value,treeLayout:layout.value,sections:included});
             if(format.value==='json') {options.profile='FULL';delete options.sections;delete options.contents;delete options.treeLayout;}
-            busy=true;fieldset.disabled=true;cancel.disabled=true;submit.disabled=true;error.textContent='';
+            const controller=new AbortController();
+            exportController=controller;
+            busy=true;fieldset.disabled=true;submit.disabled=true;error.textContent='';
             submit.textContent=t('Generating…','Wird erstellt …');dialog.setAttribute('aria-busy','true');
-            try {await config.submit({format:format.value,options});dialog.close();}
-            catch(err){error.textContent=t('Export failed: ','Export fehlgeschlagen: ')+err.message;error.scrollIntoView({block:'nearest'});}
-            finally {busy=false;fieldset.disabled=false;checks.forEach((c,i)=>{c.disabled=!roots[i].inAnalysisScope;});cancel.disabled=false;submit.disabled=false;submit.textContent=t('Download','Herunterladen');dialog.removeAttribute('aria-busy');}
+            try {
+                await config.submit({format:format.value,options,signal:controller.signal});
+                if(dialog.open&&!controller.signal.aborted)dialog.close();
+            }
+            catch(err){if(dialog.open&&!controller.signal.aborted){error.textContent=t('Export failed: ','Export fehlgeschlagen: ')+err.message;error.scrollIntoView({block:'nearest'});}}
+            finally {
+                busy=false;
+                if(exportController===controller)exportController=null;
+                if(dialog.open){fieldset.disabled=false;checks.forEach((c,i)=>{c.disabled=!roots[i].inAnalysisScope;});submit.disabled=false;submit.textContent=t('Download','Herunterladen');dialog.removeAttribute('aria-busy');}
+            }
         });
         document.body.appendChild(dialog);dialog.showModal();format.focus();load();
         return dialog;
@@ -156,7 +169,7 @@
         const projectId=String(config.projectId), snapshotId=String(config.snapshotId);
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
             load:()=>config.api.decisionReportOptions(projectId,snapshotId,config.language),
-            submit:config.submit || (async ({format,options})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,config.language,options),format,snapshotId))});
+            submit:config.submit || (async ({format,options,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,config.language,options,{signal}),format,snapshotId,signal))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
 }());

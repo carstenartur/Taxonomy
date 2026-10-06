@@ -973,8 +973,8 @@
                     var response = await window.TaxonomyApiClient.request('/api/decision-report/' + selection.format, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options}))
-                    });
-                    await window.TaxonomyDecisionExport.download(response, selection.format);
+                    }, { signal: selection.signal });
+                    await window.TaxonomyDecisionExport.download(response, selection.format, null, selection.signal);
                 }
             });
             return;

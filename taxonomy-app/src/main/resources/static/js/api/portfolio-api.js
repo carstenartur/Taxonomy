@@ -36,11 +36,12 @@ window.TaxonomyPortfolioApi = (function () {
         throw error;
     }
 
-    async function getResponse(url, accept) {
+    async function getResponse(url, accept, options) {
         return requireOk(await fetch(url, {
             headers: { Accept: accept || 'application/json' },
             credentials: 'same-origin',
-            cache: 'no-store'
+            cache: 'no-store',
+            signal: options?.signal
         }));
     }
 
@@ -212,13 +213,13 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson(projectPath(projectId) + '/snapshots/' + encodeURIComponent(String(snapshotId))
                 + '/decision-report/options' + (language ? '?language=' + encodeURIComponent(language) : ''));
         },
-        downloadDecisionReport: function (projectId, snapshotId, format, language, options) {
+        downloadDecisionReport: function (projectId, snapshotId, format, language, options, requestOptions) {
             const query = new URLSearchParams(window.TaxonomyDecisionExport?.query(options) || '');
             if (language) query.set('language', String(language));
             const suffix = query.toString();
             return getResponse(projectPath(projectId) + '/snapshots/'
                 + encodeURIComponent(String(snapshotId)) + '/decision-report/'
-                + encodeURIComponent(String(format)) + (suffix ? '?' + suffix : ''), '*/*');
+                + encodeURIComponent(String(format)) + (suffix ? '?' + suffix : ''), '*/*', requestOptions);
         },
         updateConflict: function (projectId, conflictId, decision) {
             return sendJson(projectPath(projectId) + '/conflicts/'
@@ -252,8 +253,8 @@ window.TaxonomyPortfolioApi = (function () {
 
         // ── Reports ───────────────────────────────────────────────────────────
         reportUrl: reportUrl,
-        fetchReport: function (projectId, format, parameters, accept) {
-            return getResponse(reportUrl(projectId, format, parameters), accept);
+        fetchReport: function (projectId, format, parameters, accept, requestOptions) {
+            return getResponse(reportUrl(projectId, format, parameters), accept, requestOptions);
         },
 
         // ── Portfolio Git and repository state ────────────────────────────────

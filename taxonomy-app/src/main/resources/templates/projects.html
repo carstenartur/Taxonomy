@@ -17,7 +17,7 @@
 <div id="portfolioStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="portfolioAlert" class="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Project portfolio navigation">
+<nav class="navbar navbar-dark bg-dark sticky-top" th:attr="aria-label=#{ui.aria.project_portfolio_navigation}" aria-label="Project portfolio navigation">
     <div class="container-fluid gap-2">
         <a class="navbar-brand fw-semibold" th:href="@{/}">
             <span aria-hidden="true">🌐</span> Taxonomy
@@ -52,7 +52,7 @@
                             Filter projects
                         </label>
                         <input id="projectFilter" type="search" class="form-control form-control-sm"
-                               autocomplete="off" placeholder="Key or title"/>
+                               autocomplete="off" th:placeholder="#{portfolio.ui.placeholder.filter}" placeholder="Key or title"/>
                     </div>
                     <div id="projectList" class="list-group list-group-flush"
                          aria-label="Projects"></div>
@@ -106,7 +106,7 @@
                 </section>
 
                 <section aria-labelledby="portfolioMetricsHeading" class="mb-3">
-                    <h2 id="portfolioMetricsHeading" class="visually-hidden">Portfolio metrics</h2>
+                    <h2 id="portfolioMetricsHeading" class="visually-hidden" th:text="#{portfolio.ui.metrics}">Portfolio metrics</h2>
                     <div id="portfolioMetrics" class="row row-cols-2 row-cols-md-3 row-cols-xxl-6 g-2"></div>
                 </section>
 
@@ -448,7 +448,7 @@
                     <div class="col-12">
                         <label for="productSource" class="form-label" data-i18n="field.source">Source</label>
                         <textarea id="productSource" name="sourceReference" class="form-control" rows="3" required
-                                  placeholder="Document, URL or catalogue reference and version"></textarea>
+                                  th:placeholder="#{portfolio.ui.placeholder.source}" placeholder="Document, URL or catalogue reference and version"></textarea>
                     </div>
                 </div>
             </div>

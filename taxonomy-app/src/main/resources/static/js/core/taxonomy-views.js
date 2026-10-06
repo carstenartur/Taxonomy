@@ -598,9 +598,9 @@
             var bestName = nameMap[best[0]] || '';
             var bestDisplay = bestName ? (esc(best[0]) + ' \u2013 ' + esc(bestName)) : esc(best[0]);
             statsDiv.innerHTML =
-                '<span class="decision-stats-item">&#128202; <strong>' + scoredCount + '</strong> of <strong>' + totalNodes + '</strong> nodes scored</span>' +
-                '<span class="decision-stats-item">&#127942; Best: <strong>' + bestDisplay + '</strong> (' + best[1] + '%)</span>' +
-                '<span class="decision-stats-item">&#127968; ' + affectedRootsSet.size + ' root categor' + (affectedRootsSet.size === 1 ? 'y' : 'ies') + ' affected</span>';
+                '<span class="decision-stats-item">&#128202; ' + esc(t('views.ui.scored', scoredCount, totalNodes)) + '</span>' +
+                '<span class="decision-stats-item">&#127942; ' + esc(t('views.ui.best')) + ' <strong>' + bestDisplay + '</strong> (' + best[1] + '%)</span>' +
+                '<span class="decision-stats-item">&#127968; ' + esc(t('views.ui.roots', affectedRootsSet.size)) + '</span>';
         }
         container.appendChild(statsDiv);
 
@@ -879,12 +879,12 @@
         var filterDiv = document.createElement('div');
         filterDiv.className = 'decision-filter mb-2 d-flex align-items-center gap-2 flex-wrap';
         filterDiv.innerHTML =
-            '<strong>Top Matches</strong>' +
+            '<strong>' + esc(t('views.ui.matches')) + '</strong>' +
             '<div class="form-check form-check-inline ms-2 mb-0">' +
                 '<input class="form-check-input" type="checkbox" id="dmFilterLeaves">' +
-                '<label class="form-check-label small" for="dmFilterLeaves">Leaves only</label>' +
+                '<label class="form-check-label small" for="dmFilterLeaves">' + esc(t('views.ui.leaves')) + '</label>' +
             '</div>' +
-            '<label class="small ms-2 mb-0">Min score:&nbsp;' +
+            '<label class="small ms-2 mb-0">' + esc(t('views.ui.min')) + '&nbsp;' +
                 '<input id="dmMinScore" type="number" class="form-control form-control-sm d-inline-block" ' +
                 'style="width:70px" min="0" max="100" value="0">&nbsp;%' +
             '</label>';
@@ -894,7 +894,7 @@
         table.className = 'table table-sm table-hover decision-table';
         table.innerHTML =
             '<thead><tr>' +
-            '<th>#</th><th>Code</th><th>Name</th><th>Score</th><th>Path</th><th>Level</th>' +
+            '<th>#</th><th>' + esc(t('views.ui.code')) + '</th><th>' + esc(t('views.ui.name')) + '</th><th>' + esc(t('views.ui.score')) + '</th><th>' + esc(t('views.ui.path')) + '</th><th>' + esc(t('views.ui.level')) + '</th>' +
             '</tr></thead>';
         var tbody = document.createElement('tbody');
         tbody.id = 'decision-table-body';

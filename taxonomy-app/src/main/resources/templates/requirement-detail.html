@@ -15,13 +15,13 @@
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
 <div id="requirementLive" class="visually-hidden" role="status" aria-live="polite"></div>
-<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Requirement navigation">
+<nav class="navbar navbar-dark bg-dark sticky-top" th:attr="aria-label=#{portfolio.requirement.navigation}" aria-label="Requirement navigation">
     <div class="container-fluid gap-2">
         <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
         <span class="navbar-text text-white fw-semibold me-auto" id="pageTitle">Requirement detail</span>
         <a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a>
         <a class="btn btn-sm btn-outline-light" id="matrixLink" href="#">Matrices</a>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
+        <div class="btn-group btn-group-sm" role="group" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
             <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
             <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
         </div>
@@ -41,11 +41,11 @@
                         <span id="requirementStatus" class="badge text-bg-secondary"></span>
                         <span id="requirementReview" class="badge text-bg-secondary"></span>
                     </div>
-                    <h1 id="requirementHeading" class="h2 mt-2 mb-1">Loading requirement…</h1>
+                    <h1 id="requirementHeading" class="h2 mt-2 mb-1" th:text="#{portfolio.requirement.loading}">Loading requirement…</h1>
                     <p id="requirementMeta" class="text-body-secondary mb-0"></p>
                 </div>
                 <div class="d-flex flex-wrap gap-2 align-items-start">
-                    <a id="architectureWorkbenchLink" class="btn btn-outline-success" href="#">
+                    <a id="architectureWorkbenchLink" class="btn btn-outline-success" href="#" th:text="#{portfolio.requirement.openWorkbench}">
                         Open architecture workbench
                     </a>
                     <button id="reanalyzeRequirement" type="button" class="btn btn-primary">Analyze current version</button>
@@ -130,37 +130,37 @@
     <div class="modal-dialog modal-xl">
         <form id="newVersionForm" class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title fs-5" id="newVersionTitle">Create immutable requirement version</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h2 class="modal-title fs-5" id="newVersionTitle" th:text="#{portfolio.version.heading}">Create immutable requirement version</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label for="versionText" class="form-label">Requirement text</label>
+                    <label for="versionText" class="form-label" th:text="#{portfolio.version.text}">Requirement text</label>
                     <textarea id="versionText" class="form-control" rows="12" required></textarea>
                 </div>
                 <div class="mb-3">
-                    <label for="changeReason" class="form-label">Change reason</label>
+                    <label for="changeReason" class="form-label" th:text="#{portfolio.version.reason}">Change reason</label>
                     <input id="changeReason" class="form-control" maxlength="1000" required/>
                 </div>
                 <details>
-                    <summary class="fw-semibold">Source reference</summary>
+                    <summary class="fw-semibold" th:text="#{portfolio.version.source}">Source reference</summary>
                     <div class="row g-3 mt-1">
-                        <div class="col-md-6"><label for="sourceSection" class="form-label">Section</label><input id="sourceSection" class="form-control"/></div>
-                        <div class="col-md-3"><label for="sourcePage" class="form-label">Page</label><input id="sourcePage" type="number" min="1" class="form-control"/></div>
-                        <div class="col-12"><label for="sourceOriginal" class="form-label">Original text</label><textarea id="sourceOriginal" rows="5" class="form-control"></textarea></div>
+                        <div class="col-md-6"><label for="sourceSection" class="form-label" th:text="#{portfolio.version.section}">Section</label><input id="sourceSection" class="form-control"/></div>
+                        <div class="col-md-3"><label for="sourcePage" class="form-label" th:text="#{portfolio.version.page}">Page</label><input id="sourcePage" type="number" min="1" class="form-control"/></div>
+                        <div class="col-12"><label for="sourceOriginal" class="form-label" th:text="#{portfolio.version.original}">Original text</label><textarea id="sourceOriginal" rows="5" class="form-control"></textarea></div>
                     </div>
                 </details>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Create version</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" th:text="#{dialog.cancel}">Cancel</button>
+                <button type="submit" class="btn btn-primary" th:text="#{portfolio.version.create}">Create version</button>
             </div>
         </form>
     </div>
 </div>
 
 <div id="detailBusy" class="portfolio-busy d-none" role="status" aria-live="polite">
-    <div class="spinner-border" aria-hidden="true"></div><span>Loading…</span>
+    <div class="spinner-border" aria-hidden="true"></div><span th:text="#{status.loading}">Loading…</span>
 </div>
 <script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
 <script th:src="@{/js/taxonomy-i18n.js}"></script>

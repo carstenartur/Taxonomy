@@ -79,6 +79,16 @@
                 searchBtn.click();
             }
         });
+        searchInput.addEventListener('input', function () {
+            if (!searchInput.value.trim()) clearSearch();
+            updateClearControl();
+        });
+        const clearButton = document.getElementById('searchClearBtn');
+        if (clearButton) clearButton.addEventListener('click', function () {
+            clearSearch();
+            searchInput.focus();
+        });
+        updateClearControl();
         if (resultArea) {
             resultArea.addEventListener('click', onResultAreaClick);
         }
@@ -195,7 +205,7 @@
     }
 
     function performSearch(query, mode, maxResults) {
-        if (!query) return;
+        if (!query) { clearSearch(); return; }
 
         openSearchWorkspace();
         var request = beginSearchRequest();
@@ -205,6 +215,7 @@
         area.innerHTML = '<div class="text-center text-muted py-2">'
             + '<div class="spinner-border spinner-border-sm" role="status"></div> '
             + t('search.searching') + '</div>';
+        updateClearControl();
 
         var url;
         switch (mode) {
@@ -244,8 +255,8 @@
             .catch(function (error) {
                 if (shouldIgnoreSearchError(error, request)) return;
                 resetResultState();
-                area.innerHTML = '<div class="text-danger small p-2">⚠️ '
-                    + escapeHtml(error.message) + '</div>';
+                area.innerHTML = '<div class="text-danger small p-2" role="alert">⚠️ '
+                    + escapeHtml(t('search.failed')) + '</div>';
             });
     }
 
@@ -253,7 +264,7 @@
         var area = document.getElementById('searchResultsArea');
         if (!nodes || nodes.length === 0) {
             resetResultState();
-            area.innerHTML = '<div class="text-muted small p-2">'
+            area.innerHTML = '<div class="text-muted small p-2" role="status">'
                 + t('search.no.results') + '</div>';
             return;
         }
@@ -282,7 +293,7 @@
         if (!data.matchedNodes || data.matchedNodes.length === 0) {
             resetResultState();
             area.innerHTML = prefix + suffix
-                || '<div class="text-muted small p-2">'
+                || '<div class="text-muted small p-2" role="status">'
                     + t('search.no.graph.results') + '</div>';
             return;
         }
@@ -697,6 +708,7 @@
             area.innerHTML = '<div class="text-center text-muted py-2">'
                 + '<div class="spinner-border spinner-border-sm" role="status"></div> '
                 + t('search.finding.similar') + '</div>';
+            updateClearControl();
         }
 
         fetch(
@@ -718,8 +730,8 @@
                 if (shouldIgnoreSearchError(error, request)) return;
                 resetResultState();
                 if (area) {
-                    area.innerHTML = '<div class="text-danger small p-2">⚠️ '
-                        + escapeHtml(error.message) + '</div>';
+                    area.innerHTML = '<div class="text-danger small p-2" role="alert">⚠️ '
+                        + escapeHtml(t('search.similar.failed')) + '</div>';
                 }
             });
     }
@@ -743,9 +755,30 @@
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
+    function updateClearControl() {
+        var control = document.getElementById('searchClearBtn');
+        var input = document.getElementById('searchInput');
+        var area = document.getElementById('searchResultsArea');
+        if (control) control.hidden = !(input && input.value.trim())
+            && !(area && area.style.display === 'block');
+    }
+
+    function clearSearch() {
+        searchGeneration += 1;
+        if (activeSearchController) activeSearchController.abort();
+        activeSearchController = null;
+        resetResultState();
+        var input = document.getElementById('searchInput');
+        var area = document.getElementById('searchResultsArea');
+        if (input) input.value = '';
+        if (area) { area.innerHTML = ''; area.style.display = 'none'; }
+        updateClearControl();
+    }
+
     window.TaxonomySearch = {
         findSimilar: findSimilar,
         performSearch: performSearch,
+        clearSearch: clearSearch,
         checkEmbeddingStatus: checkEmbeddingStatus,
         isEmbeddingAvailable: function () { return embeddingAvailable; },
         resultWindowSize: RESULT_WINDOW_SIZE,

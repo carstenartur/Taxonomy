@@ -25,7 +25,7 @@
 <div id="a11yAlert" class="visually-hidden"
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark mb-0" aria-label="Main navigation">
+<nav class="navbar navbar-dark bg-dark mb-0" th:attr="aria-label=#{ui.aria.main_navigation}" aria-label="Main navigation">
     <div class="container-fluid flex-wrap gap-2">
         <span class="navbar-brand fw-bold">
             &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span> &mdash; <span id="navbarVersion" th:text="'v' + ${appVersion}">v0.0.0</span>
@@ -81,12 +81,12 @@
         <!-- Language selector -->
         <select id="langSelector" class="form-select form-select-sm me-2" style="width:auto;"
                 onchange="TaxonomyI18n.setLocale(this.value)"
-                th:title="#{lang.selector.label}" aria-label="Language">
+                th:title="#{lang.selector.label}" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
             <option value="en" th:selected="${#locale.language == 'en'}">🇬🇧 English</option>
             <option value="de" th:selected="${#locale.language == 'de'}">🇩🇪 Deutsch</option>
         </select>
-        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.about}" aria-label="About">&#8505;&#65039;</button>
-        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.darkmode}" aria-label="Toggle theme">&#127769;</button>
+        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.about}" th:attr="aria-label=#{ui.aria.about}" aria-label="About">&#8505;&#65039;</button>
+        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none"
             th:title="#{navbar.admin.open.title}" title="Open admin mode to access diagnostic panels and prompt templates"
             th:aria-label="#{navbar.admin.locked}" style="font-size:1.1rem;">
@@ -138,7 +138,7 @@
      visible across all tabs to give clear feedback on any page. -->
 <div id="startupBanner" class="alert alert-info text-center mb-0 d-none" role="alert"
      style="border-radius:0; border-left:none; border-right:none; position:sticky; top:0; z-index:1050;">
-    ⏳ <strong>Application is starting up…</strong> Taxonomy data is loading — this takes about 1–2 minutes on first start.
+    ⏳ <strong th:text="#{startup.ui.title}">Application is starting up…</strong> <span th:text="#{startup.ui.help}">Taxonomy data is loading — this takes about 1–2 minutes on first start.</span>
     <span id="startupBannerStatus" class="ms-2 text-muted small"></span>
 </div>
 
@@ -153,13 +153,13 @@
                     <span id="analysisDurationDisplay" class="small text-muted" hidden></span>
                     <div class="taxonomy-view-controls">
                         <!-- Stable first row; variable tools belong in the second row. -->
-                        <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" aria-label="View mode">
-                            <button id="viewList"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view">&#128203; List</button>
-                            <button id="viewTabs"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view">&#128209; Tabs</button>
-                            <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart">&#128262; Sunburst</button>
-                            <button id="viewTree"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram">&#127795; Tree</button>
-                            <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map">&#127942; Decision</button>
-                            <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;">&#128203; Summary</button>
+                        <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" th:attr="aria-label=#{ui.aria.view_mode}" aria-label="View mode">
+                            <button id="viewList"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view" th:text="#{view.list.label}">&#128203; List</button>
+                            <button id="viewTabs"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view" th:text="#{view.tabs.label}">&#128209; Tabs</button>
+                            <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart" th:text="#{view.sunburst.label}">&#128262; Sunburst</button>
+                            <button id="viewTree"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram" th:text="#{view.tree.label}">&#127795; Tree</button>
+                            <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map" th:text="#{view.decision.label}">&#127942; Decision</button>
+                            <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
                         </div>
                         <div class="taxonomy-view-tools">
                         <!-- Expand / Collapse (list &amp; tabs only) -->
@@ -184,7 +184,7 @@
                     </div>
                 </div>
                 <div class="card-body overflow-auto" style="max-height:82vh;">
-                    <div id="taxonomyTree" aria-label="Taxonomy Tree" aria-busy="true">
+                    <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
                         <div class="text-center text-muted py-5">
                             <div class="spinner-border spinner-border-sm" role="status"></div>
                             <span th:text="#{browse.tree.loading}">Loading taxonomy&hellip;</span>
@@ -293,14 +293,16 @@
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.search.title}">&#128269; Search Taxonomy</summary>
                     <div class="mt-2">
                         <div class="row g-2 mx-0 mb-2">
-                            <div class="col">
+                            <div class="col d-flex gap-1">
                                 <input type="text" id="searchInput" class="form-control form-control-sm"
-                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" aria-label="Search query"/>
+                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query"/>
+                                <button id="searchClearBtn" class="btn btn-sm btn-outline-secondary" type="button" hidden
+                                        th:title="#{search.clear}" th:aria-label="#{search.clear}" aria-label="Clear search">×</button>
                             </div>
                         </div>
                         <div class="row g-2 mx-0 mb-2">
                             <div class="col-6">
-                                <select id="searchModeSelect" class="form-select form-select-sm" aria-label="Search mode">
+                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode">
                                     <option value="fulltext" th:text="#{search.mode.fulltext}">Full-text</option>
                                     <option value="semantic" th:text="#{search.mode.semantic}">Semantic</option>
                                     <option value="hybrid" th:text="#{search.mode.hybrid}">Hybrid</option>
@@ -308,7 +310,7 @@
                                 </select>
                             </div>
                             <div class="col-3">
-                                <select id="searchMaxResults" class="form-select form-select-sm" aria-label="Max results">
+                                <select id="searchMaxResults" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.max_results}" aria-label="Max results">
                                     <option value="10">10</option>
                                     <option value="20" selected>20</option>
                                     <option value="50">50</option>
@@ -393,7 +395,7 @@
                         <p class="small text-muted" th:text="#{docimport.panel.description}">Upload a PDF or DOCX document (e.g. an administrative regulation) to extract requirement candidates.</p>
 
                         <!-- Import mode selector -->
-                        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Import mode">
+                        <div class="btn-group btn-group-sm mb-2" role="group" th:attr="aria-label=#{ui.aria.import_mode}" aria-label="Import mode">
                             <input type="radio" class="btn-check" name="importMode" id="modeExtract" value="extract" checked>
                             <label class="btn btn-outline-secondary" for="modeExtract" th:text="#{docimport.mode.extract}">&#128221; Extract Candidates</label>
 
@@ -476,7 +478,7 @@
                         </div>
                         <div class="card-body p-3">
                             <div id="docRegMapSourceInfo" class="small text-muted mb-2"></div>
-                            <div class="table-responsive" tabindex="0" role="region" aria-label="Scrollable data table">
+                            <div class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
                                 <table class="table table-sm table-striped mb-0">
                                     <thead>
                                         <tr>
@@ -573,16 +575,16 @@
                     <div class="card shadow-sm">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
-                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge">0 pending</span>
+                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
                         </div>
                         <div class="card-body p-2">
-                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" aria-label="Proposal status filter">
+                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
                                 <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
                                 <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
                                 <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{quality.accepted}">Accepted</button>
                                 <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
                             </div>
-                            <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" aria-label="Scrollable data table">
+                            <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
                                 <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
                             </div>
                         </div>
@@ -594,7 +596,7 @@
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.relations.title}">&#128279; Relations Browser</summary>
                     <div class="mt-2">
                         <div class="d-flex gap-2 align-items-center mb-2">
-                            <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" aria-label="Filter by relation type">
+                            <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" th:attr="aria-label=#{ui.aria.filter_by_relation_type}" aria-label="Filter by relation type">
                                 <option value="" th:text="#{relations.filter.all.types}">All types</option>
                                 <option value="REALIZES">REALIZES</option>
                                 <option value="SUPPORTS">SUPPORTS</option>
@@ -654,27 +656,27 @@
                                         <option value="4">4&#215;</option>
                                     </select>
                                 </label>
-                                <button id="exportPdf"       class="btn btn-outline-secondary" th:title="#{export.btn.pdf.title}" title="Export as vector PDF (or Print)">&#128229; PDF (Vector)</button>
-                                <button id="exportVisio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Download experimental bounded Visio 2012 subset — Microsoft Visio desktop certification pending">&#128229; Visio 2012 subset</button>
-                                <button id="exportArchiMate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Download experimental bounded ArchiMate 3.1 subset — mapping profile and loss manifest included; independent-tool acceptance pending">&#128229; ArchiMate 3.1 subset</button>
+                                <button id="exportPdf"       class="btn btn-outline-secondary" th:title="#{export.btn.pdf.title}" title="Export as vector PDF (or Print)" th:text="#{index.ui.vector}">&#128229; PDF (Vector)</button>
+                                <button id="exportVisio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Download experimental bounded Visio 2012 subset — Microsoft Visio desktop certification pending" th:text="#{index.ui.visio}">&#128229; Visio 2012 subset</button>
+                                <button id="exportArchiMate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Download experimental bounded ArchiMate 3.1 subset — mapping profile and loss manifest included; independent-tool acceptance pending" th:text="#{index.ui.archimate}">&#128229; ArchiMate 3.1 subset</button>
                                 <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
                                 <button id="exportStructurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
                             </div>
                             <h6 class="mb-2" th:text="#{export.tree.heading}">Tree Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportDot"         class="btn btn-outline-warning" th:title="#{export.btn.dot.title}" title="Export taxonomy hierarchy as Graphviz DOT for yEd, Gephi, or Graphviz">&#128229; DOT (Graphviz)</button>
-                                <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents">&#128229; Mermaid Tree</button>
+                                <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents" th:text="#{index.ui.mermaidTree}">&#128229; Mermaid Tree</button>
                             </div>
                             <h6 class="mb-2" th:text="#{export.data.heading}">Data Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportCsv"  class="btn btn-outline-success" th:title="#{export.btn.csv.title}" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
                                 <button id="exportJson" class="btn btn-outline-success" th:title="#{export.btn.json.title}" title="Download scores as JSON file">&#128229; JSON</button>
                             </div>
-                            <h6 class="mb-2">&#128196; Full Report</h6>
+                            <h6 class="mb-2" th:text="#{export.report.heading}">&#128196; Full Report</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportReportMd"   class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.md.title}" title="Export a comprehensive architecture report as Markdown">&#128196; Report (.md)</button>
-                                <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.html.title}" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
-                                <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.docx.title}" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
+                                <button id="exportReportMd"   class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.md.title}" title="Export a comprehensive architecture report as Markdown" th:text="#{index.ui.reportMd}">&#128196; Report (.md)</button>
+                                <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.html.title}" title="Export a comprehensive architecture report as HTML" th:text="#{index.ui.reportHtml}">&#128196; Report (.html)</button>
+                                <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.docx.title}" title="Export a comprehensive architecture report as Word document" th:text="#{index.ui.reportDocx}">&#128196; Report (.docx)</button>
                             </div>
                             <h6 class="mb-2" th:text="#{export.decision.heading}">&#128221; Decision Evidence</h6>
                             <p class="text-muted small mb-2" th:text="#{export.decision.description}">
@@ -689,9 +691,9 @@
 
                         <h6 class="mb-2" th:text="#{export.import.heading}">Import &amp; Load</h6>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
+                            <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file" th:text="#{index.ui.loadScores}">&#128228; Load Scores</button>
                             <input type="file" id="importJsonFile" accept=".json" style="display:none;">
-                            <button id="archiMateImportBtn" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
+                            <button id="archiMateImportBtn" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" th:attr="aria-label=#{ui.aria.import_archimate_xml}" aria-label="Import ArchiMate XML" th:text="#{index.ui.importArchiMate}">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
 
@@ -727,8 +729,8 @@
                         <div id="importProfileInfo" class="mb-2"></div>
 
                         <div class="d-flex gap-2 mb-3">
-                            <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" th:title="#{framework.import.btn.preview.title}" title="Preview import without writing to database">&#128270; Preview</button>
-                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" th:title="#{framework.import.btn.execute.title}" title="Execute full import into database">&#128228; Import</button>
+                            <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" th:title="#{framework.import.btn.preview.title}" title="Preview import without writing to database" th:text="#{index.ui.preview}">&#128270; Preview</button>
+                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" th:title="#{framework.import.btn.execute.title}" title="Execute full import into database" th:text="#{index.ui.import}">&#128228; Import</button>
                         </div>
 
                         <div id="importResultArea"></div>
@@ -753,7 +755,7 @@
                     <div class="card shadow-sm">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span class="fw-semibold" th:text="#{graph.explorer.title}">&#128300; Graph Explorer</span>
-                            <span class="badge bg-info text-dark" th:title="#{graph.explorer.navigate.title}" title="Explore upstream dependencies, downstream impacts, and failure analysis">Navigate</span>
+                            <span class="badge bg-info text-dark" th:title="#{graph.explorer.navigate.title}" title="Explore upstream dependencies, downstream impacts, and failure analysis" th:text="#{graph.explorer.navigate}">Navigate</span>
                         </div>
                         <div class="card-body p-3">
                             <p class="text-muted small mb-2" th:utext="#{graph.explorer.description}">
@@ -764,12 +766,12 @@
                                 <div class="col-8">
                                     <label for="graphNodeInput" class="form-label small mb-0" th:text="#{graph.node.label}">Node code:</label>
                                     <input type="text" id="graphNodeInput" class="form-control form-control-sm"
-                                           th:placeholder="#{graph.node.placeholder}" placeholder="e.g. BP-1040" aria-label="Node code for graph query" list="graphNodeSuggestions"/>
+                                           th:placeholder="#{graph.node.placeholder}" placeholder="e.g. BP-1040" th:attr="aria-label=#{ui.aria.node_code_for_graph_query}" aria-label="Node code for graph query" list="graphNodeSuggestions"/>
                                     <datalist id="graphNodeSuggestions"></datalist>
                                 </div>
                                 <div class="col-4">
                                     <label for="graphMaxHops" class="form-label small mb-0" th:text="#{graph.maxhops.label}">Max hops:</label>
-                                    <select id="graphMaxHops" class="form-select form-select-sm" aria-label="Maximum traversal hops">
+                                    <select id="graphMaxHops" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.maximum_traversal_hops}" aria-label="Maximum traversal hops">
                                         <option value="1">1</option>
                                         <option value="2" selected>2</option>
                                         <option value="3">3</option>
@@ -779,19 +781,19 @@
                                 </div>
                             </div>
                             <div class="d-flex gap-2 flex-wrap">
-                                <button id="graphUpstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.upstream.title}" title="What supports this element?">
+                                <button id="graphUpstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.upstream.title}" title="What supports this element?" th:text="#{index.ui.upstream}">
                                     &#11014;&#65039; Upstream
                                 </button>
-                                <button id="graphDownstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.downstream.title}" title="What depends on this element?">
+                                <button id="graphDownstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.downstream.title}" title="What depends on this element?" th:text="#{index.ui.downstream}">
                                     &#11015;&#65039; Downstream
                                 </button>
-                                <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" th:title="#{graph.btn.failure.title}" title="What is affected if this element fails?">
+                                <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" th:title="#{graph.btn.failure.title}" title="What is affected if this element fails?" th:text="#{index.ui.failure}">
                                     &#9888;&#65039; Failure Impact
                                 </button>
-                                <button id="graphEnrichedFailureBtn" class="btn btn-sm btn-outline-warning" th:title="#{graph.btn.enriched.title}" title="Failure impact enriched with requirement coverage and risk score">
+                                <button id="graphEnrichedFailureBtn" class="btn btn-sm btn-outline-warning" th:title="#{graph.btn.enriched.title}" title="Failure impact enriched with requirement coverage and risk score" th:text="#{index.ui.enriched}">
                                     &#128200; Enriched Impact
                                 </button>
-                                <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" th:title="#{graph.btn.reqimpact.title}" title="Analyze which elements are transitively impacted by the current requirement scores">
+                                <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" th:title="#{graph.btn.reqimpact.title}" title="Analyze which elements are transitively impacted by the current requirement scores" th:text="#{index.ui.reqImpact}">
                                     &#127919; Req. Impact
                                 </button>
                             </div>
@@ -966,12 +968,12 @@
                     }
 
                     function loadContextHistory() {
-                        fetch('/api/workspace/history')
+                        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/history'); })
                             .then(function(r) { return r.json(); })
                             .then(function(records) {
                                 var container = document.getElementById('contextHistoryTimeline');
                                 if (!records || records.length === 0) {
-                                    container.innerHTML = '<div class="text-muted">No navigation history yet.</div>';
+                                    container.innerHTML = '<div class="text-muted">' + TaxonomyI18n.t('index.ui.historyEmpty') + '</div>';
                                     return;
                                 }
                                 var html = '<div class="timeline">';
@@ -987,15 +989,15 @@
                                     html += '</div>';
                                     html += '<div class="flex-grow-1">';
                                     html += '<div class="small text-muted">' + escHtml(ts) + ' ' + reasonBadge + '</div>';
-                                    if (fromCtx) html += '<div class="small"><span class="text-muted">From:</span> ' + fromCtx + '</div>';
-                                    if (toCtx) html += '<div class="small"><span class="text-muted">To:</span> ' + toCtx + '</div>';
+                                    if (fromCtx) html += '<div class="small"><span class="text-muted">' + TaxonomyI18n.t('index.ui.from') + '</span> ' + fromCtx + '</div>';
+                                    if (toCtx) html += '<div class="small"><span class="text-muted">' + TaxonomyI18n.t('index.ui.to') + '</span> ' + toCtx + '</div>';
                                     html += '</div></div>';
                                 });
                                 html += '</div>';
                                 container.innerHTML = html;
                             })
                             .catch(function() {
-                                document.getElementById('contextHistoryTimeline').innerHTML = '<div class="text-danger">Failed to load history.</div>';
+                                document.getElementById('contextHistoryTimeline').innerHTML = '<div class="text-danger">' + TaxonomyI18n.t('index.ui.historyFailed') + '</div>';
                             });
                     }
 
@@ -1021,14 +1023,14 @@
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <span class="fw-semibold" th:text="#{dsl.editor.title}">&#128221; Architecture DSL Editor</span>
                                 <div class="d-flex gap-1">
-                                    <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.load.title}" title="Load current architecture as DSL">&#128260; Load Current</button>
-                                    <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" th:title="#{dsl.btn.parse.title}" title="Parse DSL and show structure">&#128269; Parse</button>
-                                    <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" th:title="#{dsl.btn.validate.title}" title="Validate DSL for errors">&#9989; Validate</button>
-                                    <button id="dslFormatBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.format.title}" title="Format DSL (canonical style) — Shift+Alt+F">&#10024; Format</button>
+                                    <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.load.title}" title="Load current architecture as DSL" th:text="#{dsl.btn.load.text}">&#128260; Load Current</button>
+                                    <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" th:title="#{dsl.btn.parse.title}" title="Parse DSL and show structure" th:text="#{dsl.btn.parse.text}">&#128269; Parse</button>
+                                    <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" th:title="#{dsl.btn.validate.title}" title="Validate DSL for errors" th:text="#{dsl.btn.validate.text}">&#9989; Validate</button>
+                                    <button id="dslFormatBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.format.title}" title="Format DSL (canonical style) — Shift+Alt+F" th:text="#{dsl.btn.format.text}">&#10024; Format</button>
                                 </div>
                             </div>
                             <div class="card-body p-0">
-                        <div id="dslEditorContainer" class="border-0" style="min-height:300px;" aria-label="DSL Editor" role="textbox" aria-multiline="true"></div>
+                        <div id="dslEditorContainer" class="border-0" style="min-height:300px;" th:attr="aria-label=#{ui.aria.dsl_editor}" aria-label="DSL Editor" role="textbox" aria-multiline="true"></div>
                             </div>
                             <div class="card-footer">
                                 <div id="dslValidationOutput" class="small"></div>
@@ -1039,7 +1041,7 @@
                         <div class="card shadow-sm">
                             <div class="card-header fw-semibold" th:text="#{dsl.diff.title}">&#128269; Diff Viewer</div>
                             <div class="card-body">
-                                <div id="dslDiffOutput" class="small text-muted">Select two commits from the history to compare.</div>
+                                <div id="dslDiffOutput" class="small text-muted" th:text="#{dsl.diff.select}">Select two commits from the history to compare.</div>
                             </div>
                         </div>
                     </div>
@@ -1057,17 +1059,17 @@
                                 <div class="mb-2">
                                     <label class="form-label small mb-1" th:text="#{context.branch}">Branch</label>
                                     <div class="d-flex gap-1">
-                                        <select id="dslBranchSelect" class="form-select form-select-sm" aria-label="DSL branch">
+                                        <select id="dslBranchSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.dsl_branch}" aria-label="DSL branch">
                                             <option value="draft">draft</option>
                                         </select>
                                         <button id="dslNewBranchBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.newbranch.title}" title="Create new branch">&#10010;</button>
-                                        <button id="dslMergeBtn" class="btn btn-sm btn-outline-info" data-guard="merge" th:title="#{dsl.btn.merge.title}" title="Merge current branch into another">&#128256; Merge</button>
+                                        <button id="dslMergeBtn" class="btn btn-sm btn-outline-info" data-guard="merge" th:title="#{dsl.btn.merge.title}" title="Merge current branch into another" th:text="#{index.ui.merge}">&#128256; Merge</button>
                                     </div>
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label small mb-1"><span th:text="#{dsl.commit.author}">Author</span></label>
                                     <input id="dslAuthorInput" type="text" class="form-control form-control-sm" readonly
-                                           th:value="${#authentication != null ? #authentication.name : ''}" aria-label="Commit author">
+                                           th:value="${#authentication != null ? #authentication.name : ''}" th:attr="aria-label=#{ui.aria.commit_author}" aria-label="Commit author">
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label small mb-1" th:text="#{dsl.commit.message}">Commit message</label>
@@ -1076,7 +1078,7 @@
                                 <div class="d-flex gap-2 flex-wrap">
                                     <button id="dslCommitBtn" class="btn btn-sm btn-primary" data-guard="commit" th:title="#{dsl.btn.commit.title}" title="Commit DSL to selected branch (no materialization)">&#128230; <span th:text="#{dsl.btn.commit}">Commit</span></button>
                                     <button id="dslMaterializeBtn" class="btn btn-sm btn-success" data-guard="materialize" th:title="#{dsl.btn.materialize.title}" title="Materialize DSL into taxonomy database">&#9889; <span th:text="#{dsl.btn.materialize}">Materialize</span></button>
-                                    <button id="dslMaterializeIncrBtn" class="btn btn-sm btn-outline-success" th:title="#{dsl.btn.incr.title}" title="Incremental materialization (delta only)">&#916; Incremental</button>
+                                    <button id="dslMaterializeIncrBtn" class="btn btn-sm btn-outline-success" th:title="#{dsl.btn.incr.title}" title="Incremental materialization (delta only)" th:text="#{index.ui.incr}">&#916; Incremental</button>
                                 </div>
                             </div>
                         </div>
@@ -1085,7 +1087,7 @@
                         <div class="card shadow-sm">
                             <div class="card-header fw-semibold" th:text="#{dsl.history.title}">&#128337; Commit History</div>
                             <div class="card-body p-0">
-                                <div class="table-responsive" style="max-height:350px; overflow-y:auto;" tabindex="0" role="region" aria-label="Scrollable data table">
+                                <div class="table-responsive" style="max-height:350px; overflow-y:auto;" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light">
                                         <tr>
@@ -1253,19 +1255,19 @@
                     var healthRefreshBtn = document.getElementById('healthRefreshBtn');
 
                     function loadHealth() {
-                        fetch('/api/admin/health-summary', { headers: getAdminHeaders() })
+                        TaxonomyI18n.ready().then(function () { return fetch('/api/admin/health-summary', { headers: getAdminHeaders() }); })
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 var overall = document.getElementById('healthOverallBadge');
-                                overall.textContent = data.overall === 'UP' ? '✅ UP' : '⚠️ DEGRADED';
+                                overall.textContent = data.overall === 'UP' ? TaxonomyI18n.t('index.ui.healthUp') : TaxonomyI18n.t('index.ui.healthDegraded');
                                 overall.className = 'fs-5 ' + (data.overall === 'UP' ? 'text-success' : 'text-warning');
 
                                 var ai = document.getElementById('healthAiBadge');
-                                ai.textContent = data.ai && data.ai.available ? '✅ Available' : '⚠️ Unavailable';
+                                ai.textContent = data.ai && data.ai.available ? TaxonomyI18n.t('index.ui.healthAvailable') : TaxonomyI18n.t('index.ui.healthUnavailable');
                                 ai.className = 'fs-5 ' + (data.ai && data.ai.available ? 'text-success' : 'text-warning');
 
                                 var emb = document.getElementById('healthEmbeddingBadge');
-                                emb.textContent = data.embedding && data.embedding.enabled ? '✅ Active' : '⚠️ Inactive';
+                                emb.textContent = data.embedding && data.embedding.enabled ? TaxonomyI18n.t('index.ui.healthActive') : TaxonomyI18n.t('index.ui.healthInactive');
                                 emb.className = 'fs-5 ' + (data.embedding && data.embedding.enabled ? 'text-success' : 'text-warning');
 
                                 var mem = document.getElementById('healthMemoryBadge');
@@ -1276,7 +1278,7 @@
                                 }
                             })
                             .catch(function() {
-                                document.getElementById('healthOverallBadge').textContent = '❌ Error';
+                                document.getElementById('healthOverallBadge').textContent = TaxonomyI18n.t('index.ui.healthError');
                             });
                     }
 
@@ -1301,12 +1303,12 @@
                         if (level) url += '&level=' + encodeURIComponent(level);
                         if (component) url += '&component=' + encodeURIComponent(component);
 
-                        fetch(url, { headers: getAdminHeaders() })
+                        TaxonomyI18n.ready().then(function () { return fetch(url, { headers: getAdminHeaders() }); })
                             .then(function(r) { return r.json(); })
                             .then(function(entries) {
                                 var container = document.getElementById('logViewerContent');
                                 if (!entries || entries.length === 0) {
-                                    container.innerHTML = '<div class="text-muted">No log entries found.</div>';
+                                    container.innerHTML = '<div class="text-muted">' + TaxonomyI18n.t('index.ui.logsEmpty') + '</div>';
                                     return;
                                 }
                                 var html = entries.map(function(e) {
@@ -1319,7 +1321,7 @@
                                 if (autoScroll) container.scrollTop = container.scrollHeight;
                             })
                             .catch(function() {
-                                document.getElementById('logViewerContent').innerHTML = '<div class="text-danger">Failed to load logs.</div>';
+                                document.getElementById('logViewerContent').innerHTML = '<div class="text-danger">' + TaxonomyI18n.t('index.ui.logsFailed') + '</div>';
                             });
                     }
 
@@ -1442,7 +1444,7 @@
                 <!-- History section (collapsible) -->
                 <details id="prefHistorySection" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{preferences.history.title}">&#128203; Preferences Change History</summary>
-                    <div class="mt-2 table-responsive" tabindex="0" role="region" aria-label="Scrollable data table">
+                    <div class="mt-2 table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
                         <table class="table table-sm table-striped">
                             <thead class="table-dark">
                             <tr>
@@ -1470,7 +1472,7 @@
                     <div class="help-sidebar">
                         <div class="help-search-wrap">
                             <input type="text" id="helpSearchInput" class="form-control form-control-sm"
-                                   th:placeholder="#{help.filter.placeholder}" placeholder="&#128269; Filter docs&hellip;" aria-label="Filter documentation"/>
+                                   th:placeholder="#{help.filter.placeholder}" placeholder="&#128269; Filter docs&hellip;" th:attr="aria-label=#{ui.aria.filter_documentation}" aria-label="Filter documentation"/>
                         </div>
                         <ul class="help-toc-list list-unstyled mb-0" id="helpTocList">
                             <li class="text-muted small p-2" th:text="#{help.loading}">Loading&hellip;</li>
@@ -1485,7 +1487,7 @@
                                 <p class="mt-3" th:text="#{help.select.doc}">Select a document from the sidebar to read it here.</p>
                             </div>
                         </div>
-                        <button id="helpBackToTop" class="help-back-to-top d-none" th:title="#{help.back.to.top}" title="Back to top" aria-label="Back to top">&#8679;</button>
+                        <button id="helpBackToTop" class="help-back-to-top d-none" th:title="#{help.back.to.top}" title="Back to top" th:attr="aria-label=#{ui.aria.back_to_top}" aria-label="Back to top">&#8679;</button>
                     </div>
                 </div>
             </div><!-- /tab-help -->
@@ -1544,12 +1546,12 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="proposeRelationsModalLabel" th:text="#{propose.modal.title}">🔗 Propose Relations</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-2">Generate relation proposals for node <strong id="proposeNodeCode"></strong>:</p>
+                <p class="mb-2"><span th:text="#{propose.modal.description}">Generate relation proposals for node</span> <strong id="proposeNodeCode"></strong>:</p>
                 <label for="proposeRelationType" class="form-label" th:text="#{propose.modal.type.label}">Relation Type</label>
-                <select id="proposeRelationType" class="form-select" aria-label="Select relation type">
+                <select id="proposeRelationType" class="form-select" th:attr="aria-label=#{ui.aria.select_relation_type}" aria-label="Select relation type">
                     <option value="REALIZES">REALIZES</option>
                     <option value="SUPPORTS">SUPPORTS</option>
                     <option value="CONSUMES">CONSUMES</option>
@@ -1577,7 +1579,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="leafJustificationModalTitle" th:text="#{leaf.justification.title}">📋 Leaf Justification</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p id="leafJustificationModalBody" class="leaf-justification-text"></p>
@@ -1595,7 +1597,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="graphDetailModalLabel" th:text="#{graph.detail.title}">&#128300; Graph Query Results</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="graphDetailModalBody">
                 <p class="text-muted">Loading&hellip;</p>
@@ -1612,17 +1614,17 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="aboutModalLabel">&#8505;&#65039; About Taxonomy Architecture Analyzer</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="aboutModalLabel" th:text="#{navbar.about} + ' — ' + #{app.title}">&#8505;&#65039; About Taxonomy Architecture Analyzer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <!-- Tabs -->
                 <ul class="nav nav-tabs mb-3" id="aboutModalTabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-about-tab="info" href="#">&#128196; About</a>
+                        <a class="nav-link active" data-about-tab="info" href="#" th:text="#{about.info.tab}">&#128196; About</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-about-tab="notices" href="#">&#128220; Open Source Notices</a>
+                        <a class="nav-link" data-about-tab="notices" href="#" th:text="#{about.notices.tab}">&#128220; Open Source Notices</a>
                     </li>
                 </ul>
                 <!-- About tab -->
@@ -1630,10 +1632,10 @@
                     <table class="table table-sm table-borderless">
                         <tbody>
                             <tr><th scope="row" class="w-25" th:text="#{about.product}">Product</th><td>Taxonomy Architecture Analyzer</td></tr>
-                            <tr><th scope="row" th:text="#{about.version}">Version</th><td id="aboutVersion"><span class="text-muted small">Loading…</span></td></tr>
-                            <tr><th scope="row" th:text="#{about.build.time}">Build time</th><td id="aboutBuildTime"><span class="text-muted small">Loading…</span></td></tr>
-                            <tr><th scope="row" th:text="#{about.commit}">Commit</th><td id="aboutCommit"><span class="text-muted small">Loading…</span></td></tr>
-                            <tr><th scope="row" th:text="#{about.branch}">Branch</th><td id="aboutBranch"><span class="text-muted small">Loading…</span></td></tr>
+                            <tr><th scope="row" th:text="#{about.version}">Version</th><td id="aboutVersion"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
+                            <tr><th scope="row" th:text="#{about.build.time}">Build time</th><td id="aboutBuildTime"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
+                            <tr><th scope="row" th:text="#{about.commit}">Commit</th><td id="aboutCommit"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
+                            <tr><th scope="row" th:text="#{about.branch}">Branch</th><td id="aboutBranch"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
                             <tr><th scope="row" th:text="#{about.license}">License</th><td><a href="/LICENSE" target="_blank">MIT License</a></td></tr>
                             <tr><th scope="row" th:text="#{about.copyright}">Copyright</th><td>Copyright 2026 Carsten Hammer</td></tr>
                             <tr><th scope="row" th:text="#{about.source}">Source</th><td><a href="https://github.com/carstenartur/Taxonomy" target="_blank" rel="noopener">github.com/carstenartur/Taxonomy</a></td></tr>
@@ -1644,7 +1646,7 @@
                 <!-- Notices tab -->
                 <div id="about-notices-pane" class="d-none">
                     <p class="small text-muted"><span th:text="#{about.third.party.notice}">This product contains third-party open-source software. Full text:</span> <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
-                    <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted">Loading…</span></pre>
+                    <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted" th:text="#{index.ui.loading}">Loading…</span></pre>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1663,7 +1665,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="adminModalLabel" th:text="#{admin.modal.title}">&#128274; Admin Mode</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="adminUnlockForm">
@@ -1690,7 +1692,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="createRelationModalLabel" th:text="#{relation.create.title}">&#10133; Create Relation</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-2">
@@ -1935,12 +1937,12 @@
 
 <!-- System Status Bar -->
 <div id="systemStatusBar" style="position:fixed;bottom:0;left:0;right:0;background:rgba(33,37,41,0.85);color:#adb5bd;font-size:0.72rem;padding:3px 12px;z-index:1050;text-align:center;backdrop-filter:blur(4px);">
-    ⏳ Loading status…
+    <span th:text="#{startup.ui.statusLoading}">⏳ Loading status…</span>
 </div>
 <script>
 (function () {
     function updateSystemStatus() {
-        fetch('/api/status/startup')
+        TaxonomyI18n.ready().then(function () { return fetch('/api/status/startup'); })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 var bar = document.getElementById('systemStatusBar');
@@ -1949,11 +1951,11 @@
                 var pct = mem.heapUsagePercent || 0;
                 var icon = pct > 85 ? '🔴' : pct > 70 ? '🟡' : '🟢';
                 var statusText = data.initialized
-                    ? 'Ready'
-                    : (data.phaseMessage || 'Loading (' + (data.status || '…') + ')');
+                    ? TaxonomyI18n.t('startup.ui.ready')
+                    : (data.phaseMessage || TaxonomyI18n.t('startup.ui.loading', data.status || '…'));
                 bar.textContent = icon + ' ' + statusText +
                     ' | Heap: ' + pct + '% (' + (mem.heapUsedMB || '?') + '/' + (mem.heapMaxMB || '?') + ' MB)' +
-                    ' | Threads: ' + (mem.threadCount || '?');
+                    ' | ' + TaxonomyI18n.t('startup.ui.threads') + ': ' + (mem.threadCount || '?');
             })
             .catch(function () {});
     }
@@ -1975,7 +1977,7 @@
 
     // Load workspace info for the user badge
     document.addEventListener('DOMContentLoaded', function () {
-        fetch('/api/workspace/current')
+        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/current'); })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (ws) {
                 if (!ws) return;
@@ -1983,8 +1985,8 @@
                 if (badge) {
                     badge.textContent = '\uD83D\uDC64 ' + (ws.username || 'anonymous');
                     badge.classList.remove('d-none');
-                    badge.title = 'Workspace: ' + (ws.displayName || ws.workspaceId || '') +
-                        ' | Branch: ' + (ws.currentBranch || 'draft');
+                    badge.title = TaxonomyI18n.t('index.ui.workspaceLabel') + ' ' + (ws.displayName || ws.workspaceId || '') +
+                        ' | ' + TaxonomyI18n.t('index.ui.branchLabel') + ' ' + TaxonomyI18n.formatBranch(ws.currentBranch || 'draft');
                 }
             })
             .catch(function () {});
@@ -1998,7 +2000,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="contextCompareModalLabel">&#128269; <span th:text="#{compare.modal.title}">Compare Versions</span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="row mb-3">
@@ -2026,7 +2028,7 @@
                 <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()" th:text="#{compare.btn}">Compare</button>
                 <!-- Compare filter buttons -->
                 <div id="compareFilters" class="d-none mb-2">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Compare filters">
+                    <div class="btn-group btn-group-sm" role="group" th:attr="aria-label=#{ui.aria.compare_filters}" aria-label="Compare filters">
                         <button type="button" class="btn btn-outline-secondary active compare-filter-btn" data-filter="all" th:text="#{compare.filter.all}">All</button>
                         <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="elements" th:text="#{compare.filter.elements}">Elements</button>
                         <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="relations" th:text="#{compare.filter.relations}">Relations</button>
@@ -2045,7 +2047,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="createVariantModalLabel">&#127807; <span th:text="#{variants.create.modal.title}">Create New Variant</span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="text-muted small" th:text="#{variants.create.modal.description}">
@@ -2073,8 +2075,8 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="contextTransferModalLabel">&#128228; Selective Transfer</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="contextTransferModalLabel" th:text="#{index.ui.transfer}">&#128228; Selective Transfer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="row mb-3">
@@ -2109,7 +2111,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="mergePreviewModalLabel" th:text="#{merge.preview.title}">&#128256; Merge Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="mergePreviewContent">
@@ -2130,7 +2132,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="cherryPickPreviewModalLabel" th:text="#{cherrypick.preview.title}">&#127826; Cherry-Pick Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="cherryPickPreviewContent">
@@ -2151,7 +2153,7 @@
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title" id="mergeConflictModalLabel" th:text="#{merge.conflict.title}">&#9888;&#65039; Merge Conflict — Manual Resolution Required</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3" th:text="#{merge.conflict.description}">
@@ -2190,7 +2192,7 @@
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="syncDivergedModalLabel" th:text="#{sync.diverged.modal.title}">&#128260; Resolve Diverged State</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p th:text="#{sync.diverged.description}">Your workspace and the shared repository have diverged — both sides have changes
@@ -2222,7 +2224,7 @@
     <div id="operationToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
         <div class="toast-header">
             <strong class="me-auto" id="operationToastTitle" th:text="#{toast.operation.title}">Operation Result</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
         </div>
         <div class="toast-body" id="operationToastBody">
         </div>
@@ -2535,27 +2537,27 @@
     }
 
     function loadWorkspaces() {
-        fetch('/api/workspace/list')
+        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/list'); })
             .then(function(r) { return r.json(); })
             .then(function(workspaces) {
                 var container = document.getElementById('workspaceListContainer');
                 if (!workspaces || workspaces.length === 0) {
-                    container.innerHTML = '<div class="col-12 text-muted small">No workspaces found.</div>';
+                    container.innerHTML = '<div class="col-12 text-muted small">' + TaxonomyI18n.t('index.ui.workspaceEmpty') + '</div>';
                     return;
                 }
                 container.innerHTML = workspaces.map(function(ws) {
-                    var defaultBadge = ws.isDefault ? ' <span class="badge bg-primary">Default</span>' : '';
+                    var defaultBadge = ws.isDefault ? ' <span class="badge bg-primary">' + TaxonomyI18n.t('index.ui.default') + '</span>' : '';
                     var name = escHtml(ws.displayName || ws.workspaceId);
                     var desc = ws.description ? '<p class="card-text small text-muted mb-1">' + escHtml(ws.description) + '</p>' : '';
                     var ts = ws.lastAccessedAt ? new Date(ws.lastAccessedAt).toLocaleString() : '';
-                    var branch = escHtml(ws.currentBranch || 'draft');
-                    var deleteBtn = ws.isDefault ? '' : '<button class="btn btn-sm btn-outline-danger ws-archive-btn" data-ws-id="' + escHtml(ws.workspaceId) + '" title="Archive">&#128451;</button>';
+                    var branch = escHtml(TaxonomyI18n.formatBranch(ws.currentBranch || 'draft'));
+                    var deleteBtn = ws.isDefault ? '' : '<button class="btn btn-sm btn-outline-danger ws-archive-btn" data-ws-id="' + escHtml(ws.workspaceId) + '" title="' + TaxonomyI18n.t('index.ui.archive') + '">&#128451;</button>';
                     return '<div class="col-md-4"><div class="card h-100"><div class="card-body p-2">' +
                         '<h6 class="card-title mb-1">' + name + defaultBadge + '</h6>' +
                         desc +
                         '<div class="small text-muted mb-2">&#127793; ' + branch + (ts ? ' &middot; ' + ts : '') + '</div>' +
                         '<div class="d-flex gap-1 flex-wrap">' +
-                        '<button class="btn btn-sm btn-outline-success ws-switch-btn" data-ws-id="' + escHtml(ws.workspaceId) + '">&#9654; Activate</button>' +
+                        '<button class="btn btn-sm btn-outline-success ws-switch-btn" data-ws-id="' + escHtml(ws.workspaceId) + '">&#9654; ' + TaxonomyI18n.t('index.ui.activate') + '</button>' +
                         deleteBtn +
                         '</div></div></div></div>';
                 }).join('');
@@ -2568,19 +2570,19 @@
                 });
                 container.querySelectorAll('.ws-archive-btn').forEach(function(btn) {
                     btn.addEventListener('click', function() {
-                        if (!confirm('Archive this workspace?')) return;
+                        if (!confirm(TaxonomyI18n.t('index.ui.archiveConfirm'))) return;
                         fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/archive', { method: 'POST' })
                             .then(function(r) { if (r.ok) loadWorkspaces(); });
                     });
                 });
             })
             .catch(function() {
-                document.getElementById('workspaceListContainer').innerHTML = '<div class="col-12 text-danger small">Failed to load workspaces.</div>';
+                document.getElementById('workspaceListContainer').innerHTML = '<div class="col-12 text-danger small">' + TaxonomyI18n.t('index.ui.workspaceFailed') + '</div>';
             });
     }
 
     function createWorkspace() {
-        var name = prompt('Workspace name:');
+        var name = prompt(TaxonomyI18n.t('index.ui.workspaceName'));
         if (!name || !name.trim()) return;
         fetch('/api/workspace/create', {
             method: 'POST',

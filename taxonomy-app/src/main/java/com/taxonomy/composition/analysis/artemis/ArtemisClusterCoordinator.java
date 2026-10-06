@@ -118,7 +118,17 @@ public final class ArtemisClusterCoordinator implements AutoCloseable {
             }
             // Database acceptance has committed. Slow rendering runs outside its transaction;
             // if this pod dies, the unacknowledged completion repeats this idempotent step.
-            if (finalizeContext != null) finalizer.accept(finalizeContext);
+            if (finalizeContext != null) {
+                finalizer.accept(finalizeContext);
+                // Repeat the persisted revision even when acceptance/finalization was already
+                // committed by a failed coordinator. Fan-out and completion acknowledgement
+                // share this JMS transaction, so a lost notification cannot strand observers
+                // on another still-connected pod. Send failures must remain retryable.
+                var event = store.latestEvent(finalizeContext);
+                var session = subscription.session();
+                subscription.producer().send(session.createTopic(destinations.progress()),
+                        ArtemisAnalysisMessages.encode(session, codec, event));
+            }
             subscription.session().commit();
         } catch (JMSException | RuntimeException failure) {
             redeliveries.incrementAndGet();

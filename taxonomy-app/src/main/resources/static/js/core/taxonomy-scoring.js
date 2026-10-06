@@ -1522,8 +1522,8 @@
 
             // Toggle buttons
             html += '<div class="impact-graph-toggle">';
-            html += '<button class="btn btn-sm btn-primary impact-view-btn" data-mode="graph">🔗 Network Graph</button>';
-            html += '<button class="btn btn-sm btn-outline-secondary impact-view-btn" data-mode="swimlane">🏗️ Layer View</button>';
+            html += '<button class="btn btn-sm btn-primary impact-view-btn" data-mode="graph">🔗 ' + escapeHtml(t('scoring.ui.network')) + '</button>';
+            html += '<button class="btn btn-sm btn-outline-secondary impact-view-btn" data-mode="swimlane">🏗️ ' + escapeHtml(t('scoring.ui.layers')) + '</button>';
             html += '</div>';
 
             // Graph container (shown by default)
@@ -1717,7 +1717,7 @@
         }
 
         if (!html) {
-            html = '<p class="text-muted small mb-0">Architecture view is empty.</p>';
+            html = '<p class="text-muted small mb-0">' + escapeHtml(t('scoring.ui.empty')) + '</p>';
         }
 
         content.innerHTML = html;
@@ -1794,7 +1794,7 @@
                 && hypothesis.appliedInCurrentAnalysis !== true
                 && hypothesis.confidence >= 0.8 && Number.isSafeInteger(id) && id > 0;
         });
-        return eligible ? '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>' : '';
+        return eligible ? '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="' + escapeHtml(t('scoring.ui.bulkTitle')) + '" aria-label="' + escapeHtml(t('scoring.ui.bulkAria')) + '">✅ ' + escapeHtml(t('scoring.ui.bulk')) + '</button>' : '';
     }
 
     function refreshSuggestedRelationsBulkActions() {
@@ -1820,12 +1820,12 @@
 
         var html = '';
         html += '<div class="d-flex justify-content-between align-items-center mb-2">';
-        html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
+        html += '<small class="text-muted">' + escapeHtml(t('scoring.ui.hint')) + '</small>';
         html += '<span id="suggestedRelationsBulkActions">'
             + suggestedRelationsBulkActionsHtml(provisionalRelations) + '</span>';
         html += '</div>';
         html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-        html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + escapeHtml(t('scoring.ui.source')) + '</th><th>→</th><th>' + escapeHtml(t('scoring.ui.target')) + '</th><th>' + escapeHtml(t('scoring.ui.type')) + '</th><th>' + escapeHtml(t('scoring.ui.confidence')) + '</th><th>' + escapeHtml(t('scoring.ui.reasoning')) + '</th><th>' + escapeHtml(t('scoring.ui.actions')) + '</th></tr></thead><tbody>';
 
         provisionalRelations.forEach(function (h, idx) {
             var confPct = (h.confidence * 100).toFixed(0);
@@ -1841,9 +1841,9 @@
             } else if (h.appliedInCurrentAnalysis === true) {
                 actions = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.session.only')) + '</span>';
             } else {
-                actions = '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept permanently" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
-                    '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="Apply for this analysis only" aria-label="Apply relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + ' for this session">📌</button>' +
-                    '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>';
+                actions = '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="' + escapeHtml(t('scoring.ui.accept')) + '" aria-label="' + escapeHtml(t('scoring.ui.acceptAria', h.sourceCode, h.targetCode)) + '">✅</button>' +
+                    '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="' + escapeHtml(t('scoring.ui.session')) + '" aria-label="' + escapeHtml(t('scoring.ui.sessionAria', h.sourceCode, h.targetCode)) + '">📌</button>' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="' + escapeHtml(t('scoring.ui.dismiss')) + '" aria-label="' + escapeHtml(t('scoring.ui.dismissAria', h.sourceCode, h.targetCode)) + '">❌</button>';
             }
             html += '<tr id="suggested-row-' + idx + '">' +
                 '<td>' + escapeHtml(h.sourceCode) + (h.sourceName ? '<br><small class="text-muted">' + escapeHtml(h.sourceName) + '</small>' : '') + '</td>' +
@@ -2013,7 +2013,7 @@
         }
 
         var html = '<div class="summary-view">';
-        html += '<div class="summary-header">📋 Architecture Summary</div>';
+        html += '<div class="summary-header">📋 ' + escapeHtml(t('scoring.ui.summary')) + '</div>';
         if (requirement) {
             html += '<div class="summary-requirement">"' + escapeHtml(requirement.substring(0, 200)) +
                 (requirement.length > 200 ? '…' : '') + '"</div>';
@@ -2064,8 +2064,7 @@
         var elemCount = view.includedElements ? view.includedElements.length : 0;
         var relCount = view.includedRelationships ? view.includedRelationships.length : 0;
         html += '<div class="summary-stats">';
-        html += anchorCount + ' Anchors · ' + elemCount + ' Elements · ' + relCount + ' Relations';
-        html += ' · ' + sortedSheets.length + ' Layers';
+        html += escapeHtml(t('scoring.ui.stats', anchorCount, elemCount, relCount, sortedSheets.length));
         html += '</div>';
         html += '</div>';
 

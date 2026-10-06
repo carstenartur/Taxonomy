@@ -65,7 +65,7 @@
                     <label for="editorTitle" data-i18n="editor.name">Name</label><input id="editorTitle" required maxlength="8000"/>
                     <label for="editorDescription" data-i18n="editor.description">Description</label><textarea id="editorDescription" rows="3" maxlength="8000"></textarea>
                     <label for="editorElementStatus" data-i18n="editor.elementStatus">Status</label>
-                    <select id="editorElementStatus"><option value="draft">draft</option><option value="active">active</option><option value="retired">retired</option></select>
+                    <select id="editorElementStatus"><option value="draft" th:text="#{ui.enum.DRAFT}">draft</option><option value="active" th:text="#{ui.enum.ACTIVE}">active</option><option value="retired" th:text="#{ui.enum.RETIRED}">retired</option></select>
                     <label for="editorOwner" data-i18n="editor.owner">Owner</label><input id="editorOwner" maxlength="8000"/>
                     <label for="editorOrganization" data-i18n="editor.organization">Responsible organization</label><input id="editorOrganization" maxlength="8000"/>
                     <label for="editorProduct" data-i18n="editor.product">Product reference</label><input id="editorProduct" maxlength="8000"/>
@@ -115,7 +115,7 @@
                     <button id="editorPlaceElement" type="button" data-i18n="editor.packagePlace">Place selected element</button>
                     <button id="editorDetachElement" type="button" data-i18n="editor.packageDetach">Detach selected element</button>
                 </fieldset>
-                <ul id="editorPackages" aria-label="Packages" data-i18n-aria-label="editor.packages"></ul>
+                <ul id="editorPackages" aria-label="Packages" th:attr="aria-label=#{editor.packages}"></ul>
             </section>
             <h2 data-i18n="editor.relations">Relations and containment</h2>
             <form id="editorRelationForm">

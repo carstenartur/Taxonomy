@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
-    <title>Copilot Architecture Workbench</title>
+    <title th:text="#{workbench.ui.pageTitle}">Copilot Architecture Workbench</title>
     <link rel="stylesheet"
           th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"
           href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
@@ -18,16 +18,16 @@
                data-policy-title-leaf-only=#{archview.policy.title.leafOnly},
                data-policy-title-clustering=#{archview.policy.title.clustering},
                data-policy-title-trace=#{archview.policy.title.trace}">
-<a class="visually-hidden-focusable" href="#architectureCanvas">Skip to architecture diagram</a>
+<a class="visually-hidden-focusable" href="#architectureCanvas" th:text="#{workbench.ui.skip}">Skip to architecture diagram</a>
 
 <header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
-    <a class="navbar-brand" th:href="@{/projects}" href="/projects">Taxonomy Copilot Architecture</a>
+    <a class="navbar-brand" th:href="@{/projects}" href="/projects" th:text="#{workbench.ui.brand}">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <a class="btn btn-sm btn-outline-light" th:href="@{/architecture/editor}" th:text="#{editor.title}">Architecture editor</a>
-        <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button">
+        <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button" th:text="#{workbench.ui.svg}">
             Download SVG
         </button>
-        <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button">
+        <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button" th:text="#{workbench.ui.pdf}">
             Download PDF
         </button>
         <button id="downloadArchitectureWord" class="btn btn-sm btn-outline-light" type="button"
@@ -36,8 +36,8 @@
                 th:text="#{workbench.download.decisionWord}">Decision Word</button>
         <div class="d-flex align-items-center gap-2 flex-wrap"
              role="group"
-             aria-label="Experimental architecture export formats">
-            <span id="experimentalExportBadge" class="badge text-bg-secondary">
+             th:attr="aria-label=#{workbench.ui.exports}" aria-label="Experimental architecture export formats">
+            <span id="experimentalExportBadge" class="badge text-bg-secondary" th:text="#{workbench.ui.experimental}">
                 Experimental
             </span>
             <button id="downloadArchitectureArchiMate"
@@ -45,22 +45,22 @@
                     type="button"
                     aria-describedby="experimentalExportBadge architectureExchangeProfile"
                     disabled
-                    title="ArchiMate 3.1 XML, mapping profile and loss manifest; independent-tool acceptance pending">
+                    th:title="#{workbench.ui.archimateTitle}" title="ArchiMate 3.1 XML, mapping profile and loss manifest; independent-tool acceptance pending" th:text="#{workbench.ui.archimate}">
                 Download ArchiMate + manifest
             </button>
             <button id="downloadArchitectureVisio"
                     class="btn btn-sm btn-outline-info"
                     type="button" disabled
                     aria-describedby="experimentalExportBadge visioExportProfile"
-                    title="VSDX with stable identities, mapping and loss manifest; Microsoft Visio desktop certification pending">
+                    th:title="#{workbench.ui.visioTitle}" title="VSDX with stable identities, mapping and loss manifest; Microsoft Visio desktop certification pending" th:text="#{workbench.ui.visio}">
                 Download Visio + manifest
             </button>
-            <small id="visioExportProfile" class="text-light">visio-2012-opc-supported-subset-v2 · up to 10,000 elements / 30,000 relationships</small>
+            <small id="visioExportProfile" class="text-light" th:text="#{workbench.ui.visioProfile}">visio-2012-opc-supported-subset-v2 · up to 10,000 elements / 30,000 relationships</small>
         </div>
     </div>
 </header>
 
-<div id="architectureStatus" class="workbench-status" role="status" aria-live="polite">
+<div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…
 </div>
 <div id="architectureAlert" class="alert alert-danger m-3 d-none" role="alert"></div>
@@ -70,100 +70,100 @@
         <div class="workbench-heading">
             <div>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <h1 id="architectureTitle" class="h4 mb-0">Persisted Copilot architecture</h1>
-                    <span class="badge text-bg-secondary">Read-only snapshot</span>
+                    <h1 id="architectureTitle" class="h4 mb-0" th:text="#{workbench.ui.persisted}">Persisted Copilot architecture</h1>
+                    <span class="badge text-bg-secondary" th:text="#{workbench.ui.readonly}">Read-only snapshot</span>
                 </div>
                 <p id="architectureProvenance" class="text-muted small mb-0 mt-1"></p>
                 <p id="architectureExchangeProfile" class="text-muted small mb-0 mt-1">
-                    Experimental ArchiMate profile: <code th:text="${archimateMappingProfile}">taxonomy-archimate-3.1-v2</code>.
-                    Includes XML, mappings and a report of transformed or omitted data.
+                    <span th:text="#{workbench.ui.profile}">Experimental ArchiMate profile:</span> <code th:text="${archimateMappingProfile}">taxonomy-archimate-3.1-v2</code>.
+                    <span th:text="#{workbench.ui.profileHelp}">Includes XML, mappings and a report of transformed or omitted data.</span>
                 </p>
             </div>
-            <div id="architectureKpis" class="architecture-kpis" aria-label="Architecture summary">
-                <span class="architecture-kpi"><span aria-hidden="true">🎯</span><span id="directKpi">0 direct</span></span>
-                <span class="architecture-kpi"><span aria-hidden="true">▦</span><span id="elementKpi">0 elements</span></span>
-                <span class="architecture-kpi"><span aria-hidden="true">↗</span><span id="relationKpi">0 relationships</span></span>
-                <span class="architecture-kpi"><span aria-hidden="true">▤</span><span id="layerKpi">0 layers</span></span>
+            <div id="architectureKpis" class="architecture-kpis" th:attr="aria-label=#{workbench.ui.summary}" aria-label="Architecture summary">
+                <span class="architecture-kpi"><span aria-hidden="true">🎯</span><span id="directKpi" th:text="'0 ' + #{workbench.ui.direct}">0 direct</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">▦</span><span id="elementKpi" th:text="'0 ' + #{workbench.ui.elements}">0 elements</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">↗</span><span id="relationKpi" th:text="'0 ' + #{workbench.ui.relationships}">0 relationships</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">▤</span><span id="layerKpi" th:text="'0 ' + #{workbench.ui.layers}">0 layers</span></span>
             </div>
         </div>
 
         <div id="architectureWorkbench" class="architecture-workbench">
-            <div class="architecture-controls" role="toolbar" aria-label="Architecture diagram controls">
+            <div class="architecture-controls" role="toolbar" th:attr="aria-label=#{workbench.ui.controls}" aria-label="Architecture diagram controls">
                 <div class="architecture-search-wrap">
                     <input id="architectureSearch"
                            class="architecture-search"
                            type="search"
-                           placeholder="Find code, title or layer…"
-                           aria-label="Search architecture elements"/>
+                           th:placeholder="#{workbench.ui.search}" placeholder="Find code, title or layer…"
+                           th:attr="aria-label=#{workbench.ui.searchLabel}" aria-label="Search architecture elements"/>
                     <button id="clearArchitectureSearch"
                             class="architecture-search-clear"
                             type="button"
-                            aria-label="Clear architecture search"
-                            title="Clear search"
+                            th:attr="aria-label=#{workbench.ui.clearLabel}" aria-label="Clear architecture search"
+                            th:title="#{workbench.ui.clear}" title="Clear search"
                             hidden>×</button>
                 </div>
 
                 <label class="architecture-toggle">
                     <input id="showArchitectureContext" type="checkbox" checked/>
-                    <span>Context elements</span>
+                    <span th:text="#{workbench.ui.context}">Context elements</span>
                 </label>
 
-                <div class="architecture-button-group" aria-label="Display mode">
+                <div class="architecture-button-group" th:attr="aria-label=#{workbench.ui.mode}" aria-label="Display mode">
                     <button id="architectureOverview" class="architecture-control" type="button"
-                            aria-pressed="true" title="Overview">
-                        <span aria-hidden="true">▦</span><span>Overview</span>
+                            aria-pressed="true" th:title="#{workbench.ui.overviewTitle}" title="Overview">
+                        <span aria-hidden="true">▦</span><span th:text="#{workbench.ui.overview}">Overview</span>
                     </button>
                     <button id="architectureFocus" class="architecture-control" type="button"
-                            aria-pressed="false" title="Focus selected element" disabled>
-                        <span aria-hidden="true">◎</span><span>Focus</span>
+                            aria-pressed="false" th:title="#{workbench.ui.focusTitle}" title="Focus selected element" disabled>
+                        <span aria-hidden="true">◎</span><span th:text="#{workbench.ui.focus}">Focus</span>
                     </button>
                 </div>
 
-                <div class="architecture-button-group" aria-label="Zoom controls">
+                <div class="architecture-button-group" th:attr="aria-label=#{workbench.ui.zoom}" aria-label="Zoom controls">
                     <button id="zoomArchitectureOut" class="architecture-control icon-only" type="button"
-                            title="Zoom out" aria-label="Zoom out">−</button>
+                            th:title="#{workbench.ui.zoomOut}" title="Zoom out" th:attr="aria-label=#{workbench.ui.zoomOut}" aria-label="Zoom out">−</button>
                     <button id="fitArchitecture" class="architecture-control" type="button"
-                            title="Fit diagram" disabled>
-                        <span aria-hidden="true">⊙</span><span>Fit</span>
+                            th:title="#{workbench.ui.fitTitle}" title="Fit diagram" disabled>
+                        <span aria-hidden="true">⊙</span><span th:text="#{workbench.ui.fit}">Fit</span>
                     </button>
                     <button id="zoomArchitectureIn" class="architecture-control icon-only" type="button"
-                            title="Zoom in" aria-label="Zoom in">+</button>
+                            th:title="#{workbench.ui.zoomIn}" title="Zoom in" th:attr="aria-label=#{workbench.ui.zoomIn}" aria-label="Zoom in">+</button>
                     <button id="fullscreenArchitecture" class="architecture-control icon-only" type="button"
-                            title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                            th:title="#{workbench.ui.fullscreen}" title="Fullscreen" th:attr="aria-label=#{workbench.ui.fullscreen}" aria-label="Fullscreen">⛶</button>
                 </div>
 
                 <div id="architectureVisibleStatus" class="architecture-visible-status"
                      role="status" aria-live="polite"></div>
             </div>
 
-            <p id="architectureDescription" class="visually-hidden">
+            <p id="architectureDescription" class="visually-hidden" th:text="#{workbench.ui.description}">
                 Requirement-derived architecture loaded from an immutable Copilot analysis snapshot.
             </p>
             <div id="architectureCanvasShell" class="architecture-canvas-shell">
                 <svg id="architectureCanvas"
-                     role="img"
+                     role="group"
                      aria-labelledby="architectureTitle architectureDescription"
                      tabindex="0">
-                    <desc>Persisted Copilot architecture diagram</desc>
+                    <desc th:text="#{workbench.ui.diagram}">Persisted Copilot architecture diagram</desc>
                 </svg>
             </div>
         </div>
     </section>
 
     <aside class="workbench-detail-panel" aria-labelledby="detailTitle">
-        <h2 id="detailTitle" class="h5">Selection details</h2>
-        <p id="detailHint" class="text-muted">
+        <h2 id="detailTitle" class="h5" th:text="#{workbench.ui.details}">Selection details</h2>
+        <p id="detailHint" class="text-muted" th:text="#{workbench.ui.hint}">
             Select an architecture element or relationship to inspect its evidence and review state.
         </p>
         <dl id="architectureDetails" class="detail-list"></dl>
 
         <section class="mt-4" aria-labelledby="requirementTitle">
-            <h2 id="requirementTitle" class="h6">Requirement</h2>
+            <h2 id="requirementTitle" class="h6" th:text="#{workbench.ui.requirement}">Requirement</h2>
             <p id="requirementText" class="requirement-text"></p>
         </section>
 
         <section id="architectureWarningsSection" class="mt-4 d-none" aria-labelledby="warningsTitle">
-            <h2 id="warningsTitle" class="h6">Snapshot warnings</h2>
+            <h2 id="warningsTitle" class="h6" th:text="#{workbench.ui.warnings}">Snapshot warnings</h2>
             <ul id="architectureWarnings" class="small"></ul>
         </section>
     </aside>

@@ -366,6 +366,21 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         });
     }
 
+    /** Read the current committed notification without advancing the operation's revision. */
+    public AnalysisProgressEvent latestEvent(AnalysisOperationContext context) {
+        return tx.execute(status -> {
+            var run = requireRun(context.operationId(), false);
+            requireAuthority(run, context);
+            var record = em.find(ClusterAnalysisEvent.class, key(run.id + ":event:" + run.revision));
+            if (record == null || !run.id.equals(record.operationId) || record.revision != run.revision
+                    || !(decode(record.eventJson) instanceof AnalysisProgressEvent event)
+                    || event.sequence() != run.revision || !context.equals(context(event.envelope()))) {
+                throw new IllegalStateException("Analysis operation has no matching committed progress event");
+            }
+            return event;
+        });
+    }
+
     private void finish(ClusterAnalysisRun run) {
         var result = aggregate(run);
         run.state = "SUCCESS".equals(result.getStatus()) ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.PARTIAL;

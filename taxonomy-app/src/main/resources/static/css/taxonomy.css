@@ -451,8 +451,7 @@
     #expandCollapseGroup,
     #treeRootGroup,
     .btn-group,
-    .decision-filter,
-    .decision-table-wrapper {
+    .decision-filter {
         display: none !important;
     }
 
@@ -469,6 +468,27 @@
     #taxonomyTree {
         border: none;
         max-height: none;
+    }
+
+    .decision-table-wrapper {
+        overflow: visible !important;
+    }
+    .decision-table thead {
+        display: table-header-group;
+    }
+    .decision-table tr {
+        break-inside: avoid;
+    }
+    .decision-table th,
+    .decision-table td,
+    .decision-table .text-muted,
+    .decision-score-badge {
+        color: #000 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+    }
+    .decision-score-badge {
+        border-color: #000 !important;
     }
 }
 

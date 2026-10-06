@@ -2,6 +2,8 @@
 (function () {
     'use strict';
 
+    function t() { return window.TaxonomyI18n.t.apply(null, arguments); }
+
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const body = document.body;
     const projectId = body.dataset.projectId;
@@ -96,7 +98,7 @@
     function showError(error) {
         alertBox.textContent = error instanceof Error ? error.message : String(error);
         alertBox.classList.remove('d-none');
-        setStatus('Architecture could not be loaded.');
+        setStatus(t('workbench.ui.loadFailed'));
         searchInput.value = '';
         clearSearch.hidden = true;
         [
@@ -247,34 +249,34 @@
     function renderNodeDetails(node) {
         const metadata = projection.elements[node.id] || {};
         detailRows([
-            ['Element', node.id],
-            ['Title', node.label],
-            ['Layer', node.type],
-            ['Relevance', Math.round(node.relevance * 100) + '%'],
-            ['Direct score', metadata.directScore],
-            ['Anchor', node.anchor ? 'Yes' : 'No'],
-            ['Origin', metadata.mappingOrigin],
-            ['Review', metadata.reviewStatus],
-            ['Action', metadata.actionStatus],
-            ['Reason', metadata.presenceReason],
-            ['Evidence', metadata.actionEvidence],
-            ['Hierarchy', metadata.hierarchyPath],
-            ['Decision', metadata.decisionComment]
+            [t('workbench.ui.detail.element'), node.id],
+            [t('workbench.ui.detail.title'), node.label],
+            [t('workbench.ui.detail.layer'), node.type],
+            [t('workbench.ui.detail.relevance'), Math.round(node.relevance * 100) + '%'],
+            [t('workbench.ui.detail.direct_score'), metadata.directScore],
+            [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
+            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
+            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
+            [t('workbench.ui.detail.action'), window.TaxonomyI18n.formatEnum(metadata.actionStatus)],
+            [t('workbench.ui.detail.reason'), metadata.presenceReason],
+            [t('workbench.ui.detail.evidence'), metadata.actionEvidence],
+            [t('workbench.ui.detail.hierarchy'), metadata.hierarchyPath],
+            [t('workbench.ui.detail.decision'), metadata.decisionComment]
         ]);
     }
 
     function renderEdgeDetails(edge) {
         const metadata = projection.relations[relationSignature(edge)] || {};
         detailRows([
-            ['Relationship', edge.relationType],
-            ['Source', edge.sourceId],
-            ['Target', edge.targetId],
-            ['Category', edge.relationCategory],
-            ['Relevance', Math.round(edge.relevance * 100) + '%'],
-            ['Origin', metadata.relationOrigin],
-            ['Review', metadata.reviewStatus],
-            ['Reason', metadata.presenceReason],
-            ['Decision', metadata.decisionComment]
+            [t('workbench.ui.detail.relationship'), edge.relationType],
+            [t('workbench.ui.detail.source'), edge.sourceId],
+            [t('workbench.ui.detail.target'), edge.targetId],
+            [t('workbench.ui.detail.category'), edge.relationCategory],
+            [t('workbench.ui.detail.relevance'), Math.round(edge.relevance * 100) + '%'],
+            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.relationOrigin)],
+            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
+            [t('workbench.ui.detail.reason'), metadata.presenceReason],
+            [t('workbench.ui.detail.decision'), metadata.decisionComment]
         ]);
     }
 
@@ -574,7 +576,7 @@
                 d: pathData,
                 tabindex: 0,
                 role: 'button',
-                'aria-label': edge.relationType + ' from ' + edge.sourceId + ' to ' + edge.targetId
+                'aria-label': t('workbench.ui.edgeLabel', edge.relationType, edge.sourceId, edge.targetId)
             });
             const tooltip = createSvgElement('title');
             tooltip.textContent = edge.sourceId + ' → ' + edge.targetId
@@ -620,8 +622,7 @@
                 'data-node-id': node.id,
                 tabindex: 0,
                 role: 'button',
-                'aria-label': node.id + ', ' + node.label + ', ' + node.type
-                    + ', relevance ' + Math.round(node.relevance * 100) + ' percent'
+                'aria-label': t('workbench.ui.nodeLabel', node.id, node.label, node.type, Math.round(node.relevance * 100))
             });
             group.appendChild(createSvgElement('rect', {
                 class: 'architecture-node-card',
@@ -660,8 +661,8 @@
                     line, textColor);
             });
             const distance = node.anchor
-                ? 'Direct match'
-                : 'Hop ' + hopDistances.get(node.id);
+                ? t('workbench.ui.directMatch')
+                : t('workbench.ui.hop', hopDistances.get(node.id));
             appendSvgText(
                 group,
                 'architecture-node-meta',
@@ -771,22 +772,19 @@
             const visibleMatches = matches.filter(function (id) {
                 return state.visibleNodeIds.has(id);
             }).length;
-            visibleStatus.textContent = matches.length + ' matching elements; '
-                + visibleMatches + ' currently visible.';
+            visibleStatus.textContent = t('workbench.ui.matching', matches.length, visibleMatches);
         } else {
-            visibleStatus.textContent = 'Showing ' + state.visibleNodes.length + ' of '
-                + scene.nodes.length + ' elements and ' + state.visibleEdges.length
-                + ' relationships.';
+            visibleStatus.textContent = t('workbench.ui.showing', state.visibleNodes.length, scene.nodes.length, state.visibleEdges.length);
         }
     }
 
     function updateKpis() {
         document.getElementById('directKpi').textContent = state.visibleNodes.filter(function (node) {
             return node.anchor;
-        }).length + ' direct';
-        document.getElementById('elementKpi').textContent = state.visibleNodes.length + ' elements';
-        document.getElementById('relationKpi').textContent = state.visibleEdges.length + ' relationships';
-        document.getElementById('layerKpi').textContent = state.layerGroups.length + ' layers';
+        }).length + ' ' + t('workbench.ui.direct');
+        document.getElementById('elementKpi').textContent = state.visibleNodes.length + ' ' + t('workbench.ui.elements');
+        document.getElementById('relationKpi').textContent = state.visibleEdges.length + ' ' + t('workbench.ui.relationships');
+        document.getElementById('layerKpi').textContent = state.layerGroups.length + ' ' + t('workbench.ui.layers');
     }
 
     function updateModeButtons() {
@@ -858,14 +856,14 @@
         if (visioButton) visioButton.disabled = false;
         const model = data.modelName ? '/' + data.modelName : '';
         const created = data.snapshotCreatedAt
-            ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString()
+            ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString(window.TaxonomyI18n.getLocale())
             : '';
         document.getElementById('architectureProvenance').textContent =
             'Snapshot ' + data.snapshotId
-            + ' · ' + text(data.snapshotStatus, 'status n/a')
-            + ' · ' + text(data.provider, 'provider n/a') + model
-            + ' · branch ' + text(data.branchName, 'n/a')
-            + ' · commit ' + text(data.commitSha, 'n/a').slice(0, 12)
+            + ' · ' + (data.snapshotStatus ? window.TaxonomyI18n.formatEnum(data.snapshotStatus) : t('workbench.ui.statusMissing'))
+            + ' · ' + text(data.provider, t('workbench.ui.providerMissing')) + model
+            + ' · ' + t('workbench.ui.branch') + ' ' + text(data.branchName, 'n/a')
+            + ' · ' + t('workbench.ui.commit') + ' ' + text(data.commitSha, 'n/a').slice(0, 12)
             + created;
     }
 
@@ -884,7 +882,7 @@
 
     function render(data) {
         if (!data || !data.scene || !Array.isArray(data.scene.nodes)) {
-            throw new Error('The persisted analysis does not contain an architecture scene.');
+            throw new Error(t('workbench.ui.noScene'));
         }
         projection = data;
         scene = data.scene;
@@ -917,8 +915,7 @@
         });
         fullscreenButton.hidden = typeof workbench.requestFullscreen !== 'function';
         renderDiagram(true);
-        setStatus('Loaded ' + scene.nodes.length + ' elements and '
-            + scene.edges.length + ' relationships from persisted Copilot snapshot.');
+        setStatus(t('workbench.ui.loaded', scene.nodes.length, scene.edges.length));
 
         if (resizeObserver) resizeObserver.disconnect();
         resizeObserver = typeof ResizeObserver !== 'undefined'
@@ -1006,7 +1003,7 @@
 
     document.addEventListener('fullscreenchange', function () {
         const full = document.fullscreenElement === workbench;
-        fullscreenButton.title = full ? 'Exit fullscreen' : 'Fullscreen';
+        fullscreenButton.title = full ? t('workbench.ui.exitFullscreen') : t('workbench.ui.fullscreen');
         fullscreenButton.setAttribute('aria-label', fullscreenButton.title);
         window.setTimeout(function () {
             updateViewBox();
@@ -1031,13 +1028,11 @@
     });
 
     if (!projectId || !snapshotId) {
-        showError(new Error(
-            'Open this workbench with both projectId and snapshotId. '
-            + 'No arbitrary page will be exported as a fallback.'));
+        window.TaxonomyI18n.ready().then(function () { showError(new Error(t('workbench.ui.missingScope'))); });
         return;
     }
 
-    Promise.resolve()
+    window.TaxonomyI18n.ready()
         .then(function () {
             return ArchitectureWorkbenchApi.load(projectId, snapshotId);
         })
