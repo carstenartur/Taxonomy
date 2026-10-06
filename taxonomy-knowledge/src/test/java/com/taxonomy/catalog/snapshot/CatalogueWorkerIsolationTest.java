@@ -54,7 +54,8 @@ class CatalogueWorkerIsolationTest {
         ReflectionTestUtils.setField(taxonomy, "catalogueRuntimePolicy", worker);
         ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
         ReflectionTestUtils.setField(taxonomy, "asyncInit", true);
-        var initializer = new LocalOnnxIndexInitializer(embedding, state, rebuilder, "LOCAL_ONNX");
+        var initializer = new LocalOnnxIndexInitializer(embedding, state, rebuilder,
+                new com.taxonomy.search.EmbeddingIndexHealth(), "LOCAL_ONNX");
         ReflectionTestUtils.setField(initializer, "catalogueRuntimePolicy", worker);
 
         taxonomy.initOnStartup();

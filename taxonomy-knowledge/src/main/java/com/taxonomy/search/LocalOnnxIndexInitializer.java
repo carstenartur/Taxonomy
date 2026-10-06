@@ -57,6 +57,7 @@ public class LocalOnnxIndexInitializer {
     private final LocalEmbeddingService embeddingService;
     private final AppInitializationStateService initializationState;
     private final LocalEmbeddingIndexRebuilder indexRebuilder;
+    private final EmbeddingIndexHealth indexHealth;
     private final String provider;
 
     @Autowired
@@ -72,10 +73,12 @@ public class LocalOnnxIndexInitializer {
             LocalEmbeddingService embeddingService,
             AppInitializationStateService initializationState,
             LocalEmbeddingIndexRebuilder indexRebuilder,
+            EmbeddingIndexHealth indexHealth,
             @Value("${llm.provider:}") String provider) {
         this.embeddingService = embeddingService;
         this.initializationState = initializationState;
         this.indexRebuilder = indexRebuilder;
+        this.indexHealth = indexHealth;
         this.provider = provider;
     }
 
@@ -108,50 +111,63 @@ public class LocalOnnxIndexInitializer {
         try {
             update(State.LOADING_MODEL, "Loading and warming the local embedding model");
             embeddingService.embed("Taxonomy embedding index warm-up");
+            String modelKey = embeddingService.embeddingIndexKey();
 
             update(State.INDEXING_NODES,
                     "Building taxonomy-node vectors required by semantic search");
             indexRebuilder.rebuildNodeIndex();
+            indexRebuilder.verifyNodeEmbeddingCoverage(modelKey);
             verifyNodeSearchReadiness();
 
             update(State.INDEXING_RELATIONS,
                     "Node semantic search is ready; building relation vectors");
             try {
                 indexRebuilder.rebuildRelationIndex();
+                indexRebuilder.verifyRelationEmbeddingCoverage(modelKey);
                 update(State.READY,
                         "Local node and relation embedding indexes are ready");
-                log.info("Local embedding indexes completed with {} indexed taxonomy nodes",
-                        indexedNodesAtReadiness);
+                log.info("Local embedding indexing finished in state {} with {} indexed taxonomy nodes",
+                        getState(), indexedNodesAtReadiness);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 update(State.PARTIAL,
                         "Node semantic search is ready; relation indexing was interrupted");
-                log.warn("Relation vector indexing was interrupted after node search became ready",
-                        exception);
+                log.warn("Relation vector indexing was interrupted after node search became ready");
             } catch (Exception | LinkageError exception) {
                 update(State.PARTIAL,
-                        "Node semantic search is ready; relation indexing failed: "
-                                + rootMessage(exception));
-                log.error("Relation vector indexing failed after node search became ready",
-                        exception);
+                        "Node semantic search is ready; relation indexing failed (code=RELATION_INDEX_FAILED)");
+                log.error("Relation vector indexing failed (code=RELATION_INDEX_FAILED)");
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             update(State.FAILED, "Local embedding indexing was interrupted");
-            log.warn("Local embedding indexing was interrupted", exception);
+            log.warn("Local embedding indexing was interrupted");
         } catch (Exception | LinkageError exception) {
+            State failedStage = state.get();
             update(State.FAILED,
-                    "Local embedding indexing failed: " + rootMessage(exception));
-            log.error("Local embedding indexing failed; semantic search is unavailable",
-                    exception);
+                    "Local embedding indexing failed during " + failedStage + " (code=EMBEDDING_INDEX_FAILED)");
+            log.error("Local embedding indexing failed (code=EMBEDDING_INDEX_FAILED, stage={})", failedStage);
         }
     }
 
     public State getState() {
-        return state.get();
+        State current = state.get();
+        if (current == State.INDEXING_RELATIONS || current == State.READY || current == State.PARTIAL) {
+            if (indexHealth.hasNodeFailure()) return State.FAILED;
+            if (current == State.READY && indexHealth.hasRelationFailure()) {
+                return State.PARTIAL;
+            }
+        }
+        return current;
     }
 
     public String getDetail() {
+        State effective = getState();
+        if (effective != state.get()) {
+            return effective == State.FAILED
+                    ? "Node vector writes failed; resolve the cause and restart to rebuild (code=NODE_VECTOR_WRITE_FAILED)"
+                    : "Relation vector writes failed; resolve the cause and restart to rebuild (code=RELATION_VECTOR_WRITE_FAILED)";
+        }
         return detail;
     }
 
@@ -164,7 +180,7 @@ public class LocalOnnxIndexInitializer {
     }
 
     public boolean isNodeSearchReady() {
-        return switch (state.get()) {
+        return switch (getState()) {
             case INDEXING_RELATIONS, READY, PARTIAL -> indexedNodesAtReadiness > 0;
             default -> false;
         };
@@ -202,7 +218,7 @@ public class LocalOnnxIndexInitializer {
                 Thread.currentThread().interrupt();
                 update(State.FAILED,
                         "Interrupted while waiting for taxonomy initialization");
-                log.warn("Interrupted while waiting for taxonomy initialization", exception);
+                log.warn("Interrupted while waiting for taxonomy initialization");
                 return false;
             }
         }
@@ -216,17 +232,7 @@ public class LocalOnnxIndexInitializer {
     private void update(State nextState, String nextDetail) {
         state.set(nextState);
         detail = nextDetail;
-        log.info("Local embedding index state {}: {}", nextState, nextDetail);
+        log.info("Local embedding index state {}: {}", getState(), getDetail());
     }
 
-    private static String rootMessage(Throwable error) {
-        Throwable current = error;
-        while (current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
-        }
-        String message = current.getMessage();
-        return message == null || message.isBlank()
-                ? current.getClass().getSimpleName()
-                : message;
-    }
 }

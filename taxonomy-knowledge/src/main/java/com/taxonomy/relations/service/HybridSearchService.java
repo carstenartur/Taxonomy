@@ -69,8 +69,8 @@ public class HybridSearchService {
         }
 
         List<TaxonomyNodeDto> fused = RankFusionUtil.fuse(semantic, fullText, maxResults);
-        log.debug("Hybrid search for '{}': semantic={}, fullText={}, fused={}",
-                queryText, semantic.size(), fullText.size(), fused.size());
+        log.debug("Hybrid search completed: semantic={}, fullText={}, fused={}",
+                semantic.size(), fullText.size(), fused.size());
         return fused;
     }
 }
