@@ -25,7 +25,7 @@
         });
         return params.toString();
     }
-    async function download(response, format, snapshotId, signal) {
+    async function download(response, format, snapshotId, signal, preparedBlob) {
         if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
         if (!response.ok) {
             const problem = await response.json().catch(() => null);
@@ -36,7 +36,7 @@
             throw new Error(reportText('The response is not a decision report. Please check your session and retry.', 'Die Antwort ist kein Entscheidungsbericht. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut.'));
         if (snapshotId && response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId)
             throw new Error(reportText('The report does not belong to the selected snapshot.', 'Der Bericht gehört nicht zum ausgewählten Snapshot.'));
-        const blob = await response.blob();
+        const blob = preparedBlob || await response.blob();
         if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
         if (!blob.size) throw new Error(reportText('The report is empty.', 'Der Bericht ist leer.'));
         const url = URL.createObjectURL(blob);

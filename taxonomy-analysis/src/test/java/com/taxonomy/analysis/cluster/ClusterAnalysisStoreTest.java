@@ -350,12 +350,16 @@ class ClusterAnalysisStoreTest {
         final ClusterAnalysisStore store;
         final JpaAnalysisTaskCompletionStore completions;
         Database() {
+            this(sql -> sql);
+        }
+        Database(org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
             bean.setDataSource(new DriverManagerDataSource("jdbc:hsqldb:mem:cluster-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
             bean.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
                     ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(),
                     AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
             bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false"));
+            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false",
+                    "hibernate.session_factory.statement_inspector", inspector));
             bean.afterPropertiesSet();
             em = SharedEntityManagerCreator.createSharedEntityManager(bean.getObject());
             transactions = new JpaTransactionManager(bean.getObject());

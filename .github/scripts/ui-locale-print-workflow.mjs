@@ -1,6 +1,8 @@
 import { expect } from '@playwright/test';
 import path from 'node:path';
 import { navigateToPage } from './ui-role-fixtures.mjs';
+import { runDiagramKeyboardWorkflow } from './ui-diagram-keyboard-workflow.mjs';
+import { runWorkbenchPrintWorkflow } from './ui-workbench-print-workflow.mjs';
 
 /** Browser acceptance for the locale and report-state corrections.
  * API fixtures are intentionally local to this journey; templates, scripts,
@@ -54,6 +56,8 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     await expect(page.locator('#searchResultsArea')).toBeHidden();
     await expect(page.locator('#searchResultsArea')).toBeEmpty();
     evidence.passed('clearing a pending search aborts it, clears results and returns keyboard focus');
+
+    await runDiagramKeyboardWorkflow({ page, evidence });
 
     // Exercise the production decision renderer, including the actual print CSS.
     await page.evaluate(() => {
@@ -160,18 +164,23 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     evidence.passed('scope and requirement changes invalidate a report and prevent stale preview/print revival');
 
     await route('**/api/projects/73101/architecture-workbench/qa-locale', request => request.fulfill(json({
-      snapshotId: 'qa-locale', snapshotStatus: 'SUCCESS', requirementText: 'Original English requirement',
+      snapshotId: 'qa-locale', snapshotStatus: 'SUCCESS',
+      requirementText: 'Original English requirement\n' + Array.from({ length: 80 }, (_, index) =>
+        'QA Requirement row ' + String(index + 1).padStart(2, '0') + ': original requirement content retained in the complete print document.').join('\n'),
       provider: 'QA', policyTitleKey: 'archview.policy.title.defaultImpact',
+      branchName: 'qa-verifikation', commitSha: '0123456789012345678901234567890123456789',
       scene: { title: 'archview.policy.title.defaultImpact', nodes: [
         { id: 'QA-01', label: 'Original English architecture title', type: 'BP', layer: 'BP',
-          x: 40, y: 80, width: 260, height: 90, relevance: 0.9, anchor: true }
+          x: 40, y: 80, width: 260, height: 90, relevance: 0.9, anchor: true },
+        { id: 'QA-02', label: 'Original distant architecture title', type: 'BP', layer: 'BP',
+          x: 2200, y: 1800, width: 260, height: 90, relevance: 0.7, anchor: false }
       ], edges: [] },
       elements: { 'QA-01': { directScore: 90, reviewStatus: 'PROPOSED',
         presenceReason: 'Original English evidence' } }, relations: {}
     })));
     await page.goto(baseUrl + '/architecture/workbench?projectId=73101&snapshotId=qa-locale&lang=de',
       { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#architectureStatus')).toContainText('1 Elemente und 0 Beziehungen');
+    await expect(page.locator('#architectureStatus')).toContainText('2 Elemente und 0 Beziehungen');
     await expect(page.locator('#architectureSearch')).toHaveAttribute('placeholder', 'Code, Titel oder Ebene suchen…');
     await expect(page.locator('#fitArchitecture')).toContainText('Einpassen');
     await expect(page.locator('#architectureCanvas')).toContainText('Original English architecture title');
@@ -183,6 +192,7 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     await evidence.axeState('qa-german-architecture-workbench', '.workbench-grid');
     await evidence.saveRequiredViewportState('qa-german-architecture-workbench', '.workbench-grid');
     evidence.passed('German workbench controls and keyboard-selected detail labels preserve original source content');
+    await runWorkbenchPrintWorkflow({ page, evidence, outputDir });
 
     // Inspect authenticated server-rendered attributes without triggering unrelated
     // requirement/import API workflows or modifying any real portfolio data.

@@ -39,7 +39,7 @@
             reconnectAttempt: 'Reconnect attempt', cancelling: 'Cancellation requested. Waiting for the authoritative terminal state…',
             retryStatus: 'Retry status connection now', openResult: 'Open result',
             exportTitle: 'Report export', exportRunning: 'Generating and validating the requested export…',
-            exportSuccess: 'Export created', exportFailed: 'Export failed', bytes: 'bytes'
+            exportSuccess: 'Export created', exportFailed: 'Export failed', exportCancelled: 'Export cancelled', bytes: 'bytes'
         },
         de: {
             title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen',
@@ -59,7 +59,7 @@
             reconnectAttempt: 'Wiederverbindungsversuch', cancelling: 'Abbruch angefordert. Warten auf den autoritativen Endzustand…',
             retryStatus: 'Statusverbindung jetzt erneut versuchen', openResult: 'Ergebnis öffnen',
             exportTitle: 'Berichtsexport', exportRunning: 'Der angeforderte Export wird erzeugt und geprüft…',
-            exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', bytes: 'Bytes'
+            exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', exportCancelled: 'Export abgebrochen', bytes: 'Bytes'
         }
     };
 
@@ -521,7 +521,7 @@
         if (!snapshotId) { await runDecisionReportExport(button, format); return; }
         window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: locale, format,
             api: window.TaxonomyPortfolioApi,
-            submit: selection => runDecisionReportExport(button, selection.format, selection.options)});
+            submit: selection => runDecisionReportExport(button, selection.format, selection.options, selection.signal)});
     }
 
     function markExportControls() {
@@ -531,7 +531,7 @@
         });
     }
 
-    async function runDecisionReportExport(button, format, options) {
+    async function runDecisionReportExport(button, format, options, signal) {
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
         const operationId = 'export-' + Date.now().toString(36) + '-' + format;
@@ -544,17 +544,20 @@
         renderExportState(surface, operationId, 'RUNNING', t('exportRunning'), '');
         dispatchExport(operationId, format, 'RUNNING');
         try {
+            throwIfExportCancelled(signal);
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
-                projectId, snapshotId, format, locale, options);
+                projectId, snapshotId, format, locale, options, { signal });
+            throwIfExportCancelled(signal);
             if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
                     || !response.headers.get('X-Taxonomy-Analysis-SHA256'))) throw new Error('Snapshot report provenance is missing or differs.');
             const blob = await response.blob();
+            throwIfExportCancelled(signal);
             const disposition = response.headers.get('Content-Disposition') || '';
             const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
             const filename = filenameMatch ? filenameMatch[1]
                 : `taxonomy-decision-rationale-report.${format}`;
             validateExport(response, blob, format, filename);
-            downloadBlob(blob, filename);
+            downloadBlob(blob, filename, signal);
             renderExportState(surface, operationId, 'SUCCESS', t('exportSuccess'),
                 filename + ' · ' + blob.size + ' ' + t('bytes'));
             dispatchExport(operationId, format, 'SUCCESS', {
@@ -563,8 +566,13 @@
                 contentType: response.headers.get('Content-Type') || blob.type || ''
             });
         } catch (error) {
-            renderExportState(surface, operationId, 'FAILED', t('exportFailed'), error?.message || String(error));
-            dispatchExport(operationId, format, 'FAILED', { error: error?.message || String(error) });
+            if (signal?.aborted) {
+                renderExportState(surface, operationId, 'CANCELLED', t('exportCancelled'), '');
+                dispatchExport(operationId, format, 'CANCELLED');
+            } else {
+                renderExportState(surface, operationId, 'FAILED', t('exportFailed'), error?.message || String(error));
+                dispatchExport(operationId, format, 'FAILED', { error: error?.message || String(error) });
+            }
             if (options) throw error;
         } finally {
             setExportControlsDisabled(false);
@@ -621,7 +629,12 @@
         }
     }
 
-    function downloadBlob(blob, filename) {
+    function throwIfExportCancelled(signal) {
+        if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
+    }
+
+    function downloadBlob(blob, filename, signal) {
+        throwIfExportCancelled(signal);
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;

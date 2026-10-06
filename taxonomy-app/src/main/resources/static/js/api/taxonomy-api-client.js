@@ -1,7 +1,8 @@
 /* taxonomy-api-client.js – Canonical HTTP transport for the Taxonomy UI.
  *
  * Named api/*.js feature clients use this transport for JSON and FormData.
- * Streaming and large-download adapters remain deliberately separate.
+ * requestBlob() keeps cancellation and timeout active until download bodies finish.
+ * Streaming adapters remain deliberately separate.
  * The legacy global interceptor keeps direct fetch() debt CSRF-safe until those
  * callers are migrated, while named helpers use request() directly.
  */
@@ -255,7 +256,7 @@ window.TaxonomyApiClient = (function () {
         });
     }
 
-    function request(url, init, options) {
+    function performRequest(url, init, options, consumeResponse) {
         var requestOptions = Object.assign({}, options || {});
         var validated = validateOptions(requestOptions);
         var requestId = requestOptions.requestId || createRequestId();
@@ -267,6 +268,9 @@ window.TaxonomyApiClient = (function () {
                 url, init, requestOptions, requestId, scope.signal);
             return transportFetch(url, prepared)
                 .then(function (response) { return checkStatus(response, context); })
+                .then(function (response) {
+                    return consumeResponse ? consumeResponse(response) : response;
+                })
                 .catch(function (error) {
                     throw normalizeTransportError(error, context, scope, validated);
                 })
@@ -282,6 +286,20 @@ window.TaxonomyApiClient = (function () {
                 });
         }
         return attempt(0);
+    }
+
+    function request(url, init, options) {
+        return performRequest(url, init, options);
+    }
+
+    // Unlike raw request(), this owns the complete response body lifecycle.
+    // Return headers alongside the blob so feature code can validate provenance.
+    function requestBlob(url, init, options) {
+        return performRequest(url, init, options, function (response) {
+            return response.blob().then(function (blob) {
+                return { response: response, blob: blob };
+            });
+        });
     }
 
     function getAccountContext() {
@@ -384,6 +402,7 @@ window.TaxonomyApiClient = (function () {
     return {
         ApiError: ApiError,
         request: request,
+        requestBlob: requestBlob,
         getJson: getJson,
         getAccountContext: getAccountContext,
         sendJson: sendJson,

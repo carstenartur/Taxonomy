@@ -9,7 +9,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => {resolve = yes; reject = no;}); return {promise, resolve, reject}; }
 
 function dom() {
-    const all = [], downloads = [], revoked = [];
+    const all = [], downloads = [], revoked = [], events = [];
     function element(tag = 'div', id) {
         const classes = new Set(), listeners = new Map();
         const node = {tagName: tag, children: [], attributes: {}, style: {}, dataset: {}, value: '',
@@ -40,11 +40,12 @@ function dom() {
         getElementById: id => all.find(n => n.id === id && !n.removed) || null,
         addEventListener(name, fn) {listeners.set(name, fn);},
         querySelectorAll: () => [], querySelector: () => null,
-        fire(name) {return listeners.get(name)?.();}};
+        dispatchEvent(event) {events.push(event);},
+        fire(name, event) {return listeners.get(name)?.(event);}};
     document.body = element('body'); document.head = element('head');
     let sequence = 0;
     const urls = {createObjectURL: () => 'blob:preview-' + (++sequence), revokeObjectURL: url => revoked.push(url)};
-    return {document, element, all, downloads, revoked, urls};
+    return {document, element, all, downloads, revoked, events, urls};
 }
 
 function searchFixture() {
@@ -283,4 +284,169 @@ test('live-analysis export cancellation reaches the real API client transport', 
     assert.equal(aborted, true, 'caller abort must abort the signal passed to the real transport');
     assert.equal(f.downloads.length, 0);
     assert.equal(timers.size, 0, 'request timeout is cleaned up after cancellation');
+});
+
+function pendingReportBody({ignoreAbort = false, snapshotId = null} = {}) {
+    const body = deferred();
+    let signal, reading = false, transportAborted = false;
+    const headers = new Headers({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'X-Taxonomy-Analysis-SHA256': 'analysis-hash',
+        'Content-Disposition': 'attachment; filename="decision-report.docx"',
+        ...(snapshotId ? {'X-Taxonomy-Snapshot-Id': snapshotId} : {})
+    });
+    return {body, reading: () => reading, aborted: () => transportAborted,
+        signal: () => signal,
+        fetch(url, init) {
+            signal = init.signal;
+            signal?.addEventListener('abort', () => {
+                transportAborted = true;
+                if (!ignoreAbort) body.reject(new DOMException('Body transfer cancelled', 'AbortError'));
+            }, {once: true});
+            return Promise.resolve({ok: true, status: 200, redirected: false, url, headers,
+                blob() {reading = true; return body.promise;}});
+        }
+    };
+}
+
+async function liveReportBodyFixture() {
+    const f = dom(), transfer = pendingReportBody(), timers = new Set();
+    f.element('textarea', 'businessText').value = 'Current requirement';
+    const window = {location: {href: 'http://localhost/', origin: 'http://localhost', pathname: '/'},
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyI18n: {getLocale: () => 'de'}, fetch: transfer.fetch};
+    class FixtureURL extends URL {}
+    Object.assign(FixtureURL, f.urls);
+    const context = vm.createContext({window, document: f.document, URL: FixtureURL, URLSearchParams,
+        Request, Headers, AbortController, DOMException,
+        setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
+        S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
+            lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
+    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    vm.runInContext(source('shared/decision-export-dialog.js'), context);
+    const browse = source('core/taxonomy-browse.js');
+    const start = browse.indexOf("if (btnId === 'exportDecisionReportDocx') {");
+    const end = browse.indexOf("if (btnId === 'exportReportMd'", start);
+    assert.ok(start >= 0 && end > start);
+    vm.runInContext(`(function () {const btnId='exportDecisionReportDocx';${browse.slice(start, end)}})();`, context);
+    await tick();
+    return {...f, window, transfer, timers, dialog: f.document.body.querySelector('dialog')};
+}
+
+test('live export cancellation after headers aborts the pending body transport', async () => {
+    const f = await liveReportBodyFixture();
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(), true, 'headers arrived and body consumption started');
+    assert.equal(f.transfer.signal().aborted, false);
+    await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
+    const aborted = f.transfer.aborted();
+    if (!aborted) f.transfer.body.resolve({size: 10});
+    await pending;
+    assert.equal(aborted, true, 'Cancel must abort the underlying body transfer after headers');
+    assert.equal(f.downloads.length, 0);
+    assert.equal(f.timers.size, 0, 'body completion/cancellation cleans up transport timeout');
+});
+
+async function savedRequirementExportFixture(options = {}) {
+    const f = dom(), transfer = pendingReportBody({...options, snapshotId: 'snapshot-1'});
+    f.document.readyState = 'loading';
+    f.element('section', 'requirementCopilotCard');
+    const button = f.element('button');
+    button.dataset.decisionReportFormat = 'docx';
+    const container = f.element('div');
+    button.closest = selector => selector === '[data-decision-report-format]' ? button : container;
+    f.document.querySelectorAll = selector => selector === '[data-decision-report-format]' ? [button] : [];
+    const fetch = (url, init) => url.includes('/decision-report/options')
+        ? Promise.resolve({ok: true, status: 200, json: async () => ({roots: [{code: 'CP', title: 'Capabilities'}]})})
+        : transfer.fetch(url, init);
+    const window = {location: {pathname: '/projects/1/requirements/2', search: '?lang=de&snapshot=snapshot-1'},
+        TaxonomyCopilotApi: {status: async () => ({}), latest: async () => null},
+        setTimeout: fn => fn()};
+    f.document.currentScript = {src: 'http://localhost/js/api/portfolio-api.js'};
+    class FixtureURL extends URL {}
+    Object.assign(FixtureURL, f.urls);
+    const context = vm.createContext({window, document: f.document, URL: FixtureURL, URLSearchParams,
+        fetch, AbortController, DOMException, Headers, setTimeout: fn => fn(),
+        CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
+    vm.runInContext(source('api/portfolio-api.js'), context);
+    vm.runInContext(source('shared/decision-export-dialog.js'), context);
+    vm.runInContext(source('portfolio/requirement-copilot.js'), context);
+    await f.document.fire('DOMContentLoaded');
+    await f.document.fire('click', {target: button, preventDefault() {}, stopImmediatePropagation() {}});
+    await tick();
+    const dialog = f.document.body.querySelector('dialog');
+    assert.ok(dialog, 'real delegated requirement export handler opens the dialog');
+    return {...f, transfer, button, dialog};
+}
+
+test('saved requirement custom submit cancels the adapter body transfer', async () => {
+    const f = await savedRequirementExportFixture();
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.button.disabled, true);
+    await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
+    const aborted = f.transfer.aborted();
+    if (!aborted) f.transfer.body.resolve({size: 10});
+    await pending;
+    assert.equal(aborted, true, 'custom submit must forward cancellation to the real portfolio adapter');
+    assert.equal(f.downloads.length, 0);
+    assert.equal(f.button.disabled, false);
+    assert.equal(f.events.at(-1).detail.status, 'CANCELLED');
+});
+
+test('saved requirement custom submit suppresses a body arriving after cancellation', async () => {
+    const f = await savedRequirementExportFixture({ignoreAbort: true});
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(), true);
+    await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
+    f.transfer.body.resolve({size: 10});
+    await pending;
+    assert.equal(f.downloads.length, 0, 'an already cancelled dialog must never trigger a late download');
+    assert.equal(f.button.disabled, false);
+    assert.equal(f.events.at(-1).detail.status, 'CANCELLED');
+});
+
+test('blob transport timeout remains active after headers and cancels the body', async () => {
+    const f = await liveReportBodyFixture();
+    const pending = f.window.TaxonomyApiClient.requestBlob('/api/decision-report/docx', {method: 'POST'}, {timeoutMillis: 25});
+    await tick();
+    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.timers.size, 1, 'receiving headers must not clear the body timeout');
+    const rejection = assert.rejects(pending, error => error.code === 'TIMEOUT' && error.retryable === true);
+    [...f.timers][0]();
+    await rejection;
+    assert.equal(f.transfer.aborted(), true);
+    assert.equal(f.timers.size, 0);
+    assert.equal(f.downloads.length, 0);
+});
+
+test('successful live export downloads the body consumed inside the transport scope', async () => {
+    const f = await liveReportBodyFixture();
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(), true);
+    f.transfer.body.resolve({size: 10});
+    await pending;
+    assert.equal(f.downloads.length, 1);
+    assert.equal(f.downloads[0].download, 'taxonomy-decision-report.docx');
+    assert.equal(f.transfer.aborted(), false, 'transport listener is removed after completed body');
+    assert.equal(f.dialog.open, false);
+    assert.equal(f.timers.size, 1, 'only the blob URL revocation timer remains');
+});
+
+test('successful saved requirement custom submit still downloads and reports success', async () => {
+    const f = await savedRequirementExportFixture();
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    f.transfer.body.resolve({size: 10});
+    await pending;
+    assert.equal(f.downloads.length, 1);
+    assert.equal(f.downloads[0].download, 'decision-report.docx');
+    assert.equal(f.events.at(-1).detail.status, 'SUCCESS');
+    assert.equal(f.events.at(-1).detail.bytes, 10);
+    assert.equal(f.button.disabled, false);
+    assert.equal(f.dialog.open, false);
 });

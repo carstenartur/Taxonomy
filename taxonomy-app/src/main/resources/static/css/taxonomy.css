@@ -55,6 +55,49 @@
     outline-offset: 2px;
 }
 
+/* Local controls and one roving keyboard target for each taxonomy diagram. */
+.tax-diagram-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bs-body-bg, #fff);
+    padding: 0.4rem 0;
+}
+.tax-diagram-controls .btn {
+    /* Keep both foreground/background changes atomic: Bootstrap's crossfade
+       briefly produces unreadable intermediate hover and focus colors. */
+    transition: none;
+}
+.tax-diagram-hint {
+    flex-basis: 100%;
+    margin: 0;
+}
+.tax-diagram-node:focus {
+    outline: 3px solid var(--bs-primary, #0d6efd);
+    outline-offset: 4px;
+}
+.tax-diagram-node:focus circle {
+    stroke: var(--bs-primary, #0d6efd);
+    stroke-width: 4px;
+}
+#taxonomyTree canvas:focus-visible {
+    outline: 3px solid var(--bs-primary, #0d6efd);
+    outline-offset: -3px;
+}
+.tax-diagram-selection {
+    max-width: 60rem;
+    padding: 0.5rem;
+    border-left: 3px solid var(--bs-primary, #0d6efd);
+}
+@media print {
+    .tax-diagram-controls, .tax-diagram-selection { display: none !important; }
+}
+
 /* ── Taxonomy tree ──────────────────────────────────────────── */
 .tax-node {
     font-size: 0.875rem;

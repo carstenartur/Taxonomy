@@ -5,6 +5,177 @@
 
     var t = TaxonomyI18n.t;
 
+    var diagramHintSequence = 0;
+
+    function rememberDiagramFocus(container) {
+        var focused = document.activeElement;
+        container._taxRestoreNodeFocus = !!(focused && container.contains(focused)
+            && focused.getAttribute('data-diagram-node'));
+    }
+
+    function diagramNodeLabel(node, scores, zoomable) {
+        var data = node.data;
+        var label = data.code + (data.name ? ' – ' + data.name : '');
+        if (hasScoreLabel(data.code, scores)) { label += ' · ' + scoreText(data.code, scores[data.code]); }
+        if (!zoomable) {
+            label += ' · ' + t(node.children ? 'views.diagram.expanded'
+                : node._children ? 'views.diagram.collapsed' : 'views.diagram.leaf');
+        }
+        var showDescriptions = document.getElementById && document.getElementById('showDescriptions');
+        if ((!showDescriptions || showDescriptions.checked) && data.description) { label += ' · ' + data.description; }
+        return label;
+    }
+
+    /** One tab stop per diagram; arrows traverse only currently visible nodes. */
+    function createDiagramNavigation(container, surface, options) {
+        var entries = [];
+        var active = null;
+        surface.setAttribute('role', 'group');
+        surface.setAttribute('aria-label', container.getAttribute('aria-label') || t('views.diagram.controls'));
+        if (options.canvas) { surface.setAttribute('tabindex', '0'); }
+
+        function select(entry, focus) {
+            if (!entry) { return; }
+            active = entry;
+            container.setAttribute('data-active-node', entry.node.data.code);
+            entries.forEach(function (candidate) {
+                if (!options.canvas) { candidate.element.setAttribute('tabindex', candidate === active ? '0' : '-1'); }
+            });
+            if (options.canvas) {
+                surface.setAttribute('data-diagram-node', entry.node.data.code);
+                surface.setAttribute('aria-label', diagramNodeLabel(entry.node, options.scores, false));
+                surface.setAttribute('role', entry.node.children || entry.node._children ? 'button' : 'group');
+                surface.removeAttribute('aria-expanded');
+                if (entry.node.children || entry.node._children) {
+                    surface.setAttribute('aria-expanded', !!entry.node.children);
+                }
+            }
+            if (options.change) { options.change(entry.node); }
+            if (focus) { entry.element.focus(); }
+        }
+
+        surface.addEventListener('focusin', function (event) {
+            var entry = options.canvas ? active : entries.find(function (candidate) { return candidate.element === event.target; });
+            if (entry) { select(entry, false); }
+        });
+        surface.addEventListener('keydown', function (event) {
+            var entry = options.canvas ? active : entries.find(function (candidate) { return candidate.element === event.target; });
+            if (!entry) { return; }
+            var index = entries.indexOf(entry);
+            var next;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') { next = Math.min(entries.length - 1, index + 1); }
+            else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') { next = Math.max(0, index - 1); }
+            else if (event.key === 'Home') { next = 0; }
+            else if (event.key === 'End') { next = entries.length - 1; }
+            else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault(); event.stopPropagation();
+                if (!event.repeat) { options.activate(entry.node); }
+                return;
+            } else { return; }
+            event.preventDefault(); event.stopPropagation();
+            select(entries[next], true);
+        });
+
+        return {
+            update: function (nextEntries) {
+                var previous = active;
+                var hadFocus = container._taxRestoreNodeFocus || (options.canvas ? document.activeElement === surface
+                    : entries.some(function (entry) { return entry.element === document.activeElement; }));
+                container._taxRestoreNodeFocus = false;
+                entries.forEach(function (entry) {
+                    if (!options.canvas) {
+                        entry.element.setAttribute('tabindex', '-1');
+                        entry.element.setAttribute('aria-hidden', 'true');
+                    }
+                });
+                entries = nextEntries;
+                entries.forEach(function (entry) {
+                    if (options.canvas) { return; }
+                    entry.element.classList.add('tax-diagram-node');
+                    entry.element.setAttribute('data-diagram-node', entry.node.data.code);
+                    entry.element.removeAttribute('aria-hidden');
+                    entry.element.setAttribute('role', entry.node.children || entry.node._children ? 'button' : 'group');
+                    entry.element.setAttribute('aria-label', diagramNodeLabel(entry.node, options.scores, options.zoomable));
+                    entry.element.removeAttribute('aria-expanded');
+                    if (!options.zoomable && (entry.node.children || entry.node._children)) {
+                        entry.element.setAttribute('aria-expanded', !!entry.node.children);
+                    }
+                });
+                var code = container.getAttribute('data-active-node');
+                var chosen = entries.find(function (entry) { return entry.node.data.code === code; });
+                var ancestor = previous && previous.node.parent;
+                while (!chosen && ancestor) {
+                    chosen = entries.find(function (entry) { return entry.node === ancestor; });
+                    ancestor = ancestor.parent;
+                }
+                active = null;
+                select(chosen || entries[0], hadFocus);
+                if (options.canvas && !active) { surface.setAttribute('aria-label', t('views.no.scored.nodes')); }
+            },
+            selectNode: function (node) {
+                select(entries.find(function (entry) { return entry.node === node; }), false);
+            },
+            current: function () { return active && active.node; }
+        };
+    }
+
+    function createDiagramControls(container, surface, actions, hintKey) {
+        var controls = document.createElement('div');
+        controls.className = 'tax-diagram-controls';
+        controls.setAttribute('role', 'group');
+        controls.setAttribute('aria-label', t('views.diagram.controls'));
+        actions.forEach(function (action) {
+            var button = document.createElement('button');
+            button.setAttribute('type', 'button');
+            button.className = 'btn btn-sm btn-outline-secondary';
+            button.textContent = t(action.key);
+            button.addEventListener('click', action.run);
+            controls.appendChild(button);
+        });
+        var hint = document.createElement('p');
+        hint.id = 'tax-diagram-hint-' + (++diagramHintSequence);
+        hint.className = 'tax-diagram-hint small text-muted';
+        hint.textContent = t(hintKey);
+        controls.appendChild(hint);
+        surface.setAttribute('aria-describedby', hint.id);
+        container.insertBefore(controls, container.children[0]);
+        return controls;
+    }
+
+    function installDiagramZoomControls(container, surface, selection, zoom, bounds, canvas) {
+        function scale(factor) {
+            selection.call(zoom.scaleBy, factor, [(container.clientWidth || 800) / 2, 200]);
+        }
+        createDiagramControls(container, surface, [
+            {key: 'views.diagram.zoomIn', run: function () { scale(1.25); }},
+            {key: 'views.diagram.zoomOut', run: function () { scale(0.8); }},
+            {key: 'views.diagram.fit', run: function () {
+                var box = bounds();
+                if (!box || !box.width || !box.height) { return; }
+                var k = Math.max(0.001, Math.min(1, ((container.clientWidth || 800) - 32) / box.width, 368 / box.height));
+                var fitted = d3.zoomIdentity.translate(16 - box.x * k, 16 - box.y * k).scale(k);
+                selection.call(zoom.transform, fitted);
+            }},
+            {key: 'views.diagram.reset', run: function () { selection.call(zoom.transform, d3.zoomIdentity); }}
+        ], canvas ? 'views.diagram.canvasKeyboard' : 'views.diagram.keyboard');
+    }
+
+    function diagramEntries(selection, visible) {
+        var entries = [];
+        selection.each(function (node) {
+            if (node.data.code !== '__root__' && (!visible || visible(node))) { entries.push({node: node, element: this}); }
+        });
+        return entries;
+    }
+
+    function toggleDiagramBranch(node, update) {
+        if (node.children) { node._children = node.children; node.children = null; }
+        else if (node._children) { node.children = node._children; node._children = null; }
+        else { return; }
+        hideTooltip();
+        update(node);
+    }
+
     function scoreText(code, value) {
         var scoring = window.TaxonomyScoring;
         return scoring && scoring.describeScore
@@ -121,6 +292,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderSunburst(container, data, scores) {
+        rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -241,9 +413,22 @@
         });
 
         var currentZoom = hierarchy;
+        var sunNavigation = createDiagramNavigation(container, svg.node(), {
+            scores: scores, zoomable: true,
+            activate: function (node) { if (node.children) { clicked(null, node); } }
+        });
+        sunNavigation.update(diagramEntries(paths, function (node) { return arcVisible(node.current); }));
+        var sunControls = createDiagramControls(container, svg.node(), [
+            {key: 'views.back', run: function () { if (currentZoom.parent) { clicked(null, currentZoom.parent); } }},
+            {key: 'views.diagram.overview', run: function () { clicked(null, hierarchy); }}
+        ], 'views.diagram.keyboard');
+        var backControl = sunControls.querySelector('button');
+        backControl.disabled = true;
+        centerGroup.attr('aria-hidden', 'true'); // The equivalent native Back button is in the local controls.
 
         function clicked(event, p) {
             currentZoom = p;
+            hideTooltip();
 
             hierarchy.each(function (d) {
                 d.target = {
@@ -276,6 +461,8 @@
 
             // Show/hide back button
             centerText.text(p === hierarchy ? '' : t('views.back'));
+            backControl.disabled = p === hierarchy;
+            sunNavigation.update(diagramEntries(paths, function (node) { return arcVisible(node.target); }));
         }
 
         function arcVisible(d) {
@@ -314,6 +501,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeDiagram(container, data, scores) {
+        rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -355,11 +543,13 @@
 
         // Zoom/pan layer
         var zoomLayer = svg.append('g');
-        svg.call(
-            d3.zoom()
-                .scaleExtent([0.1, 20])
-                .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); })
-        );
+        var treeZoom = d3.zoom().scaleExtent([0.001, 20])
+            .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
+        svg.call(treeZoom);
+        installDiagramZoomControls(container, svg.node(), svg, treeZoom, function () { return zoomLayer.node().getBBox(); });
+        var treeNavigation = createDiagramNavigation(container, svg.node(), {
+            scores: scores, activate: function (node) { toggleDiagramBranch(node, update); }
+        });
 
         // Content group – repositioned inside update() to keep all nodes visible
         var g = zoomLayer.append('g');
@@ -415,20 +605,15 @@
                 .style('cursor', 'pointer')
                 .on('click', function (event, d) {
                     event.stopPropagation();
-                    if (d.children) {
-                        d._children = d.children;
-                        d.children = null;
-                    } else {
-                        d.children = d._children;
-                        d._children = null;
-                    }
-                    update(d);
+                    treeNavigation.selectNode(d);
+                    toggleDiagramBranch(d, update);
                 })
                 .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
                 .on('mouseleave', hideTooltip);
 
             // Merge enter + update
             var nodeUpdate = nodeEnter.merge(node);
+            treeNavigation.update(diagramEntries(nodeUpdate));
 
             // Horizontal layout: translate(y, x) — y is horizontal position, x is vertical
             var nodeT = nodeUpdate.transition().duration(300)
@@ -527,6 +712,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderDecisionMap(container, data, scores) {
+        rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -652,11 +838,13 @@
             .style('display', 'block');
 
         var zoomLayer = svg.append('g');
-        svg.call(
-            d3.zoom()
-                .scaleExtent([0.1, 20])
-                .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); })
-        );
+        var decisionZoom = d3.zoom().scaleExtent([0.001, 20])
+            .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
+        svg.call(decisionZoom);
+        installDiagramZoomControls(container, svg.node(), svg, decisionZoom, function () { return zoomLayer.node().getBBox(); });
+        var decisionNavigation = createDiagramNavigation(container, svg.node(), {
+            scores: scores, activate: function (node) { toggleDiagramBranch(node, dmUpdate); }
+        });
 
         var g = zoomLayer.append('g');
         var nodeSeq = 0;
@@ -759,14 +947,14 @@
                 .style('cursor', 'pointer')
                 .on('click', function (event, d) {
                     event.stopPropagation();
-                    if (d.children) { d._children = d.children; d.children = null; }
-                    else { d.children = d._children; d._children = null; }
-                    dmUpdate(d);
+                    decisionNavigation.selectNode(d);
+                    toggleDiagramBranch(d, dmUpdate);
                 })
                 .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
                 .on('mouseleave', hideTooltip);
 
             var nodeUpdate = nodeEnter.merge(node);
+            decisionNavigation.update(diagramEntries(nodeUpdate));
 
             var nodeT = nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
@@ -978,6 +1166,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeCanvas(container, data, scores) {
+        rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -1031,6 +1220,25 @@
         // Store laid-out nodes for hit testing
         var layoutNodes = [];
         var layoutLinks = [];
+        var canvasStatus = document.createElement('p');
+        canvasStatus.className = 'tax-diagram-selection small';
+        canvasStatus.setAttribute('role', 'status');
+        canvasStatus.setAttribute('aria-live', 'polite');
+        container.appendChild(canvasStatus);
+        var canvasNavigation = createDiagramNavigation(container, canvas, {
+            scores: scores, canvas: true,
+            activate: function (node) { toggleDiagramBranch(node, performLayout); },
+            change: function (node) {
+                canvasStatus.textContent = diagramNodeLabel(node, scores, false);
+                if (document.activeElement === canvas && canvasZoom) {
+                    d3.select(canvas).call(canvasZoom.translateTo,
+                        node.y + canvas._offsetX, node.x + canvas._offsetY,
+                        [(container.clientWidth || 800) / 2, 200]);
+                }
+                draw();
+            }
+        });
+        canvas.addEventListener('blur', draw);
 
         function performLayout() {
             treeLayout(root);
@@ -1047,8 +1255,8 @@
             var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
             var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
 
-            canvas.width = svgW * window.devicePixelRatio;
-            canvas.height = svgH * window.devicePixelRatio;
+            canvas.width = svgW * (window.devicePixelRatio || 1);
+            canvas.height = svgH * (window.devicePixelRatio || 1);
             canvas.style.width = svgW + 'px';
             canvas.style.height = svgH + 'px';
 
@@ -1056,6 +1264,8 @@
             canvas._offsetX = marginLeft;
             canvas._offsetY = marginTop - xMin;
 
+            canvasNavigation.update(layoutNodes.filter(function (node) { return node.data.code !== '__root__'; })
+                .map(function (node) { return {node: node, element: canvas}; }));
             draw();
         }
 
@@ -1101,6 +1311,14 @@
                 ctx.strokeStyle = '#555';
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
+
+                if (canvasNavigation && canvasNavigation.current() === d && document.activeElement === canvas) {
+                    ctx.beginPath();
+                    ctx.arc(nx, ny, NODE_RADIUS + 5, 0, 2 * Math.PI);
+                    ctx.strokeStyle = '#0d6efd';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
 
                 // Collapse indicator (+ inside circle for collapsed nodes)
                 if (d._children && d._children.length) {
@@ -1173,14 +1391,8 @@
             var my = event.clientY - rect.top;
             var hit = hitTest(mx, my);
             if (hit) {
-                if (hit.children) {
-                    hit._children = hit.children;
-                    hit.children = null;
-                } else if (hit._children) {
-                    hit.children = hit._children;
-                    hit._children = null;
-                }
-                performLayout();
+                canvasNavigation.selectNode(hit);
+                toggleDiagramBranch(hit, performLayout);
             }
         });
 
@@ -1202,14 +1414,16 @@
         canvas.addEventListener('mouseleave', hideTooltip);
 
         // d3.zoom() on canvas for pan/zoom
-        d3.select(canvas).call(
-            d3.zoom()
-                .scaleExtent([0.1, 20])
-                .on('zoom', function (event) {
-                    transform = { x: event.transform.x, y: event.transform.y, k: event.transform.k };
-                    draw();
-                })
-        );
+        var canvasZoom = d3.zoom().scaleExtent([0.001, 20])
+            .on('zoom', function (event) {
+                transform = { x: event.transform.x, y: event.transform.y, k: event.transform.k };
+                draw();
+            });
+        var canvasSelection = d3.select(canvas).call(canvasZoom);
+        installDiagramZoomControls(container, canvas, canvasSelection, canvasZoom, function () {
+            var dpr = window.devicePixelRatio || 1;
+            return {x: 0, y: 0, width: canvas.width / dpr, height: canvas.height / dpr};
+        }, true);
 
         // Initial layout and draw
         root.x0 = 0;

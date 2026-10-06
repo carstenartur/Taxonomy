@@ -27,10 +27,12 @@ class ArchitectureWorkbenchAssetContractTest {
         assertThat(adapter)
                 .doesNotContain("window.print")
                 .doesNotContain("fetch(")
-                .contains("Promise.resolve()")
+                .contains("window.TaxonomyI18n.ready()")
                 .contains("return ArchitectureWorkbenchApi.load(projectId, snapshotId)")
                 .contains(".catch(showError)")
                 .contains("ArchitectureWorkbenchApi.pdfUrl");
+        assertThat(adapter.indexOf("window.TaxonomyI18n.ready()"))
+                .isLessThan(adapter.indexOf("return ArchitectureWorkbenchApi.load(projectId, snapshotId)"));
     }
 
     @Test

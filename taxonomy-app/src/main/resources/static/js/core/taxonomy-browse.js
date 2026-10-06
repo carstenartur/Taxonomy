@@ -970,11 +970,11 @@
                 analysisScope: S.lastAnalysisScope,
                 selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
                 submit: async function (selection) {
-                    var response = await window.TaxonomyApiClient.request('/api/decision-report/' + selection.format, {
+                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options}))
                     }, { signal: selection.signal });
-                    await window.TaxonomyDecisionExport.download(response, selection.format, null, selection.signal);
+                    await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob);
                 }
             });
             return;

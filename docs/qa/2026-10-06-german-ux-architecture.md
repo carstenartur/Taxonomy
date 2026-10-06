@@ -1,5 +1,10 @@
 # QA: deutsche Oberfläche, Architektur und Bedienbarkeit — 6. Oktober 2026
 
+**Folgeprüfung:** [Zusätzliche Exportabbruchkorrekturen, Diagramm-Tastaturbedienung,
+Workbench-Druck und Recent-Projektion](2026-10-06-german-ux-architecture-followup.md).
+Die nachstehenden Zahlen und Abschlussnachweise bleiben der historische Prüfstand
+dieses ersten Berichts.
+
 ## Ergebnis und Prüfstand
 
 Die Prüfung hat konkrete Fehler in der deutschen Oberfläche, in asynchronen

@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -35,7 +34,6 @@ import java.util.concurrent.Executors;
  */
 public final class DurableClusterAnalysisObservation implements ClusterAnalysisObservation, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(DurableClusterAnalysisObservation.class);
-    private static final int MAX_PREVIEW_SCORES = 8192;
     private final ClusterAnalysisStore store;
     private final ClusterAnalysisSignals signals;
     private final AnalysisEventPublisher publisher;
@@ -86,8 +84,8 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
 
     @Override public List<ClusterAnalysisView> recent(String owner, WorkspaceContext scope,
                                                      Long projectId, Long requirementId) {
-        return store.recent(owner, scope, projectId, requirementId).stream()
-                .map(context -> view(context, store.snapshot(context))).toList();
+        return store.recentSnapshots(owner, scope, projectId, requirementId).stream()
+                .map(recent -> view(recent.context(), recent.snapshot(), recent.scorePreview())).toList();
     }
 
     @Override public AnalysisResult result(String operationId, String owner, WorkspaceContext scope) {
@@ -223,6 +221,11 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
     }
 
     private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable) {
+        return view(context, durable, ClusterAnalysisStore.ScorePreview.from(durable.result()));
+    }
+
+    private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable,
+                                            ClusterAnalysisStore.ScorePreview scores) {
         var counts = new LinkedHashMap<TaskKey, TaskCounts>();
         for (var task : durable.tasks()) {
             var key = new TaskKey(AnalysisTaskType.valueOf(task.type()), task.root() == null ? null : TaxonomyShardRoot.of(task.root()));
@@ -231,9 +234,6 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         var tasks = counts.entrySet().stream().map(entry -> new ClusterAnalysisView.TaskCounts(entry.getKey().type(),
                 entry.getKey().root(), entry.getValue().queued, entry.getValue().running,
                 entry.getValue().completed, entry.getValue().failed)).toList();
-        Map<String, Integer> raw = durable.result() == null ? Map.of() : durable.result().getRawScores();
-        var scores = new LinkedHashMap<String, Integer>();
-        raw.entrySet().stream().limit(MAX_PREVIEW_SCORES).forEach(entry -> scores.put(entry.getKey(), entry.getValue()));
         var authority = context.authority();
         boolean terminal = durable.state().terminal();
         long now = System.currentTimeMillis(), end = terminal ? durable.updatedAt() : now;
@@ -253,8 +253,8 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
                 ? null : new AnalysisProvenance(requirement.projectId(), requirement.requirementId(), requirement.snapshotId(), null);
         var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, null,
                 durable.state() == ClusterAnalysisState.CANCELLED ? "CANCELLED" : null,
-                durable.revision(), durable.createdAt(), durable.updatedAt(), now, raw.size(), raw.size() > scores.size(),
-                Map.copyOf(scores), List.of(), 0, null, "EXTERNAL_OR_UNKNOWN", "EXTERNAL_OR_UNKNOWN", provenance,
+                durable.revision(), durable.createdAt(), durable.updatedAt(), now, scores.evaluatedNodes(), scores.scoresTruncated(),
+                scores.rawScores(), List.of(), 0, null, "EXTERNAL_OR_UNKNOWN", "EXTERNAL_OR_UNKNOWN", provenance,
                 terminal ? durable.updatedAt() : null, Math.max(0, end - durable.createdAt()), executionStart,
                 Math.max(0, (executionStart == null ? end : executionStart) - durable.createdAt()),
                 executionStart == null ? 0 : Math.max(0, end - executionStart), null, null);

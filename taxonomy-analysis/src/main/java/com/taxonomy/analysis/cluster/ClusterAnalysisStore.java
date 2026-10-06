@@ -10,10 +10,14 @@ import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import org.hibernate.jpa.HibernateHints;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -41,6 +45,23 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     public record Snapshot(String operationId, ClusterAnalysisState state, long revision,
                            int completedRoots, int totalRoots, int runningTasks, int queuedTasks,
                            long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result) { }
+    /** The same bounded score preview for individual and recovery-list views. */
+    public record ScorePreview(int evaluatedNodes, Map<String, Integer> rawScores) {
+        private static final int MAX_PREVIEW_SCORES = 8192;
+        public ScorePreview { rawScores = Map.copyOf(rawScores); }
+        public boolean scoresTruncated() { return evaluatedNodes > rawScores.size(); }
+        static ScorePreview from(AnalysisResult result) {
+            var raw = result == null ? Map.<String, Integer>of() : result.getRawScores();
+            var scores = new LinkedHashMap<String, Integer>();
+            raw.entrySet().stream().limit(MAX_PREVIEW_SCORES).forEach(entry -> scores.put(entry.getKey(), entry.getValue()));
+            return new ScorePreview(raw.size(), scores);
+        }
+    }
+    /** Recovery metadata and bounded scores; snapshot.result is deliberately absent. */
+    public record RecentSnapshot(AnalysisOperationContext context, Snapshot snapshot, ScorePreview scorePreview) { }
+    private record RecentRun(AnalysisOperationContext context, ClusterAnalysisState state, long revision,
+                             int completedRoots, int totalRoots, long createdAt, long updatedAt,
+                             ScorePreview scores) { }
     public record Input(AnalysisOperationContext context, AnalyzeRequirementCommand command,
                         boolean executable, String taskInput) { }
 
@@ -330,6 +351,101 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (requirementId != null) query.setParameter("requirement", requirementId);
             return query.getResultList().stream().map(value -> read(value, AnalysisOperationContext.class)).toList();
         });
+    }
+
+    /**
+     * Recovery-list read model: one bounded run projection and one task-status projection.
+     * Keep the committed result's score evidence for the existing preview, without loading
+     * command, frozen inputs, task messages/results or the result's presentation object graph.
+     */
+    public List<RecentSnapshot> recentSnapshots(String owner, WorkspaceContext workspace,
+                                                Long projectId, Long requirementId) {
+        return tx.execute(status -> {
+            var query = em.createQuery("select r.id,r.contextJson,r.state,r.revision,r.completedRoots,r.totalRoots,"
+                    + "r.createdAt,r.updatedAt,r.resultJson,r.projectId,r.requirementId from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope"
+                    + (projectId == null ? "" : " and r.projectId=:project")
+                    + (requirementId == null ? "" : " and r.requirementId=:requirement")
+                    + " order by r.createdAt desc,r.id", Object[].class)
+                    .setParameter("owner", owner).setParameter("scope", scopeKey(workspace)).setMaxResults(50);
+            if (projectId != null) query.setParameter("project", projectId);
+            if (requirementId != null) query.setParameter("requirement", requirementId);
+            // Compact each row while consuming the cursor: do not retain a page of
+            // full result JSON strings alongside the bounded score previews.
+            query.setHint(HibernateHints.HINT_FETCH_SIZE, 1);
+            List<RecentRun> runs;
+            try (var rows = query.getResultStream()) {
+                runs = rows.map(row -> recentRun(row, workspace)).toList();
+            }
+            if (runs.isEmpty()) return List.of();
+            var operationIds = runs.stream().map(run -> run.context().operationId()).toList();
+            var taskRows = em.createQuery("select w.operationId,w.taskId,w.taskType,w.root,w.state,w.attempts,w.startedAt,w.finishedAt"
+                    + " from ClusterAnalysisWork w where w.operationId in :ids order by w.operationId,w.ordinal", Object[].class)
+                    .setParameter("ids", operationIds).getResultList();
+            var tasksByOperation = new HashMap<String, List<TaskView>>();
+            for (var row : taskRows) {
+                tasksByOperation.computeIfAbsent((String) row[0], ignored -> new ArrayList<>())
+                        .add(new TaskView((String) row[1], (String) row[2], (String) row[3], (String) row[4],
+                                (Integer) row[5], (Long) row[6], (Long) row[7]));
+            }
+            return runs.stream().map(run -> {
+                String id = run.context().operationId();
+                var tasks = List.copyOf(tasksByOperation.getOrDefault(id, List.of()));
+                var snapshot = new Snapshot(id, run.state(), run.revision(), run.completedRoots(), run.totalRoots(),
+                        (int) tasks.stream().filter(task -> task.state().equals("RUNNING")).count(),
+                        (int) tasks.stream().filter(task -> task.state().equals("QUEUED")).count(),
+                        run.createdAt(), run.updatedAt(), tasks, null);
+                return new RecentSnapshot(run.context(), snapshot, run.scores());
+            }).toList();
+        });
+    }
+
+    private RecentRun recentRun(Object[] row, WorkspaceContext workspace) {
+        var context = read((String) row[1], AnalysisOperationContext.class);
+        var authority = context.authority();
+        // The projection must not turn a mismatched context into another run's
+        // identity, nor bypass the immutable scope bound at admission/restore.
+        if (!context.operationId().equals(row[0])
+                || !Objects.equals(authority.repositoryId(), workspace.repositoryId())
+                || !Objects.equals(authority.workspaceId(), workspace.workspaceId())
+                || !Objects.equals(authority.branch(), workspace.currentBranch())
+                || !Objects.equals(context.requirement().projectId(), row[9])
+                || !Objects.equals(context.requirement().requirementId(), row[10]))
+            throw new IllegalStateException("Analysis operation source identity mismatch");
+        return new RecentRun(context, (ClusterAnalysisState) row[2], (Long) row[3], (Integer) row[4], (Integer) row[5],
+                (Long) row[6], (Long) row[7], scoreEvidence((String) row[8]));
+    }
+
+    private ScorePreview scoreEvidence(String resultJson) {
+        if (resultJson == null) return ScorePreview.from(null);
+        try (var parser = mapper.createParser(resultJson)) {
+            var token = parser.nextToken();
+            if (token == JsonToken.VALUE_NULL) {
+                requireResultEnd(parser);
+                return ScorePreview.from(null);
+            }
+            if (token != JsonToken.START_OBJECT) throw new IllegalArgumentException("Invalid committed analysis result");
+            var result = new AnalysisResult();
+            // This reader binds a nested field; the enclosing result legitimately has
+            // more tokens. Validate document completion with the outer parser instead.
+            var scoresReader = mapper.readerForMapOf(Integer.class)
+                    .without(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+            while (parser.nextToken() == JsonToken.PROPERTY_NAME) {
+                String field = parser.currentName();
+                parser.nextToken();
+                if (field.equals("rawScores")) result.setRawScores(scoresReader.readValue(parser));
+                else if (field.equals("scores")) result.setScores(scoresReader.readValue(parser));
+                else parser.skipChildren();
+            }
+            if (parser.currentToken() != JsonToken.END_OBJECT)
+                throw new IllegalArgumentException("Invalid committed analysis result");
+            requireResultEnd(parser);
+            return ScorePreview.from(result);
+        }
+    }
+
+    private void requireResultEnd(JsonParser parser) {
+        if (mapper.isEnabled(DeserializationFeature.FAIL_ON_TRAILING_TOKENS) && parser.nextToken() != null)
+            throw new IllegalArgumentException("Invalid committed analysis result");
     }
 
     /** Add presentation-only enrichment without replacing the committed assessment. */

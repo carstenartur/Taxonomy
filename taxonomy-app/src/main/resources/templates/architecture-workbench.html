@@ -30,6 +30,9 @@
         <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button" th:text="#{workbench.ui.pdf}">
             Download PDF
         </button>
+        <button id="printArchitectureView" class="btn btn-sm btn-outline-light" type="button" disabled
+                th:title="#{workbench.ui.printTitle}" title="Print the displayed diagram, provenance and selection details"
+                th:text="#{workbench.ui.print}">Print view</button>
         <button id="downloadArchitectureWord" class="btn btn-sm btn-outline-light" type="button"
                 th:text="#{workbench.download.architectureWord}">Architecture Word</button>
         <button id="downloadDecisionWord" class="btn btn-sm btn-outline-light" type="button"
@@ -148,9 +151,13 @@
                 </svg>
             </div>
         </div>
+        <section class="architecture-print-view" aria-labelledby="architecturePrintScope">
+            <p id="architecturePrintScope" th:text="#{workbench.ui.printScope}">Displayed diagram and current selection</p>
+            <div id="architecturePrintDiagram"></div>
+        </section>
     </section>
 
-    <aside class="workbench-detail-panel" aria-labelledby="detailTitle">
+    <aside class="workbench-detail-panel" aria-labelledby="detailTitle" tabindex="0">
         <h2 id="detailTitle" class="h5" th:text="#{workbench.ui.details}">Selection details</h2>
         <p id="detailHint" class="text-muted" th:text="#{workbench.ui.hint}">
             Select an architecture element or relationship to inspect its evidence and review state.
@@ -159,7 +166,8 @@
 
         <section class="mt-4" aria-labelledby="requirementTitle">
             <h2 id="requirementTitle" class="h6" th:text="#{workbench.ui.requirement}">Requirement</h2>
-            <p id="requirementText" class="requirement-text"></p>
+            <p id="requirementText" class="requirement-text" role="region"
+               aria-labelledby="requirementTitle" tabindex="0"></p>
         </section>
 
         <section id="architectureWarningsSection" class="mt-4 d-none" aria-labelledby="warningsTitle">
@@ -177,6 +185,8 @@
         src="/js/api/architecture-workbench-api.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"
         src="/js/architecture-workbench.js"></script>
+<script th:src="@{/js/architecture-workbench-print.js}"
+        src="/js/architecture-workbench-print.js"></script>
 <script th:src="@{/js/shared/decision-export-dialog.js}" src="/js/shared/decision-export-dialog.js"></script>
 <script th:src="@{/js/api/portfolio-api.js}" src="/js/api/portfolio-api.js"></script>
 <script th:src="@{/js/architecture-workbench-export.js}"
