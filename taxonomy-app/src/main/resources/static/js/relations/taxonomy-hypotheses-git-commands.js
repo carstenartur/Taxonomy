@@ -35,6 +35,10 @@
             reviewIndices(indices, 'ACCEPT', true);
         };
         window._applyForSession = applyForSession;
+        window.TaxonomyHypothesisReview = Object.freeze({
+            renderRestoredState: renderRestoredState
+        });
+        renderRestoredState();
     }
 
     function Api() {
@@ -46,7 +50,7 @@
 
     function reviewIndices(indices, action, offerUndo) {
         if (busy) return;
-        var commands = reviewCommands(indices);
+        var commands = reviewCommands(indices, action);
         if (commands.length === 0) {
             showStatus('warning',
                 'No persisted hypothesis is available for this review action.');
@@ -80,7 +84,13 @@
             });
     }
 
-    function reviewCommands(indices) {
+    function isReviewable(hypothesis) {
+        var status = hypothesis.status || 'PROVISIONAL';
+        return (status === 'PROVISIONAL' || status === 'PROPOSED')
+            && hypothesis.appliedInCurrentAnalysis !== true;
+    }
+
+    function reviewCommands(indices, action) {
         var relations = currentRelations();
         var seen = Object.create(null);
         var commands = [];
@@ -89,6 +99,10 @@
             var id = hypothesis && Number(hypothesis.hypothesisId);
             if (!hypothesis || !Number.isSafeInteger(id)
                     || id <= 0 || seen[id]) {
+                return;
+            }
+            if (action === 'REVERT' ? hypothesis.status !== 'ACCEPTED'
+                    && hypothesis.status !== 'REJECTED' : !isReviewable(hypothesis)) {
                 return;
             }
             seen[id] = true;
@@ -201,6 +215,7 @@
         state.failed.forEach(function (outcome) {
             renderFailed(outcome.command, outcome.status);
         });
+        refreshBulkActions();
 
         if (state.pending) {
             renderPending(state.pending.command, state.pending.body);
@@ -226,6 +241,7 @@
     function fail(error, commands) {
         busy = false;
         setBusy(commands, false);
+        refreshBulkActions();
         if (error.kind === 'CONFLICT') {
             showStatus('warning', error.message
                 + ' Run the analysis again to refresh the review queue.');
@@ -244,6 +260,7 @@
                 'This hypothesis has no persisted review identity.');
             return;
         }
+        if (!isReviewable(hypothesis)) return;
         var command = { index: index, id: id, hypothesis: hypothesis };
         setRowBusy(command, true);
         Api().applyForSession(id)
@@ -257,6 +274,7 @@
                 if (row) row.classList.add('table-info');
                 replaceActions(command,
                     '<span class="badge bg-info">Session only</span>');
+                refreshBulkActions();
                 showStatus('info', 'Applied for this analysis session: '
                     + hypothesis.sourceCode + ' → ' + hypothesis.targetCode);
             })
@@ -266,6 +284,23 @@
                     'Could not apply hypothesis for this session: '
                         + error.message);
             });
+    }
+
+    function renderRestoredState() {
+        currentRelations().forEach(function (hypothesis, index) {
+            var id = Number(hypothesis.hypothesisId);
+            if (!Number.isSafeInteger(id) || id <= 0) return;
+            if (hypothesis.status === 'ACCEPTED' || hypothesis.status === 'REJECTED') {
+                renderCompleted({ index: index, id: id, hypothesis: hypothesis },
+                    hypothesis.status === 'ACCEPTED' ? 'ACCEPT' : 'REJECT', true);
+            }
+        });
+    }
+
+    function refreshBulkActions() {
+        // Refresh only the header: replacing all rows would lose partial
+        // recovery/error outcomes and their existing Git Undo listeners.
+        window.TaxonomyScoring?.refreshSuggestedRelationsBulkActions?.();
     }
 
     function renderCompleted(command, action, offerUndo) {

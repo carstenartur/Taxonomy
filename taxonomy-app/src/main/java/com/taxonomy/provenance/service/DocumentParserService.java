@@ -130,8 +130,8 @@ public class DocumentParserService {
                 result.getWarnings().add("No requirement candidates were extracted from this document.");
             }
 
-            log.info("Parsed document '{}': {} pages, {} candidates, textTruncated={}, candidatesTruncated={}",
-                    file.getOriginalFilename(), parsed.pageCount(),
+            log.info("Parsed document: pages={}, candidates={}, textTruncated={}, candidatesTruncated={}",
+                    parsed.pageCount(),
                     candidateExtraction.candidates().size(), parsed.truncated(),
                     candidateExtraction.truncated());
             return result;

@@ -108,13 +108,14 @@ class GlobalExceptionHandlerDisconnectTest {
     }
 
     @Test
-    void traceLoggingStillProvidesTheDisconnectStack() throws Exception {
+    void traceLoggingDoesNotExposeTheDisconnectStack() throws Exception {
         logger.setLevel(Level.TRACE);
         handler.handleException(nestedDisconnect(), request());
 
         assertThat(events.list).singleElement().satisfies(event -> {
             assertThat(event.getLevel()).isEqualTo(Level.TRACE);
-            assertThat(event.getThrowableProxy()).isNotNull();
+            assertThat(event.getFormattedMessage()).contains("CLIENT_DISCONNECTED");
+            assertThat(event.getThrowableProxy()).isNull();
         });
     }
 
@@ -211,7 +212,10 @@ class GlobalExceptionHandlerDisconnectTest {
 
     private void assertOneRealError() {
         assertThat(events.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList())
-                .singleElement().satisfies(event -> assertThat(event.getThrowableProxy()).isNotNull());
+                .singleElement().satisfies(event -> {
+                    assertThat(event.getFormattedMessage()).contains("status=500");
+                    assertThat(event.getThrowableProxy()).isNull();
+                });
     }
 
     private static ServletWebRequest request() {

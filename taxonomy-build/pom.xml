@@ -195,6 +195,8 @@
                         <goals><goal>npm</goal></goals>
                         <configuration>
                             <skip>${taxonomy.ui.skip}</skip>
+                            <!-- -DskipTests skips Java tests in the documented UI-only command. -->
+                            <skipTests>false</skipTests>
                             <arguments>run test:api-transport</arguments>
                         </configuration>
                     </execution>
@@ -204,6 +206,8 @@
                         <goals><goal>npm</goal></goals>
                         <configuration>
                             <skip>${taxonomy.ui.skip}</skip>
+                            <!-- UI execution is governed by taxonomy.ui.skip, independently of Surefire. -->
+                            <skipTests>false</skipTests>
                             <arguments>run verify:ui</arguments>
                             <environmentVariables>
                                 <TAXONOMY_UI_SUITE>${taxonomy.ui.suite}</TAXONOMY_UI_SUITE>
