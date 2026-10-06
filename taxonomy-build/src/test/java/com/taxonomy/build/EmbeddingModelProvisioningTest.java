@@ -57,6 +57,23 @@ class EmbeddingModelProvisioningTest {
         assertTrue(Files.readString(model.resolve("MODEL_PROVENANCE.txt")).contains("license=MIT"));
     }
 
+    @Test void tokenAuthenticatesEveryDownloadWithoutEnteringLogsOrArtifacts(@TempDir Path temp) throws Exception {
+        Fixture fixture = fixture(temp);
+        String token = "offline-fixture-" + java.util.UUID.randomUUID();
+        Result result = run(fixture, Map.of("HF_TOKEN", token));
+        assertEquals(0, result.exitCode(), "Authenticated offline provisioning must succeed");
+        assertEquals(expectedUrls(MULTILINGUAL_BASE, "onnx/model_quint8_avx2.onnx"), urls(fixture));
+        assertFalse(result.output().contains(token), "Provisioning output must not expose the token");
+        assertFalse(Files.readString(fixture.log()).contains(token), "Request logs must not expose the token");
+        Path model = temp.resolve("models/multilingual-minilm");
+        assertModel(model);
+        try (var artifacts = Files.list(model)) {
+            for (Path artifact : artifacts.toList()) {
+                assertFalse(Files.readString(artifact).contains(token), "Model artifacts must not expose the token");
+            }
+        }
+    }
+
     @Test void customDirectoryDoesNotChangeTheSelectedProfile(@TempDir Path temp) throws Exception {
         Fixture fixture = fixture(temp);
         Path directory = temp.resolve("models/bge-small-en-v1.5");
@@ -140,9 +157,25 @@ class EmbeddingModelProvisioningTest {
                 url=${args[${#args[@]}-1]}
                 printf '%s\\n' "$url" >> "$CURL_LOG"
                 target=''
+                authorization=''
                 while (($#)); do
-                  if [[ "$1" == '--output' ]]; then target=$2; shift 2; else shift; fi
+                  case "$1" in
+                    --output) target=$2; shift 2 ;;
+                    --header)
+                      if [[ "$2" == Authorization:* ]]; then authorization=$2; fi
+                      shift 2 ;;
+                    *) shift ;;
+                  esac
                 done
+                if [[ -n "${HF_TOKEN:-}" ]]; then
+                  [[ "$authorization" == "Authorization: Bearer ${HF_TOKEN}" ]] || {
+                    printf 'Authentication header mismatch\\n' >&2; exit 1;
+                  }
+                else
+                  [[ -z "$authorization" ]] || {
+                    printf 'Unexpected authentication header\\n' >&2; exit 1;
+                  }
+                fi
                 [[ -n "$target" ]]
                 name=${target##*/}
                 if [[ "$name" == "${CORRUPT_FILE:-}" ]]; then

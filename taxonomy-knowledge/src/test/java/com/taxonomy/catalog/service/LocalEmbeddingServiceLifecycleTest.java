@@ -74,23 +74,35 @@ class LocalEmbeddingServiceLifecycleTest {
         LocalEmbeddingService service = new LocalEmbeddingService() {
             @Override ZooModel<String, float[]> getModel() { return model; }
         };
-        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(3)) {
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(3,
+                Thread.ofPlatform().daemon().name("embedding-lifecycle-test-", 0).factory());
+        var tasks = new java.util.ArrayList<java.util.concurrent.Future<float[]>>();
+        try {
             var first = executor.submit(() -> service.embed("first"));
+            tasks.add(first);
             var second = executor.submit(() -> service.embed("second"));
+            tasks.add(second);
             org.junit.jupiter.api.Assertions.assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
             var thirdStarted = new java.util.concurrent.CountDownLatch(1);
             var third = executor.submit(() -> { thirdStarted.countDown(); return service.embed("third"); });
+            tasks.add(third);
             org.junit.jupiter.api.Assertions.assertTrue(thirdStarted.await(5, java.util.concurrent.TimeUnit.SECONDS));
             try {
                 assertThrows(java.util.concurrent.TimeoutException.class,
                         () -> third.get(100, java.util.concurrent.TimeUnit.MILLISECONDS));
                 org.junit.jupiter.api.Assertions.assertEquals(2, active.get());
             } finally { release.countDown(); }
-            org.junit.jupiter.api.Assertions.assertEquals(384, first.get().length);
-            org.junit.jupiter.api.Assertions.assertEquals(384, second.get().length);
-            org.junit.jupiter.api.Assertions.assertEquals(384, third.get().length);
+            for (var task : tasks) {
+                org.junit.jupiter.api.Assertions.assertEquals(384,
+                        task.get(5, java.util.concurrent.TimeUnit.SECONDS).length);
+            }
             org.junit.jupiter.api.Assertions.assertEquals(2, peak.get());
-        } finally { release.countDown(); }
+        } finally {
+            release.countDown();
+            tasks.forEach(task -> task.cancel(true));
+            // ExecutorService.close() waits indefinitely if the regression blocks a worker.
+            executor.shutdownNow();
+        }
     }
 
     private static LocalEmbeddingService configuredService() {

@@ -97,9 +97,14 @@ These commands describe separate executions, including the initial failures and
 focused recovery. The full canonical command remains
 `./mvnw -B verify -Pci -DrunOnnxTests=true` in its provisioned CI environment.
 
-The checkout is shallow. The unchanged changed-critical-source gate therefore
-reserves diff coverage for canonical CI with the required Git history and base
-revision; local aggregate/package results do not imply a diff-coverage pass.
+The checkout was shallow at the local handoff, so the initial aggregate/package
+results did not imply a diff-coverage pass. After publication, complete history
+was fetched and `ReactorCoveragePolicyIT` executed again against the same base:
+one test passed, without failures/errors/skips. Of 39 changed Java files, the
+configured critical prefixes select `GraphSearchService.java`; its 98.91% line
+and 60.00% branch coverage meet the unchanged 75%/60% limits. The additional
+unmodified output is retained as `full-history-coverage-gate.txt` beside the
+original shallow-checkout report.
 
 The earlier local browser evidence has `sourceCommit=null` and
 `applicationArtifactSha256=null`. The Preferences template was byte-compared with
@@ -177,5 +182,38 @@ report are retained in `docs/qa/evidence/2026-10-06/` as
 - Keep the supplemental multilingual misses visible; six original references
   are a regression gate, not proof that arbitrary German requests are solved.
 
-At the local handoff, no remote branch, PR, merge, deployment or issue closure
-has been performed for these changes. Publication and the final CI remain pending.
+## Publication and review follow-up
+
+[PR #1175](https://github.com/carstenartur/Taxonomy/pull/1175) publishes the local
+QA series as `a0f4898ea356af26a4b47e55b7cdf2ec6b652d8c`. Its complete Git tree
+`6d520b50012128d22e12c392540a8d7d0bc3646c` is identical to local evidence head
+`a4b5aa45edede816a26ec71df80a79b5fdc5ba96`; the GitHub connection was used because
+the workspace has no Git push credentials. The original local commit history is
+preserved on `qa/local-evidence-20261006`.
+
+The branch-specific [CodeQL run 37428530745](https://github.com/carstenartur/Taxonomy/actions/runs/37428530745)
+passed both language gates: 400 Java findings, 12 JavaScript findings, zero
+blocking findings and the same three reviewed Java authorization fingerprints.
+Its actual `codeql-java-gate.json` and `codeql-javascript-gate.json` are retained
+beside the other evidence. The separate
+[security scan 37428553295](https://github.com/carstenartur/Taxonomy/actions/runs/37428553295)
+also passed. These results identify the initial published head; the PR records
+the final follow-up head's CI status.
+
+Review identified an unbounded executor-cleanup path in the predictor concurrency
+regression. A zero-permit mutation reproduced the hang in the original test; an
+external guard stopped it after 15 seconds inside the test. Daemon workers,
+explicit cancellation/release and bounded result waits now let the same mutant
+terminate with the expected assertion failure in 6.31 seconds. The production
+permit count remains two.
+
+The token-placeholder review finding does not match the actual downloader source:
+it already expands `HF_TOKEN` into the bearer header. The offline HTTP fixture
+now checks every request's authentication and rejects unexpected authentication
+on anonymous requests, while keeping tokens out of logs and installed artifacts.
+A deliberate literal-header mutation fails the new contract; the downloader's
+working token behavior is unchanged. The restored source passes all four lifecycle
+and seven provisioning tests, with no failures, errors or skips.
+
+No merge, deployment or issue closure has been performed. Final canonical CI and
+the two retained product limitations above still define release acceptance.
