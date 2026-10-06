@@ -152,7 +152,6 @@
         runtime.saveTimer = null;
         runtime.saveQueued = false;
         runtime.resetting = true;
-        runtime.conflict = false;
         if (runtime.saveInFlight) {
             return runtime.saveInFlight.catch(function () { return null; })
                 .then(performResetDraft);

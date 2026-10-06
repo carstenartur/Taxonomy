@@ -114,10 +114,10 @@ justify automatic restoration or closure of that report.
 
 The [final canonical CI results](2026-10-06-remaining-qa.md#final-canonical-acceptance-of-pr-1175)
 now supersede the pending-branch requirements above. A further investigation found
-three distinct draft lifecycle defects: a late forced reload could overwrite newer
-input, continued input could hide an unresolved saved-draft choice, and explicit
-Save Draft could replace that choice with a failure alert while keeping its
-decision barrier active. Their reproduced failures, fixes and actual browser
+additional draft lifecycle defects: a late forced reload could overwrite newer
+input; continued input, Save Draft and project feedback could hide an unresolved
+choice; successful New Analysis could leave restoration blocked, while failed
+reset could prematurely release a genuine conflict. Their reproduced failures, fixes and actual browser
 coverage are documented in the [draft reload follow-up](2026-10-06-draft-reload-followup.md).
 They are confirmed defects in current source, without evidence identifying them
 as the original Preferences/deployment failure.

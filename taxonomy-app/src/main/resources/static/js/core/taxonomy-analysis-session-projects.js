@@ -185,6 +185,8 @@
             if (!view) {
                 throw new Error(text('newAnalysisWorkspaceUnavailable'));
             }
+            runtime.restoring = false;
+            setDraftDecisionPending(false);
             invalidate({
                 keepText: false,
                 silent: true,

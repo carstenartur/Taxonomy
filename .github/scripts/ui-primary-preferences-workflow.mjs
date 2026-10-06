@@ -331,6 +331,22 @@ async function assertPendingReloadPreservesEdits(page, assert) {
       'Save Draft must remain blocked until the local-versus-saved decision');
     assert(await keepLocal.isVisible(),
       'A blocked explicit save removed the unresolved saved-draft decision');
+    const projectPattern = url => url.pathname.endsWith('/api/projects');
+    const failProjects = route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      return route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'QA_PROJECTS_UNAVAILABLE' }) });
+    };
+    await page.route(projectPattern, failProjects);
+    try {
+      await page.locator('#projectMenuButton').click();
+      await page.locator('#projectAddRequirementAction').click();
+      await page.locator('[data-analysis-session-feedback].alert-danger').waitFor({ state: 'visible' });
+      assert(await keepLocal.isVisible(),
+        'A failed project action removed the unresolved saved-draft decision');
+    } finally {
+      await page.unroute(projectPattern, failProjects);
+    }
     edited = await page.evaluate(workingStateExpression());
     await keepLocal.click();
     assert(await page.locator('#fileSaveDraftAction').getAttribute('aria-disabled') !== 'true',
