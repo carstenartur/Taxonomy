@@ -4,6 +4,8 @@
     var pendingUpload = null, pendingExport = null, pendingCreation = null, pendingRemote = null, mappings = {}, endpoints = {}, endpointOptions = {};
     var publication = null, resolutions = {}, pendingPublication = null, pendingReviews = Object.create(null), operationGeneration = 0;
     var mayWrite = document.body.dataset.mayWrite === 'true';
+    // Server-rendered actions stay inert until translations and scoped data are loaded.
+    var initializing = true;
     function el(id) { return document.getElementById(id); }
     function t(key) { return window.TaxonomyI18n.t('integration.' + key); }
     function option(select, value, text) { var node = document.createElement('option'); node.value = value; node.textContent = text; select.append(node); }
@@ -12,7 +14,7 @@
     function selectedProfile() { return overview && profiles.find(function (profile) { return profile.id === overview.connection.connectorId && profile.version === overview.connection.profileVersion; }); }
     function report(error) { var body = error.responseBody || {}; el('integrationError').textContent = (body.code ? body.code + ': ' : '') + (body.message || error.message); el('integrationError').hidden = false; }
     async function run(action) {
-        if (busy) return; busy = true; el('integrationError').hidden = true; controls();
+        if (initializing || busy) return; busy = true; el('integrationError').hidden = true; controls();
         try { await action(); } catch (error) { report(error); }
         finally { busy = false; controls(); }
     }
@@ -26,6 +28,7 @@
         el('integrationRationale').value = value ? value.review.rationale : '';
     }
     function controls() {
+        if (initializing) return;
         document.querySelectorAll('button, #integrationConnection').forEach(function (node) { node.disabled = busy; });
         document.querySelectorAll('#integrationCreate input, #integrationCreate select, #integrationCreate button, #integrationImport input, #integrationImport button, #integrationRemote input, #integrationRemote button').forEach(function (node) { node.disabled = busy || !mayWrite; });
         var editable = mayWrite && operation && (publication ? !pendingReview() && publication.allowedActions.includes('REVIEW') : operation.status === 'PREVIEWED');
@@ -375,7 +378,7 @@
         var value = await api.write(prefix() + '/operations/' + predecessor + '/reconciliation-previews', { predecessorOperationId: predecessor, request: request, rationale: el('integrationRationale').value.trim() || t('reconciliationRationale') });
         showPublication(value); await refresh();
     }); });
-    window.TaxonomyI18n.ready().then(function () { return run(async function () {
+    window.TaxonomyI18n.ready().then(function () { initializing = false; return run(async function () {
         document.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = window.TaxonomyI18n.t(node.getAttribute('data-i18n')); });
         profiles = await api.read('/profiles'); profiles.forEach(function (profile) { option(el('connectionProfile'), profile.id + '@' + profile.version, profile.title + ' · ' + profile.id + '@' + profile.version); });
         var params = new URLSearchParams(location.search); await connections(params.get('connection')); if (params.get('operation') && connection()) await loadOperation(params.get('operation'));

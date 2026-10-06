@@ -39,7 +39,7 @@
     "test:document-template-local-edit": "node --test scripts/document-template-local-edit.test.mjs scripts/document-template-local-edit-fixtures.test.mjs scripts/document-template-layout.test.mjs",
     "test:product-score-streaming": "node --test scripts/product-score-streaming.test.mjs",
     "test:requirement-relations": "node --test scripts/relation-search-report.test.mjs scripts/relation-search-confidence.test.mjs",
-    "test:integrations-review": "node --test scripts/integrations-review.test.mjs scripts/architecture-planning.test.mjs",
+    "test:integrations-review": "node --test scripts/integrations-review.test.mjs scripts/architecture-planning.test.mjs scripts/integration-startup.test.mjs",
     "test:version-comparison": "node --test scripts/ui-version-diff.test.mjs",
     "test:dsl-text-read": "node --test scripts/ui-dsl-text-read.test.mjs scripts/ui-dsl-read-delivery.test.mjs",
     "test:analysis-recovery": "node --test scripts/analysis-recovery.test.mjs scripts/analysis-recovery-viewport.test.mjs",
