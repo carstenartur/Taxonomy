@@ -388,10 +388,22 @@
     function showActionAlert(kind, title, body, actions, marker) {
         var area = statusArea();
         if (!area) return;
-        area.replaceChildren();
-        area.dataset.analysisSessionMessage = marker || '';
+        var decisionMarker = area.dataset.analysisSessionMessage;
+        var keepDecision = runtime.draftDecisionPending
+            && (decisionMarker === 'resume-choice' || decisionMarker === 'conflict')
+            && marker !== 'resume-choice' && marker !== 'conflict';
+        if (keepDecision) {
+            // Progress/errors from other lifecycle commands must not strand an
+            // unresolved draft. Keep its controls and only the newest feedback.
+            var previousFeedback = area.querySelector('[data-analysis-session-feedback]');
+            if (previousFeedback) previousFeedback.remove();
+        } else {
+            area.replaceChildren();
+            area.dataset.analysisSessionMessage = marker || '';
+        }
 
         var alert = document.createElement('div');
+        if (keepDecision) alert.dataset.analysisSessionFeedback = 'true';
         alert.className = 'alert alert-' + kind + ' py-2';
         alert.setAttribute('role', kind === 'danger' ? 'alert' : 'status');
 

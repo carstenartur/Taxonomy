@@ -297,6 +297,83 @@ async function authoritativeDraft(page) {
   });
 }
 
+async function assertPendingReloadPreservesEdits(page, assert) {
+  await navigateToPage(page, 'analyze');
+  const before = await page.evaluate(workingStateExpression());
+  const editedText = 'QA newer input while a saved draft reload is pending';
+  const gate = await installRequestGate(page, '**/api/analysis-drafts/**', 'GET');
+  try {
+    await page.evaluate(() => {
+      window.__qaDraftReload = window.TaxonomyAnalysisSession.reload();
+    });
+    await gate.seen;
+    await page.locator('#businessText').fill(`${editedText} — initial edit`);
+    let edited = await page.evaluate(workingStateExpression());
+    gate.release();
+    await page.evaluate(async () => {
+      await window.__qaDraftReload;
+      delete window.__qaDraftReload;
+    });
+    assert(await page.evaluate(workingStateExpression()) === edited,
+      'Late explicit draft reload overwrote newer input or current analysis evidence');
+    const keepLocal = page.locator('[data-analysis-session-action="keep-local"]');
+    assert(await keepLocal.isVisible(),
+      'Late explicit draft reload did not offer a local-versus-saved decision');
+    await page.locator('#businessText').fill(editedText);
+    // Exercise the same production action used by the deferred input observer;
+    // deterministic timer contracts separately verify the callback wiring.
+    await page.evaluate(() => window.__TaxonomyAnalysisSessionContext.showStaleActions());
+    assert(await keepLocal.isVisible(),
+      'Continuing to edit replaced the unresolved saved-draft decision');
+    assert(await page.locator('#fileSaveDraftAction').getAttribute('aria-disabled') === 'true',
+      'Save Draft is not marked unavailable during the unresolved choice');
+    assert(await page.evaluate(() => window.__TaxonomyAnalysisSessionContext.saveDraftNow()) === false,
+      'Save Draft must remain blocked until the local-versus-saved decision');
+    assert(await keepLocal.isVisible(),
+      'A blocked explicit save removed the unresolved saved-draft decision');
+    const projectPattern = url => url.pathname.endsWith('/api/projects');
+    const failProjects = route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      return route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'QA_PROJECTS_UNAVAILABLE' }) });
+    };
+    await page.route(projectPattern, failProjects);
+    try {
+      await page.locator('#projectMenuButton').click();
+      await page.locator('#projectAddRequirementAction').click();
+      await page.locator('[data-analysis-session-feedback].alert-danger').waitFor({ state: 'visible' });
+      assert(await keepLocal.isVisible(),
+        'A failed project action removed the unresolved saved-draft decision');
+    } finally {
+      await page.unroute(projectPattern, failProjects);
+    }
+    edited = await page.evaluate(workingStateExpression());
+    await keepLocal.click();
+    assert(await page.locator('#fileSaveDraftAction').getAttribute('aria-disabled') !== 'true',
+      'Save Draft remained unavailable after keeping the local draft');
+    assert(await saveDraftNow(page) === true, 'Unable to persist the newer local draft choice');
+    const saved = await authoritativeDraft(page);
+    assert(saved.payload.businessText === editedText && saved.payload.rawScores?.BP === 91
+        && saved.payload.effectiveScores?.BP === 77
+        && saved.payload.provisionalRelations?.[0]?.status === 'REJECTED'
+        && saved.payload.provisionalRelations?.[1]?.appliedInCurrentAnalysis === true,
+    'Keeping newer input lost persisted score or manual-decision authority');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true,
+      null, { timeout: 30_000 });
+    assert(await page.evaluate(workingStateExpression()) === edited,
+      'Reload after keeping newer input restored an older or incomplete working state');
+
+    await page.locator('#businessText').fill(JSON.parse(before).businessText);
+    assert(await saveDraftNow(page) === true, 'Unable to restore the completed regression fixture');
+    assert(await page.evaluate(workingStateExpression()) === before,
+      'Returning to the completed requirement changed the retained analysis evidence');
+  } finally {
+    await gate.dispose();
+  }
+}
+
 function assertDraftEvidence(draft, assert, expectedReason) {
   const payload = draft?.payload || {};
   assert(payload.businessText === 'QA preference preservation sentinel'
@@ -644,6 +721,10 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
     await assertVisibleArchitecture(page, assert);
 
     await assertHypothesisDecisions(page, hypotheses, assert);
+    console.log('Preferences QA: verifying edits during an explicit saved-draft reload');
+    await assertPendingReloadPreservesEdits(page, assert);
+    await assertHypothesisDecisions(page, hypotheses, assert);
+    passed('Late explicit draft reload preserves newer input, scores and manual decisions through save and reload');
     const repeatRequests = [];
     const observeRepeat = request => {
       const path = new URL(request.url()).pathname;

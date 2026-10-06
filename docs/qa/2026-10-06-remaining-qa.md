@@ -11,7 +11,7 @@ change the tested application or test implementations.
 | --- | --- | --- |
 | Preferences | Late GET, PUT and reset responses preserve field edits made while the request is pending, including edits away and back. Acknowledged server state and Save availability remain consistent. | Reproduced regressions, actual inline-script contracts and a real Chromium workflow pass. The original deployment-specific analysis-loss cause in #1100 remains unconfirmed. |
 | Local semantic retrieval | Pinned multilingual MiniLM replaces English-only BGE as the default; BGE remains an explicit profile. Model downloads validate all five pinned artifacts. Indexed vectors carry their actual model/configuration identity, and all five KNN paths filter by that identity. | Native pooling, frozen-worker parity, mixed-index isolation and real packaged REST evaluation pass. Additional paraphrase/ambiguity misses remain recorded. |
-| Authorization and logging | Added real-controller authorization/isolation matrices and reconciled the exact CodeQL baseline against the complete main scan. Removed three obsolete logging exceptions; retained three reviewed authorization fingerprints. | Existing production authorization/logging behavior was already corrected on main. New tests strengthen regression protection; the final branch still needs its own CodeQL scan. |
+| Authorization and logging | Added real-controller authorization/isolation matrices and reconciled the exact CodeQL baseline against the complete main scan. Removed three obsolete logging exceptions; retained three reviewed authorization fingerprints. | Existing production authorization/logging behavior was already corrected on main. New tests strengthen regression protection; the final branch CodeQL scan subsequently passed (see canonical acceptance below). |
 | Verification infrastructure | Corrected profile-aware fixtures, the worker footprint model pin and nested `@Value` environment-alias discovery. Updated provisioning, model caches and bilingual documentation. | Regression tests preserve existing assertions, security severity rules, selectors and coverage thresholds. |
 
 Detailed findings: [Preferences](2026-10-06-preferences-state.md),
@@ -169,13 +169,13 @@ report are retained in `docs/qa/evidence/2026-10-06/` as
 `local-onnx-reference.json`, `local-onnx-multilingual.json` and
 `coverage-gate.txt`. They preserve measured misses as well as successful checks.
 
-## Still required before release acceptance
+## Acceptance requirements after local verification
 
-- Run the final branch through the complete canonical GitHub CI, including
+- The final branch subsequently passed the complete canonical GitHub CI, including
   Docker/database/Keycloak lanes, all UI profiles and branch-specific CodeQL and
   dependency/container scanners, plus changed-critical-source coverage with full
-  Git history. Local source-policy and SBOM checks do not
-  constitute a new vulnerability scan.
+  Git history. The final-run evidence is recorded below; local source-policy and
+  SBOM checks alone do not constitute a vulnerability scan.
 - Keep #1100's original deployment-specific state-loss investigation open until
   the served asset/source identity and original failure can be established.
   The observed Preferences edit race is a distinct, now tested correction.
@@ -215,5 +215,42 @@ A deliberate literal-header mutation fails the new contract; the downloader's
 working token behavior is unchanged. The restored source passes all four lifecycle
 and seven provisioning tests, with no failures, errors or skips.
 
-No merge, deployment or issue closure has been performed. Final canonical CI and
-the two retained product limitations above still define release acceptance.
+At initial publication, no merge, deployment or issue closure had been performed.
+The subsequent canonical result and externally performed merge are recorded below.
+
+## Final canonical acceptance of PR #1175
+
+The final head `440484c1cbd297bd8555a0a5c5835c6ced80baf3` passed all ten relevant
+workflows: CI/CD, all three database compatibility profiles, native ONNX, Java
+and JavaScript CodeQL, Security Scan, JGit storage, Kubernetes constrained smoke,
+document/report E2E, scenario architecture and reformulation usage. The separate
+push CodeQL workflow actually ran both languages; its duplicate PR workflow was
+intentionally skipped. Exact run URLs, statuses and source identities are retained
+in [pr-1175-canonical-runs.json](evidence/2026-10-06/pr-1175-canonical-runs.json).
+
+The final [CI run 37430121528](https://github.com/carstenartur/Taxonomy/actions/runs/37430121528)
+verified merge candidate `c6c932dc9fc04366551bc02eae192756d0249de5`, tree
+`893543b4c3074c2b23536c302a3389359039417e`. Its downloaded `quality-reports`
+artifact `11401420925` has SHA-256
+`1653f95261484c2aa222cd029a39991ce86c300060ec078498ccadfb4f7177e6`, matching
+the GitHub artifact digest. The unmodified
+[quality summary](evidence/2026-10-06/pr-1175-quality-summary.json) reports 1,124
+JUnit files, 8,164 cases, 8,085 executed/passed, zero failures/errors and 79
+profile-controlled skips. Those skips are 75 screenshot-generator, three mock
+score-generator and one opt-in document/report case; the separate document/report
+lane passed. Coverage is 91.81% instruction, 92.59% line, 76.13% branch, 93.85%
+method and 98.55% class. All five aggregate floors, 21 critical packages and the
+changed-critical-source gate passed.
+
+All 18 UI profiles across six shards passed, including 114 axe audits with zero
+violations. The production Docker build and Helm production/Rancher checks also
+passed. Native ONNX completed 27 cases, and the six unchanged EN/DE semantic
+anchors ranked first over all 2,572 catalogue nodes with runtime downloads and
+external provider calls disabled. Supplemental misses remain visible.
+
+PR #1175 was subsequently merged outside this QA turn at `2026-10-06T09:28:42Z`
+as `11d099b858cddbbaa15b6f0b2a69f04a56534ae2`; its tree exactly matches the
+verified candidate. This closes the canonical-CI requirement for that PR. It does
+not establish a Render rollout or resolve #1100's original deployment-specific
+cause. The [draft reload follow-up](2026-10-06-draft-reload-followup.md) starts from
+that merge and has its own verification boundary.

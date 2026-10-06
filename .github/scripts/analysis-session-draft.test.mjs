@@ -45,6 +45,7 @@ function createHarness({ inputText = '', payload, request }) {
   const cleared = [];
   const alerts = [];
   const clickListeners = [];
+  const editListeners = new Map();
   let decisionFocusCount = 0;
   const input = {
     value: inputText,
@@ -139,6 +140,11 @@ function createHarness({ inputText = '', payload, request }) {
     },
     addEventListener(type, listener) {
       if (type === 'click') clickListeners.push(listener);
+      if (type === 'input' || type === 'change') {
+        const listeners = editListeners.get(type) || [];
+        listeners.push(listener);
+        editListeners.set(type, listeners);
+      }
     }
   };
 
@@ -173,6 +179,13 @@ function createHarness({ inputText = '', payload, request }) {
     alerts,
     clickListeners,
     window,
+    editInput(value, type = 'input') {
+      input.value = value;
+      payload.current = { ...payload.current, businessText: value };
+      for (const listener of editListeners.get(type) || []) {
+        listener({ type, target: input });
+      }
+    },
     decisionFocusCount: () => decisionFocusCount
   };
 }
@@ -267,6 +280,93 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   );
   assert.equal(harness.scheduled.length, 1);
   assert.equal(harness.scheduled[0].delay, 0);
+});
+
+for (const edit of [
+  { name: 'new requirement text', values: ['Typed after choosing to reload'] },
+  { name: 'an intentionally cleared requirement', values: [''] },
+  { name: 'an edit away and back', values: ['Changed temporarily', 'Original local text'] }
+]) {
+  test(`forced reload preserves ${edit.name} entered while its GET is pending`, async () => {
+    const response = deferred();
+    const payload = { current: { businessText: 'Original local text' } };
+    const harness = createHarness({
+      inputText: payload.current.businessText,
+      payload,
+      request: () => response.promise
+    });
+    harness.runtime.version = 2;
+    harness.state.currentScores = { BP: 77 };
+    const loading = harness.context.loadDraft({ force: true });
+
+    for (const value of edit.values) harness.editInput(value);
+    response.resolve({ version: 3, payload: { businessText: 'Saved remote text', scores: { BP: 12 } } });
+    await loading;
+
+    assert.equal(harness.input.value, edit.values.at(-1));
+    assert.equal(harness.state.currentScores.BP, 77);
+    assert.equal(harness.runtime.version, 2);
+    assert.equal(harness.runtime.restoring, true);
+    assert.equal(harness.runtime.draftDecisionPending, true);
+    assert.equal(harness.alerts.at(-1).marker, 'resume-choice');
+    assert.equal(harness.scheduled.length, 0);
+
+    harness.alerts.at(-1).actions.find(action => action.id === 'keep-local').handler();
+    assert.equal(harness.runtime.version, 3);
+    assert.equal(harness.runtime.restoring, false);
+    assert.equal(harness.scheduled.length, 1);
+    assert.equal(harness.scheduled[0].delay, 0);
+    assert.equal(harness.input.value, edit.values.at(-1));
+  });
+}
+
+test('initial restoration preserves an input edit that returns to the empty initial value', async () => {
+  const response = deferred();
+  const payload = { current: { businessText: '' } };
+  const harness = createHarness({ payload, request: () => response.promise });
+  const loading = harness.context.loadDraft();
+  harness.editInput('A new requirement');
+  harness.editInput('', 'change');
+  response.resolve({ version: 4, payload: { businessText: 'Existing saved draft' } });
+  await loading;
+
+  assert.equal(harness.input.value, '');
+  assert.equal(harness.runtime.version, null);
+  assert.equal(harness.alerts.at(-1).marker, 'resume-choice');
+});
+
+test('forced reload preserves newer programmatic analysis state without an input event', async () => {
+  const response = deferred();
+  const payload = { current: { businessText: 'Original local text', scores: { BP: 77 } } };
+  const harness = createHarness({
+    inputText: payload.current.businessText,
+    payload,
+    request: () => response.promise
+  });
+  const loading = harness.context.loadDraft({ force: true });
+  payload.current = { businessText: 'Original local text', scores: { BP: 91 } };
+  harness.state.currentScores = { BP: 91 };
+  response.resolve({ version: 3, payload: { businessText: 'Saved remote text', scores: { BP: 12 } } });
+  await loading;
+
+  assert.equal(harness.input.value, 'Original local text');
+  assert.equal(harness.state.currentScores.BP, 91);
+  assert.equal(harness.alerts.at(-1).marker, 'resume-choice');
+});
+
+test('forced reload still replaces unchanged local state after explicit user consent', async () => {
+  const payload = { current: { businessText: 'Original local text' } };
+  const harness = createHarness({
+    inputText: payload.current.businessText,
+    payload,
+    request: async () => ({ version: 3, payload: { businessText: 'Saved remote text', scores: { BP: 12 } } })
+  });
+  await harness.context.loadDraft({ force: true });
+
+  assert.equal(harness.input.value, 'Saved remote text');
+  assert.equal(harness.state.currentScores.BP, 12);
+  assert.equal(harness.runtime.version, 3);
+  assert.equal(harness.alerts.length, 0);
 });
 
 test('serializes overlapping autosaves and uses the latest optimistic version', async () => {
