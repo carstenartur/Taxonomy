@@ -18,10 +18,12 @@
     var isStale = C.isStale;
     var showActionAlert = C.showActionAlert;
     var showStaleActions = C.showStaleActions;
+    var inputEditRevision = 0;
     var DECISION_CONTROL_SELECTOR = [
         '#analyzeBtn',
         '#copilotBtn',
         '#taskNextAction',
+        '#fileSaveDraftAction',
         '#exportGroup button',
         '#suggestedRelationsPanel button',
         '#gapAnalyzeBtn',
@@ -367,6 +369,10 @@
         options = options || {};
         var endpoint = draftEndpoint();
         if (!endpoint) return Promise.resolve(null);
+        var inputAtStart = businessTextElement();
+        var inputValueAtStart = inputAtStart ? inputAtStart.value : '';
+        var inputRevisionAtStart = inputEditRevision;
+        var forcedStateAtStart = options.force ? comparable(currentPayload()) : null;
 
         // Loading, rendering and any explicit local-vs-remote choice form one
         // restoration transaction. Autosave and conflicting task actions must not
@@ -393,7 +399,16 @@
                 }
                 return null;
             }
-            if (options.force || localStateIsPristine()) {
+            var inputNow = businessTextElement();
+            var inputUnchanged = inputRevisionAtStart === inputEditRevision
+                && inputValueAtStart === (inputNow ? inputNow.value : '');
+            // A reload decision authorizes replacing the state visible when it
+            // was made, not edits made while its request is pending. Track input
+            // history as well as values so editing away and back remains an edit.
+            var reloadStillAuthorized = !options.force
+                || forcedStateAtStart === comparable(currentPayload());
+            if (inputUnchanged && reloadStillAuthorized
+                    && (options.force || localStateIsPristine())) {
                 applyDraft(view);
             } else {
                 // Keep restoring=true until the user chooses the authoritative
@@ -429,6 +444,12 @@
                     runtime.conflict = false;
                     runtime.restoring = false;
                     setDraftDecisionPending(false);
+                    var area = document.getElementById('statusArea');
+                    if (area && area.dataset.analysisSessionMessage === 'resume-choice') {
+                        area.replaceChildren();
+                        delete area.dataset.analysisSessionMessage;
+                    }
+                    if (isStale()) showStaleActions();
                     queueSave(0);
                 }
             }
@@ -460,6 +481,11 @@
     }
 
     installDraftDecisionGuard();
+    function recordInputEdit(event) {
+        if (event.target === businessTextElement()) inputEditRevision += 1;
+    }
+    document.addEventListener('input', recordInputEdit);
+    document.addEventListener('change', recordInputEdit);
 
     Object.assign(C, {
         queueSave: queueSave,

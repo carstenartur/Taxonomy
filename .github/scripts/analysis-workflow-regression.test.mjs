@@ -241,6 +241,8 @@ const sessionCoreSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8');
 const sessionUiSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js', import.meta.url), 'utf8');
+const sessionDraftSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js', import.meta.url), 'utf8');
 
 // Load the complete browser module and dispatch its registered input listener.
 // Controlled timers make completion before the 300 ms stale check deterministic.
@@ -249,7 +251,7 @@ const sessionProjectsSource = await readFile(new URL(
 const scoringSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
 
-function createStatusHarness({ session = false, observers = false } = {}) {
+function createStatusHarness({ session = false, observers = false, draftResponse = null } = {}) {
   class Element {
     constructor() {
       this.dataset = {};
@@ -299,6 +301,7 @@ function createStatusHarness({ session = false, observers = false } = {}) {
   const document = {
     readyState: 'loading', documentElement: { lang: 'en' }, body: new Element(),
     getElementById: id => elements[id] || null,
+    dispatchEvent(event) { (listeners.get(event.type) || []).forEach(listener => listener(event)); },
     querySelectorAll: () => [], createElement: () => new Element(),
     addEventListener(type, listener) {
       if (!listeners.has(type)) listeners.set(type, []);
@@ -323,6 +326,9 @@ function createStatusHarness({ session = false, observers = false } = {}) {
     setInterval() {}, addEventListener() {},
     requestAnimationFrame: callback => callback(), location: { search: '' } };
   const sandbox = vm.createContext({ window, document, URLSearchParams, MutationObserver,
+    CustomEvent: class CustomEvent {
+      constructor(type, { detail } = {}) { this.type = type; this.detail = detail; }
+    },
     TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => value },
     fetch: () => new Promise(() => {}), setInterval: () => {},
     setTimeout, clearTimeout, requestAnimationFrame: callback => callback() });
@@ -330,6 +336,11 @@ function createStatusHarness({ session = false, observers = false } = {}) {
   if (session) {
     vm.runInContext(sessionCoreSource, sandbox, { filename: 'taxonomy-analysis-session-core.js' });
     vm.runInContext(sessionUiSource, sandbox, { filename: 'taxonomy-analysis-session-ui.js' });
+    if (draftResponse) {
+      window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'ws-1';
+      window.__TaxonomyAnalysisSessionContext.jsonRequest = async () => draftResponse;
+      vm.runInContext(sessionDraftSource, sandbox, { filename: 'taxonomy-analysis-session-draft.js' });
+    }
   }
   (listeners.get('DOMContentLoaded') || []).forEach(listener => listener());
   if (observers) {
@@ -442,6 +453,67 @@ test('matching-text input check preserves modern non-stale action feedback', () 
   h.runInputCheck();
   assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="reload"]'), reload);
   assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'conflict');
+});
+
+test('further input cannot replace an unresolved saved-draft choice with stale actions', async () => {
+  const h = createStatusHarness({ session: true, observers: true,
+    draftResponse: { version: 8, payload: { businessText: 'Remote saved requirement' } } });
+  const context = h.window.__TaxonomyAnalysisSessionContext;
+  h.edit('New local requirement');
+  await context.loadDraft();
+  const keepLocal = h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]');
+  assert.ok(keepLocal);
+
+  h.edit('Continued local requirement');
+  h.runInputCheck();
+  h.runModernCheck();
+
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'resume-choice');
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), keepLocal);
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-analysis"]'), null);
+  assert.equal(context.runtime.restoring, true);
+  assert.equal(h.elements.businessText.value, 'Continued local requirement');
+  assert.equal(h.state.currentScores.IP, 80);
+});
+
+test('keeping a local draft resolves its choice and exposes the retained analysis stale actions', async () => {
+  const h = createStatusHarness({ session: true, observers: true,
+    draftResponse: { version: 8, payload: { businessText: 'Remote saved requirement' } } });
+  const context = h.window.__TaxonomyAnalysisSessionContext;
+  h.edit('New local requirement');
+  await context.loadDraft();
+  h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]').dispatch('click');
+
+  assert.equal(context.runtime.restoring, false);
+  assert.equal(context.runtime.version, 8);
+  assert.equal(h.elements.businessText.value, 'New local requirement');
+  assert.equal(h.state.currentScores.IP, 80);
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), null);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'stale');
+  assert.ok(h.elements.statusArea.querySelector('[data-analysis-session-action="discard-analysis"]'));
+});
+
+test('saving during an unresolved draft choice preserves the decision and can still recover', async () => {
+  const h = createStatusHarness({ session: true, observers: true,
+    draftResponse: { version: 8, payload: { businessText: 'Remote saved requirement' } } });
+  const context = h.window.__TaxonomyAnalysisSessionContext;
+  h.edit('New local requirement');
+  await context.loadDraft();
+  const keepLocal = h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]');
+
+  assert.equal(await context.saveDraftNow(), false);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'resume-choice');
+  assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), keepLocal);
+  assert.equal(context.runtime.restoring, true);
+  assert.equal(context.runtime.draftDecisionPending, true);
+  assert.equal(h.elements.businessText.value, 'New local requirement');
+  assert.equal(h.state.currentScores.IP, 80);
+
+  keepLocal.dispatch('click');
+  assert.equal(context.runtime.restoring, false);
+  assert.equal(context.runtime.draftDecisionPending, false);
+  assert.equal(await context.saveDraftNow(), true);
+  assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'draft-saved-now');
 });
 
 test('explicit browse clear removes previous session status ownership', () => {

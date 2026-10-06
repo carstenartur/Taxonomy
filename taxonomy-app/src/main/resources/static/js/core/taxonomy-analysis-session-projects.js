@@ -212,6 +212,9 @@
 
     function saveDraftNow() {
         return saveDraft().then(function (saved) {
+            // A blocked save, or a save completed after a new restore began,
+            // must leave the outstanding local-versus-saved choice available.
+            if (runtime.restoring || runtime.draftDecisionPending) return false;
             if (saved !== true || runtime.conflict) {
                 if (!runtime.conflict) {
                     showActionAlert('danger', text('draftSaveFailed'), '', [],

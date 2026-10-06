@@ -109,3 +109,15 @@ delivery does not establish which older version was serving the original report,
 and the unavailable endpoints cannot identify current frontend assets. The
 observed form race must not be relabeled as issue #1100's root cause or used to
 justify automatic restoration or closure of that report.
+
+## Follow-up after PR #1175 merged
+
+The [final canonical CI results](2026-10-06-remaining-qa.md#final-canonical-acceptance-of-pr-1175)
+now supersede the pending-branch requirements above. A further investigation found
+three distinct draft lifecycle defects: a late forced reload could overwrite newer
+input, continued input could hide an unresolved saved-draft choice, and explicit
+Save Draft could replace that choice with a failure alert while keeping its
+decision barrier active. Their reproduced failures, fixes and actual browser
+coverage are documented in the [draft reload follow-up](2026-10-06-draft-reload-followup.md).
+They are confirmed defects in current source, without evidence identifying them
+as the original Preferences/deployment failure.

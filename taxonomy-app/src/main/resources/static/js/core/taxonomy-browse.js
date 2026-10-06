@@ -1661,6 +1661,8 @@
     }
 
     function canShowStaleStatus() {
+        const session = window.TaxonomyAnalysisSession?.state?.();
+        if (session?.restoring || session?.conflict) return false;
         const area = document.getElementById('statusArea');
         const input = document.getElementById('businessText');
         // Feedback belongs to the text for which it was published. Observer requeues

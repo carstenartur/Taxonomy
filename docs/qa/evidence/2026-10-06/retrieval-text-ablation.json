@@ -1,0 +1,1447 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "LOCAL_EXACT_VECTOR_DIAGNOSTIC_NOT_REST_ACCEPTANCE",
+  "status": "CANDIDATES_REJECTED",
+  "sourceBase": "11d099b858cddbbaa15b6f0b2a69f04a56534ae2",
+  "catalogueNodes": 2572,
+  "referenceSha256": "b1fdd3540cc2116cb68f4c381fe3bcbda4e2f1c7c38f6290cfbb79892842a0ca",
+  "catalogueSha256": "ad093001cee3944e131bdb1963b8e66966530bb43da5c74c7686f0b94b472459",
+  "modelFileSha256": {
+    "config.json": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e",
+    "model.onnx": "98a01d88b7de996cdea58c32ca71208c09968d143798814b2ea09d3439dc334f",
+    "special_tokens_map.json": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+    "tokenizer.json": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+    "tokenizer_config.json": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b"
+  },
+  "modelProfile": "MULTILINGUAL_MINILM_L12",
+  "remoteProviderCalls": 0,
+  "runtimeModelDownloads": 0,
+  "freshDocumentVectors": 5144,
+  "topK": 10,
+  "method": {
+    "production": "Exact cosine over production NodeEmbeddingText and production modelCriteria",
+    "title": "Exact cosine over English node title only",
+    "equal-normalized-blend": "Exact cosine over normalized sum of full-document and title vectors",
+    "max-document-title": "Maximum of document and title cosine scores"
+  },
+  "scope": "Same 16 fixed synthetic references; no ID boosts, query rewriting or fitted weighting. Fresh title and full-document vectors over every catalogue node. Diagnostic only; production retrieval unchanged.",
+  "rawLogSha256": "894978c86e903102f5c683c9cf64bfff076e28c4fe049448c965aa4f8311ff65",
+  "results": [
+    {
+      "mode": "production",
+      "caseId": "payroll-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1604",
+        "BP-1680",
+        "BP-1686",
+        "BP-1817",
+        "IP-1629",
+        "UA-1609",
+        "IP-1724",
+        "IP-1153",
+        "BP-2124",
+        "IP-1945"
+      ],
+      "targetRanks": {
+        "UA-1604": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "payroll-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "IP-1263",
+        "UA-1604",
+        "IP-1724",
+        "IP-1678",
+        "BP-1484",
+        "BR-1078",
+        "IP-1165",
+        "UA-1607",
+        "IP-1895"
+      ],
+      "targetRanks": {
+        "UA-1604": 3
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "payroll-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "UA-1604",
+        "BP-1686",
+        "IP-1724",
+        "IP-1263",
+        "IP-1678",
+        "IP-1153",
+        "IP-1165",
+        "IP-2179",
+        "BP-1484"
+      ],
+      "targetRanks": {
+        "UA-1604": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "payroll-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "UA-1604",
+        "IP-1263",
+        "IP-1724",
+        "IP-1678",
+        "BP-1484",
+        "BR-1078",
+        "BP-1686",
+        "IP-1165",
+        "UA-1607"
+      ],
+      "targetRanks": {
+        "UA-1604": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "payroll-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1604",
+        "BP-1680",
+        "BP-1686",
+        "IP-1330",
+        "IP-1629",
+        "IP-1179",
+        "IP-1284",
+        "UA-1605",
+        "IP-2179",
+        "IP-2069"
+      ],
+      "targetRanks": {
+        "UA-1604": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "payroll-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "BP-1484",
+        "UA-1604",
+        "IP-1818",
+        "IP-2179",
+        "BR-1186",
+        "BP-2123",
+        "UA-1607",
+        "BR-1103",
+        "IP-1263"
+      ],
+      "targetRanks": {
+        "UA-1604": 3
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "payroll-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "UA-1604",
+        "BP-1484",
+        "BP-1686",
+        "IP-2179",
+        "BP-2123",
+        "UA-1607",
+        "IP-1179",
+        "BR-1078",
+        "UA-1605"
+      ],
+      "targetRanks": {
+        "UA-1604": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "payroll-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "BP-1680",
+        "UA-1604",
+        "BP-1484",
+        "IP-1818",
+        "IP-2179",
+        "BR-1186",
+        "BP-2123",
+        "UA-1607",
+        "BR-1103",
+        "BP-1686"
+      ],
+      "targetRanks": {
+        "UA-1604": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "documents-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1583",
+        "IP-1629",
+        "CR-1115",
+        "UA-1496",
+        "IP-1303",
+        "IP-2069",
+        "CI-1149",
+        "BR-1065",
+        "BP-1916",
+        "IP-1491"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "documents-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "CR-1115",
+        "BR-1107",
+        "BP-2059",
+        "IP-1658",
+        "BR-1099",
+        "IP-1303",
+        "IP-1711",
+        "BR-1253",
+        "UA-1498",
+        "BR-1102"
+      ],
+      "targetRanks": {
+        "UA-1583": 17
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "documents-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1583",
+        "CR-1115",
+        "IP-1629",
+        "IP-1303",
+        "BR-1107",
+        "BR-1253",
+        "BP-2059",
+        "IP-1491",
+        "CI-1149",
+        "BR-1102"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "documents-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1583",
+        "CR-1115",
+        "BR-1107",
+        "IP-1629",
+        "BP-2059",
+        "IP-1658",
+        "BR-1099",
+        "IP-1303",
+        "IP-1711",
+        "BR-1253"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "documents-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1583",
+        "IP-1629",
+        "CR-1115",
+        "IP-1491",
+        "IP-2069",
+        "IP-1303",
+        "IP-1462",
+        "IP-1758",
+        "UA-1496",
+        "IP-2064"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "documents-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "CR-1115",
+        "BR-1102",
+        "BR-1099",
+        "IP-1303",
+        "BR-1078",
+        "IP-1629",
+        "BR-1253",
+        "IP-2051",
+        "IP-2064",
+        "BR-1076"
+      ],
+      "targetRanks": {
+        "UA-1583": 26
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "documents-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "CR-1115",
+        "UA-1583",
+        "IP-1629",
+        "IP-1303",
+        "IP-1491",
+        "BR-1102",
+        "IP-2064",
+        "IP-2069",
+        "IP-1758",
+        "BR-1253"
+      ],
+      "targetRanks": {
+        "UA-1583": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "documents-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1583",
+        "CR-1115",
+        "IP-1629",
+        "BR-1102",
+        "BR-1099",
+        "IP-1303",
+        "IP-1491",
+        "IP-2069",
+        "BR-1078",
+        "BR-1253"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "email-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "CR-1037",
+        "CR-1094",
+        "CR-1095",
+        "CO-1030",
+        "BP-1489",
+        "UA-1277",
+        "IP-2069",
+        "BP-1679",
+        "UA-1497"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "email-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "CR-1094",
+        "IP-2064",
+        "BR-1102",
+        "IP-2051",
+        "BR-1099",
+        "CO-1030",
+        "CR-1095",
+        "IP-2191",
+        "CR-1037"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "email-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "CR-1094",
+        "CR-1037",
+        "CR-1095",
+        "CO-1030",
+        "IP-2191",
+        "IP-2064",
+        "BP-1489",
+        "IP-2051",
+        "BR-1102"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "email-en-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "CR-1094",
+        "IP-2064",
+        "CR-1037",
+        "BR-1102",
+        "CR-1095",
+        "IP-2051",
+        "BR-1099",
+        "CO-1030",
+        "IP-2191"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "email-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "IP-1629",
+        "IP-2069",
+        "CR-1037",
+        "CO-1030",
+        "IP-1462",
+        "BP-1964",
+        "CI-1069",
+        "CR-1094",
+        "CR-1095"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "email-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "IP-2064",
+        "CR-1149",
+        "IP-2051",
+        "BR-1102",
+        "CR-1197",
+        "BR-1076",
+        "BP-1680",
+        "IP-1724",
+        "BR-1099"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "email-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "IP-1629",
+        "CR-1149",
+        "IP-2064",
+        "IP-2051",
+        "IP-2069",
+        "BP-1680",
+        "CR-1094",
+        "CO-1030",
+        "CR-1037"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "email-de-v1",
+      "kind": "ANCHOR",
+      "top10": [
+        "UA-1222",
+        "IP-1629",
+        "IP-2064",
+        "IP-2069",
+        "CR-1149",
+        "IP-2051",
+        "CR-1037",
+        "BR-1102",
+        "CO-1030",
+        "CR-1197"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "payroll-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1604",
+        "BP-1680",
+        "BP-1667",
+        "BP-1679",
+        "IP-1179",
+        "BR-1103",
+        "BP-1817",
+        "IP-1330",
+        "IP-1778",
+        "BR-1078"
+      ],
+      "targetRanks": {
+        "UA-1604": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "payroll-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BP-1680",
+        "BR-1103",
+        "BR-1186",
+        "IP-1179",
+        "UA-1604",
+        "BR-1078",
+        "IP-2179",
+        "IP-1263",
+        "BR-1046",
+        "BP-1667"
+      ],
+      "targetRanks": {
+        "UA-1604": 5
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "payroll-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BP-1680",
+        "UA-1604",
+        "BR-1103",
+        "IP-1179",
+        "BR-1186",
+        "BR-1078",
+        "BP-1667",
+        "IP-2179",
+        "IP-1263",
+        "IP-1330"
+      ],
+      "targetRanks": {
+        "UA-1604": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "payroll-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BP-1680",
+        "BR-1103",
+        "UA-1604",
+        "BR-1186",
+        "IP-1179",
+        "BR-1078",
+        "IP-2179",
+        "IP-1263",
+        "BR-1046",
+        "BP-1667"
+      ],
+      "targetRanks": {
+        "UA-1604": 3
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "payroll-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BP-1679",
+        "BP-1680",
+        "BP-2099",
+        "IP-1228",
+        "BR-1351",
+        "BR-1103",
+        "BP-1911",
+        "BP-1667",
+        "BR-1225",
+        "BP-1202"
+      ],
+      "targetRanks": {
+        "UA-1604": 25
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "payroll-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BR-1103",
+        "BP-1680",
+        "BR-1121",
+        "BR-1351",
+        "BR-1186",
+        "BR-1225",
+        "BP-1884",
+        "BP-1911",
+        "BP-1272",
+        "BP-2099"
+      ],
+      "targetRanks": {
+        "UA-1604": 42
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "payroll-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BP-1680",
+        "BR-1103",
+        "BR-1351",
+        "BP-2099",
+        "BR-1121",
+        "BP-1911",
+        "BR-1225",
+        "BP-1679",
+        "BP-1334",
+        "BR-1186"
+      ],
+      "targetRanks": {
+        "UA-1604": 23
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "payroll-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BR-1103",
+        "BP-1680",
+        "BR-1121",
+        "BR-1351",
+        "BR-1186",
+        "BP-1679",
+        "BR-1225",
+        "BP-1884",
+        "BP-1911",
+        "BP-1272"
+      ],
+      "targetRanks": {
+        "UA-1604": 43
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "documents-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "IP-2008",
+        "IP-1135",
+        "UA-1577",
+        "UA-1583",
+        "IP-1532",
+        "IP-1710",
+        "IP-1227",
+        "IP-1336",
+        "IP-1521",
+        "IP-1918"
+      ],
+      "targetRanks": {
+        "UA-1583": 4
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "documents-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BR-1258",
+        "BP-1899",
+        "BR-1208",
+        "IP-1227",
+        "IP-1135",
+        "IP-1491",
+        "BP-1913",
+        "IP-1710",
+        "IP-2025",
+        "IP-1532"
+      ],
+      "targetRanks": {
+        "UA-1583": 43
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "documents-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "IP-1135",
+        "IP-1227",
+        "BP-1899",
+        "IP-1532",
+        "IP-1710",
+        "UA-1577",
+        "IP-2008",
+        "BR-1258",
+        "BR-1208",
+        "BP-1913"
+      ],
+      "targetRanks": {
+        "UA-1583": 14
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "documents-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "IP-2008",
+        "IP-1135",
+        "UA-1577",
+        "BR-1258",
+        "BP-1899",
+        "BR-1208",
+        "IP-1227",
+        "UA-1583",
+        "IP-1532",
+        "IP-1491"
+      ],
+      "targetRanks": {
+        "UA-1583": 8
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "documents-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1583",
+        "UA-1577",
+        "IP-1199",
+        "UA-1453",
+        "BP-1913",
+        "BR-1208",
+        "IP-1491",
+        "BR-1148",
+        "BP-1662",
+        "BP-1022"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "documents-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "BR-1208",
+        "UA-1453",
+        "BR-1258",
+        "IP-1710",
+        "IP-1272",
+        "UA-1583",
+        "BR-1009",
+        "IP-1491",
+        "IP-2025",
+        "IP-1303"
+      ],
+      "targetRanks": {
+        "UA-1583": 6
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "documents-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1583",
+        "BR-1208",
+        "UA-1453",
+        "BP-1913",
+        "IP-1272",
+        "IP-1199",
+        "IP-1710",
+        "IP-1491",
+        "BR-1258",
+        "UA-1577"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "documents-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1583",
+        "BR-1208",
+        "UA-1453",
+        "BR-1258",
+        "IP-1710",
+        "UA-1577",
+        "IP-1199",
+        "IP-1272",
+        "BP-1913",
+        "BR-1009"
+      ],
+      "targetRanks": {
+        "UA-1583": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "email-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "IP-1136",
+        "UA-1230",
+        "CR-1037",
+        "UA-1277",
+        "IP-1559",
+        "CI-1069",
+        "CR-1024",
+        "UA-1176",
+        "UA-1419"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "email-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "IP-1132",
+        "UA-1222",
+        "IP-1781",
+        "UA-1219",
+        "CR-1037",
+        "IP-1136",
+        "UA-1419",
+        "UA-1179",
+        "IP-1899",
+        "IP-1797"
+      ],
+      "targetRanks": {
+        "UA-1222": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "email-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "CR-1037",
+        "IP-1136",
+        "IP-1132",
+        "IP-1781",
+        "CI-1069",
+        "UA-1277",
+        "BP-1163",
+        "IP-1899",
+        "UA-1419"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "email-en-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "IP-1132",
+        "IP-1136",
+        "UA-1230",
+        "IP-1781",
+        "CR-1037",
+        "UA-1219",
+        "UA-1277",
+        "UA-1419",
+        "UA-1179"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "email-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "UA-1277",
+        "CR-1037",
+        "UA-1230",
+        "IP-1136",
+        "CR-1024",
+        "IP-1132",
+        "UA-1419",
+        "IP-1899",
+        "UA-1183"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "email-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "IP-1132",
+        "UA-1222",
+        "IP-1781",
+        "CR-1037",
+        "CR-1076",
+        "IP-1899",
+        "CR-1095",
+        "CO-1030",
+        "IP-1658",
+        "UA-1277"
+      ],
+      "targetRanks": {
+        "UA-1222": 2
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "email-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "CR-1037",
+        "IP-1132",
+        "UA-1277",
+        "IP-1899",
+        "CR-1076",
+        "BP-1163",
+        "UA-1419",
+        "IP-1781",
+        "CO-1030"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "email-de-paraphrase",
+      "kind": "PARAPHRASE",
+      "top10": [
+        "UA-1222",
+        "IP-1132",
+        "UA-1277",
+        "CR-1037",
+        "UA-1230",
+        "IP-1781",
+        "CR-1076",
+        "IP-1899",
+        "CR-1095",
+        "CO-1030"
+      ],
+      "targetRanks": {
+        "UA-1222": 1
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "distractor-en",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "IP-2198",
+        "BR-1282",
+        "IP-2203",
+        "BP-1583",
+        "UA-1587",
+        "BR-1141",
+        "BR-1344",
+        "BP-1582",
+        "BP-1570"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "distractor-en",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "BP-1582",
+        "CP-1068",
+        "IP-2203",
+        "BP-1581",
+        "BP-1568",
+        "BP-1569",
+        "IP-1649",
+        "BR-1154",
+        "BR-1141"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "distractor-en",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "IP-2203",
+        "IP-2198",
+        "BP-1582",
+        "BP-1568",
+        "BP-1569",
+        "BR-1141",
+        "CP-1068",
+        "BP-1581",
+        "BR-1344"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "distractor-en",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "BP-1582",
+        "IP-2198",
+        "CP-1068",
+        "BR-1282",
+        "IP-2203",
+        "BP-1583",
+        "BP-1581",
+        "BP-1568",
+        "UA-1587"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "distractor-de",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "BP-1870",
+        "UA-1594",
+        "BP-1582",
+        "BP-1583",
+        "BR-1234",
+        "BR-1138",
+        "IP-2150",
+        "BP-1581",
+        "BP-1683",
+        "IP-1586"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "distractor-de",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "BR-1154",
+        "BP-1371",
+        "BR-1288",
+        "IP-2150",
+        "BP-1831",
+        "BP-1732",
+        "UA-1060",
+        "BP-1581",
+        "UA-1422"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "distractor-de",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "BR-1154",
+        "IP-2150",
+        "BP-1581",
+        "BP-1831",
+        "BR-1138",
+        "BR-1288",
+        "BP-1582",
+        "BP-1371",
+        "BP-1870"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "distractor-de",
+      "kind": "DISTRACTOR",
+      "top10": [
+        "UA-1594",
+        "BR-1154",
+        "BP-1371",
+        "BR-1288",
+        "IP-2150",
+        "BP-1831",
+        "BP-1732",
+        "UA-1060",
+        "BP-1581",
+        "BP-1870"
+      ],
+      "targetRanks": {
+        "-": 0
+      },
+      "requiredFound": true,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "ambiguous-en",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "UA-1222",
+        "CR-1060",
+        "CR-1037",
+        "CR-1026",
+        "UA-1453",
+        "CI-1069",
+        "BP-1163",
+        "IP-1629",
+        "CO-1030",
+        "UA-1419"
+      ],
+      "targetRanks": {
+        "UA-1583": 24,
+        "UA-1222": 1
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "ambiguous-en",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "CR-1060",
+        "IP-2064",
+        "CR-1026",
+        "IP-1658",
+        "UA-1222",
+        "IP-2051",
+        "UA-1453",
+        "UA-1522",
+        "CR-1037",
+        "IP-1381"
+      ],
+      "targetRanks": {
+        "UA-1583": 197,
+        "UA-1222": 5
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "ambiguous-en",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "CR-1060",
+        "UA-1222",
+        "CR-1026",
+        "CR-1037",
+        "IP-2064",
+        "UA-1453",
+        "CI-1069",
+        "IP-2051",
+        "UA-1522",
+        "CO-1030"
+      ],
+      "targetRanks": {
+        "UA-1583": 62,
+        "UA-1222": 2
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "ambiguous-en",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "CR-1060",
+        "IP-2064",
+        "CR-1026",
+        "UA-1222",
+        "IP-1658",
+        "IP-2051",
+        "CR-1037",
+        "UA-1453",
+        "UA-1522",
+        "CI-1069"
+      ],
+      "targetRanks": {
+        "UA-1583": 40,
+        "UA-1222": 4
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "production",
+      "caseId": "ambiguous-de",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "BP-1163",
+        "UA-1453",
+        "CP-1127",
+        "CP-1122",
+        "IP-2064",
+        "BP-1552",
+        "CP-1041",
+        "CR-1014",
+        "UA-1419",
+        "IP-1921"
+      ],
+      "targetRanks": {
+        "UA-1583": 113,
+        "UA-1222": 38
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "title",
+      "caseId": "ambiguous-de",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "IP-1381",
+        "IP-2064",
+        "CP-1023",
+        "CP-1127",
+        "CP-1024",
+        "BR-1058",
+        "IP-1460",
+        "IP-1164",
+        "IP-2051",
+        "CP-1059"
+      ],
+      "targetRanks": {
+        "UA-1583": 505,
+        "UA-1222": 234
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "equal-normalized-blend",
+      "caseId": "ambiguous-de",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "IP-1381",
+        "IP-2064",
+        "CP-1127",
+        "UA-1453",
+        "BR-1062",
+        "CP-1023",
+        "CP-1024",
+        "BR-1290",
+        "CP-1097",
+        "IP-1164"
+      ],
+      "targetRanks": {
+        "UA-1583": 299,
+        "UA-1222": 116
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    },
+    {
+      "mode": "max-document-title",
+      "caseId": "ambiguous-de",
+      "kind": "AMBIGUOUS",
+      "top10": [
+        "IP-1381",
+        "IP-2064",
+        "CP-1023",
+        "BP-1163",
+        "CP-1127",
+        "CP-1024",
+        "BR-1058",
+        "IP-1460",
+        "IP-1164",
+        "IP-2051"
+      ],
+      "targetRanks": {
+        "UA-1583": 191,
+        "UA-1222": 91
+      },
+      "requiredFound": false,
+      "excludedFound": []
+    }
+  ]
+}

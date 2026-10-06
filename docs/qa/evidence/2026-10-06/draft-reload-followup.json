@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "LOCAL_FOCUSED_QA_NOT_CANONICAL_SHARD_CERTIFICATE",
+  "sourceBase": "11d099b858cddbbaa15b6f0b2a69f04a56534ae2",
+  "testFiles": [
+    {
+      "path": ".github/scripts/analysis-session-draft.test.mjs",
+      "sha256": "65117c661c7fc25da185a0482b70a3880bd4e22bb87cb974bee0e24d926a40e1"
+    },
+    {
+      "path": ".github/scripts/analysis-workflow-regression.test.mjs",
+      "sha256": "b51dfbf15aeecc8e7d13887125883a6f4de4e3035740392eaf89fce0e045d0a8"
+    },
+    {
+      "path": ".github/scripts/ui-primary-preferences-workflow.mjs",
+      "sha256": "b8377d0f4b6ee82d336eaadcfede8cb3fdeb38f994c5cbd5e98ec7a7fd0e5f56"
+    }
+  ],
+  "packagedResources": [
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js",
+      "sourceSha256": "3b37507e5307e14a12ac8e80aaa613af527f820e5ad51b99230427dcefc14cdb",
+      "packagedBytesEqual": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js",
+      "sourceSha256": "946cf9e4681e3160b01f7e4d300297072f4e4e4e82fd68b3ea7d0a96c8286e94",
+      "packagedBytesEqual": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js",
+      "sourceSha256": "36133fd5af7330aa5bcab9a1508ad06fea0472e5077579767cbb598f7ceb460e",
+      "packagedBytesEqual": true
+    }
+  ],
+  "applicationJarSha256": "6ca7315f13060a41ec058de80fa786931c38b9ff503569dbca72dd1f49aa9762",
+  "red": {
+    "draftLoad": {
+      "tests": 13,
+      "passed": 8,
+      "expectedFailures": 5
+    },
+    "choiceFeedback": {
+      "tests": 29,
+      "passed": 27,
+      "expectedFailures": 2
+    },
+    "explicitSave": {
+      "tests": 30,
+      "passed": 29,
+      "expectedFailures": 1
+    },
+    "browserBaseline": {
+      "jarSha256": "32fcb25a9a05713ef00e3395a7442c83520d5b08c16f48da2393a86940304a6d",
+      "failure": "Late explicit draft reload overwrote newer input or current analysis evidence"
+    }
+  },
+  "green": {
+    "focusedNode": {
+      "tests": 105,
+      "passed": 105,
+      "failed": 0,
+      "skipped": 0
+    },
+    "allNodeContracts": {
+      "tests": 841,
+      "passed": 841,
+      "failed": 0,
+      "skipped": 0
+    },
+    "browser": {
+      "profile": "primary-admin-chromium",
+      "checks": 38,
+      "axeAudits": 13,
+      "violations": 0,
+      "auditError": null,
+      "failureEvidence": null,
+      "durationMs": 73977,
+      "startedAt": "2026-10-06T10:09:17.594Z",
+      "finishedAt": "2026-10-06T10:10:31.571Z",
+      "sourceCommitFromRunner": null,
+      "jarSha256FromRunner": null,
+      "checksPassed": [
+        "axe analysis-empty-error",
+        "empty analysis actionable status and live announcement",
+        "role-appropriate mutation controls",
+        "CSV export download",
+        "axe export-backend-error",
+        "export failure feedback",
+        "export failure dismissed",
+        "Real relation-only version comparison, correct restore direction, visible failures and QA branch cleanup",
+        "axe proposals-pending",
+        "proposal accept and revert",
+        "proposal reject",
+        "axe proposals-bulk-result",
+        "proposal bulk action",
+        "relation create",
+        "axe relation-idempotent-upsert",
+        "relation idempotent duplicate upsert",
+        "relation delete confirmation",
+        "axe document-review-success",
+        "document upload and candidate review",
+        "axe document-upload-error",
+        "document upload resource error",
+        "axe framework-import-preview",
+        "framework import preview",
+        "axe framework-import-error",
+        "framework import error feedback",
+        "axe workspace-conflict",
+        "workspace diverged conflict state",
+        "axe workspace-sync-error",
+        "workspace remote sync error",
+        "axe workspace-publish-success",
+        "workspace publish success",
+        "preferences direct-link load",
+        "Preferences acknowledgement retains a newer unsaved edit and its Save action",
+        "Reducing the architecture-node limit below an existing graph size preserves its draft and decisions",
+        "Late explicit draft reload preserves newer input, scores and manual decisions through save and reload",
+        "Persisted hypothesis reject/apply survive Preferences and reload; restored Git Undo and repeat guards execute",
+        "axe preferences-state-preserved",
+        "Preferences 50\u2192150 preserves visible architecture and authoritative draft across autosave, failure, return and pending restore"
+      ]
+    }
+  },
+  "logSha256": {
+    "draft-load-red.log": "3bb12487ef3f787a10ffc93ae7b77eca3762b114ffae03eabdaf0db185fe6930",
+    "draft-choice-red.log": "9299949cea2a3d79934a9b90bb708ba36514cda50e90716f08a33132f3b9f672",
+    "save-choice-red.log": "8695ec4338cc925c89b465b59f36243f035bf392d3da28428cebd33548158d52",
+    "save-choice-green.log": "828cdcf8cb3b36339dc258d3d090f208a249a20ab7b808cc141e96997b557d72",
+    "all-node-final.log": "b3ac2d6dad2bc898386ff066e35517ff85eb760a50144cbab4059c2854ee521a",
+    "browser-red.log": "c76ecc9ad6d976130fd526d86fd1792c78c2a6af7867ce5d3ed93a0c3fd8002d",
+    "package-final.log": "e8e30fa6f1c3c75e33f424b11b61f869728b2ba8e9918836d90679709092c010",
+    "browser-final.log": "9ae36143c43e3d47fb67db26cb6ee395b55a048d93eb341edf9a8e5d65e31ee6"
+  },
+  "independentReview": {
+    "importantFinding": "Explicit Save Draft removed unresolved choice",
+    "resolution": "Reproduced RED; protected menu and save completion; verified recovery",
+    "finalVerdict": "No remaining Critical or Important finding in the six code/test files"
+  }
+}

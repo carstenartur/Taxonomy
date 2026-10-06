@@ -106,3 +106,14 @@ a deployment sizing guarantee. Runtime downloads and external provider calls
 were disabled. See the [final local QA evidence](../qa/2026-10-06-remaining-qa.md)
 for source/JAR/model/catalogue identities, exact result boundaries and remaining
 canonical CI gates.
+
+The subsequent [canonical PR #1175 lanes](../qa/2026-10-06-remaining-qa.md#final-canonical-acceptance-of-pr-1175)
+also passed. A follow-up exact-vector diagnostic rebuilt full-document and title
+vectors for all 2,572 real nodes and tested title-only, equal normalized blending
+and maximum document/title similarity against the same sixteen fixed queries.
+None repaired the remaining German payroll/ambiguity misses; title-only also
+regressed original document anchors beyond ten hits, and blending regressed an
+English document paraphrase from rank 4 to 14. These candidates were rejected.
+The [64 measured results](../qa/evidence/2026-10-06/retrieval-text-ablation.json)
+retain every mode, query, top-ten result and target rank. This is diagnostic
+evidence, not an additional production model or REST acceptance claim.
