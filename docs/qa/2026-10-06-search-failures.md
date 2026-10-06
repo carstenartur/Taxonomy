@@ -67,7 +67,8 @@ only the node index is ready.
 
 The [machine-readable record](evidence/2026-10-06/search-failures.json) records the
 final focused commands, test counts and source digests. The final local Java run
-passed all 120 selected tests; the Maven-owned UI contract phase passed 851 tests,
+passed all 156 selected tests, including 36 architecture checks; the Maven-owned
+UI contract phase passed 851 tests,
 including five new search-mode regressions. Both completed with zero failures,
 errors or skipped tests. These focused results do not replace canonical CI.
 
@@ -107,6 +108,17 @@ checksum. A fresh 182,262,774-byte download matches both the publisher checksum 
 the existing pin:
 `f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f`.
 The real product round trip remains a required CI gate.
+
+## Shared failure contract
+
+The architecture ratchet in [run 37490847461](https://github.com/carstenartur/Taxonomy/actions/runs/37490847461)
+detected one new dependency from the shared HTTP exception handler to the knowledge
+implementation package. The 23-case architecture suite had one failing assertion;
+the selected reformulation persistence cases passed. `SearchUnavailableException`
+is a pure contract used by both providers and callers, so it now belongs to
+`taxonomy-domain`. Its package, type and safe error semantics are preserved. This
+removes the implementation dependency without increasing the reviewed dependency
+baseline or exempting the handler from the architecture checks.
 
 ## Verification boundaries and open investigations
 

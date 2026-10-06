@@ -1,16 +1,30 @@
 {
-  "recordedAt": "2026-10-06T15:49:36.536066+00:00",
+  "recordedAt": "2026-10-06T16:16:16.517616+00:00",
   "baseCommit": "74b3d55082ddbb5b38c0c7309349e371bdc016ab",
   "java": {
-    "command": "./mvnw -B -pl taxonomy-app -am test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
+    "command": "./mvnw -B -pl taxonomy-app -am test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest,ArchitectureContextDependencyRatchetTest,ArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
     "exitCode": 0,
     "totals": {
-      "tests": 120,
+      "tests": 156,
       "failures": 0,
       "errors": 0,
       "skipped": 0
     },
     "suites": [
+      {
+        "name": "com.taxonomy.ArchitectureContextDependencyRatchetTest",
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.ArchitectureTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
       {
         "name": "com.taxonomy.GraphSearchTests",
         "tests": 9,
@@ -21,27 +35,6 @@
       {
         "name": "com.taxonomy.SemanticSearchTests",
         "tests": 26,
-        "failures": 0,
-        "errors": 0,
-        "skipped": 0
-      },
-      {
-        "name": "com.taxonomy.search.EmbeddingModelKnnIsolationTest",
-        "tests": 8,
-        "failures": 0,
-        "errors": 0,
-        "skipped": 0
-      },
-      {
-        "name": "com.taxonomy.search.SearchFailureHttpTest",
-        "tests": 5,
-        "failures": 0,
-        "errors": 0,
-        "skipped": 0
-      },
-      {
-        "name": "com.taxonomy.search.SearchIndexCoverageTest",
-        "tests": 11,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -75,8 +68,29 @@
         "skipped": 0
       },
       {
+        "name": "com.taxonomy.search.EmbeddingModelKnnIsolationTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
         "name": "com.taxonomy.search.LocalOnnxIndexInitializerTest",
         "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.search.SearchFailureHttpTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.search.SearchIndexCoverageTest",
+        "tests": 11,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -159,7 +173,6 @@
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/EmbeddingIndexHealth.java": "80b6ef969f426f066c667d3cc6657162f54ffe3326af541c6434c2a7645c6b63",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalEmbeddingIndexRebuilder.java": "dd1cc859e6a37c2d870e30c41f7644956f7ac0b7f40d377fab95386340d36a8e",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalOnnxIndexInitializer.java": "e913d6ff3f7a98ca073926fe8620d9c5e715700627e739a7e739c3eab1465fd9",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/search/SearchUnavailableException.java": "b831048a113fefc6881341d5e93d91ca817549ff2a88cd829a03e203ef88d9c7",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/controller/SearchApiController.java": "e8a8f208fb22539e8c01706149cd9a824f9007d74f9a66552ed187bb9652667c",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/service/SearchFacade.java": "f80bf30543df29666ff3d74d8e237c75515f0bc32a844e81de1e929ecbf0c7c3",
     "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/service/SearchDiagnosticPrivacyTest.java": "94da4cae2a752b8db8272d07ef8b0a7b2ba1d1f22729e10f1f74ce8ff3904c39",
@@ -170,7 +183,12 @@
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeReadinessRaceTest.java": "9b2e26e76c7852449f44c1f1e90f167366e4dd0798501f6255af6112c18e131a",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeResultLimitTest.java": "b156f5329e8ef43e2ebe867ae8af4408c8d562d96692bfe6abbdd66aef91ed3a",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e",
-    ".github/scripts/verify-interoperability-products.mjs": "9eb22ba81bd9a00e9af751d1df3e5cb92e705d2e9658c9b0cf28c624ed34d1a6"
+    ".github/scripts/verify-interoperability-products.mjs": "9eb22ba81bd9a00e9af751d1df3e5cb92e705d2e9658c9b0cf28c624ed34d1a6",
+    "taxonomy-domain/src/main/java/com/taxonomy/search/SearchUnavailableException.java": "61c9e54d31b82cd48c7305328ecca7dd7677e8aa3499ca37103cd48528bc3acc",
+    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java": "8a7592dca228419c7ee10e2305a28fec7a12c401aa845efc9bfcda1f33b81222",
+    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java": "a3885c529a85b75ec64c1b9027d4affbd3a88a4f67fe1991a6106ea1e2be8f73",
+    ".github/architecture-dependency-baseline.json": "8fe51e548e44a0e34ea6d35b3c401323a787f816c0cada5c92faa1aae9503d6d",
+    ".github/architecture-contexts.json": "a89226de44e5731b3412d92ae179be8424e6cf2eff213af126b33afc36aee3f1"
   },
   "verificationBoundary": [
     "Controlled inference failures and authored entities; not model-quality evidence.",
@@ -189,5 +207,12 @@
     "bytes": 182262774,
     "unchangedPin": true,
     "roundTripGate": "Required CI; download verification alone is not product acceptance."
+  },
+  "architectureCorrection": {
+    "failingRun": "https://github.com/carstenartur/Taxonomy/actions/runs/37490847461",
+    "failure": "New dependency from com.taxonomy.shared.config to com.taxonomy.search implementation (0 -> 1).",
+    "correction": "Move the pure shared SearchUnavailableException contract to taxonomy-domain; retain its package, type and semantics.",
+    "dependencyBaselineUnchanged": true,
+    "architectureTests": 36
   }
 }

@@ -1,6 +1,9 @@
 package com.taxonomy.search;
 
-/** A failed search is unavailable, not a completed query with no matches. */
+/**
+ * Shared failure contract between search providers and their callers.
+ * A failed search is unavailable, not a completed query with no matches.
+ */
 public final class SearchUnavailableException extends IllegalStateException {
     public SearchUnavailableException() {
         // Backend causes can contain query text, credentials or private paths.
