@@ -23,7 +23,8 @@ requires a pre-existing identity provider.
 | Scope | Command | Additional requirement |
 |---|---|---|
 | Compile | `./mvnw compile` | Java 21 |
-| Normal developer verification | `./mvnw verify` | No Docker; unit, Spring, contract and architecture tests |
+| Normal developer verification | `./mvnw verify` | Unit, Spring, contract, architecture and browser tests; browser sessions default to Docker unless local Chrome is explicitly configured |
+| Docker-free developer verification | `./mvnw verify -Ptest-local` | Matching local Chrome/ChromeDriver; see [local test prerequisites](../testing/docker-free-tests.md); container, database, ONNX and external-LLM suites remain separate |
 | Local combined CI-profile verification | `./mvnw -B verify -Pci -DrunOnnxTests=true` | Docker, browser/model prerequisites and POSIX tools; CI itself splits UI into shards |
 | Core container integration | `./mvnw -B verify -Pcore-integration` | Docker |
 | PostgreSQL | `./mvnw -B verify -Pdatabase-postgres` | Docker |

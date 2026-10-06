@@ -110,6 +110,7 @@ public class SearchFacade {
         status.put("available", semanticReady);
         status.put("modelAvailable", embeddingService.isAvailable());
         status.put("modelUrl", embeddingService.effectiveModelUrl());
+        status.put("modelProfile", embeddingService.modelProfile());
         status.put("indexedNodes", embeddingService.indexedNodeCount());
         status.put("semanticReady", semanticReady);
         status.put("indexState", embeddingIndexInitializer.getState().name());

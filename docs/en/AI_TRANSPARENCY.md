@@ -55,7 +55,7 @@ The application uses AI in two distinct areas:
 | **Purpose** | Semantic search across taxonomy and architecture elements |
 | **Input** | Search queries and taxonomy node descriptions |
 | **Output** | Vector embeddings for similarity ranking |
-| **Model** | BAAI/bge-small-en-v1.5 (384 dimensions, ONNX Runtime) |
+| **Model** | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (384 dimensions, ONNX Runtime) |
 | **Data location** | Entirely local — no external API calls |
 
 ### 3. AI in Document Import
@@ -191,25 +191,33 @@ Each analysis result includes:
 
 | Aspect | Detail |
 |---|---|
-| **Model** | BAAI/bge-small-en-v1.5 |
-| **Architecture** | Transformer (BERT-based), 33M parameters |
+| **Model** | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 |
+| **Architecture / profile** | Multilingual MiniLM Transformer / `MULTILINGUAL_MINILM_L12` |
 | **Dimensions** | 384 |
 | **Runtime** | ONNX Runtime via DJL (Deep Java Library) |
-| **Download** | Auto-downloaded on first use from HuggingFace Hub |
-| **Size** | ~50 MB (model files) |
-| **Pre-download** | Set `TAXONOMY_EMBEDDING_MODEL_DIR` for air-gapped environments |
+| **Download** | Disabled by default; verified pre-provisioning is recommended. Runtime downloads require both enabled embeddings and explicit permission. |
+| **Size** | Pinned quantized ONNX weights: 118,453,870 bytes (~113 MiB); tokenizer and configuration files are additional. |
+| **Revision / export** | `e8f8c211226b894fcb81acc59f3b34ba3efd5f42` / `onnx/model_quint8_avx2.onnx` |
+| **License** | Apache-2.0 |
+| **Pre-download** | Use the [pinned provisioning guide](../testing/multilingual-model-provisioning.md), then mount the bundle via `TAXONOMY_EMBEDDING_MODEL_DIR`. |
 
 ### What the Embedding Model Does
 
 - Converts text (taxonomy descriptions, search queries) into 384-dimensional vectors
 - Enables semantic similarity search (find relevant nodes by meaning, not just keywords)
-- Uses asymmetric retrieval: query texts are prefixed with `"Represent this sentence for searching relevant passages: "` for improved accuracy
+- Uses mean pooling and unit normalization, with a 128-token input limit and no query or document prefix
+
+The default model is described in its [official model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). Local inference remains opt-in: `TAXONOMY_EMBEDDING_ENABLED=false` and `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false` are the defaults; choosing `LOCAL_ONNX` alone does not load it.
+
+An explicit `BGE_SMALL_EN` profile remains available for the legacy English model, using CLS pooling, a 512-token limit and the English query prefix. Provision with `MODEL_PROFILE=BGE_SMALL_EN` and select it at runtime with `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN`. Switching profiles requires rebuilding the semantic index and discarding cached vectors.
+
+The [native corpus measurements](../testing/local-onnx-multilingual-retrieval.md) with real inference over the 2,572-entry catalogue placed all six unchanged German/English gold references at rank 1. `LocalOnnxPipelineIT` separately verifies the packaged application's REST acceptance. This is limited evidence, not exhaustive German retrieval acceptance: a predeclared German payroll paraphrase ranked its reference at 25, and an ambiguous German case retrieved neither reference.
 
 ### What the Embedding Model Does NOT Do
 
 - Does not send data to external servers
 - Does not generate text or make decisions
-- Does not process personal data (only taxonomy descriptions)
+- Does not automatically remove personal data from input: search queries and indexed text must follow the deployment's data policy
 
 ---
 
@@ -291,7 +299,9 @@ LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
 
 # Pre-download embedding model for air-gapped operation
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 
 # Enable audit logging
 TAXONOMY_AUDIT_LOGGING=true

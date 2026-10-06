@@ -38,21 +38,23 @@ public class NodeEmbeddingBinder implements TypeBinder {
         IndexFieldReference<float[]> embeddingField =
                 EmbeddingBridgeSupport.createEmbeddingField(context);
 
-        context.bridge(TaxonomyNode.class, new Bridge(embeddingField));
+        context.bridge(TaxonomyNode.class, new Bridge(embeddingField, EmbeddingBridgeSupport.createEmbeddingModelField(context)));
     }
 
     public static final class Bridge implements TypeBridge<TaxonomyNode> {
 
         private final IndexFieldReference<float[]> embeddingField;
+        private final IndexFieldReference<String> modelField;
 
-        Bridge(IndexFieldReference<float[]> embeddingField) {
+        Bridge(IndexFieldReference<float[]> embeddingField, IndexFieldReference<String> modelField) {
             this.embeddingField = embeddingField;
+            this.modelField = modelField;
         }
 
         @Override
         public void write(DocumentElement target, TaxonomyNode node,
                 TypeBridgeWriteContext context) {
-            EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, node,
+            EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, modelField, node,
                     Bridge::buildEnrichedText);
         }
 

@@ -55,7 +55,7 @@ Die Anwendung nutzt KI in zwei unterschiedlichen Bereichen:
 | **Zweck** | Semantische Suche über Taxonomie- und Architekturelemente |
 | **Eingabe** | Suchanfragen und Beschreibungen der Taxonomie-Knoten |
 | **Ausgabe** | Vektoreinbettungen für die Ähnlichkeitsrangfolge |
-| **Modell** | BAAI/bge-small-en-v1.5 (384 Dimensionen, ONNX Runtime) |
+| **Modell** | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (384 Dimensionen, ONNX Runtime) |
 | **Datenspeicherort** | Vollständig lokal — keine externen API-Aufrufe |
 
 ### 3. KI im Dokumentenimport
@@ -191,25 +191,33 @@ Jedes Analyseergebnis enthält:
 
 | Aspekt | Detail |
 |---|---|
-| **Modell** | BAAI/bge-small-en-v1.5 |
-| **Architektur** | Transformer (BERT-basiert), 33M Parameter |
+| **Modell** | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 |
+| **Architektur / Profil** | Mehrsprachiger MiniLM-Transformer / `MULTILINGUAL_MINILM_L12` |
 | **Dimensionen** | 384 |
 | **Laufzeitumgebung** | ONNX Runtime via DJL (Deep Java Library) |
-| **Download** | Wird bei Erstverwendung automatisch von HuggingFace Hub heruntergeladen |
-| **Größe** | ~50 MB (Modelldateien) |
-| **Vorab-Download** | Setzen Sie `TAXONOMY_EMBEDDING_MODEL_DIR` für Air-Gapped-Umgebungen |
+| **Download** | Standardmäßig deaktiviert; geprüfte Vorabbereitstellung empfohlen. Laufzeitdownloads erfordern aktivierte Embeddings und ausdrückliche Freigabe. |
+| **Größe** | Gepinnte quantisierte ONNX-Gewichte: 118.453.870 Bytes (~113 MiB); Tokenizer- und Konfigurationsdateien kommen hinzu. |
+| **Revision / Export** | `e8f8c211226b894fcb81acc59f3b34ba3efd5f42` / `onnx/model_quint8_avx2.onnx` |
+| **Lizenz** | Apache-2.0 |
+| **Vorab-Download** | Die [gepinnte Bereitstellungsanleitung](../testing/multilingual-model-provisioning.md) verwenden und das Paket über `TAXONOMY_EMBEDDING_MODEL_DIR` einhängen. |
 
 ### Was das Embedding-Modell leistet
 
 - Konvertiert Text (Taxonomiebeschreibungen, Suchanfragen) in 384-dimensionale Vektoren
 - Ermöglicht semantische Ähnlichkeitssuche (findet relevante Knoten nach Bedeutung, nicht nur nach Schlüsselwörtern)
-- Verwendet asymmetrisches Retrieval: Abfragetexte werden mit `"Represent this sentence for searching relevant passages: "` vorangestellt, um die Genauigkeit zu verbessern
+- Verwendet Mean-Pooling und Einheitsnormalisierung, mit einem Eingabelimit von 128 Tokens und ohne Abfrage- oder Dokumentpräfix
+
+Das Standardmodell ist in der [offiziellen Modellkarte](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) beschrieben. Lokale Inferenz bleibt eine Opt-in-Funktion: Standardmäßig gelten `TAXONOMY_EMBEDDING_ENABLED=false` und `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false`; die Auswahl von `LOCAL_ONNX` allein lädt das Modell nicht.
+
+Das explizite Profil `BGE_SMALL_EN` unterstützt weiterhin das bisherige englische Modell mit CLS-Pooling, 512 Tokens und englischem Abfragepräfix. Die Bereitstellung verwendet `MODEL_PROFILE=BGE_SMALL_EN`, die Laufzeit `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN`. Ein Profilwechsel erfordert einen Neuaufbau des semantischen Index und das Verwerfen zwischengespeicherter Vektoren.
+
+Bei den [nativen Korpusmessungen](../testing/local-onnx-multilingual-retrieval.md) mit echter Inferenz über den Katalog mit 2.572 Einträgen lagen alle sechs unveränderten deutschen/englischen Goldreferenzen auf Rang 1. `LocalOnnxPipelineIT` prüft die REST-Abnahme der paketierten Anwendung separat. Das ist begrenzte Evidenz, keine umfassende Abnahme der deutschen Suche: Eine vorab festgelegte deutsche Gehaltsabrechnungs-Paraphrase erreichte mit ihrer Referenz Rang 25; bei einem mehrdeutigen deutschen Fall wurde keine der beiden Referenzen gefunden.
 
 ### Was das Embedding-Modell NICHT leistet
 
 - Sendet keine Daten an externe Server
 - Generiert keinen Text und trifft keine Entscheidungen
-- Verarbeitet keine personenbezogenen Daten (nur Taxonomiebeschreibungen)
+- Entfernt personenbezogene Daten nicht automatisch aus Eingaben: Suchanfragen und indexierte Texte müssen der Datenrichtlinie der Bereitstellung entsprechen
 
 ---
 
@@ -291,7 +299,9 @@ LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
 
 # Pre-download embedding model for air-gapped operation
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 
 # Enable audit logging
 TAXONOMY_AUDIT_LOGGING=true

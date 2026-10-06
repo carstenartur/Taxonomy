@@ -8,12 +8,15 @@ are requested. Java 21, Docker and the existing Maven model provisioning are nee
 
 ## What runs
 
-LocalOnnxPipelineIT now mounts the model provisioned under
-`models/bge-small-en-v1.5` read-only, explicitly denies runtime model downloads,
-and fixes the query prefix. It no longer downloads an unpinned `resolve/main`
-model inside the application container. Maven retains its existing pinned model
-revision; an explicit local directory override is identified by actual file hashes,
-not asserted to be an independently verified upstream revision.
+LocalOnnxPipelineIT mounts the pinned `MULTILINGUAL_MINILM_L12` model provisioned
+under `models/multilingual-minilm` read-only, explicitly denies runtime model
+downloads, and fixes the query prefix to empty. It does not download an unpinned
+`resolve/main` model inside the application container. The profile, immutable
+revision and all five file hashes are described in
+[multilingual model provisioning](multilingual-model-provisioning.md). An explicit
+local directory override is identified by actual file hashes, not asserted to be
+an independently verified upstream revision. The BGE checkpoints below are
+historical evidence for the previous default.
 
 Before the existing DSL mutation tests, a new method runs six independently authored
 requirements: payroll, word processing and email, each in English and German.
@@ -47,12 +50,14 @@ There is no response playback or parallel embedding/search implementation.
 * Positive-reference recall@10, first relevant rank, observed IDs and missing required
   IDs are reported per case, language and adapter. There is deliberately no exhaustive
   precision, language pooling, calibrated probability or claim that ONNX wins.
-* The initial English regression contract requires the single referenced element
-  within ten semantic hits for each English case. German results are explicitly
-  observational: misses remain REFERENCE_MISSED and the overall report remains
-  MEASURED_WITH_REFERENCE_MISSES even when the English contract passes. A green
-  Maven run must not be advertised as proven German-language quality. These initial
-  thresholds were chosen before observing model results, not fitted to a green run.
+* The current regression contract requires the single referenced element within
+  ten semantic hits for each of the six unchanged English and German cases.
+  A miss in either language fails the gate. The initial BGE contract required only
+  English references; its historical German misses below are preserved. The
+  [supplemental multilingual evaluation](local-onnx-multilingual-retrieval.md)
+  adds independent paraphrases, distractors and ambiguities without weakening the
+  original six-anchor contract. Its additional observations remain separate from
+  the mandatory gate and do not establish universal German-language quality.
 
 `target/failsafe-reports/local-onnx-reference/` contains JSON, CSV and readable HTML.
 Reports record actual application JAR/source identity, model/tokenizer/config hashes,

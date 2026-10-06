@@ -78,6 +78,11 @@ public class LlmProviderConfig {
         this.localEmbeddingService = localEmbeddingService;
     }
 
+    /** Configured inference family; resolving a target never loads model weights. */
+    public String getLocalModelId() {
+        return localEmbeddingService.configuredModelId();
+    }
+
     /** Structured, operator-facing validation result for {@code CUSTOM_OPENAI}. */
     public record CustomOpenAiConfigurationStatus(boolean valid, String code, String message) {
         static CustomOpenAiConfigurationStatus ready() {
@@ -165,7 +170,7 @@ public class LlmProviderConfig {
             case LLAMA -> "Llama";
             case MISTRAL -> "Mistral";
             case CUSTOM_OPENAI -> "Custom OpenAI-compatible";
-            case LOCAL_ONNX -> "Local (bge-small-en-v1.5)";
+            case LOCAL_ONNX -> "Local (ONNX embeddings)";
         };
     }
 

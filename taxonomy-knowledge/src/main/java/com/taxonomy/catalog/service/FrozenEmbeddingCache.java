@@ -36,7 +36,7 @@ final class FrozenEmbeddingCache {
             var key = new Key(catalogue.source(), node.getTaxonomyRoot(), activeModel,
                     evidence.textVersion(), node.getCode(), StableIdentityHash.sha256(text));
             float[] vector = get(key);
-            if (vector == null) vector = retain(key, checked(embeddings.embed(text)), capacity);
+            if (vector == null) vector = retain(key, checked(embeddings.embedDocument(text)), capacity);
             float score = VectorSimilarityFunction.COSINE.compare(query, vector);
             result.put(node.getCode(), Math.max(0, Math.min(100,
                     (int) Math.round((2.0 * score - 1.0) * 100.0))));

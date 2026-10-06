@@ -31,7 +31,8 @@ import java.util.jar.JarFile;
 
 /** Real REST retrieval evaluation; reference codes never enter an inference request. */
 public final class OnnxReferenceEvaluation {
-    public static final String QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
+    public static final String MODEL_PROFILE = "MULTILINGUAL_MINILM_L12";
+    public static final String QUERY_PREFIX = "";
     public static final Path OUTPUT = Path.of("target", "failsafe-reports", "local-onnx-reference");
     private static final ObjectMapper JSON = new ObjectMapper();
     // /api/taxonomy also exposes read-only compatibility aliases (name/description).
@@ -45,7 +46,7 @@ public final class OnnxReferenceEvaluation {
 
     public static Path modelDirectory() throws IOException {
         String configured = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
-        Path relative = Path.of("models", "bge-small-en-v1.5");
+        Path relative = Path.of("models", "multilingual-minilm");
         var candidates = new ArrayList<Path>();
         if (configured != null && !configured.isBlank()) candidates.add(Path.of(configured));
         else {
@@ -126,6 +127,11 @@ public final class OnnxReferenceEvaluation {
                 if (System.nanoTime() >= deadline) throw new java.net.http.HttpTimeoutException("Index readiness deadline");
                 Thread.sleep(500);
             } while (true);
+            String runtimeProfile = status.path("modelProfile").stringValue();
+            report.put("modelProfile", runtimeProfile);
+            if (!MODEL_PROFILE.equals(runtimeProfile)) {
+                throw new IOException("Runtime embedding profile does not match the multilingual acceptance profile");
+            }
             report.put("indexState", status.path("indexState").stringValue());
             report.put("indexedNodesAtReadiness", status.path("indexedNodesAtReadiness").asLong());
             JsonNode catalogueJson = get(origin, authorization, "/api/taxonomy");
@@ -196,10 +202,9 @@ public final class OnnxReferenceEvaluation {
                     && "REFERENCE_MISSED".equals(row.get("qualityVerdict")));
             report.put("evidenceKind", "REAL_LOCAL_ONNX_RETRIEVAL");
             report.put("status", misses ? "MEASURED_WITH_REFERENCE_MISSES" : "MEASURED_REFERENCES_FOUND");
-            // English anchors are the initial regression contract for this English model.
-            // German cases remain visible measurements, not a claimed multilingual pass.
-            if (rows.stream().anyMatch(row -> "LOCAL_ONNX".equals(row.get("adapter")) && "en".equals(row.get("language"))
-                    && "REFERENCE_MISSED".equals(row.get("qualityVerdict")))) throw new AssertionError("English ONNX reference missed; inspect report");
+            // The pinned multilingual profile must retain every unchanged English
+            // and German anchor. Full-text results remain a measured comparison.
+            if (misses) throw new AssertionError("Multilingual ONNX reference missed; inspect report");
         } catch (InterruptedException interrupted) {
             report.put("status", "CANCELLED"); Thread.currentThread().interrupt(); throw interrupted;
         } catch (Exception failure) {

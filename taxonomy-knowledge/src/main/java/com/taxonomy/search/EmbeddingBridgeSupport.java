@@ -18,7 +18,7 @@ import java.util.function.Function;
  */
 public final class EmbeddingBridgeSupport {
 
-    /** The vector dimension used by the ONNX embedding model (bge-small-en-v1.5). */
+    /** The vector dimension used by the ONNX embedding model (both supported profiles). */
     static final int VECTOR_DIMENSION = 384;
 
     private EmbeddingBridgeSupport() { /* utility class */ }
@@ -37,6 +37,11 @@ public final class EmbeddingBridgeSupport {
                 .toReference();
     }
 
+    /** Keyword identifying the exact model bytes and inference contract of this vector. */
+    public static IndexFieldReference<String> createEmbeddingModelField(TypeBindingContext context) {
+        return context.indexSchemaElement().field("embeddingModel", f -> f.asString()).toReference();
+    }
+
     /**
      * Writes an embedding vector to the Lucene document only when semantic embeddings were
      * explicitly enabled and the local service is available. Otherwise the document is indexed
@@ -51,14 +56,17 @@ public final class EmbeddingBridgeSupport {
      */
     public static <T> void writeEmbedding(DocumentElement target,
                                            IndexFieldReference<float[]> embeddingField,
+                                           IndexFieldReference<String> modelField,
                                            T entity,
                                            Function<T, String> textBuilder) {
         try {
             LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);
             if (svc == null || !svc.isEnabled() || !svc.isAvailable()) return;
             String text = textBuilder.apply(entity);
-            float[] vector = svc.embed(text);
+            float[] vector = svc.embedDocument(text);
+            String identity = svc.embeddingIndexKey();
             target.addValue(embeddingField, vector);
+            target.addValue(modelField, identity);
         } catch (Exception ignored) {
             // graceful degradation – document will be indexed without a vector
         }

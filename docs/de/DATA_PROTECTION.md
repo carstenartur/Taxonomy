@@ -153,9 +153,13 @@ vorhanden sein, beispielsweise:
 
 ```bash
 LLM_PROVIDER=LOCAL_ONNX
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ENABLED=true
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
+
+Das eingehängte Modellpaket gemäß der [gepinnten Modellbereitstellung](../testing/multilingual-model-provisioning.md) vorbereiten und prüfen. `LOCAL_ONNX` allein aktiviert keine Embeddings.
 
 Diese Einstellungen allein belegen keine netzisolierte Installation. Erfassen Sie
 Identitätsdienste, Remotes, Telemetrie, Downloads und andere aktive Integrationen;

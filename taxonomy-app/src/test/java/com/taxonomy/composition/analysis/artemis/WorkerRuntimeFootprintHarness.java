@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import com.taxonomy.catalog.service.EmbeddingModelProfile;
+
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
@@ -23,7 +25,9 @@ public final class WorkerRuntimeFootprintHarness {
     private static final List<String> ROOTS = List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
     private static final List<String> FLAGS = List.of("-Xms128m", "-Xmx1536m", "-XX:+UseSerialGC",
             "-XX:ActiveProcessorCount=2", "-XX:NativeMemoryTracking=summary");
-    private static final String PINNED_MODEL_SHA256 = "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35";
+    private static final EmbeddingModelProfile PINNED_PROFILE = EmbeddingModelProfile.MULTILINGUAL_MINILM_L12;
+    private static final List<String> PINNED_FILES = List.of("model.onnx", "tokenizer.json",
+            "tokenizer_config.json", "special_tokens_map.json", "config.json");
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("Usage: output-directory pinned-model-directory");
@@ -34,9 +38,7 @@ public final class WorkerRuntimeFootprintHarness {
         output = output.toAbsolutePath(); model = model.toAbsolutePath();
         Files.createDirectories(output);
         Files.deleteIfExists(output.resolve("evidence.json"));
-        require(PINNED_MODEL_SHA256.equals(sha256(model.resolve("model.onnx"))), "Pinned model checksum mismatch");
-        require(Files.size(model.resolve("tokenizer.json")) > 0, "Pinned tokenizer is absent");
-        String tokenizerSha256 = sha256(model.resolve("tokenizer.json"));
+        Map<String, String> artifactDigests = verifyPinnedArtifacts(model, PINNED_PROFILE.fileSha256());
         var json = new ObjectMapper();
         String artifact = System.getProperty("taxonomy.footprint.application-jar", "");
         Map<String, Object> application = new LinkedHashMap<>();
@@ -115,6 +117,8 @@ public final class WorkerRuntimeFootprintHarness {
                     }
                     Map<String, Object> result = json.readValue(Files.readString(directory.resolve("measurement.json")), new TypeReference<>() { });
                     require(expectedVmArguments.equals(result.get("jvmFlags")), "Measured JVM arguments differ from the declared flags");
+                    require(PINNED_PROFILE.name().equals(result.get("modelProfile")), "Measured model profile differs from the pinned profile");
+                    if (nativeEnabled) verifyMeasuredModel(result, artifactDigests);
                     Map<String, Integer> consumers = new LinkedHashMap<>();
                     for (String root : ROOTS) {
                         var queue = broker.getActiveMQServer().locateQueue(SimpleString.of("taxonomy.analysis.subtaxonomy." + root));
@@ -142,7 +146,11 @@ public final class WorkerRuntimeFootprintHarness {
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("schemaVersion", 1); evidence.put("completedAt", Instant.now().toString());
         evidence.put("application", application); evidence.put("jvmFlags", FLAGS);
-        evidence.put("modelSha256", PINNED_MODEL_SHA256); evidence.put("tokenizerSha256", tokenizerSha256);
+        evidence.put("modelProfile", PINNED_PROFILE.name()); evidence.put("modelRevision", PINNED_PROFILE.revision());
+        evidence.put("modelSource", PINNED_PROFILE.modelUrl()); evidence.put("modelExport", PINNED_PROFILE.modelFile());
+        evidence.put("modelArtifactSha256", artifactDigests);
+        evidence.put("modelSha256", artifactDigests.get("model.onnx"));
+        evidence.put("tokenizerSha256", artifactDigests.get("tokenizer.json"));
         evidence.put("measurements", measurements);
         evidence.put("limits", List.of("Single sequential sample per configuration; no production capacity threshold",
                 "Full Spring/Hibernate runtime with fresh HSQLDB; broker memory is outside each measured JVM",
@@ -151,6 +159,31 @@ public final class WorkerRuntimeFootprintHarness {
                 "RSS includes native allocations and committed/touched pages; NMT does not attribute all ONNX allocations",
                 "No Kubernetes, external database, TLS, load, concurrency or steady-state throughput claim"));
         json.writerWithDefaultPrettyPrinter().writeValue(output.resolve("evidence.json").toFile(), evidence);
+    }
+
+    static Map<String, String> verifyPinnedArtifacts(Path model, Map<String, String> expected) throws Exception {
+        Map<String, String> actual = new LinkedHashMap<>();
+        for (String name : PINNED_FILES) {
+            Path file = model.resolve(name);
+            require(Files.isRegularFile(file) && Files.size(file) > 0, "Pinned artifact is absent or empty: " + name);
+            String digest = sha256(file);
+            require(digest.equals(expected.get(name)), "Pinned artifact checksum mismatch: " + name);
+            actual.put(name, digest);
+        }
+        return actual;
+    }
+
+    private static void verifyMeasuredModel(Map<String, Object> result, Map<String, String> expected) {
+        require(result.get("modelIdentity") instanceof Map<?, ?>, "Native model identity is absent");
+        Map<?, ?> identity = (Map<?, ?>) result.get("modelIdentity");
+        require(expected.get("model.onnx").equals(identity.get("modelSha256")), "Native model weights differ from the verified bundle");
+        require(expected.get("tokenizer.json").equals(identity.get("tokenizerSha256")), "Native tokenizer differs from the verified bundle");
+        require(identity.get("configurationSha256") instanceof Map<?, ?>, "Native configuration identity is absent");
+        Map<?, ?> configuration = (Map<?, ?>) identity.get("configurationSha256");
+        for (String name : PINNED_FILES.subList(2, PINNED_FILES.size())) {
+            require(expected.get(name).equals(configuration.get(name)), "Native configuration differs from the verified bundle: " + name);
+        }
+        require("".equals(identity.get("queryPrefix")), "Measured multilingual model added an unexpected query prefix");
     }
 
     private static String sha256(Path file) throws Exception {

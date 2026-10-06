@@ -27,7 +27,6 @@ import java.util.Objects;
 public class AiTargetCatalogService {
 
     private static final String MOCK_MODEL = "taxonomy-deterministic-v1";
-    private static final String LOCAL_MODEL = "bge-small-en-v1.5";
     private static final String GEMINI_MODEL = "gemini-3-flash-preview";
     private static final PromptBudget DEFAULT_PROMPT_BUDGET =
             new PromptBudget(120_000, 262_144, 30_000);
@@ -170,7 +169,7 @@ public class AiTargetCatalogService {
     private String model(LlmProvider provider) {
         return switch (provider) {
             case GEMINI -> GEMINI_MODEL;
-            case LOCAL_ONNX -> LOCAL_MODEL;
+            case LOCAL_ONNX -> providerConfig.getLocalModelId();
             case OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI ->
                     providerConfig.getOpenAiCompatibleModel(provider);
         };
@@ -179,7 +178,7 @@ public class AiTargetCatalogService {
     private String endpointIdentity(LlmProvider provider) {
         return switch (provider) {
             case GEMINI -> withoutTrailingEmptyGeminiKey(providerConfig.getGeminiUrl());
-            case LOCAL_ONNX -> "local:" + LOCAL_MODEL;
+            case LOCAL_ONNX -> "local:" + providerConfig.getLocalModelId();
             case OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI ->
                     providerConfig.getOpenAiCompatibleUrl(provider);
         };

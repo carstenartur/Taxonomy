@@ -19,7 +19,15 @@ final class LocalEmbeddingPoolingChecks {
     private LocalEmbeddingPoolingChecks() { }
 
     static void normalizedClsIsIndependentOfOtherTokens() {
-        var criteria = LocalEmbeddingService.modelCriteria(Path.of("model-not-loaded"));
+        checkPooling(EmbeddingModelProfile.BGE_SMALL_EN, 0.6f, 0.8f);
+    }
+
+    static void normalizedMeanIncludesRealTokensButExcludesMaskedPadding() {
+        checkPooling(EmbeddingModelProfile.MULTILINGUAL_MINILM_L12, 0.0f, 1.0f);
+    }
+
+    private static void checkPooling(EmbeddingModelProfile profile, float first, float second) {
+        var criteria = LocalEmbeddingService.modelCriteria(Path.of("model-not-loaded"), profile);
         // This is the same builder/argument path used by TextEmbeddingTranslatorFactory.
         // Tokenization is not part of this postprocessing-only test.
         var translator = TextEmbeddingTranslator.builder(
@@ -38,9 +46,9 @@ final class LocalEmbeddingPoolingChecks {
             float[] actual = translator.processOutput(new OutputContext(manager, mask), new NDList(states));
             if (actual.length != 384) throw new AssertionError("Expected one 384-dimensional embedding");
             for (int i = 0; i < actual.length; i++) {
-                float expected = i == 0 ? 0.6f : i == 1 ? 0.8f : 0.0f;
+                float expected = i == 0 ? first : i == 1 ? second : 0.0f;
                 if (!Float.isFinite(actual[i]) || Math.abs(actual[i] - expected) > 1e-6f) {
-                    throw new AssertionError("Normalized CLS component " + i + ": expected "
+                    throw new AssertionError("Normalized pooling component " + i + ": expected "
                             + expected + ", actual " + actual[i]);
                 }
             }

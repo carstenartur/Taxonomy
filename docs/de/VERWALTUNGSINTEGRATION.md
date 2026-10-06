@@ -113,7 +113,7 @@ Die RAG-Infrastruktur ist vollständig betriebsbereit. Nur der 115-spezifische D
 
 | Was bereit ist | Was noch fehlt |
 |---|---|
-| `LocalEmbeddingService` (BAAI/bge-small-en-v1.5 ONNX) | 115-Wissensbasis-Export/API-Connector |
+| `LocalEmbeddingService` (sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ONNX) | 115-Wissensbasis-Export/API-Connector |
 | `HybridSearchService` (Reciprocal Rank Fusion) | 115-spezifischer Datenformat-Adapter |
 | Volltext- + semantische + hybride Suchmodi | Datensynchronisierungszeitplan |
 

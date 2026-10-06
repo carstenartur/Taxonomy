@@ -115,7 +115,9 @@ docker run -p 8080:8080 \
 # No external network connections
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 
 # Production profile with security defaults
 SPRING_PROFILES_ACTIVE=production,postgres
@@ -125,6 +127,8 @@ TAXONOMY_AUDIT_LOGGING=true
 TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
 TAXONOMY_SPRINGDOC_ENABLED=false
 ```
+
+Provision and verify the mounted bundle using the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md). Selecting `LOCAL_ONNX` alone does not enable embeddings.
 
 ### EU Data Residency (Cloud LLM in the EU)
 

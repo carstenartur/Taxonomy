@@ -54,7 +54,7 @@ class EmbeddingLifecycleSafetyTest {
 
         try {
             assertThatCode(() -> EmbeddingBridgeSupport.writeEmbedding(
-                    target, field, "entity", entity -> {
+                    target, field, mock(IndexFieldReference.class), "entity", entity -> {
                         textBuilt.set(true);
                         return entity;
                     })).doesNotThrowAnyException();

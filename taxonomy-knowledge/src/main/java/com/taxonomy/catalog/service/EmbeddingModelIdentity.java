@@ -30,6 +30,36 @@ public record EmbeddingModelIdentity(String modelSha256, String tokenizerSha256,
     }
 
     public static EmbeddingModelIdentity capture(Path directory, String queryPrefix) throws IOException {
+        return capture(directory, queryPrefix, INFERENCE_VERSION);
+    }
+
+    public static EmbeddingModelIdentity capture(Path directory, String queryPrefix,
+                                                 EmbeddingModelProfile profile) throws IOException {
+        String version = "djl-" + ai.djl.Model.class.getPackage().getSpecificationVersion()
+                + ":tokenizer-" + ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory.class.getPackage().getSpecificationVersion()
+                + ":onnx:normalize:token-types:384:lucene-" + org.apache.lucene.util.Version.LATEST
+                + ":cosine:v2:profile-" + profile.name()
+                + ":pooling-" + profile.pooling() + ":max-tokens-" + profile.maxTokens()
+                + ":document-prefix-" + com.taxonomy.identity.StableIdentityHash.sha256(profile.documentPrefix());
+        return capture(directory, queryPrefix, version);
+    }
+
+    /** Canonical keyword attached to each indexed vector; never compare unlike vector spaces. */
+    public String indexKey() {
+        StringBuilder text = new StringBuilder();
+        append(text, modelSha256); append(text, tokenizerSha256);
+        new java.util.TreeMap<>(configurationSha256).forEach((name, hash) -> {
+            append(text, name); append(text, hash);
+        });
+        append(text, queryPrefix); append(text, inferenceVersion);
+        return com.taxonomy.identity.StableIdentityHash.sha256(text.toString());
+    }
+
+    private static void append(StringBuilder text, String field) {
+        text.append(field.length()).append(':').append(field);
+    }
+
+    private static EmbeddingModelIdentity capture(Path directory, String queryPrefix, String inferenceVersion) throws IOException {
         String model = hashFile(directory.resolve("model.onnx"), true);
         String tokenizer = hashFile(directory.resolve("tokenizer.json"), true);
         Map<String, String> configuration = new LinkedHashMap<>();
@@ -44,7 +74,7 @@ public record EmbeddingModelIdentity(String modelSha256, String tokenizerSha256,
             }
         }
         return new EmbeddingModelIdentity(model, tokenizer, configuration,
-                queryPrefix == null ? "" : queryPrefix, INFERENCE_VERSION);
+                queryPrefix == null ? "" : queryPrefix, inferenceVersion);
     }
 
     private static String hashFile(Path file, boolean required) throws IOException {

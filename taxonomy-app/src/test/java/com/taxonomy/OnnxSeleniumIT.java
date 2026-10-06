@@ -52,7 +52,7 @@ class OnnxSeleniumIT {
     private static final Duration SEMANTIC_INDEX_TIMEOUT = Duration.ofMinutes(10);
     private static final String SEMANTIC_QUERY = "communication and collaboration";
     private static final Path PINNED_MODEL_DIRECTORY =
-            Path.of("models", "bge-small-en-v1.5");
+            Path.of("models", "multilingual-minilm");
     private static final List<String> REQUIRED_MODEL_FILES = List.of(
             "model.onnx",
             "tokenizer.json",
@@ -77,6 +77,8 @@ class OnnxSeleniumIT {
         appContainer = ContainerTestUtils.appContainer(network)
                 .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
+                .withEnv("TAXONOMY_EMBEDDING_MODEL_PROFILE", "MULTILINGUAL_MINILM_L12")
+                .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
                 .withFileSystemBind(
                         modelDirectory.toString(),
                         "/models",

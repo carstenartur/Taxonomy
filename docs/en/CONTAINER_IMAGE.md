@@ -118,11 +118,15 @@ Runtime variables:
 | `LLM_PROVIDER` | auto-detected | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI` or `LOCAL_ONNX` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, … | empty | Provider credentials |
 | `TAXONOMY_EMBEDDING_ENABLED` | `false` | Enable semantic/KNN search |
-| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | profile-dependent | Permit runtime model download |
+| `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `MULTILINGUAL_MINILM_L12` | Multilingual model contract; `BGE_SMALL_EN` selects the legacy English model |
+| `TAXONOMY_EMBEDDING_MODEL_DIR` | empty | Mounted, pre-provisioned model directory matching the profile |
+| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `false` | Explicitly permit runtime model download when embeddings are enabled |
 | `TAXONOMY_DATASOURCE_URL` | in-memory HSQLDB | JDBC URL; set a file URL for persistent HSQLDB |
 | `TAXONOMY_DDL_AUTO` | `create` | HSQLDB default; persistent HSQLDB uses `update`. PostgreSQL uses managed migrations and `validate` |
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `false` | One-time opt-in for verified pre-library JGit storage adoption |
 | `JAVA_OPTS` | Dockerfile defaults | JVM heap, GC and stack settings |
+
+Provision mounted bundles using the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md). `LOCAL_ONNX` alone does not enable embeddings; switching model profiles requires rebuilding the semantic index and discarding cached vectors.
 
 No build-only credentials are required for the checked-in source build.
 

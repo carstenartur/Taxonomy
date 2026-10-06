@@ -23,15 +23,16 @@ function settled() { return new Promise(resolve => setImmediate(resolve)); }
 function copy(value) { return JSON.parse(JSON.stringify(value)); }
 function completedPayload() {
     return {schemaVersion: 1, draftState: 'ACTIVE', businessText: 'Resilient communications',
-        lastAnalyzedText: 'Resilient communications', scores: {'CR-1047': 83},
-        rawScores: {'CR-1047': 83}, effectiveScores: {'CR-1047': 83},
+        lastAnalyzedText: 'Resilient communications', scores: {'CR-1047': 77},
+        rawScores: {'CR-1047': 91}, effectiveScores: {'CR-1047': 77},
         reasons: {'CR-1047': 'Encrypted voice'}, architectureView: {id: 'graph-1',
             includedElements: [{nodeCode: 'CR-1047'}]},
         provisionalRelations: [{source: 'CP-1023', target: 'CR-1047', status: 'proposed'}],
         evaluatedNodes: ['CR-1047'], currentView: 'list'};
 }
-function fixture({deferDraftRead = false} = {}) {
+function fixture({deferDraftRead = false, checkboxPreference = false} = {}) {
     const listeners = new Map(), requests = [], timers = new Map(), controls = [];
+    const preferenceGates = new Map();
     let timerId = 0, preferenceFailure = false, pendingDraftSave = null;
     const draftRead = deferDraftRead ? deferred() : null;
     const storedDraft = {version: 4, payload: completedPayload()};
@@ -43,6 +44,7 @@ function fixture({deferDraftRead = false} = {}) {
             classList: {add: x => classes.add(x), remove: x => classes.delete(x),
                 contains: x => classes.has(x)},
             addEventListener: (name, fn) => handlers.set(name, fn),
+            fire(name) { const fn = handlers.get(name); if (fn) fn({target: this}); },
             click() { const fn = handlers.get('click'); if (fn) fn({target: this}); },
             setAttribute: (key, value) => attrs.set(key, String(value)),
             getAttribute: key => attrs.get(key) || null,
@@ -56,6 +58,12 @@ function fixture({deferDraftRead = false} = {}) {
     const maxNodes = element('pref-max-arch-nodes', {type: 'number', value: '50'});
     maxNodes.setAttribute('data-pref-key', 'limits.max-architecture-nodes');
     controls.push(maxNodes);
+    const checkbox = checkboxPreference ? element('pref-fixture-checkbox', {type: 'checkbox', checked: false}) : null;
+    if (checkbox) {
+        checkbox.setAttribute('data-pref-key', 'fixture.checkbox');
+        controls.push(checkbox);
+        preferences['fixture.checkbox'] = false;
+    }
     const state = {taxonomyData: [{code: 'CR-1047'}], currentScores: null,
         currentRawScores: {}, currentReasons: {}, currentArchView: null, evaluatedNodes: new Set()};
     const runtime = {workspaceId: 'ws-1', version: null, restoring: false,
@@ -108,14 +116,24 @@ function fixture({deferDraftRead = false} = {}) {
     window.__TaxonomyAnalysisSessionContext = C;
     const fetch = (url, options = {}) => {
         requests.push({url, method: options.method || 'GET', body: options.body});
-        if (url !== '/api/preferences') throw Error('Unexpected request: ' + url);
+        if (url !== '/api/preferences' && url !== '/api/preferences/reset') throw Error('Unexpected request: ' + url);
         if (options.method === 'PUT') {
             if (preferenceFailure) return Promise.resolve({ok: false, status: 500, json: async () => ({})});
             const changes = JSON.parse(options.body);
-            assert.deepEqual(changes, {'limits.max-architecture-nodes': 150});
             Object.assign(preferences, changes);
         }
-        return Promise.resolve({ok: true, json: async () => copy(preferences)});
+        if (url === '/api/preferences/reset') {
+            preferences['limits.max-architecture-nodes'] = 50;
+            if (checkbox) preferences['fixture.checkbox'] = false;
+        }
+        const snapshot = copy(preferences);
+        const response = {ok: true, json: async () => copy(snapshot)};
+        const gate = preferenceGates.get(options.method || 'GET');
+        if (gate) {
+            preferenceGates.delete(options.method || 'GET');
+            return gate.promise.then(() => response);
+        }
+        return Promise.resolve(response);
     };
     const context = {window, document, fetch, TaxonomyI18n: {t: key => key},
         CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}},
@@ -123,19 +141,25 @@ function fixture({deferDraftRead = false} = {}) {
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
-    return {C, state, runtime, nodes, maxNodes, requests, storedDraft, preferences,
+    return {C, state, runtime, nodes, maxNodes, checkbox, requests, storedDraft, preferences,
         draftRead, activate(page) {
             if (page === 'preferences') nodes.get('tab-preferences').classList.remove('d-none');
             else nodes.get('tab-preferences').classList.add('d-none');
             document.dispatchEvent({type: 'taxonomy:page-activated', detail: {page}});
         },
         failPreferences: () => {preferenceFailure = true;},
+        delayPreferences(method) {
+            const gate = deferred();
+            preferenceGates.set(method, gate);
+            return gate;
+        },
         delayDraftSave: () => {pendingDraftSave = deferred(); return pendingDraftSave;}};
 }
 function assertWorkPreserved(f, expected) {
     assert.equal(f.nodes.get('businessText').value, expected.businessText);
     assert.deepEqual(copy(f.state.currentScores), expected.scores);
     assert.deepEqual(copy(f.state.currentRawScores), expected.rawScores);
+    assert.deepEqual(copy(f.state.currentEffectiveScores), expected.effectiveScores);
     assert.deepEqual(copy(f.state.currentReasons), expected.reasons);
     assert.deepEqual(copy(f.state.currentArchView), expected.architectureView);
     assert.deepEqual([...f.state.evaluatedNodes], expected.evaluatedNodes);
@@ -205,6 +229,124 @@ test('Preferences change while initial draft restore is pending does not turn sa
     assert.equal(f.preferences['limits.max-architecture-nodes'], 150);
     assertWorkPreserved(f, expected);
     assert.equal(f.runtime.version, 4);
+});
+
+for (const method of ['GET', 'PUT', 'POST']) {
+    test('Preferences ' + method + ' response preserves edits typed after the request began', async () => {
+        const f = fixture(), expected = completedPayload();
+        await f.C.loadDraft();
+        if (method !== 'GET') {
+            f.activate('preferences');
+            await settled();
+        }
+        const pending = f.delayPreferences(method);
+        if (method === 'GET') f.activate('preferences');
+        else if (method === 'PUT') {
+            f.maxNodes.value = '150';
+            f.nodes.get('prefSaveBtn').click();
+        } else f.nodes.get('prefResetBtn').click();
+        // Fields remain editable while the request runs. This later value is
+        // unsaved local work, distinct from the server's acknowledged response.
+        f.maxNodes.value = '175';
+        pending.resolve();
+        await settled();
+        assert.equal(f.maxNodes.value, '175');
+        assert.equal(f.preferences['limits.max-architecture-nodes'], method === 'PUT' ? 150 : 50);
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, false, 'The newer edit remains saveable');
+        assertWorkPreserved(f, expected);
+        assert.equal(f.storedDraft.version, 4);
+        assert.equal(f.runtime.workspaceId, 'ws-1');
+        assert.equal(f.requests.filter(r => r.url.includes('/api/analyze')).length, 0);
+        // Save again: confirms that currentPrefs tracks the returned authority
+        // while the form independently retains the newer edit.
+        f.nodes.get('prefSaveBtn').click();
+        await settled();
+        assert.equal(f.preferences['limits.max-architecture-nodes'], 175);
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+    });
+}
+
+for (const method of ['GET', 'PUT', 'POST']) {
+    test('Preferences ' + method + ' preserves input edited away and back while pending', async () => {
+        const f = fixture();
+        await f.C.loadDraft();
+        if (method !== 'GET') {
+            f.activate('preferences');
+            await settled();
+        }
+        // PUT acknowledges numeric 150; retaining its typed spelling also
+        // proves hydration did not run over an intervening input event.
+        const startValue = method === 'PUT' ? '150.0' : '150';
+        f.maxNodes.value = startValue;
+        if (method === 'POST') {
+            f.nodes.get('prefSaveBtn').click();
+            await settled();
+            assert.equal(f.preferences['limits.max-architecture-nodes'], 150);
+        }
+        const pending = f.delayPreferences(method);
+        if (method === 'GET') f.activate('preferences');
+        else f.nodes.get(method === 'PUT' ? 'prefSaveBtn' : 'prefResetBtn').click();
+        f.maxNodes.value = '175';
+        f.maxNodes.fire('input');
+        f.maxNodes.value = startValue;
+        f.maxNodes.fire('input');
+        pending.resolve();
+        await settled();
+        assert.equal(f.maxNodes.value, startValue);
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, method === 'PUT');
+        assertWorkPreserved(f, completedPayload());
+    });
+
+    test('Preferences ' + method + ' preserves a checkbox toggled away and back while pending', async () => {
+        const f = fixture({checkboxPreference: true});
+        if (method !== 'GET') {
+            f.activate('preferences');
+            await settled();
+        }
+        if (method === 'POST') {
+            f.checkbox.checked = true;
+            f.preferences['fixture.checkbox'] = true;
+        } else {
+            // A concurrent global preference update is reflected in getAll(),
+            // including the response to PUT of the independent node limit.
+            f.preferences['fixture.checkbox'] = true;
+        }
+        const startValue = f.checkbox.checked;
+        const pending = f.delayPreferences(method);
+        if (method === 'GET') f.activate('preferences');
+        else if (method === 'PUT') {
+            f.maxNodes.value = '150';
+            f.nodes.get('prefSaveBtn').click();
+        } else f.nodes.get('prefResetBtn').click();
+        f.checkbox.checked = !startValue;
+        f.checkbox.fire('change');
+        f.checkbox.checked = startValue;
+        f.checkbox.fire('change');
+        pending.resolve();
+        await settled();
+        assert.equal(f.checkbox.checked, startValue);
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, false);
+    });
+}
+
+test('Reducing the node limit preserves the complete draft without another analysis', async () => {
+    const f = fixture(), expected = completedPayload();
+    expected.architectureView.includedElements.push({nodeCode: 'CP-1023'});
+    expected.provisionalRelations[0].status = 'REJECTED';
+    expected.provisionalRelations[0].hypothesisId = 5;
+    f.storedDraft.payload = copy(expected);
+    await f.C.loadDraft();
+    f.activate('preferences');
+    await settled();
+    f.maxNodes.value = '1';
+    f.nodes.get('prefSaveBtn').click();
+    await settled();
+    f.activate('architecture');
+    assert.equal(f.preferences['limits.max-architecture-nodes'], 1);
+    assertWorkPreserved(f, expected);
+    assert.deepEqual(copy(f.storedDraft.payload), expected);
+    assert.equal(f.requests.filter(r => r.url.includes('/api/analyze')).length, 0);
+    assert.equal(f.requests.filter(r => r.url.includes('/api/analysis-drafts') && r.method !== 'GET').length, 0);
 });
 
 // Keep these behavioral regressions in the Maven-owned preferences-workspace

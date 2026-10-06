@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import org.junit.jupiter.api.Tag;
 import com.taxonomy.acceptance.OnnxReferenceEvaluation;
+import com.taxonomy.acceptance.OnnxMultilingualReferenceEvaluation;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -59,6 +60,7 @@ class LocalOnnxPipelineIT {
                     org.testcontainers.containers.BindMode.READ_ONLY)
             .withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models")
             .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
+            .withEnv("TAXONOMY_EMBEDDING_MODEL_PROFILE", OnnxReferenceEvaluation.MODEL_PROFILE)
             .withEnv("TAXONOMY_EMBEDDING_QUERY_PREFIX", OnnxReferenceEvaluation.QUERY_PREFIX)
             .withStartupTimeout(Duration.ofSeconds(180))
             .waitingFor(Wait.forHttp("/actuator/health")
@@ -82,6 +84,8 @@ class LocalOnnxPipelineIT {
     void independentlyAuthoredReferencesExerciseRealLocalInference() throws Exception {
         // Run before the subsequent DSL mutation tests and before inspecting model outputs.
         OnnxReferenceEvaluation.verify(URI.create(baseUrl), BASIC_AUTH, MODEL_DIRECTORY,
+                ContainerTestUtils.findApplicationJar());
+        OnnxMultilingualReferenceEvaluation.verify(URI.create(baseUrl), BASIC_AUTH, MODEL_DIRECTORY,
                 ContainerTestUtils.findApplicationJar());
     }
 

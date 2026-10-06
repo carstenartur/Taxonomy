@@ -884,7 +884,7 @@ public class LlmService {
             detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
             detail.setReasons(Map.of());
             detail.setPrompt("(local embedding – independent product suitability)");
-            detail.setRawResponse("(cosine similarity scores computed via bge-small-en-v1.5)");
+            detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
             detail.setDurationMs(System.currentTimeMillis() - start);
             recordSuccess();
             return detail;
@@ -1274,7 +1274,7 @@ public class LlmService {
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
-            detail.setRawResponse("(cosine similarity scores computed via bge-small-en-v1.5)");
+            detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
             recordSuccess();
             return detail;
         }

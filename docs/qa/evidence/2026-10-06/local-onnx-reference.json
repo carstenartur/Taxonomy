@@ -1,0 +1,200 @@
+{
+  "schemaVersion" : 2,
+  "evidenceKind" : "REAL_LOCAL_ONNX_RETRIEVAL",
+  "status" : "MEASURED_REFERENCES_FOUND",
+  "scope" : "Retrieval only; no generated relations, reformulation or calibrated probabilities",
+  "cases" : [ {
+    "caseId" : "documents-de-v1",
+    "language" : "de",
+    "domain" : "document-editing",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1583", "IP-1629", "CR-1115", "IP-1491", "IP-2069", "IP-1303", "IP-1462", "IP-1758", "UA-1496", "IP-2064" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 388
+  }, {
+    "caseId" : "documents-de-v1",
+    "language" : "de",
+    "domain" : "document-editing",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_MISSED",
+    "measurement" : {
+      "predicted" : [ "IP-1813", "IP-1667", "IP-1242", "IP-1196", "IP-1516", "IP-1633", "IP-1467", "UA-1127", "BR-1250", "IP-1387" ],
+      "missing" : [ "UA-1583" ],
+      "recall" : 0.0,
+      "firstRelevantRank" : null
+    },
+    "elapsedMillis" : 370
+  }, {
+    "caseId" : "documents-en-v1",
+    "language" : "en",
+    "domain" : "document-editing",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1583", "IP-1629", "CR-1115", "UA-1496", "IP-1303", "IP-2069", "CI-1149", "BR-1065", "BP-1916", "IP-1491" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 323
+  }, {
+    "caseId" : "documents-en-v1",
+    "language" : "en",
+    "domain" : "document-editing",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1583", "CR-1115", "IP-1026", "CR-1073", "BR-1046", "UA-1433", "BR-1233", "IP-1918", "IP-1634", "BR-1019" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 305
+  }, {
+    "caseId" : "email-de-v1",
+    "language" : "de",
+    "domain" : "messaging",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1222", "IP-1629", "IP-2069", "CR-1037", "CO-1030", "IP-1462", "BP-1964", "CI-1069", "CR-1094", "CR-1095" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 320
+  }, {
+    "caseId" : "email-de-v1",
+    "language" : "de",
+    "domain" : "messaging",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "CR-1089", "CI-1047", "CI-1151", "CI-1148", "IP-1659", "UA-1563", "UA-1222", "CR-1037", "BR-1262", "IP-1388" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 7
+    },
+    "elapsedMillis" : 293
+  }, {
+    "caseId" : "email-en-v1",
+    "language" : "en",
+    "domain" : "messaging",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1222", "CR-1037", "CR-1094", "CR-1095", "CO-1030", "BP-1489", "UA-1277", "IP-2069", "UA-1497", "IP-1629" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 326
+  }, {
+    "caseId" : "email-en-v1",
+    "language" : "en",
+    "domain" : "messaging",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1222", "CR-1037", "CR-1098", "CR-1026", "CR-1094", "UA-1362", "UA-1277", "CR-1095", "UA-1230", "IP-1977" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 283
+  }, {
+    "caseId" : "payroll-de-v1",
+    "language" : "de",
+    "domain" : "human-resources",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1604", "BP-1680", "BP-1686", "IP-1330", "IP-1629", "IP-1179", "IP-1284", "UA-1605", "IP-2179", "IP-2069" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 279
+  }, {
+    "caseId" : "payroll-de-v1",
+    "language" : "de",
+    "domain" : "human-resources",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_MISSED",
+    "measurement" : {
+      "predicted" : [ ],
+      "missing" : [ "UA-1604" ],
+      "recall" : 0.0,
+      "firstRelevantRank" : null
+    },
+    "elapsedMillis" : 296
+  }, {
+    "caseId" : "payroll-en-v1",
+    "language" : "en",
+    "domain" : "human-resources",
+    "adapter" : "LOCAL_ONNX",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1604", "BP-1680", "BP-1686", "BP-1817", "IP-1629", "UA-1609", "IP-1724", "IP-1153", "BP-2124", "IP-1945" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 297
+  }, {
+    "caseId" : "payroll-en-v1",
+    "language" : "en",
+    "domain" : "human-resources",
+    "adapter" : "FULL_TEXT",
+    "status" : "MEASURED",
+    "qualityVerdict" : "REFERENCE_FOUND",
+    "measurement" : {
+      "predicted" : [ "UA-1604", "BP-1680", "UA-1606", "UA-1253", "UA-1609", "BP-2069", "BR-1186", "BR-1101", "IP-1484", "CI-1126" ],
+      "missing" : [ ],
+      "recall" : 1.0,
+      "firstRelevantRank" : 1
+    },
+    "elapsedMillis" : 274
+  } ],
+  "referenceSha256" : "628c6b1821273d4e92337241dcb609e850dd48209a687aed38b0bb09b0bff5af",
+  "referenceKind" : "SYNTHETIC_POSITIVE_REFERENCES_NOT_EXHAUSTIVE",
+  "topK" : 10,
+  "queryPrefix" : "",
+  "runtimeModelDownloads" : false,
+  "remoteProviderCalls" : 0,
+  "applicationJarSha256" : "32fcb25a9a05713ef00e3395a7442c83520d5b08c16f48da2393a86940304a6d",
+  "applicationSourceRevision" : "f40a75a79da4745148485a136a1f3b73a8430be3",
+  "applicationSourceDirty" : "false",
+  "modelFileSha256" : {
+    "config.json" : "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e",
+    "model.onnx" : "98a01d88b7de996cdea58c32ca71208c09968d143798814b2ea09d3439dc334f",
+    "serving.properties" : "73be199e13f3d75152bf3aa93506c5d3a93b46217ebc360bf6179237d9848d11",
+    "special_tokens_map.json" : "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+    "tokenizer.json" : "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+    "tokenizer_config.json" : "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b"
+  },
+  "modelProfile" : "MULTILINGUAL_MINILM_L12",
+  "indexState" : "READY",
+  "indexedNodesAtReadiness" : 2572,
+  "catalogueSha256" : "ad093001cee3944e131bdb1963b8e66966530bb43da5c74c7686f0b94b472459",
+  "catalogueFingerprintAlgorithm" : "TaxonomyDataFingerprint.sha256",
+  "catalogueProjectionSha256" : "7d33c6b374e55697b499ffbe556b6d5d1f630611e6c0372311e1f6dfb09e91fc",
+  "attemptedSearchCalls" : 12,
+  "elapsedMillis" : 6391
+}

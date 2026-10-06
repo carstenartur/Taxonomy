@@ -170,23 +170,36 @@ class ProposalApiControllerBulkHttpTest {
     }
 
     @ParameterizedTest
-    @CsvSource(value = {"repo-b, workspace-b", "repo-a, workspace-b", "repo-a, NULL"}, nullValues = "NULL")
+    @CsvSource(value = {
+            "repo-b, workspace-b, ACCEPT, 0", "repo-b, workspace-b, ACCEPT, 1", "repo-b, workspace-b, ACCEPT, 2",
+            "repo-a, workspace-b, ACCEPT, 0", "repo-a, workspace-b, ACCEPT, 1", "repo-a, workspace-b, ACCEPT, 2",
+            "repo-a, NULL, ACCEPT, 0", "repo-a, NULL, ACCEPT, 1", "repo-a, NULL, ACCEPT, 2",
+            "repo-b, workspace-b, REJECT, 0", "repo-b, workspace-b, REJECT, 1", "repo-b, workspace-b, REJECT, 2",
+            "repo-a, workspace-b, REJECT, 0", "repo-a, workspace-b, REJECT, 1", "repo-a, workspace-b, REJECT, 2",
+            "repo-a, NULL, REJECT, 0", "repo-a, NULL, REJECT, 1", "repo-a, NULL, REJECT, 2"
+    }, nullValues = "NULL")
     void foreignProposalIsRejectedInPlaceWhileAuthorizedItemsUseOnlyTheResolvedTenant(
-            String foreignRepository, String foreignWorkspace) throws Exception {
+            String foreignRepository, String foreignWorkspace, String action, int foreignIndex)
+            throws Exception {
         RelationProposal foreign = proposal(44L, foreignRepository, foreignWorkspace);
         when(proposals.findById(44L)).thenReturn(Optional.of(foreign));
         when(proposals.findByIdInRepositoryWorkspace(foreignRepository, 44L, foreignWorkspace))
                 .thenReturn(Optional.of(foreign));
 
+        String ids = switch (foreignIndex) {
+            case 0 -> "44,42,43";
+            case 1 -> "42,44,43";
+            default -> "42,43,44";
+        };
         mvc.perform(post("/api/proposals/bulk")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ids\":[42,44,43],\"action\":\"ACCEPT\"}"))
+                        .content("{\"ids\":[" + ids + "],\"action\":\"" + action + "\"}"))
                 .andExpect(status().isMultiStatus())
                 .andExpect(jsonPath("$.processed").value(3))
                 .andExpect(jsonPath("$.projected").value(2))
                 .andExpect(jsonPath("$.failed").value(1))
-                .andExpect(jsonPath("$.items[1].proposalId").value(44))
-                .andExpect(jsonPath("$.items[1].projectionStatus").value("REVIEW_REJECTED"))
+                .andExpect(jsonPath("$.items[" + foreignIndex + "].proposalId").value(44))
+                .andExpect(jsonPath("$.items[" + foreignIndex + "].projectionStatus").value("REVIEW_REJECTED"))
                 .andExpect(jsonPath("$.authoritativeCommitId").value(HEAD_C));
 
         verify(proposals).findByIdInRepositoryWorkspace("repo-a", 44L, "workspace-a");
@@ -195,18 +208,23 @@ class ProposalApiControllerBulkHttpTest {
         verify(proposals, never()).findByIdInRepositoryWorkspaceForUpdate("repo-a", 44L, "workspace-a");
         verify(mutations, times(2)).upsert(eq(CONTEXT), anyString(), any(), any());
         assertThat(foreign.getStatus()).isEqualTo(ProposalStatus.PENDING);
-        assertThat(activeProposals.get(42L).getStatus()).isEqualTo(ProposalStatus.ACCEPTED);
-        assertThat(activeProposals.get(43L).getStatus()).isEqualTo(ProposalStatus.ACCEPTED);
+        ProposalStatus expectedStatus = "ACCEPT".equals(action)
+                ? ProposalStatus.ACCEPTED : ProposalStatus.REJECTED;
+        assertThat(activeProposals.get(42L).getStatus()).isEqualTo(expectedStatus);
+        assertThat(activeProposals.get(43L).getStatus()).isEqualTo(expectedStatus);
+        verify(mutations).upsert(eq(CONTEXT), eq(HEAD_A), any(), any());
+        verify(mutations).upsert(eq(CONTEXT), eq(HEAD_B), any(), any());
     }
 
-    @Test
-    void staleExplicitHeadStopsTheBatchWithoutChangingGitOrProposalState() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCEPT", "REJECT"})
+    void staleExplicitHeadStopsTheBatchWithoutChangingGitOrProposalState(String action) throws Exception {
         currentHead = HEAD_B;
 
         mvc.perform(post("/api/proposals/bulk")
                         .header(HttpHeaders.IF_MATCH, '"' + HEAD_A + '"')
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ids\":[42,43],\"action\":\"ACCEPT\"}"))
+                        .content("{\"ids\":[42,43],\"action\":\"" + action + "\"}"))
                 .andExpect(status().isMultiStatus())
                 .andExpect(header().string(HttpHeaders.ETAG, '"' + HEAD_B + '"'))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
@@ -221,6 +239,20 @@ class ProposalApiControllerBulkHttpTest {
         assertThat(currentHead).isEqualTo(HEAD_B);
         assertThat(activeProposals.get(42L).getStatus()).isEqualTo(ProposalStatus.PENDING);
         assertThat(activeProposals.get(43L).getStatus()).isEqualTo(ProposalStatus.PENDING);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"REVERT\"", "\"DELETE\"", "\"ADMIN\"", "\"\"", "null", "true", "{}", "[]"})
+    void arbitraryBulkActionCannotReachProposalOrGitState(String actionJson) throws Exception {
+        mvc.perform(post("/api/proposals/bulk")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[42,43],\"action\":" + actionJson + "}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(proposals, mutations, readiness);
+        assertThat(currentHead).isEqualTo(HEAD_A);
+        assertThat(activeProposals.values()).allSatisfy(proposal ->
+                assertThat(proposal.getStatus()).isEqualTo(ProposalStatus.PENDING));
     }
 
     @Test

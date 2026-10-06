@@ -38,7 +38,7 @@ Der `LlmService` ist die zentrale Komponente für KI-Analysen. Er unterstützt a
 | **Llama** | llama3.1-70b | `LLAMA_API_KEY` | Ja |
 | **Mistral** | mistral-small-latest | `MISTRAL_API_KEY` | Ja |
 | **CUSTOM_OPENAI** | vom Betreiber festgelegt | `CUSTOM_LLM_URL`, `CUSTOM_LLM_MODEL`, optional `CUSTOM_LLM_API_KEY` | Nein |
-| **LOCAL_ONNX** | bge-small-en-v1.5 | lokale Embedding-Einstellungen | Nein |
+| **LOCAL_ONNX** | paraphrase-multilingual-MiniLM-L12-v2 | lokale Embedding-Einstellungen | Nein |
 
 `CUSTOM_OPENAI` bindet ein generatives LLM über die OpenAI-kompatible Chat-Completions-Schnittstelle an. `LOCAL_ONNX` ist davon zu unterscheiden: Es liefert lokale Ähnlichkeitsbewertungen auf Basis von Embeddings und erzeugt keine textuellen LLM-Antworten.
 Embedding-Inferenz ist standardmäßig deaktiviert. Für `LOCAL_ONNX` sind
@@ -48,6 +48,8 @@ zugelassener Laufzeitdownload ist ebenfalls nötig. Die automatische
 Vektorindizierung von Knoten/Relationen beim Start benötigt sowohl die
 Anbieterauswahl als auch aktivierte Embeddings. Sie ersetzt kein geprüftes
 Wiederherstellungsverfahren für andere Lucene-Indizes.
+
+Das Standard-Embedding-Profil ist `MULTILINGUAL_MINILM_L12`: 384 Dimensionen, normalisiertes Mean-Pooling, höchstens 128 Tokens und kein Abfrage- oder Dokumentpräfix. `TAXONOMY_EMBEDDING_MODEL_PROFILE` wählt den passenden Laufzeitvertrag; die [gepinnte Bereitstellungsanleitung](../testing/multilingual-model-provisioning.md) beschreibt das Modellpaket. `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false` bleibt der Standard. Das explizite Profil `BGE_SMALL_EN` erhält das bisherige englische Modell; bei einem Profilwechsel müssen der semantische Index neu aufgebaut und zwischengespeicherte Vektoren verworfen werden.
 
 ---
 
