@@ -26,19 +26,14 @@ class LocalOnnxIndexInitializerTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void healthyConcurrentStateTransitionCannotInventAVectorWriteFailure() {
+    void detailUsesRawStateWithoutReadingEffectiveState() {
         var rawState = (java.util.concurrent.atomic.AtomicReference<LocalOnnxIndexInitializer.State>)
                 org.springframework.test.util.ReflectionTestUtils.getField(initializer, "state");
         rawState.set(LocalOnnxIndexInitializer.State.INDEXING_RELATIONS);
         var observed = org.mockito.Mockito.spy(initializer);
-        org.mockito.Mockito.doAnswer(call -> {
-            Object previous = call.callRealMethod();
-            // Model initialization advancing after the effective state was read.
-            rawState.set(LocalOnnxIndexInitializer.State.READY);
-            return previous;
-        }).when(observed).getState();
 
         assertThat(observed.getDetail()).doesNotContain("VECTOR_WRITE_FAILED");
+        verify(observed, never()).getState();
     }
 
     @Test
