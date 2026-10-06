@@ -779,12 +779,20 @@
     }
 
     function updateKpis() {
+        // Reuse the translated singular detail labels instead of deriving grammar
+        // from the plural text. Both supported locales use the singular only for 1.
+        function countLabel(count, singularKey, pluralKey) {
+            return count + ' ' + t(count === 1 ? singularKey : pluralKey);
+        }
         document.getElementById('directKpi').textContent = state.visibleNodes.filter(function (node) {
             return node.anchor;
         }).length + ' ' + t('workbench.ui.direct');
-        document.getElementById('elementKpi').textContent = state.visibleNodes.length + ' ' + t('workbench.ui.elements');
-        document.getElementById('relationKpi').textContent = state.visibleEdges.length + ' ' + t('workbench.ui.relationships');
-        document.getElementById('layerKpi').textContent = state.layerGroups.length + ' ' + t('workbench.ui.layers');
+        document.getElementById('elementKpi').textContent = countLabel(state.visibleNodes.length,
+            'workbench.ui.detail.element', 'workbench.ui.elements');
+        document.getElementById('relationKpi').textContent = countLabel(state.visibleEdges.length,
+            'workbench.ui.detail.relationship', 'workbench.ui.relationships');
+        document.getElementById('layerKpi').textContent = countLabel(state.layerGroups.length,
+            'workbench.ui.detail.layer', 'workbench.ui.layers');
     }
 
     function updateModeButtons() {
