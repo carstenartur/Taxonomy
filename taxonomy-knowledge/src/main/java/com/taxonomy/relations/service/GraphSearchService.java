@@ -2,7 +2,7 @@ package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;

@@ -3,7 +3,7 @@ package com.taxonomy.catalog.service;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;

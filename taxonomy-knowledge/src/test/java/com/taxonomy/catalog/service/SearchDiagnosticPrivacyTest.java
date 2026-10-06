@@ -49,7 +49,7 @@ class SearchDiagnosticPrivacyTest {
         ReflectionTestUtils.setField(service, "modelDir", missingModel.toString());
         try (var capture = new LogCapture(LocalEmbeddingService.class)) {
             assertThatThrownBy(() -> service.semanticSearch(QUERY, 10))
-                    .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class).hasNoCause();
+                    .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class).hasNoCause();
             assertThat(capture.events.list).isNotEmpty().allSatisfy(event -> {
                 assertThat(event.getFormattedMessage()).doesNotContain("private-", "forged-log-entry");
                 assertThat(event.getThrowableProxy()).isNull();
@@ -134,7 +134,7 @@ class SearchDiagnosticPrivacyTest {
                     new IllegalStateException(FAILURE, new IOException("private-nested-cause")));
 
             assertThatThrownBy(() -> service.search(QUERY, 10))
-                    .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class).hasNoCause();
+                    .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class).hasNoCause();
 
             capture.assertSafeError("SEARCH_BACKEND_FAILED");
         }
@@ -161,7 +161,7 @@ class SearchDiagnosticPrivacyTest {
                 new TranslateException(FAILURE, new IOException("private-nested-cause")));
         try (var capture = new LogCapture(LocalEmbeddingService.class)) {
             assertThatThrownBy(() -> service.semanticSearch(QUERY, 10))
-                    .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class).hasNoCause();
+                    .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class).hasNoCause();
 
             verify(predictor).close();
             capture.assertSafeError("SEMANTIC_SEARCH_FAILED");
@@ -182,7 +182,7 @@ class SearchDiagnosticPrivacyTest {
                     new IllegalStateException(FAILURE));
 
             assertThatThrownBy(() -> service.semanticSearch(QUERY, 10))
-                    .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class).hasNoCause();
+                    .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class).hasNoCause();
 
             search.verify(() -> Search.session(entityManager));
             verify(predictor).close();

@@ -44,7 +44,7 @@ class GraphSearchTests {
         assertThat(embeddingService.isAvailable()).isFalse();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> graphSearchService.graphSearch(
                 "satellite communications", 10, WorkspaceContext.SHARED))
-                .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class);
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     @Test

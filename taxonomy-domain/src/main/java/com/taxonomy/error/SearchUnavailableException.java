@@ -1,4 +1,4 @@
-package com.taxonomy.search;
+package com.taxonomy.error;
 
 /**
  * Shared failure contract between search providers and their callers.

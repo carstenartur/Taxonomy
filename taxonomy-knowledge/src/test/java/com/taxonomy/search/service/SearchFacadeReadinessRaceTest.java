@@ -7,7 +7,7 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;

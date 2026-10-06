@@ -1,11 +1,11 @@
 {
-  "recordedAt": "2026-10-06T16:16:16.517616+00:00",
+  "recordedAt": "2026-10-06T16:30:40.172203+00:00",
   "baseCommit": "74b3d55082ddbb5b38c0c7309349e371bdc016ab",
   "java": {
-    "command": "./mvnw -B -pl taxonomy-app -am test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest,ArchitectureContextDependencyRatchetTest,ArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
+    "command": "./mvnw -B -pl taxonomy-build -am clean test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest,ArchitectureContextDependencyRatchetTest,ArchitectureTest,SupplyChainPinPolicyRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
     "exitCode": 0,
     "totals": {
-      "tests": 156,
+      "tests": 370,
       "failures": 0,
       "errors": 0,
       "skipped": 0
@@ -14,6 +14,27 @@
       {
         "name": "com.taxonomy.ArchitectureContextDependencyRatchetTest",
         "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.ArchitectureModuleExtractionTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.ArchitectureModuleGraphTest",
+        "tests": 140,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.ArchitectureSelectorSynchronizationTest",
+        "tests": 71,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -35,6 +56,13 @@
       {
         "name": "com.taxonomy.SemanticSearchTests",
         "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "com.taxonomy.build.SupplyChainPinPolicyRepositoryTest",
+        "tests": 1,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -153,42 +181,46 @@
     "scope": "Maven-owned contract phase; not browser-shard acceptance"
   },
   "sourceSha256": {
+    ".github/architecture-contexts.json": "a89226de44e5731b3412d92ae179be8424e6cf2eff213af126b33afc36aee3f1",
+    ".github/architecture-dependency-baseline.json": "8fe51e548e44a0e34ea6d35b3c401323a787f816c0cada5c92faa1aae9503d6d",
     ".github/package.json": "5659a14a270173e2f2e9ba723d817b7479fb3ed154f2cb1cce9982abe4b340f1",
     ".github/scripts/search-mode-readiness.test.mjs": "0e0a9076368a4bf766451de044087a700ec49132e66357bfb630096ffb803258",
-    "taxonomy-app/src/main/java/com/taxonomy/shared/config/GlobalExceptionHandler.java": "b96eff5fcdc49b7d2966943438f43997fb677a976327b33b1445ad1a91ff6392",
+    ".github/scripts/verify-interoperability-products.mjs": "9eb22ba81bd9a00e9af751d1df3e5cb92e705d2e9658c9b0cf28c624ed34d1a6",
+    "taxonomy-app/src/main/java/com/taxonomy/shared/config/GlobalExceptionHandler.java": "a45f50c7ef080eeba3b0b8c5524649c9360e019f2ab7bcb9b533f164265a1427",
     "taxonomy-app/src/main/resources/i18n/messages_search.properties": "11ce763f54ab5e770379319180aa4a99622b3467a9637ee5718b8ea0f50a7704",
     "taxonomy-app/src/main/resources/i18n/messages_search_de.properties": "463888667087cc209139c01e33cb8c228a62c04deae041e172fbca7cf05eb77a",
     "taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js": "1f4a1dde08b7b4e50e6222324aa726d8dd93909f813a0679f0543428e2fd7afc",
-    "taxonomy-app/src/test/java/com/taxonomy/GraphSearchTests.java": "ec943382612fa213a120ecd5f6211d48d1170777ec3c4a3a108f10bed570942c",
+    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java": "8a7592dca228419c7ee10e2305a28fec7a12c401aa845efc9bfcda1f33b81222",
+    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java": "90e0badcc85abbc6db3697822ce99fdad0cc896767e28b162e785848ac04a317",
+    "taxonomy-app/src/test/java/com/taxonomy/GraphSearchTests.java": "42e547577d0b02d3e9ebf1094c003d7f511d0c079bf2b71da6b6d832eb3d871a",
     "taxonomy-app/src/test/java/com/taxonomy/OnnxRestEndpointTest.java": "50b43d0e9b5b6a1d5f46d8fadfa1f6f01f8f23c1be2c46c9f05d8871b120257a",
-    "taxonomy-app/src/test/java/com/taxonomy/SemanticSearchTests.java": "d7048c7df75a0d0b50c57b8fe07140acbf939fdc21c254654e7ff08bd624d9cd",
+    "taxonomy-app/src/test/java/com/taxonomy/SemanticSearchTests.java": "fe7f25094c40677d935ea84854f33ecc30b82a416d9704c1f55224275b681dd8",
     "taxonomy-app/src/test/java/com/taxonomy/search/EmbeddingModelKnnIsolationTest.java": "3963297e7088d9338dbdb426a4e69d01576558636df10bfa92d6a897abc6bd32",
     "taxonomy-app/src/test/java/com/taxonomy/search/SearchFailureHttpTest.java": "eb8d3ffb521ebd645e700b1e33a3413f5e8689307f4ccebb916e0ee83ea99125",
     "taxonomy-app/src/test/java/com/taxonomy/search/SearchIndexCoverageTest.java": "a8bde0fe559289124c49988bbf9f8ef2ae159b20cc819d424bcefcb980087865",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/LocalEmbeddingService.java": "a28a0c5735b808eda84c02295e97f8149a1c4a794f2932292232b52dbde2af18",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/SearchService.java": "ab27041f075d72c62cd081113c9b911f15e4462d84da9bab99e790b287898b0b",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/GraphSearchService.java": "463ec2c0c8fdb04abd77d857fa25dcbaccfdf29b7b98295a7396dce35dc5f21f",
+    "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleExtractionTest.java": "a3219e0cb8172dfbcbfd8cbb8a89e6b4904e0847c9806319036a719e00b29a36",
+    "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java": "e76935b38eea8e32c5ce368c206ca7541cc4461252b8a978092fa72959172459",
+    "taxonomy-build/src/test/java/com/taxonomy/ArchitectureSelectorSynchronizationTest.java": "23514bbbe9acb487b9c0f7b2e165999c44c7ad2610d64513eb4f01f602d69844",
+    "taxonomy-build/src/test/java/com/taxonomy/build/SupplyChainPinPolicyRepositoryTest.java": "04834ef1d3bf1e080cabc1115522db47dcd2ddfb57e08f2e25d8c8af3ee563cc",
+    "taxonomy-domain/src/main/java/com/taxonomy/error/SearchUnavailableException.java": "5662b369c554917482981aed9c78340811b0b04c0eb4c66c2840c1599e7f508d",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/LocalEmbeddingService.java": "dca24d627f71c6232e053900f4e3c981cf550e1faf5250ad2aa8438edc474410",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/SearchService.java": "4584addfaf263a8296973bd8c42dcb826c35aa4fbf99d3a21a646dd400fcb6e1",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/GraphSearchService.java": "3e593484708d2795b6833c203f97e77a79a2464149a43a5bf3a4e74542d1a84b",
     "taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/HybridSearchService.java": "8af4fe4fe34a9f05e000a0c033636aaf168f67e91e3330415a6a52eb653ea6c4",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/EmbeddingBridgeSupport.java": "0a5eb22c8e94c2dbf13af7f98514fbc28a4368f8e9256f49d3fd9144de3dedb5",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/EmbeddingIndexHealth.java": "80b6ef969f426f066c667d3cc6657162f54ffe3326af541c6434c2a7645c6b63",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalEmbeddingIndexRebuilder.java": "dd1cc859e6a37c2d870e30c41f7644956f7ac0b7f40d377fab95386340d36a8e",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalOnnxIndexInitializer.java": "e913d6ff3f7a98ca073926fe8620d9c5e715700627e739a7e739c3eab1465fd9",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/search/controller/SearchApiController.java": "e8a8f208fb22539e8c01706149cd9a824f9007d74f9a66552ed187bb9652667c",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/search/service/SearchFacade.java": "f80bf30543df29666ff3d74d8e237c75515f0bc32a844e81de1e929ecbf0c7c3",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/service/SearchDiagnosticPrivacyTest.java": "94da4cae2a752b8db8272d07ef8b0a7b2ba1d1f22729e10f1f74ce8ff3904c39",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/search/controller/SearchApiController.java": "9f8866b9bacde2a31b7b3454a1b49643ed5adc8f30dbc9228aa26ed88f6a88f3",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/search/service/SearchFacade.java": "ac643730f8bf63fd387be92a4b7d120683509f1cc104868ea786cbf92fcb620c",
+    "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/service/SearchDiagnosticPrivacyTest.java": "edc03cc5d49ee3c9af66faca93da4b1073969ab1e1839fb86e60c77bcec32667",
     "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/snapshot/CatalogueWorkerIsolationTest.java": "83552353d2d274712dc9efc7c203a885f1d1494878b4f6737f5d1a42c491b247",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/LocalOnnxIndexInitializerTest.java": "f737507ec127f6af74b88bee98b94e469d6083e3ccd71170432b2e6531343329",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/controller/SearchWorkspaceFailureTest.java": "311f9934fff3936a5106025fdbd8880f545ec29030cdd21628f953928fa64a71",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeEmbeddingStatusTest.java": "ed2abb27cfc7259498d143e3e4c526b32773465f96bb00cc2f65356e2aeb82ca",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeReadinessRaceTest.java": "9b2e26e76c7852449f44c1f1e90f167366e4dd0798501f6255af6112c18e131a",
+    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeReadinessRaceTest.java": "b6efdb3063b27959708d025d4a7cc10c63c0b552f79308e199cab0bbf3113803",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeResultLimitTest.java": "b156f5329e8ef43e2ebe867ae8af4408c8d562d96692bfe6abbdd66aef91ed3a",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e",
-    ".github/scripts/verify-interoperability-products.mjs": "9eb22ba81bd9a00e9af751d1df3e5cb92e705d2e9658c9b0cf28c624ed34d1a6",
-    "taxonomy-domain/src/main/java/com/taxonomy/search/SearchUnavailableException.java": "61c9e54d31b82cd48c7305328ecca7dd7677e8aa3499ca37103cd48528bc3acc",
-    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java": "8a7592dca228419c7ee10e2305a28fec7a12c401aa845efc9bfcda1f33b81222",
-    "taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java": "a3885c529a85b75ec64c1b9027d4affbd3a88a4f67fe1991a6106ea1e2be8f73",
-    ".github/architecture-dependency-baseline.json": "8fe51e548e44a0e34ea6d35b3c401323a787f816c0cada5c92faa1aae9503d6d",
-    ".github/architecture-contexts.json": "a89226de44e5731b3412d92ae179be8424e6cf2eff213af126b33afc36aee3f1"
+    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e"
   },
   "verificationBoundary": [
     "Controlled inference failures and authored entities; not model-quality evidence.",
@@ -211,8 +243,11 @@
   "architectureCorrection": {
     "failingRun": "https://github.com/carstenartur/Taxonomy/actions/runs/37490847461",
     "failure": "New dependency from com.taxonomy.shared.config to com.taxonomy.search implementation (0 -> 1).",
-    "correction": "Move the pure shared SearchUnavailableException contract to taxonomy-domain; retain its package, type and semantics.",
+    "correction": "Move the pure shared contract to com.taxonomy.error.SearchUnavailableException in taxonomy-domain, preserving safe error semantics; include the shared error package in the framework-free rule.",
     "dependencyBaselineUnchanged": true,
-    "architectureTests": 36
+    "architectureTests": 249,
+    "physicalOwnershipFailingRun": "https://github.com/carstenartur/Taxonomy/actions/runs/37494513835",
+    "contextOwnershipUnchanged": true,
+    "buildPolicyTests": 214
   }
 }

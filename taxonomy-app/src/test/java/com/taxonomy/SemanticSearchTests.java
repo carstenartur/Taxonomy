@@ -75,13 +75,13 @@ class SemanticSearchTests {
     void semanticSearchDoesNotFabricateEmptyResultsWhenModelIsUnavailable() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                 embeddingService.semanticSearch("satellite communications", 10))
-                .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class);
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     @Test
     void findSimilarNodesReportsUnavailableExecution() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> embeddingService.findSimilarNodes("BP", 5))
-                .isInstanceOf(com.taxonomy.search.SearchUnavailableException.class);
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     // ── RankFusionUtil unit tests ─────────────────────────────────────────────

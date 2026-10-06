@@ -67,8 +67,8 @@ only the node index is ready.
 
 The [machine-readable record](evidence/2026-10-06/search-failures.json) records the
 final focused commands, test counts and source digests. The final local Java run
-passed all 156 selected tests, including 36 architecture checks; the Maven-owned
-UI contract phase passed 851 tests,
+passed all 370 selected tests, including the mandatory architecture and build-policy
+checks; the Maven-owned UI contract phase passed 851 tests,
 including five new search-mode regressions. Both completed with zero failures,
 errors or skipped tests. These focused results do not replace canonical CI.
 
@@ -116,9 +116,16 @@ detected one new dependency from the shared HTTP exception handler to the knowle
 implementation package. The 23-case architecture suite had one failing assertion;
 the selected reformulation persistence cases passed. `SearchUnavailableException`
 is a pure contract used by both providers and callers, so it now belongs to
-`taxonomy-domain`. Its package, type and safe error semantics are preserved. This
-removes the implementation dependency without increasing the reviewed dependency
-baseline or exempting the handler from the architecture checks.
+`taxonomy-domain`. The separate physical-module guard in
+[run 37494513835](https://github.com/carstenartur/Taxonomy/actions/runs/37494513835)
+then correctly rejected retaining the `com.taxonomy.search` package, which belongs
+to the knowledge implementation. The shared exception now uses
+`com.taxonomy.error.SearchUnavailableException`, and the framework-free domain rule
+also covers that package. Its safe error semantics are preserved. This removes the
+implementation dependency without increasing the reviewed dependency baseline,
+changing context ownership or exempting the handler from architecture checks.
+The final focused command includes `taxonomy-build` so its mandatory physical
+ownership, graph and selector checks execute with the current reactor outputs.
 
 ## Verification boundaries and open investigations
 

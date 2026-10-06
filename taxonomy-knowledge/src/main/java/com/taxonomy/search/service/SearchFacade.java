@@ -11,7 +11,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 

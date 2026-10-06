@@ -3,7 +3,7 @@ package com.taxonomy.search.controller;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;

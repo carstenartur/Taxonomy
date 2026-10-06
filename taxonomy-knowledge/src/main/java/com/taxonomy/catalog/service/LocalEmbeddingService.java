@@ -9,7 +9,7 @@ import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.NodeEmbeddingBinder;
-import com.taxonomy.search.SearchUnavailableException;
+import com.taxonomy.error.SearchUnavailableException;
 import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
