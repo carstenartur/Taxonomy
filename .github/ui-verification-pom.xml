@@ -54,12 +54,9 @@
                                 <goals><goal>npm</goal></goals>
                                 <configuration><arguments>run verify:ui-contracts</arguments></configuration>
                             </execution>
-                            <execution>
-                                <id>prepare-pinned-playwright-runtime</id>
-                                <phase>pre-integration-test</phase>
-                                <goals><goal>npm</goal></goals>
-                                <configuration><arguments>run install:playwright:github</arguments></configuration>
-                            </execution>
+                            <!-- Native browser packages belong to the shard runners.
+                                 Contracts never launch browsers, and installing OS packages
+                                 here cannot prepare the separate browser-shard machines. -->
                         </executions>
                     </plugin>
                 </plugins>
