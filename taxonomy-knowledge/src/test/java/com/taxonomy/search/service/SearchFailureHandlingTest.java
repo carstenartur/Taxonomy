@@ -9,6 +9,8 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -120,16 +122,26 @@ class SearchFailureHandlingTest {
                 .isInstanceOf(IllegalStateException.class).hasMessage(SAFE_MESSAGE).hasNoCause();
     }
 
-    @Test
-    void deliberatelyDisabledEmbeddingsStillAllowFullTextHybridSearch() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void embeddingsKnownUnavailableBeforeTheRequestRetainFullTextHybridMode(boolean modelAlreadyFailed) {
         var fullText = mock(SearchService.class);
-        var embeddings = mock(LocalEmbeddingService.class);
+        var embeddings = spy(new LocalEmbeddingService());
+        ReflectionTestUtils.setField(embeddings, "embeddingEnabled", modelAlreadyFailed);
+        ReflectionTestUtils.setField(embeddings, "modelLoadFailed", modelAlreadyFailed);
+        var initializer = mock(com.taxonomy.search.LocalOnnxIndexInitializer.class);
         var node = new TaxonomyNodeDto();
         node.setCode("BP");
         when(fullText.search(QUERY, 10)).thenReturn(List.of(node));
-        assertThat(new HybridSearchService(fullText, embeddings).hybridSearch(QUERY, 10))
+        var facade = new SearchFacade(mock(com.taxonomy.catalog.service.TaxonomyService.class), fullText,
+                new HybridSearchService(fullText, embeddings), embeddings,
+                mock(GraphSearchService.class), initializer);
+
+        assertThat(embeddings.isEnabled()).isEqualTo(modelAlreadyFailed);
+        assertThat(facade.hybridSearch(QUERY, 10))
                 .containsExactly(node);
         verify(embeddings, never()).semanticSearch(anyString(), anyInt());
+        verifyNoInteractions(initializer);
     }
 
     private static LocalEmbeddingService availableEmbeddings() {

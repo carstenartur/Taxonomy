@@ -14,7 +14,9 @@ failures cannot fabricate successful results, and interrupted inference preserve
 cancellation. Empty completed searches, missing similar-node sources and direct
 nonpositive result limits retain their empty-result behavior. Hybrid search keeps
 its documented full-text fallback when embeddings are unavailable before a query.
-It does not hide a failed search attempt.
+This includes a model already known to have failed before the new request; the
+request executes full-text search only. A failure observed during a search attempt
+still fails that request. Both unavailable-before-query cases are covered explicitly.
 
 The graph controller previously replaced denied, failed or missing workspace
 resolution with `WorkspaceContext.SHARED`. It now preserves access denial as 403
@@ -50,6 +52,10 @@ and safe stage/count information rather than query text, node input, private mod
 paths, backend messages or nested throwables. Search error responses are localized
 in English and German.
 
+An additional GitHub review reproduced a diagnostic race during a healthy state
+transition. Failure details now require an observed health failure rather than
+inferring one from two separate reads of the initialization state.
+
 The status API exposes `graphReady` separately from node readiness. The browser
 uses that field for graph mode; failed status requests clear both stale options
 and the availability badge. The existing status-refresh entry point is retained;
@@ -61,7 +67,7 @@ only the node index is ready.
 
 The [machine-readable record](evidence/2026-10-06/search-failures.json) records the
 final focused commands, test counts and source digests. The final local Java run
-passed all 118 selected tests; the Maven-owned UI contract phase passed 851 tests,
+passed all 120 selected tests; the Maven-owned UI contract phase passed 851 tests,
 including five new search-mode regressions. Both completed with zero failures,
 errors or skipped tests. These focused results do not replace canonical CI.
 
@@ -88,6 +94,19 @@ they are not measurements of model quality on the real catalogue. Java service,
 MVC, real Lucene/HSQLDB and browser-module checks supplement the repository's
 required canonical, browser, native ONNX, security and database workflows.
 No timeout, test-selection gate, coverage baseline or security threshold was relaxed.
+
+## CI download repair
+
+The first canonical run, [37487553062](https://github.com/carstenartur/Taxonomy/actions/runs/37487553062),
+passed all six UI shards but failed its Archi product round trip before execution:
+the release-download URL used tag `5.10_0` and returned 404. The
+[official download page](https://www.archimatetool.com/download/) and
+[release metadata](https://api.github.com/repos/archimatetool/archi.io/releases/tags/5.10)
+identify tag `5.10`. The URL is corrected without changing the product version or
+checksum. A fresh 182,262,774-byte download matches both the publisher checksum and
+the existing pin:
+`f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f`.
+The real product round trip remains a required CI gate.
 
 ## Verification boundaries and open investigations
 

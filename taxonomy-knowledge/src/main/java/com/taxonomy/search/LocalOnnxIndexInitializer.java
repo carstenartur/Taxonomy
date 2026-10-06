@@ -163,10 +163,11 @@ public class LocalOnnxIndexInitializer {
 
     public String getDetail() {
         State effective = getState();
-        if (effective != state.get()) {
-            return effective == State.FAILED
-                    ? "Node vector writes failed; resolve the cause and restart to rebuild (code=NODE_VECTOR_WRITE_FAILED)"
-                    : "Relation vector writes failed; resolve the cause and restart to rebuild (code=RELATION_VECTOR_WRITE_FAILED)";
+        if (effective == State.FAILED && indexHealth.hasNodeFailure()) {
+            return "Node vector writes failed; resolve the cause and restart to rebuild (code=NODE_VECTOR_WRITE_FAILED)";
+        }
+        if (effective == State.PARTIAL && indexHealth.hasRelationFailure()) {
+            return "Relation vector writes failed; resolve the cause and restart to rebuild (code=RELATION_VECTOR_WRITE_FAILED)";
         }
         return detail;
     }

@@ -1,11 +1,11 @@
 {
-  "recordedAt": "2026-10-06T15:25:01.135071+00:00",
+  "recordedAt": "2026-10-06T15:49:36.536066+00:00",
   "baseCommit": "74b3d55082ddbb5b38c0c7309349e371bdc016ab",
   "java": {
     "command": "./mvnw -B -pl taxonomy-app -am test -Dtest=SearchIndexCoverageTest,EmbeddingModelKnnIsolationTest,LocalOnnxIndexInitializerTest,SearchDiagnosticPrivacyTest,SearchFailureHandlingTest,SearchFacadeEmbeddingStatusTest,SearchFailureHttpTest,SearchWorkspaceFailureTest,SearchFacadeResultLimitTest,SearchFacadeReadinessRaceTest,GraphSearchServiceResultLimitTest,SearchApiControllerSemanticReadinessTest,SemanticSearchTests,GraphSearchTests,CatalogueWorkerIsolationTest,RelationCandidateServiceFilterTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.build.cache.enabled=false",
     "exitCode": 0,
     "totals": {
-      "tests": 118,
+      "tests": 120,
       "failures": 0,
       "errors": 0,
       "skipped": 0
@@ -76,7 +76,7 @@
       },
       {
         "name": "com.taxonomy.search.LocalOnnxIndexInitializerTest",
-        "tests": 9,
+        "tests": 10,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -118,7 +118,7 @@
       },
       {
         "name": "com.taxonomy.search.service.SearchFailureHandlingTest",
-        "tests": 10,
+        "tests": 11,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -158,18 +158,19 @@
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/EmbeddingBridgeSupport.java": "0a5eb22c8e94c2dbf13af7f98514fbc28a4368f8e9256f49d3fd9144de3dedb5",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/EmbeddingIndexHealth.java": "80b6ef969f426f066c667d3cc6657162f54ffe3326af541c6434c2a7645c6b63",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalEmbeddingIndexRebuilder.java": "dd1cc859e6a37c2d870e30c41f7644956f7ac0b7f40d377fab95386340d36a8e",
-    "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalOnnxIndexInitializer.java": "cdec39a9c23bed2c539b00b295262651b9a338fd9eec019f4af99e842e4f7e93",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/search/LocalOnnxIndexInitializer.java": "e913d6ff3f7a98ca073926fe8620d9c5e715700627e739a7e739c3eab1465fd9",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/SearchUnavailableException.java": "b831048a113fefc6881341d5e93d91ca817549ff2a88cd829a03e203ef88d9c7",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/controller/SearchApiController.java": "e8a8f208fb22539e8c01706149cd9a824f9007d74f9a66552ed187bb9652667c",
     "taxonomy-knowledge/src/main/java/com/taxonomy/search/service/SearchFacade.java": "f80bf30543df29666ff3d74d8e237c75515f0bc32a844e81de1e929ecbf0c7c3",
     "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/service/SearchDiagnosticPrivacyTest.java": "94da4cae2a752b8db8272d07ef8b0a7b2ba1d1f22729e10f1f74ce8ff3904c39",
     "taxonomy-knowledge/src/test/java/com/taxonomy/catalog/snapshot/CatalogueWorkerIsolationTest.java": "83552353d2d274712dc9efc7c203a885f1d1494878b4f6737f5d1a42c491b247",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/search/LocalOnnxIndexInitializerTest.java": "e87d15f83b532a52d960bca1bd4a4bbe482e2fe01955ae2d77f1cec48a9b1513",
+    "taxonomy-knowledge/src/test/java/com/taxonomy/search/LocalOnnxIndexInitializerTest.java": "f737507ec127f6af74b88bee98b94e469d6083e3ccd71170432b2e6531343329",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/controller/SearchWorkspaceFailureTest.java": "311f9934fff3936a5106025fdbd8880f545ec29030cdd21628f953928fa64a71",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeEmbeddingStatusTest.java": "ed2abb27cfc7259498d143e3e4c526b32773465f96bb00cc2f65356e2aeb82ca",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeReadinessRaceTest.java": "9b2e26e76c7852449f44c1f1e90f167366e4dd0798501f6255af6112c18e131a",
     "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFacadeResultLimitTest.java": "b156f5329e8ef43e2ebe867ae8af4408c8d562d96692bfe6abbdd66aef91ed3a",
-    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "8e57f80b010ea8cb6e9e9937b9ce7a6660b6f24c82a1d60fdf413900589eb1b8"
+    "taxonomy-knowledge/src/test/java/com/taxonomy/search/service/SearchFailureHandlingTest.java": "1e1b2c669b39137907d6eb1f10c6bccbfac509ce73017e1494635b0bc2d0e72e",
+    ".github/scripts/verify-interoperability-products.mjs": "9eb22ba81bd9a00e9af751d1df3e5cb92e705d2e9658c9b0cf28c624ed34d1a6"
   },
   "verificationBoundary": [
     "Controlled inference failures and authored entities; not model-quality evidence.",
@@ -180,5 +181,13 @@
   "openInvestigations": [
     "Original deployment-specific cause of issue #1100; no deployment enabled.",
     "Frozen supplemental German retrieval misses; no model, catalogue, ranking or reference changes."
-  ]
+  ],
+  "archiDownload": {
+    "url": "https://github.com/archimatetool/archi.io/releases/download/5.10/Archi-Linux64-5.10.0.tgz",
+    "publisherChecksums": "https://github.com/archimatetool/archi.io/releases/download/5.10/Archi-5.10.0-SHA256.txt",
+    "sha256": "f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f",
+    "bytes": 182262774,
+    "unchangedPin": true,
+    "roundTripGate": "Required CI; download verification alone is not product acceptance."
+  }
 }
