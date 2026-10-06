@@ -61,15 +61,18 @@ TAXONOMY_EMBEDDING_ENABLED=false
 TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
 
-Mit diesen Werten initialisieren oder laden Start, Taxonomieimport und Hibernate-Search-Indexierung das Modell `BAAI/bge-small-en-v1.5` nicht. Dokumente werden ohne Vektorfeldwerte indexiert.
+Mit diesen Werten initialisieren oder laden Start, Taxonomieimport und Hibernate-Search-Indexierung das Modell `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` nicht. Dokumente werden ohne Vektorfeldwerte indexiert.
 
 Für ein eingehängtes lokales Modell ohne ausgehenden Download:
 
 ```bash
 export TAXONOMY_EMBEDDING_ENABLED=true
 export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
-export TAXONOMY_EMBEDDING_MODEL_DIR=/models/bge-small-en-v1.5
+export TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+export TAXONOMY_EMBEDDING_MODEL_DIR=/models/multilingual-minilm
 ```
+
+Dieses Verzeichnis gemäß der [gepinnten Modellbereitstellung](../testing/multilingual-model-provisioning.md) vorbereiten. Das mehrsprachige Standardprofil verwendet normalisierte Mean-Pooling-Vektoren mit 384 Dimensionen, ein Limit von 128 Tokens und kein Abfrage- oder Dokumentpräfix. `TAXONOMY_EMBEDDING_MODEL_NAME` ist standardmäßig leer und verwendet dann die gepinnte URL des Profils; ein nicht gesetztes Abfragepräfix verwendet den Profilstandard, ein explizit leerer Wert bleibt leer.
 
 Ein Laufzeitdownload erfordert zwei ausdrückliche Entscheidungen:
 
@@ -79,6 +82,8 @@ export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=true
 ```
 
 In produktiven Containern und Kubernetes sollte ein eingehängtes, geprüftes Modellverzeichnis verwendet werden.
+
+Für das bisherige englische Modell mit `MODEL_PROFILE=BGE_SMALL_EN` bereitstellen, `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN` setzen und das passende Paket einhängen. Dieses Profil behält CLS-Pooling, 512 Tokens und das englische Abfragepräfix. Bei einem Profilwechsel den semantischen Index neu aufbauen und zwischengespeicherte Vektoren verwerfen.
 
 ## Beispiel mit Docker Compose
 

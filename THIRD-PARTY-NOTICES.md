@@ -152,6 +152,17 @@ Oracle Database instance to which Taxonomy connects.
 
 ## AI model licence
 
+### sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+
+- License: Apache-2.0
+- Model page: https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+- Pinned revision: `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`
+- ONNX export: `onnx/model_quint8_avx2.onnx`
+
+This is the default local embedding profile. It is provisioned separately from
+Maven dependencies. Distributions that bundle its files must retain the model's
+licence and attribution. The explicit BGE profile remains available below.
+
 ### BAAI/bge-small-en-v1.5
 
 - License: MIT

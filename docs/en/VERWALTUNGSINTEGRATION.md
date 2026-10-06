@@ -113,7 +113,7 @@ The RAG infrastructure is fully operational. Only the 115-specific data connecto
 
 | What is ready | What remains |
 |---|---|
-| `LocalEmbeddingService` (BAAI/bge-small-en-v1.5 ONNX) | 115 knowledge base export/API connector |
+| `LocalEmbeddingService` (sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ONNX) | 115 knowledge base export/API connector |
 | `HybridSearchService` (Reciprocal Rank Fusion) | 115-specific data format adapter |
 | Full-text + semantic + hybrid search modes | Data synchronization schedule |
 

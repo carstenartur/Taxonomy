@@ -373,9 +373,17 @@ Local embedding configuration:
 
 ```bash
 export LLM_PROVIDER=LOCAL_ONNX
-export TAXONOMY_EMBEDDING_MODEL_DIR=/absolute/path/to/bge-small-en-v1.5
+export TAXONOMY_EMBEDDING_ENABLED=true
+export TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+export TAXONOMY_EMBEDDING_MODEL_DIR=/absolute/path/to/multilingual-minilm
 export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
+
+The default local model supports German and English retrieval. Provision its
+pinned files with `.github/scripts/download-embedding-model.sh`; inference can
+then run offline. Existing BGE installations must explicitly select
+`TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN`. See
+[model provisioning and migration](docs/testing/multilingual-model-provisioning.md).
 
 For deployment provenance and model-policy details, see:
 

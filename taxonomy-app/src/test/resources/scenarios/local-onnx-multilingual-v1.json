@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "referenceKind": "SYNTHETIC_REFERENCES_AND_TARGETED_CHECKS_NOT_EXHAUSTIVE",
+  "source": "Six unchanged version-1 anchors plus six independently authored paraphrases, two artillery distractors and two broad office ambiguities. All sixteen queries and bindings were written before running either multilingual candidate. These are synthetic references, not expert annotations or held-out evaluation data. Only the original six anchors define the mandatory regression gate; all added cases remain reported observations.",
+  "anchorSha256": "628c6b1821273d4e92337241dcb609e850dd48209a687aed38b0bb09b0bff5af",
+  "bindings": {
+    "UA-1604": "Payroll Applications",
+    "UA-1583": "Word Processing Applications",
+    "UA-1222": "Email Applications"
+  },
+  "cases": [
+    {
+      "id": "payroll-en-v1",
+      "language": "en",
+      "kind": "ANCHOR",
+      "query": "Calculate employee salaries and deductions and track employee benefits and leave for the monthly payroll.",
+      "required": [
+        "UA-1604"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "payroll-de-v1",
+      "language": "de",
+      "kind": "ANCHOR",
+      "query": "Die monatliche Gehaltsabrechnung soll Gehälter und Abzüge berechnen und Leistungen sowie Urlaub der Beschäftigten berücksichtigen.",
+      "required": [
+        "UA-1604"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "documents-en-v1",
+      "language": "en",
+      "kind": "ANCHOR",
+      "query": "Staff need to compose, edit, format and print letters and reports, with spelling and grammar checks.",
+      "required": [
+        "UA-1583"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "documents-de-v1",
+      "language": "de",
+      "kind": "ANCHOR",
+      "query": "Beschäftigte sollen Briefe und Berichte verfassen, bearbeiten, formatieren und drucken können, einschließlich Rechtschreib- und Grammatikprüfung.",
+      "required": [
+        "UA-1583"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "email-en-v1",
+      "language": "en",
+      "kind": "ANCHOR",
+      "query": "Employees need to compose and store email messages, choose recipients and send documents as attachments.",
+      "required": [
+        "UA-1222"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "email-de-v1",
+      "language": "de",
+      "kind": "ANCHOR",
+      "query": "Beschäftigte sollen E-Mails verfassen und speichern, Empfänger auswählen und Dokumente als Anhänge versenden können.",
+      "required": [
+        "UA-1222"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "payroll-en-paraphrase",
+      "language": "en",
+      "kind": "PARAPHRASE",
+      "query": "Determine take-home pay after tax deductions and account for staff vacation and benefits.",
+      "required": [
+        "UA-1604"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "payroll-de-paraphrase",
+      "language": "de",
+      "kind": "PARAPHRASE",
+      "query": "Ermittle den Nettolohn nach Steuerabzug und berücksichtige Sozialleistungen sowie Fehlzeiten der Mitarbeitenden.",
+      "required": [
+        "UA-1604"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "documents-en-paraphrase",
+      "language": "en",
+      "kind": "PARAPHRASE",
+      "query": "An office author wants to revise a letter, change its fonts and have typographical errors corrected before printing.",
+      "required": [
+        "UA-1583"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "documents-de-paraphrase",
+      "language": "de",
+      "kind": "PARAPHRASE",
+      "query": "Im Büro müssen Schreiben überarbeitet, Schriftarten angepasst und Tippfehler vor dem Ausdruck korrigiert werden.",
+      "required": [
+        "UA-1583"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "email-en-paraphrase",
+      "language": "en",
+      "kind": "PARAPHRASE",
+      "query": "A user addresses an electronic message to several colleagues and includes a file before delivery.",
+      "required": [
+        "UA-1222"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "email-de-paraphrase",
+      "language": "de",
+      "kind": "PARAPHRASE",
+      "query": "Ein Nutzer adressiert eine elektronische Nachricht an mehrere Kollegen und fügt vor dem Versand eine Datei hinzu.",
+      "required": [
+        "UA-1222"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "distractor-en",
+      "language": "en",
+      "kind": "DISTRACTOR",
+      "query": "Coordinate artillery fire missions and synchronize support assets for battlefield operations.",
+      "required": [],
+      "excluded": [
+        "UA-1604",
+        "UA-1583",
+        "UA-1222"
+      ]
+    },
+    {
+      "id": "distractor-de",
+      "language": "de",
+      "kind": "DISTRACTOR",
+      "query": "Artilleriefeuer koordinieren und Unterstützungsressourcen für Gefechtsoperationen abstimmen.",
+      "required": [],
+      "excluded": [
+        "UA-1604",
+        "UA-1583",
+        "UA-1222"
+      ]
+    },
+    {
+      "id": "ambiguous-en",
+      "language": "en",
+      "kind": "AMBIGUOUS",
+      "query": "Office staff need tools to draft correspondence and distribute electronic messages.",
+      "required": [
+        "UA-1583",
+        "UA-1222"
+      ],
+      "excluded": []
+    },
+    {
+      "id": "ambiguous-de",
+      "language": "de",
+      "kind": "AMBIGUOUS",
+      "query": "Bürokräfte benötigen Werkzeuge zum Entwerfen von Korrespondenz und Versenden elektronischer Nachrichten.",
+      "required": [
+        "UA-1583",
+        "UA-1222"
+      ],
+      "excluded": []
+    }
+  ]
+}

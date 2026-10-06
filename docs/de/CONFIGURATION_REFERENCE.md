@@ -171,12 +171,15 @@ Produktiv normalerweise vollständig deaktiviert lassen.
 | Variable | Property / Gültigkeit | Standard | Bedeutung |
 |---|---|---|---|
 | `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | `false` | Aktiviert lokale Vektoren und semantische Suche. |
+| `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `embedding.model.profile` | `MULTILINGUAL_MINILM_L12` | Wählt Modellidentität, Pooling, Tokenlimit und Standard-Abfragepräfix. `BGE_SMALL_EN` erhält den bisherigen englischen Modellvertrag. |
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | leer | Eingehängtes vorab geladenes Modell. |
-| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | BAAI `bge-small-en-v1.5` | Entfernte Referenz oder lokaler Modellpfad. |
-| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | BGE-Präfix | Präfix asymmetrischer Suchanfragen. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | leer | Leer verwendet die gepinnte URL des Profils. Eine explizite entfernte Referenz oder ein lokaler Pfad wird ohne Modellverzeichnis verwendet. |
+| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | nicht gesetzt; Profilstandard | Nicht gesetzt verwendet das Profilpräfix (keines bei multilingualem MiniLM; englisches Suchpräfix bei BGE). Ein explizit leerer Wert deaktiviert das Präfix. |
 | `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | `false` | Erlaubt Laufzeitdownload; Egress muss ebenfalls passen. |
 | `TAXONOMY_EMBEDDING_INDEX_LOADER_THREADS` | `embedding.index.loader-threads` | `2`, mindestens `1` | Ladethreads der Mass-Indexing-Phasen. |
 | `TAXONOMY_EMBEDDING_INDEX_BATCH_SIZE` | `embedding.index.batch-size` | `16`, mindestens `1` | Entitäten je Indexierungsbatch. |
+
+Das mehrsprachige Standardprofil verwendet 384 Dimensionen, Mean-Pooling, Einheitsnormalisierung, ein Limit von 128 Tokens und kein Abfrage- oder Dokumentpräfix. `BGE_SMALL_EN` behält CLS-Pooling, 512 Tokens und das englische Abfragepräfix. `LOCAL_ONNX` allein aktiviert keine Embeddings. Ein passendes eingehängtes Modellpaket wird gemäß der [gepinnten Modellbereitstellung](../testing/multilingual-model-provisioning.md) vorbereitet; standardmäßig erfolgen keine Laufzeitdownloads. Bei einem Profilwechsel müssen der semantische Index neu aufgebaut und zwischengespeicherte Vektoren verworfen werden: Gleiche Dimensionen machen Vektoren verschiedener Modelle nicht vergleichbar.
 
 ## Copilot und Autopilot
 

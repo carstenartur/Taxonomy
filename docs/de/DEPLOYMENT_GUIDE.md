@@ -58,6 +58,8 @@ keine HSQLDB-Daten. Siehe [Datenbank-Einrichtung](DATABASE_SETUP.md#wechsel-von-
 - lokale WebJars verwenden;
 - Betrieb mit gesperrtem ausgehendem Netzwerk testen.
 
+Embeddings sind standardmäßig deaktiviert; für lokale Suche/Bewertung muss zusätzlich `TAXONOMY_EMBEDDING_ENABLED=true` gesetzt werden. Das Standardprofil `MULTILINGUAL_MINILM_L12` und das passende eingehängte Paket werden in der [gepinnten Modellbereitstellung](../testing/multilingual-model-provisioning.md) beschrieben. `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN` wählt ausdrücklich das bisherige englische Modell. Bei einem Profilwechsel den semantischen Index neu aufbauen und zwischengespeicherte Vektoren verwerfen.
+
 ## Abnahme
 
 Vor dem Go-live die [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md) vollständig mit Nachweisen ausfüllen. Zwingend sind Neustart-Persistenztest, Backup-Restore, Rollen-/CSRF-Tests, Accessibility-Gate, reale Analyse, Workspace-/TaxDSL-Prüfung und Exporttests.

@@ -17,7 +17,7 @@ analysis and historical documents with the current implementation.
 | Decision/snapshot reports | A language parameter localizes labels/catalogue text. Existing AI reasons are copied unchanged. |
 | Older architecture/portfolio exports | Many report labels and sections remain fixed English. |
 | Preferences | The existing Preferences page changes system-wide administrator settings, not personal user preferences. |
-| Local ONNX | The default `bge-small-en-v1.5` model uses English catalogue text. An output-language setting cannot make its retrieval multilingual or add text generation. |
+| Local ONNX | The default `MULTILINGUAL_MINILM_L12` profile compares German or English queries with English catalogue text. The explicit legacy `BGE_SMALL_EN` profile remains English-oriented. Output-language settings do not change the embedding profile or add text generation. See [pinned model provisioning](../testing/multilingual-model-provisioning.md). |
 
 Relevant implementation: `WebMvcConfig`, `PromptTemplateService`,
 `StreamRequirementAnalysisUseCase`, `AnalyzeRequirementCommand`, the portfolio job

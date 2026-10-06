@@ -424,7 +424,15 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
         relevance: 0.77,
         anchor: true,
         taxonomyDepth: 0
-      }],
+      }, ...[...new Set(hypotheses.flatMap(hypothesis =>
+        [hypothesis.sourceCode, hypothesis.targetCode]))].map(nodeCode => ({
+        nodeCode,
+        title: nodeCode,
+        taxonomySheet: nodeCode.split('-')[0],
+        relevance: 0.77,
+        anchor: false,
+        taxonomyDepth: 1
+      }))],
       includedRelationships: []
     };
     state.storedBusinessText = text;
@@ -498,6 +506,53 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
     } finally {
       await autosaveGate.dispose();
     }
+
+    // Unlike draft autosave, this holds the Preferences request itself. The
+    // controls stay editable: a newer edit must survive the older acknowledgement.
+    const preferenceSaveGate = await installRequestGate(page, '**/api/preferences', 'PUT');
+    try {
+      await field.fill(String(failedLimit));
+      await page.waitForFunction(() => !document.getElementById('prefSaveBtn')?.disabled);
+      await page.locator('#prefSaveBtn').click();
+      await preferenceSaveGate.seen;
+      await field.fill('175');
+      preferenceSaveGate.release();
+      await page.waitForFunction(() =>
+        document.getElementById('prefSaveBtn')?.getAttribute('aria-busy') === 'false');
+      assert(await field.inputValue() === '175'
+          && await page.locator('#prefSaveBtn').isEnabled(),
+      'Preferences acknowledgement discarded a newer unsaved edit');
+      const acknowledged = await csrfJson(page, '/api/preferences', {method: 'GET'});
+      assert(acknowledged.status === 200
+          && Number(acknowledged.json['limits.max-architecture-nodes']) === failedLimit,
+      'The newer unsaved edit leaked into acknowledged Preferences');
+      assert(await page.evaluate(workingStateExpression()) === sentinelState,
+        'Overlapping Preferences edits changed the active analysis state');
+    } finally {
+      await preferenceSaveGate.dispose();
+    }
+    await saveArchitectureLimit(page, changedLimit);
+    passed('Preferences acknowledgement retains a newer unsaved edit and its Save action');
+
+    // The graph has several real catalogue identities. Lowering the operational
+    // limit below its existing size must not prune stored analysis evidence.
+    const graphSize = await page.evaluate(() =>
+      window.TaxonomyState.currentArchView.includedElements.length);
+    assert(graphSize > 1, 'Reduction regression requires a graph larger than the new limit');
+    await saveArchitectureLimit(page, 1);
+    assert(await page.evaluate(workingStateExpression()) === sentinelState,
+      'Reducing the architecture-node limit deleted existing working evidence');
+    const reducedDraft = await authoritativeDraft(page);
+    assertDraftEvidence(reducedDraft, assert, 'QA preference preservation sentinel — autosave pending');
+    assert(reducedDraft.payload.architectureView.includedElements.length === graphSize,
+      'Reducing the architecture-node limit pruned the authoritative graph');
+    await navigateToPage(page, 'architecture');
+    await assertVisibleArchitecture(page, assert);
+    await assertHypothesisDecisions(page, hypotheses, assert);
+    await navigateToPage(page, 'preferences');
+    await waitForPreferenceLoad(page);
+    await saveArchitectureLimit(page, changedLimit);
+    passed('Reducing the architecture-node limit below an existing graph size preserves its draft and decisions');
 
     // Reproduce the reported user path, not only the state while Preferences is
     // still visible. Returning to both architecture and analysis must retain the

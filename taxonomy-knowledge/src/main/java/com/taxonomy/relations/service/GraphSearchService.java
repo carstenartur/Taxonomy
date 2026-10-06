@@ -66,10 +66,12 @@ public class GraphSearchService {
                 ? workspaceContext : WorkspaceContext.SHARED;
         try {
             float[] queryVector = embeddingService.embedQuery(queryText);
+            String indexKey = embeddingService.embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
 
             List<TaxonomyNode> nodeHits = session.search(TaxonomyNode.class)
-                    .where(f -> f.knn(nodeLimit).field("embedding").matching(queryVector))
+                    .where(f -> f.knn(nodeLimit).field("embedding").matching(queryVector)
+                            .filter(f.match().field("embeddingModel").matching(indexKey)))
                     .fetchHits(nodeLimit);
             List<TaxonomyNodeDto> matchedNodes = nodeHits.stream()
                     .map(this::toFlatDto)
@@ -83,7 +85,8 @@ public class GraphSearchService {
                                                     .matching(context.workspaceId()))
                                             .should(f.not(f.exists().field("workspaceId")))
                                     : f.not(f.exists().field("workspaceId")))
-                            .must(f.knn(relationLimit).field("embedding").matching(queryVector)))
+                            .must(f.knn(relationLimit).field("embedding").matching(queryVector)
+                            .filter(f.match().field("embeddingModel").matching(indexKey))))
                     .fetchHits(relationLimit);
 
             Map<String, Long> relationCountByRoot = relationHits.stream()

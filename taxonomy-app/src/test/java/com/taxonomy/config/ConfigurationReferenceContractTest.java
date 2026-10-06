@@ -29,8 +29,10 @@ class ConfigurationReferenceContractTest {
     private static final Pattern EXPLICIT_PROPERTY_ENV = Pattern.compile(
             "(?m)^\\s*([A-Za-z][A-Za-z0-9_.-]*)\\s*=\\s*"
                     + "\\$\\{([A-Z][A-Z0-9_]+)(?::|})");
+    private static final Pattern VALUE_ANNOTATION = Pattern.compile(
+            "@Value\\s*\\(\\s*\"((?:\\\\.|[^\"\\\\])*)\"\\s*\\)");
     private static final Pattern VALUE_PROPERTY = Pattern.compile(
-            "@Value\\(\\s*\"\\$\\{([A-Za-z][A-Za-z0-9_.-]*)");
+            "\\$\\{([A-Za-z][A-Za-z0-9_.-]*)(?::|})");
     private static final Pattern CONDITIONAL = Pattern.compile(
             "@ConditionalOnProperty\\s*\\((.*?)\\)", Pattern.DOTALL);
     private static final Pattern PREFIX = Pattern.compile(
@@ -134,10 +136,17 @@ class ConfigurationReferenceContractTest {
                 "taxonomy.fixture.value=${CUSTOM_FIXTURE_VALUE:7}\n");
         Files.writeString(root.resolve(owner + "/src/main/java/Fixture.java"),
                 "@Value(\"${taxonomy.fixture.value:7}\") int value;\n"
-                        + "@Value(\"${taxonomy.fixture.direct:1}\") int direct;\n");
+                        + "@Value(\"${taxonomy.fixture.direct:1}\") int direct;\n"
+                        + "@Value(\"${DIRECT_FIXTURE_ENV:1}\") int explicitEnvironment;\n"
+                        + "@Value(\"${embedding.query.prefix:${NESTED_FIXTURE_ENV:#{null}}}\") String nestedAlias;\n"
+                        + "@Value(\"${embedding.fallback:${NESTED_SECONDARY_FIXTURE_ENV:${DEEP_FIXTURE_ENV:}}}\") String fallback;\n"
+                        + "String template = \"${OUTSIDE_FIXTURE_ENV:ignored}\";\n"
+                        + "String example = \"@Value(\\\"${LITERAL_FIXTURE_ENV:ignored}\\\")\";\n");
 
         assertThat(discoverRuntimeVariables(root))
-                .contains("CUSTOM_FIXTURE_VALUE", "TAXONOMY_FIXTURE_DIRECT")
+                .containsExactlyInAnyOrder("SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_URL",
+                        "CUSTOM_FIXTURE_VALUE", "TAXONOMY_FIXTURE_DIRECT", "DIRECT_FIXTURE_ENV",
+                        "NESTED_FIXTURE_ENV", "NESTED_SECONDARY_FIXTURE_ENV", "DEEP_FIXTURE_ENV")
                 .doesNotContain("TAXONOMY_FIXTURE_VALUE");
     }
 
@@ -184,9 +193,15 @@ class ConfigurationReferenceContractTest {
             String source,
             Map<String, String> explicitPropertyVariables,
             Set<String> variables) {
-        Matcher matcher = VALUE_PROPERTY.matcher(source);
-        while (matcher.find()) {
-            addProperty(matcher.group(1), explicitPropertyVariables, variables);
+        Matcher annotations = VALUE_ANNOTATION.matcher(source);
+        while (annotations.find()) {
+            // Nested defaults can bind environment aliases even when the outer
+            // property is outside taxonomy.*. Restrict discovery to @Value's
+            // argument so ordinary templates/literal examples are not settings.
+            Matcher placeholders = VALUE_PROPERTY.matcher(annotations.group(1));
+            while (placeholders.find()) {
+                addProperty(placeholders.group(1), explicitPropertyVariables, variables);
+            }
         }
     }
 

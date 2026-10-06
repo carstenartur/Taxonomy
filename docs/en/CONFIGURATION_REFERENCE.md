@@ -168,12 +168,15 @@ These switches are for deterministic test evidence. A production process should 
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
 | `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | `false` | Enables local embedding inference and semantic search. Independent of the selected chat provider. |
+| `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `embedding.model.profile` | `MULTILINGUAL_MINILM_L12` | Selects model identity, pooling, token limit and default query prefix. `BGE_SMALL_EN` retains the legacy English model contract. |
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | empty | Mounted, pre-downloaded model directory. Preferred for offline and Kubernetes deployments. |
-| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | BAAI `bge-small-en-v1.5` Hugging Face URL | Remote model reference or local model path used when no directory is supplied. |
-| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | BGE retrieval prefix | Text prepended to queries for asymmetric retrieval. Set empty only for a model that does not require it. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | empty | Empty uses the selected profile's pinned URL. An explicit remote reference or local path is used when no directory is supplied. |
+| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | unset; profile default | Unset uses the selected profile's prefix (none for multilingual MiniLM; English retrieval prefix for BGE). An explicitly empty value disables the prefix. |
 | `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | `false` | Explicitly permits runtime model download. Also requires suitable network policy/egress. |
 | `TAXONOMY_EMBEDDING_INDEX_LOADER_THREADS` | `embedding.index.loader-threads` | `2`, clamped to at least `1` | Object-loader threads for each bounded mass-indexing phase. More threads also mean more simultaneous local inference. |
 | `TAXONOMY_EMBEDDING_INDEX_BATCH_SIZE` | `embedding.index.batch-size` | `16`, clamped to at least `1` | Number of entities loaded per indexing batch. |
+
+The default multilingual profile uses 384 dimensions, mean pooling, unit normalization, a 128-token limit and no query or document prefix. `BGE_SMALL_EN` retains CLS pooling, a 512-token limit and its English query prefix. Selecting `LOCAL_ONNX` alone does not enable embeddings. Provision a matching mounted bundle using the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md); no runtime downloads occur by default. Rebuild the semantic index and discard cached vectors when switching profiles: identical dimensions do not make different models' vectors comparable.
 
 ## Copilot and Autopilot
 

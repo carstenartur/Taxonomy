@@ -61,15 +61,18 @@ TAXONOMY_EMBEDDING_ENABLED=false
 TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
 
-With these defaults, startup, taxonomy import and Hibernate Search indexing do not initialise or download `BAAI/bge-small-en-v1.5`; documents are indexed without vector values.
+With these defaults, startup, taxonomy import and Hibernate Search indexing do not initialise or download `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`; documents are indexed without vector values.
 
 To use a mounted model without outbound downloads:
 
 ```bash
 export TAXONOMY_EMBEDDING_ENABLED=true
 export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
-export TAXONOMY_EMBEDDING_MODEL_DIR=/models/bge-small-en-v1.5
+export TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+export TAXONOMY_EMBEDDING_MODEL_DIR=/models/multilingual-minilm
 ```
+
+Provision this directory with the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md). The default multilingual profile uses 384-dimensional normalized mean-pooled vectors, a 128-token limit and no query or document prefix. `TAXONOMY_EMBEDDING_MODEL_NAME` defaults to empty and then uses the selected profile's pinned URL; an unset query prefix uses the profile default, while an explicitly empty value stays empty.
 
 A runtime download requires two explicit decisions:
 
@@ -79,6 +82,8 @@ export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=true
 ```
 
 For production containers and Kubernetes, prefer a mounted, verified model directory over runtime downloads.
+
+For the legacy English model, provision with `MODEL_PROFILE=BGE_SMALL_EN`, set `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN`, and mount its matching bundle. That profile retains CLS pooling, a 512-token limit and the English query prefix. Rebuild the semantic index and discard cached vectors when changing profiles.
 
 ## Docker Compose example
 

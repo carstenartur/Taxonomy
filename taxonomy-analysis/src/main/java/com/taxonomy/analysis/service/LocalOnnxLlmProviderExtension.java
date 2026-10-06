@@ -12,12 +12,12 @@ public class LocalOnnxLlmProviderExtension implements LlmProviderExtension {
 
     private static final LlmProviderDescriptor DESCRIPTOR = new LlmProviderDescriptor(
             "LOCAL_ONNX",
-            "Local (bge-small-en-v1.5)",
+            "Local (ONNX embeddings)",
             false,
             false,
             false,
             true,
-            List.of("embedding.enabled", "embedding.model.dir", "embedding.model.name"));
+            List.of("embedding.enabled", "embedding.model.dir", "embedding.model.name", "embedding.model.profile"));
 
     @Override
     public LlmProviderDescriptor descriptor() {

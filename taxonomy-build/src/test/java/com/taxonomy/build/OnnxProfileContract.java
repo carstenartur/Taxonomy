@@ -14,7 +14,7 @@ import java.util.List;
 /** Offline build contract; this checks test wiring, not model inference. */
 final class OnnxProfileContract {
     private static final String PROFILE = "/project/profiles/profile[id='onnx']/build/plugins/plugin";
-    private static final String MODEL_PATH = "${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5";
+    private static final String MODEL_PATH = "${maven.multiModuleProjectDirectory}/models/multilingual-minilm";
 
     private OnnxProfileContract() { }
 

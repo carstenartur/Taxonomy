@@ -146,12 +146,12 @@ jobs:
       - name: Restore pinned embedding model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: models/bge-small-en-v1.5
-          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+          path: models/multilingual-minilm
+          key: ${{ runner.os }}-taxonomy-multilingual-minilm-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
       - name: Run the canonical Maven verification suite
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
           FRONTEND_API_BASE_REF: ${{ github.event.pull_request.base.sha }}
           VERSION_STATE_MODE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'development' }}

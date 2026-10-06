@@ -144,9 +144,13 @@ local model must already be available when downloads are disabled, for example:
 
 ```bash
 LLM_PROVIDER=LOCAL_ONNX
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ENABLED=true
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 ```
+
+Provision and verify the mounted bundle using the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md). Selecting `LOCAL_ONNX` alone does not enable embeddings.
 
 These settings alone do not prove a network-isolated installation. Inventory
 identity services, remotes, telemetry, downloads and other enabled integrations;

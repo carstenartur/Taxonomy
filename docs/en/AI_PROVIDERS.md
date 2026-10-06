@@ -38,7 +38,7 @@ The `LlmService` is the central component for AI analysis. It supports eight run
 | **Llama** | llama3.1-70b | `LLAMA_API_KEY` | Yes |
 | **Mistral** | mistral-small-latest | `MISTRAL_API_KEY` | Yes |
 | **CUSTOM_OPENAI** | operator-defined | `CUSTOM_LLM_URL`, `CUSTOM_LLM_MODEL`, optionally `CUSTOM_LLM_API_KEY` | No |
-| **LOCAL_ONNX** | bge-small-en-v1.5 | local embedding settings | No |
+| **LOCAL_ONNX** | paraphrase-multilingual-MiniLM-L12-v2 | local embedding settings | No |
 
 `CUSTOM_OPENAI` is a generative LLM integration for OpenAI-compatible Chat Completions servers. `LOCAL_ONNX` is different: it provides local embedding-based similarity scoring and does not generate textual LLM responses.
 Embedding inference is disabled by default. To run `LOCAL_ONNX`, set
@@ -47,6 +47,8 @@ readable pre-downloaded model directory or explicitly allow runtime download.
 The automatic node/relation vector-indexing startup path requires both the
 selected `LOCAL_ONNX` provider and enabled embeddings. It does not replace
 the need for a verified recovery plan for other Lucene indexes.
+
+The default embedding profile is `MULTILINGUAL_MINILM_L12`: 384 dimensions, normalized mean pooling, at most 128 tokens and no query or document prefix. Set `TAXONOMY_EMBEDDING_MODEL_PROFILE` to select the matching runtime contract and follow the [pinned provisioning guide](../testing/multilingual-model-provisioning.md). `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false` remains the default. The explicit `BGE_SMALL_EN` profile retains the legacy English model; switching profiles requires rebuilding the semantic index and discarding cached vectors.
 
 ---
 

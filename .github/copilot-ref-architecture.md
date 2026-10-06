@@ -20,10 +20,12 @@
 | `TaxonomyService` | Loads taxonomy from Excel workbook (Apache POI), builds in-memory tree |
 | `LlmService` | Calls Google Gemini (or other provider) for analysis; throws `LlmRateLimitException` on 429 |
 | `RelationProposalService` | Manages proposed cross-taxonomy relations (create, accept, reject) |
-| `LocalEmbeddingService` | Generates local KNN embeddings via DJL + ONNX (BAAI/bge-small-en-v1.5) |
+| `LocalEmbeddingService` | Generates local KNN embeddings via DJL + ONNX (sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) |
 | `DerivedMetadataService` | Recomputes graph metadata (hub/bridge/leaf/isolated roles, relation counts) |
 | `ArchitectureSummaryService` | Produces architecture summaries (top capabilities, gaps, hub nodes) |
 | `DslGitRepository` | JGit-backed version control for DSL documents stored in the database |
+
+Local embeddings are opt-in: `embedding.enabled=false` and `embedding.allow-download=false` by default. `MULTILINGUAL_MINILM_L12` uses normalized mean pooling, 384 dimensions, 128 tokens and no query/document prefix. The explicit `BGE_SMALL_EN` profile retains CLS pooling, 512 tokens and the English query prefix. Provision and runtime profiles must match; a profile change requires rebuilding the semantic index and discarding cached vectors. See the [pinned model provisioning guide](../docs/testing/multilingual-model-provisioning.md).
 
 ## Taxonomy Data Model
 
@@ -68,5 +70,5 @@ Total: approximately 2,500 nodes across all roots.
 - **Hibernate Search 8 + Lucene 9** — full-text and KNN search
 - **Thymeleaf** — server-side HTML rendering (single Bootstrap 5 page UI)
 - **JGit** — version control for DSL documents, stored in HSQLDB/external DB
-- **DJL + ONNX Runtime** — local embedding model (BAAI/bge-small-en-v1.5)
+- **DJL + ONNX Runtime** — local embedding model (sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)
 - **Google Gemini** — LLM analysis (free-tier, rate-limited)

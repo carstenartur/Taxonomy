@@ -194,7 +194,9 @@ The Taxonomy Analyzer can support procurement decisions:
 # Air-gapped operation (no external API calls)
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
-TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12
+TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/multilingual-minilm
 
 # Production profile with hardened defaults
 SPRING_PROFILES_ACTIVE=production,postgres
@@ -205,6 +207,8 @@ TAXONOMY_AUDIT_LOGGING=true
 # Force password change
 TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
 ```
+
+Provision and verify the mounted bundle using the [pinned model provisioning guide](../testing/multilingual-model-provisioning.md). Selecting `LOCAL_ONNX` alone does not enable embeddings.
 
 ### Data Sovereignty
 

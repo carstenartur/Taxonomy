@@ -118,13 +118,17 @@ Laufzeitvariablen:
 | `LLM_PROVIDER` | automatisch erkannt | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI` oder `LOCAL_ONNX` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, … | leer | Provider-Zugangsdaten |
 | `TAXONOMY_EMBEDDING_ENABLED` | `false` | Semantische/KNN-Suche aktivieren |
-| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | profilabhängig | Modell-Download zur Laufzeit erlauben |
+| `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `MULTILINGUAL_MINILM_L12` | Mehrsprachiger Modellvertrag; `BGE_SMALL_EN` wählt das bisherige englische Modell |
+| `TAXONOMY_EMBEDDING_MODEL_DIR` | leer | Eingehängtes vorab bereitgestelltes Modellverzeichnis, passend zum Profil |
+| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `false` | Laufzeitdownload bei aktivierten Embeddings ausdrücklich erlauben |
 | `TAXONOMY_DATASOURCE_URL` | In-Memory-HSQLDB | JDBC-URL; für persistente HSQLDB eine Datei-URL setzen |
 | `TAXONOMY_DDL_AUTO` | `create` | HSQLDB-Standard; persistentes HSQLDB verwendet `update`. PostgreSQL verwendet verwaltete Migrationen und `validate` |
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `false` | Einmalige Zustimmung zur geprüften Übernahme des früheren JGit-Schemas |
 | `JAVA_OPTS` | Dockerfile-Standard | JVM-Heap-, GC- und Stack-Einstellungen |
 
 Für den eingecheckten Quellcode-Build sind keine reinen Build-Zugangsdaten erforderlich.
+
+Eingehängte Modellpakete gemäß der [gepinnten Modellbereitstellung](../testing/multilingual-model-provisioning.md) vorbereiten. `LOCAL_ONNX` allein aktiviert keine Embeddings; ein Profilwechsel erfordert einen Neuaufbau des semantischen Index und das Verwerfen zwischengespeicherter Vektoren.
 
 Siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) für alle Anwendungseigenschaften und [Hibernate-basierter JGit-Speicher](JGIT_STORAGE_HIBERNATE.md) für den Storage-Vertrag.
 

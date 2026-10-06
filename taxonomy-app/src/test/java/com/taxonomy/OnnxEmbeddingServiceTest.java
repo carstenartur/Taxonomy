@@ -29,7 +29,7 @@ class OnnxEmbeddingServiceTest {
     @Test
     void embedReturnsVector384() throws Exception {
         float[] vec = embeddingService.embed("hello world");
-        assertThat(vec).hasSize(384); // BGE-small-en-v1.5 dimension
+        assertThat(vec).hasSize(384);
     }
 
     @Test
@@ -39,11 +39,11 @@ class OnnxEmbeddingServiceTest {
     }
 
     @Test
-    void queryAndDocumentVectorsDiffer() throws Exception {
-        // BGE uses a query prefix for asymmetric retrieval — vectors must differ
+    void symmetricProfileKeepsQueryAndDocumentInTheSameSpace() throws Exception {
+        // MiniLM uses the same inference path without an asymmetric instruction.
         float[] docVec = embeddingService.embed("test");
         float[] queryVec = embeddingService.embedQuery("test");
-        assertThat(queryVec).isNotEqualTo(docVec);
+        assertThat(queryVec).containsExactly(docVec);
     }
 
     @Test

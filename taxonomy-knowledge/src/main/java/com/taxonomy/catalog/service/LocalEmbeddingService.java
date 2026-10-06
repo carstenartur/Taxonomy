@@ -31,7 +31,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Local embedding service that scores taxonomy nodes against a business requirement using
- * the {@code BAAI/bge-small-en-v1.5} ONNX model loaded via DJL.
+ * an explicitly selected 384-dimensional ONNX model loaded via DJL. The default
+ * multilingual MiniLM contract supports German requirements against the English catalogue;
+ * {@code BGE_SMALL_EN} retains the English-only BGE inference contract.
  *
  * <h2>Architecture</h2>
  * <p>The DJL model is <em>lazily initialised</em> on first use — application startup is not
@@ -49,8 +51,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
  *       empty = auto-download from HuggingFace into {@code ~/.djl.ai/cache/taxonomy/}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — HuggingFace model URL or local path;
- *       default {@code https://huggingface.co/BAAI/bge-small-en-v1.5}.</li>
- *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code true}) — set to
+ *       empty = the selected profile's pinned upstream export.</li>
+ *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code false}) — set to
  *       {@code false} to prevent runtime model downloads. When disabled, a local
  *       model must be provided via {@code TAXONOMY_EMBEDDING_MODEL_DIR}.</li>
  * </ul>
@@ -77,7 +79,7 @@ public class LocalEmbeddingService {
     private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);
 
     public static final String DEFAULT_MODEL_URL =
-            "https://huggingface.co/BAAI/bge-small-en-v1.5";
+            "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
 
     private static final String HF_RESOLVE_PATTERN = "%s/resolve/main/%s";
 
@@ -97,13 +99,16 @@ public class LocalEmbeddingService {
     @Value("${embedding.model.dir:}")
     private String modelDir;
 
-    @Value("${embedding.model.name:https://huggingface.co/BAAI/bge-small-en-v1.5}")
+    @Value("${embedding.model.name:}")
     private String modelName;
 
-    @Value("${embedding.query.prefix:Represent this sentence for searching relevant passages: }")
+    @Value("${embedding.model.profile:MULTILINGUAL_MINILM_L12}")
+    private EmbeddingModelProfile modelProfile = EmbeddingModelProfile.MULTILINGUAL_MINILM_L12;
+
+    @Value("${embedding.query.prefix:${TAXONOMY_EMBEDDING_QUERY_PREFIX:#{null}}}")
     private String queryPrefix;
 
-    @Value("${embedding.allow-download:true}")
+    @Value("${embedding.allow-download:false}")
     private boolean allowDownload;
 
     private volatile ZooModel<String, float[]> model;
@@ -113,6 +118,8 @@ public class LocalEmbeddingService {
     private final Object modelLock = new Object();
     private final ReentrantReadWriteLock modelLifecycleLock = new ReentrantReadWriteLock();
     private final FrozenEmbeddingCache frozenCache = new FrozenEmbeddingCache();
+    // Bound native activation memory even when index loading and requests overlap.
+    private final java.util.concurrent.Semaphore inferenceSlots = new java.util.concurrent.Semaphore(2, true);
 
     @Value("${embedding.frozen.cache.max-vectors:8192}")
     private int frozenCacheMaxVectors = 8192;
@@ -132,7 +139,8 @@ public class LocalEmbeddingService {
     }
 
     public String effectiveModelUrl() {
-        return modelDir != null && !modelDir.isBlank() ? modelDir : modelName;
+        return modelDir != null && !modelDir.isBlank() ? modelDir
+                : modelName != null && !modelName.isBlank() ? modelName : modelProfile.modelUrl();
     }
 
     /** Returns the lazily loaded DJL model, downloading it on first use when allowed. */
@@ -213,10 +221,18 @@ public class LocalEmbeddingService {
         java.nio.file.Path modelPath = java.nio.file.Path.of(localPath);
         log.info("Loading DJL model from local path: {}", modelPath.toAbsolutePath());
         try {
-            EmbeddingModelIdentity before = EmbeddingModelIdentity.capture(modelPath, queryPrefix);
-            ZooModel<String, float[]> loaded = modelCriteria(modelPath).loadModel();
+            EmbeddingModelIdentity before = EmbeddingModelIdentity.capture(modelPath, effectiveQueryPrefix(), modelProfile);
+            for (EmbeddingModelProfile knownProfile : EmbeddingModelProfile.values()) {
+                if (knownProfile != modelProfile && knownProfile.modelSha256().equals(before.modelSha256())) {
+                    throw new IllegalStateException("Embedding weights belong to " + knownProfile.name()
+                            + " but the selected profile is " + modelProfile.name()
+                            + ". Set TAXONOMY_EMBEDDING_MODEL_PROFILE=" + knownProfile.name()
+                            + " or re-provision the selected profile's model bundle.");
+                }
+            }
+            ZooModel<String, float[]> loaded = modelCriteria(modelPath, modelProfile).loadModel();
             try {
-                if (!before.equals(EmbeddingModelIdentity.capture(modelPath, queryPrefix))) {
+                if (!before.equals(EmbeddingModelIdentity.capture(modelPath, effectiveQueryPrefix(), modelProfile))) {
                     throw new IllegalStateException("Embedding artifacts changed while the model was loading");
                 }
                 loadedModelIdentity = new EmbeddingModelIdentity(before.modelSha256(), before.tokenizerSha256(),
@@ -235,85 +251,137 @@ public class LocalEmbeddingService {
     }
 
     /**
-     * Shared by query, node and relation embeddings. BGE v1.5 was trained with
-     * normalized CLS pooling; DJL's default mean pooling produces a different
-     * vector space even though both results have the expected 384 dimensions.
-     * Keep these model semantics explicit rather than relying on optional files
-     * in a writable or read-only model directory.
+     * Shared by queries, index bridges and frozen workers. Model-specific pooling
+     * and trained token limits are explicit; selecting a file never changes them.
+     * Both profiles produce unit-normalized vectors of 384 dimensions.
      */
     static Criteria<String, float[]> modelCriteria(java.nio.file.Path modelPath) {
+        return modelCriteria(modelPath, EmbeddingModelProfile.MULTILINGUAL_MINILM_L12);
+    }
+
+    static Criteria<String, float[]> modelCriteria(java.nio.file.Path modelPath, EmbeddingModelProfile profile) {
         return Criteria.builder()
                 .setTypes(String.class, float[].class)
                 .optModelPath(modelPath)
                 .optModelName("model")
                 .optEngine("OnnxRuntime")
                 .optArgument("includeTokenTypes", true)
-                .optArgument("pooling", "cls")
+                .optArgument("pooling", profile.pooling())
+                .optArgument("maxLength", profile.maxTokens())
+                .optArgument("truncation", true)
                 .optArgument("normalize", true)
                 .optTranslatorFactory(new TextEmbeddingTranslatorFactory())
                 .build();
     }
 
     private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
-        String repoId = hfRepoUrl
-                .replaceFirst("https?://huggingface\\.co/", "")
+        String baseUrl = hfRepoUrl.endsWith("/")
+                ? hfRepoUrl.substring(0, hfRepoUrl.length() - 1) : hfRepoUrl;
+        boolean pinnedProfile = baseUrl.equals(modelProfile.modelUrl());
+        String repoId = baseUrl.replaceFirst("https?://huggingface\\.co/", "")
                 .replaceAll("[/\\\\]", "--");
         java.nio.file.Path cacheDir = java.nio.file.Path.of(
                 System.getProperty("user.home"), ".djl.ai", "cache", "taxonomy", repoId);
-        java.nio.file.Files.createDirectories(cacheDir);
+        if (pinnedProfile) {
+            cacheDir = cacheDir.resolve(modelProfile.name()).resolve(modelProfile.revision());
+        }
+        Map<String, String> pinnedDigests = pinnedProfile ? modelProfile.fileSha256() : Map.of();
+        List<String> localNames = pinnedProfile ? List.of("model.onnx", "tokenizer.json",
+                "tokenizer_config.json", "special_tokens_map.json", "config.json")
+                : List.of("model.onnx", "tokenizer.json");
 
-        String baseUrl = hfRepoUrl.endsWith("/")
-                ? hfRepoUrl.substring(0, hfRepoUrl.length() - 1)
-                : hfRepoUrl;
-
-        for (String relPath : HF_MODEL_FILES) {
-            String fileUrl = String.format(HF_RESOLVE_PATTERN, baseUrl, relPath);
-            String localName = relPath.contains("/")
-                    ? relPath.substring(relPath.lastIndexOf('/') + 1)
-                    : relPath;
-            java.nio.file.Path localFile = cacheDir.resolve(localName);
-
-            if (java.nio.file.Files.exists(localFile)
-                    && java.nio.file.Files.size(localFile) > 0) {
-                log.debug("Model file already cached: {}", localFile);
-                continue;
+        // Reject corrupt existing pinned files before any network request. Missing files may be
+        // fetched once, but a checksum failure must never trigger a blind retry or cache fallback.
+        boolean complete = true;
+        for (String name : localNames) {
+            java.nio.file.Path file = cacheDir.resolve(name);
+            if (java.nio.file.Files.exists(file) && pinnedProfile) {
+                verifyPinnedFile(file, pinnedDigests.get(name));
             }
+            if (!java.nio.file.Files.isRegularFile(file) || java.nio.file.Files.size(file) == 0) {
+                complete = false;
+            }
+        }
+        if (complete) return cacheDir.toAbsolutePath().toString();
 
-            log.info("Downloading {} → {}", fileUrl, localFile);
-            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(30))
-                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
-                    .build();
-            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(fileUrl))
-                    .timeout(java.time.Duration.ofMinutes(5))
-                    .GET()
-                    .build();
-            java.net.http.HttpResponse<java.io.InputStream> response;
-            try {
-                response = httpClient.send(
-                        request,
-                        java.net.http.HttpResponse.BodyHandlers.ofInputStream());
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new java.io.IOException("Download interrupted for " + fileUrl, exception);
+        java.nio.file.Files.createDirectories(cacheDir.getParent());
+        java.nio.file.Path temporary = java.nio.file.Files.createTempDirectory(
+                cacheDir.getParent(), cacheDir.getFileName() + ".download.");
+        try {
+            for (String name : localNames) {
+                java.nio.file.Path existing = cacheDir.resolve(name);
+                java.nio.file.Path target = temporary.resolve(name);
+                if (java.nio.file.Files.isRegularFile(existing) && java.nio.file.Files.size(existing) > 0) {
+                    java.nio.file.Files.copy(existing, target);
+                    continue;
+                }
+                String remotePath = name.equals("model.onnx")
+                        ? pinnedProfile ? modelProfile.modelFile() : HF_MODEL_FILES[0] : name;
+                String fileUrl = pinnedProfile
+                        ? baseUrl + "/resolve/" + modelProfile.revision() + "/" + remotePath
+                        : String.format(HF_RESOLVE_PATTERN, baseUrl, remotePath);
+                downloadModelFile(fileUrl, target);
             }
-            if (response.statusCode() != 200) {
-                modelLoadFailed = true;
-                throw new Exception("Failed to download " + fileUrl
-                        + ": HTTP " + response.statusCode());
+            if (pinnedProfile) {
+                for (String name : localNames) verifyPinnedFile(temporary.resolve(name), pinnedDigests.get(name));
             }
-            try (java.io.InputStream input = response.body()) {
-                java.nio.file.Files.copy(
-                        input,
-                        localFile,
+            java.nio.file.Files.createDirectories(cacheDir);
+            for (String name : localNames) {
+                java.nio.file.Files.move(temporary.resolve(name), cacheDir.resolve(name),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
-            log.info("Downloaded {} ({} bytes)", localName,
-                    java.nio.file.Files.size(localFile));
+            return cacheDir.toAbsolutePath().toString();
+        } finally {
+            try (var paths = java.nio.file.Files.walk(temporary)) {
+                for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    java.nio.file.Files.deleteIfExists(path);
+                }
+            }
         }
+    }
 
-        return cacheDir.toAbsolutePath().toString();
+    private static void verifyPinnedFile(java.nio.file.Path file, String expected) throws java.io.IOException {
+        if (!java.nio.file.Files.isRegularFile(file) || java.nio.file.Files.size(file) == 0) {
+            throw new java.io.IOException("Pinned embedding artifact " + file.getFileName()
+                    + " is missing or empty; remove the invalid cache and re-provision the pinned bundle.");
+        }
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            try (java.io.InputStream input = java.nio.file.Files.newInputStream(file)) {
+                byte[] buffer = new byte[65536];
+                int read;
+                while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            }
+            if (!java.util.HexFormat.of().formatHex(digest.digest()).equals(expected)) {
+                throw new java.io.IOException("Pinned embedding artifact " + file.getFileName()
+                        + " failed SHA-256 verification; remove the invalid cache and re-provision the pinned bundle.");
+            }
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private void downloadModelFile(String fileUrl, java.nio.file.Path target) throws Exception {
+        log.info("Downloading {} → {}", fileUrl, target);
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(30))
+                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(fileUrl)).timeout(java.time.Duration.ofMinutes(5)).GET().build();
+        java.net.http.HttpResponse<java.io.InputStream> response;
+        try {
+            response = httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new java.io.IOException("Download interrupted for " + fileUrl, exception);
+        }
+        try (java.io.InputStream input = response.body()) {
+            if (response.statusCode() != 200) {
+                modelLoadFailed = true;
+                throw new java.io.IOException("Failed to download " + fileUrl + ": HTTP " + response.statusCode());
+            }
+            java.nio.file.Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     private static final String SERVING_PROPERTIES_CONTENT =
@@ -373,6 +441,7 @@ public class LocalEmbeddingService {
     }
 
     public float[] embed(String text) throws Exception {
+        inferenceSlots.acquire();
         var readLock = modelLifecycleLock.readLock();
         readLock.lock();
         try {
@@ -384,15 +453,32 @@ public class LocalEmbeddingService {
             }
         } finally {
             readLock.unlock();
+            inferenceSlots.release();
         }
     }
 
     public float[] embedQuery(String text) throws Exception {
-        String prefixed = queryPrefix != null && !queryPrefix.isEmpty()
-                ? queryPrefix + text
-                : text;
-        return embed(prefixed);
+        return embed(effectiveQueryPrefix() + text);
     }
+
+    /** Document inference follows the same explicit contract in the index and frozen workers. */
+    public float[] embedDocument(String text) throws Exception {
+        return embed(modelProfile.documentPrefix() + text);
+    }
+
+    public EmbeddingModelProfile modelProfile() { return modelProfile; }
+
+    /** Safe configured profile label; custom paths and URLs are never exposed as a model identifier. */
+    public String configuredModelId() {
+        return modelProfile == EmbeddingModelProfile.BGE_SMALL_EN ? "bge-small-en-v1.5"
+                : modelProfile.modelUrl().substring("https://huggingface.co/".length());
+    }
+
+    public String effectiveQueryPrefix() {
+        return queryPrefix == null ? modelProfile.queryPrefix() : queryPrefix;
+    }
+
+    public String embeddingIndexKey() throws Exception { return embeddingIdentity().indexKey(); }
 
     /** Exact loaded artifact identity. Does not confuse a configured URL with the bytes used for inference. */
     public EmbeddingModelIdentity embeddingIdentity() throws Exception {
@@ -402,7 +488,7 @@ public class LocalEmbeddingService {
             getModel();
             if (loadedModelIdentity == null) throw new IllegalStateException("Loaded embedding model identity is unavailable");
             return new EmbeddingModelIdentity(loadedModelIdentity.modelSha256(), loadedModelIdentity.tokenizerSha256(),
-                    loadedModelIdentity.configurationSha256(), queryPrefix == null ? "" : queryPrefix,
+                    loadedModelIdentity.configurationSha256(), effectiveQueryPrefix(),
                     loadedModelIdentity.inferenceVersion());
         } finally {
             readLock.unlock();
@@ -476,6 +562,7 @@ public class LocalEmbeddingService {
 
         try {
             float[] queryVector = embedQuery(businessText);
+            String indexKey = embeddingIndexKey();
             List<String> nodeCodes = nodes.stream()
                     .map(TaxonomyNode::getCode)
                     .collect(Collectors.toList());
@@ -488,7 +575,9 @@ public class LocalEmbeddingService {
                     .where(factory -> factory.knn(nodes.size())
                             .field("embedding")
                             .matching(queryVector)
-                            .filter(factory.terms().field("code").matchingAny(nodeCodes)))
+                            .filter(factory.bool()
+                                    .must(factory.terms().field("code").matchingAny(nodeCodes))
+                                    .must(factory.match().field("embeddingModel").matching(indexKey))))
                     .fetchHits(nodes.size());
 
             for (List<?> hit : hits) {
@@ -515,6 +604,7 @@ public class LocalEmbeddingService {
         }
         try {
             float[] queryVector = embedQuery(queryText);
+            String indexKey = embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
                     // Lucene's approximate search uses k for graph exploration too.
@@ -522,7 +612,8 @@ public class LocalEmbeddingService {
                     // a nearer vector can otherwise remain undiscovered.
                     .where(factory -> factory.knn(semanticCandidateCount(topK))
                             .field("embedding")
-                            .matching(queryVector))
+                            .matching(queryVector)
+                            .filter(factory.match().field("embeddingModel").matching(indexKey)))
                     .fetchHits(topK);
             return hits.stream()
                     .map(this::toFlatDto)
@@ -567,12 +658,14 @@ public class LocalEmbeddingService {
                 return Collections.emptyList();
             }
 
-            float[] queryVector = embed(buildNodeText(node));
+            float[] queryVector = embedDocument(NodeEmbeddingText.buildEnrichedText(node));
+            String indexKey = embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
                     .where(factory -> factory.knn(topK + 1)
                             .field("embedding")
-                            .matching(queryVector))
+                            .matching(queryVector)
+                            .filter(factory.match().field("embeddingModel").matching(indexKey)))
                     .fetchHits(topK + 1);
 
             return hits.stream()
@@ -613,15 +706,6 @@ public class LocalEmbeddingService {
         } finally {
             writeLock.unlock();
         }
-    }
-
-    private String buildNodeText(TaxonomyNode node) {
-        StringBuilder text = new StringBuilder(
-                node.getNameEn() != null ? node.getNameEn() : "");
-        if (node.getDescriptionEn() != null && !node.getDescriptionEn().isBlank()) {
-            text.append(". ").append(node.getDescriptionEn());
-        }
-        return text.toString();
     }
 
     private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {

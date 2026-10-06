@@ -16,6 +16,7 @@ public final class RelationProviderBudgetContract {
             @Override public boolean isProviderConfigured(LlmProvider provider) { return true; }
             @Override public String getOpenAiCompatibleModel(LlmProvider provider) { return "fixture"; }
             @Override public String getOpenAiCompatibleUrl(LlmProvider provider) { return "http://127.0.0.1/fixture"; }
+            @Override public String getLocalModelId() { return "fixture-local-profile"; }
         };
         var budget = new AiPromptBudgetPolicy(new AiTargetCatalogService(config));
         for (LlmProvider provider : LlmProvider.values()) {

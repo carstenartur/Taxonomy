@@ -142,7 +142,7 @@ jobs:
           SOURCE_BRANCH: ${{ github.ref_name }}
           TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
-          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
 

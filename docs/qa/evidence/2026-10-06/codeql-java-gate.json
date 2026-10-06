@@ -1,0 +1,40 @@
+{
+  "sarifFiles": [
+    "codeql-java/java.sarif"
+  ],
+  "resultCount": 400,
+  "threshold": 7.0,
+  "baselineFile": ".github/codeql-sarif-baseline.json",
+  "acceptedBaseline": [
+    {
+      "file": "codeql-java/java.sarif",
+      "ruleId": "java/user-controlled-bypass",
+      "securitySeverity": 7.8,
+      "level": "warning",
+      "message": "Sensitive method may not be executed depending on a [this condition](1), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](3), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](4), which flows from [user-controlled value](2).",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "fddf021f421e71e8:1"
+    },
+    {
+      "file": "codeql-java/java.sarif",
+      "ruleId": "java/user-controlled-bypass",
+      "securitySeverity": 7.8,
+      "level": "warning",
+      "message": "Sensitive method may not be executed depending on a [this condition](1), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](3), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](4), which flows from [user-controlled value](2).",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "bc1e87a17bceed95:1"
+    },
+    {
+      "file": "codeql-java/java.sarif",
+      "ruleId": "java/user-controlled-bypass",
+      "securitySeverity": 7.8,
+      "level": "warning",
+      "message": "Sensitive method may not be executed depending on a [this condition](1), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](3), which flows from [user-controlled value](2).\nSensitive method may not be executed depending on a [this condition](4), which flows from [user-controlled value](2).",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "65e7cc55cc484ad9:1"
+    }
+  ],
+  "unusedBaseline": [],
+  "blocking": [],
+  "status": "PASS"
+}

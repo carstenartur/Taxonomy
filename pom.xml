@@ -118,7 +118,7 @@
         <node.version>v24.18.0</node.version>
         <releaseCheckCurrentState>development</releaseCheckCurrentState>
         <releaseCheckRequireClean>true</releaseCheckRequireClean>
-        <taxonomy.model.revision>5c38ec7c405ec4b44b94cc5a9bb96e735b38267a</taxonomy.model.revision>
+        <taxonomy.model.revision>e8f8c211226b894fcb81acc59f3b34ba3efd5f42</taxonomy.model.revision>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
         <taxonomy.ui.skip>true</taxonomy.ui.skip>
         <taxonomy.quality.skip>true</taxonomy.quality.skip>

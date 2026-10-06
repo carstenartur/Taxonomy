@@ -3,6 +3,7 @@ package com.taxonomy.composition.analysis.artemis;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.EmbeddingModelProfile;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
 import jakarta.persistence.EntityManagerFactory;
@@ -40,6 +41,8 @@ public final class WorkerRuntimeFootprintProbe {
                 "--taxonomy.analysis.worker.shards=" + shards, "--taxonomy.analysis.worker.consumers-per-shard=1",
                 "--taxonomy.analysis.artemis.broker-url=" + broker, "--taxonomy.analysis.artemis.require-tls=false",
                 "--embedding.enabled=" + nativeEnabled, "--embedding.allow-download=false",
+                "--embedding.model.profile=" + EmbeddingModelProfile.MULTILINGUAL_MINILM_L12.name(),
+                "--embedding.query.prefix=",
                 "--embedding.model.dir=" + model, "--llm.provider=LOCAL_ONNX", "--llm.mock=false",
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-filesystem",
                 "--spring.jpa.properties.hibernate.search.backend.directory.root=" + indexes,
@@ -61,6 +64,9 @@ public final class WorkerRuntimeFootprintProbe {
             require(readiness.statusCode() == 200, "HTTP readiness failed: " + readiness.statusCode());
 
             var embeddings = app.getBean(LocalEmbeddingService.class);
+            require(embeddings.modelProfile() == EmbeddingModelProfile.MULTILINGUAL_MINILM_L12,
+                    "Measured embedding profile must be pinned multilingual MiniLM");
+            require(embeddings.effectiveQueryPrefix().isEmpty(), "Multilingual MiniLM must not add a query instruction");
             var indexInitializer = app.getBean(LocalOnnxIndexInitializer.class);
             int nativeVectorDimensions = 0;
             if (nativeEnabled) {
@@ -128,6 +134,8 @@ public final class WorkerRuntimeFootprintProbe {
             result.put("indexDirectoryBytes", bytes(indexes));
             result.put("globalEmbeddingIndexState", indexInitializer.getState().name());
             result.put("nativeModelLoaded", modelLoaded); result.put("nativeInferenceDimensions", nativeVectorDimensions);
+            result.put("modelProfile", embeddings.modelProfile().name());
+            result.put("configuredModelId", embeddings.configuredModelId());
             result.put("cachedCandidateVectors", embeddings.frozenCacheStatistics().vectors());
             if (nativeEnabled) result.put("modelIdentity", embeddings.embeddingIdentity());
             Path status = Path.of("/proc/self/status"), maps = Path.of("/proc/self/maps");

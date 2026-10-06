@@ -20,16 +20,15 @@ class FrozenLocalOnnxModelTest {
         ReflectionTestUtils.setField(service, "allowDownload", false);
         String configured = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
         Path directory = configured == null || configured.isBlank()
-                ? Path.of("..", "models", "bge-small-en-v1.5") : Path.of(configured);
+                ? Path.of("..", "models", "multilingual-minilm") : Path.of(configured);
         ReflectionTestUtils.setField(service, "modelDir", directory.toAbsolutePath().normalize().toString());
-        ReflectionTestUtils.setField(service, "queryPrefix", LocalEmbeddingService.DEFAULT_QUERY_PREFIX);
         try {
             var identity = service.embeddingIdentity();
             String rootText = "Capability packages.\nSupport coordinated medical communications.";
             String childText = "Secure voice communications.\nOutgoing: supports Medical coordination.";
             var snapshot = FrozenLocalEmbeddingTest.snapshot(FrozenLocalEmbeddingTest.SOURCE, "CP", identity, rootText, childText);
-            var expected = FrozenLocalEmbeddingTest.lucene(Map.of("CP", service.embed(rootText),
-                    "shared-node", service.embed(childText)), List.of("CP", "shared-node"), service.embedQuery("requirement"));
+            var expected = FrozenLocalEmbeddingTest.lucene(Map.of("CP", service.embedDocument(rootText),
+                    "shared-node", service.embedDocument(childText)), List.of("CP", "shared-node"), service.embedQuery("requirement"));
             try (var ignored = FrozenLocalEmbeddingTest.bind(snapshot)) {
                 service.validateFrozenModel();
                 assertThat(service.scoreFrozenNodes("requirement", com.taxonomy.catalog.snapshot.FrozenCatalogueContext.current().allNodes()))

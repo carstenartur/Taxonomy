@@ -107,6 +107,23 @@ class OnnxReferenceEvaluationTest {
         }
     }
 
+    @Test void aGermanSemanticMissFailsTheMultilingualAcceptanceAndRemainsVisible() throws Exception {
+        try (var fixture = new RetrievalFixture(temporary.resolve("german-miss"))) {
+            fixture.semanticMissLanguage = "de";
+            assertThrows(AssertionError.class, fixture::verify);
+            assertEquals("MEASURED_WITH_REFERENCE_MISSES", fixture.report().path("status").stringValue());
+            assertEquals(12, fixture.report().path("attemptedSearchCalls").asInt());
+        }
+    }
+
+    @Test void anotherRuntimeProfileCannotBeReportedAsMultilingualEvidence() throws Exception {
+        try (var fixture = new RetrievalFixture(temporary.resolve("wrong-profile"))) {
+            fixture.modelProfile = "BGE_SMALL_EN";
+            assertThrows(IOException.class, fixture::verify);
+            assertEquals("ERROR", fixture.report().path("status").stringValue());
+        }
+    }
+
     @Test void levelChangesCannotLeaveTheEvaluationSuccessful() throws Exception {
         assertCatalogueMutationRejected("level", roots -> leaf(roots).put("level", 7));
     }
@@ -178,6 +195,8 @@ class OnnxReferenceEvaluationTest {
         private final AtomicInteger catalogueRequests = new AtomicInteger();
         private final AtomicInteger statusRequests = new AtomicInteger();
         private String firstState = "READY";
+        private String semanticMissLanguage;
+        private String modelProfile = "MULTILINGUAL_MINILM_L12";
         private Consumer<ArrayNode> secondCatalogue = roots -> { };
 
         private RetrievalFixture(Path directory) throws IOException {
@@ -228,6 +247,7 @@ class OnnxReferenceEvaluationTest {
                     response = roots;
                 } else if ("/api/embedding/status".equals(path)) {
                     response = JSON.createObjectNode().put("enabled", true).put("available", true)
+                            .put("modelProfile", modelProfile)
                             .put("modelAvailable", true).put("semanticReady", true)
                             .put("indexState", statusRequests.incrementAndGet() == 1 ? firstState : "READY")
                             .put("indexedNodesAtReadiness", 5);
@@ -238,8 +258,12 @@ class OnnxReferenceEvaluationTest {
                             .findFirst().orElseThrow();
                     var test = cases.stream().filter(candidate -> candidate.query().equals(query))
                             .findFirst().orElseThrow();
-                    response = JSON.createArrayNode().add(JSON.createObjectNode()
-                            .put("code", test.required().iterator().next()));
+                    response = "/api/search/semantic".equals(path)
+                            && test.language().equals(semanticMissLanguage)
+                            ? JSON.createArrayNode().add(JSON.createObjectNode().put("code",
+                                    test.required().contains("UA-1604") ? "UA-1583" : "UA-1604"))
+                            : JSON.createArrayNode().add(JSON.createObjectNode()
+                                    .put("code", test.required().iterator().next()));
                 } else {
                     exchange.sendResponseHeaders(404, -1);
                     return;

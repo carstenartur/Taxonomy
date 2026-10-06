@@ -2239,6 +2239,7 @@
     var preferencesLoaded = false;
     var requestInFlight = false;
     var statusTimer = null;
+    var preferenceEditRevisions = new WeakMap();
 
     function requestJson(url, options) {
         return fetch(url, options).then(function (response) {
@@ -2310,8 +2311,31 @@
         refreshPreferenceControls();
     }
 
-    function populateForm(data) {
+    function capturePreferenceInputs() {
+        var inputs = new Map();
         document.querySelectorAll('[data-pref-key]').forEach(function (el) {
+            inputs.set(el, {
+                value: el.type === 'checkbox' ? el.checked : el.value,
+                revision: preferenceEditRevisions.get(el) || 0
+            });
+        });
+        return inputs;
+    }
+
+    function preferenceInputChanged(event) {
+        var el = event.currentTarget || event.target;
+        preferenceEditRevisions.set(el, (preferenceEditRevisions.get(el) || 0) + 1);
+        refreshPreferenceControls();
+    }
+
+    function populateForm(data, requestInputs) {
+        document.querySelectorAll('[data-pref-key]').forEach(function (el) {
+            // A response acknowledges the request's server state, not edits
+            // typed while it was pending. Keep those edits dirty and saveable.
+            var localValue = el.type === 'checkbox' ? el.checked : el.value;
+            var captured = requestInputs && requestInputs.get(el);
+            if (requestInputs && (!captured || captured.value !== localValue
+                    || captured.revision !== (preferenceEditRevisions.get(el) || 0))) return;
             var key = el.getAttribute('data-pref-key');
             var val = data[key];
             if (val === undefined || val === null) return;
@@ -2349,12 +2373,13 @@
 
     function loadPreferences() {
         if (requestInFlight) return;
+        var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
         requestJson('/api/preferences')
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
-                populateForm(currentPrefs);
+                populateForm(currentPrefs, requestInputs);
             })
             .catch(function (error) {
                 preferencesLoaded = false;
@@ -2386,6 +2411,7 @@
             return;
         }
 
+        var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
         requestJson('/api/preferences', {
             method: 'PUT',
@@ -2395,7 +2421,7 @@
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
-                populateForm(currentPrefs);
+                populateForm(currentPrefs, requestInputs);
                 showPrefStatus(t('preferences.saved'), 'success');
             })
             .catch(function (error) {
@@ -2408,12 +2434,13 @@
 
     function resetPreferences() {
         if (!window.confirm(t('preferences.reset.confirm'))) return;
+        var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
         requestJson('/api/preferences/reset', { method: 'POST' })
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
-                populateForm(currentPrefs);
+                populateForm(currentPrefs, requestInputs);
                 showPrefStatus(t('preferences.reset'), 'info');
             })
             .catch(function (error) {
@@ -2475,8 +2502,8 @@
             if (histSect.open) loadHistory();
         });
         document.querySelectorAll('[data-pref-key]').forEach(function (control) {
-            control.addEventListener('input', refreshPreferenceControls);
-            control.addEventListener('change', refreshPreferenceControls);
+            control.addEventListener('input', preferenceInputChanged);
+            control.addEventListener('change', preferenceInputChanged);
         });
         refreshPreferenceControls();
 
