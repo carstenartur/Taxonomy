@@ -192,6 +192,32 @@
     </dependencyManagement>
 
     <build>
+        <!-- Share test JVM settings without activating Failsafe in the parent
+             or in modules that do not own integration tests. -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration><systemPropertyVariables>
+                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                    </systemPropertyVariables></configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration><systemPropertyVariables>
+                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                    </systemPropertyVariables></configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <!-- Surefire contracts in taxonomy-app already execute Node. Provision it
                  once before any reactor test, including runs with the UI matrix disabled. -->
@@ -213,26 +239,6 @@
                         <skipTests>false</skipTests>
                     </configuration>
                 </execution></executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration><systemPropertyVariables>
-                    <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
-                    <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
-                    <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
-                    <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
-                </systemPropertyVariables></configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <configuration><systemPropertyVariables>
-                    <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
-                    <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
-                    <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
-                    <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
-                </systemPropertyVariables></configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -418,7 +424,7 @@
                 <generateScreenshots>true</generateScreenshots>
                 <scenario.screenshot.directory>${project.build.directory}/scenario-acceptance/screenshots</scenario.screenshot.directory>
             </properties>
-            <build><plugins>
+            <build><pluginManagement><plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
@@ -447,7 +453,7 @@
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
-            </plugins></build>
+            </plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>ci</id>
