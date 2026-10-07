@@ -24,6 +24,43 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class LocalOnnxIndexInitializerTest {
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void detailUsesRawStateWithoutReadingEffectiveState() {
+        var rawState = (java.util.concurrent.atomic.AtomicReference<LocalOnnxIndexInitializer.State>)
+                org.springframework.test.util.ReflectionTestUtils.getField(initializer, "state");
+        rawState.set(LocalOnnxIndexInitializer.State.INDEXING_RELATIONS);
+        var observed = org.mockito.Mockito.spy(initializer);
+
+        assertThat(observed.getDetail()).doesNotContain("VECTOR_WRITE_FAILED");
+        verify(observed, never()).getState();
+    }
+
+    @Test
+    void initializationFailureDoesNotExposePrivateModelDetailsInStatusOrLogs() throws Exception {
+        when(embeddingService.isEnabled()).thenReturn(true);
+        when(initializationState.getState()).thenReturn(AppInitializationStateService.State.READY);
+        org.mockito.Mockito.doThrow(new IllegalStateException("private-model-directory",
+                new java.io.IOException("private-downstream-response")))
+                .when(embeddingService).embed(anyString());
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(LocalOnnxIndexInitializer.class);
+        var events = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        events.start();
+        logger.addAppender(events);
+        try {
+            initializer.initializeLocalOnnxIndex();
+            assertThat(initializer.getState()).isEqualTo(LocalOnnxIndexInitializer.State.FAILED);
+            assertThat(initializer.getDetail()).doesNotContain("private-");
+            assertThat(events.list).isNotEmpty().allSatisfy(event -> {
+                assertThat(event.getFormattedMessage()).doesNotContain("private-");
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+        } finally {
+            logger.detachAppender(events);
+            events.stop();
+        }
+    }
+
     @Mock private LocalEmbeddingService embeddingService;
     @Mock private AppInitializationStateService initializationState;
     @Mock private LocalEmbeddingIndexRebuilder indexRebuilder;
@@ -33,7 +70,7 @@ class LocalOnnxIndexInitializerTest {
     @BeforeEach
     void setUp() {
         initializer = new LocalOnnxIndexInitializer(
-                embeddingService, initializationState, indexRebuilder, "LOCAL_ONNX");
+                embeddingService, initializationState, indexRebuilder, new EmbeddingIndexHealth(), "LOCAL_ONNX");
     }
 
     @Test
@@ -52,7 +89,7 @@ class LocalOnnxIndexInitializerTest {
     @Test
     void nonLocalOnnxProviderDoesNotStartIndexing() {
         initializer = new LocalOnnxIndexInitializer(
-                embeddingService, initializationState, indexRebuilder, "GEMINI");
+                embeddingService, initializationState, indexRebuilder, new EmbeddingIndexHealth(), "GEMINI");
         when(embeddingService.isEnabled()).thenReturn(true);
 
         initializer.initializeLocalOnnxIndex();
@@ -95,7 +132,7 @@ class LocalOnnxIndexInitializerTest {
         assertThat(initializer.getState())
                 .isEqualTo(LocalOnnxIndexInitializer.State.PARTIAL);
         assertThat(initializer.isNodeSearchReady()).isTrue();
-        assertThat(initializer.getDetail()).contains("relation failure");
+        assertThat(initializer.getDetail()).contains("RELATION_INDEX_FAILED").doesNotContain("relation failure");
     }
 
     @Test
@@ -111,7 +148,7 @@ class LocalOnnxIndexInitializerTest {
                 .isEqualTo(LocalOnnxIndexInitializer.State.FAILED);
         assertThat(initializer.isNodeSearchReady()).isFalse();
         assertThat(initializer.getDetail())
-                .contains("without searchable taxonomy documents");
+                .contains("INDEXING_NODES", "EMBEDDING_INDEX_FAILED");
         verify(indexRebuilder, never()).rebuildRelationIndex();
     }
 
@@ -130,7 +167,7 @@ class LocalOnnxIndexInitializerTest {
                 .isEqualTo(LocalOnnxIndexInitializer.State.FAILED);
         assertThat(initializer.isNodeSearchReady()).isFalse();
         assertThat(initializer.getDetail())
-                .contains("without a searchable embedding vector");
+                .contains("INDEXING_NODES", "EMBEDDING_INDEX_FAILED");
         verify(indexRebuilder, never()).rebuildRelationIndex();
     }
 

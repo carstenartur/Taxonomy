@@ -58,4 +58,30 @@ public class LocalEmbeddingIndexRebuilder {
                 .batchSizeToLoadObjects(batchSize)
                 .startAndWait();
     }
+
+    /** A successful mass-indexer run can still contain documents whose embedding bridge failed. */
+    public void verifyNodeEmbeddingCoverage(String modelKey) {
+        verifyEmbeddingCoverage(TaxonomyNode.class, "select count(n) from TaxonomyNode n", modelKey);
+    }
+
+    public void verifyRelationEmbeddingCoverage(String modelKey) {
+        verifyEmbeddingCoverage(TaxonomyRelation.class, "select count(r) from TaxonomyRelation r", modelKey);
+    }
+
+    private void verifyEmbeddingCoverage(Class<?> entityType, String countQuery, String modelKey) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        if (modelKey == null || modelKey.isBlank()) {
+            throw new IllegalArgumentException("Embedding coverage requires the active model identity");
+        }
+        try (var manager = entityManagerFactory.createEntityManager()) {
+            long expected = manager.createQuery(countQuery, Long.class).getSingleResult();
+            long searchable = Search.session(manager).search(entityType)
+                    .where(f -> f.match().field("embeddingModel").matching(modelKey))
+                    .fetchTotalHitCount();
+            if (searchable != expected) {
+                throw new IllegalStateException("Embedding index coverage is incomplete for "
+                        + entityType.getSimpleName() + ": expected=" + expected + ", searchable=" + searchable);
+            }
+        }
+    }
 }

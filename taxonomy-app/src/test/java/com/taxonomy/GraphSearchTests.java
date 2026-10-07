@@ -22,11 +22,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Tests for the graph-semantic search endpoint introduced as part of the
  * Hibernate Search migration.
  *
- * <p>The DJL model is not loaded in these tests. All direct service calls use
- * the explicit shared workspace context and gracefully degrade to empty results
- * when the model is unavailable.</p>
+ * <p>Embeddings are explicitly disabled in this fixture. Unavailable graph
+ * searches fail explicitly; zero requested results remain a valid empty result.</p>
  */
-@SpringBootTest
+@SpringBootTest(properties = "embedding.enabled=false")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class GraphSearchTests {
@@ -41,16 +40,17 @@ class GraphSearchTests {
     private LocalEmbeddingService embeddingService;
 
     @Test
-    void graphSearchReturnsNonNullResultWhenModelNotLoaded() {
-        GraphSearchResult result = graphSearchService.graphSearch(
-                "satellite communications", 10, WorkspaceContext.SHARED);
-        assertThat(result).isNotNull();
+    void graphSearchDoesNotFabricateCompletedResultsWhenModelIsUnavailable() {
+        assertThat(embeddingService.isAvailable()).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> graphSearchService.graphSearch(
+                "satellite communications", 10, WorkspaceContext.SHARED))
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     @Test
-    void graphSearchResultHasAllRequiredFields() {
+    void zeroRequestedResultsRetainAllRequiredGraphFields() {
         GraphSearchResult result = graphSearchService.graphSearch(
-                "business process management", 10, WorkspaceContext.SHARED);
+                "business process management", 0, WorkspaceContext.SHARED);
         assertThat(result.getMatchedNodes()).isNotNull();
         assertThat(result.getRelationCountByRoot()).isNotNull();
         assertThat(result.getTopRelationTypes()).isNotNull();
@@ -58,23 +58,17 @@ class GraphSearchTests {
     }
 
     @Test
-    void graphSearchWithEmbeddingUnavailableReturnsSummaryMessage() {
-        if (!embeddingService.isAvailable()) {
-            GraphSearchResult result = graphSearchService.graphSearch(
-                    "anything", 5, WorkspaceContext.SHARED);
-            assertThat(result.getSummary()).isNotBlank();
-            assertThat(result.getMatchedNodes()).isEmpty();
-        }
+    void zeroRequestedResultsExplainThatNoSearchWasRequested() {
+        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, WorkspaceContext.SHARED);
+        assertThat(result.getSummary()).isEqualTo("No graph search results were requested.");
+        assertThat(result.getMatchedNodes()).isEmpty();
     }
 
     @Test
-    void graphSearchWithEmbeddingUnavailableReturnsEmptyNodes() {
-        if (!embeddingService.isAvailable()) {
-            GraphSearchResult result = graphSearchService.graphSearch(
-                    "network services", 20, WorkspaceContext.SHARED);
-            assertThat(result.getMatchedNodes()).isEmpty();
-            assertThat(result.getRelationCountByRoot()).isEmpty();
-        }
+    void negativeRequestedResultsRemainEmptyWithoutInference() {
+        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, WorkspaceContext.SHARED);
+        assertThat(result.getMatchedNodes()).isEmpty();
+        assertThat(result.getRelationCountByRoot()).isEmpty();
     }
 
     @Test
@@ -84,31 +78,30 @@ class GraphSearchTests {
     }
 
     @Test
-    void graphSearchEndpointReturnsJsonForValidQuery() throws Exception {
+    void graphSearchEndpointReportsUnavailableModelForValidQuery() throws Exception {
         mockMvc.perform(get("/api/search/graph").param("q", "communications")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.matchedNodes").isArray())
-                .andExpect(jsonPath("$.relationCountByRoot").isMap())
-                .andExpect(jsonPath("$.topRelationTypes").isMap())
-                .andExpect(jsonPath("$.summary").isString());
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").isString())
+                .andExpect(jsonPath("$.matchedNodes").doesNotExist());
     }
 
     @Test
-    void graphSearchEndpointReturnsJsonWithDefaultMaxResults() throws Exception {
+    void graphSearchEndpointFailsClosedWithDefaultMaxResults() throws Exception {
         mockMvc.perform(get("/api/search/graph").param("q", "satellite")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.summary").isString());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").isString());
     }
 
     @Test
     void graphSearchEndpointRespectsMaxResultsParameter() throws Exception {
         mockMvc.perform(get("/api/search/graph").param("q", "BP").param("maxResults", "5")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.matchedNodes").isArray());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.matchedNodes").doesNotExist());
     }
 
     @Test

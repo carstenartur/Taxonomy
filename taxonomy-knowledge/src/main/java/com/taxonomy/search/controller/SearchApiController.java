@@ -3,6 +3,7 @@ package com.taxonomy.search.controller;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -134,15 +136,17 @@ public class SearchApiController {
     }
 
     private WorkspaceContext currentWorkspaceContext() {
-        String username = workspaceResolver.resolveCurrentUsername();
         try {
+            String username = workspaceResolver.resolveCurrentUsername();
             repositoryStateService.ensureWorkspaceState(username);
             WorkspaceContext context = workspaceResolver.resolveCurrentContext();
-            return context != null ? context : WorkspaceContext.SHARED;
+            if (context == null) throw new SearchUnavailableException();
+            return context;
+        } catch (AccessDeniedException denied) {
+            throw denied;
         } catch (Exception error) {
-            log.warn("Falling back to shared search context for user '{}': {}",
-                    username, error.toString());
-            return WorkspaceContext.SHARED;
+            log.warn("Search workspace resolution failed (code=SEARCH_CONTEXT_UNAVAILABLE)");
+            throw new SearchUnavailableException();
         }
     }
 }

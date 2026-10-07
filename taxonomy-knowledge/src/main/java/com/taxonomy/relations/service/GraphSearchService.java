@@ -2,6 +2,7 @@ package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.error.SearchUnavailableException;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
@@ -24,7 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/** Graph-semantic search with explicit workspace relation visibility. */
+/** Graph-semantic search with explicit repository and workspace relation visibility. */
 @Service
 public class GraphSearchService {
 
@@ -56,8 +57,7 @@ public class GraphSearchService {
                     Collections.emptyMap(), "No graph search results were requested.");
         }
         if (!embeddingService.isAvailable()) {
-            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
-                    Collections.emptyMap(), "Semantic search is not available (embedding model not loaded).");
+            throw new SearchUnavailableException();
         }
 
         int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
@@ -78,15 +78,16 @@ public class GraphSearchService {
                     .collect(Collectors.toList());
 
             List<TaxonomyRelation> relationHits = session.search(TaxonomyRelation.class)
-                    .where(f -> f.bool()
-                            .must(context.workspaceId() != null
-                                    ? f.bool()
-                                            .should(f.match().field("workspaceId")
-                                                    .matching(context.workspaceId()))
-                                            .should(f.not(f.exists().field("workspaceId")))
-                                    : f.not(f.exists().field("workspaceId")))
-                            .must(f.knn(relationLimit).field("embedding").matching(queryVector)
-                            .filter(f.match().field("embeddingModel").matching(indexKey))))
+                    .where(f -> f.knn(relationLimit).field("embedding").matching(queryVector)
+                            .filter(f.bool()
+                                    .must(f.match().field("embeddingModel").matching(indexKey))
+                                    .must(f.match().field("repositoryId").matching(context.repositoryId()))
+                                    .must(context.workspaceId() != null
+                                            ? f.bool()
+                                                    .should(f.match().field("workspaceId")
+                                                            .matching(context.workspaceId()))
+                                                    .should(f.not(f.exists().field("workspaceId")))
+                                            : f.not(f.exists().field("workspaceId")))))
                     .fetchHits(relationLimit);
 
             Map<String, Long> relationCountByRoot = relationHits.stream()
@@ -106,9 +107,9 @@ public class GraphSearchService {
                     nodeHits.size(), relationHits.size());
             return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);
         } catch (Exception | LinkageError error) {
-            log.error("Graph search failed", error);
-            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
-                    Collections.emptyMap(), "Graph search failed");
+            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.error("Graph search failed (code=GRAPH_SEARCH_FAILED)");
+            throw new SearchUnavailableException();
         }
     }
 

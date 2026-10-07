@@ -39,6 +39,9 @@ class EmbeddingModelKnnIsolationTest {
     private static final String WRONG_NODE = "fixture-wrong";
     private static final String LEGACY_NODE = "fixture-untagged";
     private static final String QUERY_NODE = "fixture-query-source";
+    private static final String CURRENT_REPOSITORY = "fixture-model-isolation-repository";
+    private static final WorkspaceContext CENTRAL_CONTEXT =
+            new WorkspaceContext("fixture-user", null, "draft", CURRENT_REPOSITORY);
 
     private final FixtureEmbeddingService embeddings = new FixtureEmbeddingService();
     private GenericApplicationContext context;
@@ -90,6 +93,19 @@ class EmbeddingModelKnnIsolationTest {
         entityManager.persist(relation(current, query, RelationType.SUPPORTS));
         entityManager.persist(relation(wrong, query, RelationType.REALIZES));
         entityManager.persist(relation(legacy, query, RelationType.DEPENDS_ON));
+        for (var type : List.of(RelationType.SUPPORTS, RelationType.REALIZES, RelationType.DEPENDS_ON)) {
+            var foreign = relation(wrong, query, type);
+            foreign.setRepositoryId("fixture-foreign-repository");
+            foreign.setDescription("foreign relation with closer vector");
+            entityManager.persist(foreign);
+        }
+        var selectedWorkspace = relation(current, query, RelationType.REALIZES);
+        selectedWorkspace.setWorkspaceId("fixture-selected-workspace");
+        entityManager.persist(selectedWorkspace);
+        var otherWorkspace = relation(wrong, query, RelationType.DEPENDS_ON);
+        otherWorkspace.setWorkspaceId("fixture-other-workspace");
+        otherWorkspace.setDescription("foreign relation with closer vector");
+        entityManager.persist(otherWorkspace);
         entityManager.getTransaction().commit();
         embeddings.indexing = false;
         entityManager.getTransaction().begin();
@@ -124,7 +140,10 @@ class EmbeddingModelKnnIsolationTest {
                 .fetchHits(2)).extracting(TaxonomyNode::getCode)
                 .containsExactlyInAnyOrder(WRONG_NODE, LEGACY_NODE);
         assertThat(Search.session(entityManager).search(TaxonomyRelation.class)
-                .where(f -> f.knn(2).field("embedding").matching(vector(1, 0)))
+                .where(f -> f.knn(2).field("embedding").matching(vector(1, 0))
+                        .filter(f.bool()
+                                .must(f.match().field("repositoryId").matching(CURRENT_REPOSITORY))
+                                .must(f.not(f.exists().field("workspaceId")))))
                 .fetchHits(2)).extracting(TaxonomyRelation::getRelationType)
                 .containsExactlyInAnyOrder(RelationType.REALIZES, RelationType.DEPENDS_ON);
     }
@@ -149,15 +168,34 @@ class EmbeddingModelKnnIsolationTest {
 
     @Test
     void graphNodeSearchReturnsMatchingModelDespiteCloserIncompatibleVectors() {
-        assertThat(graphSearch.graphSearch("authored query", 1, WorkspaceContext.SHARED).getMatchedNodes())
+        assertThat(graphSearch.graphSearch("authored query", 1, CENTRAL_CONTEXT).getMatchedNodes())
                 .extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
     }
 
     @Test
     void graphRelationStatisticsExcludeCloserWrongModelAndUntaggedVectors() {
-        var result = graphSearch.graphSearch("authored query", 1, WorkspaceContext.SHARED);
+        var result = graphSearch.graphSearch("authored query", 1, CENTRAL_CONTEXT);
         assertThat(result.getRelationCountByRoot()).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 1L));
         assertThat(result.getTopRelationTypes()).containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L));
+    }
+
+    @Test
+    void repositoryAndWorkspaceRestrictionsApplyBeforeTheKnnCandidateBudget() {
+        var selected = new WorkspaceContext("fixture-user", "fixture-selected-workspace", "draft", CURRENT_REPOSITORY);
+        var result = graphSearch.graphSearch("authored query", 1, selected);
+
+        assertThat(result.getRelationCountByRoot()).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 2L));
+        assertThat(result.getTopRelationTypes())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L, "REALIZES", 1L));
+    }
+
+    @Test
+    void anEmptyRepositoryCannotReceiveAnotherRepositorysGraphStatistics() {
+        var empty = new WorkspaceContext("fixture-user", null, "draft", "fixture-empty-repository");
+        var result = graphSearch.graphSearch("authored query", 1, empty);
+
+        assertThat(result.getRelationCountByRoot()).isEmpty();
+        assertThat(result.getTopRelationTypes()).isEmpty();
     }
 
     private static TaxonomyNode node(String code, String name, String root) {
@@ -170,7 +208,7 @@ class EmbeddingModelKnnIsolationTest {
 
     private static TaxonomyRelation relation(TaxonomyNode source, TaxonomyNode target, RelationType type) {
         TaxonomyRelation relation = new TaxonomyRelation();
-        relation.setRepositoryId("fixture-model-isolation-repository");
+        relation.setRepositoryId(CURRENT_REPOSITORY);
         relation.setSourceNode(source);
         relation.setTargetNode(target);
         relation.setRelationType(type);
@@ -197,6 +235,10 @@ class EmbeddingModelKnnIsolationTest {
         @Override
         public float[] embedDocument(String text) {
             if (!indexing) return vector(1, 0);
+            if (text.contains("foreign relation")) {
+                documentKey = CURRENT_KEY;
+                return vector(1, 0);
+            }
             if (text.startsWith("Current profile")) {
                 documentKey = CURRENT_KEY;
                 return vector(0.8f, 0.6f);

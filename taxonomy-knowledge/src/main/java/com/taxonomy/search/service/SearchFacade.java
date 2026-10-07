@@ -11,6 +11,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** High-level search facade; graph relation visibility is explicitly workspace-scoped. */
+/** High-level search facade; graph relations are scoped to the repository and workspace. */
 @Service
 public class SearchFacade {
 
@@ -66,7 +67,10 @@ public class SearchFacade {
         if (resultLimit == 0) {
             return List.of();
         }
-        return embeddingService.semanticSearch(query, resultLimit);
+        requireSemanticSearchReady();
+        var results = embeddingService.semanticSearch(query, resultLimit);
+        requireSemanticSearchReady();
+        return results;
     }
 
     public List<TaxonomyNodeDto> hybridSearch(String query, int maxResults) {
@@ -74,7 +78,11 @@ public class SearchFacade {
         if (resultLimit == 0) {
             return List.of();
         }
-        return hybridSearchService.hybridSearch(query, resultLimit);
+        boolean usesEmbeddings = embeddingService.isAvailable();
+        if (usesEmbeddings) requireSemanticSearchReady();
+        var results = hybridSearchService.hybridSearch(query, resultLimit);
+        if (usesEmbeddings) requireSemanticSearchReady();
+        return results;
     }
 
     public List<TaxonomyNodeDto> findSimilarNodes(String code, int topK) {
@@ -82,7 +90,10 @@ public class SearchFacade {
         if (resultLimit == 0) {
             return List.of();
         }
-        return embeddingService.findSimilarNodes(code, resultLimit);
+        requireSemanticSearchReady();
+        var results = embeddingService.findSimilarNodes(code, resultLimit);
+        requireSemanticSearchReady();
+        return results;
     }
 
     static int boundedResults(int requestedResults) {
@@ -92,7 +103,23 @@ public class SearchFacade {
     public GraphSearchResult graphSearch(String query,
                                          int maxResults,
                                          WorkspaceContext workspaceContext) {
-        return graphSearchService.graphSearch(query, maxResults, workspaceContext);
+        if (maxResults > 0 && !isGraphSearchReady()) {
+            throw new SearchUnavailableException();
+        }
+        var results = graphSearchService.graphSearch(query, maxResults, workspaceContext);
+        if (maxResults > 0 && !isGraphSearchReady()) {
+            throw new SearchUnavailableException();
+        }
+        return results;
+    }
+
+    private void requireSemanticSearchReady() {
+        if (!isSemanticSearchReady()) throw new SearchUnavailableException();
+    }
+
+    public boolean isGraphSearchReady() {
+        return isSemanticSearchReady()
+                && embeddingIndexInitializer.getState() == LocalOnnxIndexInitializer.State.READY;
     }
 
     public boolean isSemanticSearchReady() {
@@ -113,6 +140,8 @@ public class SearchFacade {
         status.put("modelProfile", embeddingService.modelProfile());
         status.put("indexedNodes", embeddingService.indexedNodeCount());
         status.put("semanticReady", semanticReady);
+        status.put("graphReady", semanticReady
+                && embeddingIndexInitializer.getState() == LocalOnnxIndexInitializer.State.READY);
         status.put("indexState", embeddingIndexInitializer.getState().name());
         status.put("indexDetail", embeddingIndexInitializer.getDetail());
         status.put("indexedNodesAtReadiness",

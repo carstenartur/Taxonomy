@@ -110,6 +110,19 @@ class OnnxRestEndpointTest {
 
     @Test
     void graphSearchReturnsStructuredResult() throws Exception {
+        long deadline = System.nanoTime() + SEMANTIC_READY_TIMEOUT.toNanos();
+        while (indexInitializer.getState() != LocalOnnxIndexInitializer.State.READY) {
+            var state = indexInitializer.getState();
+            if (state == LocalOnnxIndexInitializer.State.PARTIAL || state == LocalOnnxIndexInitializer.State.FAILED) {
+                throw new AssertionError("LOCAL_ONNX graph index failed before REST verification: "
+                        + indexInitializer.getDetail());
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("LOCAL_ONNX graph index did not become ready within "
+                        + SEMANTIC_READY_TIMEOUT + "; state=" + state);
+            }
+            Thread.sleep(READINESS_POLL_INTERVAL.toMillis());
+        }
         mockMvc.perform(get("/api/search/graph")
                         .param("q", "communications")
                         .accept(MediaType.APPLICATION_JSON))

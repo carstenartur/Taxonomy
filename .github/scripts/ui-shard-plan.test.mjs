@@ -74,9 +74,14 @@ test('duplicate and missing assignments fail closed', () => {
 
 // Contract tests need the pinned Node packages, not native browser packages.
 // Each shard runs on a different machine and must install its own runtime.
-const verificationPom = (await readFile(
-  path.join(repoRoot, '.github', 'ui-verification-pom.xml'), 'utf8'))
-  .replace(/<!--[\s\S]*?-->/g, '');
+function maskXmlComments(xml) {
+  // Mask rather than delete: joining fragments can invent XML delimiters.
+  // This only prepares the repository-owned POM for assertions, not untrusted HTML.
+  return xml.replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\r\n]/g, ' '));
+}
+
+const verificationPom = maskXmlComments(await readFile(
+  path.join(repoRoot, '.github', 'ui-verification-pom.xml'), 'utf8'));
 
 function verificationProfile(id) {
   const profiles = [...verificationPom.matchAll(/<profile>([\s\S]*?)<\/profile>/g)]
@@ -123,3 +128,48 @@ test('final evidence gate still validates all shard evidence without installing 
   assert.doesNotMatch(verificationProfile('evidence-gate'), /install:playwright/);
   assert.match(verificationPom, /<maven\.build\.cache\.enabled>\s*false\s*<\/maven\.build\.cache\.enabled>/);
 });
+
+
+test('XML comment masking preserves boundaries and source positions', () => {
+  const xml = '<project>\r\n<!-- <profile>ignored</profile>\ncomment -->\r\n<profile>real</profile></project>';
+  const masked = maskXmlComments(xml);
+  assert.equal(masked.length, xml.length);
+  assert.equal(masked.indexOf('<profile>real'), xml.indexOf('<profile>real'));
+  assert.equal(masked.split('\n').length, xml.split('\n').length);
+  assert.doesNotMatch(masked, /ignored|comment/);
+  assert.match(masked, /<profile>real<\/profile>/);
+});
+
+for (const [xml, token] of [
+  ['<pro<!-- first -->file>not a profile</pro<!-- second -->file>', '<profile>'],
+  ['<!<!-- nested fragments -->-->', '<!--'],
+  ['--<!-- nested fragments -->>', '-->']
+]) test(`XML comment masking cannot join fragments into ${token}`, () => {
+  assert.equal(maskXmlComments(xml).includes(token), false);
+});
+
+test('XML comment masking leaves non-comment source unchanged and handles adjacent comments', () => {
+  const source = '<profile><id>contracts</id></profile>';
+  assert.equal(maskXmlComments(source), source);
+  assert.equal(maskXmlComments('<!-- first --><!-- second -->').trim(), '');
+});
+
+for (const gate of ['verify:ui', 'verify:ui-contracts']) {
+  test(`${gate} preserves both localization/state and search-readiness regressions`, async () => {
+    const { scripts } = JSON.parse(await readFile(
+      path.join(repoRoot, '.github', 'package.json'), 'utf8'));
+    const commands = scripts[gate].split(' && ');
+    for (const name of ['test:ui-localization', 'test:ux-state-recovery', 'test:search-mode-readiness']) {
+      assert.ok(scripts[name], `Missing regression command ${name}`);
+      assert.equal(commands.filter(command => command === `npm run ${name}`).length, 1,
+        `${gate} must execute ${name} exactly once`);
+    }
+    assert.ok(commands.includes('node --test scripts/quality-dashboard-api.test.mjs'));
+    assert.equal(commands.includes('node scripts/run-ui-suite.mjs'), gate === 'verify:ui');
+    for (const [name, file] of [
+      ['test:integrations-review', 'scripts/integration-startup.test.mjs'],
+      ['test:state-render-consistency', '../taxonomy-app/src/test/js/diagram-keyboard-controls.cjs'],
+      ['test:architecture-workbench-basepath', 'scripts/architecture-workbench-print.test.mjs']
+    ]) assert.ok(scripts[name].split(' ').includes(file), `Missing ${file}`);
+  });
+}
