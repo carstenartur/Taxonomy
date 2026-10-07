@@ -48,6 +48,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         this.messageSource = messageSource;
     }
 
+    /** Distinguish an unavailable search from a completed query with no matches. */
+    @ExceptionHandler(com.taxonomy.error.SearchUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleSearchUnavailable(
+            com.taxonomy.error.SearchUnavailableException exception, WebRequest request) {
+        String message = messageSource.getMessage("error.search.unavailable", null,
+                "Search is temporarily unavailable. Please try again.", LocaleContextHolder.getLocale());
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);
+    }
+
     @ExceptionHandler(com.taxonomy.architecture.report.WordReportLayoutException.class)
     public ResponseEntity<Map<String,Object>> handleWordLayoutConflict(
             com.taxonomy.architecture.report.WordReportLayoutException exception,WebRequest request) {

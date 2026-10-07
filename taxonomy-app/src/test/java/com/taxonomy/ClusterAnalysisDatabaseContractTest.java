@@ -1,14 +1,41 @@
 package com.taxonomy;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Executes the exact external-database contract locally; this is not vendor acceptance. */
 class ClusterAnalysisDatabaseContractTest {
+    @Test void historyFixtureBoundsPhysicalConnectionsAndClosesThem() {
+        var database = new ConnectionCounter();
+        try (var contract = ClusterAnalysisDatabaseContract.hsql(database)) {
+            contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+        }
+        assertTrue(database.opened.get() <= 8,
+                () -> "History fixture must reuse connections instead of flooding the listener; opened "
+                        + database.opened.get());
+        assertEquals(0, database.active.get(), "Closing the fixture must release every physical connection");
+    }
+
+    @Test void failedSchemaValidationClosesTheOwnedConnections() {
+        var database = new ConnectionCounter();
+        assertThrows(RuntimeException.class, () -> ClusterAnalysisDatabaseContract.pooledExisting(database));
+        assertTrue(database.opened.get() > 0, "Schema validation must have reached the real database");
+        assertEquals(0, database.active.get(), "Failed initialization must not leak a connection pool");
+    }
+
     @Test void largePayloadsAndAllFourTablesSurviveANewPersistenceFactory() {
         try (var contract = ClusterAnalysisDatabaseContract.hsql()) {
             contract.largePayloadsAndAllFourTablesSurviveANewPersistenceFactory();
@@ -43,6 +70,42 @@ class ClusterAnalysisDatabaseContractTest {
     @Test void ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit() {
         try (var contract = ClusterAnalysisDatabaseContract.hsql()) {
             contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+        }
+    }
+
+    private static final class ConnectionCounter extends DelegatingDataSource {
+        final AtomicInteger opened = new AtomicInteger();
+        final AtomicInteger active = new AtomicInteger();
+
+        ConnectionCounter() {
+            super(new DriverManagerDataSource("jdbc:hsqldb:mem:connection-budget-"
+                    + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
+        }
+
+        @Override public Connection getConnection() throws SQLException {
+            return track(super.getConnection());
+        }
+
+        @Override public Connection getConnection(String username, String password) throws SQLException {
+            return track(super.getConnection(username, password));
+        }
+
+        private Connection track(Connection connection) {
+            opened.incrementAndGet();
+            active.incrementAndGet();
+            var closed = new AtomicBoolean();
+            return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                    new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                        try {
+                            Object result = method.invoke(connection, arguments);
+                            if (method.getName().equals("close") && closed.compareAndSet(false, true)) {
+                                active.decrementAndGet();
+                            }
+                            return result;
+                        } catch (InvocationTargetException failure) {
+                            throw failure.getCause();
+                        }
+                    });
         }
     }
 }

@@ -13,6 +13,7 @@
     const NAVIGATION_COMPLETE_EVENT = 'taxonomy:search-navigation-complete';
     const MAX_FOCUS_ATTEMPTS = 4;
     let embeddingAvailable = false;
+    let graphAvailable = false;
     let resultState = emptyResultState();
     let searchGeneration = 0;
     let activeSearchController = null;
@@ -148,14 +149,20 @@
 
     function checkEmbeddingStatus() {
         fetch('/api/embedding/status')
-            .then(function (response) { return response.json(); })
+            .then(function (response) {
+                if (!response.ok) throw new Error('Embedding status is unavailable');
+                return response.json();
+            })
             .then(function (data) {
                 embeddingAvailable = data.available === true;
+                graphAvailable = embeddingAvailable && data.graphReady === true;
                 updateEmbeddingBadge(data);
                 updateSearchModes();
             })
             .catch(function () {
                 embeddingAvailable = false;
+                graphAvailable = false;
+                updateEmbeddingBadge({ available: false });
                 updateSearchModes();
             });
     }
@@ -186,8 +193,9 @@
             if (option.value === 'semantic'
                     || option.value === 'hybrid'
                     || option.value === 'graph') {
-                option.disabled = !embeddingAvailable;
-                if (!embeddingAvailable && option.selected) {
+                var available = option.value === 'graph' ? graphAvailable : embeddingAvailable;
+                option.disabled = !available;
+                if (!available && option.selected) {
                     select.value = 'fulltext';
                 }
             }

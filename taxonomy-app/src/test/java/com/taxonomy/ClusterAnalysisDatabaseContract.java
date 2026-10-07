@@ -6,6 +6,7 @@ import com.taxonomy.analysis.dispatch.*;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManager;
 import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -38,6 +39,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
     private final String identity = UUID.randomUUID().toString();
     private final String owner = "cluster-db-" + identity;
     private final DataSource database;
+    private final HikariDataSource ownedPool;
     private final LocalContainerEntityManagerFactoryBean factory = new LocalContainerEntityManagerFactoryBean();
     private final EntityManager em;
     private final JpaTransactionManager transactions;
@@ -54,16 +56,41 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
     }
 
     static ClusterAnalysisDatabaseContract hsql() {
-        return new ClusterAnalysisDatabaseContract(new DriverManagerDataSource(
-                "jdbc:hsqldb:mem:cluster-contract-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""), "create-drop");
+        return hsql(new DriverManagerDataSource(
+                "jdbc:hsqldb:mem:cluster-contract-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
+    }
+
+    static ClusterAnalysisDatabaseContract hsql(DataSource database) {
+        return pooled(database, "create-drop");
+    }
+
+    static ClusterAnalysisDatabaseContract pooledExisting(DataSource database) {
+        return pooled(database, "validate");
+    }
+
+    private static ClusterAnalysisDatabaseContract pooled(DataSource database, String schemaMode) {
+        var pool = new HikariDataSource();
+        pool.setDataSource(database);
+        // Independent concurrent deliveries and nested post-commit reads need
+        // separate connections, while serial history setup must reuse them.
+        pool.setMaximumPoolSize(4);
+        pool.setMinimumIdle(0);
+        try {
+            return new ClusterAnalysisDatabaseContract(pool, schemaMode, pool);
+        } catch (RuntimeException | Error failure) {
+            pool.close();
+            throw failure;
+        }
     }
 
     static ClusterAnalysisDatabaseContract existing(DataSource database) {
-        return new ClusterAnalysisDatabaseContract(database, "validate");
+        // A reopened persistence factory borrows the original fixture's pool.
+        return new ClusterAnalysisDatabaseContract(database, "validate", null);
     }
 
-    private ClusterAnalysisDatabaseContract(DataSource database, String schemaMode) {
+    private ClusterAnalysisDatabaseContract(DataSource database, String schemaMode, HikariDataSource ownedPool) {
         this.database = database;
+        this.ownedPool = ownedPool;
         factory.setDataSource(new DelegatingDataSource(database) {
             @Override public Connection getConnection() throws SQLException { return observe(super.getConnection()); }
             @Override public Connection getConnection(String username, String password) throws SQLException {
@@ -123,6 +150,8 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             reread.assertContinuousEvents(context, 5);
             assertTrue(reread.sent.isEmpty(), "Reading persisted state must not redispatch work");
         }
+        assertEquals(1, count("ClusterAnalysisRun", "id", context.operationId()),
+                "Closing a borrowed persistence factory must leave the original fixture usable");
     }
 
     void concurrentDuplicateCompletionRollsBackAndSettlesExactlyOnce() throws Exception {
@@ -291,5 +320,11 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         try { assertTrue(latch.await(20, TimeUnit.SECONDS), "Concurrent insert barrier was not released"); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
     }
-    @Override public void close() { factory.destroy(); }
+    @Override public void close() {
+        try {
+            factory.destroy();
+        } finally {
+            if (ownedPool != null) ownedPool.close();
+        }
+    }
 }

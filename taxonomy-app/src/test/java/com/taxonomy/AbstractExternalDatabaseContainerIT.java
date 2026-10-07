@@ -12,7 +12,7 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     private ClusterAnalysisDatabaseContract clusterContract() {
         var database = getDatabaseContainer();
         // Validate the running application's schema; never create/drop tables in its database.
-        return ClusterAnalysisDatabaseContract.existing(new DriverManagerDataSource(
+        return ClusterAnalysisDatabaseContract.pooledExisting(new DriverManagerDataSource(
                 database.getJdbcUrl(), database.getUsername(), database.getPassword()));
     }
 

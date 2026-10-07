@@ -242,7 +242,7 @@ class ArchitectureTest {
     /**
      * {@code taxonomy-domain} packages must not use any Spring annotations or types.
      *
-     * <p>Covered packages: {@code com.taxonomy.dto}, {@code com.taxonomy.model},
+     * <p>Covered packages: {@code com.taxonomy.dto}, {@code com.taxonomy.error}, {@code com.taxonomy.model},
      * {@code com.taxonomy.pipeline}. No exceptions — these packages must remain
      * framework-free so they can be used by all modules without a Spring dependency.
      */
@@ -250,11 +250,12 @@ class ArchitectureTest {
     static final ArchRule domainModuleShouldBeSpringFree = noClasses()
             .that().resideInAnyPackage(
                     "com.taxonomy.dto..",
+                    "com.taxonomy.error..",
                     "com.taxonomy.model..",
                     "com.taxonomy.pipeline..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("org.springframework..")
-            .because("taxonomy-domain packages (dto, model, pipeline) must be Spring-free");
+            .because("taxonomy-domain packages (dto, error, model, pipeline) must be Spring-free");
 
     /**
      * Framework-free packages of {@code taxonomy-dsl} must not use Spring.

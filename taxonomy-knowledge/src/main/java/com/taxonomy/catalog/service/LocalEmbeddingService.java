@@ -9,6 +9,7 @@ import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.NodeEmbeddingBinder;
+import com.taxonomy.error.SearchUnavailableException;
 import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -64,8 +65,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * is active.</p>
  *
  * <h2>Graceful degradation</h2>
- * <p>When embedding is disabled or the model fails to load, semantic search methods return
- * empty results without throwing, and {@link #isAvailable()} returns {@code false}.
+ * <p>When embedding is disabled or the model fails to load, {@link #isAvailable()}
+ * returns {@code false}. Search methods report unavailable execution explicitly;
+ * an empty result represents a completed search only.
  *
  * <h2>Scoring</h2>
  * <p>Hibernate Search's KNN query returns cosine similarity scores in [0, 1].
@@ -173,15 +175,13 @@ public class LocalEmbeddingService {
                                 "No local model and download disabled "
                                         + "(TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false)");
                     }
-                    log.info("Loading embedding model via DJL / ONNX Runtime from {} …", url);
+                    log.info("Loading embedding model via DJL / ONNX Runtime (profile={})", modelProfile);
                     try {
                         model = loadModel(url);
                         log.info("Embedding model loaded successfully.");
                     } catch (Exception | LinkageError primary) {
                         modelLoadFailed = true;
-                        log.error("Failed to load embedding model from '{}'; "
-                                        + "semantic search disabled. Error: {}",
-                                url, primary.getMessage());
+                        log.error("Embedding model load failed; semantic search disabled (code=MODEL_LOAD_FAILED)");
                         if (primary instanceof Exception exception) {
                             throw exception;
                         }
@@ -202,14 +202,13 @@ public class LocalEmbeddingService {
         } else if (url.startsWith("djl://")) {
             String modelId = url.replaceFirst("djl://[^/]+/", "");
             String hfUrl = "https://huggingface.co/" + modelId;
-            log.warn("Migrating legacy djl:// URL to HuggingFace download: {} → {}", url, hfUrl);
+            log.warn("Migrating legacy DJL model location to HuggingFace download");
             localPath = downloadHuggingFaceModel(hfUrl);
         } else if (url.startsWith("file:")) {
             try {
                 localPath = java.nio.file.Paths.get(java.net.URI.create(url)).toString();
             } catch (IllegalArgumentException exception) {
-                log.warn("Invalid file: URI '{}', falling back to raw path handling", url,
-                        exception);
+                log.warn("Invalid model file URI; trying raw path handling (code=MODEL_FILE_URI_INVALID)");
                 localPath = url.replaceFirst("^file:(//)?", "");
             }
         } else {
@@ -219,7 +218,7 @@ public class LocalEmbeddingService {
         ensureServingProperties(localPath);
 
         java.nio.file.Path modelPath = java.nio.file.Path.of(localPath);
-        log.info("Loading DJL model from local path: {}", modelPath.toAbsolutePath());
+        log.info("Loading local embedding model artifacts (profile={})", modelProfile);
         try {
             EmbeddingModelIdentity before = EmbeddingModelIdentity.capture(modelPath, effectiveQueryPrefix(), modelProfile);
             for (EmbeddingModelProfile knownProfile : EmbeddingModelProfile.values()) {
@@ -244,8 +243,7 @@ public class LocalEmbeddingService {
                 throw failure;
             }
         } catch (Exception exception) {
-            log.error("DJL Criteria.loadModel() failed for path '{}': {}",
-                    modelPath.toAbsolutePath(), exception.getMessage(), exception);
+            log.error("Local embedding artifacts could not be loaded (code=MODEL_ARTIFACT_LOAD_FAILED)");
             throw exception;
         }
     }
@@ -362,7 +360,7 @@ public class LocalEmbeddingService {
     }
 
     private void downloadModelFile(String fileUrl, java.nio.file.Path target) throws Exception {
-        log.info("Downloading {} → {}", fileUrl, target);
+        log.info("Downloading embedding model artifact");
         java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(30))
                 .followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
@@ -421,9 +419,9 @@ public class LocalEmbeddingService {
                 return;
             }
             java.nio.file.Files.writeString(servingProperties, SERVING_PROPERTIES_CONTENT);
-            log.info("Auto-generated serving.properties in {}", directory);
+            log.info("Generated local embedding serving.properties");
         } catch (Exception exception) {
-            log.warn("Could not auto-generate serving.properties: {}", exception.getMessage());
+            log.warn("Could not generate embedding serving.properties (code=MODEL_SERVING_CONFIG_FAILED)");
         }
     }
 
@@ -599,8 +597,9 @@ public class LocalEmbeddingService {
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> semanticSearch(String queryText, int topK) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        if (topK <= 0) return Collections.emptyList();
         if (!isAvailable()) {
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
         try {
             float[] queryVector = embedQuery(queryText);
@@ -618,9 +617,10 @@ public class LocalEmbeddingService {
             return hits.stream()
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
-        } catch (Exception exception) {
+        } catch (Exception | LinkageError exception) {
+            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
             log.error("Semantic search failed (code=SEMANTIC_SEARCH_FAILED)");
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
     }
 
@@ -642,8 +642,9 @@ public class LocalEmbeddingService {
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> findSimilarNodes(String nodeCode, int topK) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        if (topK <= 0) return Collections.emptyList();
         if (!isAvailable()) {
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
         try {
             TaxonomyNode node = entityManager.createQuery(
@@ -654,7 +655,7 @@ public class LocalEmbeddingService {
                     .findFirst()
                     .orElse(null);
             if (node == null) {
-                log.warn("Node '{}' not found in database", nodeCode);
+                log.warn("Similar-node source was not found (code=SIMILAR_NODE_NOT_FOUND)");
                 return Collections.emptyList();
             }
 
@@ -673,10 +674,10 @@ public class LocalEmbeddingService {
                     .limit(topK)
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
-        } catch (Exception exception) {
-            log.error("findSimilarNodes failed for node '{}': {}",
-                    nodeCode, exception.getMessage());
-            return Collections.emptyList();
+        } catch (Exception | LinkageError exception) {
+            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.error("Similar-node search failed (code=SIMILAR_SEARCH_FAILED)");
+            throw new SearchUnavailableException();
         }
     }
 

@@ -3,6 +3,7 @@ package com.taxonomy.catalog.service;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.error.SearchUnavailableException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;
@@ -50,7 +51,7 @@ public class SearchService {
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> search(String queryString, int maxResults) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
-        if (queryString == null || queryString.isBlank()) {
+        if (maxResults <= 0 || queryString == null || queryString.isBlank()) {
             return Collections.emptyList();
         }
         try {
@@ -74,7 +75,7 @@ public class SearchService {
             return hits.stream().map(this::toFlatDto).collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Full-text search failed (code=SEARCH_BACKEND_FAILED)");
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
     }
 

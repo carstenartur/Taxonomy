@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class SearchFacadeResultLimitTest {
 
@@ -65,12 +66,16 @@ class SearchFacadeResultLimitTest {
     private static SearchFacade facade(SearchService searchService,
                                        HybridSearchService hybridSearchService,
                                        LocalEmbeddingService embeddingService) {
+        var initializer = mock(LocalOnnxIndexInitializer.class);
+        when(embeddingService.isEnabled()).thenReturn(true);
+        when(embeddingService.isAvailable()).thenReturn(true);
+        when(initializer.isNodeSearchReady()).thenReturn(true);
         return new SearchFacade(
                 mock(TaxonomyService.class),
                 searchService,
                 hybridSearchService,
                 embeddingService,
                 mock(GraphSearchService.class),
-                mock(LocalOnnxIndexInitializer.class));
+                initializer);
     }
 }

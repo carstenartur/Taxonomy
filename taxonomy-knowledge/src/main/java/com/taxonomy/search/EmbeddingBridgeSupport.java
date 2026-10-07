@@ -67,8 +67,11 @@ public final class EmbeddingBridgeSupport {
             String identity = svc.embeddingIndexKey();
             target.addValue(embeddingField, vector);
             target.addValue(modelField, identity);
-        } catch (Exception ignored) {
-            // graceful degradation – document will be indexed without a vector
+        } catch (Exception | LinkageError failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+            // Keep full-text indexing usable, but invalidate semantic readiness.
+            var health = SpringContextHolder.getBean(EmbeddingIndexHealth.class);
+            if (health != null) health.recordFailure(entity);
         }
     }
 }

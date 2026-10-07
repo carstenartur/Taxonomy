@@ -27,14 +27,14 @@ import com.taxonomy.model.RelationType;
 
 /**
  * Tests for the semantic/hybrid search infrastructure introduced in Phase 3 of the
- * offline embedding plan (bge-small-en-v1.5 via DJL / Lucene KNN).
+ * offline embedding plan (local DJL / Lucene KNN).
  *
- * <p>Note: The DJL model is NOT loaded in these default application tests
- * (embedding.enabled=true but runtime download is disabled). Direct embedding-service
- * calls retain graceful degradation, while semantic REST endpoints fail closed with
- * HTTP 503 until a searchable node index is ready.</p>
+ * <p>Embeddings are explicitly disabled in this application fixture. Direct
+ * semantic searches report unavailable execution, REST endpoints fail closed with
+ * HTTP 503, and hybrid search retains its documented full-text fallback.
+ * Native success is verified separately by the ONNX endpoint suite.</p>
  */
-@SpringBootTest
+@SpringBootTest(properties = "embedding.enabled=false")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class SemanticSearchTests {
@@ -54,9 +54,8 @@ class SemanticSearchTests {
     // ── LocalEmbeddingService unit behaviour ─────────────────────────────────
 
     @Test
-    void embeddingServiceIsEnabled() {
-        // Default config (embedding.enabled=true)
-        assertThat(embeddingService.isEnabled()).isTrue();
+    void embeddingServiceIsExplicitlyDisabledForFallbackFixture() {
+        assertThat(embeddingService.isEnabled()).isFalse();
     }
 
     @Test
@@ -73,16 +72,16 @@ class SemanticSearchTests {
     }
 
     @Test
-    void semanticSearchReturnsEmptyListWhenModelNotLoaded() {
-        // Direct service use continues to degrade gracefully when no model is available.
-        List<TaxonomyNodeDto> results = embeddingService.semanticSearch("satellite communications", 10);
-        assertThat(results).isNotNull();
+    void semanticSearchDoesNotFabricateEmptyResultsWhenModelIsUnavailable() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                embeddingService.semanticSearch("satellite communications", 10))
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     @Test
-    void findSimilarNodesReturnsEmptyListWhenModelNotLoaded() {
-        List<TaxonomyNodeDto> results = embeddingService.findSimilarNodes("BP", 5);
-        assertThat(results).isNotNull();
+    void findSimilarNodesReportsUnavailableExecution() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> embeddingService.findSimilarNodes("BP", 5))
+                .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     // ── RankFusionUtil unit tests ─────────────────────────────────────────────
@@ -209,10 +208,10 @@ class SemanticSearchTests {
     }
 
     @Test
-    void embeddingStatusShowsEnabledTrueInDefaultConfig() throws Exception {
+    void embeddingStatusShowsDisabledForThisFixture() throws Exception {
         mockMvc.perform(get("/api/embedding/status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.enabled").value(true));
+                .andExpect(jsonPath("$.enabled").value(false));
     }
 
     // ── Hibernate Search migration tests ─────────────────────────────────────
