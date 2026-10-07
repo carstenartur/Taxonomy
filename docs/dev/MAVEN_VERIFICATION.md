@@ -1,30 +1,49 @@
 # Maven Verification Authority
 
-Taxonomy has one build authority: the checked-in Maven Wrapper, `.mvn`
-configuration and profiles in the root POM. GitHub Actions supplies machines,
-containers, external scanners and artifact publication; it does not own a
-functional test or a hidden test selection.
+The required build contract is that a developer can reproduce every required
+test through Maven with only Java and Maven installed. Test selection and
+pass/fail rules belong in Maven; GitHub Actions should call those owners and
+publish their results.
+
+**This requirement is not yet fulfilled.** The current commands below expose
+the existing Maven suites, but the combined `ci` profile does not reproduce
+every required Actions check. In particular, a successful `test-local` run is
+not proof of full CI parity. See the concrete remaining gaps below.
 
 ## Toolchain
 
 - Java 21
 - Maven 3.9.16 through Maven Wrapper 3.3.4
 - Docker for Testcontainers suites
-- Bash, `curl`, Python 3 and internet access for the first model/browser download
+- Bash, `curl` and Python 3 for remaining legacy checks/model provisioning
+- Internet access for the first dependency, model and browser downloads
 
-Node.js and the Playwright/axe packages are installed in the build directory by
-`frontend-maven-plugin`; a global Node installation is not part of the contract.
-The exact browser package versions are declared in `.github/package-lock.json`.
+The root `frontend-maven-plugin` installs the pinned Node into
+`target/test-runtime/frontend` before Surefire. Existing JavaScript-consuming
+JUnit tests and the later Playwright/axe phase use that executable; a global
+Node installation is not needed by those Maven tests. Local Selenium sessions
+provision the Chrome/ChromeDriver version pinned in the root POM, while the
+Playwright package versions are declared in `.github/package-lock.json`.
 Keycloak integration uses the image pinned in `.mvn/maven.config`; the test never
 requires a pre-existing identity provider.
 
 ## Authoritative commands
 
+### CI Command
+
+```bash
+./mvnw -B verify -Pci -DrunOnnxTests=true
+```
+
+This remains the requested canonical entry point. Its current dependencies and
+coverage limits are documented here so that partial execution cannot be
+mistaken for completion of the Java/Maven-only requirement.
+
 | Scope | Command | Additional requirement |
 |---|---|---|
 | Compile | `./mvnw compile` | Java 21 |
 | Normal developer verification | `./mvnw verify` | Unit, Spring, contract, architecture and browser tests; browser sessions default to Docker unless local Chrome is explicitly configured |
-| Docker-free developer verification | `./mvnw verify -Ptest-local` | Matching local Chrome/ChromeDriver; see [local test prerequisites](../testing/docker-free-tests.md); container, database, ONNX and external-LLM suites remain separate |
+| Docker-free developer verification | `./mvnw verify -Ptest-local` | Maven provisions Node and the pinned local browser; browser OS libraries remain necessary. See [scope and prerequisites](../testing/docker-free-tests.md). Container, database, ONNX and external-LLM suites remain separate. |
 | Local combined CI-profile verification | `./mvnw -B verify -Pci -DrunOnnxTests=true` | Docker, browser/model prerequisites and POSIX tools; CI itself splits UI into shards |
 | Core container integration | `./mvnw -B verify -Pcore-integration` | Docker |
 | PostgreSQL | `./mvnw -B verify -Pdatabase-postgres` | Docker |
@@ -54,7 +73,26 @@ profile runs:
    in GitHub Actions that matrix runs through `.github/ui-shards.json` and
    `.github/ui-verification-pom.xml -Pshard` on the same packaged application.
 
-It excludes real LLM calls and the scheduled SQL Server and Oracle suites.
+It excludes real LLM calls and the SQL Server and Oracle suites. The latter also
+run on pull requests through the separate database workflow; they are not merely
+optional scheduled checks.
+
+### Remaining gaps in the Java/Maven-only requirement
+
+| Gap | Current source of the difference |
+| --- | --- |
+| Container and database runtimes | Testcontainers needs an available container engine; Maven does not provision one. `ci` excludes SQL Server and Oracle, whose separate profiles still need it. |
+| Helm-dependent tests | `HelmArtemisContractTest`, `HelmConstrainedSmokeContractTest` and `SetupInfrastructureTest` depend on installed Helm. Some missing-tool decisions depend on `CI` or skip the test locally. |
+| Checks outside the root lifecycle | `ci-core-contracts.sh` executes additional Python, Node and shell checks. `verify-interoperability-products.mjs` verifies real external products and needs further native tools. |
+| Conditional integration tests | Actions separately enables the observability performance budget and document report E2E. The canonical `ci` profile does not enable both. |
+| Post-test acceptance rules | Several workflows separately validate required JUnit suite counts, rendered scenario documents and commit-bound browser artifacts. These rules are not all bound to root `verify`. |
+| Deployment and security execution | Production container validation, live Kubernetes/Artemis recovery, CodeQL and Trivy are additional required executions outside this Maven command. |
+
+Closing these gaps must retain the actual tests, thresholds and positive-count
+checks. Adding exclusions, accepting missing tools as successful tests or
+classifying a required check as external does not establish local parity.
+New test coverage must use the existing Maven owners; another Actions workflow
+does not repair any of these gaps.
 
 ## Keycloak security contract
 

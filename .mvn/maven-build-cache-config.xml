@@ -32,6 +32,11 @@
     <executionControl>
         <runAlways>
             <executions>
+                <execution groupId="com.github.eirslett" artifactId="frontend-maven-plugin">
+                    <execIds>
+                        <execId>install-pinned-node</execId>
+                    </execIds>
+                </execution>
                 <execution groupId="org.cyclonedx" artifactId="cyclonedx-maven-plugin">
                     <execIds>
                         <execId>generate-aggregate-sbom</execId>

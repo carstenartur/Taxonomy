@@ -52,7 +52,7 @@ checks. The disposable workspace and original workspace cleanup are retained.
 The final application JAR SHA-256 is
 `d2571b48f93f94c02de5d6fbc9e3375769825eb357cd5b518c9e5320e62b9994`.
 All changed production JavaScript resources byte-match their packaged
-copies. [Machine-readable local evidence](evidence/2026-10-06/draft-reload-followup.json)
+copies. [Machine-readable local evidence](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/draft-reload-followup.json)
 records those resource/test hashes, RED/GREEN counts, actual browser check names
 and original log hashes. Assembly used Java 21 and Maven's application package
 goal with exact installed sibling artifacts and build-cache restoration disabled;
@@ -74,7 +74,7 @@ compared production text, title only, a normalized equal sum of both vectors and
 maximum document/title similarity against the same fixed sixteen queries. No
 query translation, catalogue-ID boost, fitted coefficient, model download or
 external provider was used. The
-[machine-readable results](evidence/2026-10-06/retrieval-text-ablation.json)
+[machine-readable results](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/retrieval-text-ablation.json)
 retain all 64 observations.
 
 | Reference | Production rank | Title only | Equal blend | Maximum similarity |

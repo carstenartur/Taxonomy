@@ -214,11 +214,15 @@ Fast default verification:
 ./mvnw verify
 ```
 
-Authoritative CI-equivalent verification, including integration, browser, quality, coverage, and local ONNX suites:
+Canonical Maven CI profile, including integration, browser, quality, coverage, and local ONNX suites:
 
 ```bash
-./mvnw verify -Pci -DrunOnnxTests=true
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
+
+Full reproduction of every required CI check with only Java and Maven installed
+is not yet achieved. The remaining runtime and lifecycle gaps are documented in
+[Maven Verification Authority](docs/dev/MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-requirement).
 
 Focused profiles include:
 

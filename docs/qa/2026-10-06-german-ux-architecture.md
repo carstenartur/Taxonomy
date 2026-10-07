@@ -178,8 +178,8 @@ Dokument enthält alle 20 Ergebnisse bis zur letzten Zeile. Die Browserprüfung
 vergleicht außerdem Tabellenkopf-Anzeige und Textfarbe unter Print-Media.
 
 Prüfartefakte:
-[gedruckte Entscheidungsergebnisse](evidence/2026-10-06/german-ux-decision-results-print.pdf)
-und [vollständiger Testbericht](evidence/2026-10-06/german-ux-report-frame-print.pdf).
+[gedruckte Entscheidungsergebnisse](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-decision-results-print.pdf)
+und [vollständiger Testbericht](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-report-frame-print.pdf).
 Beide Dokumente enthalten ausdrücklich kontrollierte QA-Daten.
 
 ![Deutsche Berichtsvorschau mit lokaler Druckschaltfläche und kontrollierten QA-Daten](images/german-ux-architecture-2026-10-06/qa-german-report-preview.png)
@@ -224,7 +224,7 @@ großflächige Neugestaltung ohne vorherige Anforderungen vorgenommen.
 
 Die detaillierten Messwerte, Quell-/Paketprüfsummen, Checknamen und die
 abgegrenzten Testdaten werden im zugehörigen
-[maschinellen Nachweis](evidence/2026-10-06/german-ux-architecture.json) festgehalten.
+[maschinellen Nachweis](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-architecture.json) festgehalten.
 
 Das abschließende Anwendungspaket hat SHA-256
 `d731eecc2dcf3c2abfdfae72d0301ff24d6d0b7dd6989365a6db3c2571d3bbc8`.

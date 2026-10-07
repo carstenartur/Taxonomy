@@ -77,8 +77,7 @@ jobs:
         run: |
           ./mvnw -B -pl taxonomy-build \
             -Pdocument-template-report-e2e \
-            verify \
-            -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node"
+            verify
 
       - name: Upload browser, DOCX, and screenshot evidence
         if: always()

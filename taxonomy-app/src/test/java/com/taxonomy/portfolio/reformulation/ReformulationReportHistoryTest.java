@@ -16,7 +16,7 @@ class ReformulationReportHistoryTest {
         runApplication("write"); runApplication("read");
     }
     @Test void downloadControlsUseReadOnlyCapturedIdentities() throws Exception {
-        List<String> command=new ArrayList<>(List.of("node"));
+        List<String> command=new ArrayList<>(List.of(System.getProperty("taxonomy.node.executable")));
         for(String resource:List.of("/reformulation/report-download-contract.cjs", "/static/js/api/portfolio-api.js", "/static/js/portfolio/reformulation-reports.js")) {
             Path target=directory.resolve(Path.of(resource).getFileName());
             try(var in=getClass().getResourceAsStream(resource)){assertNotNull(in,resource);Files.copy(in,target);}command.add(target.toString());

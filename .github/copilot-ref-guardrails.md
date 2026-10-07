@@ -52,11 +52,14 @@ change coverage baselines or hide warnings solely to obtain a green result.
 Report missing Docker, browser, wrapper, dependency or model prerequisites as such.
 They are not successful or zero-score test outcomes.
 
-The CI-equivalent local entry point is:
+The required canonical local entry point is:
 
 ```bash
 ./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
+
+The full Java/Maven-only equivalence requirement remains open; see the concrete
+runtime and lifecycle gaps in `docs/dev/MAVEN_VERIFICATION.md`.
 
 The exact selections and sharding are owned by the current POMs,
 `.mvn/verification-suites.json`, `.github/workflows/ci-cd.yml` and

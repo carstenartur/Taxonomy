@@ -26,11 +26,16 @@ test is Docker-free: application/browser scenarios have their own prerequisites.
 <a id="authoritative-verification"></a>
 ### CI Command — authoritative verification
 
-The complete local CI-equivalent entry point is:
+The required canonical entry point is:
 
 ```bash
 ./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
+
+Full local equivalence with only Java and Maven installed is not yet achieved.
+The known runtime and lifecycle gaps are listed in
+`docs/dev/MAVEN_VERIFICATION.md`. Do not describe a focused or skipped run as
+completion of that requirement.
 
 Read `.github/workflows/ci-cd.yml`, the POM profiles and
 `.mvn/verification-suites.json` for the exact current selection. The GitHub core
@@ -63,13 +68,18 @@ Documentation-only edits still need link/rendering/content checks and the existi
 repository gates; changes to help rendering or navigation are product-code changes.
 
 For Docker-free verification of the existing supported local scenarios, follow
-`docs/testing/docker-free-tests.md` and use its `test-local` profile with matching
-local Chrome and ChromeDriver. This is not external-database/container acceptance.
+`docs/testing/docker-free-tests.md` and use its `test-local` profile. This is not
+external-database/container acceptance.
 Do not silently substitute it for a failed required container run.
 
 When changing workflow shell commands, execute the changed commands and retain
 their evidence before claiming the workflow verified. Keep functional verification
 Maven-owned; a workflow must not grow a second independent test selector.
+
+Keep generated QA logs, raw JSON reports and complete capture series under
+`target/` or in CI artifacts. After evaluation, retain concise findings,
+reproduction commands and selected documentation illustrations in the repository;
+do not append raw execution dumps to documentation or commit `docs/qa/evidence/`.
 
 ## Catalogue and model boundaries
 

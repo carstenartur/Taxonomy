@@ -114,6 +114,6 @@ and maximum document/title similarity against the same sixteen fixed queries.
 None repaired the remaining German payroll/ambiguity misses; title-only also
 regressed original document anchors beyond ten hits, and blending regressed an
 English document paraphrase from rank 4 to 14. These candidates were rejected.
-The [64 measured results](../qa/evidence/2026-10-06/retrieval-text-ablation.json)
+The [64 measured results](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/retrieval-text-ablation.json)
 retain every mode, query, top-ten result and target rank. This is diagnostic
 evidence, not an additional production model or REST acceptance claim.

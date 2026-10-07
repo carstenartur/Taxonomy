@@ -322,16 +322,24 @@ class DocumentTemplateReportDownloadIT {
         if (configured == null || configured.isBlank()) {
             configured = System.getenv("TAXONOMY_NODE_EXECUTABLE");
         }
+        Path executable;
         if (configured != null && !configured.isBlank()) {
-            Path path = Path.of(configured);
-            if (!path.isAbsolute()) {
-                path = repository.resolve(path);
+            executable = Path.of(configured);
+            if (!executable.isAbsolute()) {
+                executable = repository.resolve(executable);
             }
-            return path.normalize().toString();
+        } else {
+            executable = repository.resolve("target/test-runtime/frontend/node")
+                    .resolve(System.getProperty("os.name", "").startsWith("Windows")
+                            ? "node.exe" : "node");
         }
-        Path pinned = repository.resolve(
-                "taxonomy-build/target/frontend/node/node");
-        return Files.isExecutable(pinned) ? pinned.toString() : "node";
+        executable = executable.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(executable) || !Files.isExecutable(executable)) {
+            throw new IllegalStateException("Node executable is unavailable: " + executable
+                    + ". Run Maven to provision the pinned test runtime, or set "
+                    + "taxonomy.node.executable or TAXONOMY_NODE_EXECUTABLE.");
+        }
+        return executable.toString();
     }
 
     private static void recreateDirectory(Path directory) throws IOException {
