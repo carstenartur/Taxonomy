@@ -1,0 +1,2109 @@
+{
+  "schemaVersion": 1,
+  "kind": "portfolio-job-interaction-browser-evidence",
+  "status": "verified",
+  "verified": true,
+  "checkout": "repository",
+  "baseCommit": "0f74010854ec140833d0e92188797e11b02c0ec6",
+  "run": {
+    "startUtc": "2026-10-07T17:21:25.000402Z",
+    "endUtc": "2026-10-07T17:27:11.799722Z",
+    "mavenFinishedUtc": "2026-10-07T17:27:11.000000Z",
+    "artifactUpperExclusiveUtc": "2026-10-07T17:27:11.799722Z",
+    "finishedTimestampPrecisionSeconds": 1.0,
+    "wallSeconds": 346.79932,
+    "mavenTotalSeconds": 344.0,
+    "collectedUtc": "2026-10-07T17:27:11.853507Z",
+    "suiteDurationRoundingToleranceSeconds": 0.1
+  },
+  "inputs": {
+    "startManifest": {
+      "path": "local-run-evidence/portfolio-job-interaction-green1/start.json",
+      "sha256": "547e1364e78d3786cb7c005b8af8e652e36ee4e0ed45658613abfef4c1dc5873",
+      "bytes": 4713,
+      "mtimeUtc": "2026-10-07T17:21:24.999285Z"
+    },
+    "mavenLog": {
+      "path": "local-run-evidence/portfolio-job-interaction-green1/maven.log",
+      "sha256": "edcc402d7cb59d87817c0be6099e848eb6d29ef02ed3db20ca56b690f21584a3",
+      "bytes": 134005,
+      "mtimeUtc": "2026-10-07T17:27:11.787456Z"
+    }
+  },
+  "totals": {
+    "suites": 5,
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "surefireTests": 15,
+    "failsafeTests": 48
+  },
+  "mavenEvidence": {
+    "buildSuccess": true,
+    "buildSuccessLine": 1272,
+    "aggregateTests": [
+      15,
+      48
+    ],
+    "aggregateLines": [
+      781,
+      1241
+    ]
+  },
+  "suites": [
+    {
+      "name": "com.taxonomy.testsupport.BrowserSessionTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.235,
+      "testcaseCount": 8,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.testsupport.BrowserSessionTest.xml",
+        "sha256": "530597492f25caf1453a272b6f2b5c14386c8407d1d5129aa04b44e53a78077c",
+        "bytes": 108430,
+        "mtimeUtc": "2026-10-07T17:22:51.793536Z"
+      },
+      "logEvidence": {
+        "runningLine": 771,
+        "summaryLine": 773,
+        "seconds": 1.235
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioContextHttpFixtureTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 3.812,
+      "testcaseCount": 5,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.PortfolioContextHttpFixtureTest.xml",
+        "sha256": "0ad0b4c8a28a6ffff926710564606f7ac4032c2ddb745266dd445540c1ead3e2",
+        "bytes": 108015,
+        "mtimeUtc": "2026-10-07T17:22:55.585634Z"
+      },
+      "logEvidence": {
+        "runningLine": 774,
+        "summaryLine": 775,
+        "seconds": 3.812
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioClientTestPageTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.179,
+      "testcaseCount": 2,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.PortfolioClientTestPageTest.xml",
+        "sha256": "e861fc7b5389fa69a8ef758b8d65437a16f0632350d81cc279834ca589e4e1bf",
+        "bytes": 107560,
+        "mtimeUtc": "2026-10-07T17:22:55.765639Z"
+      },
+      "logEvidence": {
+        "runningLine": 776,
+        "summaryLine": 777,
+        "seconds": 0.179
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioClientRoutingIT",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 86.694,
+      "testcaseCount": 45,
+      "phase": "failsafe",
+      "report": {
+        "path": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.PortfolioClientRoutingIT.xml",
+        "sha256": "7d2f80e38812eb4221205ce5b605c2078ed363e119e10828633fe02cef230d74",
+        "bytes": 114448,
+        "mtimeUtc": "2026-10-07T17:24:25.463959Z"
+      },
+      "logEvidence": {
+        "runningLine": 802,
+        "summaryLine": 805,
+        "seconds": 86.69
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 164.59,
+      "testcaseCount": 3,
+      "phase": "failsafe",
+      "report": {
+        "path": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.PortfolioUiAcceptanceIT.xml",
+        "sha256": "e7d967a0ed2c8407529eebe11f62c04176fc8f33884a4b3569cd680391e1586f",
+        "bytes": 182399,
+        "mtimeUtc": "2026-10-07T17:27:10.048169Z"
+      },
+      "logEvidence": {
+        "runningLine": 806,
+        "summaryLine": 1237,
+        "seconds": 164.6
+      }
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "taxonomy-app/src/main/resources/templates/projects.html",
+      "startSha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "endSha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "bytes": 32558,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css",
+      "startSha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "endSha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "bytes": 10482,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js",
+      "startSha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "endSha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "bytes": 73219,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js",
+      "startSha256": "483fcf0ba22aba1022523c503d7f6fbfa8fd612b878a1c844ccd447d55b25ddc",
+      "endSha256": "483fcf0ba22aba1022523c503d7f6fbfa8fd612b878a1c844ccd447d55b25ddc",
+      "bytes": 48090,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "startSha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "endSha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "bytes": 2039,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextBrowserChecks.java",
+      "startSha256": "e4fd4bc7ee9c530ea4280ae41ab1ac8607da6b4df4d5505cc94b025d66ca36b1",
+      "endSha256": "e4fd4bc7ee9c530ea4280ae41ab1ac8607da6b4df4d5505cc94b025d66ca36b1",
+      "bytes": 56199,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixture.java",
+      "startSha256": "05adb116947014851285268b1c1cc6d539b44ecec171bb0f0d9010680171a0ce",
+      "endSha256": "05adb116947014851285268b1c1cc6d539b44ecec171bb0f0d9010680171a0ce",
+      "bytes": 22778,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixtureTest.java",
+      "startSha256": "051333eb8761b08c511907b592c13f39151980529b7273c64ad641267e66c183",
+      "endSha256": "051333eb8761b08c511907b592c13f39151980529b7273c64ad641267e66c183",
+      "bytes": 11528,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioClientRoutingIT.java",
+      "startSha256": "07e53ee50124804deb4cdaffac63cd150ff2bfe84a4cdc9ad1b72803e51dc726",
+      "endSha256": "07e53ee50124804deb4cdaffac63cd150ff2bfe84a4cdc9ad1b72803e51dc726",
+      "bytes": 59220,
+      "unchanged": true
+    }
+  ],
+  "compiledResources": [
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/templates/projects.html",
+      "path": "taxonomy-app/target/classes/templates/projects.html",
+      "sha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "bytes": 32558,
+      "mtimeUtc": "2026-10-07T16:01:35.810618Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css",
+      "path": "taxonomy-app/target/classes/static/css/taxonomy-portfolio.css",
+      "sha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "bytes": 10482,
+      "mtimeUtc": "2026-10-07T16:01:35.811992Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio.js",
+      "sha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "bytes": 73219,
+      "mtimeUtc": "2026-10-07T16:01:35.815970Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio-async.js",
+      "sha256": "483fcf0ba22aba1022523c503d7f6fbfa8fd612b878a1c844ccd447d55b25ddc",
+      "bytes": 48090,
+      "mtimeUtc": "2026-10-07T17:22:40.325758Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "sha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "bytes": 2039,
+      "mtimeUtc": "2026-10-07T16:01:35.815346Z",
+      "sourceMatches": true
+    }
+  ],
+  "capturePairs": 8,
+  "captures": [
+    {
+      "context": "/",
+      "variant": "1366",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1366.json",
+        "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873",
+        "bytes": 3353,
+        "mtimeUtc": "2026-10-07T17:25:33.517705Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1366.png",
+        "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+        "bytes": 136682,
+        "mtimeUtc": "2026-10-07T17:25:33.565706Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 357.5,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 357.5,
+            "right": 514.90625,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 522.90625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 522.90625,
+            "right": 680.328125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 688.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 688.328125,
+            "right": 845.734375,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 853.734375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 853.734375,
+            "right": 1011.15625,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1019.15625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1019.15625,
+            "right": 1176.578125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1184.578125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1184.578125,
+            "right": 1342.0,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 353.5,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 353.5,
+          "right": 1346.0,
+          "bottom": 336.140625,
+          "width": 992.5,
+          "height": 108.171875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 357.5,
+          "y": 352.140625,
+          "top": 352.140625,
+          "left": 357.5,
+          "right": 1342.0,
+          "bottom": 402.140625,
+          "width": 984.5,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 374.5,
+          "y": 485.140625,
+          "top": 485.140625,
+          "left": 374.5,
+          "right": 1050.625,
+          "bottom": 509.140625,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1183.6875,
+          "y": 494.140625,
+          "top": 494.140625,
+          "left": 1183.6875,
+          "right": 1325.0,
+          "bottom": 525.140625,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 374.5,
+          "y": 590.640625,
+          "top": 590.640625,
+          "left": 374.5,
+          "right": 1325.0,
+          "bottom": 673.640625,
+          "width": 950.5,
+          "height": 83.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 471.53125,
+          "y": 599.140625,
+          "top": 599.140625,
+          "left": 471.53125,
+          "right": 738.21875,
+          "bottom": 623.140625,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/",
+      "variant": "1920",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1920.json",
+        "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac",
+        "bytes": 3286,
+        "mtimeUtc": "2026-10-07T17:25:34.941742Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1920.png",
+        "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+        "bytes": 139311,
+        "mtimeUtc": "2026-10-07T17:25:35.025744Z",
+        "width": 1920,
+        "height": 1080
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 496.0,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 496.0,
+            "right": 722.65625,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 730.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 730.65625,
+            "right": 957.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 965.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 965.328125,
+            "right": 1191.984375,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 1199.984375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1199.984375,
+            "right": 1426.65625,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1434.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1434.65625,
+            "right": 1661.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1669.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1669.328125,
+            "right": 1896.0,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 492.0,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 492.0,
+          "right": 1900.0,
+          "bottom": 322.4375,
+          "width": 1408.0,
+          "height": 94.46875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 496.0,
+          "y": 338.4375,
+          "top": 338.4375,
+          "left": 496.0,
+          "right": 1896.0,
+          "bottom": 388.4375,
+          "width": 1400.0,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 513.0,
+          "y": 471.4375,
+          "top": 471.4375,
+          "left": 513.0,
+          "right": 1189.125,
+          "bottom": 495.4375,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1737.6875,
+          "y": 480.4375,
+          "top": 480.4375,
+          "left": 1737.6875,
+          "right": 1879.0,
+          "bottom": 511.4375,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 513.0,
+          "y": 576.9375,
+          "top": 576.9375,
+          "left": 513.0,
+          "right": 1879.0,
+          "bottom": 644.125,
+          "width": 1366.0,
+          "height": 67.1875,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 621.828125,
+          "y": 588.03125,
+          "top": 588.03125,
+          "left": 621.828125,
+          "right": 888.515625,
+          "bottom": 612.03125,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/",
+      "variant": "390",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-390.json",
+        "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7",
+        "bytes": 3233,
+        "mtimeUtc": "2026-10-07T17:25:35.713762Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-390.png",
+        "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+        "bytes": 59293,
+        "mtimeUtc": "2026-10-07T17:25:35.745762Z",
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 12.0,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 191.5,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 12.0,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 191.5,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 12.0,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 191.5,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 8.0,
+          "y": 894.328125,
+          "top": 894.328125,
+          "left": 8.0,
+          "right": 367.0,
+          "bottom": 1163.765625,
+          "width": 359.0,
+          "height": 269.4375,
+          "visible": true
+        },
+        "jobs": {
+          "x": 12.0,
+          "y": 1179.765625,
+          "top": 1179.765625,
+          "left": 12.0,
+          "right": 363.0,
+          "bottom": 1254.765625,
+          "width": 351.0,
+          "height": 75.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 29.0,
+          "y": 1352.765625,
+          "top": 1352.765625,
+          "left": 29.0,
+          "right": 238.328125,
+          "bottom": 1376.765625,
+          "width": 209.328125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 246.328125,
+          "y": 1382.765625,
+          "top": 1382.765625,
+          "left": 246.328125,
+          "right": 348.90625,
+          "bottom": 1434.765625,
+          "width": 102.578125,
+          "height": 52.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 29.0,
+          "y": 1521.265625,
+          "top": 1521.265625,
+          "left": 29.0,
+          "right": 777.234375,
+          "bottom": 1736.265625,
+          "width": 748.234375,
+          "height": 215.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 126.03125,
+          "y": 1529.765625,
+          "top": 1529.765625,
+          "left": 126.03125,
+          "right": 228.265625,
+          "bottom": 1601.765625,
+          "width": 102.234375,
+          "height": 72.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/",
+      "variant": "text-200",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-text-200.json",
+        "sha256": "6cfa15066293d662b21ebf2b3bf283ea0ce70d94f41d6313f55bc9dde2d4f388",
+        "bytes": 2678,
+        "mtimeUtc": "2026-10-07T17:25:36.429780Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-text-200.png",
+        "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+        "bytes": 97760,
+        "mtimeUtc": "2026-10-07T17:25:36.509782Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "rootFontPx": 32.0,
+        "parts": [
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          }
+        ],
+        "wordCount": 10,
+        "wordLineCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "sidebar": {
+          "clientWidth": 273.0,
+          "scrollWidth": 273.0
+        },
+        "newProject": {
+          "width": 217.828125,
+          "height": 60.0,
+          "left": 81.0,
+          "right": 298.828125,
+          "headerLeft": 49.0,
+          "headerRight": 336.75
+        }
+      }
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "1366",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1366.json",
+        "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873",
+        "bytes": 3353,
+        "mtimeUtc": "2026-10-07T17:26:28.103081Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1366.png",
+        "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+        "bytes": 136682,
+        "mtimeUtc": "2026-10-07T17:26:28.151083Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 357.5,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 357.5,
+            "right": 514.90625,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 522.90625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 522.90625,
+            "right": 680.328125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 688.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 688.328125,
+            "right": 845.734375,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 853.734375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 853.734375,
+            "right": 1011.15625,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1019.15625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1019.15625,
+            "right": 1176.578125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1184.578125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1184.578125,
+            "right": 1342.0,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 353.5,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 353.5,
+          "right": 1346.0,
+          "bottom": 336.140625,
+          "width": 992.5,
+          "height": 108.171875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 357.5,
+          "y": 352.140625,
+          "top": 352.140625,
+          "left": 357.5,
+          "right": 1342.0,
+          "bottom": 402.140625,
+          "width": 984.5,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 374.5,
+          "y": 485.140625,
+          "top": 485.140625,
+          "left": 374.5,
+          "right": 1050.625,
+          "bottom": 509.140625,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1183.6875,
+          "y": 494.140625,
+          "top": 494.140625,
+          "left": 1183.6875,
+          "right": 1325.0,
+          "bottom": 525.140625,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 374.5,
+          "y": 590.640625,
+          "top": 590.640625,
+          "left": 374.5,
+          "right": 1325.0,
+          "bottom": 673.640625,
+          "width": 950.5,
+          "height": 83.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 471.53125,
+          "y": 599.140625,
+          "top": 599.140625,
+          "left": 471.53125,
+          "right": 738.21875,
+          "bottom": 623.140625,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "1920",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1920.json",
+        "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac",
+        "bytes": 3286,
+        "mtimeUtc": "2026-10-07T17:26:28.823101Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1920.png",
+        "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+        "bytes": 139311,
+        "mtimeUtc": "2026-10-07T17:26:28.879102Z",
+        "width": 1920,
+        "height": 1080
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 496.0,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 496.0,
+            "right": 722.65625,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 730.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 730.65625,
+            "right": 957.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 965.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 965.328125,
+            "right": 1191.984375,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 1199.984375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1199.984375,
+            "right": 1426.65625,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1434.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1434.65625,
+            "right": 1661.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1669.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1669.328125,
+            "right": 1896.0,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 492.0,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 492.0,
+          "right": 1900.0,
+          "bottom": 322.4375,
+          "width": 1408.0,
+          "height": 94.46875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 496.0,
+          "y": 338.4375,
+          "top": 338.4375,
+          "left": 496.0,
+          "right": 1896.0,
+          "bottom": 388.4375,
+          "width": 1400.0,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 513.0,
+          "y": 471.4375,
+          "top": 471.4375,
+          "left": 513.0,
+          "right": 1189.125,
+          "bottom": 495.4375,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1737.6875,
+          "y": 480.4375,
+          "top": 480.4375,
+          "left": 1737.6875,
+          "right": 1879.0,
+          "bottom": 511.4375,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 513.0,
+          "y": 576.9375,
+          "top": 576.9375,
+          "left": 513.0,
+          "right": 1879.0,
+          "bottom": 644.125,
+          "width": 1366.0,
+          "height": 67.1875,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 621.828125,
+          "y": 588.03125,
+          "top": 588.03125,
+          "left": 621.828125,
+          "right": 888.515625,
+          "bottom": 612.03125,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "390",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-390.json",
+        "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7",
+        "bytes": 3233,
+        "mtimeUtc": "2026-10-07T17:26:29.543119Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-390.png",
+        "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+        "bytes": 59293,
+        "mtimeUtc": "2026-10-07T17:26:29.579120Z",
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 12.0,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 191.5,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 12.0,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 191.5,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 12.0,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 191.5,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 8.0,
+          "y": 894.328125,
+          "top": 894.328125,
+          "left": 8.0,
+          "right": 367.0,
+          "bottom": 1163.765625,
+          "width": 359.0,
+          "height": 269.4375,
+          "visible": true
+        },
+        "jobs": {
+          "x": 12.0,
+          "y": 1179.765625,
+          "top": 1179.765625,
+          "left": 12.0,
+          "right": 363.0,
+          "bottom": 1254.765625,
+          "width": 351.0,
+          "height": 75.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 29.0,
+          "y": 1352.765625,
+          "top": 1352.765625,
+          "left": 29.0,
+          "right": 238.328125,
+          "bottom": 1376.765625,
+          "width": 209.328125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 246.328125,
+          "y": 1382.765625,
+          "top": 1382.765625,
+          "left": 246.328125,
+          "right": 348.90625,
+          "bottom": 1434.765625,
+          "width": 102.578125,
+          "height": 52.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 29.0,
+          "y": 1521.265625,
+          "top": 1521.265625,
+          "left": 29.0,
+          "right": 777.234375,
+          "bottom": 1736.265625,
+          "width": 748.234375,
+          "height": 215.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 126.03125,
+          "y": 1529.765625,
+          "top": 1529.765625,
+          "left": 126.03125,
+          "right": 228.265625,
+          "bottom": 1601.765625,
+          "width": 102.234375,
+          "height": 72.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      }
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "text-200",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-text-200.json",
+        "sha256": "6cfa15066293d662b21ebf2b3bf283ea0ce70d94f41d6313f55bc9dde2d4f388",
+        "bytes": 2678,
+        "mtimeUtc": "2026-10-07T17:26:30.268467Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-text-200.png",
+        "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+        "bytes": 97760,
+        "mtimeUtc": "2026-10-07T17:26:30.343140Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "rootFontPx": 32.0,
+        "parts": [
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          }
+        ],
+        "wordCount": 10,
+        "wordLineCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "sidebar": {
+          "clientWidth": 273.0,
+          "scrollWidth": 273.0
+        },
+        "newProject": {
+          "width": 217.828125,
+          "height": 60.0,
+          "left": 81.0,
+          "right": 298.828125,
+          "headerLeft": 49.0,
+          "headerRight": 336.75
+        }
+      }
+    }
+  ],
+  "limits": [
+    "Only the five selected suites and nine declared source files are covered.",
+    "PNG structure, dimensions, freshness and hashes are checked; visual interpretation remains with browser assertions and review.",
+    "No previous run is used to validate different source or test bytes.",
+    "Native Java/Selenium inputs establish focus and internal horizontal scrolling; DOM JavaScript only reads interaction state.",
+    "The first released HTTP gate can process multiple pending GETs. The visible attempt markers 2 and 3 prove fresh rendered replies, not a claim of exactly one reply per phase.",
+    "Vertical table scrollTop remains 0. Nonzero vertical scrolling is not covered.",
+    "The own-poll screenshot does not show the running table in the viewport. Horizontal reach and focus are measured; complete vertical visibility and the full keyboard path under the sticky header remain unverified.",
+    "RED1 stopped at an incorrect native Select preparation and is excluded from the product regression proof.",
+    "The existing retry-in-flight button-state issue, long mixed-project history and mobile project navigation are separate open findings."
+  ],
+  "comparisonParentCommit": "93d85bd909cdbf33270a5e9cb8b7058a413fc268",
+  "actualExecution": {
+    "startUtc": "2026-10-07T17:21:25.000402+00:00",
+    "processEndUtc": "2026-10-07T17:27:11.787165+00:00",
+    "processExitCode": 0,
+    "evidenceSavedUtc": "2026-10-07T17:27:11.787522+00:00",
+    "collectorWindowEndUtc": "2026-10-07T17:27:11.799722+00:00",
+    "sourceHashesUnchanged": true,
+    "protectedSourceHashesUnchanged": true,
+    "nativeLog": {
+      "path": "local-run-evidence/portfolio-job-interaction-green1/maven.log",
+      "bytes": 134005,
+      "sha256": "edcc402d7cb59d87817c0be6099e848eb6d29ef02ed3db20ca56b690f21584a3"
+    },
+    "collectorVerified": true,
+    "compiledResources": [
+      {
+        "source": "taxonomy-app/src/main/resources/templates/projects.html",
+        "path": "taxonomy-app/target/classes/templates/projects.html",
+        "bytes": 32558,
+        "sha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+        "matchesSource": true
+      },
+      {
+        "source": "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css",
+        "path": "taxonomy-app/target/classes/static/css/taxonomy-portfolio.css",
+        "bytes": 10482,
+        "sha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+        "matchesSource": true
+      },
+      {
+        "source": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js",
+        "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio.js",
+        "bytes": 73219,
+        "sha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+        "matchesSource": true
+      },
+      {
+        "source": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js",
+        "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio-async.js",
+        "bytes": 48090,
+        "sha256": "483fcf0ba22aba1022523c503d7f6fbfa8fd612b878a1c844ccd447d55b25ddc",
+        "matchesSource": true
+      },
+      {
+        "source": "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+        "path": "taxonomy-app/target/classes/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+        "bytes": 2039,
+        "sha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+        "matchesSource": true
+      }
+    ],
+    "originalLogBytesVerified": true,
+    "originalLogSha256": "edcc402d7cb59d87817c0be6099e848eb6d29ef02ed3db20ca56b690f21584a3",
+    "visibleLogPathWasReplaced": false
+  },
+  "rawCollectorResult": {
+    "path": "local-run-evidence/portfolio-job-interaction-green1/result.json",
+    "bytes": 46058,
+    "sha256": "f9e0374421a235df0258d2d38baef716710e5887a53a6f7b9deec9c08583b71d"
+  },
+  "fourTestSourcesIdenticalToRed": true,
+  "changedProductionFilesSinceRed": [
+    "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js"
+  ],
+  "all14ProtectedSourceHashes": {
+    "taxonomy-app/src/main/resources/templates/projects.html": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+    "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+    "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+    "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js": "483fcf0ba22aba1022523c503d7f6fbfa8fd612b878a1c844ccd447d55b25ddc",
+    "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+    "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextBrowserChecks.java": "e4fd4bc7ee9c530ea4280ae41ab1ac8607da6b4df4d5505cc94b025d66ca36b1",
+    "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixture.java": "05adb116947014851285268b1c1cc6d539b44ecec171bb0f0d9010680171a0ce",
+    "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixtureTest.java": "051333eb8761b08c511907b592c13f39151980529b7273c64ad641267e66c183",
+    "taxonomy-app/src/test/java/com/taxonomy/PortfolioClientRoutingIT.java": "07e53ee50124804deb4cdaffac63cd150ff2bfe84a4cdc9ad1b72803e51dc726",
+    "pom.xml": "dfc1f7cb2cb1094cd6eb416c8db1fbc3107c21c910b2403efd28ef963f7eb241",
+    "taxonomy-build/pom.xml": "94005ed1eaa8a7de5ff648fdb9d4623a558633ffebd0eab7665b981b19035756",
+    ".github/ui-verification-pom.xml": "259bdf0cd34122c3cbc9a862ffc485a4542dd58eece0f58051c0c43c74466797",
+    ".github/package.json": "3a8efeae93cff3d59c6cee84b6c5e1c60dbd400cdf669d2931028feb08ce2781",
+    ".github/package-lock.json": "9de938b24c6d437014c5b310b1a63aff315cbfd6d879a0714b93f22c4a5ccc44"
+  },
+  "interactionStates": [
+    {
+      "context": "/",
+      "source": {
+        "path": "local-run-evidence/portfolio-job-interaction-green1/captures/root/jobs-interaction-state.json",
+        "bytes": 4556,
+        "sha256": "09ee95ca3c8fa5ed59a1485205c136c3a16fb58d53a9240ad60ddeb2e4e19773"
+      },
+      "states": {
+        "beforeToggle": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-secondary job-toggle",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": false,
+          "focusedAction": "toggle",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": null,
+          "lastCellRight": null,
+          "maxScrollLeft": null,
+          "scrollLeft": null,
+          "scrollTop": null,
+          "tableRight": null,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "afterToggle": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-secondary job-toggle",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": true,
+          "focusedAction": "toggle",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 1295,
+          "maxScrollLeft": 0,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 1310,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "afterNextTab": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-primary job-retry",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": true,
+          "focusedAction": "retry",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 1295,
+          "maxScrollLeft": 0,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 1310,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "beforeOtherJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 330.75,
+          "maxScrollLeft": 142,
+          "scrollLeft": 142,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "afterOtherJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 330.75,
+          "maxScrollLeft": 142,
+          "scrollLeft": 142,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "otherJobPollResponse": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "outside-job",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "2",
+          "lastCellRight": 394.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "otherJobHttpPolls": {
+          "after": 6,
+          "before": 3
+        },
+        "beforeOwnJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "2",
+          "lastCellRight": 331.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 63,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1577,
+            "width": 390
+          }
+        },
+        "afterOwnJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "3",
+          "lastCellRight": 331.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 63,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1577,
+            "width": 390
+          }
+        },
+        "ownJobHttpPolls": {
+          "after": 7,
+          "before": 6
+        }
+      }
+    },
+    {
+      "context": "/taxonomy",
+      "source": {
+        "path": "local-run-evidence/portfolio-job-interaction-green1/captures/taxonomy/jobs-interaction-state.json",
+        "bytes": 4628,
+        "sha256": "c64bf64d7245e6502e52bbc0ef2355d5a8723cf122d25c8df5afdb3b63afb61f"
+      },
+      "states": {
+        "beforeToggle": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-secondary job-toggle",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": false,
+          "focusedAction": "toggle",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": null,
+          "lastCellRight": null,
+          "maxScrollLeft": null,
+          "scrollLeft": null,
+          "scrollTop": null,
+          "tableRight": null,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "afterToggle": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-secondary job-toggle",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": true,
+          "focusedAction": "toggle",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 1295,
+          "maxScrollLeft": 0,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 1310,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "afterNextTab": {
+          "activeElement": {
+            "classes": "btn btn-sm btn-outline-primary job-retry",
+            "id": "",
+            "tag": "BUTTON"
+          },
+          "expanded": true,
+          "focusedAction": "retry",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 1295,
+          "maxScrollLeft": 0,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 1310,
+          "viewport": {
+            "height": 768,
+            "scrollX": 0,
+            "scrollY": 0,
+            "width": 1366
+          }
+        },
+        "beforeOtherJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 330.75,
+          "maxScrollLeft": 142,
+          "scrollLeft": 142,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "afterOtherJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+          "lastAttempt": "1",
+          "lastCellRight": 330.75,
+          "maxScrollLeft": 142,
+          "scrollLeft": 142,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "otherJobPollResponse": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "outside-job",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "2",
+          "lastCellRight": 394.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1600,
+            "width": 390
+          }
+        },
+        "otherJobHttpPolls": {
+          "after": 6,
+          "before": 3
+        },
+        "beforeOwnJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "2",
+          "lastCellRight": 331.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 63,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1577,
+            "width": 390
+          }
+        },
+        "afterOwnJobPoll": {
+          "activeElement": {
+            "classes": "table-responsive",
+            "id": "",
+            "tag": "DIV"
+          },
+          "expanded": true,
+          "focusedAction": "details-scroll",
+          "jobUrl": "/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+          "lastAttempt": "3",
+          "lastCellRight": 331.203125,
+          "maxScrollLeft": 63,
+          "scrollLeft": 63,
+          "scrollTop": 0,
+          "tableRight": 346,
+          "viewport": {
+            "height": 844,
+            "scrollX": 0,
+            "scrollY": 1577,
+            "width": 390
+          }
+        },
+        "ownJobHttpPolls": {
+          "after": 7,
+          "before": 6
+        }
+      }
+    }
+  ],
+  "interactionImages": [
+    {
+      "path": "after/root-after-other-poll.png",
+      "bytes": 60692,
+      "sha256": "12f6b437dc3a13beb05f6640ef43571ab45be95ebd80b6c70a4ecd17b21a00bf",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "after/taxonomy-after-other-poll.png",
+      "bytes": 60692,
+      "sha256": "12f6b437dc3a13beb05f6640ef43571ab45be95ebd80b6c70a4ecd17b21a00bf",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

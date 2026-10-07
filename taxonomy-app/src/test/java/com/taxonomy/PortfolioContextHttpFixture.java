@@ -60,6 +60,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     volatile boolean unknownCoverage;
     volatile List<AnalysisJobView> analysisJobs = List.of();
     volatile boolean jobPollingUnavailable;
+    private volatile int runningAnalysisAttempt = 1;
+    volatile AnalysisJobReadGate analysisJobReadGate;
     final AtomicInteger jobListReads = new AtomicInteger();
     final AtomicInteger successfulJobPolls = new AtomicInteger();
     volatile String head = "a".repeat(40);
@@ -99,6 +101,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         unknownCoverage = false;
         analysisJobs = List.of();
         jobPollingUnavailable = false;
+        runningAnalysisAttempt = 1;
         jobListReads.set(0); successfulJobPolls.set(0);
         head = "a".repeat(40);
         unexpected.clear(); submittedVersions.clear(); reads.clear();
@@ -108,6 +111,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     void deactivate() {
         if (readGate != null) readGate.release.countDown();
         readGate = null;
+        if (analysisJobReadGate != null) analysisJobReadGate.release.countDown();
+        analysisJobReadGate = null;
         active = false;
     }
 
@@ -118,13 +123,31 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         final CountDownLatch release = new CountDownLatch(1);
     }
 
+    AnalysisJobReadGate delayAnalysisJobReads() {
+        analysisJobReadGate = new AnalysisJobReadGate();
+        return analysisJobReadGate;
+    }
+
+    static final class AnalysisJobReadGate {
+        final Set<String> seenJobs = ConcurrentHashMap.newKeySet();
+        final CountDownLatch firstRead = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+    }
+
     RequirementView primaryRequirement(long projectId) {
         return requirements.stream().filter(item -> item.projectId() == projectId).findFirst().orElseThrow();
     }
 
     void showAnalysisJobs() {
+        runningAnalysisAttempt = 1;
         analysisJobs = List.of(analysisJob("qa-pending", AnalysisStatus.PENDING),
                 analysisJob("qa-running", AnalysisStatus.RUNNING), analysisJob("qa-failed", AnalysisStatus.FAILED));
+    }
+
+    void advanceRunningAnalysisAttempt() {
+        runningAnalysisAttempt++;
+        analysisJobs = analysisJobs.stream().map(job -> job.id().equals("qa-running")
+                ? analysisJob(job.id(), AnalysisStatus.RUNNING) : job).toList();
     }
 
     void completeRunningAnalysis() {
@@ -145,7 +168,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
             boolean itemCompleted = itemStatus == AnalysisStatus.SUCCESS || itemStatus == AnalysisStatus.FAILED;
             items.add(new AnalysisJobItemView(7391951L + index, requirement.id(), requirement.requirementKey(),
                     requirement.currentVersionId(), requirement.currentVersion().versionNumber(), itemStatus,
-                    itemStatus == AnalysisStatus.SUCCESS ? "qa-snapshot-" + index : null, pending ? 0 : 1,
+                    itemStatus == AnalysisStatus.SUCCESS ? "qa-snapshot-" + index : null,
+                    pending ? 0 : itemStatus == AnalysisStatus.RUNNING ? runningAnalysisAttempt : 1,
                     pending ? null : TIME, itemCompleted ? TIME : null,
                     failed ? "QA: Analyse für diesen Eintrag fehlgeschlagen." : null));
         }
@@ -187,6 +211,17 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                                 && !gate.release.await(30, TimeUnit.SECONDS)) {
                             reject(exchange, "Timed out waiting for the explicit repository-read release");
                             return;
+                        }
+                    }
+                    if (relative.startsWith("/api/projects/" + PROJECT_A + "/analysis-jobs/")) {
+                        AnalysisJobReadGate gate = analysisJobReadGate;
+                        if (gate != null) {
+                            gate.seenJobs.add(relative.substring(relative.lastIndexOf('/') + 1));
+                            gate.firstRead.countDown();
+                            if (!gate.release.await(30, TimeUnit.SECONDS)) {
+                                reject(exchange, "Timed out waiting for the explicit analysis-job-read release");
+                                return;
+                            }
                         }
                     }
                     Object payload = payload(relative);

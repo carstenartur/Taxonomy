@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.taxonomy.PortfolioContextHttpFixture.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -102,6 +103,7 @@ final class PortfolioContextBrowserChecks {
             Throwable cleanupFailure = null;
             try {
                 if (fixtures.readGate != null) fixtures.readGate.release.countDown();
+                if (fixtures.analysisJobReadGate != null) fixtures.analysisJobReadGate.release.countDown();
                 open("/__qa_portfolio_context_cleanup__");
                 restorePreferences(preferences);
                 // Real ?lang= navigation is persisted by CookieLocaleResolver.
@@ -319,7 +321,7 @@ final class PortfolioContextBrowserChecks {
         Map<?, ?> failed = jobState("qa-failed");
         checks.assertThat((String) failed.get("text")).contains("Fehlgeschlagen");
         checks.assertThat(failed.get("retryVisible")).isEqualTo(true);
-        click(By.cssSelector("#portfolioJobList .job-toggle"));
+        verifyJobInteractionContinuity(checks);
         checks.assertThat((String) jobState("qa-failed").get("details"))
                 .contains("QA-REQ-0", "QA-REQ-65", "QA: Analyse für diesen Eintrag fehlgeschlagen.");
         viewport(390, 844);
@@ -360,6 +362,161 @@ final class PortfolioContextBrowserChecks {
         driver.executeScript("localStorage.setItem('taxonomy.portfolio.analysisJobs.v2','[]')");
         open("/projects?lang=de");
         pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+    }
+
+    private void verifyJobInteractionContinuity(SoftAssertions checks) throws IOException {
+        Map<String, Object> states = new LinkedHashMap<>();
+        // Finish startup discovery, then hold both active jobs at the HTTP
+        // boundary while native keyboard interactions establish the view.
+        wait.until(browser -> fixtures.jobListReads.get() >= 3);
+        var otherJobGate = fixtures.delayAnalysisJobReads();
+        try {
+            wait.until(browser -> otherJobGate.seenJobs.containsAll(Set.of("qa-pending", "qa-running")));
+            select("portfolioJobFilter", "FAILED");
+            // Close the native select popup before a separate Tab action;
+            // a Tab bundled with Enter can be consumed by that popup.
+            visible("portfolioJobFilter").sendKeys(Keys.ESCAPE);
+            key(Keys.TAB);
+            Map<?, ?> beforeToggle = jobInteractionState("qa-failed");
+            states.put("beforeToggle", beforeToggle);
+            assertThat(beforeToggle.get("focusedAction"))
+                    .as("Native Tab from the job filter reaches the details toggle").isEqualTo("toggle");
+            key(Keys.ENTER);
+            Map<?, ?> afterToggle = jobInteractionState("qa-failed");
+            states.put("afterToggle", afterToggle);
+            checks.assertThat(afterToggle.get("expanded")).isEqualTo(true);
+            checks.assertThat(afterToggle.get("focusedAction"))
+                    .as("Enter on job details keeps keyboard focus on that job's details toggle")
+                    .isEqualTo("toggle");
+            key(Keys.TAB);
+            Map<?, ?> afterTab = jobInteractionState("qa-failed");
+            states.put("afterNextTab", afterTab);
+            checks.assertThat(afterTab.get("focusedAction"))
+                    .as("The next Tab reaches the failed job's retry action after opening its details")
+                    .isEqualTo("retry");
+
+            select("portfolioJobFilter", "");
+            visible("portfolioJobFilter").sendKeys(Keys.ESCAPE);
+            focusJobToggleByKeyboard("qa-running");
+            key(Keys.ENTER);
+            viewport(390, 844);
+            Map<?, ?> beforeOtherPoll = scrollJobDetailsByKeyboard("qa-failed");
+            states.put("beforeOtherJobPoll", beforeOtherPoll);
+            int previousPolls = fixtures.successfulJobPolls.get();
+            fixtures.advanceRunningAnalysisAttempt();
+            otherJobGate.release.countDown();
+            wait.until(browser -> fixtures.successfulJobPolls.get() > previousPolls
+                    && "2".equals(jobInteractionState("qa-running").get("lastAttempt")));
+            Map<?, ?> afterOtherPoll = jobInteractionState("qa-failed");
+            states.put("afterOtherJobPoll", afterOtherPoll);
+            states.put("otherJobPollResponse", jobInteractionState("qa-running"));
+            states.put("otherJobHttpPolls", Map.of("before", previousPolls,
+                    "after", fixtures.successfulJobPolls.get()));
+            assertJobInteractionPreserved(checks, "A different job's HTTP poll", beforeOtherPoll, afterOtherPoll);
+            screenshot("jobs-interaction-after-other-poll");
+
+            var ownJobGate = fixtures.delayAnalysisJobReads();
+            try {
+                wait.until(browser -> ownJobGate.seenJobs.containsAll(Set.of("qa-pending", "qa-running")));
+                Map<?, ?> beforeOwnPoll = scrollJobDetailsByKeyboard("qa-running");
+                states.put("beforeOwnJobPoll", beforeOwnPoll);
+                int previousOwnPolls = fixtures.successfulJobPolls.get();
+                fixtures.advanceRunningAnalysisAttempt();
+                ownJobGate.release.countDown();
+                wait.until(browser -> fixtures.successfulJobPolls.get() > previousOwnPolls
+                        && "3".equals(jobInteractionState("qa-running").get("lastAttempt")));
+                Map<?, ?> afterOwnPoll = jobInteractionState("qa-running");
+                states.put("afterOwnJobPoll", afterOwnPoll);
+                states.put("ownJobHttpPolls", Map.of("before", previousOwnPolls,
+                        "after", fixtures.successfulJobPolls.get()));
+                assertJobInteractionPreserved(checks, "The expanded job's own HTTP poll", beforeOwnPoll, afterOwnPoll);
+                checks.assertThat(afterOwnPoll.get("lastAttempt"))
+                        .as("Keeping focus and scroll position must still render the fresh job response")
+                        .isEqualTo("3");
+                screenshot("jobs-interaction-after-own-poll");
+            } finally {
+                ownJobGate.release.countDown();
+            }
+        } finally {
+            otherJobGate.release.countDown();
+            Files.writeString(evidence.resolve("jobs-interaction-state.json"),
+                    new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(states));
+        }
+    }
+
+    private Map<?, ?> scrollJobDetailsByKeyboard(String id) {
+        // Establish button focus separately before following the native tab
+        // order into the horizontally scrollable detail region.
+        focusJobToggleByKeyboard(id);
+        key(Keys.TAB);
+        if (Boolean.TRUE.equals(jobState(id).get("retryVisible"))) key(Keys.TAB);
+        Map<?, ?> before = jobInteractionState(id);
+        assertThat(before.get("focusedAction"))
+                .as("The mobile details table is reachable by native Tab: %s", before)
+                .isEqualTo("details-scroll");
+        assertThat(((Number) before.get("maxScrollLeft")).doubleValue())
+                .as("The mobile fixture genuinely requires internal horizontal scrolling")
+                .isPositive();
+        wait.until(browser -> {
+            key(Keys.ARROW_RIGHT);
+            Map<?, ?> current = jobInteractionState(id);
+            return ((Number) current.get("scrollLeft")).doubleValue()
+                    >= ((Number) current.get("maxScrollLeft")).doubleValue() - 1;
+        });
+        Map<?, ?> scrolled = jobInteractionState(id);
+        assertThat(((Number) scrolled.get("lastCellRight")).doubleValue())
+                .as("Native Arrow Right exposes the last result column")
+                .isLessThanOrEqualTo(((Number) scrolled.get("tableRight")).doubleValue() + 1);
+        noOverflow();
+        return scrolled;
+    }
+
+    private void focusJobToggleByKeyboard(String id) {
+        driver.findElement(By.cssSelector(jobSelector(id) + " .job-toggle")).sendKeys(Keys.ESCAPE);
+        assertThat(jobInteractionState(id).get("focusedAction"))
+                .as("Native input focuses the %s details button before the next key action", id)
+                .isEqualTo("toggle");
+    }
+
+    private void assertJobInteractionPreserved(SoftAssertions checks, String event,
+                                               Map<?, ?> before, Map<?, ?> after) {
+        checks.assertThat(after.get("expanded")).as("%s keeps details expanded", event).isEqualTo(true);
+        checks.assertThat(after.get("focusedAction"))
+                .as("%s preserves focus in the same job's details table: %s", event, after)
+                .isEqualTo("details-scroll");
+        checks.assertThat(((Number) after.get("scrollLeft")).doubleValue())
+                .as("%s preserves the horizontal detail reading position", event)
+                .isBetween(((Number) before.get("scrollLeft")).doubleValue() - 1,
+                        ((Number) before.get("scrollLeft")).doubleValue() + 1);
+        checks.assertThat(after.get("scrollTop"))
+                .as("%s preserves the vertical detail reading position", event)
+                .isEqualTo(before.get("scrollTop"));
+    }
+
+    private Map<?, ?> jobInteractionState(String id) {
+        return wait.until(browser -> (Map<?, ?>) driver.executeScript("""
+                const job=document.querySelector(arguments[0]);
+                if(!job || !job.getClientRects().length) return null;
+                const toggle=job.querySelector('.job-toggle'), table=job.querySelector('.table-responsive');
+                const active=document.activeElement, lastRow=table?.querySelector('tbody tr:last-child');
+                const focusedAction=!job.contains(active) ? 'outside-job'
+                    : active.matches('.job-toggle') ? 'toggle'
+                    : active.matches('.job-retry') ? 'retry'
+                    : active===table ? 'details-scroll' : 'other';
+                return {jobUrl:job.dataset.jobUrl,focusedAction,
+                    activeElement:{tag:active.tagName,id:active.id,classes:active.className},
+                    expanded:toggle.getAttribute('aria-expanded')==='true',
+                    scrollLeft:table?.scrollLeft,scrollTop:table?.scrollTop,
+                    maxScrollLeft:table ? table.scrollWidth-table.clientWidth : null,
+                    tableRight:table?.getBoundingClientRect().right,
+                    lastCellRight:lastRow?.lastElementChild.getBoundingClientRect().right,
+                    lastAttempt:lastRow?.children[2].textContent,
+                    viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY}};
+                """, jobSelector(id)));
+    }
+
+    private static String jobSelector(String id) {
+        return "#portfolioJobList .portfolio-job[data-job-url$='/" + id + "']";
     }
 
     private void scrollJob(String id) {

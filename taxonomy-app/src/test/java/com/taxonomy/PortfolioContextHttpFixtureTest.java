@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static com.taxonomy.PortfolioContextHttpFixture.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,18 +67,34 @@ class PortfolioContextHttpFixtureTest {
             assertThat(running.statusCode()).isEqualTo(200);
             assertThat(json.readTree(running.body()).get("status").asText()).isEqualTo("RUNNING");
             assertThat(fixture.successfulJobPolls.get()).isEqualTo(1);
+            var gate = fixture.delayAnalysisJobReads();
+            try {
+                var delayed = client.sendAsync(HttpRequest.newBuilder(URI.create(root + jobPath + "/qa-running"))
+                        .timeout(Duration.ofSeconds(10)).GET().build(), HttpResponse.BodyHandlers.ofString());
+                assertThat(gate.firstRead.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(gate.seenJobs).containsExactly("qa-running");
+                assertThat(delayed.isDone()).as("A held HTTP poll cannot replace the browser's current job view").isFalse();
+                fixture.advanceRunningAnalysisAttempt();
+                gate.release.countDown();
+                var resumed = delayed.get(5, TimeUnit.SECONDS);
+                assertThat(resumed.statusCode()).isEqualTo(200);
+                assertThat(json.readTree(resumed.body()).get("items").get(1).get("attempt").asInt()).isEqualTo(2);
+                assertThat(fixture.successfulJobPolls.get()).isEqualTo(2);
+            } finally {
+                gate.release.countDown();
+            }
             fixture.jobPollingUnavailable = true;
             assertThat(get(client, root + jobPath + "/qa-running").statusCode()).isEqualTo(503);
             assertThat(get(client, root + jobPath + "/qa-pending").statusCode()).isEqualTo(200);
             assertThat(get(client, root + jobPath + "/qa-failed").statusCode()).isEqualTo(200);
             assertThat(get(client, root + jobPath + "/qa-unknown").statusCode()).isEqualTo(599);
-            assertThat(fixture.successfulJobPolls.get()).isEqualTo(1);
+            assertThat(fixture.successfulJobPolls.get()).isEqualTo(2);
             fixture.completeRunningAnalysis();
             var completed = get(client, root + jobPath + "/qa-running");
             assertThat(completed.statusCode()).isEqualTo(200);
             assertThat(json.readTree(completed.body()).get("status").asText()).isEqualTo("SUCCESS");
             assertThat(json.readTree(completed.body()).get("successfulItems").asInt()).isEqualTo(2);
-            assertThat(fixture.successfulJobPolls.get()).isEqualTo(2);
+            assertThat(fixture.successfulJobPolls.get()).isEqualTo(3);
             assertThat(json.readTree(get(client, root + context + "/api/projects/" + PROJECT_B + "/analysis-jobs")
                     .body()).isEmpty()).isTrue();
 

@@ -1133,3 +1133,118 @@ eine Grenze der lokalen Schriftumgebung.
 Die ergonomische Bewertung bleibt begründet durch Beobachtung der Oberfläche
 und gemessene Aufgabenfolgen. Eine Studie mit erstmaligen Nutzern wurde
 auch in dieser Fortsetzung nicht durchgeführt.
+
+## 10. Folgeprüfung: Fokus und Leseposition in Jobdetails erhalten
+
+Die anschließende kritische Prüfung des veröffentlichten Stands
+`93d85bd909cdbf33270a5e9cb8b7058a413fc268` fand einen weiteren bestehenden
+Bedienfehler: Jeder Jobabruf und auch das Öffnen von Details entfernte die
+gesamte Jobliste aus dem DOM und baute sie neu auf. Dadurch gingen der
+Tastaturfokus und der interne horizontale Ausschnitt geöffneter Tabellen
+verloren. Auch ein anderer, im Hintergrund laufender Job konnte die gerade
+gelesenen Fehlerdetails zurücksetzen.
+
+### Nachgewiesenes Verhalten und Korrektur
+
+Die Gegenprobe verwendet echte Java-/Selenium-Eingaben und die vorhandene
+HTTP-Fixture. Während der Vorbereitung hält sie die Detail-GETs der beiden
+aktiven Jobs zurück. Nach der Freigabe belegen HTTP-Zähler und die tatsächlich
+gerenderten Versuchswerte 2 beziehungsweise 3 die Verarbeitung neuer
+Antworten. Die erste Freigabe kann mehrere bereits anstehende GETs verarbeiten;
+für beide Phasen wird deshalb nicht genau eine einzelne Antwort behauptet.
+
+| Bedienfolge | Veröffentlichtes `93d85bd` | Korrigierter Stand, unter `/` und `/taxonomy` |
+| --- | --- | --- |
+| Details mit Enter öffnen | Details öffnen, Fokus fällt auf `BODY` | Fokus bleibt auf dem Details-Button desselben Jobs |
+| Nächster Tab nach dem Öffnen | Erneut der Details-Button | Die folgende Wiederholungsaktion |
+| Fehlerdetails nach Aktualisierung eines anderen Jobs | `scrollLeft` 142 → 0; Tabellenfokus verloren | 142 → 142; Tabellenfokus erhalten |
+| Geöffnete laufende Karte nach eigener Aktualisierung | `scrollLeft` 63 → 0; Tabellenfokus verloren | 63 → 63; Tabellenfokus erhalten |
+| Inhalt der neuen Antworten | Versuchswerte 2 und 3 erscheinen | Versuchswerte 2 und 3 erscheinen weiterhin |
+
+Die Änderung in
+[taxonomy-portfolio-async.js](../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js)
+ordnet vorhandene Karten ihrer kanonischen Job-URL zu. Strukturell
+unveränderte Karten bleiben an ihrem Platz. Entfallene Karten werden vor
+der Einordnung der übrigen entfernt, damit benachbarte Karten nicht unnötig
+umgehängt werden. Geänderte Karten erhalten nach ihrer Einfügung die bisherige
+Tabellen-Scrollposition und das entsprechende Fokusziel. Eine entfallene
+Aktion oder Tabelle fällt auf den Details-Button derselben Karte zurück;
+verschwindet die fokussierte Karte durch den Statusfilter, erhält der Filter
+den Fokus. Fokus außerhalb der Jobliste wird nicht zurückgeholt.
+
+Die [Gegenprobe](evidence/2026-10-07/portfolio-job-interaction/before-result.json)
+enthält die sechs konkret fehlgeschlagenen Assertion-Gruppen und die
+gemessenen Zustände. Der
+[neue vollständige Browsernachweis](evidence/2026-10-07/portfolio-job-interaction/after-result.json)
+enthält beide Anwendungspfade, die erhaltenen Positionen und die neuen
+Antwortinhalte. Die Vergleichsbilder zeigen dieselbe mobile Fehlerkarte:
+[vor der Korrektur](evidence/2026-10-07/portfolio-job-interaction/before/after-other-poll.png)
+steht sie wieder am linken Tabellenrand;
+[nach der Korrektur](evidence/2026-10-07/portfolio-job-interaction/after/root-after-other-poll.png)
+bleiben Ergebnisspalte und blauer Fokusrahmen sichtbar. Das
+[Bild unter `/taxonomy`](evidence/2026-10-07/portfolio-job-interaction/after/taxonomy-after-other-poll.png)
+ist bytegleich.
+
+### Frische Abnahme dieser Ergänzung
+
+| Prüfung | Zeitraum am 7. Oktober 2026, UTC | Ergebnis |
+| --- | --- | --- |
+| Gegenprobe gegen `93d85bd` | 17:17:08–17:19:50 | 16 Ausführungen: 15 Supportfälle bestanden, 1 UI-Fall mit 6 erwarteten Assertion-Gruppen fehlgeschlagen; 0 Errors, 0 Skips |
+| Vollständige bestehende Portfolio-Auswahl | 17:21:25–17:27:11 | 63 bestanden; 0 Failures, Errors oder Skips |
+| Test- und Architekturverträge | 17:27:28–17:29:25 | 217 bestanden; 0 Failures, Errors oder Skips |
+| Bestehender Frontend-Vertragslauf | 18:08:52–18:09:14 | 1.020 numerische Ausführungen in 39 Blöcken bestanden; 0 Failures, Cancelled, Skips oder Todo |
+
+Die vier erfassten Testquellen sind zwischen dieser Gegenprobe und der neuen
+63er-Abnahme bytegleich. Unter den neun erfassten Quellen ändert sich nur
+die genannte Produktionsdatei. Die fünf kompilierten Ressourcen stimmen
+jeweils mit den Quellen ihres Laufs überein. Der unveränderte strenge
+Browser-Collector bestätigt den vollständigen nativen Maven-Abschluss,
+die fünf frischen XML-Suiten, neun stabile Quellhashes und acht frische
+Bild-/Geometriepaare. Alle 14 geschützten Quell- und Konfigurationshashes
+bleiben während der anschließenden Vertragsläufe erhalten. Einzelheiten
+stehen im [Vertragsnachweis](evidence/2026-10-07/portfolio-job-interaction/contracts-result.json).
+Die Ausführungszählung des Frontend-Laufs folgt der in Abschnitt 9 erläuterten
+Unterscheidung: 994 numerische Fälle nach Abzug der zweiten identischen
+API-Ausführung, 993 verschiedene Paare aus Skript und gedrucktem Namen.
+
+Ein vorheriger Versuch stoppte bereits an einer falschen Annahme über die
+native Select-Bedienung: Enter und Tab in derselben Eingabe hatten das
+Auswahlfenster geschlossen, aber den erwarteten Fokuswechsel noch nicht
+hergestellt. Dieser Versuch ist als Testvorbereitungsfehler ausgeschlossen.
+Die maßgebliche Gegenprobe schließt das Auswahlfenster ausdrücklich und
+prüft den separaten Tab-Schritt vor der eigentlichen Fehlerprüfung.
+Die Produktionskorrektur begann erst nach dem dadurch bestätigten RED.
+
+Die unabhängige Quellprüfung des tatsächlichen Produktionspatches fand
+keinen Blocker. Die Prüfung verwendet weiterhin ausschließlich die
+vorhandenen Java-/JUnit-/Failsafe-/Selenium-Owners für Portfolio, den
+Mock-Provider und abgeschaltete Modell-/Embedding-Downloads. POMs,
+CI-Selektoren und Testzuständigkeiten wurden nicht verändert. Die Belege
+aus Abschnitt 9 behalten ihre damalige Quellzuordnung; sie werden nicht
+als Gegenprobe mit den inzwischen erweiterten Testquellen ausgegeben.
+
+### Kritische Restbefunde zur Ergonomie
+
+| Priorität und Befund | Beleg und Nutzerwirkung | Nächste begrenzte Maßnahme |
+| --- | --- | --- |
+| Hoch: Mobiler Einstieg verdrängt den ausgewählten Arbeitskontext | Unter 1200 px steht die vollständige Projektliste vor dem Arbeitsbereich und besitzt keine eigene Höhenbegrenzung. Nach einer Auswahl erfolgt keine explizite Übergabe zu den geladenen Inhalten. Bei 390 × 844 und bereits zwei Projekten beginnt die Anforderungsüberschrift weiterhin bei y = 1352,8 px. | Den bestehenden Projektwähler auf schmalen Ansichten kompakt aufklappbar machen; eine klare Zusammenfassung des ausgewählten Projekts und einen sichtbaren Sprung in den Arbeitsbereich vorsehen. Neues Projekt und Filter bleiben erreichbar. Eine allein eingeklappte Liste garantiert bei der vorhandenen hohen Kopf- und Aktionszone noch keine vollständige erste Anforderung ohne Scrollen. |
+| Hoch: Erfolgreiche und projektfremde Vergangenheit steht vor der aktuellen Arbeit | Die Jobliste steht vor den Arbeitsregistern. Standard ist „Alle Status“; gerendert werden gespeicherte Jobs aller Projekte. In der Karte fehlt eine eindeutige Projektkennzeichnung. Auch erfolgreiche Karten und gespeicherte geöffnete Details können Anforderungen weit nach unten schieben. Die konkrete Höhe einer großen gemischten Historie wurde noch nicht gemessen. | Erfolgreich abgeschlossene Historie im bestehenden Bereich zusammenfassen und die Projektzuordnung sichtbar machen. Aktive, teilweise oder fehlgeschlagene Vorgänge sowie Abrufwarnungen sichtbar halten. Eine bewusst bediente Karte bei Statuswechsel nicht unvermittelt verstecken. |
+| Mittel: Eine laufende Wiederholungsanfrage besitzt nur einen DOM-lokalen Sperrzustand | `onJobAction()` deaktiviert den aktuellen Button; ein neu erzeugter Button kennt diesen laufenden Request nicht. Polling oder ein Filterwechsel kann die Aktion vorzeitig wieder aktivieren. Dieser bestehende Quellbefund wurde nicht mit einer gehaltenen Retry-POST-Antwort im Browser reproduziert. Eine tatsächliche doppelte Backend-Ausführung wird nicht behauptet. | Laufende Retry-URLs flüchtig im vorhandenen Modul führen, denselben Request währenddessen sperren und dies mit einem gehaltenen echten Fixture-POST prüfen. |
+| Mittel: Die vorhandene 20er-Grenze schützt aufmerksamkeitspflichtige Jobs nicht ausdrücklich | `trimHistory()` sortiert nach `updatedAt` und entfernt Einträge ab Position 20 unabhängig vom Status; die Discovery verarbeitet ebenfalls höchstens 20 Einträge. Bei genügend neueren Einträgen ist eine Verdrängung älterer aktiver oder fehlerhafter Jobs möglich. Dies ist ein Quellbefund, kein ausgeführter Grenzfall mit mehr als 20 Jobs. | Einen gemischten Fall oberhalb der Grenze prüfen und eine ausdrückliche Aufbewahrungsregel für aktive beziehungsweise fehlgeschlagene Jobs festlegen. |
+| Offene Abnahme: Vollständige mobile Sichtbarkeit nach Tastaturnavigation | Der eigene-Poll-Screenshot zeigt nicht die fokussierte laufende Tabelle. Gemessen sind Fokus und interne horizontale Reichweite; vertikale Tabellenlage, mögliche Überdeckung und der vollständige Tab-Weg bis zu dieser Karte sind nicht erfasst. Der etwa 194 px hohe Sticky-Header und die direkte native Fokussierung der Testvorbereitung sind mögliche Erklärungen. | Tabellen- und Headergrenzen sowie einen Trefferpunkt unter der Navbar messen. Den Zustand direkt nach Tab festhalten und für den Poll-Erhalt zusätzlich eine mit nativen Wheel-Eingaben sichtbar positionierte Tabellenzeile prüfen. |
+
+Quellen dieser Restbefunde sind die bestehende
+[Portfolio-Vorlage](../../taxonomy-app/src/main/resources/templates/projects.html),
+die [responsiven Portfolio-Styles](../../taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css),
+die [Projektauswahl](../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js),
+der [Jobrenderer](../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js)
+und der [Synchronisierer](../../taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js).
+Der mobile Messwert stammt aus der weiterhin gültigen
+[390-px-Geometrie](evidence/2026-10-07/portfolio-space/after/root/space-priority-390.json).
+
+Die neue Abnahme beweist den horizontalen Zustandserhalt und die genannten
+Tastaturschritte. `scrollTop` bleibt in dieser Fixture bei 0; ein nichttrivialer
+vertikaler Tabellen-Scroll ist damit nicht geprüft. Die mögliche mobile
+Überdeckung ist ebenfalls noch kein abschließend diagnostizierter
+Headerfehler. Eine Studie mit erstmaligen Nutzern und eine vollständige
+Barrierefreiheitszertifizierung bleiben außerhalb der durchgeführten QA.

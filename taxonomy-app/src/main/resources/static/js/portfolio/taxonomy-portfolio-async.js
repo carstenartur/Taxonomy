@@ -471,6 +471,19 @@
         const list = document.getElementById('portfolioJobList');
         const summary = document.getElementById('portfolioJobSummary');
         if (!list || !summary) return;
+        const activeElement = document.activeElement;
+        const activeJob = activeElement?.closest('.portfolio-job');
+        const focusedUrl = activeJob && list.contains(activeJob) ? activeJob.dataset.jobUrl : null;
+        const focusedSelector = ['.job-toggle', '.job-retry', '.job-details .table-responsive']
+            .find(function (selector) { return activeElement?.matches(selector); });
+        const previous = new Map();
+        Array.from(list.children).forEach(function (card) {
+            if (!card.classList.contains('portfolio-job')) return;
+            const table = card.querySelector('.job-details .table-responsive');
+            previous.set(card.dataset.jobUrl, {
+                card: card, table: table, left: table?.scrollLeft || 0, top: table?.scrollTop || 0
+            });
+        });
         const filter = document.getElementById('portfolioJobFilter');
         const selectedStatus = filter ? filter.value : '';
         const allEntries = Array.from(jobs.values());
@@ -487,15 +500,54 @@
 
         const totals = countStatuses(allEntries.map(function (entry) { return entry.job; }));
         summary.innerHTML = emptyHistory ? '' : statusPills(totals);
-        list.textContent = '';
+        const visibleUrls = new Set(entries.map(function (entry) { return entry.url; }));
+        // Remove obsolete cards first so their unchanged neighbours do not
+        // have to move (and lose native focus) merely to close a gap.
+        Array.from(list.children).forEach(function (card) {
+            if (!visibleUrls.has(card.dataset.jobUrl)) card.remove();
+        });
+        const rendered = new Map();
         if (entries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'portfolio-job-empty small text-body-secondary';
             empty.textContent = m(emptyHistory ? 'jobsEmpty' : 'jobsFilteredEmpty');
             list.appendChild(empty);
+        } else {
+            entries.forEach(function (entry, index) {
+                const existing = previous.get(entry.url)?.card;
+                let card = renderJob(entry);
+                if (existing && existing.isEqualNode(card)) {
+                    card = existing;
+                } else if (existing) {
+                    existing.replaceWith(card);
+                }
+                if (list.children[index] !== card) list.insertBefore(card, list.children[index] || null);
+                rendered.set(entry.url, card);
+            });
+        }
+        // Restore reading positions only after replacement tables have their
+        // final dimensions. Unchanged tables keep their native state directly.
+        rendered.forEach(function (card, url) {
+            const saved = previous.get(url);
+            const table = card.querySelector('.job-details .table-responsive');
+            if (saved && table && table !== saved.table) {
+                table.scrollLeft = saved.left;
+                table.scrollTop = saved.top;
+            }
+        });
+        if (!focusedUrl) return;
+        const focusedCard = rendered.get(focusedUrl);
+        if (!focusedCard) {
+            // A status change can remove the focused card from the filter.
+            // Bring the remaining navigation control into view in that case.
+            if (filter && filter.getClientRects().length) filter.focus();
             return;
         }
-        entries.forEach(function (entry) { list.appendChild(renderJob(entry)); });
+        let target = focusedSelector ? focusedCard.querySelector(focusedSelector) : null;
+        if (!target || target.disabled || !target.getClientRects().length) {
+            target = focusedCard.querySelector('.job-toggle');
+        }
+        if (target && target !== document.activeElement) target.focus({ preventScroll: true });
     }
 
     function renderJob(entry) {
