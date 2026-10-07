@@ -415,6 +415,12 @@ body {
     white-space: pre-wrap;
 }
 
+.workbench-detail-panel:focus-visible,
+.requirement-text:focus-visible {
+    outline: 3px solid var(--workbench-focus);
+    outline-offset: -3px;
+}
+
 @media (max-width: 1050px) {
     .workbench-grid {
         grid-template-columns: minmax(0, 1fr) 310px;
@@ -457,5 +463,165 @@ body {
     .architecture-node-card,
     .architecture-edge-path {
         forced-color-adjust: auto;
+    }
+}
+
+.architecture-print-view {
+    display: none;
+}
+
+@page {
+    size: A4 portrait;
+    margin: 14mm;
+}
+
+@media print {
+    html,
+    body {
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    body {
+        color: #0f172a;
+        font-size: 10pt;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+
+    .workbench-toolbar,
+    .architecture-controls,
+    body > .visually-hidden-focusable {
+        display: none !important;
+    }
+
+    .workbench-grid,
+    .workbench-canvas-panel,
+    .workbench-detail-panel {
+        display: block;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .workbench-heading {
+        display: block;
+        padding: 0 0 4mm;
+        break-after: avoid;
+    }
+
+    .architecture-kpis {
+        justify-content: flex-start;
+        margin-top: 3mm;
+    }
+
+    .architecture-kpi > [aria-hidden="true"] {
+        display: none;
+    }
+
+    .workbench-status {
+        padding: 0 0 3mm;
+        min-height: 0;
+        border: 0;
+        background: #fff;
+    }
+
+    /* Keep getBBox measurable even when beforeprint follows the media switch.
+       Preserve its screen-sized viewport so the existing renderer need not refit. */
+    .architecture-workbench,
+    .architecture-workbench:fullscreen {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: -100000px;
+        width: var(--architecture-print-source-width, 900px);
+        height: var(--architecture-print-source-height, 540px);
+        min-height: 0;
+        overflow: hidden;
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    .architecture-canvas-shell {
+        width: var(--architecture-print-source-width, 900px);
+        height: var(--architecture-print-source-height, 540px);
+        min-height: 0;
+        overflow: hidden;
+        background: none;
+    }
+
+    .architecture-print-view {
+        display: block;
+        margin: 3mm 0 5mm;
+        break-inside: avoid;
+    }
+
+    #architecturePrintScope {
+        margin-bottom: 2mm;
+        font-size: 9pt;
+        font-weight: 600;
+    }
+
+    #architecturePrintDiagram > svg {
+        display: block;
+        width: 100%;
+        height: 160mm;
+        max-height: 160mm;
+        overflow: visible;
+    }
+
+    .architecture-print-view .architecture-node.is-muted {
+        opacity: 1;
+    }
+
+    .architecture-print-view .architecture-edge.is-muted .architecture-edge-path {
+        stroke-opacity: 0.58;
+    }
+
+    .workbench-detail-panel {
+        padding: 4mm 0 0;
+        border-top: 1px solid var(--workbench-border);
+    }
+
+    .workbench-detail-panel:focus-visible,
+    .requirement-text:focus-visible {
+        outline: none;
+    }
+
+    .workbench-detail-panel h2 {
+        break-after: avoid;
+    }
+
+    .detail-list {
+        display: block;
+        font-size: 10pt;
+    }
+
+    .detail-list dt {
+        margin-top: 2mm;
+        break-after: avoid;
+    }
+
+    .detail-list dd {
+        margin: 0 0 2mm;
+        white-space: pre-wrap;
+    }
+
+    .requirement-text {
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        padding: 2mm 0;
+        border: 0;
+        background: #fff;
+        font-size: 10pt;
+        overflow-wrap: anywhere;
+    }
+
+    #architectureWarnings {
+        overflow-wrap: anywhere;
     }
 }

@@ -145,6 +145,15 @@
     }
 }
 
+/* A desktop viewport can still contain a narrow analysis column. Size the
+   stages by that column, not by the outer window; keep the existing single
+   column mobile layout below 641px unless the compact-height rule applies. */
+@media (min-width: 641px) {
+    .analysis-task-stages {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    }
+}
+
 /* Narrow landscape and 400% zoom need a compact first task screen. The text
    area remains comfortably editable, while explanatory copy yields before an
    actionable control is pushed several viewports down. Keep the progress
@@ -157,7 +166,7 @@
         padding: 0.55rem;
     }
     .analysis-task-stages {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
         gap: 0.2rem;
         overflow-x: visible;
         margin-bottom: 0.5rem;

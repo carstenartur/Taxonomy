@@ -177,7 +177,9 @@ class ReformulationIsolationTest {
                 String corrupted = payload.replaceFirst(java.util.regex.Pattern.quote(before), java.util.regex.Matcher.quoteReplacement(after));
                 jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", corrupted, id);
                 mvc.perform(get(base()+"/"+id)).andExpect(status().isConflict())
-                        .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(entry.getValue()[1]));
+                        // Compare the complete public problem, not digits that may occur in its request UUID.
+                        .andExpect(result -> ReformulationProblemAssertions.requireIdentityConflict(json,
+                                result.getResponse().getContentAsString(), result.getRequest().getRequestURI()));
             }
         } finally {
             jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", payload, id);

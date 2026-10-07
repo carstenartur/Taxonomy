@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+const i18nSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8');
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js', import.meta.url), 'utf8');
 function harness(scoped) {
   const elements = new Map();
   const window = { location: { pathname: '/projects/1/requirements/2', search: '' }, TaxonomyUtils: { escapeHtml: value => String(value ?? '') } };
   const document = { documentElement: { lang: 'en' }, addEventListener() {}, getElementById(id) { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
+  document.cookie = ''; document.dispatchEvent = () => {};
+  // Load the real shared formatter required by the production page.
+  vm.runInNewContext(i18nSource, { window, document, fetch: async () => ({ ok: true, json: async () => ({}) }), CustomEvent: class {} });
   // Expose private rendering functions in the test closure; execute their unchanged production bodies.
   const instrumented = source.replace(/\}\)\(\);\s*$/, 'window.probe = { state, renderMappings, renderRelations }; })();');
   vm.runInNewContext(instrumented, { window, document, URLSearchParams });

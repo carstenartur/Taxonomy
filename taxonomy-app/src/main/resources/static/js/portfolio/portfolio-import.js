@@ -78,6 +78,7 @@
     function l(key) { return labels[locale][key] || labels.en[key] || key; }
 
     async function initialize() {
+        await window.TaxonomyI18n.ready();
         translateSurface();
         wireEvents();
         try {
@@ -317,7 +318,7 @@
 
     function field(name, label, control, cssClass) { return `<div class="${cssClass}"><label class="form-label">${escapeHtml(label)}</label>${control}</div>`; }
     function requirementTypeSelect(selected) { return `<select class="form-select candidate-type">${['FUNCTIONAL','NON_FUNCTIONAL','ORGANIZATIONAL','TECHNICAL','LEGAL','PROCESS','SECURITY','DATA','OTHER'].map(value => `<option value="${value}"${value === selected ? ' selected' : ''}>${humanize(value)}</option>`).join('')}</select>`; }
-    function criticalitySelect(selected) { return `<select class="form-select candidate-criticality">${['LOW','MEDIUM','HIGH','CRITICAL'].map(value => `<option value="${value}"${value === selected ? ' selected' : ''}>${humanize(value)}</option>`).join('')}</select>`; }
+    function criticalitySelect(selected) { selected = normalizeCriticality(selected); return `<select class="form-select candidate-criticality">${['LOW','MEDIUM','HIGH','MISSION_CRITICAL'].map(value => `<option value="${value}"${value === selected ? ' selected' : ''}>${humanize(value)}</option>`).join('')}</select>`; }
     function decisionSelect(selected) { return `<select class="form-select candidate-decision"><option value="NEW"${selected === 'NEW' ? ' selected' : ''}>${escapeHtml(l('newRequirement'))}</option><option value="VERSION"${selected === 'VERSION' ? ' selected' : ''}>${escapeHtml(l('newVersion'))}</option><option value="MERGE"${selected === 'MERGE' ? ' selected' : ''}>${escapeHtml(l('merge'))}</option><option value="DISCARD"${selected === 'DISCARD' ? ' selected' : ''}>${escapeHtml(l('discard'))}</option></select>`; }
     function requirementSelect(selected) { return `<select class="form-select candidate-target-requirement"><option value="">—</option>${state.existingRequirements.map(requirement => `<option value="${requirement.id}"${Number(selected) === requirement.id ? ' selected' : ''}>${escapeHtml(requirement.requirementKey + ' — ' + requirement.title)}</option>`).join('')}</select>`; }
     function mergeTargetSelect(candidate) { return `<select class="form-select candidate-target-merge"><option value="">—</option>${state.candidates.filter(other => other.id !== candidate.id && other.decision !== 'DISCARD' && other.decision !== 'MERGE').map(other => `<option value="${other.id}"${Number(candidate.mergeTargetId) === other.id ? ' selected' : ''}>${escapeHtml(other.key + ' — ' + other.title)}</option>`).join('')}</select>`; }
@@ -388,7 +389,7 @@
                     requirementKey: candidate.decision === 'NEW' ? candidate.key.trim() : null,
                     title: candidate.title.trim(), text: candidate.text.trim(),
                     requirementType: candidate.type, priority: candidate.priority,
-                    criticality: candidate.criticality,
+                    criticality: normalizeCriticality(candidate.criticality),
                     source: {
                         sourceArtifactId: state.sourceArtifactId,
                         sourceVersionId: state.sourceVersionId,
@@ -447,7 +448,9 @@
     function normalizeRequirementType(value) { const normalized = String(value || 'FUNCTIONAL').toUpperCase(); return ['FUNCTIONAL','NON_FUNCTIONAL','ORGANIZATIONAL','TECHNICAL','LEGAL','PROCESS','SECURITY','DATA','OTHER'].includes(normalized) ? normalized : 'OTHER'; }
     function normalize(value) { return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
     function jaccard(left, right) { const a = new Set(normalize(left).split(' ').filter(Boolean)); const b = new Set(normalize(right).split(' ').filter(Boolean)); if (!a.size || !b.size) return 0; const intersection = [...a].filter(token => b.has(token)).length; return intersection / new Set([...a, ...b]).size; }
-    function humanize(value) { return String(value || '').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase()); }
+    // Preserve reviews saved by the former UI, whose highest option used an invalid enum value.
+    function normalizeCriticality(value) { return value === 'CRITICAL' ? 'MISSION_CRITICAL' : value; }
+    function humanize(value) { return window.TaxonomyI18n.formatEnum(value); }
 
     function api() {
         if (!window.TaxonomyPortfolioApi) {

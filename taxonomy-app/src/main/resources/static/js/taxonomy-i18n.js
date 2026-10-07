@@ -62,22 +62,21 @@
         window.fetch = wrappedFetch;
     }
 
-    /** Detect initial locale from <html lang="…">, cookie, or localStorage. */
+    function normalizeLocale(locale) {
+        return String(locale || '').toLowerCase().startsWith('de') ? 'de' : 'en';
+    }
+
+    /** The server has already resolved query parameters and the locale cookie. */
     function detectLocale() {
-        // 1. localStorage preference
-        var stored = localStorage.getItem('taxonomy_language');
-        if (stored) return stored;
-
-        // 2. Cookie
-        var match = document.cookie.match(/(?:^|;\s*)lang=([a-z]{2}(?:-[A-Z]{2})?)/);
-        if (match) return match[1];
-
-        // 3. <html lang="…">
         var htmlLang = document.documentElement.lang;
-        if (htmlLang && htmlLang.length >= 2) return htmlLang.substring(0, 2);
-
-        // 4. Fallback
-        return 'en';
+        if (htmlLang) return normalizeLocale(htmlLang);
+        var match = document.cookie.match(/(?:^|;\s*)lang=([^;]+)/);
+        if (match) return normalizeLocale(match[1]);
+        try {
+            return normalizeLocale(localStorage.getItem('taxonomy_language'));
+        } catch (error) {
+            return 'en';
+        }
     }
 
     /**
@@ -116,7 +115,7 @@
      * @returns {Promise}
      */
     function load(locale) {
-        currentLocale = locale || detectLocale();
+        currentLocale = normalizeLocale(locale || detectLocale());
         loadPromise = fetch('/api/i18n/' + encodeURIComponent(currentLocale))
             .then(function (resp) {
                 if (!resp.ok) throw new Error('i18n load failed: ' + resp.status);
@@ -140,7 +139,8 @@
      * @param {string} locale - Language code
      */
     function setLocale(locale) {
-        localStorage.setItem('taxonomy_language', locale);
+        locale = normalizeLocale(locale);
+        try { localStorage.setItem('taxonomy_language', locale); } catch (error) { /* The cookie and URL still persist the choice. */ }
         document.cookie = 'lang=' + locale + ';path=/;max-age=31536000;SameSite=Lax';
         // Reload the page so that Thymeleaf re-renders with the new locale
         var url = new URL(window.location.href);
@@ -192,6 +192,12 @@
         isLoaded: isLoaded,
         ready: ready,
         formatBranch: formatBranch,
+        formatEnum: function (value) {
+            var key = 'ui.enum.' + value;
+            var translated = t(key);
+            return translated === key ? String(value || '—').toLowerCase().replace(/_/g, ' ')
+                .replace(/\b\w/g, function (character) { return character.toUpperCase(); }) : translated;
+        },
         getBasePath: function () { return applicationBasePath; },
         resolveUrl: resolveApplicationUrl
     };

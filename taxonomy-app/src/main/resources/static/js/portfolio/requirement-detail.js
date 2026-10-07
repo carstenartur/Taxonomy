@@ -123,6 +123,7 @@
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 
     async function initialize() {
+        await window.TaxonomyI18n.ready();
         translateSurface();
         wireEvents();
         await loadAll();
@@ -837,10 +838,7 @@
         document.getElementById('requirementLive').textContent = message;
     }
 
-    function humanize(value) {
-        return String(value || '—').toLowerCase().replaceAll('_', ' ')
-            .replace(/\b\w/g, character => character.toUpperCase());
-    }
+    function humanize(value) { return window.TaxonomyI18n.formatEnum(value); }
 
     function statusClass(status) {
         if (['SUCCESS', 'CONFIRMED', 'ACTIVE', 'SELECTED'].includes(status)) return 'text-bg-success';

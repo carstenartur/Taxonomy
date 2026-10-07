@@ -309,8 +309,10 @@ test('disabled controls remain overlay-testable without weakening application se
 });
 
 test('short-height task stages stay labelled without a separate horizontal scroll region', () => {
+  // Keep the overflow/label contract, but permit reflow in a narrow analysis column.
+  assert.doesNotMatch(workflowCssSource, /\.analysis-task-stages\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(workflowCssSource,
-    /@media \(max-height: 32rem\)[\s\S]*?\.analysis-task-stages\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);[^}]*overflow-x:\s*visible;/s);
+    /@media \(max-height: 32rem\)[\s\S]*?\.analysis-task-stages\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*8rem\),\s*1fr\)\);[^}]*overflow-x:\s*visible;/s);
   assert.match(workflowCssSource,
     /\.analysis-task-stages li\s*\{[^}]*font-size:\s*0\.75rem;[^}]*\}/s);
   assert.match(workflowCssSource,
