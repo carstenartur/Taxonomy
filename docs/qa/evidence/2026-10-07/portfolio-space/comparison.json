@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "kind": "portfolio-space-comparison",
+  "beforeRun": "before-result.json",
+  "afterRun": "after-result.json",
+  "runtime": "runtime.json",
+  "units": "CSS pixels",
+  "rows": [
+    {
+      "viewport": {
+        "height": 768,
+        "width": 1366
+      },
+      "scroll": {
+        "x": 0,
+        "y": 0
+      },
+      "metricsHeight": {
+        "before": 232,
+        "after": 108.171875
+      },
+      "emptyJobsHeight": {
+        "before": 198,
+        "after": 50
+      },
+      "requirementsHeadingTop": {
+        "before": 756.96875,
+        "after": 485.140625,
+        "gain": 271.828125
+      },
+      "firstRequirementRowBottom": {
+        "before": 945.46875,
+        "after": 673.640625
+      },
+      "firstRequirementRowFullyInViewportAfter": true,
+      "sourceGeometry": [
+        {
+          "file": "before/root/space-priority-1366.json",
+          "sha256": "d9d425e4f03009162f5867c1f9630c8de657c5fd82c7e4476f1a38e2f6fe55d1"
+        },
+        {
+          "file": "after/root/space-priority-1366.json",
+          "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873"
+        },
+        {
+          "file": "after/taxonomy/space-priority-1366.json",
+          "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873"
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      },
+      "scroll": {
+        "x": 0,
+        "y": 0
+      },
+      "metricsHeight": {
+        "before": 116,
+        "after": 94.46875
+      },
+      "emptyJobsHeight": {
+        "before": 198,
+        "after": 50
+      },
+      "requirementsHeadingTop": {
+        "before": 640.96875,
+        "after": 471.4375,
+        "gain": 169.53125
+      },
+      "firstRequirementRowBottom": {
+        "before": 813.65625,
+        "after": 644.125
+      },
+      "firstRequirementRowFullyInViewportAfter": true,
+      "sourceGeometry": [
+        {
+          "file": "before/root/space-priority-1920.json",
+          "sha256": "9277f2ebc4c7690eed67cb19c45276b6255d069f07c91d6dec6ed6e2e1caec47"
+        },
+        {
+          "file": "after/root/space-priority-1920.json",
+          "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac"
+        },
+        {
+          "file": "after/taxonomy/space-priority-1920.json",
+          "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac"
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "scroll": {
+        "x": 0,
+        "y": 0
+      },
+      "metricsHeight": {
+        "before": 353.875,
+        "after": 269.4375
+      },
+      "emptyJobsHeight": {
+        "before": 303,
+        "after": 75
+      },
+      "requirementsHeadingTop": {
+        "before": 1665.203125,
+        "after": 1352.765625,
+        "gain": 312.4375
+      },
+      "firstRequirementRowBottom": {
+        "before": 2048.703125,
+        "after": 1736.265625
+      },
+      "firstRequirementRowFullyInViewportAfter": false,
+      "sourceGeometry": [
+        {
+          "file": "before/root/space-priority-390.json",
+          "sha256": "e1401341cf9720b3d577e82b81db52d3cd854e9e1eacdf4186773374b879edfd"
+        },
+        {
+          "file": "after/root/space-priority-390.json",
+          "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7"
+        },
+        {
+          "file": "after/taxonomy/space-priority-390.json",
+          "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7"
+        }
+      ]
+    }
+  ],
+  "imageComparisons": [
+    {
+      "state": "1366",
+      "images": [
+        {
+          "file": "before/root/space-priority-1366.png",
+          "sha256": "b5267ca75f7d87113135ad3d895a73d3eb651acdb289b887b64b602fdaf22365",
+          "bytes": 109228
+        },
+        {
+          "file": "after/root/space-priority-1366.png",
+          "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+          "bytes": 136682
+        },
+        {
+          "file": "after/taxonomy/space-priority-1366.png",
+          "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+          "bytes": 136682
+        }
+      ],
+      "afterContextsByteIdentical": true
+    },
+    {
+      "state": "1920",
+      "images": [
+        {
+          "file": "before/root/space-priority-1920.png",
+          "sha256": "f6062a25d25894ec0d5c276c7c1774942a6490d7e4d87ed16df4114e2f1126fb",
+          "bytes": 151300
+        },
+        {
+          "file": "after/root/space-priority-1920.png",
+          "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+          "bytes": 139311
+        },
+        {
+          "file": "after/taxonomy/space-priority-1920.png",
+          "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+          "bytes": 139311
+        }
+      ],
+      "afterContextsByteIdentical": true
+    },
+    {
+      "state": "390",
+      "images": [
+        {
+          "file": "before/root/space-priority-390.png",
+          "sha256": "aa4880b9807a2199847f6ab79c4d72a5683a1991a2e3c315450bd0df08b7eb1b",
+          "bytes": 59382
+        },
+        {
+          "file": "after/root/space-priority-390.png",
+          "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+          "bytes": 59293
+        },
+        {
+          "file": "after/taxonomy/space-priority-390.png",
+          "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+          "bytes": 59293
+        }
+      ],
+      "afterContextsByteIdentical": true
+    },
+    {
+      "state": "text-200",
+      "images": [
+        {
+          "file": "before/root/space-priority-text-200.png",
+          "sha256": "00394d193c33c777f6f3482449f8f4b66a262d9ca9d07e0b7c5df7175f6cb6c1",
+          "bytes": 101035
+        },
+        {
+          "file": "after/root/space-priority-text-200.png",
+          "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+          "bytes": 97760
+        },
+        {
+          "file": "after/taxonomy/space-priority-text-200.png",
+          "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+          "bytes": 97760
+        }
+      ],
+      "afterContextsByteIdentical": true
+    }
+  ],
+  "limitations": [
+    "Desktop first-row visibility is verified for the measured fixture with an empty job history and its requirement title.",
+    "Populated job histories retain complete cards and can move requirements below the initial viewport.",
+    "At390px the project list still precedes portfolio content and the first requirement remains below the initial viewport.",
+    "200percent means the root font size, not native browser or OS zoom.",
+    "Right-hand columns of mobile job-detail tables require internal horizontal scrolling.",
+    "No observational study with first-time users was conducted."
+  ]
+}

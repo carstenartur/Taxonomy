@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SourceReference;
+import org.assertj.core.api.SoftAssertions;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.Keys;
@@ -14,6 +15,7 @@ import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,6 +82,7 @@ final class PortfolioContextBrowserChecks {
             fixtures.projectsAvailable = true;
             driver.navigate().refresh();
             pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+            verifyPortfolioSpacePriority();
             verifyProjectNavigation(1366, 768);
             verifyProjectNavigation(1920, 1080);
             verifyProjectNavigation(390, 844);
@@ -122,6 +125,263 @@ final class PortfolioContextBrowserChecks {
                 else throw new AssertionError("Portfolio browser fixture cleanup failed", cleanupFailure);
             }
         }
+    }
+
+    private void verifyPortfolioSpacePriority() throws IOException {
+        SoftAssertions checks = new SoftAssertions();
+        for (int[] size : List.of(new int[]{1366, 768}, new int[]{1920, 1080}, new int[]{390, 844})) {
+            viewport(size[0], size[1]);
+            showProject(PROJECT_B);
+            driver.executeScript("window.scrollTo({top:0,left:0,behavior:'instant'})");
+            Map<?, ?> geometry = (Map<?, ?>) driver.executeScript("""
+                    const shown=element => !!element && !!element.getClientRects().length
+                        && getComputedStyle(element).visibility!=='hidden';
+                    const bounds=element => {
+                        const rect=element.getBoundingClientRect();
+                        return {x:rect.x,y:rect.y,top:rect.top,left:rect.left,right:rect.right,
+                            bottom:rect.bottom,width:rect.width,height:rect.height,visible:shown(element)};
+                    };
+                    const metrics=document.getElementById('portfolioMetrics');
+                    const cards=Array.from(metrics.querySelectorAll('.portfolio-metric'),card => {
+                        const parts=Array.from(card.querySelectorAll('.metric-value,.metric-label'));
+                        return {...bounds(card),label:card.querySelector('.metric-label').innerText,
+                            value:card.querySelector('.metric-value').innerText,
+                            unclipped:parts.every(part => shown(part) && part.clientWidth>0 && part.clientHeight>0
+                                && part.scrollWidth<=part.clientWidth+1 && part.scrollHeight<=part.clientHeight+1)};
+                    });
+                    const firstRow=document.querySelector('#requirementsTable tbody tr');
+                    return {viewport:{width:innerWidth,height:innerHeight},scroll:{x:scrollX,y:scrollY},cards,
+                        metrics:bounds(metrics),jobs:bounds(document.getElementById('portfolioJobCenter')),
+                        heading:bounds(document.querySelector('#requirementsPane h3')),
+                        create:bounds(document.querySelector('#requirementsPane [data-bs-target="#requirementModal"]')),
+                        firstRow:bounds(firstRow),firstLink:bounds(firstRow.querySelector('a')),
+                        emptyText:document.getElementById('portfolioJobList').innerText,
+                        filterVisible:shown(document.getElementById('portfolioJobFilter')),
+                        summaryVisible:shown(document.getElementById('portfolioJobSummary')),
+                        helpVisible:shown(document.getElementById('portfolioJobCenterHelp'))};
+                    """);
+            Files.writeString(evidence.resolve("space-priority-" + size[0] + ".json"),
+                    new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(geometry));
+            screenshot("space-priority-" + size[0]);
+            noOverflow();
+            checks.assertThat(number(geometry, "scroll", "x")).isZero();
+            checks.assertThat(number(geometry, "scroll", "y")).isZero();
+            List<?> cards = (List<?>) geometry.get("cards");
+            checks.assertThat(cards).hasSize(6).allSatisfy(value -> {
+                Map<?, ?> card = (Map<?, ?>) value;
+                assertThat(card.get("visible")).isEqualTo(true);
+                assertThat(card.get("unclipped")).as("Complete metric text: %s", card).isEqualTo(true);
+                assertThat(((Number) card.get("width")).doubleValue()).isPositive();
+                assertThat(((Number) card.get("height")).doubleValue()).isPositive();
+            });
+            checks.assertThat(geometry.get("emptyText")).isEqualTo("Keine Analysejobs vorhanden.");
+            for (String control : List.of("filterVisible", "summaryVisible", "helpVisible")) {
+                checks.assertThat(geometry.get(control)).as("An empty history has no unused %s", control).isEqualTo(false);
+            }
+            checks.assertThat(((Map<?, ?>) geometry.get("jobs")).get("visible")).isEqualTo(true);
+            checks.assertThat(number(geometry, "jobs", "width")).isPositive();
+            checks.assertThat(number(geometry, "jobs", "height"))
+                    .as("An empty job history remains a compact orientation cue")
+                    .isPositive()
+                    .isLessThanOrEqualTo(size[0] >= 1000 ? 80 : 104);
+            if (size[0] >= 1000) {
+                List<Long> cardTops = cards.stream().map(value ->
+                        Math.round(((Number) ((Map<?, ?>) value).get("top")).doubleValue())).toList();
+                checks.assertThat(cardTops).as("All six desktop metrics occupy one row").containsOnly(cardTops.getFirst());
+                checks.assertThat(number(geometry, "metrics", "height")).isLessThanOrEqualTo(112);
+                for (String part : List.of("heading", "create", "firstRow", "firstLink")) {
+                    Map<?, ?> rect = (Map<?, ?>) geometry.get(part);
+                    checks.assertThat(rect.get("visible")).as("Visible desktop %s", part).isEqualTo(true);
+                    checks.assertThat(number(geometry, part, "width")).isPositive();
+                    checks.assertThat(number(geometry, part, "height")).isPositive();
+                    checks.assertThat(number(geometry, part, "top")).isGreaterThanOrEqualTo(0);
+                    checks.assertThat(number(geometry, part, "left")).isGreaterThanOrEqualTo(0);
+                    checks.assertThat(number(geometry, part, "right")).isLessThanOrEqualTo(size[0]);
+                    checks.assertThat(number(geometry, part, "bottom"))
+                            .as("%s is visible without scrolling at %s: %s", part, size[0], geometry)
+                            .isLessThanOrEqualTo(size[1]);
+                }
+            } else {
+                checks.assertThat(number(geometry, "metrics", "height"))
+                        .as("Mobile metrics remain compact while labels wrap").isLessThanOrEqualTo(300);
+            }
+        }
+        verifyMetricTextReflow(checks);
+        verifyAnalysisJobStates(checks);
+        checks.assertAll();
+    }
+
+    private void verifyMetricTextReflow(SoftAssertions checks) throws IOException {
+        viewport(1366, 768);
+        showProject(PROJECT_B);
+        try {
+            driver.executeScript("document.documentElement.style.fontSize='200%'");
+            Map<?, ?> geometry = (Map<?, ?>) driver.executeScript("""
+                    const metrics=document.getElementById('portfolioMetrics');
+                    metrics.scrollIntoView({block:'center',behavior:'instant'});
+                    const parts=Array.from(metrics.querySelectorAll('.metric-value,.metric-label'),part => ({
+                        text:part.innerText,clientWidth:part.clientWidth,scrollWidth:part.scrollWidth,
+                        clientHeight:part.clientHeight,scrollHeight:part.scrollHeight,
+                        visible:!!part.getClientRects().length && getComputedStyle(part).visibility!=='hidden'
+                    }));
+                    const words=[];
+                    for(const label of metrics.querySelectorAll('.metric-label')) {
+                        const walker=document.createTreeWalker(label,NodeFilter.SHOW_TEXT);
+                        for(let node=walker.nextNode();node;node=walker.nextNode()) {
+                            for(const match of node.textContent.matchAll(/\\S+/g)) {
+                                const range=document.createRange();
+                                range.setStart(node,match.index);
+                                range.setEnd(node,match.index+match[0].length);
+                                const lines=new Set(Array.from(range.getClientRects())
+                                    .filter(rect => rect.width>0 && rect.height>0)
+                                    .map(rect => Math.round(rect.top)));
+                                words.push({text:match[0],lines:lines.size});
+                            }
+                        }
+                    }
+                    const sidebar=document.querySelector('.portfolio-sidebar');
+                    const header=sidebar.querySelector('.card-header').getBoundingClientRect();
+                    const action=sidebar.querySelector('[data-bs-target="#projectModal"]').getBoundingClientRect();
+                    const sidebarBody=sidebar.querySelector('.card-body');
+                    return {rootFont:getComputedStyle(document.documentElement).fontSize,
+                        viewport:{width:innerWidth,height:innerHeight},parts,words,
+                        sidebar:{clientWidth:sidebarBody.clientWidth,scrollWidth:sidebarBody.scrollWidth},
+                        newProject:{width:action.width,height:action.height,left:action.left,right:action.right,
+                            headerLeft:header.left,headerRight:header.right}};
+                    """);
+            Files.writeString(evidence.resolve("space-priority-text-200.json"),
+                    new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(geometry));
+            screenshot("space-priority-text-200");
+            List<?> parts = (List<?>) geometry.get("parts");
+            checks.assertThat(parts).hasSize(12);
+            checks.assertThat(parts).allSatisfy(value -> {
+                Map<?, ?> part = (Map<?, ?>) value;
+                assertThat(part.get("visible")).isEqualTo(true);
+                assertThat(((Number) part.get("clientWidth")).doubleValue()).isPositive();
+                assertThat(((Number) part.get("scrollWidth")).doubleValue())
+                        .as("Enlarged metric text stays inside its own card: %s", part)
+                        .isLessThanOrEqualTo(((Number) part.get("clientWidth")).doubleValue() + 1);
+                assertThat(((Number) part.get("scrollHeight")).doubleValue())
+                        .isLessThanOrEqualTo(((Number) part.get("clientHeight")).doubleValue() + 1);
+            });
+            checks.assertThat((List<?>) geometry.get("words")).isNotEmpty().allSatisfy(value -> {
+                Map<?, ?> word = (Map<?, ?>) value;
+                assertThat(((Number) word.get("lines")).intValue())
+                        .as("Enlarged metric labels remain readable without breaking individual words: %s", word)
+                        .isEqualTo(1);
+            });
+            checks.assertThat(number(geometry, "sidebar", "scrollWidth"))
+                    .as("Enlarged project names and statuses remain readable without sideways scrolling")
+                    .isLessThanOrEqualTo(number(geometry, "sidebar", "clientWidth") + 1);
+            checks.assertThat(number(geometry, "newProject", "width")).isPositive();
+            checks.assertThat(number(geometry, "newProject", "height")).isPositive();
+            checks.assertThat(number(geometry, "newProject", "left"))
+                    .isGreaterThanOrEqualTo(number(geometry, "newProject", "headerLeft"));
+            checks.assertThat(number(geometry, "newProject", "right"))
+                    .as("The new-project action stays inside its header at enlarged text size")
+                    .isLessThanOrEqualTo(number(geometry, "newProject", "headerRight"));
+            noOverflow();
+        } finally {
+            driver.executeScript("document.documentElement.style.fontSize=''");
+        }
+    }
+
+    private static double number(Map<?, ?> geometry, String part, String key) {
+        return ((Number) ((Map<?, ?>) geometry.get(part)).get(key)).doubleValue();
+    }
+
+    private void verifyAnalysisJobStates(SoftAssertions checks) throws IOException {
+        viewport(1366, 768);
+        showProject(PROJECT_A);
+        driver.get("about:blank");
+        fixtures.jobListReads.set(0);
+        fixtures.showAnalysisJobs();
+        open("/projects?lang=de");
+        pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+        wait.until(browser -> driver.findElements(By.cssSelector("#portfolioJobList .portfolio-job")).size() == 3);
+        visible("portfolioJobFilter"); visible("portfolioJobSummary"); visible("portfolioJobCenterHelp");
+        checks.assertThat(driver.findElement(By.id("portfolioJobSummary")).getText())
+                .contains("Wartend: 1", "Laufend: 1", "Fehlgeschlagen: 1");
+
+        select("portfolioJobFilter", "SUCCESS");
+        wait.until(browser -> driver.findElements(By.cssSelector("#portfolioJobList .portfolio-job")).isEmpty());
+        checks.assertThat(driver.findElement(By.id("portfolioJobList")).getText())
+                .as("A filter with no matches must not claim that no jobs exist")
+                .isEqualTo("Keine Analysejobs mit diesem Status.");
+        visible("portfolioJobFilter"); visible("portfolioJobSummary");
+        screenshot("jobs-filtered-empty");
+
+        select("portfolioJobFilter", "PENDING");
+        Map<?, ?> pending = jobState("qa-pending");
+        checks.assertThat((String) pending.get("text")).contains("Wartend");
+        checks.assertThat(pending.get("progress")).isEqualTo("0");
+        select("portfolioJobFilter", "FAILED");
+        Map<?, ?> failed = jobState("qa-failed");
+        checks.assertThat((String) failed.get("text")).contains("Fehlgeschlagen");
+        checks.assertThat(failed.get("retryVisible")).isEqualTo(true);
+        click(By.cssSelector("#portfolioJobList .job-toggle"));
+        checks.assertThat((String) jobState("qa-failed").get("details"))
+                .contains("QA-REQ-0", "QA-REQ-65", "QA: Analyse für diesen Eintrag fehlgeschlagen.");
+        viewport(390, 844);
+        noOverflow();
+        scrollJob("qa-failed"); screenshot("jobs-failed-mobile");
+        viewport(1366, 768);
+
+        select("portfolioJobFilter", "RUNNING");
+        checks.assertThat(jobState("qa-running").get("progress")).isEqualTo("50");
+        visible("portfolioJobFilter"); visible("portfolioJobCenterHelp"); hidden("portfolioBusy");
+        // Observe all requests in the existing bounded discovery sequence
+        // before exercising a later failure and recovery through detail polls.
+        wait.until(browser -> fixtures.jobListReads.get() >= 3);
+        fixtures.jobPollingUnavailable = true;
+        wait.until(browser -> ((String) jobState("qa-running").get("text")).contains("HTTP 503"));
+        checks.assertThat(jobState("qa-running").get("progressVisible")).isEqualTo(true);
+        scrollJob("qa-running"); screenshot("jobs-poll-error");
+        int previousPolls = fixtures.successfulJobPolls.get();
+        fixtures.completeRunningAnalysis();
+        fixtures.jobPollingUnavailable = false;
+        wait.until(browser -> fixtures.successfulJobPolls.get() > previousPolls);
+        wait.until(browser -> driver.findElements(By.cssSelector("#portfolioJobList .portfolio-job")).isEmpty()
+                && driver.findElement(By.id("portfolioJobSummary")).getText().contains("Erfolgreich: 1"));
+        hidden("portfolioBusy");
+        checks.assertThat(driver.findElement(By.id("portfolioJobFilter")).getDomProperty("value")).isEqualTo("RUNNING");
+        checks.assertThat(driver.findElement(By.id("portfolioJobList")).getText())
+                .as("A running job becoming terminal leaves an honest filtered-empty state")
+                .isEqualTo("Keine Analysejobs mit diesem Status.");
+        select("portfolioJobFilter", "SUCCESS");
+        checks.assertThat((String) jobState("qa-running").get("text"))
+                .as("A successful poll clears an obsolete connection warning").doesNotContain("HTTP 503");
+        screenshot("jobs-poll-recovered");
+        select("portfolioJobFilter", "");
+        wait.until(browser -> driver.findElements(By.cssSelector("#portfolioJobList .portfolio-job")).size() == 3);
+
+        open("/__qa_portfolio_context_cleanup__");
+        fixtures.analysisJobs = List.of();
+        driver.executeScript("localStorage.setItem('taxonomy.portfolio.analysisJobs.v2','[]')");
+        open("/projects?lang=de");
+        pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+    }
+
+    private void scrollJob(String id) {
+        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("""
+                const job=document.querySelector(arguments[0]);
+                if(!job || !job.getClientRects().length) return false;
+                job.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
+                return true;
+                """, "#portfolioJobList .portfolio-job[data-job-url$='/" + id + "']")));
+    }
+
+    private Map<?, ?> jobState(String id) {
+        // Polling replaces job articles. Read each rendered state atomically
+        // instead of holding an element reference across an unrelated poll.
+        return wait.until(browser -> (Map<?, ?>) driver.executeScript("""
+                const job=document.querySelector(arguments[0]);
+                if(!job || !job.getClientRects().length) return null;
+                const progress=job.querySelector('[role="progressbar"]'), retry=job.querySelector('.job-retry');
+                return {text:job.innerText,progress:progress?.getAttribute('aria-valuenow'),
+                    progressVisible:!!progress?.getClientRects().length,retryVisible:!!retry?.getClientRects().length,
+                    details:job.querySelector('.job-details')?.innerText};
+                """, "#portfolioJobList .portfolio-job[data-job-url$='/" + id + "']"));
     }
 
     private void verifyProjectNavigation(int width, int height) throws IOException {

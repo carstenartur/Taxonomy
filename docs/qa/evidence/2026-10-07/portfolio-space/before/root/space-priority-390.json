@@ -1,0 +1,159 @@
+{
+  "cards" : [ {
+    "bottom" : 1010.328125,
+    "height" : 108,
+    "label" : "Anforderungen",
+    "left" : 12,
+    "right" : 183.5,
+    "top" : 902.328125,
+    "unclipped" : true,
+    "value" : "1",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 12,
+    "y" : 902.328125
+  }, {
+    "bottom" : 1010.328125,
+    "height" : 108,
+    "label" : "Analysiert",
+    "left" : 191.5,
+    "right" : 363,
+    "top" : 902.328125,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 191.5,
+    "y" : 902.328125
+  }, {
+    "bottom" : 1129.265625,
+    "height" : 110.9375,
+    "label" : "Ohne bestätigte Lösung",
+    "left" : 12,
+    "right" : 183.5,
+    "top" : 1018.328125,
+    "unclipped" : true,
+    "value" : "1",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 12,
+    "y" : 1018.328125
+  }, {
+    "bottom" : 1129.265625,
+    "height" : 110.9375,
+    "label" : "Lösungen",
+    "left" : 191.5,
+    "right" : 363,
+    "top" : 1018.328125,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 191.5,
+    "y" : 1018.328125
+  }, {
+    "bottom" : 1248.203125,
+    "height" : 110.9375,
+    "label" : "Ausgewählte Produkte",
+    "left" : 12,
+    "right" : 183.5,
+    "top" : 1137.265625,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 12,
+    "y" : 1137.265625
+  }, {
+    "bottom" : 1248.203125,
+    "height" : 110.9375,
+    "label" : "Offene Konflikte",
+    "left" : 191.5,
+    "right" : 363,
+    "top" : 1137.265625,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 171.5,
+    "x" : 191.5,
+    "y" : 1137.265625
+  } ],
+  "create" : {
+    "bottom" : 1747.203125,
+    "height" : 52,
+    "left" : 246.328125,
+    "right" : 348.90625,
+    "top" : 1695.203125,
+    "visible" : true,
+    "width" : 102.578125,
+    "x" : 246.328125,
+    "y" : 1695.203125
+  },
+  "emptyText" : "In diesem Browser wurde noch kein Analysejob gestartet.",
+  "filterVisible" : true,
+  "firstLink" : {
+    "bottom" : 1914.203125,
+    "height" : 72,
+    "left" : 126.03125,
+    "right" : 228.265625,
+    "top" : 1842.203125,
+    "visible" : true,
+    "width" : 102.234375,
+    "x" : 126.03125,
+    "y" : 1842.203125
+  },
+  "firstRow" : {
+    "bottom" : 2048.703125,
+    "height" : 215,
+    "left" : 29,
+    "right" : 777.234375,
+    "top" : 1833.703125,
+    "visible" : true,
+    "width" : 748.234375,
+    "x" : 29,
+    "y" : 1833.703125
+  },
+  "heading" : {
+    "bottom" : 1689.203125,
+    "height" : 24,
+    "left" : 29,
+    "right" : 238.328125,
+    "top" : 1665.203125,
+    "visible" : true,
+    "width" : 209.328125,
+    "x" : 29,
+    "y" : 1665.203125
+  },
+  "helpVisible" : true,
+  "jobs" : {
+    "bottom" : 1567.203125,
+    "height" : 303,
+    "left" : 12,
+    "right" : 363,
+    "top" : 1264.203125,
+    "visible" : true,
+    "width" : 351,
+    "x" : 12,
+    "y" : 1264.203125
+  },
+  "metrics" : {
+    "bottom" : 1248.203125,
+    "height" : 353.875,
+    "left" : 8,
+    "right" : 367,
+    "top" : 894.328125,
+    "visible" : true,
+    "width" : 359,
+    "x" : 8,
+    "y" : 894.328125
+  },
+  "scroll" : {
+    "x" : 0,
+    "y" : 0
+  },
+  "summaryVisible" : true,
+  "viewport" : {
+    "height" : 844,
+    "width" : 390
+  }
+}

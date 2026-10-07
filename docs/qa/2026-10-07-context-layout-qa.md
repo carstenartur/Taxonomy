@@ -10,6 +10,8 @@ Abschnitten 7 und 8. Abschnitt 7 dokumentiert den Stand `27f6b514…`; Abschnitt
 trennt dessen Remote-Ergebnis von den danach vorgenommenen Korrekturen.
 Abschnitt 4 beschreibt die korrigierte Testzuständigkeit. Die ursprünglichen
 Ergebnisdateien bleiben als Nachweise ihres jeweiligen Prüfstands erhalten.
+Abschnitt 9 dokumentiert die anschließende Portfolio-Folgeprüfung auf dem
+zusammengeführten Stand von PR #1180 mit eigenen frischen Vergleichsläufen.
 
 ## Urteil
 
@@ -35,7 +37,7 @@ Ausgangspunkt ist `main` mit Commit
 `f0775632ad9a1e84acee895db5de88041f8f5ac9` und Source-Tree
 `aec0c360d0a801d6734dd62958e53d24d6487242`. Die früheren QA-Änderungen einschließlich
 der deutschen Architektur- und Suchkorrekturen waren dort bereits enthalten.
-Der aktuelle Arbeitszweig ist `qa/context-layout-20261007`.
+Der damalige Arbeitszweig war `qa/context-layout-20261007`.
 
 Die Prüfung kombiniert unabhängige Quellcode-Reviews, tatsächliche
 Browserbedienung, geometrische Messungen, automatisierte
@@ -855,7 +857,10 @@ Node 24.18.0 bestätigt dieselben vier Fälle und zählt nicht als neue Abdeckun
 Zwei unabhängige Reviews fanden keine blockierende Lücke.
 Details: [Staging-Nachweis](evidence/2026-10-07/core-evidence-staging.json).
 
-### Verbleibender Befund zur Platzverteilung im Portfolio
+### Damaliger Restbefund zur Platzverteilung im Portfolio
+
+Die folgende Feststellung beschreibt den Abschluss von PR #1180. Die dazu
+beauftragte Fortsetzung und ihre Abnahme stehen in Abschnitt 9.
 
 Die Portfolioansicht ist im untersuchten Desktop-Leerzustand weiterhin nicht
 optimal gewichtet. Sechs Kennzahlen stehen bei 1366 px in zwei Kartenreihen;
@@ -876,3 +881,255 @@ Information sein. Ein weiterer Entwurf sollte deshalb den wirklich leeren
 Zustand kompakter machen und ihn von einer nur durch den Filter leeren Liste
 unterscheiden. Diese zusätzliche Umgestaltung ist in diesem Reparaturschritt
 noch nicht umgesetzt und wird nicht als erledigt ausgegeben.
+
+## 9. Folgeprüfung: Portfolio gewichtet die aktuelle Arbeit stärker
+
+Ausgangspunkt dieser Fortsetzung ist das bereits zusammengeführte main
+`0f74010854ec140833d0e92188797e11b02c0ec6` (Tree
+`eba705936ed6cf59bb56cb4a8b59b702176641b4`). Der Folgebranch heißt
+`qa/portfolio-space-labels-20261007`. Er bearbeitet den in Abschnitt 8
+festgehaltenen Restbefund und die dabei konkret nachgewiesenen Randfälle.
+
+### P2 — Kennzahlen und eine leere Jobhistorie verdrängten die Anforderungen
+
+Die sechs Kennzahlen nutzen auf passenden Desktopbreiten eine Reihe. Die
+Karten erhalten ihre Höhe aus ihrem Inhalt; die kleinere Innenpolsterung
+verändert die Schriftgrößen nicht. Eine Mindestbreite ermöglicht bei vergrößertem
+Text den nötigen Umbruch in weitere Reihen.
+
+Die wirklich leere Jobhistorie zeigt eine kurze, weiterhin sichtbare
+Orientierung. Erklärung, Filter und Zusammenfassung erscheinen, sobald
+Jobdaten vorhanden sind. Eine durch den Statusfilter leere Liste behält
+dagegen Filter und Gesamtzahlen und meldet „Keine Analysejobs mit diesem Status.“.
+Der Nutzer kann so erkennen, ob Arbeit fehlt oder die gewählte Ansicht
+keine passenden Aufträge zeigt.
+
+Die folgende Messung verwendet denselben frischen Browser- und Schriftstand
+für `main` und den Änderungsstand; beide beginnen bei `scrollY = 0`.
+
+| Portfoliozustand | Vorher | Nachher | Auswirkung |
+| --- | ---: | ---: | --- |
+| 1366×768: Höhe der Kennzahlen | 232,00 px | 108,17 px | Alle sechs Kennzahlen passen in eine lesbare Reihe. |
+| 1366×768: Höhe der wirklich leeren Jobhistorie | 198,00 px | 50,00 px | Nicht benötigte Filter- und Übersichtszeilen beanspruchen keine eigene Fläche. |
+| 1366×768: Beginn des Anforderungsbereichs | y = 756,97 px | y = 485,14 px | Die aktuelle Arbeit rückt um 271,83 px nach oben. |
+| 1366×768: Unterkante der ersten Anforderungszeile | y = 945,47 px | y = 673,64 px | Die vollständige erste Zeile einschließlich Link und Aktionen ist ohne Scrollen sichtbar. |
+| 1920×1080: Beginn des Anforderungsbereichs | y = 640,97 px | y = 471,44 px | Auch auf dem großen Bildschirm werden 169,53 px für die Anforderungen frei. |
+| 390×844: Höhe der wirklich leeren Jobhistorie | 303,00 px | 75,00 px | Der mobile Leerzustand benötigt wesentlich weniger Scrollstrecke. |
+
+Die Nachher-Geometrie stimmt für `/` und `/taxonomy` in allen vier
+Messzuständen überein. Auf dem Laptop verschwindet außerdem der
+überflüssige vertikale Scrollbalken im Registerstreifen.
+
+| Vergleich | Vorher | Nachher |
+| --- | --- | --- |
+| Portfolio, 1366×768 | [Bild](evidence/2026-10-07/portfolio-space/before/root/space-priority-1366.png) | [Bild](evidence/2026-10-07/portfolio-space/after/root/space-priority-1366.png) |
+| Portfolio, 1920×1080 | [Bild](evidence/2026-10-07/portfolio-space/before/root/space-priority-1920.png) | [Bild](evidence/2026-10-07/portfolio-space/after/root/space-priority-1920.png) |
+| Portfolio, 390×844 | [Bild](evidence/2026-10-07/portfolio-space/before/root/space-priority-390.png) | [Bild](evidence/2026-10-07/portfolio-space/after/root/space-priority-390.png) |
+| 200 Prozent Textgröße | [Bild](evidence/2026-10-07/portfolio-space/before/root/space-priority-text-200.png) | [Bild](evidence/2026-10-07/portfolio-space/after/root/space-priority-text-200.png) |
+
+Exakte Werte und die Verbindung zu den Lauf- und Bildhashes stehen in
+[comparison.json](evidence/2026-10-07/portfolio-space/comparison.json).
+
+Die Desktopaussage gilt für den gemessenen Projektzustand mit leerer Jobhistorie
+und dem geprüften Anforderungstitel. Gefüllte oder aktive Historien zeigen
+weiterhin ihre vollständigen Karten. Beliebig viele alte Aufträge und beliebig
+lange Inhalte erhalten durch diese Änderung keine allgemeine Garantie, dass
+die Anforderungsliste im ersten Bildschirmausschnitt beginnt. Mobil bleibt
+die Projektspalte vor dem Portfolio angeordnet; die erste Anforderung wird
+dort nicht als ohne Scrollen erreichbar ausgewiesen.
+
+### P2 — Sprachmischung und grammatisch falsche Zählungen
+
+Projektlisten unterscheiden nun 0, 1 und 2 Anforderungen beziehungsweise
+Lösungen mit korrekter deutscher Großschreibung und Singular-/Pluralform.
+Die englischen Formen bleiben ebenfalls korrekt. Status- und Enumbezeichnungen
+verwenden das vorhandene gemeinsame Wörterbuch. Unbekannte zukünftige Werte
+behalten den vorhandenen lesbaren Fallback.
+
+Die Tests prüfen die tatsächlich gerenderten Listen, Kennzeichnungen und
+Auswahloptionen in Deutsch und Englisch: alle fünf Projektstatus, alle drei
+Reviewstatus, alle acht Actionoptionen und repräsentative Werte weiterer
+Enum-Familien. Das ist keine vollständige Browserprüfung aller Enum-Werte
+oder sämtlicher Portfolio-Renderer. DTO-Zahlen, technische Optionswerte
+und vom Nutzer eingegebene Titel bleiben erhalten; Titel mit HTML-ähnlichen
+Zeichen werden weiterhin als Text dargestellt.
+
+### P1 — Die Jobsuche folgte einer späteren Projektauswahl nicht zuverlässig
+
+Die frühere begrenzte Jobsuche war an DOMContentLoaded gekoppelt. Traf das
+aktuelle Projekt erst nach dem Startfenster ein oder wählte der Nutzer
+später ein anderes Projekt, löste diese erfolgreiche Auswahl die Suche
+nicht erneut aus.
+
+Die zusätzliche Absicherung einer langsam geladenen Übersetzung entstand
+bei der Prüfung des Korrekturstands: Ein Zwischenstand wartete vor der
+Initialisierung auf das Wörterbuch und konnte dadurch das vorhandene
+Suchfenster verpassen. Dieser Zwischenfehler wird nicht dem Ausgangsstand
+zugeschrieben. Auf `main` wartete das Projektladen noch nicht auf das
+Wörterbuch; die synchrone Bindung der Formularereignisse war dort bereits
+vorhanden.
+
+Der bestehende Synchronisierer reagiert jetzt auf die abgeschlossene
+Projektauswahl. Die vorhandene begrenzte Wiederholung und die Wiederaufnahme
+gespeicherter Jobhistorien bleiben bestehen. Das Hauptmodul bindet die
+Formularereignisse weiterhin sofort und lädt Projekte und Übersetzungen innerhalb
+seines vorhandenen Ladezustands. Dadurch bleiben Ladehinweis und Schutz
+gegen verfrühtes Absenden auch bei verzögerten Übersetzungen wirksam.
+
+Die Browserfälle halten echte lokale HTTP-Antworten zurück, warten über
+das bisherige Startfenster hinaus und geben sie anschließend gezielt frei.
+Sie prüfen den sichtbar geladenen Job, die spätere native Projektauswahl,
+einen erhaltenen Filter und einen nach Ende des Ladezustands im echten
+Modal eingegebenen Entwurf während der späteren Discovery. Die verzögerte
+deutsche Wörterbuchantwort wird unter `/taxonomy` länger als 4,5 Sekunden
+nach DOMContentLoaded angehalten; der spätere Projektwechsel wird am
+Root-Pfad geprüft. Es bleiben drei Suchversuche und höchstens 20 Jobs pro
+Antwort. Das ist keine Garantie für einen dauerhaften Netzfehler oder jede
+beliebige schnelle Wechselabfolge.
+Es werden weder künstliche Produktionszustände gesetzt noch Modellaufrufe
+für diese Prüfung benötigt.
+
+### P2 — Eine behobene Pollingstörung blieb als aktuelle Warnung stehen
+
+Nach einem erfolgreichen Jobabruf wird der alte Abruffehler gelöscht. Der
+Browser prüft einen laufenden Auftrag mit 50 Prozent Fortschritt, einen
+tatsächlichen lokalen HTTP-503-Abruf und die anschließende erfolgreiche
+Antwort mit abgeschlossenem Auftrag. Die laufende Filteransicht wird dabei
+korrekt leer; in der Erfolgsansicht erscheint keine überholte HTTP-503-Warnung.
+
+Weitere reale Jobzustände im selben Owner prüfen wartende und fehlgeschlagene
+Aufträge, sichtbare Fehlerdetails und Wiederholungsaktion sowie die mobile
+Ansicht. Der erfolgreiche Klick auf eine Wiederholungsaktion mit tatsächlicher
+Neuanalyse ist nicht Bestandteil dieser lokalen, schreibgeschützten Job-Fixture.
+
+### Vergrößerter Text und erhaltene Bedienwege
+
+Bei 200 Prozent Wurzelschriftgröße dürfen die Kennzahlen zusätzliche Reihen
+belegen. Die Prüfung kontrolliert alle zwölf Wert-/Beschriftungsteile,
+einzelne Wörter anhand ihrer tatsächlichen Textfragmente sowie die Breite
+der Projektspalte. Der Button „Neues Projekt“ bleibt innerhalb seiner
+Kopfzeile. Lange Projektbezeichnungen und die Kopfzeilen können dafür
+umgebrochen werden.
+
+Der vorhandene Java-/Selenium-Owner führt zusätzlich seine bestehenden
+nativen Navigationen, Projektwerkzeuge, Tastaturpfade, Hover-/Fokuskontrast,
+Mindestklickflächen, Versionskonflikte, Matrizen und Versionierungsfolgen aus.
+Die Textvergrößerungsprobe ist eine gezielte Reflow-Prüfung und keine
+vollständige Zertifizierung der Barrierefreiheit. Sie setzt die Root-Schriftgröße;
+native Browser- oder Betriebssystemvergrößerung wird damit nicht behauptet.
+
+### Frische Abnahme und Herkunft der Belege
+
+Die maßgebliche Gegenprobe verwendet die unveränderte Produktion von
+`main` und genau dieselben vier Testquellen wie die folgende vollständige
+Portfolio-Abnahme. Sie wurde frisch ausgeführt; frühere rekonstruierte
+Selektor- oder Erwartungsfehler gehören nicht zu diesem Produktnachweis.
+
+| Prüfung | Zeitraum am 7. Oktober 2026, UTC | Ergebnis |
+| --- | --- | --- |
+| Gezielte Gegenprobe auf `main` | 15:56:35–15:59:24 | 24 Ausführungen, davon 7 erwartete Assertion-Failures; 0 Errors und 0 Skips |
+| Vollständige Auswahl der bestehenden Portfolio-Owners | 16:34:32–16:39:53 | 63 bestanden; 0 Failures, Errors oder Skips |
+| Test- und Architekturverträge | 16:27:12–16:29:15 | 217 bestanden; 0 Failures, Errors oder Skips |
+| Bestehender Frontend-Vertragslauf | 16:29:25–16:30:15 | 1.020 numerische Ausführungen in 39 Blöcken; 0 Failures, Cancelled, Skips oder Todo |
+
+Die Gegenprobe besteht aus 15 erfolgreichen Supportfällen und neun gezielten
+Browserfällen. Sechs der acht Clientfälle und der Root-Layout-/Jobfall scheitern auf `main`; zwei englische Kontrollfälle bestehen. Der Root-Fall
+sammelt 28 fehlgeschlagene Assertion-Gruppen. Darunter ist ausdrücklich die
+noch angezeigte HTTP-503-Warnung nach einer erfolgreichen, abgeschlossenen
+Jobantwort. Siehe [before-result.json](evidence/2026-10-07/portfolio-space/before-result.json).
+
+Die 63 Ausführungen der vollständigen Portfolio-Auswahl verteilen sich auf
+`PortfolioClientRoutingIT` (45), `PortfolioUiAcceptanceIT` (3),
+`BrowserSessionTest` (8), `PortfolioContextHttpFixtureTest` (5) und
+`PortfolioClientTestPageTest` (2). Das sind bestehende Owners mit erweiterten
+Prüfungen, keine 63 neu angelegten Tests. Die 45 Client-Ausführungen enthalten
+37 bereits vorhandene sowie sechs Locale- und zwei Startup-/Discovery-Ausführungen.
+Der unveränderte Browser-Collector bestätigt den vollständigen Maven-Abschluss,
+die fünf frischen XML-Suiten, neun unveränderte Quellhashes, fünf bytegleiche
+kompilierte Produktionsressourcen und acht frische Geometrie-/PNG-Paare.
+Siehe [after-result.json](evidence/2026-10-07/portfolio-space/after-result.json).
+
+Die 217 Test- und Architekturverträge umfassen die beiden gezielt ausgewählten
+Owners mit 1 und 3 Fällen sowie die unveränderten Pflichtausführungen mit
+140, 2 und 71 Fällen. Die Frontend-Skripte melden 1.020 numerische
+Testausführungen. Dieselbe geordnete Liste von 26 API-Fällen wird in den
+bestehenden Blöcken 1 und 7 ausgeführt; nach Abzug genau dieser zweiten
+Ausführung verbleiben 994 numerische Fälle. Zwei verschiedene Baseline-Fixtures
+tragen denselben gedruckten Testnamen, weshalb Namen allein keine eindeutigen
+Fallidentitäten liefern. Unnummerierte Erfolgsmeldungen erhalten keine
+zusätzliche erfundene Fallzahl. Die Auswertung berücksichtigt außerdem
+eingerückte Untertests und den direkt aufgerufenen Quality-Dashboard-Vertrag.
+Siehe [contracts-result.json](evidence/2026-10-07/portfolio-space/contracts-result.json).
+
+Die lokalen Starter stellten die in
+[runtime.json](evidence/2026-10-07/portfolio-space/runtime.json) ausgewiesenen
+Java-, Maven-, Browser- und Schriftversionen bereit. Die fachliche Maven-Auswahl
+war:
+
+```bash
+mvn -B -ntp -pl taxonomy-app -am verify -Ptest-local \
+  -DskipITs=false \
+  -Dtest=BrowserSessionTest,PortfolioContextHttpFixtureTest,PortfolioClientTestPageTest \
+  -Dit.test=PortfolioUiAcceptanceIT,PortfolioClientRoutingIT \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dfailsafe.failIfNoSpecifiedTests=false \
+  -Dmaven.build.cache.enabled=false \
+  -Dtaxonomy.model.download.skip=true \
+  -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true
+
+mvn -B -ntp -pl taxonomy-build -am test \
+  -Dtest=PortfolioTestArchitectureContractTest,RequirementCopilotUiContractTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dmaven.build.cache.enabled=false \
+  -Dtaxonomy.model.download.skip=true
+
+mvn -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts
+```
+
+Die Laufprotokolle werden zusätzlich nativ mit `-l` erfasst. In dieser
+Arbeitsumgebung wurde während laufender Prozesse der sichtbare Logpfad
+ersetzt; Maven schrieb in seine bereits geöffnete ursprüngliche Datei weiter.
+Zwei vorherige frische Portfolio-Läufe hatten vollständige fehlerfreie XMLs
+und Prozess-Exit 0, aber unvollständige Pfadkopien. Der strenge Collector
+akzeptierte diese Kopien nicht als vollständigen Lognachweis.
+
+Die abschließenden Läufe halten deshalb die ursprüngliche Datei offen und
+sichern nach Prozessende exakt deren unveränderte Bytes. Unterschiedliche
+Dateiidentitäten und Größen belegen die Pfadersetzung in den Vertragsläufen.
+Es wurden keine Maven-Zeilen ergänzt, keine Testausführungen erfunden und
+keine Portfolio-Abnahmeregeln gelockert. Prozessende, Sicherungszeit,
+Quell- und Loghashes bleiben dem jeweiligen Lauf zugeordnet.
+
+
+Die Arbeitsumgebung fiel nach einer früheren erfolgreichen Abnahme aus.
+Die fünf Produktionsdateien wurden bytegleich rekonstruiert; die
+wiederhergestellten Testergänzungen wurden erneut geprüft. Die hier
+veröffentlichten neuen Messwerte und Bilder stammen vollständig aus den
+anschließenden frischen Läufen. Frühere verlorene Rohberichte werden nicht
+als neu verfügbare Dateien oder als Nachweis anderer Testquellen ausgegeben.
+
+Die lokale Abnahme verwendet den vorhandenen Mock-Provider, abgeschaltete
+Modell-/Embedding-Downloads und die bestehenden Maven-/Failsafe-/Selenium-
+Owners. POMs, CI-Workflows und verpflichtende Selektoren wurden in dieser
+Fortsetzung nicht geändert. Quellhashes, tatsächlich ausgeführte Tests,
+Classpath-Ressourcen und frische Bilder werden dem jeweiligen Lauf
+zugeordnet. Rohlogs und XML-Systemeigenschaften werden nicht veröffentlicht.
+
+Die unabhängigen Quellprüfungen fanden nach der Korrektur der
+Rekonstruktionsabweichungen in den Tests keine offenen Blocker.
+Die unabhängige Bildprüfung bestätigt die lesbaren sechs Kennzahlen, die
+vollständige erste Anforderungszeile auf dem Laptop und den erhaltenen
+Projektbutton bei vergrößertem Text. Die
+[gefilterte leere Historie](evidence/2026-10-07/portfolio-space/after/root/jobs-filtered-empty.png)
+behält Filter und Gesamtzahlen. Die
+[mobile Fehleransicht](evidence/2026-10-07/portfolio-space/after/root/jobs-failed-mobile.png)
+zeigt Fortschritt, Details und „Wiederholen“ weiterhin; rechte Spalten der
+vorhandenen Detailtabelle verlangen internes horizontales Scrollen. Nach dem
+[Abruffehler](evidence/2026-10-07/portfolio-space/after/root/jobs-poll-error.png)
+zeigt die [erholte Ansicht](evidence/2026-10-07/portfolio-space/after/root/jobs-poll-recovered.png)
+den Abschluss mit 100 Prozent ohne überholte Warnung. Die bereits im
+Ausgangsbild sichtbaren Ersatzkästchen einzelner dekorativer Symbole sind
+eine Grenze der lokalen Schriftumgebung.
+Die ergonomische Bewertung bleibt begründet durch Beobachtung der Oberfläche
+und gemessene Aufgabenfolgen. Eine Studie mit erstmaligen Nutzern wurde
+auch in dieser Fortsetzung nicht durchgeführt.

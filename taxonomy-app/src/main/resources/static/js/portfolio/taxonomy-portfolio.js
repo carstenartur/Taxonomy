@@ -23,6 +23,10 @@
             'projects.new': 'New project',
             'projects.filter': 'Filter projects',
             'projects.empty': 'No projects in this workspace.',
+            'projects.requirements.one': '{count} requirement',
+            'projects.requirements.other': '{count} requirements',
+            'projects.solutions.one': '{count} solution',
+            'projects.solutions.other': '{count} solutions',
             'project.select.title': 'Select or create a project',
             'project.select.help': 'Requirements, analyses, solutions and products remain traceable inside one project.',
             'action.refresh': 'Refresh',
@@ -150,6 +154,10 @@
             'projects.new': 'Neues Projekt',
             'projects.filter': 'Projekte filtern',
             'projects.empty': 'In diesem Workspace gibt es noch keine Projekte.',
+            'projects.requirements.one': '{count} Anforderung',
+            'projects.requirements.other': '{count} Anforderungen',
+            'projects.solutions.one': '{count} Lösung',
+            'projects.solutions.other': '{count} Lösungen',
             'project.select.title': 'Projekt auswählen oder anlegen',
             'project.select.help': 'Anforderungen, Analysen, Lösungen und Produkte bleiben innerhalb eines Projekts nachvollziehbar.',
             'action.refresh': 'Aktualisieren',
@@ -409,7 +417,11 @@
 
     async function loadProjects(preferredProjectId) {
         await withBusy(async function () {
-            state.projects = await api('/api/projects');
+            const [projects] = await Promise.all([
+                api('/api/projects'),
+                window.TaxonomyI18n.ready()
+            ]);
+            state.projects = projects;
             renderProjectList();
             const stored = Number(window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
             const candidate = preferredProjectId || stored;
@@ -441,7 +453,7 @@
             }
 
             const header = document.createElement('div');
-            header.className = 'd-flex justify-content-between align-items-start gap-2';
+            header.className = 'd-flex flex-wrap justify-content-between align-items-start gap-2';
             const title = document.createElement('strong');
             title.textContent = project.projectKey;
             const status = document.createElement('span');
@@ -454,8 +466,10 @@
             name.textContent = project.title;
             const metrics = document.createElement('div');
             metrics.className = 'small opacity-75 mt-1';
-            metrics.textContent = project.requirementCount + ' ' + t('metric.requirements').toLowerCase()
-                + ' · ' + project.solutionCount + ' ' + t('metric.solutions').toLowerCase();
+            metrics.textContent = t('projects.requirements.' + (project.requirementCount === 1 ? 'one' : 'other'),
+                { count: project.requirementCount })
+                + ' · ' + t('projects.solutions.' + (project.solutionCount === 1 ? 'one' : 'other'),
+                    { count: project.solutionCount });
             button.append(header, name, metrics);
             target.appendChild(button);
         });
@@ -479,6 +493,9 @@
         await refreshSelectedProject(false);
         document.getElementById('noProjectSelected').classList.add('d-none');
         document.getElementById('projectWorkspace').classList.remove('d-none');
+        document.dispatchEvent(new CustomEvent('taxonomy:portfolio-project-selected', {
+            detail: { projectId: projectId }
+        }));
     }
 
     function showNoProjectSelected() {
@@ -1276,8 +1293,7 @@
     }
 
     function humanize(value) {
-        return String(value || '—').toLowerCase().replaceAll('_', ' ')
-            .replace(/\b\w/g, function (character) { return character.toUpperCase(); });
+        return window.TaxonomyI18n.formatEnum(value);
     }
 
     function formatPercent(value) {

@@ -1,0 +1,1960 @@
+{
+  "schemaVersion": 1,
+  "kind": "recovered-portfolio-browser-evidence",
+  "status": "verified",
+  "verified": true,
+  "baseCommit": "0f74010854ec140833d0e92188797e11b02c0ec6",
+  "run": {
+    "startUtc": "2026-10-07T16:34:32.550260Z",
+    "endUtc": "2026-10-07T16:39:53.404538Z",
+    "mavenFinishedUtc": "2026-10-07T16:39:53.000000Z",
+    "artifactUpperExclusiveUtc": "2026-10-07T16:39:53.404538Z",
+    "finishedTimestampPrecisionSeconds": 1.0,
+    "wallSeconds": 320.854278,
+    "mavenTotalSeconds": 319.0,
+    "collectedUtc": "2026-10-07T16:39:53.455722Z",
+    "suiteDurationRoundingToleranceSeconds": 0.1
+  },
+  "inputs": {
+    "startManifest": {
+      "path": "local-runtime/build/portfolio-space-recovered-green3-start.json",
+      "sha256": "d9450794d55699787bb7fdae66a48d266083e9cda98c49422b16ce75afc38e69",
+      "bytes": 3108,
+      "mtimeUtc": "2026-10-07T16:34:32.550778Z"
+    },
+    "mavenLog": {
+      "path": "local-runtime/build/portfolio-space-recovered-green3.log",
+      "sha256": "88c2c46b6f8d936e7d83b866a67392f288c993cf67a812dcb9ce6216ec32d616",
+      "bytes": 139843,
+      "mtimeUtc": "2026-10-07T16:39:53.403629Z"
+    }
+  },
+  "totals": {
+    "suites": 5,
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "surefireTests": 15,
+    "failsafeTests": 48
+  },
+  "mavenEvidence": {
+    "buildSuccess": true,
+    "buildSuccessLine": 1299,
+    "aggregateTests": [
+      15,
+      48
+    ],
+    "aggregateLines": [
+      773,
+      1268
+    ]
+  },
+  "suites": [
+    {
+      "name": "com.taxonomy.testsupport.BrowserSessionTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.208,
+      "testcaseCount": 8,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.testsupport.BrowserSessionTest.xml",
+        "sha256": "9864e12aea6d155b6265080355bb29b8e3c5bc73dc27b3822563fafe3b3d6b1f",
+        "bytes": 107976,
+        "mtimeUtc": "2026-10-07T16:35:58.553396Z"
+      },
+      "logEvidence": {
+        "runningLine": 763,
+        "summaryLine": 765,
+        "seconds": 1.208
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioContextHttpFixtureTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 3.551,
+      "testcaseCount": 5,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.PortfolioContextHttpFixtureTest.xml",
+        "sha256": "bee00564f9ddb07e994ba9ee8ccbf9f866e8b1ce764ba0addf4c68c76dbc6b16",
+        "bytes": 107560,
+        "mtimeUtc": "2026-10-07T16:36:02.089486Z"
+      },
+      "logEvidence": {
+        "runningLine": 766,
+        "summaryLine": 767,
+        "seconds": 3.551
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioClientTestPageTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.186,
+      "testcaseCount": 2,
+      "phase": "surefire",
+      "report": {
+        "path": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.PortfolioClientTestPageTest.xml",
+        "sha256": "d4f693ade705eb53a11985426077a5cab0544ddfd477667fb08fd30d2ca5535c",
+        "bytes": 107104,
+        "mtimeUtc": "2026-10-07T16:36:02.275331Z"
+      },
+      "logEvidence": {
+        "runningLine": 768,
+        "summaryLine": 769,
+        "seconds": 0.186
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioClientRoutingIT",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 86.97,
+      "testcaseCount": 45,
+      "phase": "failsafe",
+      "report": {
+        "path": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.PortfolioClientRoutingIT.xml",
+        "sha256": "ab850e4013bb7452932020b62d51fc782b6dac9235c901188bdb42eef7d99362",
+        "bytes": 113996,
+        "mtimeUtc": "2026-10-07T16:37:32.215785Z"
+      },
+      "logEvidence": {
+        "runningLine": 794,
+        "summaryLine": 797,
+        "seconds": 86.97
+      }
+    },
+    {
+      "name": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 139.455,
+      "testcaseCount": 3,
+      "phase": "failsafe",
+      "report": {
+        "path": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.PortfolioUiAcceptanceIT.xml",
+        "sha256": "7031d96977e13613a86ec68dc3f5cdd3a16e4dda929f594efa5a9816def48e4d",
+        "bytes": 188204,
+        "mtimeUtc": "2026-10-07T16:39:51.663333Z"
+      },
+      "logEvidence": {
+        "runningLine": 798,
+        "summaryLine": 1264,
+        "seconds": 139.5
+      }
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "taxonomy-app/src/main/resources/templates/projects.html",
+      "startSha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "endSha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "bytes": 32558,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css",
+      "startSha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "endSha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "bytes": 10482,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js",
+      "startSha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "endSha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "bytes": 73219,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js",
+      "startSha256": "1d2617a0f01cb2a7d0ea815ec61b78c36eff4d788828ccf5073571f3c6182a82",
+      "endSha256": "1d2617a0f01cb2a7d0ea815ec61b78c36eff4d788828ccf5073571f3c6182a82",
+      "bytes": 45218,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "startSha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "endSha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "bytes": 2039,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextBrowserChecks.java",
+      "startSha256": "f727e1d061b61cd052c7942b499bfb9c273c2f0c3d447d029c9b697736ef2080",
+      "endSha256": "f727e1d061b61cd052c7942b499bfb9c273c2f0c3d447d029c9b697736ef2080",
+      "bytes": 46807,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixture.java",
+      "startSha256": "7387f4391d76f3a257af14d4e02604fb0c72880630915af4462edfeaa9a551ab",
+      "endSha256": "7387f4391d76f3a257af14d4e02604fb0c72880630915af4462edfeaa9a551ab",
+      "bytes": 21074,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioContextHttpFixtureTest.java",
+      "startSha256": "6bf6d835979b64b7ec08dbe4b6c35a9f09d6ef15dd48be490de00c2debffcbba",
+      "endSha256": "6bf6d835979b64b7ec08dbe4b6c35a9f09d6ef15dd48be490de00c2debffcbba",
+      "bytes": 10415,
+      "unchanged": true
+    },
+    {
+      "path": "taxonomy-app/src/test/java/com/taxonomy/PortfolioClientRoutingIT.java",
+      "startSha256": "07e53ee50124804deb4cdaffac63cd150ff2bfe84a4cdc9ad1b72803e51dc726",
+      "endSha256": "07e53ee50124804deb4cdaffac63cd150ff2bfe84a4cdc9ad1b72803e51dc726",
+      "bytes": 59220,
+      "unchanged": true
+    }
+  ],
+  "compiledResources": [
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/templates/projects.html",
+      "path": "taxonomy-app/target/classes/templates/projects.html",
+      "sha256": "8e4eefcd0a8e0f9b33326091a0bb0cf642baf7edd7f8a9d174dd3eae6ea00464",
+      "bytes": 32558,
+      "mtimeUtc": "2026-10-07T16:01:35.810618Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css",
+      "path": "taxonomy-app/target/classes/static/css/taxonomy-portfolio.css",
+      "sha256": "31c5b1265d3f59dccf53b8cd72aaaf941b677bd56622affa57786f2859043b8d",
+      "bytes": 10482,
+      "mtimeUtc": "2026-10-07T16:01:35.811992Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio.js",
+      "sha256": "170a040692b4535b0b21b403c6823a74ffa098353731d242b9bab33d36656b82",
+      "bytes": 73219,
+      "mtimeUtc": "2026-10-07T16:01:35.815970Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/taxonomy-portfolio-async.js",
+      "sha256": "1d2617a0f01cb2a7d0ea815ec61b78c36eff4d788828ccf5073571f3c6182a82",
+      "bytes": 45218,
+      "mtimeUtc": "2026-10-07T16:01:35.815385Z",
+      "sourceMatches": true
+    },
+    {
+      "sourcePath": "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "path": "taxonomy-app/target/classes/static/js/portfolio/portfolio-analysis-job-synchronizer.js",
+      "sha256": "7771186058809b0474dc0291220a1150651f22af61c20c477ab68cd90e5f0dba",
+      "bytes": 2039,
+      "mtimeUtc": "2026-10-07T16:01:35.815346Z",
+      "sourceMatches": true
+    }
+  ],
+  "capturePairs": 8,
+  "captures": [
+    {
+      "context": "/",
+      "variant": "1366",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1366.json",
+        "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873",
+        "bytes": 3353,
+        "mtimeUtc": "2026-10-07T16:38:39.305496Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1366.png",
+        "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+        "bytes": 136682,
+        "mtimeUtc": "2026-10-07T16:38:39.365498Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 357.5,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 357.5,
+            "right": 514.90625,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 522.90625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 522.90625,
+            "right": 680.328125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 688.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 688.328125,
+            "right": 845.734375,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 853.734375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 853.734375,
+            "right": 1011.15625,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1019.15625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1019.15625,
+            "right": 1176.578125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1184.578125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1184.578125,
+            "right": 1342.0,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 353.5,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 353.5,
+          "right": 1346.0,
+          "bottom": 336.140625,
+          "width": 992.5,
+          "height": 108.171875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 357.5,
+          "y": 352.140625,
+          "top": 352.140625,
+          "left": 357.5,
+          "right": 1342.0,
+          "bottom": 402.140625,
+          "width": 984.5,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 374.5,
+          "y": 485.140625,
+          "top": 485.140625,
+          "left": 374.5,
+          "right": 1050.625,
+          "bottom": 509.140625,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1183.6875,
+          "y": 494.140625,
+          "top": 494.140625,
+          "left": 1183.6875,
+          "right": 1325.0,
+          "bottom": 525.140625,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 374.5,
+          "y": 590.640625,
+          "top": 590.640625,
+          "left": 374.5,
+          "right": 1325.0,
+          "bottom": 673.640625,
+          "width": 950.5,
+          "height": 83.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 471.53125,
+          "y": 599.140625,
+          "top": 599.140625,
+          "left": 471.53125,
+          "right": 738.21875,
+          "bottom": 623.140625,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/root/space-priority-1366.json",
+      "publishedImageFile": "after/root/space-priority-1366.png"
+    },
+    {
+      "context": "/",
+      "variant": "1920",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1920.json",
+        "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac",
+        "bytes": 3286,
+        "mtimeUtc": "2026-10-07T16:38:40.741533Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-1920.png",
+        "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+        "bytes": 139311,
+        "mtimeUtc": "2026-10-07T16:38:40.809535Z",
+        "width": 1920,
+        "height": 1080
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 496.0,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 496.0,
+            "right": 722.65625,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 730.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 730.65625,
+            "right": 957.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 965.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 965.328125,
+            "right": 1191.984375,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 1199.984375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1199.984375,
+            "right": 1426.65625,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1434.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1434.65625,
+            "right": 1661.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1669.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1669.328125,
+            "right": 1896.0,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 492.0,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 492.0,
+          "right": 1900.0,
+          "bottom": 322.4375,
+          "width": 1408.0,
+          "height": 94.46875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 496.0,
+          "y": 338.4375,
+          "top": 338.4375,
+          "left": 496.0,
+          "right": 1896.0,
+          "bottom": 388.4375,
+          "width": 1400.0,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 513.0,
+          "y": 471.4375,
+          "top": 471.4375,
+          "left": 513.0,
+          "right": 1189.125,
+          "bottom": 495.4375,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1737.6875,
+          "y": 480.4375,
+          "top": 480.4375,
+          "left": 1737.6875,
+          "right": 1879.0,
+          "bottom": 511.4375,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 513.0,
+          "y": 576.9375,
+          "top": 576.9375,
+          "left": 513.0,
+          "right": 1879.0,
+          "bottom": 644.125,
+          "width": 1366.0,
+          "height": 67.1875,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 621.828125,
+          "y": 588.03125,
+          "top": 588.03125,
+          "left": 621.828125,
+          "right": 888.515625,
+          "bottom": 612.03125,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/root/space-priority-1920.json",
+      "publishedImageFile": "after/root/space-priority-1920.png"
+    },
+    {
+      "context": "/",
+      "variant": "390",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-390.json",
+        "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7",
+        "bytes": 3233,
+        "mtimeUtc": "2026-10-07T16:38:41.517553Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-390.png",
+        "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+        "bytes": 59293,
+        "mtimeUtc": "2026-10-07T16:38:41.557554Z",
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 12.0,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 191.5,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 12.0,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 191.5,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 12.0,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 191.5,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 8.0,
+          "y": 894.328125,
+          "top": 894.328125,
+          "left": 8.0,
+          "right": 367.0,
+          "bottom": 1163.765625,
+          "width": 359.0,
+          "height": 269.4375,
+          "visible": true
+        },
+        "jobs": {
+          "x": 12.0,
+          "y": 1179.765625,
+          "top": 1179.765625,
+          "left": 12.0,
+          "right": 363.0,
+          "bottom": 1254.765625,
+          "width": 351.0,
+          "height": 75.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 29.0,
+          "y": 1352.765625,
+          "top": 1352.765625,
+          "left": 29.0,
+          "right": 238.328125,
+          "bottom": 1376.765625,
+          "width": 209.328125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 246.328125,
+          "y": 1382.765625,
+          "top": 1382.765625,
+          "left": 246.328125,
+          "right": 348.90625,
+          "bottom": 1434.765625,
+          "width": 102.578125,
+          "height": 52.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 29.0,
+          "y": 1521.265625,
+          "top": 1521.265625,
+          "left": 29.0,
+          "right": 777.234375,
+          "bottom": 1736.265625,
+          "width": 748.234375,
+          "height": 215.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 126.03125,
+          "y": 1529.765625,
+          "top": 1529.765625,
+          "left": 126.03125,
+          "right": 228.265625,
+          "bottom": 1601.765625,
+          "width": 102.234375,
+          "height": 72.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/root/space-priority-390.json",
+      "publishedImageFile": "after/root/space-priority-390.png"
+    },
+    {
+      "context": "/",
+      "variant": "text-200",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-text-200.json",
+        "sha256": "6cfa15066293d662b21ebf2b3bf283ea0ce70d94f41d6313f55bc9dde2d4f388",
+        "bytes": 2678,
+        "mtimeUtc": "2026-10-07T16:38:42.261572Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/root/space-priority-text-200.png",
+        "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+        "bytes": 97760,
+        "mtimeUtc": "2026-10-07T16:38:42.341574Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "rootFontPx": 32.0,
+        "parts": [
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          }
+        ],
+        "wordCount": 10,
+        "wordLineCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "sidebar": {
+          "clientWidth": 273.0,
+          "scrollWidth": 273.0
+        },
+        "newProject": {
+          "width": 217.828125,
+          "height": 60.0,
+          "left": 81.0,
+          "right": 298.828125,
+          "headerLeft": 49.0,
+          "headerRight": 336.75
+        }
+      },
+      "publishedGeometryFile": "after/root/space-priority-text-200.json",
+      "publishedImageFile": "after/root/space-priority-text-200.png"
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "1366",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1366.json",
+        "sha256": "32407463543622e0980fec3269135aa3c12df41c8833ed20da7df7fe10b49873",
+        "bytes": 3353,
+        "mtimeUtc": "2026-10-07T16:39:20.854553Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1366.png",
+        "sha256": "7707cd776a9f09a2092db568daea1d0e86dc4c8d616b9d378613fc36ce680bb3",
+        "bytes": 136682,
+        "mtimeUtc": "2026-10-07T16:39:20.922554Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 357.5,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 357.5,
+            "right": 514.90625,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 522.90625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 522.90625,
+            "right": 680.328125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 688.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 688.328125,
+            "right": 845.734375,
+            "bottom": 336.140625,
+            "width": 157.40625,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 853.734375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 853.734375,
+            "right": 1011.15625,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1019.15625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1019.15625,
+            "right": 1176.578125,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1184.578125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1184.578125,
+            "right": 1342.0,
+            "bottom": 336.140625,
+            "width": 157.421875,
+            "height": 100.171875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 353.5,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 353.5,
+          "right": 1346.0,
+          "bottom": 336.140625,
+          "width": 992.5,
+          "height": 108.171875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 357.5,
+          "y": 352.140625,
+          "top": 352.140625,
+          "left": 357.5,
+          "right": 1342.0,
+          "bottom": 402.140625,
+          "width": 984.5,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 374.5,
+          "y": 485.140625,
+          "top": 485.140625,
+          "left": 374.5,
+          "right": 1050.625,
+          "bottom": 509.140625,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1183.6875,
+          "y": 494.140625,
+          "top": 494.140625,
+          "left": 1183.6875,
+          "right": 1325.0,
+          "bottom": 525.140625,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 374.5,
+          "y": 590.640625,
+          "top": 590.640625,
+          "left": 374.5,
+          "right": 1325.0,
+          "bottom": 673.640625,
+          "width": 950.5,
+          "height": 83.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 471.53125,
+          "y": 599.140625,
+          "top": 599.140625,
+          "left": 471.53125,
+          "right": 738.21875,
+          "bottom": 623.140625,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/taxonomy/space-priority-1366.json",
+      "publishedImageFile": "after/taxonomy/space-priority-1366.png"
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "1920",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1920.json",
+        "sha256": "6713ad325851c2642e848cb83a187c622710ad1958ec1c20a1c9b625b79900ac",
+        "bytes": 3286,
+        "mtimeUtc": "2026-10-07T16:39:21.654573Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-1920.png",
+        "sha256": "e4362e2f91976b03ce386370d55cef6de165cbacb7bbbf1670b84cf3e073e9eb",
+        "bytes": 139311,
+        "mtimeUtc": "2026-10-07T16:39:21.734575Z",
+        "width": 1920,
+        "height": 1080
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 496.0,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 496.0,
+            "right": 722.65625,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 730.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 730.65625,
+            "right": 957.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 965.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 965.328125,
+            "right": 1191.984375,
+            "bottom": 322.4375,
+            "width": 226.65625,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 1199.984375,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1199.984375,
+            "right": 1426.65625,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 1434.65625,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1434.65625,
+            "right": 1661.328125,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 1669.328125,
+            "y": 235.96875,
+            "top": 235.96875,
+            "left": 1669.328125,
+            "right": 1896.0,
+            "bottom": 322.4375,
+            "width": 226.671875,
+            "height": 86.46875,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 492.0,
+          "y": 227.96875,
+          "top": 227.96875,
+          "left": 492.0,
+          "right": 1900.0,
+          "bottom": 322.4375,
+          "width": 1408.0,
+          "height": 94.46875,
+          "visible": true
+        },
+        "jobs": {
+          "x": 496.0,
+          "y": 338.4375,
+          "top": 338.4375,
+          "left": 496.0,
+          "right": 1896.0,
+          "bottom": 388.4375,
+          "width": 1400.0,
+          "height": 50.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 513.0,
+          "y": 471.4375,
+          "top": 471.4375,
+          "left": 513.0,
+          "right": 1189.125,
+          "bottom": 495.4375,
+          "width": 676.125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 1737.6875,
+          "y": 480.4375,
+          "top": 480.4375,
+          "left": 1737.6875,
+          "right": 1879.0,
+          "bottom": 511.4375,
+          "width": 141.3125,
+          "height": 31.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 513.0,
+          "y": 576.9375,
+          "top": 576.9375,
+          "left": 513.0,
+          "right": 1879.0,
+          "bottom": 644.125,
+          "width": 1366.0,
+          "height": 67.1875,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 621.828125,
+          "y": 588.03125,
+          "top": 588.03125,
+          "left": 621.828125,
+          "right": 888.515625,
+          "bottom": 612.03125,
+          "width": 266.6875,
+          "height": 24.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/taxonomy/space-priority-1920.json",
+      "publishedImageFile": "after/taxonomy/space-priority-1920.png"
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "390",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-390.json",
+        "sha256": "42e57be351bb723f3e3de2348f701675096b2233309e1bd01ac9352b2786b9b7",
+        "bytes": 3233,
+        "mtimeUtc": "2026-10-07T16:39:22.434593Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-390.png",
+        "sha256": "d110217ebd50604d8b21f5270879954e2efe3b1a858a716fbcc607697e5f4a87",
+        "bytes": 59293,
+        "mtimeUtc": "2026-10-07T16:39:22.478594Z",
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scroll": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "cards": [
+          {
+            "index": 0,
+            "x": 12.0,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 1,
+            "x": 191.5,
+            "y": 902.328125,
+            "top": 902.328125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 977.578125,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 2,
+            "x": 12.0,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 3,
+            "x": 191.5,
+            "y": 985.578125,
+            "top": 985.578125,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1080.515625,
+            "width": 171.5,
+            "height": 94.9375,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 4,
+            "x": 12.0,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 12.0,
+            "right": 183.5,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          },
+          {
+            "index": 5,
+            "x": 191.5,
+            "y": 1088.515625,
+            "top": 1088.515625,
+            "left": 191.5,
+            "right": 363.0,
+            "bottom": 1163.765625,
+            "width": 171.5,
+            "height": 75.25,
+            "visible": true,
+            "unclipped": true
+          }
+        ],
+        "metrics": {
+          "x": 8.0,
+          "y": 894.328125,
+          "top": 894.328125,
+          "left": 8.0,
+          "right": 367.0,
+          "bottom": 1163.765625,
+          "width": 359.0,
+          "height": 269.4375,
+          "visible": true
+        },
+        "jobs": {
+          "x": 12.0,
+          "y": 1179.765625,
+          "top": 1179.765625,
+          "left": 12.0,
+          "right": 363.0,
+          "bottom": 1254.765625,
+          "width": 351.0,
+          "height": 75.0,
+          "visible": true
+        },
+        "heading": {
+          "x": 29.0,
+          "y": 1352.765625,
+          "top": 1352.765625,
+          "left": 29.0,
+          "right": 238.328125,
+          "bottom": 1376.765625,
+          "width": 209.328125,
+          "height": 24.0,
+          "visible": true
+        },
+        "create": {
+          "x": 246.328125,
+          "y": 1382.765625,
+          "top": 1382.765625,
+          "left": 246.328125,
+          "right": 348.90625,
+          "bottom": 1434.765625,
+          "width": 102.578125,
+          "height": 52.0,
+          "visible": true
+        },
+        "firstRow": {
+          "x": 29.0,
+          "y": 1521.265625,
+          "top": 1521.265625,
+          "left": 29.0,
+          "right": 777.234375,
+          "bottom": 1736.265625,
+          "width": 748.234375,
+          "height": 215.0,
+          "visible": true
+        },
+        "firstLink": {
+          "x": 126.03125,
+          "y": 1529.765625,
+          "top": 1529.765625,
+          "left": 126.03125,
+          "right": 228.265625,
+          "bottom": 1601.765625,
+          "width": 102.234375,
+          "height": 72.0,
+          "visible": true
+        },
+        "emptyHistoryLabelMatches": true,
+        "filterVisible": false,
+        "summaryVisible": false,
+        "helpVisible": false
+      },
+      "publishedGeometryFile": "after/taxonomy/space-priority-390.json",
+      "publishedImageFile": "after/taxonomy/space-priority-390.png"
+    },
+    {
+      "context": "/taxonomy",
+      "variant": "text-200",
+      "geometryFile": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-text-200.json",
+        "sha256": "6cfa15066293d662b21ebf2b3bf283ea0ce70d94f41d6313f55bc9dde2d4f388",
+        "bytes": 2678,
+        "mtimeUtc": "2026-10-07T16:39:23.183670Z"
+      },
+      "image": {
+        "path": "taxonomy-app/target/portfolio-context-evidence/taxonomy/space-priority-text-200.png",
+        "sha256": "eea52ef188a7c3a6d3750052f2b3ad48bce4bcfea4f539dbb7bcf4bdc8fd5523",
+        "bytes": 97760,
+        "mtimeUtc": "2026-10-07T16:39:23.274614Z",
+        "width": 1366,
+        "height": 768
+      },
+      "geometry": {
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "rootFontPx": 32.0,
+        "parts": [
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 79.0,
+            "scrollHeight": 79.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 59.0,
+            "scrollHeight": 59.0,
+            "visible": true
+          },
+          {
+            "clientWidth": 250.0,
+            "scrollWidth": 250.0,
+            "clientHeight": 39.0,
+            "scrollHeight": 39.0,
+            "visible": true
+          }
+        ],
+        "wordCount": 10,
+        "wordLineCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "sidebar": {
+          "clientWidth": 273.0,
+          "scrollWidth": 273.0
+        },
+        "newProject": {
+          "width": 217.828125,
+          "height": 60.0,
+          "left": 81.0,
+          "right": 298.828125,
+          "headerLeft": 49.0,
+          "headerRight": 336.75
+        }
+      },
+      "publishedGeometryFile": "after/taxonomy/space-priority-text-200.json",
+      "publishedImageFile": "after/taxonomy/space-priority-text-200.png"
+    }
+  ],
+  "limits": [
+    "Only the five selected suites and nine declared source files are covered.",
+    "PNG structure, dimensions, freshness and hashes are checked; visual interpretation remains with browser assertions and review.",
+    "No previous run is used to validate different source or test bytes."
+  ],
+  "processEvidence": {
+    "processEndUtc": "2026-10-07T16:39:53.403312+00:00",
+    "processExitCode": 0,
+    "evidenceSavedUtc": "2026-10-07T16:39:53.403781+00:00",
+    "collectorWindowEndUtc": "2026-10-07T16:39:53.404538+00:00",
+    "sourceHashesUnchanged": true,
+    "collectorSha256Before": "bbcc73a6dfcf87e83f452dbeb640fcdd3b3d3f1250f80c79ebd7ac6519acc590",
+    "collectorSha256After": "bbcc73a6dfcf87e83f452dbeb640fcdd3b3d3f1250f80c79ebd7ac6519acc590",
+    "collectorExitCode": 0,
+    "collectorVerified": true,
+    "nativeLogDescriptorEvidence": {
+      "initialFd": {
+        "device": 27,
+        "inode": 1598994,
+        "links": 1,
+        "bytes": 0,
+        "modifiedUtc": "2026-10-07T16:34:32.550778+00:00",
+        "changedUtc": "2026-10-07T16:34:32.550778+00:00"
+      },
+      "initialPath": {
+        "device": 27,
+        "inode": 1598994,
+        "links": 1,
+        "bytes": 0,
+        "modifiedUtc": "2026-10-07T16:34:32.550778+00:00",
+        "changedUtc": "2026-10-07T16:34:32.550778+00:00"
+      },
+      "finalFd": {
+        "device": 27,
+        "inode": 1598994,
+        "links": 0,
+        "bytes": 139843,
+        "modifiedUtc": "2026-10-07T16:39:53.347375+00:00",
+        "changedUtc": "2026-10-07T16:39:53.347375+00:00"
+      },
+      "finalPath": {
+        "device": 27,
+        "inode": 1599011,
+        "links": 1,
+        "bytes": 119,
+        "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+        "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+      },
+      "sameDeviceAndInodeAtEnd": false,
+      "originalFdBytes": 139843,
+      "originalFdSha256": "88c2c46b6f8d936e7d83b866a67392f288c993cf67a812dcb9ce6216ec32d616",
+      "visiblePathBytes": 119,
+      "visiblePathSha256": "d93dbec1ee9b068511655fd064fccf9c5baae89e914ddbd7861925bec6e90bf6",
+      "exactOriginalFdBytesCopied": true,
+      "observations": [
+        {
+          "observedUtc": "2026-10-07T16:34:57.576971+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 18465,
+            "modifiedUtc": "2026-10-07T16:34:57.343828+00:00",
+            "changedUtc": "2026-10-07T16:34:57.343828+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:35:22.602277+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 36109,
+            "modifiedUtc": "2026-10-07T16:35:22.496473+00:00",
+            "changedUtc": "2026-10-07T16:35:22.496473+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:35:47.627631+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 51470,
+            "modifiedUtc": "2026-10-07T16:35:46.837096+00:00",
+            "changedUtc": "2026-10-07T16:35:46.837096+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:36:12.652989+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 56420,
+            "modifiedUtc": "2026-10-07T16:36:06.261593+00:00",
+            "changedUtc": "2026-10-07T16:36:06.261593+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:36:37.677536+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 56420,
+            "modifiedUtc": "2026-10-07T16:36:06.261593+00:00",
+            "changedUtc": "2026-10-07T16:36:06.261593+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:37:02.704183+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 56420,
+            "modifiedUtc": "2026-10-07T16:36:06.261593+00:00",
+            "changedUtc": "2026-10-07T16:36:06.261593+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:37:27.710478+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 56420,
+            "modifiedUtc": "2026-10-07T16:36:06.261593+00:00",
+            "changedUtc": "2026-10-07T16:36:06.261593+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:37:52.736070+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 77657,
+            "modifiedUtc": "2026-10-07T16:37:50.620256+00:00",
+            "changedUtc": "2026-10-07T16:37:50.620256+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:38:17.761414+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 99538,
+            "modifiedUtc": "2026-10-07T16:38:12.804822+00:00",
+            "changedUtc": "2026-10-07T16:38:12.804822+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:38:42.787434+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 119545,
+            "modifiedUtc": "2026-10-07T16:38:21.757050+00:00",
+            "changedUtc": "2026-10-07T16:38:21.757050+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:39:07.815580+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 119545,
+            "modifiedUtc": "2026-10-07T16:38:21.757050+00:00",
+            "changedUtc": "2026-10-07T16:38:21.757050+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        },
+        {
+          "observedUtc": "2026-10-07T16:39:32.840888+00:00",
+          "fd": {
+            "device": 27,
+            "inode": 1598994,
+            "links": 0,
+            "bytes": 136644,
+            "modifiedUtc": "2026-10-07T16:39:17.631392+00:00",
+            "changedUtc": "2026-10-07T16:39:17.631392+00:00"
+          },
+          "path": {
+            "device": 27,
+            "inode": 1599011,
+            "links": 1,
+            "bytes": 119,
+            "modifiedUtc": "2026-10-07T16:34:34.107234+00:00",
+            "changedUtc": "2026-10-07T16:34:36.583297+00:00"
+          },
+          "sameDeviceAndInode": false
+        }
+      ]
+    }
+  },
+  "additionalJobImages": [
+    {
+      "file": "after/root/jobs-filtered-empty.png",
+      "bytes": 131547,
+      "sha256": "ad691e02bab65901a957aece320a0426507e88d6f91a623bfb4c82f3c18a7ee6",
+      "modifiedUtc": "2026-10-07T16:38:44.165620+00:00",
+      "withinVerifiedRunWindow": true
+    },
+    {
+      "file": "after/root/jobs-failed-mobile.png",
+      "bytes": 56235,
+      "sha256": "36b49e45f27959d823164ab747c21df535abbc6c3d99a00cb07515d1c65799ce",
+      "modifiedUtc": "2026-10-07T16:38:44.673633+00:00",
+      "withinVerifiedRunWindow": true
+    },
+    {
+      "file": "after/root/jobs-poll-error.png",
+      "bytes": 127995,
+      "sha256": "039615c3643dedf343d66a64d4aed4bf94bd0eca9221a29f95739234c5537685",
+      "modifiedUtc": "2026-10-07T16:38:48.033719+00:00",
+      "withinVerifiedRunWindow": true
+    },
+    {
+      "file": "after/root/jobs-poll-recovered.png",
+      "bytes": 129573,
+      "sha256": "ce45a178bbac14952fa2eb6e85772bfb52016d7b99cb10011f8d6869eb46e685",
+      "modifiedUtc": "2026-10-07T16:38:48.865740+00:00",
+      "withinVerifiedRunWindow": true
+    }
+  ],
+  "publication": {
+    "collectedResultSha256": "1452cda7239eafbe184e49d2e6a199c3e8136804db97918ef7f2c40d30029ebb",
+    "processEnvelopeSha256": "cd432a084175cff3bdec3c913cb7c6d6f0218946a42bb1061f9b67720dc3510a",
+    "machinePathPrefixesNormalized": true,
+    "rawLogsAndXmlNotIncluded": true
+  }
+}

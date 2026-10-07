@@ -1,0 +1,159 @@
+{
+  "cards" : [ {
+    "bottom" : 343.96875,
+    "height" : 108,
+    "label" : "Anforderungen",
+    "left" : 353.75,
+    "right" : 672.828125,
+    "top" : 235.96875,
+    "unclipped" : true,
+    "value" : "1",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 353.75,
+    "y" : 235.96875
+  }, {
+    "bottom" : 343.96875,
+    "height" : 108,
+    "label" : "Analysiert",
+    "left" : 680.828125,
+    "right" : 999.90625,
+    "top" : 235.96875,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 680.828125,
+    "y" : 235.96875
+  }, {
+    "bottom" : 343.96875,
+    "height" : 108,
+    "label" : "Ohne bestätigte Lösung",
+    "left" : 1007.90625,
+    "right" : 1326.984375,
+    "top" : 235.96875,
+    "unclipped" : true,
+    "value" : "1",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 1007.90625,
+    "y" : 235.96875
+  }, {
+    "bottom" : 459.96875,
+    "height" : 108,
+    "label" : "Lösungen",
+    "left" : 353.75,
+    "right" : 672.828125,
+    "top" : 351.96875,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 353.75,
+    "y" : 351.96875
+  }, {
+    "bottom" : 459.96875,
+    "height" : 108,
+    "label" : "Ausgewählte Produkte",
+    "left" : 680.828125,
+    "right" : 999.90625,
+    "top" : 351.96875,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 680.828125,
+    "y" : 351.96875
+  }, {
+    "bottom" : 459.96875,
+    "height" : 108,
+    "label" : "Offene Konflikte",
+    "left" : 1007.90625,
+    "right" : 1326.984375,
+    "top" : 351.96875,
+    "unclipped" : true,
+    "value" : "0",
+    "visible" : true,
+    "width" : 319.078125,
+    "x" : 1007.90625,
+    "y" : 351.96875
+  } ],
+  "create" : {
+    "bottom" : 796.96875,
+    "height" : 31,
+    "left" : 1168.6875,
+    "right" : 1310,
+    "top" : 765.96875,
+    "visible" : true,
+    "width" : 141.3125,
+    "x" : 1168.6875,
+    "y" : 765.96875
+  },
+  "emptyText" : "In diesem Browser wurde noch kein Analysejob gestartet.",
+  "filterVisible" : true,
+  "firstLink" : {
+    "bottom" : 894.96875,
+    "height" : 24,
+    "left" : 467.78125,
+    "right" : 734.46875,
+    "top" : 870.96875,
+    "visible" : true,
+    "width" : 266.6875,
+    "x" : 467.78125,
+    "y" : 870.96875
+  },
+  "firstRow" : {
+    "bottom" : 945.46875,
+    "height" : 83,
+    "left" : 370.75,
+    "right" : 1310,
+    "top" : 862.46875,
+    "visible" : true,
+    "width" : 939.25,
+    "x" : 370.75,
+    "y" : 862.46875
+  },
+  "heading" : {
+    "bottom" : 780.96875,
+    "height" : 24,
+    "left" : 370.75,
+    "right" : 1046.875,
+    "top" : 756.96875,
+    "visible" : true,
+    "width" : 676.125,
+    "x" : 370.75,
+    "y" : 756.96875
+  },
+  "helpVisible" : true,
+  "jobs" : {
+    "bottom" : 673.96875,
+    "height" : 198,
+    "left" : 353.75,
+    "right" : 1327,
+    "top" : 475.96875,
+    "visible" : true,
+    "width" : 973.25,
+    "x" : 353.75,
+    "y" : 475.96875
+  },
+  "metrics" : {
+    "bottom" : 459.96875,
+    "height" : 232,
+    "left" : 349.75,
+    "right" : 1331,
+    "top" : 227.96875,
+    "visible" : true,
+    "width" : 981.25,
+    "x" : 349.75,
+    "y" : 227.96875
+  },
+  "scroll" : {
+    "x" : 0,
+    "y" : 0
+  },
+  "summaryVisible" : true,
+  "viewport" : {
+    "height" : 768,
+    "width" : 1366
+  }
+}

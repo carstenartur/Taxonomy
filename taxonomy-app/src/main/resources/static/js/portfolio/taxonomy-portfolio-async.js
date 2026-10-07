@@ -26,7 +26,9 @@
         en: {
             jobsTitle: 'Analysis jobs',
             jobsHelp: 'Analyses continue in the background. You can keep working and return after a reload.',
-            jobsEmpty: 'No analysis jobs have been started in this browser.',
+            jobsEmpty: 'No analysis jobs available.',
+            jobsFilteredEmpty: 'No analysis jobs with this status.',
+            filterLabel: 'Filter analysis jobs by status',
             filterAll: 'All statuses',
             retryFailed: 'Retry failed items',
             openDetails: 'Show details',
@@ -67,7 +69,9 @@
         de: {
             jobsTitle: 'Analysejobs',
             jobsHelp: 'Analysen laufen im Hintergrund weiter. Sie können weiterarbeiten und nach einem Neuladen zurückkehren.',
-            jobsEmpty: 'In diesem Browser wurde noch kein Analysejob gestartet.',
+            jobsEmpty: 'Keine Analysejobs vorhanden.',
+            jobsFilteredEmpty: 'Keine Analysejobs mit diesem Status.',
+            filterLabel: 'Analysejobs nach Status filtern',
             filterAll: 'Alle Status',
             retryFailed: 'Fehlgeschlagene Einträge wiederholen',
             openDetails: 'Details anzeigen',
@@ -338,16 +342,16 @@
         section.className = 'card shadow-sm mb-3 portfolio-job-center';
         section.setAttribute('aria-labelledby', 'portfolioJobCenterTitle');
         section.innerHTML = '<div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">'
-            + '<div><h2 id="portfolioJobCenterTitle" class="h5 mb-1"></h2>'
-            + '<p id="portfolioJobCenterHelp" class="small text-body-secondary mb-0"></p></div>'
-            + '<select id="portfolioJobFilter" class="form-select form-select-sm w-auto" '
-            + 'aria-label="Job status filter"></select></div>'
+            + '<div><h2 id="portfolioJobCenterTitle" class="h5 mb-0"></h2>'
+            + '<p id="portfolioJobCenterHelp" class="small text-body-secondary mt-1 mb-0"></p></div>'
+            + '<select id="portfolioJobFilter" class="form-select form-select-sm w-auto"></select></div>'
             + '<div id="portfolioJobSummary" class="card-body border-bottom"></div>'
             + '<div id="portfolioJobList" class="list-group list-group-flush"></div>';
         metrics.insertAdjacentElement('afterend', section);
         document.getElementById('portfolioJobCenterTitle').textContent = m('jobsTitle');
         document.getElementById('portfolioJobCenterHelp').textContent = m('jobsHelp');
         const filter = document.getElementById('portfolioJobFilter');
+        filter.setAttribute('aria-label', m('filterLabel'));
         const options = [
             ['', m('filterAll')], ['PENDING', statusLabel('PENDING')],
             ['RUNNING', statusLabel('RUNNING')], ['SUCCESS', statusLabel('SUCCESS')],
@@ -442,6 +446,7 @@
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 const previousStatus = current.job.status;
                 current.job = await response.json();
+                delete current.lastPollError;
                 current.updatedAt = Date.now();
                 persistJobs();
                 renderJobs();
@@ -468,19 +473,25 @@
         if (!list || !summary) return;
         const filter = document.getElementById('portfolioJobFilter');
         const selectedStatus = filter ? filter.value : '';
-        const entries = Array.from(jobs.values())
+        const allEntries = Array.from(jobs.values());
+        const emptyHistory = allEntries.length === 0;
+        document.getElementById('portfolioJobCenter').classList.toggle('portfolio-job-center-empty', emptyHistory);
+        document.getElementById('portfolioJobCenterHelp').classList.toggle('d-none', emptyHistory);
+        if (filter) filter.classList.toggle('d-none', emptyHistory);
+        summary.classList.toggle('d-none', emptyHistory);
+        const entries = allEntries
             .filter(function (entry) {
                 return !selectedStatus || entry.job.status === selectedStatus;
             })
             .sort(function (left, right) { return right.createdAt - left.createdAt; });
 
-        const totals = countStatuses(Array.from(jobs.values()).map(function (entry) { return entry.job; }));
-        summary.innerHTML = statusPills(totals);
+        const totals = countStatuses(allEntries.map(function (entry) { return entry.job; }));
+        summary.innerHTML = emptyHistory ? '' : statusPills(totals);
         list.textContent = '';
         if (entries.length === 0) {
             const empty = document.createElement('div');
-            empty.className = 'p-4 text-center text-body-secondary';
-            empty.textContent = m('jobsEmpty');
+            empty.className = 'portfolio-job-empty small text-body-secondary';
+            empty.textContent = m(emptyHistory ? 'jobsEmpty' : 'jobsFilteredEmpty');
             list.appendChild(empty);
             return;
         }
