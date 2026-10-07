@@ -1,11 +1,19 @@
 package com.taxonomy.ui;
 
+import org.attoparser.MarkupParser;
+import org.attoparser.config.ParseConfiguration;
+import org.attoparser.dom.DOMBuilderMarkupHandler;
+import org.attoparser.dom.Element;
+import org.attoparser.dom.INestableNode;
+import org.attoparser.dom.INode;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,19 +47,39 @@ class TaxonomySearchLargeResultContractTest {
     @Test
     void everySearchOpensTheCompleteNestedWorkspace() throws Exception {
         String search = resource("/static/js/shared/taxonomy-search.js");
+        String workspace = between(search, "function openSearchWorkspace() {",
+                "function checkEmbeddingStatus() {");
 
-        assertThat(search)
-                .contains("function openSearchWorkspace()")
-                .contains("document.getElementById('analysisSecondaryTools')")
+        assertThat(workspace)
                 .contains("document.getElementById('searchPanel')")
-                .contains("secondaryTools.open = true")
-                .contains("panel.open = true")
-                .contains("var panel = openSearchWorkspace()");
+                .contains("document.getElementById('leftPanel')")
+                .contains("catalogue.classList.contains('d-none')")
+                .contains("typeof window.navigateToPage === 'function'")
+                .contains("window.navigateToPage('analyze')")
+                .containsPattern("(?s)var ancestor = panel;\\s*while \\(ancestor\\) \\{\\s*"
+                        + "if \\(String\\(ancestor.tagName\\).toLowerCase\\(\\) === 'details'\\) ancestor.open = true;\\s*"
+                        + "ancestor = ancestor.parentElement;\\s*\\}")
+                .contains("return panel;")
+                .doesNotContain("analysisSecondaryTools");
+
+        // Parse the actual template with Thymeleaf's existing HTML parser. The
+        // search disclosure belongs to the catalogue, not to unrelated tools.
+        var handler = new DOMBuilderMarkupHandler();
+        new MarkupParser(ParseConfiguration.htmlConfiguration())
+                .parse(resource("/templates/index.html"), handler);
+        Element panel = elementWithId(handler.getDocument(), "searchPanel");
+        assertThat(panel).as("the template contains the search disclosure").isNotNull();
+        assertThat(panel.getElementName()).isEqualTo("details");
+        assertThat(ancestorIds(panel)).contains("leftPanel").doesNotContain("analysisSecondaryTools");
+        assertThat(elementWithId(panel, "searchInput"))
+                .as("the search input is inside the disclosure opened by both entry points").isNotNull();
+
+        assertThat(search).contains("var panel = openSearchWorkspace()");
         assertThat(search.lines()
                 .map(String::strip)
                 .filter("openSearchWorkspace();"::equals)
                 .count())
-                .as("ordinary search opens the outer and inner disclosures")
+                .as("ordinary search opens the search panel and its actual disclosure ancestors")
                 .isEqualTo(1);
         assertThat(count(search, "openSearchWorkspace()"))
                 .as("definition, ordinary search and Find Similar use one authority")
@@ -199,6 +227,35 @@ class TaxonomySearchLargeResultContractTest {
 
     private static int count(String value, String needle) {
         return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
+    }
+
+    private static Element elementWithId(INestableNode root, String id) {
+        if (root instanceof Element element && id.equals(element.getAttributeValue("id"))) return element;
+        for (INode child : root.getChildren()) {
+            if (child instanceof INestableNode parent) {
+                Element match = elementWithId(parent, id);
+                if (match != null) return match;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> ancestorIds(Element element) {
+        var ids = new ArrayList<String>();
+        for (INode parent = element.getParent(); parent != null; parent = parent.getParent()) {
+            if (parent instanceof Element ancestor && ancestor.hasAttribute("id")) {
+                ids.add(ancestor.getAttributeValue("id"));
+            }
+        }
+        return ids;
+    }
+
+    private static String between(String source, String startMarker, String endMarker) {
+        int start = source.indexOf(startMarker);
+        int end = source.indexOf(endMarker, start + startMarker.length());
+        assertThat(start).as("start marker %s", startMarker).isGreaterThanOrEqualTo(0);
+        assertThat(end).as("end marker %s", endMarker).isGreaterThan(start);
+        return source.substring(start, end);
     }
 
     private static String resource(String path) throws Exception {

@@ -1,5 +1,14 @@
 # QA: Bildschirmfläche, Kontext und Bedienbarkeit — 7. Oktober 2026
 
+**Bezug der Prüfstände:** Die ursprünglichen Messungen und die lokale Erstabnahme
+in den Abschnitten 1–3 und 5 gehören zum Source-Tree
+`a980c2e4d7ae476a0864b87d3b274282f35730f6`, veröffentlicht als Commit
+`26bb32f8ec9ca9e16d64d31212dcb8574267e09c` in
+[PR #1180](https://github.com/carstenartur/Taxonomy/pull/1180).
+Die anschließend gefundenen CI-Befunde und ihre Nachprüfung stehen in Abschnitt 7.
+Abschnitt 4 beschreibt die korrigierte Testzuständigkeit. Die ursprünglichen
+Ergebnisdateien bleiben als Nachweise ihres jeweiligen Prüfstands erhalten.
+
 ## Urteil
 
 Der Ausgangsstand nutzte den verfügbaren Bildschirmplatz an mehreren zentralen
@@ -308,23 +317,58 @@ aufbewahrt.
 
 ## 4. Regressionen und maßgebliche Testbesitzer
 
-| Neue Testdatei | Fälle | Vertrag |
+Die erste lokale QA ergänzte 183 Node-Fälle. Die Remote-CI wies zu Recht darauf
+hin, dass 109 davon die vorhandene Portfolio-Testarchitektur verletzten:
+Portfolio-Verträge gehören zu JUnit und Maven Failsafe. Diese Fälle sind in
+folgende Besitzer übertragen; das Architektur-Gate und die CI-Auswahl bleiben
+erhalten.
+
+| Testbesitzer nach der Korrektur | Fälle | Vertrag |
 | --- | ---: | --- |
 | `dsl-command-feedback.test.mjs` | 48 | HTTP-/Validierungsfehler, Entwurferhalt, Status-Timer und tatsächliche Zähler |
-| `requirement-version-review.test.mjs` | 13 | Zeilenreihenfolge, Wiederholungen, Escape, Auswahl und begrenzter Großvergleich |
-| `portfolio-basepath.test.mjs` | 37 | Root-, gemountete und verschachtelte Pfade; Job-URLs; tatsächliche Branch-Optionen |
-| `portfolio-review-state.test.mjs` | 19 | Versionsmodal/Entwurf sowie Matrixzellen, Filter und Detailbedeutung |
-| `portfolio-versioning-recovery.test.mjs` | 40 | Nachrichten, unabhängige Auswahl, verzögerte Reads und getrennte Mutation-/Read-Ergebnisse |
 | Ergänzungen in `test-taxonomy-api-client.mjs` | 26 | Tatsächlicher Loader, I18n-Auflösung, eigener Scriptpfad, Root-Fallback und Vermeidung doppelter Module |
-| **Neue Node-Fälle insgesamt** | **183** | Bestehende 920 Fälle bleiben in der maßgeblichen Prüfung enthalten. |
+| `PortfolioClientRoutingIT` | 37 | Root-, gemountete und verschachtelte Pfade; Job-URLs; tatsächliche Branch-Optionen und Downloads |
+| `PortfolioVersioningRecoveryIT` | 40 | Nachrichten, unabhängige Auswahl, verzögerte HTTP-Reads und getrennte Mutation-/Read-Ergebnisse |
+| `RequirementVersionReviewIT` | 13 | Zeilenreihenfolge, Wiederholungen, tatsächliches DOM-Escaping, Auswahl und begrenzter Großvergleich |
+| `PortfolioRequirementReviewIT` | 9 | Echte Versionsformulare, HTTP 400/409, Entwurf/Fokus/Quellenfelder und Hintergrundaktualisierung |
+| `PortfolioMatrixReviewIT` | 10 | Tabelle, Detailfenster, native Filterbedienung, alternative Liste und heruntergeladene JSON-/CSV-Dateien |
+| **Ergänzte Node-Fälle** | **74** | Die bestehenden 920 Fälle bleiben enthalten. |
+| **Übertragene JUnit-Browserfälle** | **109** | Dieselben fachlichen Regressionen unter dem bestehenden Maven-Lifecycle. |
 
-Die neuen Browserfolgen sind in die bestehende ADMIN-Primary-Abnahme eingebunden:
+Die Client-Prüfungen rendern die tatsächlichen Thymeleaf-Templates, laden die
+Produktionsskripte und benutzen die vorhandene `BrowserSession`. Fehler und
+verzögerte Antworten entstehen an einer lokalen HTTP-Grenze. Die Tests greifen
+weder auf freigelegte private Modulzustände zu noch betreiben sie einen
+zusätzlichen JavaScript-Testläufer. Die drei Werte `undefined`, `NaN` und
+`Infinity` sind nicht als JSON darstellbar; allein diese explizit benannten
+Fehlerfälle werden nach dem tatsächlichen HTTP-Decoding an der öffentlichen
+`Response`-Grenze injiziert. Normale sowie sonstige fehlerhafte JSON-Werte kommen
+über wirkliche HTTP-Antworten.
+
+Der bereits vorhandene
+[PortfolioUiAcceptanceIT](../../taxonomy-app/src/test/java/com/taxonomy/PortfolioUiAcceptanceIT.java)
+behält seinen vollständigen Workflow mit echter Persistenz, Analyse, Import,
+Git und Berichten. Zwei zusätzliche Testmethoden übernehmen die Kontextfolge
+am Root und nach einem sequenziellen Neustart unter dem echten Servlet-Context
+`/taxonomy`. Vorlagen, Anmeldung, Ressourcen und Bootstrap stammen dabei aus
+der echten Anwendung; reservierte QA-Lesedaten und der gezielte HTTP-409-Fall
+sind als begrenzte Fixtures ausgewiesen. Der Standard bleibt die paketierte
+Anwendung mit Selenium/Testcontainers. Das bestehende Profil `test-local`
+führt dieselben Methoden mit einer isolierten Spring-Anwendung und dem
+vorhandenen lokalen Browseradapter aus.
+
+Sieben zusätzliche JUnit-Infrastrukturprüfungen sichern die Grenzen dieser
+Fixtures ab: fünf für Context, reale DTOs, unerwartete Writes, Redirects und
+den unveränderlichen Proxy-Zielorigin sowie zwei für die tatsächlich per HTTP
+ausgelieferten statischen Ressourcen und Webjars einschließlich Pfadausbrüchen.
+
+Die allgemeine Layoutfolge
 [ui-context-layout-workflow.mjs](../../.github/scripts/ui-context-layout-workflow.mjs)
-und [ui-portfolio-context-workflow.mjs](../../.github/scripts/ui-portfolio-context-workflow.mjs).
-Sie benutzen tatsächliche Templates, Produktionsskripte, Bootstrap/D3, native
-Tastenereignisse, DOM-Fokus und Geometrie. Kontrollierte Datenantworten sind
-ausdrücklich benannt. Die bereits vorhandenen Druck-, Diagramm-, Such- und
-Abbruchprüfungen bleiben Teil des Workflows.
+bleibt Teil der bestehenden ADMIN-Primary-Abnahme. Die Portfolio-Nodefolge und
+die vier übertragenen Node-Testdateien wurden nach ihrer Java-Verifikation entfernt.
+Die vorhandenen Druck-, Diagramm-, Such- und Abbruchprüfungen bleiben erhalten.
+Ein früherer Axe-Nachweis aus der Portfolio-Nodefolge wird ausdrücklich nicht
+als neu ausgeführter Java-Axe-Scan gezählt.
 
 Die Layoutprüfung ersetzt nicht den vorhandenen Persistenztest.
 [ArchitectureWorkbenchUiIT](../../taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java)
@@ -345,7 +389,7 @@ blieben grün. Nach der Korrektur bestanden alle 26 Fälle sowie die vorhandenen
 Transport-, Integrations- und CSRF-Prüfungen. Diese Tests führen auch den zuvor
 von den Transporttests ausgeschnittenen Bootstrapblock tatsächlich aus.
 
-## 5. Abschließende Verifikation
+## 5. Lokale Erstabnahme vor der Remote-CI
 
 | Prüfung | Abgeschlossener Umfang | Ergebnis |
 | --- | --- | --- |
@@ -456,7 +500,7 @@ den anschließend laufenden Remote-CI-Ergebnissen getrennt dokumentiert.
 
 ## 6. Reproduzierbarkeit und Quellbezug
 
-Die neuen Node-Fälle sind in die vorhandenen Skripte von
+Die verbleibenden neuen DSL- und Loader-Node-Fälle sind in die vorhandenen Skripte von
 [.github/package.json](../../.github/package.json) aufgenommen. Der maßgebliche
 Frontendlauf bleibt:
 
@@ -464,7 +508,7 @@ Frontendlauf bleibt:
 ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts
 ```
 
-Die Browserfolgen verwenden den bestehenden Runner
+Die allgemeinen UI-Browserfolgen verwenden den bestehenden Runner
 [run-ui-suite.mjs](../../.github/scripts/run-ui-suite.mjs) und dessen bestehende
 Suite-/Profilfilter. Die maßgeblichen CI-Profile werden nicht verkleinert und
 keine fehlgeschlagenen Produktprüfungen übersprungen. Die hier ausdrücklich
@@ -487,3 +531,154 @@ Wesentliche Produktionsquellen:
   [Matrizen](../../taxonomy-app/src/main/resources/static/js/portfolio/portfolio-matrices.js),
   [Versionierung](../../taxonomy-app/src/main/resources/static/js/portfolio/portfolio-versioning.js)
   und [Portfolio-API](../../taxonomy-app/src/main/resources/static/js/api/portfolio-api.js).
+
+## 7. CI-Befunde und überprüfte Folgekorrekturen
+
+### Was die erste Remote-CI zusätzlich gefunden hat
+
+Die Remote-Prüfung des ersten veröffentlichten Stands `26bb32f8…` war nicht
+vollständig grün. Ihr vollständiges Core-Artefakt enthält 7.272 Testausführungen
+in 1.013 XML-Suiten mit drei Fehlschlägen, ohne Errors oder Skips. Der bestehende
+Architektur-Szenariolauf, fünf der sechs UI-Shards, die Frontendverträge,
+Interoperabilität, Observability, Reformulierungsnutzung und Kubernetes-Smoke
+bestanden. Die Ursachen der roten Prüfungen wurden einzeln untersucht:
+
+| Bereich | Befund am ersten veröffentlichten Stand | Folgekorrektur bzw. Abgrenzung |
+| --- | --- | --- |
+| Portfolio-Testarchitektur / [Document E2E](https://github.com/carstenartur/Taxonomy/actions/runs/37583519306) | Der vorhandene Architekturvertrag verbietet Portfolio-spezifische Node-Workflows. Die neu hinzugefügten Dateien verletzten diese Regel und blockierten den Lauf vor der eigentlichen E2E-Abnahme. | Alle 109 Fälle und die Portfolio-Browserfolge wurden in das vorhandene JUnit-/Failsafe-System übertragen. Die fünf bisherigen Node-Dateien und ihre Registrierungen sind entfernt. |
+| Core und Datenbank-Lanes | Drei bestehende Tests verlangten die alte parameterlose Renderfunktion, eine ersetzte Media Query und den früheren Suchcontainer. | Die bestehenden Testklassen prüfen die tatsächliche Entwurfserhaltung, die aktuelle responsive Navigation und die echten Vorfahren der Suche. |
+| Mobiler ADMIN-Einstieg | Mit der CI-Schrift Noto Color Emoji brach ein allein stehen gebliebener Versionstrenner in eine zusätzliche 20-px-Zeile um. Der Hauptbutton endete bei y = 857,1 statt innerhalb der 844 px. | Version und Trenner bilden jetzt eine gemeinsam ausgeblendete Gruppe. Das Eingabefeld bleibt sieben Zeilen bzw. 182 px hoch. |
+| [CodeQL](https://github.com/carstenartur/Taxonomy/actions/runs/37583468826) | Eine reguläre Ersetzung von HTML-Tags im neuen Fake-DOM-Testhelfer wurde beanstandet. | Die betreffende Node-Testdatei entfällt nach Übertragung ihrer 13 Fälle auf tatsächliche DOM-Elemente im vorhandenen Browseradapter. Eine neue CodeQL-Freigabe muss zum aktualisierten PR-Stand gehören. |
+| [Security-Workflow](https://github.com/carstenartur/Taxonomy/actions/runs/37583519336) | Maven konnte den Spring-Boot-Parent 4.1.1 nicht auflösen; der eigentliche Scanner startete nicht. | POM und Workflow stimmen mit dem zuvor erfolgreichen Baseline-Lauf überein. Aus diesem Infrastrukturfehler wird weder eine neue Produktlücke noch ein bestandener Security-Scan abgeleitet. |
+
+Die Portfolio-Testarchitektur war ein Fehler im ursprünglichen QA-Ansatz.
+Die vorhandene Regel, POMs, Failsafe-Auswahl und CI-Gates wurden bei der
+Korrektur beibehalten. Es gibt keinen umbenannten parallelen Runner.
+
+Alle drei Datenbank-Jobs scheiterten mit jeweils denselben drei App-Vertragsfehlern
+unter 2.609 App-Testausführungen. Nachfolgende Stufen wurden deshalb nicht erreicht.
+Das ist keine Freigabe der gesamten Datenbankmatrix. Job-IDs, Ergebnisse und
+Ursachen stehen im [Nachweis des ersten CI-Stands](evidence/2026-10-07/ci-original-head-results.json).
+
+### Tatsächlich ausgeführte JUnit- und Frontend-Folgeprüfung
+
+Für alle **109 übertragenen Clientfälle** liegen erfolgreiche JUnit-/Selenium-
+Ausführungen vor: 37 Routingfälle, 40 Recoveryfälle, 13 Versionsvergleiche,
+neun Entwurfs-/Fehlerfälle und zehn Matrixfälle. Der
+[Migrationsnachweis](evidence/2026-10-07/portfolio-junit-migration.json)
+ordnet jeden Fall seinem erfolgreichen Lauf zu. Er behauptet keinen einzelnen
+zusammenhängenden grünen Lauf aller 109 Fälle.
+
+Die Tests laden echte Templates, Übersetzungen und Produktionsskripte. Sie prüfen
+sichtbare Felder, Fokus, Cursorpositionen, native Tastaturbedienung und tatsächliche
+Downloads. Kontrollierte HTTP-Antworten stellen langsame Reads, Fehler und echte
+DTO-Strukturen bereit. Die nach der Übertragung gefundenen Testfehler betrafen
+Bootstrap-Übergänge, einen unvollständigen Versionsverlauf in der Fixture und
+die Bedienung nativer Auswahlfelder. Die korrigierte Bedienung löst echte
+Browserereignisse aus; künstliche Input-Events ersetzen sie nicht.
+
+Der vorhandene vollständige **`PortfolioUiAcceptanceIT` bestand mit 3/3 Fällen**:
+der ursprüngliche Backend-Ablauf, die ergänzten Root-Prüfungen und dieselben
+Prüfungen nach einem echten Neustart unter `/taxonomy`. Die Vorbereitung bestand
+mit **15/15 Tests**: acht vorhandene Browseradapterfälle, fünf Proxyfälle und
+zwei Prüfungen der tatsächlich ausgelieferten statischen Ressourcen. Der Lauf
+nutzte das bestehende `test-local`-Profil, eine echte Spring-Anwendung und eine
+pro Testlauf isolierte persistente Datenbank. Er enthält 14 Browseraufnahmen.
+Der [vollständige Nachweis](evidence/2026-10-07/portfolio-ui-acceptance-junit.json)
+führt Befehle, Testnamen, Laufzeiten, Hashes und die Grenze zu einem neuen
+Docker- oder Axe-Lauf auf.
+
+Der erste Versuch dieses vollständigen Owners scheiterte beim Aufräumen des
+Kontextfalls an einem nicht wiederhergestellten Sprach-Cookie. Außerdem
+verursachte eine zweite leere Datenbank im selben JVM unnötige Workspace-
+Startfehler. Der erfolgreiche neue Lauf stellt den ursprünglichen `lang`-Cookie
+mit seinen Attributen wieder her und behält die testisolierte Datenbank über
+den Mountwechsel. Ein privater Bootstrap-Status wird nicht zurückgesetzt.
+
+Das unveränderte Maven-Profil für die verbleibenden Frontendverträge bestand
+erneut mit **994 unterschiedlichen Fällen**. Hinzu kommen dieselben 26 API-Fälle
+im separaten Maven-Schritt: insgesamt **1.020 erfolgreiche Ausführungen**, ohne
+Fehler, Abbrüche oder Skips. Die 109 nun von JUnit geprüften Fälle fehlen nicht
+in der Abdeckung; sie haben den zuständigen Runner gewechselt. Der
+[Frontendnachweis](evidence/2026-10-07/frontend-contracts-after-migration.json)
+enthält die getrennten Zählungen und die Hashes der verbleibenden Registrierung.
+
+Die drei betroffenen bestehenden Core-Klassen bestanden anschließend gemeinsam
+im regulären Maven-Lauf mit **14/14 Tests**, ohne Failures, Errors oder Skips:
+`ReformulationAdoptionTest` (3), `TaxonomyResponsiveNavigationContractTest` (3)
+und `TaxonomySearchLargeResultContractTest` (8). Der Adoption-Owner umfasst auch
+zwei getrennte Anwendungsprozesse und den vorhandenen Persistenz-/HTTP-Nachweis.
+Die responsive Prüfung kontrolliert die Regeln für sichtbare Navigation,
+gemeinsame Zeile und 44-px-Bedienelemente innerhalb ihrer tatsächlichen CSS-Blöcke.
+Die Suchprüfung kontrolliert zusätzlich die echte Template-Elternstruktur mit
+dem bereits vorhandenen HTML-Parser.
+
+Der Entwurfsvertrag führt die tatsächliche Kette `loadAll` → `renderAll` →
+`renderCurrentText` aus. Drei ausschließlich temporär veränderte Quellkopien
+belegen, dass der Test den Verlust der Entwurfserhaltung, eine verspätete alte
+Antwort und eine nicht weitergereichte Preserve-Angabe tatsächlich zurückweist.
+Die Produktionsdatei bleibt bei diesen Gegenproben unverändert. Die frischen
+Surefire-Berichte, der Maven-Exitcode und die Mutationsgegenproben stehen im
+[Core-Folgenachweis](evidence/2026-10-07/core-ui-contracts-after-ci.json).
+Die gespeicherte Konsolendatei ist unvollständig; sie wird deshalb nicht als
+vollständiger Buildlog ausgegeben. Maßgeblich sind die drei neu geschriebenen
+Berichte mit positiven Ausführungszahlen und der erfolgreiche Prozessabschluss.
+
+### Endgültige Paketierung und erneute mobile Abnahme
+
+Der abschließende normale Maven-`install`-Lauf bestand mit **16/16 Modulen**.
+Er kompiliert und paketiert die Anwendung und installiert die eigenen Module
+im lokalen Maven-Repository; Tests waren bei diesem Paketierungsschritt
+ausdrücklich übersprungen. Die unabhängigen Testausführungen stehen oben.
+Die danach eingefrorene Anwendungs-JAR besitzt SHA-256
+`8e264dd0884bb2542bb48a5f337c25e26df173cc686ebab4ce224d4ddc29dd07`.
+Alle **225 Ressourcen**, einschließlich des aktualisierten Portfolio-README,
+stimmen nach den dokumentierten normalen Buildtransformationen überein.
+Produkt- und Testquellen blieben während des Builds unverändert.
+
+An genau dieser JAR, **ohne Ressourcenoverride**, bestand die aktuelle
+ADMIN-Primary-Folge mit **64 Workflowchecks und 21 Axe-Zustandsprüfungen ohne
+Violations**. Sie erzeugte 18 Screenshots. Die unveränderte allgemeine
+Layoutfolge bestand außerdem mit 18 Assertions und ohne PageErrors; sie ist
+eine fokussierte Wiederholung derselben Layoutabdeckung und wird nicht zu den
+64 ADMIN-Checks als zusätzliche unabhängige Abdeckung addiert.
+
+Die Fontmessung im Browser bestätigt nun tatsächlich Noto Color Emoji.
+Bei **390×844** sinkt die Navbar durch die gemeinsame Versionsgruppe von
+144 auf **124 px**. Die fachliche Eingabe bleibt **182 px** hoch. Die Unterkante
+der Hauptaktion liegt bei **y = 837,1 px**, somit wieder vollständig innerhalb
+des Viewports. Die bestehende Grenzprüfung wurde nicht gelockert.
+Das [aktuelle mobile Bild](images/context-layout-2026-10-07/analyze-390-ci-font-after.png)
+zeigt diesen Zustand am endgültigen Paket mit der CI-Schrift. Die älteren
+Vorher-/Nachher-Bilder bleiben als historische Vergleichspaare erhalten.
+
+Nachweise: [Build-/Ressourcenmanifest](evidence/2026-10-07/ci-followup-application-build.json),
+[Laufzeitübersicht](evidence/2026-10-07/ci-followup-runtime-summary.json),
+[ADMIN-Bericht](evidence/2026-10-07/ci-followup-primary-admin.json),
+[Layout-/Fontmessungen](evidence/2026-10-07/ci-followup-context-layout.json)
+und [Erläuterung des mobilen CI-Befunds](evidence/2026-10-07/ci-followup-runtime.md).
+
+### Unveränderte Buildregeln und Statusgrenze
+
+Nach der Installation aller aktuellen Module bestand die vollständige Testphase
+von `taxonomy-build` mit **43 Testklassen** und `BUILD SUCCESS`.
+Die Berichte enthalten **392 Fälle: 382 bestanden, zehn übersprungen**, ohne
+Failures oder Errors. Die zehn Skips stammen ausschließlich aus bestehenden
+Helm-Voraussetzungen, weil Helm 3 lokal nicht verfügbar ist. Die CI verlangt
+weiterhin ihre vorhandenen tatsächlichen Chart-Prüfungen.
+
+Der für die Migration entscheidende **`PortfolioTestArchitectureContractTest`
+bestand unverändert mit 1/1**. Die zusätzlich vorgeschriebenen Architektur-
+Ausführungen bestanden ebenfalls: Modulgraph 140, Modulextraktion zwei und
+Selektorsynchronisierung 71 Fälle. Diese sind bereits in den 392 gemeldeten
+Fällen enthalten. Root-/App-/Build-POM, Frontend-POM und Portfolio-Vertrag
+wurden bytegleich zum veröffentlichten Vorgänger überprüft. Details stehen im
+[Buildregel-Nachweis](evidence/2026-10-07/build-policy-after-migration.json).
+
+Die unabhängigen Abschlussreviews fanden keine weitere blockierende Lücke in
+der JUnit-Übertragung, ihren DTOs, der Entwurfserhaltung oder dem normalen
+Containerpfad. Die lokale Abnahme bleibt eine gezielte Prüfung mit den oben
+genannten Ergebnissen. Die zu einem aktualisierten veröffentlichten Stand
+gehörenden Remote-Gates werden gesondert in den
+[aktuellen PR-Prüfungen](https://github.com/carstenartur/Taxonomy/pull/1180/checks)
+geführt; ein alter oder lokaler Pass wird ihnen nicht zugerechnet.

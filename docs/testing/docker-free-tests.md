@@ -59,6 +59,28 @@ Die beiden `failIfNoSpecifiedTests`-Optionen erlauben hier nur vorgeschaltete
 Reaktormodule ohne ausgewählte Klasse. Die benannten Tests müssen im
 Surefire-/Failsafe-Bericht mit positiven Ausführungszahlen erscheinen.
 
+Der bestehende vollständige Portfolio-Ablauf nutzt ebenfalls denselben lokalen
+Adapter und eine echte, isolierte Spring-Anwendung. Er prüft anschließend die
+Navigation und Formularzustände am Root-Pfad sowie nach einem echten Neustart
+unter `/taxonomy`. Die Datenbank bleibt bei diesem Mountwechsel innerhalb des
+Testlaufs erhalten. Reservierte QA-Lesedaten und ein gezielter HTTP-409-Fehler
+ergänzen den bestehenden Test mit echter Backend-Persistenz:
+
+```bash
+./mvnw -B -pl taxonomy-app -am verify -Ptest-local \
+  -Dtest=BrowserSessionTest,PortfolioContextHttpFixtureTest,PortfolioClientTestPageTest \
+  -Dit.test=PortfolioUiAcceptanceIT \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dfailsafe.failIfNoSpecifiedTests=false
+```
+
+Die gezielten Client-Regressionen heißen `PortfolioClientRoutingIT`,
+`PortfolioVersioningRecoveryIT`, `RequirementVersionReviewIT`,
+`PortfolioRequirementReviewIT` und `PortfolioMatrixReviewIT`. Auch sie laufen
+über JUnit/Maven Failsafe und den vorhandenen `BrowserSession`-Adapter. Ihre
+begrenzten HTTP-Fixtures ersetzen weder Persistenz- noch Berechtigungsprüfungen
+des vollständigen Anwendungsablaufs.
+
 ## Abdeckung und CI
 
 | Bereich | `test-local` | Bestehende CI/Profile |
@@ -66,6 +88,7 @@ Surefire-/Failsafe-Bericht mit positiven Ausführungszahlen erscheinen.
 | Java-, Service-, HTTP- und HSQLDB-Tests | dieselben Tests | unverändert |
 | Architektur- und Reformulierungsszenarien, Desktop/390px, Downloads | lokales Chrome | Selenium-Container |
 | Live-Fortschritt, Abbruch und sichere DOM-Darstellung | lokales Chrome | Selenium-Container |
+| Portfolio: vollständiger Ablauf, Root-/Servlet-Kontext, Entwürfe, Matrix und Client-Fehlerzustände | lokales Chrome; bestehende Spring-Anwendung oder begrenzte HTTP-Fixture je Test | dieselben JUnit-/Failsafe-Tests mit Selenium-Container |
 | JVM-Neustart, Recovery und persistierte Historie | echte getrennte JVMs und dateibasierte HSQLDB | unverändert |
 | Gepackte App im Container, Keycloak, PostgreSQL, MSSQL, Oracle | ausdrücklich ausgeschlossen | bestehende Container-/DB-Profile bleiben zuständig |
 | ONNX und echte externe LLMs | ausdrücklich ausgeschlossen | bestehende Opt-in-Profile bleiben zuständig |

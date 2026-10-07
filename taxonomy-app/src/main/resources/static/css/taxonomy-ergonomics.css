@@ -450,7 +450,9 @@
     .navbar #workspaceUserBadge {
         display: none !important;
     }
-    #navbarVersion {
+    /* Hide the version and its separator together; an orphan separator can
+       wrap onto a second brand line when the platform provides emoji glyphs. */
+    .navbar-version {
         display: none;
     }
     #mainNavTabs .nav-item {

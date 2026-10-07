@@ -12,7 +12,6 @@ import { runImportWorkflows } from './ui-primary-import-workflows.mjs';
 import { runPasswordWorkflows, runWorkspaceSyncWorkflows,
   verifyUserMutationDenied } from './ui-primary-account-workflows.mjs';
 import { runPreferencesWorkflow } from './ui-primary-preferences-workflow.mjs';
-import { runPortfolioContextWorkflow } from './ui-portfolio-context-workflow.mjs';
 import { runLocalePrintWorkflow } from './ui-locale-print-workflow.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
@@ -104,7 +103,6 @@ try {
   if (role === 'ADMIN') {
     await runWorkspaceSyncWorkflows(workflow);
     await runPreferencesWorkflow(workflow);
-    await runPortfolioContextWorkflow(workflow);
     await runLocalePrintWorkflow({ ...workflow, outputDir });
   }
   if (role === 'USER') await runPasswordWorkflows(workflow);
