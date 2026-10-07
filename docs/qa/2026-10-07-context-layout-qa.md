@@ -5,7 +5,9 @@ in den Abschnitten 1–3 und 5 gehören zum Source-Tree
 `a980c2e4d7ae476a0864b87d3b274282f35730f6`, veröffentlicht als Commit
 `26bb32f8ec9ca9e16d64d31212dcb8574267e09c` in
 [PR #1180](https://github.com/carstenartur/Taxonomy/pull/1180).
-Die anschließend gefundenen CI-Befunde und ihre Nachprüfung stehen in Abschnitt 7.
+Die anschließend gefundenen CI-Befunde und ihre Nachprüfung stehen in den
+Abschnitten 7 und 8. Abschnitt 7 dokumentiert den Stand `27f6b514…`; Abschnitt 8
+trennt dessen Remote-Ergebnis von den danach vorgenommenen Korrekturen.
 Abschnitt 4 beschreibt die korrigierte Testzuständigkeit. Die ursprünglichen
 Ergebnisdateien bleiben als Nachweise ihres jeweiligen Prüfstands erhalten.
 
@@ -18,7 +20,8 @@ und die Architektur-Workbench schnitt auf üblichen Laptopgrößen ihre Zeichenf
 und Detailspalte unten ab. Daneben erschwerten schwer auffindbare Projektfunktionen,
 falsche Ergebnisführung und unzuverlässige Fehlerrückmeldungen die Bedienung.
 
-Die nachstehend belegten Fehler sind korrigiert. Die Änderungen konzentrieren
+Die nachstehend als behoben ausgewiesenen Fehler sind korrigiert. Die Änderungen
+konzentrieren
 den Platz auf die aktuelle Aufgabe und erhalten die vorhandenen Funktionen,
 Tastaturpfade und Daten. Ein Benutzer kann dadurch früher mit der eigentlichen
 Aufgabe beginnen, passende Ergebnisse direkt prüfen und nach Fehlern mit seinem
@@ -682,3 +685,194 @@ genannten Ergebnissen. Die zu einem aktualisierten veröffentlichten Stand
 gehörenden Remote-Gates werden gesondert in den
 [aktuellen PR-Prüfungen](https://github.com/carstenartur/Taxonomy/pull/1180/checks)
 geführt; ein alter oder lokaler Pass wird ihnen nicht zugerechnet.
+
+## 8. Zweite CI: Klickflächen, Auswahlkontrast und belastbare Fehlerdiagnostik
+
+### Ergebnis des Stands `27f6b514…`
+
+Die zweite Remote-CI gehört zu Commit
+`27f6b514de45d54a8a69c73e0ee502cca7e26ce9` und zum synthetischen PR-Merge
+`3e2e0b6814b8be60e2a948346a6c8baa70d5f9dd`. Beide haben nach unabhängiger Prüfung
+denselben Source-Tree `6fe56ba0987f54cdc1bd225240aacc3d25e7cde9`.
+Sie war erneut **nicht vollständig grün**. Die einzelnen Ergebnisse erlauben
+aber eine klare Eingrenzung:
+
+| Prüfung | Tatsächliches Ergebnis dieses Stands |
+| --- | --- |
+| Core | 7.960 gemeldete Testausführungen in 1.085 XML-Suiten; zwei Failures, keine Errors, 79 bestehende Skips. |
+| Übertragene Portfolio-Clientfälle | Alle 109 Fälle bestanden in demselben Core-Lauf, ohne Skips. |
+| Vollständiger Portfolio-Browserowner | Der ursprüngliche Backend-Hauptfall bestand. Die beiden ergänzten Kontextfälle scheiterten am Anforderungslink, jeweils schon bei 1366×768. |
+| PostgreSQL, Oracle und MSSQL | Alle drei Lanes bestanden mit jeweils 16 Modulen und 2.616 App-Surefire-Ausführungen. Ihre Datenbank-Failsafe-Folgen meldeten 52, 32 bzw. 32 Fälle, jeweils ohne Fehler oder Skips. Gemeinsame Tests werden dadurch mehrfach ausgeführt. |
+| Portfolio-Architektur- und Helm-Verträge | In allen drei Datenbank-Lanes positiv ausgeführt: Portfolio-Architektur 1/1, Artemis-Chart 9/9 und eingeschränkter Helm-Smoke 3/3. Die entsprechenden lokalen Helm-Skips bleiben im lokalen Bericht sichtbar. |
+| UI, Frontend, Sicherheit und weitere E2E-Lanes | Alle sechs UI-Shards, Frontendverträge, Anwendungspaketierung, Interoperabilität, Observability, Security, maßgeblicher Push-CodeQL-Lauf, Document E2E, Architektur-Szenario, Reformulierungsnutzung und Kubernetes-Smoke bestanden. |
+| Abschließende Zusammenführung | Korrekt am fehlgeschlagenen Core-Gate gestoppt. Digest-Prüfung, Finalisierung und abschließende Uploads wurden nicht ausgeführt. |
+
+Die 79 Core-Skips stammen ausschließlich aus den vorhandenen Klassen
+`ScreenshotGeneratorIT` (75), `MockScoreGeneratorIT` (3) und
+`ObservabilityPerformanceIT` (1). Der Core-Reaktor erreichte das nachgelagerte
+Buildregelmodul nach den App-Failsafe-Fehlern nicht. Dessen positive Prüfung
+in den Datenbank-Lanes ist deshalb kein behaupteter Core-Pass.
+
+Der Security-Lauf erreichte diesmal tatsächlich Paketierung und Scanner.
+CodeQL meldete keine blockierenden Befunde; drei bestehende Java-Baselineeinträge
+bleiben akzeptiert. Das ist keine Aussage, dass sämtliche Analysehinweise
+verschwunden seien. Die beiden redundanten PR-CodeQL-Jobs wurden absichtlich
+übersprungen; ihr Status wird nicht als zusätzliche erfolgreiche Analyse gezählt.
+
+Die [CI-Ergebnisdatei](evidence/2026-10-07/ci-migration-head-results.json)
+enthält Zuordnung, Job- und Artefakt-IDs, geprüfte Artefakthashes, positive
+Testnamen und die nicht erreichten Abschlussstufen.
+
+### P2 — Der Anforderungstitel hatte keine verlässlich zusammenhängende Klickfläche
+
+Die ursprüngliche Browserprüfung kombinierte Mindestmaße von 24×24 px mit den
+Viewportgrenzen und gab bei einem Fehlschlag nur einen Wahrheitswert aus.
+Aus dem CI-Fehler allein lässt sich deshalb nicht behaupten, der Link sei
+abgeschnitten gewesen. Das CI-Artefakt enthielt auch keine Rechteck- oder
+Schriftdaten, aus denen sich die genaue Bedingung nachträglich ablesen ließe.
+
+Die anschließende Diagnose verwendete den vorhandenen Java-/Selenium-Browseradapter,
+die echten Produktionsressourcen und dieselben typisierten Projekt-Fixtures.
+Sie zeigte zwei tatsächliche Schwächen des Inline-Links:
+
+- Mit lokal tatsächlich gerendertem **Nimbus Sans** bei 1366×768 war der Link
+  trotz 24 px Zeilenhöhe nur **16 px hoch**. Er lag vollständig im Viewport,
+  verfehlte aber das unveränderte Mindestmaß. Nimbus Sans ist eine nachgewiesene
+  Schriftvariation; die tatsächliche Schrift des fehlgeschlagenen CI-Laufs ist
+  damit nicht identifiziert.
+- Mit **DejaVu Sans** bei 1366×768 bestand die Gesamtbox von etwa **201×43 px**
+  aus zwei jeweils 19 px hohen Fragmenten. Die alte Rechteckprüfung bestand,
+  aber der Mittelpunkt traf die Tabellenzelle zwischen den Linkzeilen.
+  Ein Klick auf diesen scheinbaren Bestandteil des Titellinks konnte folglich
+  ohne Navigation bleiben.
+
+Der Titel erhält jetzt eine zusammenhängende Inline-Block-Fläche mit mindestens
+24×24 px. Schriftgröße und Zeilenhöhe bleiben erhalten. In den gezielten
+Vorher-/Kandidatenmessungen blieben Zeilen- und Tabellenhöhe unverändert:
+83/124 px mit Nimbus Sans auf dem Laptop, 128/169 px mit DejaVu Sans auf dem
+Laptop sowie 215/256 px im mobilen Zustand. Der zusätzliche anklickbare Raum
+vergrößert in diesen gemessenen Zeilen somit nicht die Tabelle.
+
+Der bestehende Browserowner prüft weiterhin dieselben Mindestmaße und Grenzen.
+Er kontrolliert zusätzlich, ob der tatsächliche Mittelpunkt den Link oder ein
+Kind des Links trifft, und gibt bei Fehlern Rechteck, einzelne Textfragmente,
+Schriftangaben, Viewport und jede einzelne Grenzbedingung aus. Die Navigation
+wird nun auch bei 1920×1080 ausgeführt, zusätzlich zu 1366×768 und 390×844.
+
+### P2 — Die aktive Projektauswahl wurde bei Hover und Tastaturfokus unlesbar
+
+Bei der visuellen Nachprüfung fiel ein älterer CSS-Fehler auf: Die allgemeine
+Hover-/Fokusregel übermalte den blauen Hintergrund auch beim aktiven Projekt
+mit einem nahezu weißen Hintergrund, während seine Schrift weiß blieb.
+Das betraf Projektschlüssel, Titel und die Zeile mit den Anforderungszahlen.
+
+Die Diagnose bestätigt den Fehler sowohl mit einer echten Mausbewegung als auch
+mit nativem Tab-Fokus. Weiß auf `rgb(248,249,250)` ergab **1,054:1** Kontrast.
+Die Hover-/Fokusregel gilt jetzt nur noch für inaktive Projekte; die aktive
+Auswahl behält ihren vorhandenen blauen Hintergrund `rgb(13,110,253)`.
+Die gemessene Gegenprobe ergibt für alle drei Textteile **4,50078:1**.
+Die bereits vorhandene volle Deckkraft der Metadaten bleibt erhalten.
+
+Der gleiche Browserowner prüft mindestens **4,5:1** für alle drei Textteile,
+einschließlich tatsächlicher Hintergründe und Deckkraft der Vorfahren.
+Er unterscheidet reale Maus- und Tastaturzustände und kontrolliert weiterhin
+die aktive semantische Kennzeichnung mit `aria-current="page"`.
+
+Die [Diagnose mit Messwerten](evidence/2026-10-07/portfolio-target-and-selection-diagnosis.json)
+kennzeichnet ihre temporär injizierten CSS-Kandidaten ausdrücklich. Sie werden
+nicht als Aufnahmen einer abschließend paketierten Anwendung ausgegeben.
+
+### Nachweis der tatsächlich eingebauten Portfolio-Korrektur
+
+Der verstärkte vorhandene `PortfolioUiAcceptanceIT` wurde zunächst gegen das
+unveränderte Produktions-CSS ausgeführt. Der bisherige Hauptfall und alle
+15 ausgewählten Infrastrukturtests bestanden; beide Kontextfälle scheiterten
+erwartungsgemäß am tatsächlichen Mittelpunkt des fragmentierten Links.
+Alle sechs bisherigen Mindestmaß-/Viewportbedingungen waren dabei erfüllt.
+
+Danach wurde ausschließlich das beschriebene CSS korrigiert und **dieselbe
+Testquelle bytegleich** erneut ausgeführt. Dieser kanonische
+`verify -Ptest-local`-Lauf bestand mit **3/3 Browserfällen und 15/15
+Infrastrukturtests**, ohne Failures, Errors oder Skips, Exit 0 und
+`BUILD SUCCESS`. Die Browserklasse lief 117,354 Sekunden. Die beiden Kontextfälle
+prüfen alle drei Bildschirmgrößen sowie echte Hover- und Tab-Fokuszustände.
+Ein unabhängiger Review der beiden Quelldateien fand keine blockierende Lücke.
+
+Die Abnahme erzeugte **28 frische Bilder**. Die Zuordnung beruht auf dem
+festgehaltenen Start-/Endfenster und Prüfsummen; ältere `failure.png` und
+unbeteiligte XML-Berichte aus dem vorhandenen `target` werden nicht mitgezählt.
+Das [RED/GREEN-Manifest](evidence/2026-10-07/portfolio-target-owner-verification.json)
+enthält genau die vier ausgewählten XML-Suiten, ihre einzelnen Testnamen,
+Quellhashes und die Abgrenzung der Diagnoseprobe.
+
+| Ansicht | Beleg |
+| --- | --- |
+| Aktives Projekt bei Mausberührung vor der Korrektur | [Originales CSS in der Diagnoseprobe](images/context-layout-2026-10-07/before-selected-project-hover-1366.png) |
+| Aktives Projekt bei Mausberührung nach der Korrektur | [Frischer kanonischer Lauf, 1366×768](images/context-layout-2026-10-07/after-selected-project-hover-1366.png) |
+| Aktives Projekt mit nativem Tastaturfokus | [Frischer kanonischer Lauf, 390×844](images/context-layout-2026-10-07/after-selected-project-focus-390.png) |
+
+Der erfolgreiche Lauf umfasste die reguläre Paketierung von Anwendung und
+Abhängigkeiten: **13 ausgewählte Reaktormodule** bestanden. Die daraus erzeugte
+JAR mit SHA-256
+`244d82091f47837567e4917f34da6c818dc351546f48ce8f254204c65ae08f75`
+wurde eingefroren und gegen **alle 225 Quellressourcen** geprüft; es gab keine
+Abweichung nach den dokumentierten normalen Buildtransformationen.
+Das korrigierte CSS stimmt außerdem byteweise mit der vom Browserowner benutzten
+Classpath-Ressource überein. Dieser Owner startet eine echte Spring-Anwendung;
+es wird kein zusätzlicher Browserlauf direkt aus der eingefrorenen JAR behauptet.
+Nachweis: [Paket- und Ressourcenmanifest](evidence/2026-10-07/portfolio-target-application-build.json).
+
+Das unveränderte Frontend-Maven-Profil bestand am selben Korrekturstand erneut:
+**994 unterschiedliche Fälle**, zuzüglich derselben 26 API-Fälle im separaten
+Maven-Schritt, somit **1.020 erfolgreiche Ausführungen**, ohne Fehler, Abbrüche
+oder Skips. Der [Frontend-Nachweis](evidence/2026-10-07/frontend-contracts-target-fix.json)
+führt die tatsächlichen Zählblöcke, Node 24.18.0 und Quellhashes auf.
+Die neue Remote-CI bleibt ein eigener, zum veröffentlichten Folgecommit
+gehörender Nachweis in den [PR-Prüfungen](https://github.com/carstenartur/Taxonomy/pull/1180/checks).
+
+### CI-Diagnostik bleibt auch bei einem echten Fehler verfügbar
+
+Das fehlgeschlagene Core-Artefakt enthielt die Testberichte, aber weder den
+vollständigen Maven-Log noch die Portfolio-Kontextbilder. Der vorhandene
+Staging-Schritt brach vor der Logkopie wegen fehlender aggregierter Coverage ab;
+die Kontextbilder standen außerdem noch nicht in seiner Dateiliste.
+
+Der bestehende Staging-Schritt sichert jetzt Log und die vorhandenen
+`root`-/`taxonomy`-Kontextbilder vor dieser Prüfung. Der Coverage-Fehler bleibt
+ein harter Fehler mit demselben Exitcode. Workflow, POMs, Testauswahl und
+Abschlussgate wurden dabei nicht gelockert; fachliche Downloads werden nicht
+in die Diagnosekopie aufgenommen. Die damaligen nicht hochgeladenen Bilder
+lassen sich durch diese Änderung nicht rückwirkend wiederherstellen.
+
+Drei neue JUnit-Fälle führen das echte Bash-Skript aus. Vor der Korrektur
+scheiterten zwei davon an den fehlenden Diagnosedateien. Danach bestanden
+**3/3** ohne Errors oder Skips. Sie prüfen Fehler- und Erfolgsfall,
+unveränderten Provenienzbezug, wiederholtes Staging ohne alte Restbilder sowie
+fehlende optionale Diagnosedateien. Die vorgeschriebenen Architekturprüfungen
+bestanden ebenfalls (140 + 2 + 71). Die vier vorhandenen Node-Vertragsfälle
+bestanden unverändert; eine unabhängige Wiederholung mit dem gepinnten
+Node 24.18.0 bestätigt dieselben vier Fälle und zählt nicht als neue Abdeckung.
+Zwei unabhängige Reviews fanden keine blockierende Lücke.
+Details: [Staging-Nachweis](evidence/2026-10-07/core-evidence-staging.json).
+
+### Verbleibender Befund zur Platzverteilung im Portfolio
+
+Die Portfolioansicht ist im untersuchten Desktop-Leerzustand weiterhin nicht
+optimal gewichtet. Sechs Kennzahlen stehen bei 1366 px in zwei Kartenreihen;
+anschließend beansprucht eine leere Analyseauftragsanzeige mit Erklärung,
+Statusfilter, Zusammenfassung und Leertext weiteren Platz vor den Anforderungen.
+Wer gerade eine Anforderung bearbeiten möchte, muss dadurch an viel derzeit
+wenig relevanter Übersicht vorbeiscrollen.
+
+Das ist ein begründeter ergonomischer Befund aus der tatsächlichen Ansicht und
+dem zugehörigen Renderpfad, kein nachgewiesener Clipping- oder Datenverlustfehler.
+Die [Desktopaufnahme des korrigierten Stands](images/context-layout-2026-10-07/after-selected-project-hover-1366.png)
+zeigt diese verbleibende Gewichtung. Die Kennzahlenstruktur steht im
+[Projekt-Template](../../taxonomy-app/src/main/resources/templates/projects.html),
+der Leerzustand im vorhandenen
+[Auftragsrenderer](../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js).
+Bei laufenden Aufträgen können Fortschritt und Fehlerstatus dagegen die wichtigste
+Information sein. Ein weiterer Entwurf sollte deshalb den wirklich leeren
+Zustand kompakter machen und ihn von einer nur durch den Filter leeren Liste
+unterscheiden. Diese zusätzliche Umgestaltung ist in diesem Reparaturschritt
+noch nicht umgesetzt und wird nicht als erledigt ausgegeben.

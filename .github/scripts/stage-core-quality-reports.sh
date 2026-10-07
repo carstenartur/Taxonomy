@@ -30,6 +30,18 @@ large_result_report=target/ui-verification/large-results/report.json
 if [[ -f "$large_result_report" ]]; then
   cp "$large_result_report" target/quality-reports/evidence/large-result-budget.json
 fi
+if [[ -f target/maven-verification.log ]]; then
+  cp target/maven-verification.log target/quality-reports/evidence/
+fi
+# Keep the owner diagnostics, not its separate downloaded product documents.
+for portfolio_context in root taxonomy; do
+  context_source="taxonomy-app/target/portfolio-context-evidence/${portfolio_context}"
+  if [[ -d "$context_source" ]]; then
+    context_destination="target/quality-reports/evidence/portfolio-context/${portfolio_context}"
+    mkdir -p "$context_destination"
+    cp -a "$context_source/." "$context_destination/"
+  fi
+done
 
 coverage=taxonomy-coverage/target/site/jacoco-aggregate
 [[ -f "$coverage/jacoco.xml" ]] || {
@@ -38,7 +50,7 @@ coverage=taxonomy-coverage/target/site/jacoco-aggregate
 }
 cp -a "$coverage/." target/quality-reports/coverage/
 for evidence in \
-  target/maven-verification.log target/version-state-report.txt \
+  target/version-state-report.txt \
   target/coverage-gate.txt target/dependency-hygiene-report.txt \
   target/frontend-api-boundary-report.txt target/hibernate-search-dependencies.txt \
   target/supply-chain-pins.json target/taxonomy-sbom.json target/taxonomy-sbom.xml \

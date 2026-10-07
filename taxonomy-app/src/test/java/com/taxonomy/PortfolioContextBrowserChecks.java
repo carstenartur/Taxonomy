@@ -81,6 +81,7 @@ final class PortfolioContextBrowserChecks {
             driver.navigate().refresh();
             pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
             verifyProjectNavigation(1366, 768);
+            verifyProjectNavigation(1920, 1080);
             verifyProjectNavigation(390, 844);
             viewport(1366, 768);
             showProject(PROJECT_A);
@@ -144,12 +145,95 @@ final class PortfolioContextBrowserChecks {
         showProject(PROJECT_B);
         var requirement = fixtures.primaryRequirement(PROJECT_B);
         WebElement detail = detailLink(PROJECT_B);
-        scroll(detail); insideViewport(detail);
+        scroll(detail);
+        Map<?, ?> geometry = insideViewport(detail);
+        assertThat(geometry.get("centerHit"))
+                .as("The requirement link's rectangular target includes its center: %s", geometry).isEqualTo(true);
         for (String action : List.of("analyze", "snapshots", "confirm")) {
             assertThat(driver.findElement(By.cssSelector(".requirement-" + action + "[data-requirement-id='"
                     + requirement.id() + "']")).isDisplayed()).isTrue();
         }
         noOverflow();
+        verifySelectedProjectContrast(width);
+    }
+
+    private void verifySelectedProjectContrast(int width) throws IOException {
+        // Start with a real pointer interaction outside the list, then hover the
+        // selected item. Its selected colors must survive both input modes.
+        click("selectedProjectKey");
+        WebElement selected = driver.findElement(By.cssSelector("#projectList .project-select.active"));
+        new Actions(driver).moveToElement(selected).perform();
+        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("""
+                return arguments[0].matches(':hover') && !arguments[0].matches(':focus-visible')
+                    && arguments[0].getAnimations({subtree:true}).every(animation => animation.playState !== 'running');
+                """, selected)));
+        assertSelectedProjectContrast(selected, "pointer hover");
+        screenshot("selected-project-hover-" + width);
+
+        new Actions(driver).moveToElement(driver.findElement(By.tagName("nav"))).perform();
+        for (int tabs = 0; tabs < 60 && !selected.equals(driver.switchTo().activeElement()); tabs++) key(Keys.TAB);
+        assertThat(driver.switchTo().activeElement())
+                .as("Native Tab navigation reaches the selected project").isEqualTo(selected);
+        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("""
+                return arguments[0].matches(':focus-visible') && !arguments[0].matches(':hover')
+                    && arguments[0].getAnimations({subtree:true}).every(animation => animation.playState !== 'running');
+                """, selected)));
+        assertSelectedProjectContrast(selected, "keyboard focus");
+        assertThat(selected.getDomAttribute("aria-current")).isEqualTo("page");
+        screenshot("selected-project-focus-" + width);
+    }
+
+    private void assertSelectedProjectContrast(WebElement selected, String state) {
+        Map<?, ?> colors = (Map<?, ?>) driver.executeScript("""
+                const button=arguments[0], canvas=document.createElement('canvas');
+                canvas.width=canvas.height=1;
+                const painter=canvas.getContext('2d'), cache=new Map();
+                const rgba=value => {
+                    if(!cache.has(value)) {
+                        painter.clearRect(0,0,1,1); painter.fillStyle=value; painter.fillRect(0,0,1,1);
+                        const pixel=Array.from(painter.getImageData(0,0,1,1).data); pixel[3]/=255;
+                        cache.set(value,pixel);
+                    }
+                    return cache.get(value).slice();
+                };
+                const over=(foreground,background) => {
+                    const alpha=foreground[3]+background[3]*(1-foreground[3]);
+                    return alpha ? [...foreground.slice(0,3).map((value,index) =>
+                        (value*foreground[3]+background[index]*background[3]*(1-foreground[3]))/alpha),alpha]
+                        : [0,0,0,0];
+                };
+                // Composite the actual text, background and opacity at each DOM
+                // ancestor; translucent metadata must not inherit an opaque score.
+                const pixel=(element,withText) => {
+                    let result=withText ? rgba(getComputedStyle(element).color) : [0,0,0,0];
+                    for(let node=element;node;node=node.parentElement) {
+                        const style=getComputedStyle(node);
+                        result=over(result,rgba(style.backgroundColor)); result[3]*=Number(style.opacity);
+                    }
+                    return over(result,[255,255,255,1]);
+                };
+                const luminance=color => color.slice(0,3).map(value => value/255)
+                    .map(value => value<=.04045 ? value/12.92 : ((value+.055)/1.055)**2.4)
+                    .reduce((sum,value,index) => sum+value*[.2126,.7152,.0722][index],0);
+                const parts=[['key',button.querySelector('strong')],
+                    ['title',button.querySelector(':scope > .small:not(.opacity-75)')],
+                    ['metadata',button.querySelector('.opacity-75')]].map(([part,element]) => {
+                        const style=getComputedStyle(element), foreground=pixel(element,true), background=pixel(element,false);
+                        const first=luminance(foreground), second=luminance(background);
+                        return {part,text:element.textContent,color:style.color,opacity:style.opacity,font:style.font,
+                            foreground,background,contrast:(Math.max(first,second)+.05)/(Math.min(first,second)+.05)};
+                    });
+                return {hover:button.matches(':hover'),focusVisible:button.matches(':focus-visible'),
+                    focused:document.activeElement===button,background:getComputedStyle(button).backgroundColor,parts};
+                """, selected);
+        List<?> parts = (List<?>) colors.get("parts");
+        assertThat(parts).hasSize(3);
+        for (Object value : parts) {
+            Map<?, ?> part = (Map<?, ?>) value;
+            assertThat(((Number) part.get("contrast")).doubleValue())
+                    .as("Selected-project %s remains readable during %s: %s", part.get("part"), state, colors)
+                    .isGreaterThanOrEqualTo(4.5);
+        }
     }
 
     private void showProject(long project) {
@@ -291,13 +375,27 @@ final class PortfolioContextBrowserChecks {
                 .as("No page-wide horizontal scrolling at the actual browser viewport").isEqualTo(true);
     }
 
-    private void insideViewport(WebElement element) {
+    private Map<?, ?> insideViewport(WebElement element) {
         assertThat(element.isDisplayed()).isTrue();
-        assertThat(driver.executeScript("""
-                const r=arguments[0].getBoundingClientRect();
-                return r.width>=24 && r.height>=24 && r.x>=-1 && r.y>=-1
-                    && r.right<=innerWidth+1 && r.bottom<=innerHeight+1;
-                """, element)).as("Control fully visible inside the actual viewport: %s", element).isEqualTo(true);
+        Map<?, ?> geometry = (Map<?, ?>) driver.executeScript("""
+                const element=arguments[0], rect=element.getBoundingClientRect(), style=getComputedStyle(element);
+                const bounds=value => ({x:value.x,y:value.y,width:value.width,height:value.height,
+                    right:value.right,bottom:value.bottom});
+                const range=document.createRange(); range.selectNodeContents(element);
+                const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+                const checks={minimumWidth:rect.width>=24,minimumHeight:rect.height>=24,left:rect.x>=-1,
+                    top:rect.y>=-1,right:rect.right<=innerWidth+1,bottom:rect.bottom<=innerHeight+1};
+                return {rect:bounds(rect),clientRects:Array.from(element.getClientRects(),bounds),
+                    textRects:Array.from(range.getClientRects(),bounds),checks,valid:Object.values(checks).every(Boolean),
+                    viewport:{innerWidth,innerHeight,scrollX,scrollY,devicePixelRatio,
+                        clientWidth:document.documentElement.clientWidth,clientHeight:document.documentElement.clientHeight},
+                    font:style.font,fontFamily:style.fontFamily,lineHeight:style.lineHeight,display:style.display,
+                    centerHit:hit===element || element.contains(hit),
+                    hit:hit ? {tag:hit.tagName,id:hit.id,className:hit.className} : null};
+                """, element);
+        assertThat(geometry.get("valid"))
+                .as("Control fully visible inside the actual viewport: %s; geometry: %s", element, geometry).isEqualTo(true);
+        return geometry;
     }
 
     private void screenshot(String name) throws IOException { Files.write(evidence.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES)); }
