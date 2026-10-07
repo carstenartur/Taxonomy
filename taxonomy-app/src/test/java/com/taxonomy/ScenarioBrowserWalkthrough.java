@@ -184,6 +184,9 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         var downloadHashes = new LinkedHashMap<String, String>();
         for (var button : buttons.entrySet()) {
             Set<String> beforeDownload = downloadedFiles();
+            // Each download closes the native disclosure. Reopen it through the
+            // same visible control a user needs before testing the next format.
+            click(By.cssSelector("#architectureExportOptions > summary"));
             click(By.id(button.getKey()));
             if (button.getKey().equals("downloadDecisionWord")) {
                 wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".decision-export-dialog")));

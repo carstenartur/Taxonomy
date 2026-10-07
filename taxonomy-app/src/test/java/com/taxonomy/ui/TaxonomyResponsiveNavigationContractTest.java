@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,13 +34,32 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("target.scrollIntoView({ block: 'center', inline: 'nearest' })")
                 .contains("new MutationObserver(syncResponsiveMainNavigation)");
 
+        String navigation = between(css,
+                "/* Discoverable responsive primary navigation. */",
+                "/* A view switch must never move the view selector.");
+        assertThat(ruleBody(navigation, "\\.mobile-main-navigation"))
+                .as("the compact navigation does not duplicate desktop navigation")
+                .containsPattern("display:\\s*none\\s*;");
+        String narrow = ruleBody(navigation, "@media\\s*\\(max-width:\\s*991\\.98px\\)");
+        assertThat(ruleBody(narrow, "#mainNavTabs"))
+                .containsPattern("display:\\s*none\\s*!important\\s*;");
+        assertThat(ruleBody(narrow, "\\.mobile-main-navigation"))
+                .as("section selection and the task jump share a row at every narrow viewport height")
+                .containsPattern("display:\\s*grid\\s*;")
+                .containsPattern("grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)\\s+auto\\s*;");
+        assertThat(ruleBody(narrow,
+                "\\.mobile-main-navigation-select\\s*,\\s*\\.mobile-current-task-button"))
+                .as("both responsive controls retain usable pointer targets")
+                .containsPattern("min-height:\\s*44px\\s*;");
+
+        String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
+        assertThat(ruleBody(zoom, "\\.navbar-brand"))
+                .containsPattern("width:\\s*100%\\s*;")
+                .containsPattern("white-space:\\s*normal\\s*;");
+        assertThat(ruleBody(zoom, "\\.navbar-version"))
+                .as("the version and separator do not consume another line of task space")
+                .containsPattern("display:\\s*none\\s*;");
         assertThat(css)
-                .contains("/* Discoverable responsive primary navigation. */")
-                .containsPattern("(?s)#mainNavTabs\\s*\\{[^}]*display:\\s*none\\s*!important;")
-                .containsPattern("(?s)\\.mobile-main-navigation\\s*\\{[^}]*display:\\s*grid;")
-                .contains("min-height: 44px")
-                .contains("@media (max-width: 30rem) and (min-height: 31rem)")
-                .contains("grid-template-columns: 1fr")
                 .contains(".navbar .btn-outline-light")
                 .contains("color: ButtonText !important")
                 .contains("background-color: ButtonFace !important")
@@ -99,10 +119,57 @@ class TaxonomyResponsiveNavigationContractTest {
                 .isEqualTo(2);
         assertThat(containers)
                 .doesNotContain("Wait.forHttp(\"/actuator/health\")");
-        assertThat(portfolio)
+        String startup = between(portfolio,
+                "static void startApplicationAndBrowser() throws Exception {",
+                "private static void startApplication(String context) throws Exception {");
+        assertThat(startup.indexOf("startApplication(\"\");"))
+                .as("application startup completes before browser authentication")
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(startup.indexOf("login();"));
+
+        String applicationStartup = between(portfolio,
+                "private static void startApplication(String context) throws Exception {",
+                "private static URI applicationOrigin() {");
+        assertThat(applicationStartup)
+                .contains("contextPath = context;")
+                .contains("awaitLocalReadiness();")
+                .contains("Wait.forHttp(context + \"/actuator/health/readiness\").forStatusCode(200)");
+        assertThat(applicationStartup.indexOf("awaitLocalReadiness();"))
+                .isLessThan(applicationStartup.indexOf("return;"));
+        String localReadiness = between(portfolio,
+                "private static void awaitLocalReadiness() {",
+                "private static void stopApplication() {");
+        assertThat(localReadiness)
+                .contains("origin.resolve(contextPath + \"/actuator/health/readiness\")")
+                .contains("origin.resolve(contextPath + \"/api/status/startup\")")
+                .contains("assertThat(health.statusCode())")
+                .contains("assertThat(startup.statusCode())")
+                .contains(".path(\"initialized\").asBoolean()")
+                .contains(".isTrue();");
+
+        String login = between(portfolio,
+                "private static void login() {",
+                "private static void open(String path, By readyElement) {");
+        assertThat(login)
                 .contains("Configured test administrator was rejected after readiness")
-                .contains("driver.get(ContainerTestUtils.APP_ORIGIN + \"/\");")
-                .contains("doesNotContain(\"/change-password\")");
+                .contains("driver.get(browserOrigin + contextPath + \"/login\");")
+                .contains("driver.get(browserOrigin + contextPath + \"/\");")
+                .contains("doesNotContain(\"/change-password\")")
+                .doesNotContain("ContainerTestUtils.APP_ORIGIN");
+    }
+
+    /** Scope declarations to their actual selector/media block, including nested rules. */
+    private static String ruleBody(String source, String selectorPattern) {
+        var rule = Pattern.compile(selectorPattern + "\\s*\\{").matcher(source);
+        assertThat(rule.find()).as("CSS rule %s", selectorPattern).isTrue();
+        int start = rule.end();
+        int depth = 1;
+        for (int index = start; index < source.length(); index++) {
+            char current = source.charAt(index);
+            if (current == '{') depth++;
+            if (current == '}' && --depth == 0) return source.substring(start, index);
+        }
+        throw new AssertionError("Unclosed CSS rule: " + selectorPattern);
     }
 
     private static int occurrences(String source, String value) {

@@ -7,8 +7,13 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.io.TempDir;
+import org.awaitility.Awaitility;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.ElementClickInterceptedException;
@@ -24,12 +29,23 @@ import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.Testcontainers;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -42,9 +58,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ordinary JUnit service and controller tests. This class deliberately verifies
  * only behaviour that requires a real browser: forms, navigation, asynchronous
  * job visibility, reload recovery, dialogs, responsive layout and downloads.</p>
+ * <p>The default remains the packaged application and Selenium containers.
+ * Explicit {@code -Ptest-local} runs the same methods against the real Spring
+ * application and the repository's local {@code BrowserSession} adapter.</p>
  */
 @Tag("ui-acceptance")
-@Tag("docker-required")
+@Tag("browser")
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PortfolioUiAcceptanceIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Ui-Acceptance-2026!";
@@ -53,12 +73,68 @@ class PortfolioUiAcceptanceIT {
     private static Network network;
     private static GenericContainer<?> application;
     private static ContainerTestUtils.BrowserSession browserSession;
+    private static com.taxonomy.testsupport.BrowserSession localBrowserSession;
+    private static ConfigurableApplicationContext localApplication;
+    private static boolean localRuntime;
+    @TempDir private static Path localData;
     private static RemoteWebDriver driver;
     private static WebDriverWait wait;
+    private static PortfolioContextHttpFixture fixture;
+    private static String browserOrigin;
+    private static String contextPath = "";
 
     @BeforeAll
-    static void startApplicationAndBrowser() {
-        network = Network.newNetwork();
+    static void startApplicationAndBrowser() throws Exception {
+        localRuntime = switch (System.getProperty("taxonomy.test.browser", "")) {
+            case "local" -> true;
+            case "", "container" -> false;
+            default -> throw new IllegalArgumentException("Expected taxonomy.test.browser=local or container");
+        };
+        if (!localRuntime) network = Network.newNetwork();
+        startApplication("");
+        fixture = new PortfolioContextHttpFixture(applicationOrigin());
+        if (localRuntime) {
+            localBrowserSession = com.taxonomy.testsupport.BrowserSession.open(fixture.port(),
+                    Path.of("target", "portfolio-context-evidence", "downloads"));
+            browserOrigin = localBrowserSession.origin();
+            driver = localBrowserSession.driver();
+        } else {
+            Testcontainers.exposeHostPorts(fixture.port());
+            browserOrigin = "http://host.testcontainers.internal:" + fixture.port();
+            browserSession = ContainerTestUtils.startBrowser(network,
+                    "--unsafely-treat-insecure-origin-as-secure=" + browserOrigin);
+            driver = browserSession.driver();
+            driver.setFileDetector(new LocalFileDetector());
+        }
+        driver.manage().window().setSize(new Dimension(1440, 1000));
+        wait = new WebDriverWait(driver, UI_WAIT_TIMEOUT);
+        login();
+    }
+
+    private static void startApplication(String context) throws Exception {
+        contextPath = context;
+        if (localRuntime) {
+            Path data = Files.createDirectories(localData.resolve("application"));
+            // Workspace metadata and JGit repositories share this isolated real
+            // HSQLDB across the mount-path restart, as a deployed application's
+            // persistent data would. GitRepositoryBootstrap deliberately runs
+            // once per JVM; recreating an empty DB here would discard its branch.
+            // The search index is scoped to each application context.
+            localApplication = new SpringApplicationBuilder(TaxonomyApplication.class).run(
+                    "--server.port=0", "--server.servlet.context-path=" + context,
+                    "--spring.profiles.active=hsqldb",
+                    "--spring.datasource.url=jdbc:hsqldb:file:" + data.resolve("db").toAbsolutePath() + ";shutdown=true",
+                    "--spring.datasource.username=SA", "--spring.datasource.password=",
+                    "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
+                    "--spring.jpa.hibernate.ddl-auto=update",
+                    "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
+                    "--taxonomy.admin-password=" + ADMIN_PASSWORD,
+                    "--taxonomy.security.require-password-change=false",
+                    "--embedding.enabled=false", "--embedding.allow-download=false",
+                    "--taxonomy.init.async=true", "--spring.thymeleaf.cache=false", "--llm.mock=true");
+            awaitLocalReadiness();
+            return;
+        }
         application = ContainerTestUtils.appContainer(network)
                 .withEnv("TAXONOMY_ADMIN_PASSWORD", ADMIN_PASSWORD)
                 .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
@@ -66,23 +142,62 @@ class PortfolioUiAcceptanceIT {
                 .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
                 .withEnv("TAXONOMY_INIT_ASYNC", "true")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "false")
-                .withEnv("LLM_MOCK", "true");
+                .withEnv("LLM_MOCK", "true")
+                .withEnv("SERVER_SERVLET_CONTEXT_PATH", context)
+                .waitingFor(Wait.forHttp(context + "/actuator/health/readiness").forStatusCode(200).forPort(8080));
         application.start();
+    }
 
-        browserSession = ContainerTestUtils.startBrowser(network);
-        driver = browserSession.driver();
-        driver.manage().window().setSize(new Dimension(1440, 1000));
-        driver.setFileDetector(new LocalFileDetector());
-        wait = new WebDriverWait(driver, UI_WAIT_TIMEOUT);
-        login();
+    private static URI applicationOrigin() {
+        if (localRuntime) return URI.create("http://127.0.0.1:"
+                + localApplication.getEnvironment().getRequiredProperty("local.server.port"));
+        return URI.create("http://" + application.getHost() + ":" + application.getMappedPort(8080));
+    }
+
+    private static void awaitLocalReadiness() {
+        URI origin = applicationOrigin();
+        String authorization = "Basic " + Base64.getEncoder().encodeToString(
+                ("admin:" + ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
+        var json = JsonMapper.builder().build();
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            Awaitility.await("Portfolio application HTTP readiness and asynchronous taxonomy initialization")
+                    .atMost(Duration.ofSeconds(180)).pollInterval(Duration.ofSeconds(1)).untilAsserted(() -> {
+                        var health = client.send(HttpRequest.newBuilder(origin.resolve(contextPath + "/actuator/health/readiness"))
+                                .timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString());
+                        assertThat(health.statusCode()).as("Actual application readiness endpoint").isEqualTo(200);
+                        var startup = client.send(HttpRequest.newBuilder(origin.resolve(contextPath + "/api/status/startup"))
+                                .header("Authorization", authorization).timeout(Duration.ofSeconds(5)).GET().build(),
+                                HttpResponse.BodyHandlers.ofString());
+                        assertThat(startup.statusCode()).as("Actual authenticated startup endpoint").isEqualTo(200);
+                        assertThat(json.readTree(startup.body()).path("initialized").asBoolean())
+                                .as("INIT_ASYNC must finish before browser actions").isTrue();
+                    });
+        }
+    }
+
+    private static void stopApplication() {
+        if (localApplication != null) { localApplication.close(); localApplication = null; }
+        if (application != null) { application.stop(); application = null; }
     }
 
     @AfterAll
     static void stopApplicationAndBrowser() throws Exception {
-        ContainerTestUtils.closeAll(browserSession, application, network);
+        // Do not initialize ContainerTestUtils (and its packaged-JAR image) in
+        // explicit local mode just to perform generic resource cleanup.
+        Exception failure = null;
+        for (AutoCloseable resource : new AutoCloseable[]{localBrowserSession, browserSession, fixture,
+                PortfolioUiAcceptanceIT::stopApplication, network}) {
+            if (resource == null) continue;
+            try { resource.close(); }
+            catch (Exception exception) {
+                if (failure == null) failure = exception; else failure.addSuppressed(exception);
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     @Test
+    @Order(1)
     void portfolioWorkflowsAreOperableThroughTheRealBrowser() throws Exception {
         String suffix = uniqueSuffix();
         String projectKey = "P-JUNIT-" + suffix;
@@ -113,8 +228,29 @@ class PortfolioUiAcceptanceIT {
         verifyResponsiveLayout();
     }
 
+    @Test
+    @Order(2)
+    void portfolioNavigationRecoveryAndMatrixMeaningsAtRoot() throws Exception {
+        PortfolioContextBrowserChecks.run(driver, fixture, browserOrigin, "");
+    }
+
+    @Test
+    @Order(3)
+    void portfolioNavigationRecoveryAndMatrixMeaningsInServletContext() throws Exception {
+        // Keep a single application JVM: finish the existing root workflows
+        // before starting the same application with a real servlet context.
+        driver.get("about:blank");
+        stopApplication();
+        startApplication("/taxonomy");
+        fixture.upstream(applicationOrigin(), contextPath);
+        driver.get(browserOrigin + contextPath + "/login");
+        driver.manage().deleteAllCookies();
+        login();
+        PortfolioContextBrowserChecks.run(driver, fixture, browserOrigin, contextPath);
+    }
+
     private static void login() {
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
+        driver.get(browserOrigin + contextPath + "/login");
         wait.until(ExpectedConditions.presenceOfElementLocated(By.name("username")))
                 .sendKeys("admin");
         driver.findElement(By.name("password")).sendKeys(ADMIN_PASSWORD);
@@ -136,13 +272,25 @@ class PortfolioUiAcceptanceIT {
 
         // Authentication may return to a saved request. The navigation contract
         // belongs to the application workbench, so open it explicitly.
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
+        driver.get(browserOrigin + contextPath + "/");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript(
+                "return !!window.TaxonomyRoleSurface?.ready")));
+        assertThat(javascript().executeAsyncScript("""
+                const done = arguments[arguments.length - 1];
+                window.TaxonomyRoleSurface.ready.then(() => {
+                    const surface = window.TaxonomyRoleSurface;
+                    done(surface.isAdministrator() === true
+                        && surface.getContext().administrator === true);
+                }, () => done(false));
+                """))
+                .as("Role bootstrap resolves with the actual authenticated administrator context")
+                .isEqualTo(true);
         dismissOnboardingWhenShown();
     }
 
     private static void open(String path, By readyElement) {
-        driver.get(ContainerTestUtils.APP_ORIGIN + path);
+        driver.get(browserOrigin + contextPath + path);
         wait.until(ExpectedConditions.visibilityOfElementLocated(readyElement));
     }
 

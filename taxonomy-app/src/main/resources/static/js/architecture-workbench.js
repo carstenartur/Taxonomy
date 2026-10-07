@@ -1027,6 +1027,31 @@
         }
     });
 
+    const exportOptions = document.getElementById('architectureExportOptions');
+    if (exportOptions) {
+        exportOptions.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && exportOptions.open) {
+                event.preventDefault();
+                exportOptions.open = false;
+                exportOptions.querySelector('summary').focus();
+            }
+        });
+        document.addEventListener('click', function (event) {
+            if (exportOptions.open && !exportOptions.contains(event.target)) {
+                exportOptions.open = false;
+            }
+        });
+        exportOptions.addEventListener('click', function (event) {
+            if (event.target.closest('button:not(:disabled)')) {
+                exportOptions.open = false;
+                // Allow an export action that opens a dialog to move focus there.
+                if (exportOptions.contains(document.activeElement)) {
+                    exportOptions.querySelector('summary').focus();
+                }
+            }
+        });
+    }
+
     document.getElementById('downloadArchitectureSvg').addEventListener('click', function () {
         window.location.assign(ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId));
     });

@@ -1,0 +1,256 @@
+{
+  "recordedAtUtc": "2026-10-07T08:17:18.446918+00:00",
+  "scope": "Fresh canonical Maven execution of the three existing Core owners after correcting obsolete UI contracts. Not a full Core or database-matrix rerun.",
+  "command": [
+    "./mvnw",
+    "-B",
+    "-ntp",
+    "-pl",
+    "taxonomy-app",
+    "-am",
+    "test",
+    "-Dtest=ReformulationAdoptionTest,TaxonomyResponsiveNavigationContractTest,TaxonomySearchLargeResultContractTest",
+    "-Dsurefire.failIfNoSpecifiedTests=false",
+    "-Dmaven.build.cache.enabled=false"
+  ],
+  "localLauncher": "bash /workspace/scratch/3a054c2db44e/qa-runtime/run-maven.sh",
+  "mavenExitCode": 0,
+  "tests": 14,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": [
+    {
+      "name": "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timeSeconds": 56.792,
+      "reportModifiedUtc": "2026-10-07T08:13:06.913452+00:00",
+      "reportSha256": "693e947536c452683b1ee00af05227d5c7f235627de9c677def8b63928edb1ca",
+      "preservedRawReport": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contracts-after-ci-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest.xml",
+      "cases": [
+        {
+          "name": "explicitVersionTransitionAndEvidenceSurviveRestart",
+          "timeSeconds": 56.681
+        },
+        {
+          "name": "actualDialogAndApiNeverAdoptOnPreviewOrLoseRetryIdentity",
+          "timeSeconds": 0.057
+        },
+        {
+          "name": "readOnlyDetailRefreshKeepsUnsavedFieldsAndRejectsLateReads",
+          "timeSeconds": 0.051
+        }
+      ]
+    },
+    {
+      "name": "com.taxonomy.ui.TaxonomyResponsiveNavigationContractTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timeSeconds": 0.199,
+      "reportModifiedUtc": "2026-10-07T08:12:10.019637+00:00",
+      "reportSha256": "37cc9662e5afd49ee5a19037930aa173f06bc738f2bbf03665e48385d6676e35",
+      "preservedRawReport": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contracts-after-ci-reports/TEST-com.taxonomy.ui.TaxonomyResponsiveNavigationContractTest.xml",
+      "cases": [
+        {
+          "name": "narrowViewportsUseAnExplicitSectionSelectorAndTaskJump",
+          "timeSeconds": 0.155
+        },
+        {
+          "name": "browserAuthenticationStartsOnlyAfterApplicationReadiness",
+          "timeSeconds": 0.016
+        },
+        {
+          "name": "browserVerificationMeasuresBeforeScrollAndUsesTheResponsiveControl",
+          "timeSeconds": 0.003
+        }
+      ]
+    },
+    {
+      "name": "com.taxonomy.ui.TaxonomySearchLargeResultContractTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timeSeconds": 0.131,
+      "reportModifiedUtc": "2026-10-07T08:12:10.127640+00:00",
+      "reportSha256": "702efa346f11183d5013ccd4010a178b845349291840a012b8db5dc2a076354b",
+      "preservedRawReport": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contracts-after-ci-reports/TEST-com.taxonomy.ui.TaxonomySearchLargeResultContractTest.xml",
+      "cases": [
+        {
+          "name": "searchPanelGuttersStayInsideTheResponsiveContainer",
+          "timeSeconds": 0.003
+        },
+        {
+          "name": "resultNavigationPublishesOnlyConfirmedStableFocus",
+          "timeSeconds": 0.006
+        },
+        {
+          "name": "newSearchClearsStaleHighlightAndKeepsOneTreeTabStop",
+          "timeSeconds": 0.002
+        },
+        {
+          "name": "resultPositionsDoNotOverrideTheActionableLinkRole",
+          "timeSeconds": 0.002
+        },
+        {
+          "name": "largeResultsUseAWindowAndExposeOrientationControls",
+          "timeSeconds": 0.002
+        },
+        {
+          "name": "browserEvidenceUsesRealNodesGeometryAndBrowserMetrics",
+          "timeSeconds": 0.003
+        },
+        {
+          "name": "concurrentSearchResponsesCannotOverwriteNewerState",
+          "timeSeconds": 0.003
+        },
+        {
+          "name": "everySearchOpensTheCompleteNestedWorkspace",
+          "timeSeconds": 0.102
+        }
+      ]
+    }
+  ],
+  "sourceHashes": {
+    "taxonomy-app/src/test/java/com/taxonomy/portfolio/reformulation/ReformulationAdoptionTest.java": "35583b121351d5f9400b270c5ba392ab20d2c1d00c7239e1b5c6529beb286db9",
+    "taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyResponsiveNavigationContractTest.java": "9446adb6da29135a96c614a62d3ca53bb409c5d520a678edc57fcf2353569e19",
+    "taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomySearchLargeResultContractTest.java": "d57abf9ea2a1818408693d5147a5490ba63ac3e7238c7561175b9a4760b6ead7",
+    "taxonomy-app/src/test/resources/reformulation/adoption-detail-refresh-contract.cjs": "fbf2a4c647f9a6e3e5fe3785e501eda5ed5c78e35881ae154ae57345db02b5be",
+    "taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js": "cf7ac3bc567f7e92845ebb93f8da6c85fe5b4448c36f3886bea6f07946ede9d2",
+    "taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js": "4cdb8f46751602921af61cd939698cee45ae56621a8de238c4cf1556e34889b7",
+    "taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css": "9a923fe379ea92c5be9e202e3aa76e5471e68ba0ea5c2d92f5b8183cc84a9590",
+    "taxonomy-app/src/main/resources/templates/index.html": "98843af394daa38b2bb9668d93ecd8e794481cca39ca2bba49c02473d2374414",
+    "taxonomy-app/src/test/java/com/taxonomy/PortfolioUiAcceptanceIT.java": "99a8b419090c652658ba9fb15e1d91b1bf001363463256a3c6f7f50205e753de"
+  },
+  "mockitoPremain": "Existing mockito-core 5.23.0 loaded at JVM startup; JaCoCo retained. No POM or MockMaker change.",
+  "log": {
+    "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contracts-after-ci.log",
+    "sha256": "8bb1ea271750a7e780ed6eb5e4e5bb126f941c7363bb43c75038de302ec0228b",
+    "limitation": "The preserved console log ends during the root CycloneDX step. Process exit 0 and all three fresh, positive-count Surefire XML reports independently witness the selected tests; no complete console log is claimed."
+  },
+  "adoptionMutationChecks": {
+    "script": "taxonomy-app/src/test/resources/reformulation/adoption-detail-refresh-contract.cjs",
+    "script_sha256": "fbf2a4c647f9a6e3e5fe3785e501eda5ed5c78e35881ae154ae57345db02b5be",
+    "production_source_sha256": "cf7ac3bc567f7e92845ebb93f8da6c85fe5b4448c36f3886bea6f07946ede9d2",
+    "results": [
+      {
+        "case": "actual",
+        "exit_code": 0,
+        "expected_exit_code": 0,
+        "source_sha256": "cf7ac3bc567f7e92845ebb93f8da6c85fe5b4448c36f3886bea6f07946ede9d2",
+        "log_sha256": "1a77bbd57ba2c603ec701c9adaf48acb0dccfae64dbaf389768247dc036cb072",
+        "assertion": "REFORMULATION_ADOPTION_DETAIL_REFRESH_OK"
+      },
+      {
+        "case": "lost-explicit-draft-preservation",
+        "exit_code": 1,
+        "expected_exit_code": 1,
+        "source_sha256": "9463a145292c75948ba4bf72e0b7ad931bb33638563d0af096ef2fbb2579c160",
+        "log_sha256": "1038776d17e0ed547fab1d39dca10a3005172772be730d4af596319c64ad75e3",
+        "assertion": "AssertionError [ERR_ASSERTION]: Read-only adoption refresh erased unsaved form input"
+      },
+      {
+        "case": "late-read-overwrites-current",
+        "exit_code": 1,
+        "expected_exit_code": 1,
+        "source_sha256": "acfa2fef93d3d0524685db5a77cfabd18dba1c792955f35fcfd583d8854beede",
+        "log_sha256": "d2ab8b3ed71f3572ecd13a9fd3836b6e93a339efa75c7a34cc94706eec1a5418",
+        "assertion": "AssertionError [ERR_ASSERTION]: Older refresh overwrote newer version"
+      },
+      {
+        "case": "lost-renderer-preserve-forwarding",
+        "exit_code": 1,
+        "expected_exit_code": 1,
+        "source_sha256": "f6157d18479660da64a40426506ec73f5435e1ad0f0c4d52c17affc2e7bce481",
+        "log_sha256": "1038776d17e0ed547fab1d39dca10a3005172772be730d4af596319c64ad75e3",
+        "assertion": "AssertionError [ERR_ASSERTION]: Read-only adoption refresh erased unsaved form input"
+      }
+    ],
+    "scope": "Scratch-only mutations. Production source unchanged. Existing JUnit-owned cjs contract executes actual loadAll, renderAll and renderCurrentText; fresh canonical Maven run follows."
+  },
+  "uiContractIsolatedRedGreen": {
+    "recordedAtUtc": "2026-10-07T08:12:54.448681+00:00",
+    "scope": "Two existing fast UI source-contract owners; no production, POM, test tag or test selection changes.",
+    "owners": {
+      "taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyResponsiveNavigationContractTest.java": "9446adb6da29135a96c614a62d3ca53bb409c5d520a678edc57fcf2353569e19",
+      "taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomySearchLargeResultContractTest.java": "d57abf9ea2a1818408693d5147a5490ba63ac3e7238c7561175b9a4760b6ead7"
+    },
+    "red": {
+      "exitCode": 1,
+      "tests": 11,
+      "passed": 8,
+      "failed": 3,
+      "evidence": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/red/result.json",
+        "sha256": "d120fa57f580c0282f9f7b5e7a80f4892dd58b83369c52de7c2b1995cec55204",
+        "bytes": 5394
+      },
+      "log": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/red/launcher.log",
+        "sha256": "3088a5b5b1cba6053202e16d1fcb4ea572d31031891483afdc2dc3af358eeb66",
+        "bytes": 465
+      },
+      "sourceManifest": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/red/source-manifest.json",
+        "sha256": "63bb4dcdf06c5c9a2b62b69d76e41399a7e158d6f5e48cbaa31ab7ccd63fece3",
+        "bytes": 1009
+      }
+    },
+    "green": {
+      "exitCode": 0,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "containerFailures": 0,
+      "evidence": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/green/result.json",
+        "sha256": "8e502a947c14d622804818fe9bfd76049e487a853938d1d1de8098d36326c1e8",
+        "bytes": 3396
+      },
+      "log": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/green/launcher.log",
+        "sha256": "d04fadef258e9cca6660376ad3a873aa6cbd642846eb998ab78d5ff370d7c7e0",
+        "bytes": 465
+      },
+      "sourceManifest": {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/core-ui-contract-refresh/green/source-manifest.json",
+        "sha256": "a0583a76b698e59ce1ede98d7ec99539a36537089b316d8ced8670237abed666",
+        "bytes": 1632
+      }
+    },
+    "remoteRed": [
+      {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/remote-ci/37583519381/core/TEST-com.taxonomy.ui.TaxonomyResponsiveNavigationContractTest.xml",
+        "sha256": "9820a8c9deaf7cf232880dda6300c879a7d2c742bab950f9fd48b7a700ebd706",
+        "bytes": 139710
+      },
+      {
+        "path": "/workspace/scratch/3a054c2db44e/qa-runtime/remote-ci/37583519381/core/TEST-com.taxonomy.ui.TaxonomySearchLargeResultContractTest.xml",
+        "sha256": "de85a509778c4324e3a49c056055eb35da852a4877085e349cbe1c2cfcaa10df",
+        "bytes": 167927
+      }
+    ],
+    "remoteDifference": "The remote run had the narrow-height media-query and analysisSecondaryTools failures. The local RED also reproduces the old fixed APP_ORIGIN expectation after the browser owner acquired real context-aware local/container origins.",
+    "reviewRationale": [
+      "Navigation declarations are checked within their actual CSS rule/media blocks. Under 991.98px, desktop tabs hide, section selection and task jump remain on one row, and both targets retain 44px. Under 640px, header reflow and version suppression preserve task space. Existing forced-color requirements remain.",
+      "Authentication still waits for application startup before login. The current local readiness and asynchronous initialization checks and container context-prefixed readiness endpoint are retained. Login and post-login workbench navigation must both use browserOrigin plus contextPath.",
+      "Search must reveal the catalogue when necessary and traverse only the search panel and its actual ancestor details. The actual index template is parsed with the existing Thymeleaf attoparser dependency to verify the disclosure, search input and catalogue ancestry. The test rejects coupling to unrelated analysisSecondaryTools; ordinary and Find Similar search still share one authority."
+    ],
+    "verificationMethod": "Matching cached JUnit Platform 6.0.3 Launcher executed the existing @Test methods. Owners were compiled into isolated red/green directories; actual src/main/resources precedes compiled classpath resources. No Maven target outputs, application or browser sessions were changed by this verification.",
+    "temporaryLauncher": {
+      "path": "/workspace/scratch/3a054c2db44e/qa-runtime/build/SelectedContractTests.java",
+      "sha256": "4161c98b1b5e9b025faa9d6266f8c6e956fb142a40fa8b33209ab1a33e17d006",
+      "bytes": 4085
+    },
+    "classpathSource": "/workspace/scratch/3a054c2db44e/qa-runtime/build/portfolio-pointer-classpath.txt",
+    "additionalExistingLauncherJar": "/workspace/scratch/3a054c2db44e/qa-runtime/m2/org/junit/platform/junit-platform-launcher/6.0.3/junit-platform-launcher-6.0.3.jar",
+    "canonicalMavenFollowup": "Completed by the parent: the 14 canonical Maven cases recorded in this file passed with fresh Surefire reports and process exit 0."
+  },
+  "review": "Independent review closed a missing renderAll forwarding edge. The adoption contract now executes actual loadAll, renderAll and renderCurrentText; every scratch-only mutation of draft preservation, stale-read rejection and preserve-flag forwarding fails on its intended behavioral assertion."
+}

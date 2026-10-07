@@ -1,0 +1,45 @@
+{
+  "selection": [
+    {
+      "name": "com.taxonomy.testsupport.BrowserSessionTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.291,
+      "sourceReport": "taxonomy-app/target/surefire-reports/TEST-com.taxonomy.testsupport.BrowserSessionTest.xml"
+    },
+    {
+      "name": "com.taxonomy.testsupport.BrowserSessionIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.587,
+      "sourceReport": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.testsupport.BrowserSessionIT.xml"
+    },
+    {
+      "name": "com.taxonomy.AnalysisLiveProgressUiIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 4.668,
+      "sourceReport": "taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.AnalysisLiveProgressUiIT.xml"
+    }
+  ],
+  "tests": 15,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "mavenExit": {
+    "exitCode": 0,
+    "finishedAt": "2026-10-07T05:39:28.312109+00:00",
+    "mockitoPremainAgent": "mockito-core-5.23.0.jar"
+  },
+  "mockitoPremainAgent": "mockito-core-5.23.0.jar",
+  "jacocoRetained": true,
+  "scope": "Selected infrastructure/session/download and live-progress tests only; not a full test-local or CI pass.",
+  "applicationJarSha256": "22ad55837511f65d7120043c7beb0ece0c3ee5edee6422a9d6444a8b6ede5d66",
+  "timingNote": "Executed before the final JS-only authenticated-surface loader fix; Java source and changed owner-test sources remained byte-identical."
+}

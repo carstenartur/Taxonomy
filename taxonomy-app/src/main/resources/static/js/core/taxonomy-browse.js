@@ -1281,9 +1281,11 @@
         var ariaLabel = node.code + ' ' + (node.name || '');
         if (pct !== null && pct > 0) {
             ariaLabel += ', ' + (presentation ? presentation.ariaLabel : t('browse.node.score', pct));
-            if (reason) { ariaLabel += ', ' + t('browse.node.reason', reason); }
         } else if (pct !== null) {
             ariaLabel += ', ' + (presentation ? presentation.ariaLabel : t('browse.node.score', 0));
+        }
+        if (Number.isFinite(pct) && pct >= 0 && reason) {
+            ariaLabel += ', ' + t('browse.node.reason', reason);
         }
         wrapper.setAttribute('aria-label', ariaLabel);
         if (hasChildren) {
@@ -1340,8 +1342,8 @@
             header.appendChild(badge);
         }
 
-        // Reason icon (if score > 0 and reason available)
-        if (pct !== null && pct > 0 && reason) {
+        // A zero assessment still has evidence worth inspecting.
+        if (Number.isFinite(pct) && pct >= 0 && reason) {
             const reasonIcon = document.createElement('span');
             reasonIcon.className = 'tax-reason-icon';
             reasonIcon.textContent = '💬';

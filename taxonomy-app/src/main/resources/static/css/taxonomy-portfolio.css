@@ -18,8 +18,8 @@
     cursor: pointer;
 }
 
-#projectList .list-group-item:hover,
-#projectList .list-group-item:focus-visible {
+#projectList .list-group-item:not(.active):hover,
+#projectList .list-group-item:not(.active):focus-visible {
     background: var(--bs-tertiary-bg);
 }
 
@@ -30,6 +30,13 @@
 #projectList .list-group-item.active .opacity-75 {
     color: var(--bs-white);
     opacity: 1 !important;
+}
+
+/* Keep the complete title line box clickable across fonts and line wrapping. */
+#requirementsTable td > strong > a {
+    display: inline-block;
+    min-inline-size: 24px;
+    min-block-size: 24px;
 }
 
 .portfolio-actions .btn {

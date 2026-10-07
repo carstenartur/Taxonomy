@@ -1,7 +1,11 @@
 (function () {
     'use strict';
 
-    const match = window.location.pathname.match(/^\/projects\/(\d+)\/requirements\/(\d+)$/);
+    const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+    const applicationUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
+    const pathname = window.location.pathname;
+    if (basePath && !pathname.startsWith(basePath + '/')) return;
+    const match = pathname.slice(basePath.length).match(/^\/projects\/(\d+)\/requirements\/(\d+)$/);
     if (!match) return;
     const projectId = Number(match[1]);
     const requirementId = Number(match[2]);
@@ -18,7 +22,8 @@
         portfolio: null,
         account: null,
         busy: 0,
-        readGeneration: 0
+        readGeneration: 0,
+        versionFormDirty: false
     };
 
     const text = {
@@ -66,7 +71,8 @@
             nodeCode: 'Node code', coverageScore: 'Coverage score',
             gapDescription: 'Gap description', patternDescription: 'Pattern description',
             missingElement: 'Missing element',
-            resultReady: 'The immutable Copilot result is ready for review.'
+            resultReady: 'The immutable Copilot result is ready for review.',
+            broadComparison: 'This large changed block is shown as a complete replacement. Every line is retained for review.'
         },
         de: {
             loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
@@ -112,7 +118,8 @@
             nodeCode: 'Knotencode', coverageScore: 'Abdeckungswert',
             gapDescription: 'Lückenbeschreibung', patternDescription: 'Musterbeschreibung',
             missingElement: 'Fehlendes Element',
-            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
+            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
+            broadComparison: 'Dieser große Änderungsblock wird vollständig als Ersetzung angezeigt. Alle Zeilen bleiben für die Prüfung erhalten.'
         }
     };
 
@@ -172,6 +179,8 @@
 
     function wireEvents() {
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
+        document.getElementById('newVersionForm').addEventListener('input', () => { state.versionFormDirty = true; });
+        document.getElementById('newVersionModal').addEventListener('show.bs.modal', clearNewVersionError);
         document.getElementById('reanalyzeRequirement').addEventListener('click', analyzeRequirement);
         document.getElementById('versionList').addEventListener('click', event => {
             const button = event.target.closest('[data-version-id]');
@@ -202,11 +211,12 @@
             if (generation !== state.readGeneration) return;
             Object.assign(state, { project, requirement, versions, snapshots, portfolio, account });
             state.selectedVersion = requirement.currentVersion || versions[0] || null;
-            const inputs = preserveVersionForm
-                ? [...document.querySelectorAll('#newVersionForm input, #newVersionForm textarea')].map(node => [node, node.value, node.checked])
-                : [];
-            try { renderAll(); }
-            finally { inputs.forEach(([node, value, checked]) => { node.value = value; node.checked = checked; }); }
+            // Check after the read: the user may have opened or edited the form
+            // while the background request was in flight. Avoid even resetting
+            // the value of an active textarea, which would also move its caret.
+            const keepDraft = preserveVersionForm || state.versionFormDirty
+                || document.getElementById('newVersionModal').classList.contains('show');
+            renderAll(keepDraft);
         } catch (error) {
             if (generation === state.readGeneration) showError(error);
         } finally {
@@ -214,10 +224,10 @@
         }
     }
 
-    function renderAll() {
+    function renderAll(preserveVersionForm) {
         const requirement = state.requirement;
-        document.getElementById('portfolioBack').href = `/projects?lang=${locale}`;
-        document.getElementById('matrixLink').href = `/projects/${projectId}/matrices?lang=${locale}`;
+        document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
+        document.getElementById('matrixLink').href = applicationUrl(`/projects/${projectId}/matrices?lang=${locale}`);
         document.getElementById('requirementKey').textContent = requirement.requirementKey;
         document.getElementById('requirementStatus').textContent = humanize(requirement.status);
         document.getElementById('requirementReview').textContent = humanize(requirement.reviewStatus);
@@ -228,7 +238,7 @@
             humanize(requirement.criticality),
             requirement.ownerUsername || '—'
         ].join(' · ');
-        renderCurrentText();
+        renderCurrentText(preserveVersionForm);
         renderVersions();
         renderSnapshots();
         renderTasks();
@@ -236,11 +246,16 @@
         applyCapabilities();
     }
 
-    function renderCurrentText() {
+    function renderCurrentText(preserveVersionForm) {
         const version = state.requirement.currentVersion;
         document.getElementById('currentText').textContent = version ? version.text : '—';
-        document.getElementById('versionText').value = version ? version.text : '';
         const source = version && version.source;
+        if (!preserveVersionForm) {
+            document.getElementById('versionText').value = version ? version.text : '';
+            document.getElementById('sourceSection').value = source?.sectionReference || '';
+            document.getElementById('sourcePage').value = source?.pageNumber || '';
+            document.getElementById('sourceOriginal').value = source?.originalText || '';
+        }
         const metadata = document.getElementById('sourceMetadata');
         metadata.textContent = '';
         if (!source) {
@@ -251,9 +266,6 @@
         addDefinition(metadata, t('section'), source.sectionReference || '—');
         addDefinition(metadata, t('page'), source.pageNumber || '—');
         document.getElementById('sourceText').textContent = source.originalText || t('noSource');
-        document.getElementById('sourceSection').value = source.sectionReference || '';
-        document.getElementById('sourcePage').value = source.pageNumber || '';
-        document.getElementById('sourceOriginal').value = source.originalText || '';
     }
 
     function renderVersions() {
@@ -267,15 +279,28 @@
             button.dataset.versionId = version.id;
             button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${version.versionNumber}</strong>`
                 + `<span class="small">${escapeHtml(formatDate(version.createdAt))}</span></div>`
-                + `<div class="small text-body-secondary">${escapeHtml(version.changeReason || '—')}</div>`;
+                + `<div class="small version-change-reason text-body-secondary">${escapeHtml(version.changeReason || '—')}</div>`;
             list.appendChild(button);
         });
+        updateVersionSelection();
         renderVersionDetail(state.selectedVersion);
     }
 
     function selectVersion(id) {
         state.selectedVersion = state.versions.find(version => version.id === id) || null;
+        updateVersionSelection();
         renderVersionDetail(state.selectedVersion);
+    }
+
+    function updateVersionSelection() {
+        document.getElementById('versionList').querySelectorAll('[data-version-id]').forEach(button => {
+            const selected = Boolean(state.selectedVersion
+                && String(state.selectedVersion.id) === String(button.dataset.versionId));
+            button.classList.toggle('active', selected);
+            if (selected) button.setAttribute('aria-current', 'true');
+            else button.removeAttribute('aria-current');
+            button.querySelector('.version-change-reason')?.classList.toggle('text-body-secondary', !selected);
+        });
     }
 
     function renderVersionDetail(version) {
@@ -294,14 +319,65 @@
     }
 
     function renderTextDiff(older, newer) {
-        const oldLines = new Set(String(older || '').split(/\r?\n/));
-        const newLines = new Set(String(newer || '').split(/\r?\n/));
+        const oldLines = String(older || '').split(/\r?\n/);
+        const newLines = String(newer || '').split(/\r?\n/);
         const rows = [];
-        oldLines.forEach(line => { if (!newLines.has(line)) rows.push(`<div class="text-danger">− ${escapeHtml(line)}</div>`); });
-        newLines.forEach(line => rows.push(oldLines.has(line)
-            ? `<div class="text-body-secondary">  ${escapeHtml(line)}</div>`
-            : `<div class="text-success">+ ${escapeHtml(line)}</div>`));
-        return `<div class="font-monospace small">${rows.join('')}</div>`;
+        const append = (line, kind) => {
+            const css = kind === 'removed' ? 'text-danger-emphasis'
+                : kind === 'added' ? 'text-success-emphasis' : 'text-body-secondary';
+            const marker = kind === 'removed' ? '− ' : kind === 'added' ? '+ ' : '  ';
+            rows.push(`<div class="${css}">${marker}${escapeHtml(line)}</div>`);
+        };
+
+        // Trim identical context before aligning the changed block. Preserve each
+        // occurrence: repeated steps and blank lines can change a requirement.
+        let prefix = 0;
+        while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
+        let oldEnd = oldLines.length;
+        let newEnd = newLines.length;
+        while (oldEnd > prefix && newEnd > prefix && oldLines[oldEnd - 1] === newLines[newEnd - 1]) {
+            oldEnd--;
+            newEnd--;
+        }
+        for (let i = 0; i < prefix; i++) append(oldLines[i], 'unchanged');
+
+        const oldCount = oldEnd - prefix;
+        const newCount = newEnd - prefix;
+        const columns = newCount + 1;
+        // At most one million alignment cells (4 MB). Larger changes use an
+        // explicit full replacement, keeping output complete and work linear.
+        const precise = oldCount > 0 && newCount > 0 && (oldCount + 1) * columns <= 1000000;
+        if (precise) {
+            const lengths = new Uint32Array((oldCount + 1) * columns);
+            for (let i = oldCount - 1; i >= 0; i--) {
+                for (let j = newCount - 1; j >= 0; j--) {
+                    const index = i * columns + j;
+                    lengths[index] = oldLines[prefix + i] === newLines[prefix + j]
+                        ? lengths[index + columns + 1] + 1
+                        : Math.max(lengths[index + columns], lengths[index + 1]);
+                }
+            }
+            let i = 0;
+            let j = 0;
+            while (i < oldCount || j < newCount) {
+                if (i < oldCount && j < newCount && oldLines[prefix + i] === newLines[prefix + j]) {
+                    append(oldLines[prefix + i++], 'unchanged');
+                    j++;
+                } else if (i < oldCount && (j === newCount
+                        || lengths[(i + 1) * columns + j] >= lengths[i * columns + j + 1])) {
+                    append(oldLines[prefix + i++], 'removed');
+                } else {
+                    append(newLines[prefix + j++], 'added');
+                }
+            }
+        } else {
+            for (let i = prefix; i < oldEnd; i++) append(oldLines[i], 'removed');
+            for (let j = prefix; j < newEnd; j++) append(newLines[j], 'added');
+        }
+        for (let i = oldEnd; i < oldLines.length; i++) append(oldLines[i], 'unchanged');
+        const note = !precise && oldCount > 0 && newCount > 0
+            ? `<p class="small text-body-secondary">${escapeHtml(t('broadComparison'))}</p>` : '';
+        return note + `<div class="portfolio-requirement-text font-monospace small">${rows.join('')}</div>`;
     }
 
     function renderSnapshots() {
@@ -720,6 +796,7 @@
 
     async function createVersion(event) {
         event.preventDefault();
+        clearNewVersionError();
         setBusy(true);
         try {
             const sourcePage = document.getElementById('sourcePage').value;
@@ -735,14 +812,24 @@
                     originalText: document.getElementById('sourceOriginal').value || null
                 }
             });
+            state.versionFormDirty = false;
             bootstrap.Modal.getOrCreateInstance(document.getElementById('newVersionModal')).hide();
             showInfo(t('versionCreated'));
             await loadAll();
         } catch (error) {
-            showError(error);
+            const target = document.getElementById('newVersionError');
+            target.textContent = error?.message || t('failed');
+            target.classList.remove('d-none');
+            target.focus();
         } finally {
             setBusy(false);
         }
+    }
+
+    function clearNewVersionError() {
+        const target = document.getElementById('newVersionError');
+        target.textContent = '';
+        target.classList.add('d-none');
     }
 
     async function analyzeRequirement() {

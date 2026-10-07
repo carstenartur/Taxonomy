@@ -1,7 +1,11 @@
 (function () {
     'use strict';
 
-    const match = window.location.pathname.match(/^\/projects\/(\d+)\/matrices$/);
+    const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+    const applicationUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
+    const pathname = window.location.pathname;
+    if (basePath && !pathname.startsWith(basePath + '/')) return;
+    const match = pathname.slice(basePath.length).match(/^\/projects\/(\d+)\/matrices$/);
     if (!match) return;
     const projectId = Number(match[1]);
     const locale = (new URLSearchParams(window.location.search).get('lang')
@@ -17,6 +21,8 @@
         en: { title: 'Portfolio matrices', portfolio: 'Portfolio', filters: 'Filters', search: 'Search rows and columns', minimum: 'Minimum coverage', relationship: 'Relationship', all: 'All', related: 'Related', empty: 'Empty', reset: 'Reset', exportCsv: 'Export filtered CSV', exportJson: 'Export filtered JSON', taxonomy: 'Requirements × taxonomy', solution: 'Requirements × solutions', product: 'Solutions × products', detail: 'Relationship detail', noData: 'No relationships match the active filters.', row: 'Row', column: 'Column', value: 'Coverage', relationAbsent: 'No stored relationship exists. This is not an explicit zero score.', openRequirement: 'Open requirement detail', review: 'Review status', evidence: 'Evidence', source: 'Source', selected: 'Selection', filtersActive: 'Active filters', none: 'none', failed: 'The matrix could not be loaded.' },
         de: { title: 'Portfolio-Matrizen', portfolio: 'Portfolio', filters: 'Filter', search: 'Zeilen und Spalten durchsuchen', minimum: 'Mindestabdeckung', relationship: 'Beziehung', all: 'Alle', related: 'Verknüpft', empty: 'Leer', reset: 'Zurücksetzen', exportCsv: 'Gefiltertes CSV exportieren', exportJson: 'Gefiltertes JSON exportieren', taxonomy: 'Anforderungen × Taxonomie', solution: 'Anforderungen × Lösungen', product: 'Lösungen × Produkte', detail: 'Beziehungsdetails', noData: 'Keine Beziehungen entsprechen den aktiven Filtern.', row: 'Zeile', column: 'Spalte', value: 'Abdeckung', relationAbsent: 'Es ist keine Beziehung gespeichert. Dies ist kein expliziter Null-Score.', openRequirement: 'Anforderungsdetails öffnen', review: 'Prüfstatus', evidence: 'Evidenz', source: 'Quelle', selected: 'Auswahl', filtersActive: 'Aktive Filter', none: 'keine', failed: 'Die Matrix konnte nicht geladen werden.' }
     };
+    Object.assign(labels.en, { unknown: 'Unknown', relationUnknown: 'Coverage is unknown for this stored relationship.', filtered: 'Excluded by filters' });
+    Object.assign(labels.de, { unknown: 'Unbekannt', relationUnknown: 'Die Abdeckung dieser gespeicherten Beziehung ist unbekannt.', filtered: 'Durch Filter ausgeschlossen' });
 
     document.addEventListener('DOMContentLoaded', initialize);
     function l(key) { return labels[locale][key] || labels.en[key] || key; }
@@ -45,7 +51,7 @@
         document.getElementById('matrixPageTitle').textContent = l('title');
         document.getElementById('matrixHeading').textContent = l('title');
         document.getElementById('portfolioBack').textContent = l('portfolio');
-        document.getElementById('portfolioBack').href = `/projects?lang=${locale}`;
+        document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
         document.getElementById('filterHeading').textContent = l('filters');
         document.querySelector('label[for="matrixSearch"]').textContent = l('search');
         document.querySelector('label[for="minimumValue"]').textContent = l('minimum');
@@ -78,7 +84,7 @@
         }));
         document.getElementById('matrixMain').addEventListener('click', event => {
             const cell = event.target.closest('.matrix-drilldown');
-            if (cell) openCellDetail(cell.dataset.matrixType, cell.dataset.row, cell.dataset.column, Number(cell.dataset.value));
+            if (cell) openCellDetail(cell.dataset.matrixType, cell.dataset.row, cell.dataset.column);
         });
     }
 
@@ -100,33 +106,49 @@
         const minimum = Number(document.getElementById('minimumValue').value || 0);
         const relation = document.getElementById('relationState').value;
         const rowMatches = row => !search || row.toLowerCase().includes(search)
-            || matrix.columns.some(column => column.toLowerCase().includes(search) && cellVisible(valueAt(matrix, row, column), minimum, relation));
+            || matrix.columns.some(column => column.toLowerCase().includes(search) && cellVisible(cellAt(matrix, row, column), minimum, relation));
         const columnMatches = column => !search || column.toLowerCase().includes(search)
-            || matrix.rows.some(row => row.toLowerCase().includes(search) && cellVisible(valueAt(matrix, row, column), minimum, relation));
-        const rows = matrix.rows.filter(rowMatches).filter(row => matrix.columns.some(column => cellVisible(valueAt(matrix, row, column), minimum, relation)));
-        const columns = matrix.columns.filter(columnMatches).filter(column => rows.some(row => cellVisible(valueAt(matrix, row, column), minimum, relation)));
+            || matrix.rows.some(row => row.toLowerCase().includes(search) && cellVisible(cellAt(matrix, row, column), minimum, relation));
+        const rows = matrix.rows.filter(rowMatches).filter(row => matrix.columns.some(column => cellVisible(cellAt(matrix, row, column), minimum, relation)));
+        const columns = matrix.columns.filter(columnMatches).filter(column => rows.some(row => cellVisible(cellAt(matrix, row, column), minimum, relation)));
         const values = {};
         rows.forEach(row => {
             values[row] = {};
             columns.forEach(column => {
-                const value = valueAt(matrix, row, column);
-                if (cellVisible(value, minimum, relation)) values[row][column] = value;
+                const cell = cellAt(matrix, row, column);
+                if (cell.present && cellVisible(cell, minimum, relation)) values[row][column] = cell.value;
             });
         });
         return { rows, columns, values };
     }
 
-    function cellVisible(value, minimum, relation) {
-        if (relation === 'related' && value <= 0) return false;
-        if (relation === 'empty' && value > 0) return false;
-        return value >= minimum;
+    function cellVisible(cell, minimum, relation) {
+        if (relation === 'related' && !cell.present) return false;
+        if (relation === 'empty' && cell.present) return false;
+        return cell.value === null ? minimum <= 0 : cell.value >= minimum;
     }
 
-    function valueAt(matrix, row, column) { return Number(matrix.values && matrix.values[row] && matrix.values[row][column] || 0); }
+    function cellAt(matrix, row, column) {
+        // MatrixView is sparse: an absent key means no stored relationship.
+        // A numeric zero is a recorded score; null/invalid data is unknown.
+        const values = matrix && matrix.values;
+        const rowValues = values && Object.prototype.hasOwnProperty.call(values, row) ? values[row] : null;
+        const present = Boolean(rowValues && Object.prototype.hasOwnProperty.call(rowValues, column));
+        const raw = present ? rowValues[column] : null;
+        const value = typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 && raw <= 100 ? raw : null;
+        return { present, value };
+    }
+
+    function cellLabel(cell) {
+        return !cell.present ? l('empty') : cell.value === null ? l('unknown') : `${cell.value}%`;
+    }
 
     function renderMatrix(type, definition) {
         const target = document.getElementById(definition.target);
         const matrix = filteredMatrix(type);
+        const sourceMatrix = state.portfolio && state.portfolio[definition.property];
+        const minimum = Number(document.getElementById('minimumValue').value || 0);
+        const relation = document.getElementById('relationState').value;
         target.textContent = '';
         if (!matrix.rows.length || !matrix.columns.length) {
             const empty = document.createElement('p'); empty.className = 'p-4 text-body-secondary mb-0'; empty.textContent = l('noData'); target.appendChild(empty); return;
@@ -141,49 +163,60 @@
         matrix.rows.forEach(rowName => {
             const row = document.createElement('tr'); const th = document.createElement('th'); th.scope = 'row'; th.textContent = rowName; row.appendChild(th);
             matrix.columns.forEach(column => {
-                const value = Number(matrix.values[rowName] && matrix.values[rowName][column] || 0);
-                const td = document.createElement('td'); td.className = 'matrix-cell'; td.dataset.value = String(value);
-                const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm w-100 matrix-drilldown ' + (value > 0 ? 'btn-outline-primary' : 'btn-link text-body-secondary');
-                button.dataset.matrixType = type; button.dataset.row = rowName; button.dataset.column = column; button.dataset.value = String(value);
-                button.textContent = value > 0 ? `${value}%` : '·';
-                button.setAttribute('aria-label', `${rowName}, ${column}: ${value > 0 ? value + '%' : l('empty')}`);
+                const cell = cellAt(sourceMatrix, rowName, column);
+                const td = document.createElement('td'); td.className = 'matrix-cell';
+                if (!cellVisible(cell, minimum, relation)) {
+                    const omitted = document.createElement('span'); omitted.className = 'text-body-secondary'; omitted.textContent = '—';
+                    omitted.title = l('filtered'); td.setAttribute('aria-label', `${rowName}, ${column}: ${l('filtered')}`);
+                    td.appendChild(omitted); row.appendChild(td); return;
+                }
+                if (cell.value !== null) td.dataset.value = String(cell.value);
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm w-100 matrix-drilldown ' + (cell.present ? 'btn-outline-primary' : 'btn-link text-body-secondary');
+                button.dataset.matrixType = type; button.dataset.row = rowName; button.dataset.column = column;
+                if (cell.value !== null) button.dataset.value = String(cell.value);
+                button.textContent = !cell.present ? '·' : cell.value === null ? '?' : `${cell.value}%`;
+                button.title = cellLabel(cell);
+                button.setAttribute('aria-label', `${rowName}, ${column}: ${cellLabel(cell)}`);
                 td.appendChild(button); row.appendChild(td);
             });
             tbody.appendChild(row);
         });
         table.appendChild(tbody); target.appendChild(table);
-        addAlternativeList(target, type, matrix);
+        addAlternativeList(target, type, matrix, minimum, relation);
     }
 
-    function addAlternativeList(target, type, matrix) {
+    function addAlternativeList(target, type, matrix, minimum, relation) {
         const details = document.createElement('details'); details.className = 'matrix-alternative mt-3 p-2 border rounded';
         const summary = document.createElement('summary'); summary.className = 'fw-semibold'; summary.textContent = locale === 'de' ? 'Alternative Listenansicht' : 'Alternative list view'; details.appendChild(summary);
         const list = document.createElement('div'); list.className = 'list-group list-group-flush mt-2';
         matrix.rows.forEach(row => matrix.columns.forEach(column => {
-            const value = Number(matrix.values[row] && matrix.values[row][column] || 0);
+            const cell = cellAt(state.portfolio[matrixDefinitions[type].property], row, column);
+            if (!cellVisible(cell, minimum, relation)) return;
             const button = document.createElement('button'); button.type = 'button'; button.className = 'list-group-item list-group-item-action matrix-drilldown';
-            button.dataset.matrixType = type; button.dataset.row = row; button.dataset.column = column; button.dataset.value = String(value);
-            button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span>${escapeHtml(row)} → ${escapeHtml(column)}</span><strong>${value > 0 ? value + '%' : '—'}</strong></div>`;
+            button.dataset.matrixType = type; button.dataset.row = row; button.dataset.column = column;
+            if (cell.value !== null) button.dataset.value = String(cell.value);
+            button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span>${escapeHtml(row)} → ${escapeHtml(column)}</span><strong>${escapeHtml(cellLabel(cell))}</strong></div>`;
             list.appendChild(button);
         }));
         details.appendChild(list); target.appendChild(details);
     }
 
-    function openCellDetail(type, row, column, value) {
-        const detail = describeRelationship(type, row, column, value);
+    function openCellDetail(type, row, column) {
+        const cell = cellAt(state.portfolio[matrixDefinitions[type].property], row, column);
+        const detail = describeRelationship(type, row, column, cell.present);
         const body = document.getElementById('cellDetailBody'); body.textContent = '';
         const dl = document.createElement('dl'); dl.className = 'portfolio-card-meta';
-        addDefinition(dl, l('row'), row); addDefinition(dl, l('column'), column); addDefinition(dl, l('value'), value > 0 ? `${value}%` : '—');
+        addDefinition(dl, l('row'), row); addDefinition(dl, l('column'), column); addDefinition(dl, l('value'), cell.present ? cellLabel(cell) : '—');
         Object.entries(detail.metadata).forEach(([key, metadataValue]) => addDefinition(dl, key, metadataValue));
         body.appendChild(dl);
-        if (value <= 0) { const warning = document.createElement('div'); warning.className = 'alert alert-secondary mt-3'; warning.textContent = l('relationAbsent'); body.appendChild(warning); }
+        if (!cell.present || cell.value === null) { const warning = document.createElement('div'); warning.className = 'alert alert-secondary mt-3'; warning.textContent = l(cell.present ? 'relationUnknown' : 'relationAbsent'); body.appendChild(warning); }
         if (detail.requirementId) {
-            const link = document.createElement('a'); link.className = 'btn btn-primary mt-3'; link.href = `/projects/${projectId}/requirements/${detail.requirementId}?lang=${locale}`; link.textContent = l('openRequirement'); body.appendChild(link);
+            const link = document.createElement('a'); link.className = 'btn btn-primary mt-3'; link.href = applicationUrl(`/projects/${projectId}/requirements/${detail.requirementId}?lang=${locale}`); link.textContent = l('openRequirement'); body.appendChild(link);
         }
         bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('cellDetail')).show();
     }
 
-    function describeRelationship(type, row, column, value) {
+    function describeRelationship(type, row, column, present) {
         const metadata = {};
         const requirements = state.portfolio.requirements || [];
         const solutions = state.portfolio.solutions || [];
@@ -192,7 +225,7 @@
             const nodeCode = requirement && requirement.requirementKey === row ? column : row;
             const taxonomyNode = (state.portfolio.taxonomyNodes || []).find(node => node.nodeCode === nodeCode);
             metadata[l('source')] = taxonomyNode ? `${taxonomyNode.title || nodeCode}` : nodeCode;
-            metadata[l('review')] = value > 0 ? (locale === 'de' ? 'Aus aktuellem Snapshot' : 'From current snapshot') : '—';
+            metadata[l('review')] = present ? (locale === 'de' ? 'Aus aktuellem Snapshot' : 'From current snapshot') : '—';
             return { metadata, requirementId: requirement && requirement.id };
         }
         if (type === 'solution') {
@@ -217,7 +250,10 @@
         const definition = matrixDefinitions[type];
         if (format === 'json') return download(`${state.project.projectKey}-${type}-matrix.json`, 'application/json', JSON.stringify({ projectId, projectKey: state.project.projectKey, matrixType: type, ...matrix }, null, 2));
         const rows = [['row', ...matrix.columns]];
-        matrix.rows.forEach(row => rows.push([row, ...matrix.columns.map(column => matrix.values[row] && matrix.values[row][column] || 0)]));
+        matrix.rows.forEach(row => rows.push([row, ...matrix.columns.map(column => {
+            const cell = cellAt(matrix, row, column);
+            return !cell.present ? '' : cell.value === null ? l('unknown') : cell.value;
+        })]));
         download(`${state.project.projectKey}-${type}-matrix.csv`, 'text/csv;charset=utf-8', rows.map(values => values.map(csvCell).join(',')).join('\n'));
         document.getElementById('matrixLive').textContent = `${definition.title} exported`;
     }

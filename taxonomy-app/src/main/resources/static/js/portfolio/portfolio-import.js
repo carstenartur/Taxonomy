@@ -1,7 +1,11 @@
 (function () {
     'use strict';
 
-    const pathMatch = window.location.pathname.match(/^\/projects\/(\d+)\/import$/);
+    const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+    const applicationUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
+    const pathname = window.location.pathname;
+    if (basePath && !pathname.startsWith(basePath + '/')) return;
+    const pathMatch = pathname.slice(basePath.length).match(/^\/projects\/(\d+)\/import$/);
     if (!pathMatch) return;
     const projectId = Number(pathMatch[1]);
     const locale = (new URLSearchParams(window.location.search).get('lang')
@@ -88,7 +92,7 @@
                 api().getAccount()
             ]);
             document.getElementById('importProject').textContent = `${state.project.projectKey} — ${state.project.title}`;
-            document.getElementById('portfolioBack').href = `/projects?lang=${locale}`;
+            document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
             const savedDraft = readDraft();
             if (savedDraft) {
                 const restore = document.getElementById('restoreDraft');
@@ -407,14 +411,15 @@
             if (result.analysisJob) registerAnalysisJob(response.headers.get('Location'), result.analysisJob);
             clearDraft();
             showInfo(result.analysisJob ? `${l('imported')} ${l('analyzeQueued')}` : l('imported'));
-            window.setTimeout(() => { window.location.href = `/projects?lang=${locale}`; }, 1200);
+            window.setTimeout(() => { window.location.href = applicationUrl(`/projects?lang=${locale}`); }, 1200);
         } catch (error) { showError(error); }
         finally { setBusy(false); }
     }
 
     function registerAnalysisJob(location, job) {
         if (!location || !job) return;
-        const url = new URL(location, window.location.href).toString();
+        const url = api().analysisJobUrl(location, projectId);
+        if (!url) return;
         let entries = [];
         try { entries = JSON.parse(localStorage.getItem(jobStorageKey) || '[]'); } catch (error) { entries = []; }
         entries = entries.filter(entry => entry && entry.url !== url);

@@ -8,10 +8,17 @@
 (function () {
     'use strict';
 
+    const applicationUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
     const translations = {
         en: {
             'page.title': 'Project Requirement Portfolio',
             'nav.analysis': 'Analysis workspace',
+            'nav.project.tools': 'Project tools',
+            'nav.project.import': 'Import requirements',
+            'nav.project.matrices': 'Matrices',
+            'nav.project.reports': 'Reports',
+            'nav.project.versioning': 'Versioning',
+            'requirements.details': 'Open details for {key}: {title}',
             'projects.title': 'Projects',
             'projects.new': 'New project',
             'projects.filter': 'Filter projects',
@@ -133,6 +140,12 @@
         de: {
             'page.title': 'Projekt-, Anforderungs- und Lösungsportfolio',
             'nav.analysis': 'Analysearbeitsbereich',
+            'nav.project.tools': 'Projektwerkzeuge',
+            'nav.project.import': 'Anforderungen importieren',
+            'nav.project.matrices': 'Matrizen',
+            'nav.project.reports': 'Berichte',
+            'nav.project.versioning': 'Versionierung',
+            'requirements.details': 'Details zu {key}: {title} öffnen',
             'projects.title': 'Projekte',
             'projects.new': 'Neues Projekt',
             'projects.filter': 'Projekte filtern',
@@ -456,6 +469,7 @@
     }
 
     async function selectProject(projectId) {
+        renderProjectTools(null);
         state.selectedProjectId = projectId;
         state.selectedRequirementId = null;
         state.snapshots = [];
@@ -470,6 +484,7 @@
     function showNoProjectSelected() {
         state.selectedProjectId = null;
         state.portfolio = null;
+        renderProjectTools(null);
         document.getElementById('projectWorkspace').classList.add('d-none');
         document.getElementById('noProjectSelected').classList.remove('d-none');
     }
@@ -492,6 +507,7 @@
     function renderPortfolio() {
         if (!state.portfolio) return;
         const project = state.portfolio.project;
+        renderProjectTools(project.id);
         document.getElementById('selectedProjectKey').textContent = project.projectKey;
         document.getElementById('selectedProjectStatus').textContent = humanize(project.status);
         document.getElementById('selectedProjectStatus').className = 'badge ' + statusBadgeClass(project.status);
@@ -512,6 +528,17 @@
             });
             if (!stillExists) resetSnapshots();
         }
+    }
+
+    function renderProjectTools(projectId) {
+        const selected = Number.isSafeInteger(projectId) && projectId > 0;
+        document.getElementById('projectTools').classList.toggle('d-none', !selected);
+        [['Import', 'import'], ['Matrices', 'matrices'], ['Reports', 'reports'], ['Versioning', 'versioning']]
+            .forEach(function ([name, path]) {
+                const link = document.getElementById('project' + name + 'Link');
+                if (selected) link.href = applicationUrl('/projects/' + projectId + '/' + path + '?lang=' + locale);
+                else link.removeAttribute('href');
+            });
     }
 
     function renderMetrics(metrics) {
@@ -556,8 +583,12 @@
             const row = document.createElement('tr');
             const version = requirement.currentVersion;
             const analyzed = Boolean(requirement.currentAnalysisSnapshotId);
+            const detailUrl = applicationUrl('/projects/' + state.portfolio.project.id
+                + '/requirements/' + requirement.id + '?lang=' + locale);
             row.innerHTML = '<td><code>' + escapeHtml(requirement.requirementKey) + '</code></td>'
-                + '<td><strong>' + escapeHtml(requirement.title) + '</strong>'
+                + '<td><strong><a href="' + escapeHtml(detailUrl) + '" aria-label="'
+                + escapeHtml(t('requirements.details', { key: requirement.requirementKey, title: requirement.title }))
+                + '">' + escapeHtml(requirement.title) + '</a></strong>'
                 + '<div class="small text-body-secondary portfolio-requirement-text">'
                 + escapeHtml(truncate(version ? version.text : '', 220)) + '</div></td>'
                 + '<td><span class="badge text-bg-light border">v'

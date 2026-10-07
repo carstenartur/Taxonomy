@@ -146,8 +146,7 @@
 }
 
 /* A desktop viewport can still contain a narrow analysis column. Size the
-   stages by that column, not by the outer window; keep the existing single
-   column mobile layout below 641px unless the compact-height rule applies. */
+   compact stages by that column, not by the outer window. */
 @media (min-width: 641px) {
     .analysis-task-stages {
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));

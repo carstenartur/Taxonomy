@@ -1,0 +1,206 @@
+{
+  "observedAt": "2026-10-07T07:55:47Z",
+  "sourceHead": "26bb32f8ec9ca9e16d64d31212dcb8574267e09c",
+  "sourceTree": "a980c2e4d7ae476a0864b87d3b274282f35730f6",
+  "ciRun": 37583519381,
+  "scenarioRun": 37583519316,
+  "jobs": [
+    {
+      "id": 112668350656,
+      "name": "Core reactor verification",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "id": 112668350788,
+      "name": "OpenTelemetry performance budget",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112668350956,
+      "name": "Commit-bound UI application",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112668350987,
+      "name": "UI contract verification",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112668351000,
+      "name": "Plan authoritative UI shards",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669367890,
+      "name": "Interoperability product compatibility",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669368018,
+      "name": "UI shard / zoom-200-a11y-tablet-and-primary-architect",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669368032,
+      "name": "UI shard / forced-colors-special-and-primary-user",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669368043,
+      "name": "UI shard / zoom-400-a11y-mobile-and-primary-admin",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "id": 112669368067,
+      "name": "UI shard / desktop-and-landscape-user",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669368085,
+      "name": "UI shard / mobile-admin-and-browser",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112669368110,
+      "name": "UI shard / architect-and-a11y-desktop",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 112688946324,
+      "name": "Maven verification",
+      "status": "completed",
+      "conclusion": "failure"
+    }
+  ],
+  "scenario": [
+    {
+      "id": 112668350226,
+      "name": "scenario",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "coreArtifact": {
+    "id": 11468132437,
+    "sha256": "658726e71736415a02fcedcb23c77c4d1cd08b9541ea027fdf24cbd2553c7306",
+    "xmlSuites": 1013,
+    "testExecutions": 7272,
+    "failures": 3,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coreFailures": [
+    {
+      "suite": "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+      "test": "readOnlyDetailRefreshKeepsUnsavedFieldsAndRejectsLateReads",
+      "failure": "Node VM SyntaxError: Unexpected token '}'",
+      "cause": "The test slices source until 'function renderAll()'; the production signature now includes preserveVersionForm, so indexOf returns -1 and includes the enclosing IIFE ending."
+    },
+    {
+      "suite": "com.taxonomy.ui.TaxonomyResponsiveNavigationContractTest",
+      "test": "narrowViewportsUseAnExplicitSectionSelectorAndTaskJump",
+      "failure": "Missing source literal @media (max-width: 30rem) and (min-height: 31rem)",
+      "cause": "The static contract still expects the replaced breakpoint instead of the new responsive layout."
+    },
+    {
+      "suite": "com.taxonomy.ui.TaxonomySearchLargeResultContractTest",
+      "test": "everySearchOpensTheCompleteNestedWorkspace",
+      "failure": "Missing source literal document.getElementById('analysisSecondaryTools')",
+      "cause": "The real search disclosure moved beside the catalogue; production opens actual details ancestors instead of unrelated secondary analysis tools."
+    }
+  ],
+  "mobileFailure": {
+    "job": 112669368043,
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "primaryActionBottom": 857.09375,
+    "viewportHeight": 844,
+    "cause": "Noto Color Emoji makes the still-visible version separator wrap into an extra 20px navbar line. The version separator is now grouped with its hidden version."
+  },
+  "limits": [
+    "This records the original published head only; it is not evidence that the subsequent local corrections have passed remote CI.",
+    "Core job-log retrieval exceeded the connector's 8 MiB response limit; complete test XML artifacts were downloaded and examined instead.",
+    "No rerun or remote mutation was performed."
+  ],
+  "databaseCompatibility": {
+    "runId": 37583519313,
+    "url": "https://github.com/carstenartur/Taxonomy/actions/runs/37583519313",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "id": 112668350645,
+        "name": "Microsoft SQL Server",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/carstenartur/Taxonomy/actions/runs/37583519313/job/112668350645",
+        "applicationSurefire": {
+          "tests": 2609,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failureSuites": [
+          "ReformulationAdoptionTest",
+          "TaxonomyResponsiveNavigationContractTest",
+          "TaxonomySearchLargeResultContractTest"
+        ],
+        "followingTaxonomyBuildModule": "SKIPPED"
+      },
+      {
+        "id": 112668350798,
+        "name": "PostgreSQL",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/carstenartur/Taxonomy/actions/runs/37583519313/job/112668350798",
+        "applicationSurefire": {
+          "tests": 2609,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failureSuites": [
+          "ReformulationAdoptionTest",
+          "TaxonomyResponsiveNavigationContractTest",
+          "TaxonomySearchLargeResultContractTest"
+        ],
+        "followingTaxonomyBuildModule": "SKIPPED"
+      },
+      {
+        "id": 112668351031,
+        "name": "Oracle",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/carstenartur/Taxonomy/actions/runs/37583519313/job/112668351031",
+        "applicationSurefire": {
+          "tests": 2609,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failureSuites": [
+          "ReformulationAdoptionTest",
+          "TaxonomyResponsiveNavigationContractTest",
+          "TaxonomySearchLargeResultContractTest"
+        ],
+        "followingTaxonomyBuildModule": "SKIPPED"
+      }
+    ],
+    "evidence": "Job completion independently re-read through GitHub connector; exact per-job application summary and repeated failure identities taken from the root agent's fresh read of all three GitHub job logs.",
+    "scope": "Application Surefire failures block subsequent stages. The three failures match the original Core test-contract failures; no additional database-specific failure appears in those summaries. This is not acceptance of the database compatibility matrix."
+  }
+}

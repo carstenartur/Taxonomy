@@ -1,0 +1,1242 @@
+{
+  "baseUrl": "http://127.0.0.1:8080",
+  "scenarios": [
+    {
+      "name": "analyze-1920",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "document": {
+        "width": 1920,
+        "height": 1080
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 140.1875,
+          "width": 1920,
+          "height": 776.53125,
+          "bottom": 916.71875,
+          "right": 1920,
+          "scrollHeight": 777,
+          "clientHeight": 777,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 8,
+          "y": 156.1875,
+          "width": 1110.65625,
+          "height": 760.53125,
+          "bottom": 916.71875,
+          "right": 1118.65625,
+          "scrollHeight": 761,
+          "clientHeight": 761,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 1118.65625,
+          "y": 156.1875,
+          "width": 793.328125,
+          "height": 760.53125,
+          "bottom": 916.71875,
+          "right": 1911.984375,
+          "scrollHeight": 761,
+          "clientHeight": 761,
+          "overflowY": "visible"
+        },
+        "#analysisTaskProgress": {
+          "x": 1126.65625,
+          "y": 156.1875,
+          "width": 777.328125,
+          "height": 67.96875,
+          "bottom": 224.15625,
+          "right": 1903.984375,
+          "scrollHeight": 66,
+          "clientHeight": 66,
+          "overflowY": "visible"
+        },
+        "#businessText": {
+          "x": 1143.65625,
+          "y": 330.15625,
+          "width": 743.328125,
+          "height": 182,
+          "bottom": 512.15625,
+          "right": 1886.984375,
+          "scrollHeight": 180,
+          "clientHeight": 180,
+          "overflowY": "auto"
+        },
+        "#copilotBtn": {
+          "x": 1143.65625,
+          "y": 569.546875,
+          "width": 445.5,
+          "height": 63.203125,
+          "bottom": 632.75,
+          "right": 1589.15625,
+          "scrollHeight": 61,
+          "clientHeight": 61,
+          "overflowY": "visible"
+        },
+        "#analysisSecondaryTools": {
+          "x": 1126.65625,
+          "y": 873.125,
+          "width": 777.328125,
+          "height": 43.59375,
+          "bottom": 916.71875,
+          "right": 1903.984375,
+          "scrollHeight": 42,
+          "clientHeight": 42,
+          "overflowY": "visible"
+        },
+        "#searchPanel": {
+          "x": 17,
+          "y": 279.375,
+          "width": 1092.65625,
+          "height": 45,
+          "bottom": 324.375,
+          "right": 1109.65625,
+          "scrollHeight": 44,
+          "clientHeight": 44,
+          "overflowY": "visible"
+        },
+        "#taxonomyTree": {
+          "x": 33,
+          "y": 340.375,
+          "width": 1060.65625,
+          "height": 426.84375,
+          "bottom": 767.21875,
+          "right": 1093.65625,
+          "scrollHeight": 427,
+          "clientHeight": 427,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "dsl-1920",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "document": {
+        "width": 1920,
+        "height": 1080
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 140.1875,
+          "width": 1920,
+          "height": 741.390625,
+          "bottom": 881.578125,
+          "right": 1920,
+          "scrollHeight": 741,
+          "clientHeight": 741,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "bottom": 0,
+          "right": 0,
+          "scrollHeight": 0,
+          "clientHeight": 0,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 8,
+          "y": 156.1875,
+          "width": 1904,
+          "height": 725.390625,
+          "bottom": 881.578125,
+          "right": 1912,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#tab-dsl-editor": {
+          "x": 16,
+          "y": 156.1875,
+          "width": 1888,
+          "height": 725.390625,
+          "bottom": 881.578125,
+          "right": 1904,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#dslEditorContainer": {
+          "x": 17,
+          "y": 251.578125,
+          "width": 1251.328125,
+          "height": 500,
+          "bottom": 751.578125,
+          "right": 1268.328125,
+          "scrollHeight": 500,
+          "clientHeight": 500,
+          "overflowY": "hidden"
+        },
+        "#dslCommitBtn": {
+          "x": 1302.328125,
+          "y": 526.578125,
+          "width": 108.84375,
+          "height": 31,
+          "bottom": 557.578125,
+          "right": 1411.171875,
+          "scrollHeight": 29,
+          "clientHeight": 29,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "analyze-1366",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "document": {
+        "width": 1366,
+        "height": 1006
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 140.1875,
+          "width": 1366,
+          "height": 866.09375,
+          "bottom": 1006.28125,
+          "right": 1366,
+          "scrollHeight": 866,
+          "clientHeight": 866,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 8,
+          "y": 156.1875,
+          "width": 787.5,
+          "height": 850.09375,
+          "bottom": 1006.28125,
+          "right": 795.5,
+          "scrollHeight": 850,
+          "clientHeight": 850,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 795.5,
+          "y": 156.1875,
+          "width": 562.5,
+          "height": 850.09375,
+          "bottom": 1006.28125,
+          "right": 1358,
+          "scrollHeight": 850,
+          "clientHeight": 850,
+          "overflowY": "visible"
+        },
+        "#analysisTaskProgress": {
+          "x": 803.5,
+          "y": 156.1875,
+          "width": 546.5,
+          "height": 133.53125,
+          "bottom": 289.71875,
+          "right": 1350,
+          "scrollHeight": 132,
+          "clientHeight": 132,
+          "overflowY": "visible"
+        },
+        "#businessText": {
+          "x": 820.5,
+          "y": 395.71875,
+          "width": 512.5,
+          "height": 182,
+          "bottom": 577.71875,
+          "right": 1333,
+          "scrollHeight": 180,
+          "clientHeight": 180,
+          "overflowY": "auto"
+        },
+        "#copilotBtn": {
+          "x": 820.5,
+          "y": 635.109375,
+          "width": 305.203125,
+          "height": 63.203125,
+          "bottom": 698.3125,
+          "right": 1125.703125,
+          "scrollHeight": 61,
+          "clientHeight": 61,
+          "overflowY": "visible"
+        },
+        "#analysisSecondaryTools": {
+          "x": 803.5,
+          "y": 962.6875,
+          "width": 546.5,
+          "height": 43.59375,
+          "bottom": 1006.28125,
+          "right": 1350,
+          "scrollHeight": 42,
+          "clientHeight": 42,
+          "overflowY": "visible"
+        },
+        "#searchPanel": {
+          "x": 17,
+          "y": 279.375,
+          "width": 769.5,
+          "height": 45,
+          "bottom": 324.375,
+          "right": 786.5,
+          "scrollHeight": 44,
+          "clientHeight": 44,
+          "overflowY": "visible"
+        },
+        "#taxonomyTree": {
+          "x": 33,
+          "y": 340.375,
+          "width": 737.5,
+          "height": 426.84375,
+          "bottom": 767.21875,
+          "right": 770.5,
+          "scrollHeight": 427,
+          "clientHeight": 427,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "dsl-1366",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "document": {
+        "width": 1366,
+        "height": 882
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 140.1875,
+          "width": 1366,
+          "height": 741.390625,
+          "bottom": 881.578125,
+          "right": 1366,
+          "scrollHeight": 741,
+          "clientHeight": 741,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "bottom": 0,
+          "right": 0,
+          "scrollHeight": 0,
+          "clientHeight": 0,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 8,
+          "y": 156.1875,
+          "width": 1350,
+          "height": 725.390625,
+          "bottom": 881.578125,
+          "right": 1358,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#tab-dsl-editor": {
+          "x": 16,
+          "y": 156.1875,
+          "width": 1334,
+          "height": 725.390625,
+          "bottom": 881.578125,
+          "right": 1350,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#dslEditorContainer": {
+          "x": 17,
+          "y": 251.578125,
+          "width": 882,
+          "height": 500,
+          "bottom": 751.578125,
+          "right": 899,
+          "scrollHeight": 500,
+          "clientHeight": 500,
+          "overflowY": "hidden"
+        },
+        "#dslCommitBtn": {
+          "x": 933,
+          "y": 526.578125,
+          "width": 108.84375,
+          "height": 31,
+          "bottom": 557.578125,
+          "right": 1041.84375,
+          "scrollHeight": 29,
+          "clientHeight": 29,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "analyze-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "document": {
+        "width": 1024,
+        "height": 1089
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 179.1875,
+          "width": 1024,
+          "height": 909.90625,
+          "bottom": 1089.09375,
+          "right": 1024,
+          "scrollHeight": 910,
+          "clientHeight": 910,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 8,
+          "y": 195.1875,
+          "width": 588,
+          "height": 893.90625,
+          "bottom": 1089.09375,
+          "right": 596,
+          "scrollHeight": 894,
+          "clientHeight": 894,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 596,
+          "y": 195.1875,
+          "width": 420,
+          "height": 893.90625,
+          "bottom": 1089.09375,
+          "right": 1016,
+          "scrollHeight": 894,
+          "clientHeight": 894,
+          "overflowY": "visible"
+        },
+        "#analysisTaskProgress": {
+          "x": 604,
+          "y": 195.1875,
+          "width": 404,
+          "height": 115.53125,
+          "bottom": 310.71875,
+          "right": 1008,
+          "scrollHeight": 114,
+          "clientHeight": 114,
+          "overflowY": "visible"
+        },
+        "#businessText": {
+          "x": 621,
+          "y": 416.71875,
+          "width": 370,
+          "height": 182,
+          "bottom": 598.71875,
+          "right": 991,
+          "scrollHeight": 180,
+          "clientHeight": 180,
+          "overflowY": "auto"
+        },
+        "#copilotBtn": {
+          "x": 621,
+          "y": 656.109375,
+          "width": 207.609375,
+          "height": 77.015625,
+          "bottom": 733.125,
+          "right": 828.609375,
+          "scrollHeight": 75,
+          "clientHeight": 75,
+          "overflowY": "visible"
+        },
+        "#analysisSecondaryTools": {
+          "x": 604,
+          "y": 1045.5,
+          "width": 404,
+          "height": 43.59375,
+          "bottom": 1089.09375,
+          "right": 1008,
+          "scrollHeight": 42,
+          "clientHeight": 42,
+          "overflowY": "visible"
+        },
+        "#searchPanel": {
+          "x": 17,
+          "y": 318.375,
+          "width": 570,
+          "height": 45,
+          "bottom": 363.375,
+          "right": 587,
+          "scrollHeight": 44,
+          "clientHeight": 44,
+          "overflowY": "visible"
+        },
+        "#taxonomyTree": {
+          "x": 33,
+          "y": 379.375,
+          "width": 538,
+          "height": 426.84375,
+          "bottom": 806.21875,
+          "right": 571,
+          "scrollHeight": 427,
+          "clientHeight": 427,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "dsl-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "document": {
+        "width": 1024,
+        "height": 921
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 179.1875,
+          "width": 1024,
+          "height": 741.390625,
+          "bottom": 920.578125,
+          "right": 1024,
+          "scrollHeight": 741,
+          "clientHeight": 741,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "bottom": 0,
+          "right": 0,
+          "scrollHeight": 0,
+          "clientHeight": 0,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 8,
+          "y": 195.1875,
+          "width": 1008,
+          "height": 725.390625,
+          "bottom": 920.578125,
+          "right": 1016,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#tab-dsl-editor": {
+          "x": 16,
+          "y": 195.1875,
+          "width": 992,
+          "height": 725.390625,
+          "bottom": 920.578125,
+          "right": 1008,
+          "scrollHeight": 725,
+          "clientHeight": 725,
+          "overflowY": "visible"
+        },
+        "#dslEditorContainer": {
+          "x": 17,
+          "y": 290.578125,
+          "width": 654,
+          "height": 500,
+          "bottom": 790.578125,
+          "right": 671,
+          "scrollHeight": 500,
+          "clientHeight": 500,
+          "overflowY": "hidden"
+        },
+        "#dslCommitBtn": {
+          "x": 705,
+          "y": 586.578125,
+          "width": 108.84375,
+          "height": 31,
+          "bottom": 617.578125,
+          "right": 813.84375,
+          "scrollHeight": 29,
+          "clientHeight": 29,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "analyze-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "width": 390,
+        "height": 2057
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 259.78125,
+          "width": 390,
+          "height": 1797.640625,
+          "bottom": 2057.421875,
+          "right": 390,
+          "scrollHeight": 1798,
+          "clientHeight": 1798,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 8,
+          "y": 1283.453125,
+          "width": 374,
+          "height": 773.96875,
+          "bottom": 2057.421875,
+          "right": 382,
+          "scrollHeight": 774,
+          "clientHeight": 774,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 8,
+          "y": 275.78125,
+          "width": 374,
+          "height": 991.671875,
+          "bottom": 1267.453125,
+          "right": 382,
+          "scrollHeight": 992,
+          "clientHeight": 992,
+          "overflowY": "visible"
+        },
+        "#analysisTaskProgress": {
+          "x": 16,
+          "y": 275.78125,
+          "width": 358,
+          "height": 128.71875,
+          "bottom": 404.5,
+          "right": 374,
+          "scrollHeight": 127,
+          "clientHeight": 127,
+          "overflowY": "visible"
+        },
+        "#businessText": {
+          "x": 33,
+          "y": 534.5,
+          "width": 324,
+          "height": 182,
+          "bottom": 716.5,
+          "right": 357,
+          "scrollHeight": 180,
+          "clientHeight": 180,
+          "overflowY": "auto"
+        },
+        "#copilotBtn": {
+          "x": 33,
+          "y": 773.890625,
+          "width": 324,
+          "height": 63.203125,
+          "bottom": 837.09375,
+          "right": 357,
+          "scrollHeight": 61,
+          "clientHeight": 61,
+          "overflowY": "visible"
+        },
+        "#analysisSecondaryTools": {
+          "x": 16,
+          "y": 1223.859375,
+          "width": 358,
+          "height": 43.59375,
+          "bottom": 1267.453125,
+          "right": 374,
+          "scrollHeight": 42,
+          "clientHeight": 42,
+          "overflowY": "visible"
+        },
+        "#searchPanel": {
+          "x": 17,
+          "y": 1462.828125,
+          "width": 356,
+          "height": 45,
+          "bottom": 1507.828125,
+          "right": 373,
+          "scrollHeight": 44,
+          "clientHeight": 44,
+          "overflowY": "visible"
+        },
+        "#taxonomyTree": {
+          "x": 33,
+          "y": 1523.828125,
+          "width": 324,
+          "height": 667.640625,
+          "bottom": 2191.46875,
+          "right": 357,
+          "scrollHeight": 668,
+          "clientHeight": 668,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "dsl-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "width": 390,
+        "height": 1730
+      },
+      "elements": {
+        "#mainContent": {
+          "x": 0,
+          "y": 259.78125,
+          "width": 390,
+          "height": 1470.171875,
+          "bottom": 1729.953125,
+          "right": 390,
+          "scrollHeight": 1470,
+          "clientHeight": 1470,
+          "overflowY": "visible"
+        },
+        "#leftPanel": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "bottom": 0,
+          "right": 0,
+          "scrollHeight": 0,
+          "clientHeight": 0,
+          "overflowY": "visible"
+        },
+        "#rightPanel": {
+          "x": 8,
+          "y": 275.78125,
+          "width": 374,
+          "height": 1454.171875,
+          "bottom": 1729.953125,
+          "right": 382,
+          "scrollHeight": 1454,
+          "clientHeight": 1454,
+          "overflowY": "visible"
+        },
+        "#tab-dsl-editor": {
+          "x": 16,
+          "y": 275.78125,
+          "width": 358,
+          "height": 1454.171875,
+          "bottom": 1729.953125,
+          "right": 374,
+          "scrollHeight": 1454,
+          "clientHeight": 1454,
+          "overflowY": "visible"
+        },
+        "#dslEditorContainer": {
+          "x": 17,
+          "y": 490.953125,
+          "width": 356,
+          "height": 500,
+          "bottom": 990.953125,
+          "right": 373,
+          "scrollHeight": 500,
+          "clientHeight": 500,
+          "overflowY": "hidden"
+        },
+        "#dslCommitBtn": {
+          "x": 33,
+          "y": 1502.953125,
+          "width": 108.84375,
+          "height": 31,
+          "bottom": 1533.953125,
+          "right": 141.84375,
+          "scrollHeight": 29,
+          "clientHeight": 29,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "analyze-expanded-tools-1366",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "document": {
+        "width": 1366,
+        "height": 2850
+      },
+      "elements": {
+        "#leftPanel > .card": {
+          "x": 16,
+          "y": 156.1875,
+          "width": 771.5,
+          "height": 630.3125,
+          "bottom": 786.5,
+          "right": 787.5,
+          "scrollHeight": 628,
+          "clientHeight": 628,
+          "overflowY": "visible"
+        },
+        "#leftPanel > .card > .card-header": {
+          "x": 17,
+          "y": 157.1875,
+          "width": 769.5,
+          "height": 122.1875,
+          "bottom": 279.375,
+          "right": 786.5,
+          "scrollHeight": 121,
+          "clientHeight": 121,
+          "overflowY": "visible"
+        },
+        "#leftPanel > .card > .card-body": {
+          "x": 17,
+          "y": 324.375,
+          "width": 769.5,
+          "height": 461.125,
+          "bottom": 785.5,
+          "right": 786.5,
+          "scrollHeight": 461,
+          "clientHeight": 461,
+          "overflowY": "auto"
+        },
+        "#rightPanel": {
+          "x": 795.5,
+          "y": 156.1875,
+          "width": 562.5,
+          "height": 2694.09375,
+          "bottom": 2850.28125,
+          "right": 1358,
+          "scrollHeight": 2694,
+          "clientHeight": 2694,
+          "overflowY": "visible"
+        }
+      }
+    },
+    {
+      "name": "workbench-1920",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "document": {
+        "width": 1920,
+        "height": 1080
+      },
+      "elements": {
+        ".workbench-toolbar": {
+          "x": 0,
+          "y": 0,
+          "width": 1920,
+          "height": 56,
+          "bottom": 56,
+          "right": 1920,
+          "scrollHeight": 56,
+          "clientHeight": 56,
+          "overflowY": "visible"
+        },
+        ".workbench-status": {
+          "x": 0,
+          "y": 56,
+          "width": 1920,
+          "height": 33.1875,
+          "bottom": 89.1875,
+          "right": 1920,
+          "scrollHeight": 32,
+          "clientHeight": 32,
+          "overflowY": "visible"
+        },
+        ".workbench-grid": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 1920,
+          "height": 990.8125,
+          "bottom": 1080,
+          "right": 1920,
+          "scrollHeight": 991,
+          "clientHeight": 991,
+          "overflowY": "visible"
+        },
+        ".workbench-heading": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 1559,
+          "height": 80.390625,
+          "bottom": 169.578125,
+          "right": 1559,
+          "scrollHeight": 79,
+          "clientHeight": 79,
+          "overflowY": "visible"
+        },
+        ".architecture-controls": {
+          "x": 0,
+          "y": 169.578125,
+          "width": 1559,
+          "height": 82.15625,
+          "bottom": 251.734375,
+          "right": 1559,
+          "scrollHeight": 81,
+          "clientHeight": 81,
+          "overflowY": "visible"
+        },
+        "#architectureCanvasShell": {
+          "x": 0,
+          "y": 251.734375,
+          "width": 1559,
+          "height": 828.265625,
+          "bottom": 1080,
+          "right": 1559,
+          "scrollHeight": 828,
+          "clientHeight": 828,
+          "overflowY": "hidden"
+        },
+        "#architectureCanvas": {
+          "x": 0,
+          "y": 251.734375,
+          "width": 1559,
+          "height": 828.265625,
+          "bottom": 1080,
+          "right": 1559,
+          "scrollHeight": 828,
+          "clientHeight": 828,
+          "overflowY": "hidden"
+        },
+        ".workbench-detail-panel": {
+          "x": 1560,
+          "y": 89.1875,
+          "width": 360,
+          "height": 990.8125,
+          "bottom": 1080,
+          "right": 1920,
+          "scrollHeight": 991,
+          "clientHeight": 991,
+          "overflowY": "auto"
+        }
+      }
+    },
+    {
+      "name": "workbench-1366",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "document": {
+        "width": 1366,
+        "height": 768
+      },
+      "elements": {
+        ".workbench-toolbar": {
+          "x": 0,
+          "y": 0,
+          "width": 1366,
+          "height": 56,
+          "bottom": 56,
+          "right": 1366,
+          "scrollHeight": 56,
+          "clientHeight": 56,
+          "overflowY": "visible"
+        },
+        ".workbench-status": {
+          "x": 0,
+          "y": 56,
+          "width": 1366,
+          "height": 33.1875,
+          "bottom": 89.1875,
+          "right": 1366,
+          "scrollHeight": 32,
+          "clientHeight": 32,
+          "overflowY": "visible"
+        },
+        ".workbench-grid": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 1366,
+          "height": 678.8125,
+          "bottom": 768,
+          "right": 1366,
+          "scrollHeight": 679,
+          "clientHeight": 679,
+          "overflowY": "visible"
+        },
+        ".workbench-heading": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 1005,
+          "height": 89.78125,
+          "bottom": 178.96875,
+          "right": 1005,
+          "scrollHeight": 89,
+          "clientHeight": 89,
+          "overflowY": "visible"
+        },
+        ".architecture-controls": {
+          "x": 0,
+          "y": 178.96875,
+          "width": 1005,
+          "height": 82.15625,
+          "bottom": 261.125,
+          "right": 1005,
+          "scrollHeight": 81,
+          "clientHeight": 81,
+          "overflowY": "visible"
+        },
+        "#architectureCanvasShell": {
+          "x": 0,
+          "y": 261.125,
+          "width": 1005,
+          "height": 506.875,
+          "bottom": 768,
+          "right": 1005,
+          "scrollHeight": 507,
+          "clientHeight": 507,
+          "overflowY": "hidden"
+        },
+        "#architectureCanvas": {
+          "x": 0,
+          "y": 261.125,
+          "width": 1005,
+          "height": 506.875,
+          "bottom": 768,
+          "right": 1005,
+          "scrollHeight": 507,
+          "clientHeight": 507,
+          "overflowY": "hidden"
+        },
+        ".workbench-detail-panel": {
+          "x": 1006,
+          "y": 89.1875,
+          "width": 360,
+          "height": 678.8125,
+          "bottom": 768,
+          "right": 1366,
+          "scrollHeight": 679,
+          "clientHeight": 679,
+          "overflowY": "auto"
+        }
+      }
+    },
+    {
+      "name": "workbench-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "document": {
+        "width": 1024,
+        "height": 768
+      },
+      "elements": {
+        ".workbench-toolbar": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 56,
+          "bottom": 56,
+          "right": 1024,
+          "scrollHeight": 56,
+          "clientHeight": 56,
+          "overflowY": "visible"
+        },
+        ".workbench-status": {
+          "x": 0,
+          "y": 56,
+          "width": 1024,
+          "height": 33.1875,
+          "bottom": 89.1875,
+          "right": 1024,
+          "scrollHeight": 32,
+          "clientHeight": 32,
+          "overflowY": "visible"
+        },
+        ".workbench-grid": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 1024,
+          "height": 678.8125,
+          "bottom": 768,
+          "right": 1024,
+          "scrollHeight": 679,
+          "clientHeight": 679,
+          "overflowY": "visible"
+        },
+        ".workbench-heading": {
+          "x": 0,
+          "y": 89.1875,
+          "width": 713,
+          "height": 120.546875,
+          "bottom": 209.734375,
+          "right": 713,
+          "scrollHeight": 120,
+          "clientHeight": 120,
+          "overflowY": "visible"
+        },
+        ".architecture-controls": {
+          "x": 0,
+          "y": 209.734375,
+          "width": 713,
+          "height": 124.9375,
+          "bottom": 334.671875,
+          "right": 713,
+          "scrollHeight": 124,
+          "clientHeight": 124,
+          "overflowY": "visible"
+        },
+        "#architectureCanvasShell": {
+          "x": 0,
+          "y": 334.671875,
+          "width": 713,
+          "height": 433.328125,
+          "bottom": 768,
+          "right": 713,
+          "scrollHeight": 433,
+          "clientHeight": 433,
+          "overflowY": "hidden"
+        },
+        "#architectureCanvas": {
+          "x": 0,
+          "y": 334.671875,
+          "width": 713,
+          "height": 433.328125,
+          "bottom": 768,
+          "right": 713,
+          "scrollHeight": 433,
+          "clientHeight": 433,
+          "overflowY": "hidden"
+        },
+        ".workbench-detail-panel": {
+          "x": 714,
+          "y": 89.1875,
+          "width": 310,
+          "height": 678.8125,
+          "bottom": 768,
+          "right": 1024,
+          "scrollHeight": 679,
+          "clientHeight": 679,
+          "overflowY": "auto"
+        }
+      }
+    },
+    {
+      "name": "workbench-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "width": 390,
+        "height": 1533
+      },
+      "elements": {
+        ".workbench-toolbar": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 128,
+          "bottom": 128,
+          "right": 390,
+          "scrollHeight": 128,
+          "clientHeight": 128,
+          "overflowY": "visible"
+        },
+        ".workbench-status": {
+          "x": 0,
+          "y": 128,
+          "width": 390,
+          "height": 54.1875,
+          "bottom": 182.1875,
+          "right": 390,
+          "scrollHeight": 53,
+          "clientHeight": 53,
+          "overflowY": "visible"
+        },
+        ".workbench-grid": {
+          "x": 0,
+          "y": 182.1875,
+          "width": 390,
+          "height": 1350.328125,
+          "bottom": 1532.515625,
+          "right": 390,
+          "scrollHeight": 1350,
+          "clientHeight": 1350,
+          "overflowY": "visible"
+        },
+        ".workbench-heading": {
+          "x": 0,
+          "y": 182.1875,
+          "width": 390,
+          "height": 202.03125,
+          "bottom": 384.21875,
+          "right": 390,
+          "scrollHeight": 201,
+          "clientHeight": 201,
+          "overflowY": "visible"
+        },
+        ".architecture-controls": {
+          "x": 0,
+          "y": 384.21875,
+          "width": 390,
+          "height": 165.71875,
+          "bottom": 549.9375,
+          "right": 390,
+          "scrollHeight": 165,
+          "clientHeight": 165,
+          "overflowY": "visible"
+        },
+        "#architectureCanvasShell": {
+          "x": 0,
+          "y": 549.9375,
+          "width": 390,
+          "height": 506.390625,
+          "bottom": 1056.328125,
+          "right": 390,
+          "scrollHeight": 506,
+          "clientHeight": 506,
+          "overflowY": "hidden"
+        },
+        "#architectureCanvas": {
+          "x": 0,
+          "y": 549.9375,
+          "width": 390,
+          "height": 506.390625,
+          "bottom": 1056.328125,
+          "right": 390,
+          "scrollHeight": 506,
+          "clientHeight": 506,
+          "overflowY": "hidden"
+        },
+        ".workbench-detail-panel": {
+          "x": 0,
+          "y": 1057.328125,
+          "width": 390,
+          "height": 475.1875,
+          "bottom": 1532.515625,
+          "right": 390,
+          "scrollHeight": 475,
+          "clientHeight": 475,
+          "overflowY": "auto"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "measurementNote": "Geometry only; actual visibility of disclosure content is checked by separate browser assertions.",
+  "capture": {
+    "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+    "sourceBase": "f0775632ad9a1e84acee895db5de88041f8f5ac9",
+    "runtime": "Fresh frozen application JAR, no resource override",
+    "sourceResourceManifest": "application-build.json",
+    "captureRecordedAt": "2026-10-07T06:17:51.149612+00:00",
+    "timestampSource": "Probe output filesystem write timestamp",
+    "captureReadiness": "Actual catalogue loaded, DSL-loaded status awaited, two animation frames before each geometry sample",
+    "fixtureScope": "Real application templates, CSS, JS and catalogue; long log and two-node Workbench scene are explicitly scoped QA fixtures."
+  }
+}

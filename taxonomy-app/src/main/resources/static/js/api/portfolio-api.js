@@ -113,8 +113,33 @@ window.TaxonomyPortfolioApi = (function () {
 
     function reportUrl(projectId, format, parameters) {
         const query = new URLSearchParams(parameters || {}).toString();
-        return projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
-            + (query ? '?' + query : '');
+        return applicationUrl(projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
+            + (query ? '?' + query : ''));
+    }
+
+    function applicationUrl(path) {
+        return window.TaxonomyI18n?.resolveUrl?.(path) || path;
+    }
+
+    /** Resolve server Location headers and reject resources outside this application. */
+    function analysisJobUrl(location, expectedProjectId) {
+        if (typeof location !== 'string' || !location) return null;
+        try {
+            const resolved = new URL(applicationUrl(location), window.location.href);
+            if (resolved.origin !== window.location.origin || resolved.username || resolved.password
+                    || resolved.search || resolved.hash) return null;
+            const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+            if (basePath && !resolved.pathname.startsWith(basePath + '/')) return null;
+            const match = resolved.pathname.slice(basePath.length)
+                .match(/^\/api\/projects\/([1-9]\d*)\/analysis-jobs\/([^/]+)$/);
+            if (!match || !Number.isSafeInteger(Number(match[1]))
+                    || (expectedProjectId != null && Number(match[1]) !== Number(expectedProjectId))) return null;
+            const jobId = decodeURIComponent(match[2]);
+            if (/[\\/]/.test(jobId) || jobId === '.' || jobId === '..') return null;
+            return resolved.href;
+        } catch (error) {
+            return null;
+        }
     }
 
     return {
@@ -227,6 +252,7 @@ window.TaxonomyPortfolioApi = (function () {
         },
 
         // ── Analysis jobs ─────────────────────────────────────────────────────
+        analysisJobUrl: analysisJobUrl,
         listAnalysisJobs: function (projectId) {
             return getJson(projectPath(projectId) + '/analysis-jobs');
         },

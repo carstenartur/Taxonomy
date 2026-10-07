@@ -134,6 +134,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="newVersionError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
                 <div class="mb-3">
                     <label for="versionText" class="form-label" th:text="#{portfolio.version.text}">Requirement text</label>
                     <textarea id="versionText" class="form-control" rows="12" required></textarea>

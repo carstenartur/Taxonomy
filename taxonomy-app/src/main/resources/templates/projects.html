@@ -100,6 +100,16 @@
                                 <button id="detectConflictsBtn" class="btn btn-outline-warning" type="button">
                                     ⚠ <span data-i18n="action.detect.conflicts">Detect conflicts</span>
                                 </button>
+                                <div id="projectTools" class="dropdown d-none">
+                                    <button id="projectToolsToggle" class="btn btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" aria-expanded="false" data-i18n="nav.project.tools">Project tools</button>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="projectToolsToggle">
+                                        <li><a id="projectImportLink" class="dropdown-item" data-i18n="nav.project.import">Import requirements</a></li>
+                                        <li><a id="projectMatricesLink" class="dropdown-item" data-i18n="nav.project.matrices">Matrices</a></li>
+                                        <li><a id="projectReportsLink" class="dropdown-item" data-i18n="nav.project.reports">Reports</a></li>
+                                        <li><a id="projectVersioningLink" class="dropdown-item" data-i18n="nav.project.versioning">Versioning</a></li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -466,6 +476,7 @@
 </div>
 
 <script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}"></script>
 <script th:src="@{/js/api/portfolio-api.js}"></script>
