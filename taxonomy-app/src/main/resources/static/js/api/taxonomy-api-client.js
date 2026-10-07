@@ -431,10 +431,30 @@ window.TaxonomyApiClient = (function () {
         button.prepend(spinner);
     }
 
+    function resolveSurfaceUrl(source) {
+        if (window.TaxonomyI18n && typeof window.TaxonomyI18n.resolveUrl === 'function') {
+            return window.TaxonomyI18n.resolveUrl(source);
+        }
+        // Script elements bypass the fetch wrapper. If i18n has not bootstrapped,
+        // derive the application context from this API client's own script URL.
+        var bootstrap = document.currentScript;
+        if (bootstrap && bootstrap.src) {
+            try {
+                var url = new URL(bootstrap.src, window.location.href);
+                var suffix = '/js/api/taxonomy-api-client.js';
+                if (url.origin === window.location.origin && url.pathname.endsWith(suffix)) {
+                    var prefix = url.pathname.slice(0, -suffix.length);
+                    if (!prefix.startsWith('//')) return prefix + source;
+                }
+            } catch (ignored) { /* Preserve the root-hosted fallback. */ }
+        }
+        return source;
+    }
+
     function loadSurface(globalName, marker, source) {
         if (window[globalName] || document.querySelector('script[' + marker + ']')) return;
         var script = document.createElement('script');
-        script.src = source;
+        script.src = resolveSurfaceUrl(source);
         script.async = false;
         script.setAttribute(marker, 'true');
         document.head.appendChild(script);

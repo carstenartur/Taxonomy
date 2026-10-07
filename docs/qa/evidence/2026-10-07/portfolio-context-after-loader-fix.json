@@ -1,0 +1,85 @@
+{
+  "baseUrl": "http://127.0.0.1:8080/taxonomy",
+  "evidenceMode": "compact",
+  "curatedStates": [
+    "analysis-success"
+  ],
+  "checks": [
+    "Both real authenticated UI modules loaded in the servlet context and the actual ADMIN account capability became ready",
+    "Portfolio 1366×768: project tools are visible, native ArrowDown/Escape works, and every tools/detail link follows the selected project in context \"/taxonomy\"",
+    "Portfolio 390×844: project tools are visible, native ArrowDown/Escape works, and every tools/detail link follows the selected project in context \"/taxonomy\"",
+    "axe qa-portfolio-version-conflict",
+    "A real New version submit receives a locally intercepted 409; the open Bootstrap modal preserves every field and exposes/focuses its unobscured error",
+    "axe qa-portfolio-matrix-zero",
+    "The valid sparse integer matrix retains a stored 0% and its evidence; missing cells and actual Relationship/Minimum filters keep different meanings",
+    "Explicit malformed-response injection (null coverage, not normal backend output) remains unknown in the actual cells/offcanvas and never becomes missing or numeric zero",
+    "Real RepositoryState string branches populate visible labels and option values; typed messages and independent selections survive a delayed Refresh that renders a new HEAD"
+  ],
+  "axeFindings": [
+    {
+      "state": "qa-portfolio-version-conflict",
+      "violations": [],
+      "blocking": []
+    },
+    {
+      "state": "qa-portfolio-matrix-zero",
+      "violations": [],
+      "blocking": []
+    }
+  ],
+  "states": [
+    {
+      "state": "qa-portfolio-tools-1366",
+      "selector": "#projectWorkspace",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-tools-390",
+      "selector": "#projectWorkspace",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-version-conflict",
+      "selector": "#newVersionModal",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-matrix-zero",
+      "selector": "#cellDetail",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-matrix-degraded-cells",
+      "selector": "#matrixMain",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-matrix-unknown",
+      "selector": "#cellDetail",
+      "captured": true,
+      "captureStrategy": "viewport"
+    },
+    {
+      "state": "qa-portfolio-versioning-refresh",
+      "selector": "#versioningMain",
+      "captured": true,
+      "captureStrategy": "viewport"
+    }
+  ],
+  "screenshots": [
+    "qa-portfolio-tools-1366.png",
+    "qa-portfolio-tools-390.png",
+    "qa-portfolio-version-conflict.png",
+    "qa-portfolio-matrix-zero.png",
+    "qa-portfolio-matrix-degraded-cells.png",
+    "qa-portfolio-matrix-unknown.png",
+    "qa-portfolio-versioning-refresh.png"
+  ],
+  "auditError": null,
+  "pageErrors": []
+}

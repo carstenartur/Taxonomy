@@ -150,10 +150,19 @@
     }
 
     function openSearchWorkspace() {
-        var secondaryTools = document.getElementById('analysisSecondaryTools');
         var panel = document.getElementById('searchPanel');
-        if (secondaryTools) secondaryTools.open = true;
-        if (panel) panel.open = true;
+        var catalogue = document.getElementById('leftPanel');
+        if (catalogue && catalogue.classList.contains('d-none')
+                && typeof window.navigateToPage === 'function') {
+            window.navigateToPage('analyze');
+        }
+        // Open only disclosures that actually contain the search. This also
+        // supports older embedding templates without opening unrelated tools.
+        var ancestor = panel;
+        while (ancestor) {
+            if (String(ancestor.tagName).toLowerCase() === 'details') ancestor.open = true;
+            ancestor = ancestor.parentElement;
+        }
         return panel;
     }
 

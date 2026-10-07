@@ -1,7 +1,11 @@
 (function () {
     'use strict';
 
-    const match = location.pathname.match(/^\/projects\/(\d+)\/versioning$/);
+    const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+    const applicationUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
+    const pathname = location.pathname;
+    if (basePath && !pathname.startsWith(basePath + '/')) return;
+    const match = pathname.slice(basePath.length).match(/^\/projects\/(\d+)\/versioning$/);
     if (!match) return;
 
     const projectId = Number(match[1]);
@@ -13,7 +17,8 @@
         repository: null,
         exported: null,
         preview: null,
-        account: null
+        account: null,
+        initializedMessages: new Set()
     };
 
     const labels = {
@@ -32,6 +37,7 @@
             safe: 'No removed lines were detected in the textual preview.', added: 'Added lines',
             removed: 'Removed lines', expected: 'Expected target HEAD', actual: 'Current target HEAD',
             permission: 'Your role cannot perform Git mutations.', failed: 'The Git operation failed.',
+            refreshFailed: 'The portfolio preview could not be refreshed.',
             projects: 'Projects', requirements: 'Requirements', solutions: 'Solutions', products: 'Products',
             sourceTargetDiffer: 'Source and target branch must differ'
         },
@@ -50,6 +56,7 @@
             safe: 'In der Textvorschau wurden keine entfernten Zeilen erkannt.', added: 'Hinzugefügte Zeilen',
             removed: 'Entfernte Zeilen', expected: 'Erwarteter Ziel-HEAD', actual: 'Aktueller Ziel-HEAD',
             permission: 'Ihre Rolle darf keine Git-Mutationen durchführen.', failed: 'Die Git-Operation ist fehlgeschlagen.',
+            refreshFailed: 'Die Portfoliovorschau konnte nicht aktualisiert werden.',
             projects: 'Projekte', requirements: 'Anforderungen', solutions: 'Lösungen', products: 'Produkte',
             sourceTargetDiffer: 'Quell- und Zielbranch müssen verschieden sein'
         }
@@ -75,9 +82,9 @@
         document.getElementById('versioningPageTitle').textContent = text('title');
         document.getElementById('versioningHeading').textContent = text('title');
         document.getElementById('portfolioBack').textContent = text('portfolio');
-        document.getElementById('portfolioBack').href = `/projects?lang=${locale}`;
+        document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
         document.getElementById('reportsLink').textContent = text('reports');
-        document.getElementById('reportsLink').href = `/projects/${projectId}/reports?lang=${locale}`;
+        document.getElementById('reportsLink').href = applicationUrl(`/projects/${projectId}/reports?lang=${locale}`);
         document.getElementById('previewHeading').textContent = text('preview');
         document.getElementById('refreshPreview').textContent = text('refresh');
         document.querySelector('#dslPreview').previousElementSibling.textContent = text('dsl');
@@ -97,17 +104,20 @@
     }
 
     function wire() {
-        document.getElementById('refreshPreview').addEventListener('click', load);
+        document.getElementById('refreshPreview').addEventListener('click', () => load());
         document.getElementById('commitForm').addEventListener('submit', commitPortfolio);
         document.getElementById('previewMaterialize').addEventListener('click', previewMaterialize);
         document.getElementById('applyMaterialize').addEventListener('click', applyMaterialize);
         document.getElementById('mergeForm').addEventListener('submit', mergeBranches);
         document.getElementById('materializeBranch').addEventListener('change', clearMaterializationPreview);
+        ['commitMessage', 'mergeMessage'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => state.initializedMessages.add(id));
+        });
     }
 
-    async function load() {
+    async function load({ preserveMessages = false } = {}) {
         busy(true);
-        clearMessages();
+        if (!preserveMessages) clearMessages();
         try {
             [state.project, state.repository, state.exported, state.account] = await Promise.all([
                 api().getProject(projectId),
@@ -117,7 +127,7 @@
             ]);
             render();
         } catch (problem) {
-            showError(problem);
+            showError(new Error(`${text('refreshFailed')}${problem?.message ? ' ' + problem.message : ''}`));
         } finally {
             busy(false);
         }
@@ -135,11 +145,17 @@
         document.getElementById('changeState').textContent = text('clean');
         renderCounts();
         populateBranches();
-        document.getElementById('commitMessage').value =
-            `Portfolio ${state.project.projectKey}: reviewed project state`;
-        document.getElementById('mergeMessage').value =
-            `Merge portfolio branches for ${state.project.projectKey}`;
+        initializeMessage('commitMessage', `Portfolio ${state.project.projectKey}: reviewed project state`);
+        initializeMessage('mergeMessage', `Merge portfolio branches for ${state.project.projectKey}`);
         applyCapabilities();
+    }
+
+    function initializeMessage(id, value) {
+        // An empty field may be a deliberate edit, including while the first load is pending.
+        if (state.initializedMessages.has(id)) return;
+        const input = document.getElementById(id);
+        if (!input.value) input.value = value;
+        state.initializedMessages.add(id);
     }
 
     function renderCounts() {
@@ -158,7 +174,8 @@
     }
 
     function populateBranches() {
-        const branches = (state.repository.branches || []).map(branch => branch.name).filter(Boolean);
+        const branches = (state.repository.branches || [])
+            .filter(branch => typeof branch === 'string' && branch.length > 0);
         if (state.repository.currentBranch && !branches.includes(state.repository.currentBranch)) {
             branches.unshift(state.repository.currentBranch);
         }
@@ -172,13 +189,12 @@
                 option.textContent = branch;
                 select.appendChild(option);
             });
+            const preferred = id === 'mergeSource'
+                ? branches.find(branch => branch !== state.repository.currentBranch)
+                : state.repository.currentBranch;
             if (previous && branches.includes(previous)) select.value = previous;
+            else if (preferred) select.value = preferred;
         });
-        document.getElementById('commitBranch').value = state.repository.currentBranch;
-        document.getElementById('materializeBranch').value = state.repository.currentBranch;
-        document.getElementById('mergeTarget').value = state.repository.currentBranch;
-        const source = branches.find(branch => branch !== state.repository.currentBranch);
-        if (source) document.getElementById('mergeSource').value = source;
     }
 
     async function commitPortfolio(event) {
@@ -190,7 +206,7 @@
             const message = document.getElementById('commitMessage').value.trim();
             const result = await api().commitPortfolio({ branch, message });
             showInfo(`${text('committed')} ${branch} @ ${short(result.commitId)}`);
-            await load();
+            await load({ preserveMessages: true });
         } catch (problem) {
             showError(problem);
         } finally {
@@ -247,7 +263,7 @@
             });
             showInfo(`${text('materialized')} ${result.branch} @ ${short(result.commitId)}`);
             clearMaterializationPreview();
-            await load();
+            await load({ preserveMessages: true });
         } catch (problem) {
             showError(problem);
         } finally {
@@ -257,6 +273,8 @@
 
     async function mergeBranches(event) {
         event.preventDefault();
+        clearMessages();
+        document.getElementById('mergeResult').textContent = '';
         const sourceBranch = document.getElementById('mergeSource').value;
         const targetBranch = document.getElementById('mergeTarget').value;
         if (sourceBranch === targetBranch) {
@@ -265,7 +283,6 @@
         }
 
         busy(true);
-        clearMessages();
         try {
             const result = await api().mergePortfolio({
                 sourceBranch,
@@ -277,7 +294,7 @@
                 + `<strong>${escapeHtml(result.strategy)}</strong> · `
                 + `<code>${escapeHtml(short(result.mergeCommitId))}</code></div>`;
             showInfo(text('merged'));
-            await load();
+            await load({ preserveMessages: true });
         } catch (problem) {
             showError(problem);
         } finally {

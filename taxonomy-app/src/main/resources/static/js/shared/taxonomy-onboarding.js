@@ -281,11 +281,17 @@
             var label = document.createElement('strong');
             label.textContent = t(stage.labelKey);
             var description = document.createElement('small');
+            description.className = 'visually-hidden';
             description.textContent = t(stage.descriptionKey);
             copy.append(label, description);
             item.append(number, copy);
             list.appendChild(item);
         });
+
+        var guidance = document.createElement('p');
+        guidance.id = 'taskGuidance';
+        guidance.className = 'visually-hidden';
+        guidance.textContent = t(TASK_STAGES[0].descriptionKey);
 
         var next = document.createElement('div');
         next.className = 'analysis-next-action';
@@ -294,6 +300,7 @@
         nextAction.type = 'button';
         nextAction.className = 'btn btn-sm btn-outline-primary';
         nextAction.disabled = true;
+        nextAction.setAttribute('aria-describedby', 'taskGuidance');
         nextAction.textContent = t('analysis.task.next.enter');
         nextAction.addEventListener('click', performNextAction);
         next.appendChild(nextAction);
@@ -309,7 +316,7 @@
             next.appendChild(reportAction);
         }
 
-        progress.append(list, next);
+        progress.append(list, guidance, next);
         firstCard.parentElement.insertBefore(progress, firstCard);
     }
 
@@ -394,7 +401,6 @@
         details.append(summary, body);
 
         [
-            'searchPanel',
             'analysisLog',
             'llmCommLog',
             'gapAnalysisPanel',
@@ -425,6 +431,14 @@
     }
 
     function setTaskState(activeIndex, state) {
+        var guidance = document.getElementById('taskGuidance');
+        if (guidance) {
+            guidance.removeAttribute('role');
+            guidance.textContent = t(TASK_STAGES[activeIndex].descriptionKey);
+            // Input labels and action hints already explain the first two steps.
+            // Reserve visible guidance for reviewing and using the actual results.
+            guidance.className = activeIndex >= 2 ? 'small text-body-secondary mb-2' : 'visually-hidden';
+        }
         TASK_STAGES.forEach(function (stage, index) {
             var item = document.getElementById(stage.id);
             if (!item) {
@@ -499,7 +513,12 @@
             nextAction.dataset.action = 'open-architecture';
         } else if (hasScores) {
             setTaskState(2, 'current');
-            nextAction.textContent = t('analysis.task.next.results');
+            var strongest = strongestKnownMatch(scores);
+            nextAction.textContent = t(strongest && strongest.score > 0
+                ? 'analysis.task.next.results' : 'analysis.task.next.assessments');
+            if (strongest && strongest.score === 0) {
+                document.getElementById('taskGuidance').textContent = t('analysis.task.review.noMatch');
+            }
             nextAction.dataset.action = 'review-results';
         } else {
             reviewAcknowledged = false;
@@ -509,18 +528,53 @@
         }
     }
 
+    function strongestKnownMatch(scores) {
+        var selected = null;
+        function visit(nodes) {
+            (nodes || []).forEach(function (node) {
+                var score = scores && scores[node.code];
+                if (typeof score === 'number' && Number.isFinite(score)
+                        && score >= 0 && (!selected || score > selected.score)) {
+                    selected = { code: node.code, score: score };
+                }
+                visit(node.children);
+            });
+        }
+        visit(window.TaxonomyState && window.TaxonomyState.taxonomyData);
+        return selected;
+    }
+
     function performNextAction() {
         var button = document.getElementById('taskNextAction');
         var action = button && button.dataset.action;
         if (action === 'analyze') {
             document.getElementById('analyzeBtn')?.click();
         } else if (action === 'review-results') {
-            var firstMatch = document.querySelector('.tax-node .tax-pct');
-            if (firstMatch) {
-                firstMatch.closest('.tax-node')?.scrollIntoView({ block: 'center' });
-                firstMatch.closest('.tax-node')?.focus({ preventScroll: true });
+            var state = window.TaxonomyState;
+            var match = strongestKnownMatch(state && state.currentScores);
+            var browse = window.TaxonomyBrowse;
+            var scoring = window.TaxonomyScoring;
+            if (match && browse && scoring) {
+                // The text tree exposes the score and rationale, including deferred
+                // descendants. Expanding it through the browse API never starts an LLM call.
+                browse.switchView('list');
+                scoring.expandNodeByCode(match.code);
+                var target = document.querySelector('#taxonomyTree .tax-node[data-code="'
+                    + CSS.escape(match.code) + '"]');
+                if (!target) {
+                    showReviewUnavailable();
+                    return;
+                }
+                document.querySelectorAll('#taxonomyTree .tax-node[tabindex="0"]').forEach(function (node) {
+                    node.tabIndex = -1;
+                });
+                target.tabIndex = 0;
+                target.scrollIntoView({ block: 'center' });
+                target.focus({ preventScroll: true });
                 reviewAcknowledged = true;
                 syncTaskProgress();
+            } else {
+                showReviewUnavailable();
             }
         } else if (action === 'open-architecture') {
             if (typeof window.navigateToPage === 'function') {
@@ -530,6 +584,15 @@
             }
         } else {
             document.getElementById('businessText')?.focus();
+        }
+    }
+
+    function showReviewUnavailable() {
+        var guidance = document.getElementById('taskGuidance');
+        if (guidance) {
+            guidance.className = 'small text-body-secondary mb-2';
+            guidance.textContent = t('analysis.task.review.unavailable');
+            guidance.setAttribute('role', 'status');
         }
     }
 

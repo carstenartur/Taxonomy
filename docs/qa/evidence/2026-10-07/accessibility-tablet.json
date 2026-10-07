@@ -1,0 +1,46 @@
+{
+  "profile": "tablet",
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "auditError": null,
+  "findings": [
+    {
+      "section": "analyze",
+      "violations": []
+    },
+    {
+      "section": "architecture",
+      "violations": []
+    },
+    {
+      "section": "graph",
+      "violations": []
+    },
+    {
+      "section": "versions",
+      "violations": []
+    },
+    {
+      "section": "dsl-editor",
+      "violations": []
+    },
+    {
+      "section": "help",
+      "violations": []
+    },
+    {
+      "section": "admin",
+      "violations": []
+    },
+    {
+      "section": "preferences",
+      "violations": []
+    }
+  ],
+  "severe": [],
+  "moderateSignatures": [],
+  "unexpectedModerate": [],
+  "staleBaseline": []
+}

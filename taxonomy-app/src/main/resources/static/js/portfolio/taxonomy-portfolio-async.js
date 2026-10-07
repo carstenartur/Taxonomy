@@ -11,6 +11,7 @@
     'use strict';
 
     const originalFetch = window.fetch.bind(window);
+    const applicationBasePath = window.TaxonomyI18n?.getBasePath?.() || '';
     const terminalStatuses = new Set(['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED']);
     const pollIntervalMs = 1500;
     const storageKey = 'taxonomy.portfolio.analysisJobs.v2';
@@ -119,14 +120,7 @@
      */
     function exposeJobRegistration() {
         window.taxonomyPortfolioRegisterJob = function (jobUrl, job) {
-            if (!jobUrl || !job || !job.id) return false;
-            const resolved = new URL(jobUrl, window.location.href);
-            if (resolved.origin !== window.location.origin
-                    || !/^\/api\/projects\/\d+\/analysis-jobs\/[^/]+$/.test(resolved.pathname)) {
-                return false;
-            }
-            registerJob(resolved.toString(), job);
-            return true;
+            return registerJob(jobUrl, job);
         };
     }
 
@@ -152,8 +146,7 @@
                 return response;
             }
 
-            const jobUrl = new URL(location, window.location.href).toString();
-            registerJob(jobUrl, initialJob);
+            if (!registerJob(location, initialJob)) return response;
             queueMicrotask(function () {
                 announce(m('analysisStarted'));
                 replacePrematureCompletionMessage();
@@ -372,7 +365,11 @@
     }
 
     function registerJob(url, job) {
-        const projectMatch = new URL(url).pathname.match(/^\/api\/projects\/(\d+)\/analysis-jobs\//);
+        if (!job || !job.id) return false;
+        url = window.TaxonomyPortfolioApi.analysisJobUrl(url);
+        if (!url) return false;
+        const projectMatch = new URL(url).pathname.slice(applicationBasePath.length)
+            .match(/^\/api\/projects\/(\d+)\/analysis-jobs\//);
         const existing = jobs.get(url) || {};
         jobs.set(url, {
             url: url,
@@ -386,6 +383,7 @@
         persistJobs();
         renderJobs();
         if (!terminalStatuses.has(job.status)) schedulePoll(url);
+        return true;
     }
 
     function restoreJobs() {
@@ -393,7 +391,12 @@
             const stored = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
             if (!Array.isArray(stored)) return;
             stored.forEach(function (entry) {
-                if (entry && entry.url && entry.job) jobs.set(entry.url, entry);
+                if (!entry || !entry.job || !entry.job.id) return;
+                const url = window.TaxonomyPortfolioApi.analysisJobUrl(entry.url);
+                if (!url) return;
+                const projectId = Number(new URL(url).pathname.slice(applicationBasePath.length)
+                    .match(/^\/api\/projects\/(\d+)\/analysis-jobs\//)[1]);
+                jobs.set(url, Object.assign({}, entry, { url: url, projectId: projectId }));
             });
         } catch (error) {
             window.localStorage.removeItem(storageKey);
@@ -576,7 +579,7 @@
             if (!response.ok) throw await responseError(response);
             const job = await response.json();
             const location = response.headers.get('Location') || entry.url;
-            registerJob(new URL(location, window.location.href).toString(), job);
+            registerJob(location, job);
         } catch (error) {
             showError(error);
         } finally {
@@ -926,14 +929,16 @@
     }
 
     function isAnalysisSubmission(url) {
+        if (applicationBasePath && !url.pathname.startsWith(applicationBasePath + '/')) return false;
         return url.origin === window.location.origin
-            && url.pathname.startsWith('/api/projects/')
-            && (url.pathname.endsWith('/analyses') || url.pathname.endsWith('/retry-failed'));
+            && /^\/api\/projects\/\d+\/(?:analyses|requirements\/\d+\/analyses|analysis-jobs\/[^/]+\/retry-failed)$/
+                .test(url.pathname.slice(applicationBasePath.length));
     }
 
     function resolveUrl(input) {
         const value = input instanceof Request ? input.url : String(input);
-        return new URL(value, window.location.href);
+        const resolved = window.TaxonomyI18n?.resolveUrl?.(value) || value;
+        return new URL(resolved, window.location.href);
     }
 
     function formatDate(value) {

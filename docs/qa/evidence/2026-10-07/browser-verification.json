@@ -1,0 +1,165 @@
+{
+  "scope": "Selected local Chromium matrix; not the full cross-browser, Docker, database or ONNX CI matrix. Checks include recorded Axe passes and are not a count of every Playwright assertion.",
+  "candidateJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+  "historicalAccessibilityScope": "Dedicated 24-section Accessibility scans ran on 22ad before the JS-only dynamic-loader fix. All CSS/templates and other UI resources are identical to the final JAR; final primary and role-state workflows reran Axe on 5559.",
+  "scenarios": [
+    {
+      "suite": "primary",
+      "report": "primary-user.json",
+      "sha256": "3f305c406506536285bdd689db7e8d072210cd63f0fa928b1d67143556517e0c",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 20,
+      "axeStates": 5,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": null
+    },
+    {
+      "suite": "primary",
+      "report": "primary-architect.json",
+      "sha256": "a3be621142a46c00d137b5d98b2d92ca0496b01bdd08319d8b6bf7cff7b78e07",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 24,
+      "axeStates": 9,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": null
+    },
+    {
+      "suite": "primary",
+      "report": "primary-admin.json",
+      "sha256": "d47c7aab13b9a7588f52335e227a84876d3e1a8a8508f7e72c28a711bd9b3f5a",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 72,
+      "axeStates": 23,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": null
+    },
+    {
+      "suite": "accessibility",
+      "report": "accessibility-desktop.json",
+      "sha256": "9198e68bb6c5d663c854a00ab3c392d9dbf456a9fb0eaa5344b914bd941b5504",
+      "applicationJarSha256": "22ad55837511f65d7120043c7beb0ece0c3ee5edee6422a9d6444a8b6ede5d66",
+      "result": "passed",
+      "checks": 0,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 1440,
+        "height": 1000
+      }
+    },
+    {
+      "suite": "accessibility",
+      "report": "accessibility-tablet.json",
+      "sha256": "541e42053ad4cc979aabbe127140a14305aaf9d2a832aba68ceb9e781fe9a26c",
+      "applicationJarSha256": "22ad55837511f65d7120043c7beb0ece0c3ee5edee6422a9d6444a8b6ede5d66",
+      "result": "passed",
+      "checks": 0,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 1024,
+        "height": 768
+      }
+    },
+    {
+      "suite": "accessibility",
+      "report": "accessibility-mobile.json",
+      "sha256": "8c678b92a47ab15436679bbe9f6bb0a03f52e3eb76214a31e212b3a4277f1261",
+      "applicationJarSha256": "22ad55837511f65d7120043c7beb0ece0c3ee5edee6422a9d6444a8b6ede5d66",
+      "result": "passed",
+      "checks": 0,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "suite": "role-state",
+      "report": "zoom-200-user-chromium.json",
+      "sha256": "745bd8179e081dbe60127b9f003369b57c5adc7cbf7a7769ea33a0dccdbc653c",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 32,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 720,
+        "height": 500
+      }
+    },
+    {
+      "suite": "role-state",
+      "report": "zoom-400-user-chromium.json",
+      "sha256": "6c969795d2c5153e97aa65217dd12aca7597bc9115c4c01134f94c1fe0b74ee8",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 32,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 360,
+        "height": 250
+      }
+    },
+    {
+      "suite": "role-state",
+      "report": "forced-colors-architect-chromium.json",
+      "sha256": "a334912b1faeb45a40c1b996bd022568bfee92b7f4e16ae1bec6eba08e479cc5",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 32,
+      "axeStates": 8,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": {
+        "width": 1024,
+        "height": 768
+      }
+    },
+    {
+      "suite": "special-modes",
+      "report": "text-spacing-and-offline.json",
+      "sha256": "cf0f8c9e4ba154317bf1274f80d7ba5b7cac0a8437c6e413d13277e88a9db778",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 7,
+      "axeStates": 3,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": null
+    },
+    {
+      "suite": "servlet-context",
+      "report": "portfolio-context-after-loader-fix.json",
+      "sha256": "5992edd90fc9a747d23dfb5d99e69532c000d408c5b45286f1ca4fe458aa06b4",
+      "applicationJarSha256": "5559bf41b57704449ede816f71d0e32e6c6cb5d70cf40ecc99cf06b18b4ba0d4",
+      "result": "passed",
+      "checks": 9,
+      "axeStates": 2,
+      "auditError": null,
+      "browserName": "chromium",
+      "effectiveViewport": null
+    }
+  ],
+  "scenarioCount": 11,
+  "checks": 228,
+  "axeStates": 90,
+  "failedScenarios": 0,
+  "axeViolations": 0,
+  "resourceDeltaBetweenCandidates": [
+    "static/js/api/taxonomy-api-client.js"
+  ]
+}

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import test from 'node:test';
 import vm from 'node:vm';
 
 const source = await readFile(
@@ -260,3 +261,156 @@ for (const operation of ['write', 'upload']) {
 }
 
 console.log('Taxonomy canonical API transport and integration mutation tests passed.');
+
+const i18nSource = await readFile(
+  new URL('../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8'
+);
+const surfaceOrigin = 'https://taxonomy.example.test';
+const surfaces = [
+  { global: 'TaxonomyRoleSurface', marker: 'data-taxonomy-role-surface', path: '/js/security/taxonomy-role-surface.js' },
+  { global: 'TaxonomyUiSemantics', marker: 'data-taxonomy-ui-semantics', path: '/js/security/taxonomy-ui-semantics.js' }
+];
+
+async function surfaceHarness({ prefix = '', bootstrap = false, scriptUrl,
+  globals = [], pending = [], i18n } = {}) {
+  const scripts = [];
+  const appended = [];
+  const fetchCalls = [];
+  const createScript = () => {
+    const attributes = new Map();
+    return { src: '', async: true,
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.get(name) ?? null; }
+    };
+  };
+  const document = {
+    documentElement: { lang: 'en' }, cookie: '', currentScript: null,
+    getElementById() { return null; },
+    createElement(tag) { assert.equal(tag, 'script'); return createScript(); },
+    querySelector(selector) {
+      const marker = selector.match(/^script\[([^\]]+)\]$/)?.[1];
+      return marker ? scripts.find(script => script.getAttribute(marker) !== null) || null : null;
+    },
+    dispatchEvent() { return true; },
+    head: { appendChild(script) { scripts.push(script); appended.push(script); return script; } }
+  };
+  const window = {
+    // This unrelated page path must never be guessed as the application prefix.
+    location: new URL(surfaceOrigin + '/unrelated/deep/page?lang=en'),
+    async fetch(input) {
+      fetchCalls.push(String(input));
+      return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+    }
+  };
+  for (const name of globals) window[name] = {};
+  if (i18n !== undefined) window.TaxonomyI18n = i18n;
+  for (const marker of pending) {
+    const script = createScript();
+    script.setAttribute(marker, 'true');
+    scripts.push(script);
+  }
+  const context = vm.createContext({ window, document, URL, Request, Response, Headers,
+    AbortController, DOMException, CustomEvent: TestCustomEvent, setTimeout, clearTimeout, console });
+  context.fetch = (...args) => window.fetch(...args);
+  if (bootstrap) {
+    document.currentScript = { src: surfaceOrigin + prefix + '/js/taxonomy-i18n.js?build=loader-test' };
+    vm.runInContext(i18nSource, context, { filename: 'taxonomy-i18n.js' });
+    await window.TaxonomyI18n.ready();
+    assert.equal(window.TaxonomyI18n.getBasePath(), prefix);
+    assert.deepEqual(fetchCalls, [prefix + '/api/i18n/en'], 'the real URL bootstrap must execute');
+  }
+  document.currentScript = scriptUrl === null ? null
+    : { src: scriptUrl ?? surfaceOrigin + prefix + '/js/api/taxonomy-api-client.js' };
+  return { window, document, scripts, appended,
+    run() { vm.runInContext(source, context, { filename: 'taxonomy-api-client.js' }); } };
+}
+
+function assertSurfaces(app, prefix = '', expected = surfaces) {
+  assert.deepEqual(app.appended.map(script => new URL(script.src, app.window.location.href).href),
+    expected.map(surface => surfaceOrigin + prefix + surface.path));
+  for (const [index, surface] of expected.entries()) {
+    assert.equal(app.appended[index].getAttribute(surface.marker), 'true');
+    assert.equal(app.appended[index].async, false, 'surface execution order stays explicit');
+  }
+}
+
+for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
+  test(`authenticated surfaces prefer the real i18n resolver at ${prefix || '/'}`, async () => {
+    const app = await surfaceHarness({ prefix, bootstrap: true,
+      scriptUrl: surfaceOrigin + '/different-fallback/js/api/taxonomy-api-client.js?revision=7' });
+    app.run();
+    assertSurfaces(app, prefix);
+  });
+  for (const query of ['', '?revision=7&mode=qa']) {
+    test(`authenticated surfaces derive ${prefix || '/'} from the API script${query ? ' with a query' : ''} without i18n`, async () => {
+      const app = await surfaceHarness({ prefix,
+        scriptUrl: surfaceOrigin + prefix + '/js/api/taxonomy-api-client.js' + query });
+      app.run();
+      assertSurfaces(app, prefix);
+    });
+  }
+}
+
+for (const [name, scriptUrl] of [
+  ['missing currentScript', null],
+  ['malformed script URL', 'https://['],
+  ['unrelated script', surfaceOrigin + '/taxonomy/js/api/portfolio-api.js'],
+  ['non-exact filename suffix', surfaceOrigin + '/taxonomy/js/api/taxonomy-api-client.js.extra'],
+  ['extra path after the filename', surfaceOrigin + '/taxonomy/js/api/taxonomy-api-client.js/extra'],
+  ['filename only in the query', surfaceOrigin + '/assets/client.js?next=/taxonomy/js/api/taxonomy-api-client.js'],
+  ['cross-origin script', 'https://elsewhere.example.test/taxonomy/js/api/taxonomy-api-client.js?revision=7'],
+  ['protocol-relative cross-origin script', '//elsewhere.example.test/taxonomy/js/api/taxonomy-api-client.js'],
+  ['prefix resembling a protocol-relative URL', surfaceOrigin + '//elsewhere.example.test/js/api/taxonomy-api-client.js']
+]) {
+  test(`authenticated surfaces keep root URLs for ${name}`, async () => {
+    const app = await surfaceHarness({ scriptUrl });
+    app.run();
+    assertSurfaces(app);
+  });
+}
+
+for (const [name, i18n] of [['missing resolver', {}], ['non-callable resolver', { resolveUrl: 'not a function' }]]) {
+  test(`authenticated surfaces use the script fallback with a ${name}`, async () => {
+    const app = await surfaceHarness({ prefix: '/taxonomy', i18n });
+    app.run();
+    assertSurfaces(app, '/taxonomy');
+  });
+}
+
+for (const surface of surfaces) {
+  test(`authenticated loader respects the existing ${surface.global} global independently`, async () => {
+    const app = await surfaceHarness({ globals: [surface.global] });
+    app.run();
+    assertSurfaces(app, '', surfaces.filter(item => item !== surface));
+  });
+  test(`authenticated loader respects the pending ${surface.marker} script independently`, async () => {
+    const app = await surfaceHarness({ pending: [surface.marker] });
+    app.run();
+    assertSurfaces(app, '', surfaces.filter(item => item !== surface));
+  });
+}
+
+test('authenticated loader skips both loaded globals and mixed loaded/pending surfaces', async () => {
+  for (const existing of [
+    { globals: surfaces.map(surface => surface.global) },
+    { pending: surfaces.map(surface => surface.marker) },
+    { globals: [surfaces[0].global], pending: [surfaces[1].marker] }
+  ]) {
+    const app = await surfaceHarness(existing);
+    app.run();
+    assertSurfaces(app, '', []);
+  }
+});
+
+test('rerunning the full API client never duplicates pending or loaded surface scripts', async () => {
+  const app = await surfaceHarness();
+  app.run();
+  assertSurfaces(app);
+  app.run();
+  assertSurfaces(app);
+  assert.equal(app.scripts.length, 2);
+  for (const surface of surfaces) app.window[surface.global] = {};
+  app.run();
+  assertSurfaces(app);
+  assert.equal(app.scripts.length, 2);
+});

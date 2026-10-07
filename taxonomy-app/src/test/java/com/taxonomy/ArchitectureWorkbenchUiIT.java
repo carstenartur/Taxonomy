@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -148,6 +149,7 @@ class ArchitectureWorkbenchUiIT {
                 .doesNotStartWith("archview.");
         fitAndWait();
         assertDiagramFitsCanvas();
+        assertViewportLayoutAndExportControls();
 
         List<WebElement> nodes = driver.findElements(By.cssSelector(".architecture-node"));
         assertThat(nodes).isNotEmpty();
@@ -213,6 +215,37 @@ class ArchitectureWorkbenchUiIT {
 
         if (Boolean.getBoolean("generateScreenshots")) {
             saveDocumentationScreenshot();
+        }
+    }
+
+    private static void assertViewportLayoutAndExportControls() {
+        Dimension previousSize = driver.manage().window().getSize();
+        try {
+            for (Dimension size : List.of(new Dimension(1366, 768), new Dimension(1024, 768))) {
+                driver.manage().window().setSize(size);
+                wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                        const canvas = document.getElementById('architectureCanvasShell').getBoundingClientRect();
+                        const details = document.querySelector('.workbench-detail-panel').getBoundingClientRect();
+                        return canvas.height > 0 && canvas.bottom <= innerHeight + 1
+                            && details.bottom <= innerHeight + 1
+                            && document.documentElement.scrollWidth <= innerWidth + 1;
+                        """)));
+                fitAndWait();
+                assertDiagramFitsCanvas();
+            }
+            WebElement exports = driver.findElement(By.cssSelector("#architectureExportOptions > summary"));
+            exports.sendKeys(Keys.ENTER);
+            for (String id : List.of("downloadArchitectureSvg", "downloadArchitecturePdf",
+                    "downloadArchitectureWord", "downloadDecisionWord",
+                    "downloadArchitectureArchiMate", "downloadArchitectureVisio")) {
+                assertThat(driver.findElement(By.id(id)).isDisplayed()).as("Export control %s", id).isTrue();
+            }
+            exports.sendKeys(Keys.ESCAPE);
+            assertThat(driver.findElement(By.id("architectureExportOptions")).getDomAttribute("open")).isNull();
+            assertThat(driver.switchTo().activeElement()).isEqualTo(exports);
+        } finally {
+            driver.manage().window().setSize(previousSize);
+            fitAndWait();
         }
     }
 

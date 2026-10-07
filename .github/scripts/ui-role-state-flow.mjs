@@ -308,8 +308,11 @@ export async function runRoleStateFlow({
         && operations.contains(document.getElementById('contextBar'))),
       secondaryCollapsed: Boolean(secondary && !secondary.open),
       secondaryContainsExpertTools: Boolean(secondary
-        && secondary.contains(document.getElementById('searchPanel'))
-        && secondary.contains(document.getElementById('llmCommLog')))
+        && secondary.contains(document.getElementById('gapAnalysisPanel'))
+        && secondary.contains(document.getElementById('llmCommLog'))),
+      searchBesideCatalogue: Boolean(document.getElementById('leftPanel')
+        ?.contains(document.getElementById('searchPanel'))
+        && !secondary?.contains(document.getElementById('searchPanel')))
     };
   });
   assert(taskSurface.progressVisible, 'Explicit analysis task progression is not visible');
@@ -338,6 +341,8 @@ export async function runRoleStateFlow({
     'Operational status must be collapsed by default while retaining original detail surfaces');
   assert(taskSurface.secondaryCollapsed && taskSurface.secondaryContainsExpertTools,
     'Secondary analysis tools must be collapsed by default and remain available');
+  assert(taskSurface.searchBesideCatalogue,
+    'Catalogue search must be discoverable beside its results, outside secondary analysis tools');
   taskMeasurements.timeToPrimaryActionMs = Date.now() - taskStartedAt;
   taskMeasurements.preTaskViewportPixels = Math.max(0, Math.round(taskSurface.progressTop));
   taskMeasurements.preTaskViewportRatio = Number((Math.max(0, taskSurface.progressTop)

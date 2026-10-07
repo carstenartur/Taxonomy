@@ -3,6 +3,7 @@ import path from 'node:path';
 import { navigateToPage } from './ui-role-fixtures.mjs';
 import { runDiagramKeyboardWorkflow } from './ui-diagram-keyboard-workflow.mjs';
 import { runWorkbenchPrintWorkflow } from './ui-workbench-print-workflow.mjs';
+import { runMainContextLayoutWorkflow, runReviewNavigationWorkflow, runWorkbenchContextLayoutWorkflow } from './ui-context-layout-workflow.mjs';
 
 /** Browser acceptance for the locale and report-state corrections.
  * API fixtures are intentionally local to this journey; templates, scripts,
@@ -30,6 +31,8 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     await expect(page.locator('#searchInput')).toHaveAttribute('aria-label', 'Suchanfrage');
     evidence.passed('explicit German link overrides stale English preference for SSR, dynamic locale and accessible names');
     await navigateToPage(page, 'analyze');
+    await runMainContextLayoutWorkflow({ page, evidence });
+    await runReviewNavigationWorkflow({ page, evidence });
 
     await page.locator('#analysisSecondaryTools').evaluate(element => { element.open = true; });
     await page.locator('#searchPanel').evaluate(element => { element.open = true; });
@@ -192,6 +195,7 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     await evidence.axeState('qa-german-architecture-workbench', '.workbench-grid');
     await evidence.saveRequiredViewportState('qa-german-architecture-workbench', '.workbench-grid');
     evidence.passed('German workbench controls and keyboard-selected detail labels preserve original source content');
+    await runWorkbenchContextLayoutWorkflow({ page, evidence });
     await runWorkbenchPrintWorkflow({ page, evidence, outputDir });
 
     // Inspect authenticated server-rendered attributes without triggering unrelated

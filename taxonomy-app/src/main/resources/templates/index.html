@@ -147,7 +147,7 @@
 
         <!-- Left: Taxonomy tree (hidden on full-width tabs) -->
         <div id="leftPanel" class="col-lg-7">
-            <div class="card shadow-sm h-100">
+            <div class="card shadow-sm">
                 <div class="card-header taxonomy-view-header">
                     <span class="fw-semibold" th:text="#{browse.title}">Taxonomy Browser</span>
                     <span id="analysisDurationDisplay" class="small text-muted" hidden></span>
@@ -183,6 +183,42 @@
                         </div>
                     </div>
                 </div>
+                <!-- Search Panel -->
+                <details id="searchPanel" class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.search.title}">&#128269; Search Taxonomy</summary>
+                    <div class="mt-2">
+                        <div class="row g-2 mx-0 mb-2">
+                            <div class="col d-flex gap-1">
+                                <input type="text" id="searchInput" class="form-control form-control-sm"
+                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query"/>
+                                <button id="searchClearBtn" class="btn btn-sm btn-outline-secondary" type="button" hidden
+                                        th:title="#{search.clear}" th:aria-label="#{search.clear}" aria-label="Clear search">×</button>
+                            </div>
+                        </div>
+                        <div class="row g-2 mx-0 mb-2">
+                            <div class="col-6">
+                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode">
+                                    <option value="fulltext" th:text="#{search.mode.fulltext}">Full-text</option>
+                                    <option value="semantic" th:text="#{search.mode.semantic}">Semantic</option>
+                                    <option value="hybrid" th:text="#{search.mode.hybrid}">Hybrid</option>
+                                    <option value="graph" th:text="#{search.mode.graph}">Graph</option>
+                                </select>
+                            </div>
+                            <div class="col-3">
+                                <select id="searchMaxResults" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.max_results}" aria-label="Max results">
+                                    <option value="10">10</option>
+                                    <option value="20" selected>20</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
+                            <div class="col-3">
+                                <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
+                            </div>
+                        </div>
+                        <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
+                    </div>
+                </details>
+
                 <div class="card-body overflow-auto" style="max-height:82vh;">
                     <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
                         <div class="text-center text-muted py-5">
@@ -210,7 +246,7 @@
                     <div class="card-header fw-semibold" th:text="#{analyze.card.title}">Business Requirement Analysis</div>
                     <div class="card-body">
                         <label for="businessText" class="form-label" th:text="#{analyze.input.description}">
-                            Describe the business requirement or capability need:
+                            Business requirement or capability need:
                         </label>
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   th:placeholder="#{analyze.placeholder}" placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
@@ -287,42 +323,6 @@
 
                 <!-- Status / error messages -->
                 <div id="statusArea"></div>
-
-                <!-- Search Panel -->
-                <details id="searchPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.search.title}">&#128269; Search Taxonomy</summary>
-                    <div class="mt-2">
-                        <div class="row g-2 mx-0 mb-2">
-                            <div class="col d-flex gap-1">
-                                <input type="text" id="searchInput" class="form-control form-control-sm"
-                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query"/>
-                                <button id="searchClearBtn" class="btn btn-sm btn-outline-secondary" type="button" hidden
-                                        th:title="#{search.clear}" th:aria-label="#{search.clear}" aria-label="Clear search">×</button>
-                            </div>
-                        </div>
-                        <div class="row g-2 mx-0 mb-2">
-                            <div class="col-6">
-                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode">
-                                    <option value="fulltext" th:text="#{search.mode.fulltext}">Full-text</option>
-                                    <option value="semantic" th:text="#{search.mode.semantic}">Semantic</option>
-                                    <option value="hybrid" th:text="#{search.mode.hybrid}">Hybrid</option>
-                                    <option value="graph" th:text="#{search.mode.graph}">Graph</option>
-                                </select>
-                            </div>
-                            <div class="col-3">
-                                <select id="searchMaxResults" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.max_results}" aria-label="Max results">
-                                    <option value="10">10</option>
-                                    <option value="20" selected>20</option>
-                                    <option value="50">50</option>
-                                </select>
-                            </div>
-                            <div class="col-3">
-                                <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
-                            </div>
-                        </div>
-                        <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
-                    </div>
-                </details>
 
                 <!-- Analysis log panel (collapsible) -->
                 <details id="analysisLog" class="mt-2" style="display:none;">
@@ -1018,11 +1018,11 @@
 
                 <div class="row g-3">
                     <!-- Left: Editor -->
-                    <div class="col-lg-7">
+                    <div class="col-lg-8">
                         <div class="card shadow-sm mb-3">
-                            <div class="card-header d-flex justify-content-between align-items-center">
+                            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <span class="fw-semibold" th:text="#{dsl.editor.title}">&#128221; Architecture DSL Editor</span>
-                                <div class="d-flex gap-1">
+                                <div class="d-flex gap-1 flex-wrap">
                                     <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.load.title}" title="Load current architecture as DSL" th:text="#{dsl.btn.load.text}">&#128260; Load Current</button>
                                     <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" th:title="#{dsl.btn.parse.title}" title="Parse DSL and show structure" th:text="#{dsl.btn.parse.text}">&#128269; Parse</button>
                                     <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" th:title="#{dsl.btn.validate.title}" title="Validate DSL for errors" th:text="#{dsl.btn.validate.text}">&#9989; Validate</button>
@@ -1047,7 +1047,7 @@
                     </div>
 
                     <!-- Right: Version Control -->
-                    <div class="col-lg-5">
+                    <div class="col-lg-4">
 
                         <!-- Status -->
                         <div id="dslStatusArea" class="alert alert-info py-2 small mb-2 d-none"></div>
@@ -1741,7 +1741,7 @@
 (function () {
     'use strict';
     var PAGES = ['analyze', 'architecture', 'graph', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
-    var FULL_WIDTH_PAGES = ['versions', 'help', 'admin', 'preferences'];
+    var FULL_WIDTH_PAGES = ['versions', 'dsl-editor', 'help', 'admin', 'preferences'];
     var ARCH_SUB_TABS = ['arch-overview', 'arch-relations', 'arch-export'];
 
     // Map removed top-level pages to architecture sub-tabs for backward compatibility

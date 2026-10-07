@@ -24,49 +24,44 @@
     <a class="navbar-brand" th:href="@{/projects}" href="/projects" th:text="#{workbench.ui.brand}">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <a class="btn btn-sm btn-outline-light" th:href="@{/architecture/editor}" th:text="#{editor.title}">Architecture editor</a>
-        <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button" th:text="#{workbench.ui.svg}">
-            Download SVG
-        </button>
-        <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button" th:text="#{workbench.ui.pdf}">
-            Download PDF
-        </button>
         <button id="printArchitectureView" class="btn btn-sm btn-outline-light" type="button" disabled
                 th:title="#{workbench.ui.printTitle}" title="Print the displayed diagram, provenance and selection details"
                 th:text="#{workbench.ui.print}">Print view</button>
-        <button id="downloadArchitectureWord" class="btn btn-sm btn-outline-light" type="button"
-                th:text="#{workbench.download.architectureWord}">Architecture Word</button>
-        <button id="downloadDecisionWord" class="btn btn-sm btn-outline-light" type="button"
-                th:text="#{workbench.download.decisionWord}">Decision Word</button>
-        <div class="d-flex align-items-center gap-2 flex-wrap"
-             role="group"
-             th:attr="aria-label=#{workbench.ui.exports}" aria-label="Experimental architecture export formats">
-            <span id="experimentalExportBadge" class="badge text-bg-secondary" th:text="#{workbench.ui.experimental}">
-                Experimental
-            </span>
-            <button id="downloadArchitectureArchiMate"
-                    class="btn btn-sm btn-outline-info"
-                    type="button"
-                    aria-describedby="experimentalExportBadge architectureExchangeProfile"
-                    disabled
-                    th:title="#{workbench.ui.archimateTitle}" title="ArchiMate 3.1 XML, mapping profile and loss manifest; independent-tool acceptance pending" th:text="#{workbench.ui.archimate}">
-                Download ArchiMate + manifest
-            </button>
-            <button id="downloadArchitectureVisio"
-                    class="btn btn-sm btn-outline-info"
-                    type="button" disabled
-                    aria-describedby="experimentalExportBadge visioExportProfile"
-                    th:title="#{workbench.ui.visioTitle}" title="VSDX with stable identities, mapping and loss manifest; Microsoft Visio desktop certification pending" th:text="#{workbench.ui.visio}">
-                Download Visio + manifest
-            </button>
-            <small id="visioExportProfile" class="text-light" th:text="#{workbench.ui.visioProfile}">visio-2012-opc-supported-subset-v2 · up to 10,000 elements / 30,000 relationships</small>
-        </div>
+        <details id="architectureExportOptions" class="workbench-export-options">
+            <summary class="btn btn-sm btn-outline-light" th:text="#{workbench.ui.exportMenu}">Export</summary>
+            <div class="workbench-export-content">
+                <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button" th:text="#{workbench.ui.svg}">Download SVG</button>
+                <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button" th:text="#{workbench.ui.pdf}">Download PDF</button>
+                <button id="downloadArchitectureWord" class="btn btn-sm btn-outline-light" type="button"
+                        th:text="#{workbench.download.architectureWord}">Architecture Word</button>
+                <button id="downloadDecisionWord" class="btn btn-sm btn-outline-light" type="button"
+                        th:text="#{workbench.download.decisionWord}">Decision Word</button>
+                <div class="d-grid gap-2" role="group"
+                     th:attr="aria-label=#{workbench.ui.exports}" aria-label="Experimental architecture export formats">
+                    <span id="experimentalExportBadge" class="badge text-bg-secondary" th:text="#{workbench.ui.experimental}">Experimental</span>
+                    <button id="downloadArchitectureArchiMate" class="btn btn-sm btn-outline-info" type="button"
+                            aria-describedby="experimentalExportBadge architectureExchangeProfile" disabled
+                            th:title="#{workbench.ui.archimateTitle}" title="ArchiMate 3.1 XML, mapping profile and loss manifest; independent-tool acceptance pending"
+                            th:text="#{workbench.ui.archimate}">Download ArchiMate + manifest</button>
+                    <p id="architectureExchangeProfile" class="small mb-0">
+                        <span th:text="#{workbench.ui.profile}">Experimental ArchiMate profile:</span> <code th:text="${archimateMappingProfile}">taxonomy-archimate-3.1-v2</code>.
+                        <span th:text="#{workbench.ui.profileHelp}">Includes XML, mappings and a report of transformed or omitted data.</span>
+                    </p>
+                    <button id="downloadArchitectureVisio" class="btn btn-sm btn-outline-info" type="button" disabled
+                            aria-describedby="experimentalExportBadge visioExportProfile"
+                            th:title="#{workbench.ui.visioTitle}" title="VSDX with stable identities, mapping and loss manifest; Microsoft Visio desktop certification pending"
+                            th:text="#{workbench.ui.visio}">Download Visio + manifest</button>
+                    <small id="visioExportProfile" th:text="#{workbench.ui.visioProfile}">visio-2012-opc-supported-subset-v2 · up to 10,000 elements / 30,000 relationships</small>
+                </div>
+            </div>
+        </details>
     </div>
 </header>
 
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…
 </div>
-<div id="architectureAlert" class="alert alert-danger m-3 d-none" role="alert"></div>
+<div id="architectureAlert" class="alert alert-danger m-3 d-none" role="alert" tabindex="0"></div>
 
 <main class="workbench-grid">
     <section class="workbench-canvas-panel" aria-labelledby="architectureTitle">
@@ -77,10 +72,7 @@
                     <span class="badge text-bg-secondary" th:text="#{workbench.ui.readonly}">Read-only snapshot</span>
                 </div>
                 <p id="architectureProvenance" class="text-muted small mb-0 mt-1"></p>
-                <p id="architectureExchangeProfile" class="text-muted small mb-0 mt-1">
-                    <span th:text="#{workbench.ui.profile}">Experimental ArchiMate profile:</span> <code th:text="${archimateMappingProfile}">taxonomy-archimate-3.1-v2</code>.
-                    <span th:text="#{workbench.ui.profileHelp}">Includes XML, mappings and a report of transformed or omitted data.</span>
-                </p>
+
             </div>
             <div id="architectureKpis" class="architecture-kpis" th:attr="aria-label=#{workbench.ui.summary}" aria-label="Architecture summary">
                 <span class="architecture-kpi"><span aria-hidden="true">🎯</span><span id="directKpi" th:text="'0 ' + #{workbench.ui.direct}">0 direct</span></span>
