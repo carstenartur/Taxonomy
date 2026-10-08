@@ -220,14 +220,7 @@ final class ReleaseOrchestrationChecks {
         });
         add(cases, "admission precedes dispatch and protected merge remains unchanged", () -> {
             String w = Files.readString(root.resolve(".github/workflows/protected-release-main-advance.yml"));
-            require(w.indexOf("run: bash \"$RUNNER_TEMP/check-release-pr-gates.sh\" preflight")
-                    < w.indexOf("gh workflow run ci-cd.yml"), "Late admission check");
-            require(w.indexOf("cp .github/scripts/check-release-pr-gates.sh")
-                    < w.indexOf("git checkout --detach \"$EXPECTED_SHA\""), "Helper not preserved from authoritative main");
-            require(w.contains("gh pr merge \"$PR_NUMBER\" --rebase --match-head-commit \"$EXPECTED_SHA\""), "Missing protected merge");
-            require(w.contains("gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast"), "Missing required gate watch");
-            require(w.contains("check-release-history") && w.contains("--main-commit \"$merged_sha\""), "Missing history verification");
-            require(!w.contains("--admin") && !w.contains("2>/dev/null"), "Unsafe merge or hidden diagnostics");
+            verifyWorkflowWiring(w);
         });
         add(cases, "contradictory pending exit cannot certify final success", () -> {
             try (Fixture f = new Fixture(root)) {
@@ -247,7 +240,56 @@ final class ReleaseOrchestrationChecks {
                 bad(f.canonical(), "different source");
             }
         });
+        add(cases, "newer other-branch run cannot mask exact staging evidence", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.env.put("OTHER_BRANCH_RUN", "true");
+                Result r = f.canonical(); good(r); noDispatch(r);
+                require(r.outputs().contains("run_id=42"), r.outputs());
+            }
+        });
+        add(cases, "only other-branch evidence still dispatches staging CI once", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.env.put("OTHER_BRANCH_RUN", "true");
+                f.put("run-ids", "\n42\n42\n");
+                Result r = f.canonical(); good(r);
+                require(count(r.calls(), "workflow run ci-cd.yml") == 1, r.calls());
+            }
+        });
+        add(cases, "missing early admission command is detected", () -> {
+            String w = Files.readString(root.resolve(".github/workflows/protected-release-main-advance.yml"));
+            expectWiringFailure(w.replace("run: bash \"$RUNNER_TEMP/check-release-pr-gates.sh\" preflight", "# removed preflight"));
+        });
+        add(cases, "missing helper preservation command is detected", () -> {
+            String w = Files.readString(root.resolve(".github/workflows/protected-release-main-advance.yml"));
+            expectWiringFailure(w.replace("cp .github/scripts/check-release-pr-gates.sh", "# removed helper copy"));
+        });
         return cases;
+    }
+
+    private static void expectWiringFailure(String workflow) {
+        try {
+            verifyWorkflowWiring(workflow);
+        } catch (AssertionError expected) {
+            return;
+        }
+        throw new AssertionError("Missing required workflow command was accepted");
+    }
+
+    private static void verifyWorkflowWiring(String w) {
+        requireBefore(w, "run: bash \"$RUNNER_TEMP/check-release-pr-gates.sh\" preflight",
+                "gh workflow run ci-cd.yml", "Late or missing admission check");
+        requireBefore(w, "cp .github/scripts/check-release-pr-gates.sh",
+                "git checkout --detach \"$EXPECTED_SHA\"", "Helper not preserved from authoritative main");
+        require(w.contains("gh pr merge \"$PR_NUMBER\" --rebase --match-head-commit \"$EXPECTED_SHA\""), "Missing protected merge");
+        require(w.contains("gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast"), "Missing required gate watch");
+        require(w.contains("check-release-history") && w.contains("--main-commit \"$merged_sha\""), "Missing history verification");
+        require(!w.contains("--admin") && !w.contains("2>/dev/null"), "Unsafe merge or hidden diagnostics");
+    }
+
+    private static void requireBefore(String text, String first, String second, String diagnostic) {
+        int before = text.indexOf(first);
+        int after = text.indexOf(second);
+        require(before >= 0 && after >= 0 && before < after, diagnostic);
     }
 
     private static void add(List<Case> cases, String name, Body body) { cases.add(new Case(name, body)); }
@@ -305,6 +347,8 @@ final class ReleaseOrchestrationChecks {
             put("runs", pages(run(1, 1, "success")));
             put("canonical-before", ReleaseOrchestrationChecks.canonical(SHA, "completed", "\"success\""));
             put("canonical-after", ReleaseOrchestrationChecks.canonical(SHA, "completed", "\"success\""));
+            put("canonical-other", ReleaseOrchestrationChecks.canonical(SHA, "completed", "\"success\"")
+                    .replace("release-temp-1.4.1", "other-branch").replace("\"id\":42", "\"id\":99"));
             put("run-ids", "42\n42\n42\n");
             put("summary", ""); put("outputs", ""); put("calls", "");
             put("gh", """
@@ -326,10 +370,20 @@ final class ReleaseOrchestrationChecks {
                       [[ "${API_EXIT:-0}" == 0 ]] || exit "$API_EXIT"
                       cat "$FIXTURE/runs"
                     elif [[ "$1" == api && "$*" == *'actions/runs/'* ]]; then
-                      n=$(step canonical)
-                      if [[ "$n" == 1 ]]; then cat "$FIXTURE/canonical-before"; else cat "$FIXTURE/canonical-after"; fi
+                      if [[ "$*" == *'actions/runs/99'* ]]; then
+                        cat "$FIXTURE/canonical-other"
+                      else
+                        n=$(step canonical)
+                        if [[ "$n" == 1 ]]; then cat "$FIXTURE/canonical-before"; else cat "$FIXTURE/canonical-after"; fi
+                      fi
                     elif [[ "$1 $2" == 'run list' ]]; then
-                      n=$(step lists); sed -n "${n}p" "$FIXTURE/run-ids"
+                      # Model GitHub filtering before applying --limit 1. An
+                      # unfiltered list sees a newer run at the same SHA on another branch.
+                      if [[ "${OTHER_BRANCH_RUN:-false}" == true && " $* " != *" --branch $TEMP_BRANCH "* ]]; then
+                        echo 99
+                      else
+                        n=$(step lists); sed -n "${n}p" "$FIXTURE/run-ids"
+                      fi
                     elif [[ "$1 $2" == 'run watch' ]]; then
                       exit "${WATCH_EXIT:-0}"
                     elif [[ "$1 $2" == 'workflow run' ]]; then
