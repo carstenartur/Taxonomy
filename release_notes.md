@@ -1,10 +1,14 @@
 # Taxonomy 1.4.1
 
-Taxonomy 1.4.1 is the first published release after 1.3.0. It combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, an authoritative recoverable Copilot session, a versioned Information Product catalogue overlay, bounded concrete-product analysis, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
+These are the unpublished source-line notes for Taxonomy 1.4.1, not evidence of a completed release. The source combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, an authoritative recoverable Copilot session, a versioned Information Product catalogue overlay, bounded concrete-product analysis, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
 
 ## Important release-line note
 
-The immutable `v1.3.1` and `v1.4.0` Git tags record unpublished release attempts. Neither version has published GitHub Release assets or is a supported deployment target. The 1.4.0 build passed, but publication stopped when `main` advanced during the release transaction. Version 1.4.1 starts a new transaction from the current source and includes the subsequently merged analysis changes. Existing installations should upgrade directly from the published 1.3.0 assets to 1.4.1. Both earlier tags and the existing branch history remain unchanged.
+Publication status checked on **8 October 2026**: the latest stable GitHub Release is **1.3.0**, published on **3 August 2026**. The `v1.4.1` tag exists, but the release transaction stopped before publication; a tag or green component build is not an installable, verified release. Earlier unpublished `v1.3.1` and `v1.4.0` tags likewise remain historical attempts. Do not deploy any of these tags as a substitute for verified release assets.
+
+The owner has authorized **1.5.0** as an alternative next release. That requires a coherent `1.5.0-SNAPSHOT` preparation, version-aligned notes, a separately anchored release request and the normal release gates. This notes correction does not perform that transition, restart 1.4.1 or establish 1.5.0 readiness. The heading still names the existing 1.4.1 source line; the immutable tags and their historical notes remain unchanged.
+
+Feature descriptions below retain their documented scope. A merged implementation slice, a closed foundation issue or a passing selected test must not be read as completion of its broader programme. Publication, feature acceptance and target-product compatibility are separate claims.
 
 ## Product highlights
 
@@ -97,7 +101,7 @@ synchronization and conditional publication remain unimplemented. See the
 [English](docs/features/sparx-integration.md) or
 [German](docs/features/sparx-integration-de.md) guide before evaluating the profile.
 
-### Complete project and requirement portfolio workflow
+### Project and requirement portfolio workflows
 
 The portfolio workbench supports a traceable end-to-end process rather than isolated screens:
 
@@ -130,6 +134,8 @@ The session workflow includes:
 - persisted, addressable failure evidence when a saved requirement exceeds the configured prompt budget.
 
 A PostgreSQL/Testcontainers browser acceptance performs one coherent session with cancellation, forced restart, a transient poll failure, reload recovery, result navigation, real exports, OOXML validation, cross-format evidence checks, responsive controls, and a server-owned oversized-prompt failure.
+
+This Copilot-session scope does not establish completion of the separate durable ad-hoc synchronous/SSE operation and replay work in [#808](https://github.com/carstenartur/Taxonomy/issues/808). Likewise, the portfolio Git operations above are not a claim that every portable installation backup, database-to-database restore or external Git reintegration scenario in [#1146](https://github.com/carstenartur/Taxonomy/issues/1146) is accepted.
 
 ### Versioned Information Product overlay and bounded concrete-product analysis
 
@@ -302,7 +308,9 @@ Missing, failed, cancelled, unexpectedly skipped, timed-out, mismatched, or unre
 
 The 1.4.1 release train removes six previously baselined findings: the WebDAV write-scope authorization dataflow, two unbounded semantic-search arithmetic paths, and three predictable temporary-evidence paths in JavaScript tooling.
 
-Eight pre-existing findings remain in a schema-validated migration baseline. Every entry is bound to its exact rule, artifact path, CodeQL primary-location fingerprint, rationale, and tracking issue. No complete rule class, severity, or path is excluded, and a new occurrence of an otherwise baselined rule remains release-blocking. The remaining entries cover the typed-request migration for the proposal bulk compatibility endpoint, a consistent non-disclosing repository/context logging contract, and replacement of startup-log delivery for a generated local bootstrap password. They remain tracked in issue #857 and must not be described as remediated in 1.4.1.
+At the reviewed source `f47c0497dfee663de6a0e865ecfd99bc2151b8b8`, the checked-in [CodeQL baseline](.github/codeql-sarif-baseline.json) contains **3 entries**, all for `java/user-controlled-bypass` in `ProposalApiController`. Each records an exact primary-location fingerprint and a rationale referring to service-side context, authorization and expected-head checks. A retained entry is neither proof of an exploitable bypass nor a claim that the finding disappeared. Further work is tracked in [#857](https://github.com/carstenartur/Taxonomy/issues/857).
+
+The earlier count of eight and its list of remaining logging/bootstrap-password findings are not the current baseline inventory. No complete rule class, severity or path is excluded. New occurrences still require the normal exact-fingerprint review and release gates; the eventual release source must be checked again rather than inheriting this count from prose.
 
 ### Immutable, digest-bound delivery
 
@@ -319,7 +327,9 @@ The release transaction aligns source and deployment evidence:
 
 Maven remains the canonical verification entry point. Deterministic repository policy is owned by JUnit/Failsafe or dependency-free Java tooling, including workflow test authority, documentation links, aggregate reactor coverage, dependency alignment, immutable supply-chain references, packaged dependency hygiene, frontend API boundaries, release version state, request ancestry, CodeQL SARIF enforcement, and SBOM/VEX companion generation.
 
-A bounded set of existing Python release adapters and evidence generators remains in 1.4.1 under Maven/JUnit-owned positive and negative contracts. Complete removal is explicitly deferred to issue #673 after this release. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
+A bounded set of existing Python release adapters and evidence generators remains in 1.4.1 under Maven/JUnit-owned positive and negative contracts. Remaining adapter migration and release-manifest work is tracked in [#629](https://github.com/carstenartur/Taxonomy/issues/629); [#673](https://github.com/carstenartur/Taxonomy/issues/673) was closed for delivered foundations only, not for complete Python removal. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
+
+The Java/Maven-only reproducibility requirement is **not yet fulfilled**. The current [Maven verification inventory](docs/dev/MAVEN_VERIFICATION.md) lists remaining container/Helm prerequisites, checks outside root `verify`, conditional integration lanes and post-test evidence rules. Neither the `ci` profile alone nor `test-local` proves all Actions checks were reproduced. This is a known delivery gap, not a passed release criterion.
 
 ## Compatibility and deliberate exclusions
 
@@ -339,14 +349,16 @@ A bounded set of existing Python release adapters and evidence generators remain
 - Autosave-session grouping and long-history/template-count performance work remain follow-up items.
 - `ADMIN_PASSWORD` is a separate machine token and is not the local form-login password; production installations that use both must configure distinct values.
 - Local semantic embeddings and runtime model download are disabled unless explicitly enabled.
-- Complete Python removal is deferred to #673 after 1.4.1.
+- Complete Python removal and the remaining release-manifest implementation are open in #629; the closed foundation issue #673 must not be used as proof of completion.
 - The small Kubernetes profile is not a measured production capacity envelope.
 - The unpublished `v1.3.1` and `v1.4.0` tags must not be used as substitutes for 1.4.1 release assets.
 
 ## Upgrade notes
 
+These are preparation requirements for an eventual verified release, not an instruction to install the unpublished 1.4.1 tag. A 1.5.0 release must first align and verify these version-specific instructions against its own source, artifacts and upgrade tests.
+
 1. Back up the application database and persistent storage using the normal operational procedure.
-2. Upgrade directly from the published 1.3.0 assets to 1.4.1.
+2. Keep existing installations on their supported, verified release until a successor is actually published. Validate the intended upgrade from 1.3.0 on a restorable copy; do not infer upgrade acceptance from a successful fresh install.
 3. After the first 1.4.1 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
 4. Existing or newly uploaded Word templates containing comments, tracked changes, hidden text, custom XML, personal/workstation properties, unsupported Taxonomy token placements, or other rejected constructs must be cleaned in Word before Taxonomy will activate them.
 5. Configure a trusted external HTTPS origin before enabling direct Word/WebDAV actions, and create scoped WebDAV application credentials for users who require them.
@@ -354,7 +366,7 @@ A bounded set of existing Python release adapters and evidence generators remain
 7. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
 8. Review the bilingual configuration reference before carrying forward environment values. Production Compose forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
 9. Review every provisional Information Product mapping and every AI-generated decision before treating it as organisational or procurement authority.
-10. Deploy the immutable 1.4.1 image digest or verified release tag; do not deploy `latest`, `v1.3.1` or `v1.4.0`.
+10. Deploy only an immutable digest whose source, version and scan evidence match an actually published GitHub Release. Do not deploy `latest` or an unpublished attempt tag, including `v1.4.1`.
 11. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml`, verify `/taxonomy/actuator/health/readiness`, and exercise the prefixed login/password-replacement path.
 12. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
 13. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
