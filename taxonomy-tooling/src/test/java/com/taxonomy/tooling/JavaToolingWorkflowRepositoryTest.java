@@ -50,6 +50,7 @@ class JavaToolingWorkflowRepositoryTest {
                 "permissions:\n"
                         + "  actions: write\n"
                         + "  checks: read\n"
+                        + "  statuses: read\n"
                         + "  contents: write\n"
                         + "  pull-requests: write");
         assertThat(releaseWorkflow)
@@ -204,33 +205,68 @@ class JavaToolingWorkflowRepositoryTest {
         String workflow = read(root.resolve(
                 ".github/workflows/protected-release-main-advance.yml"));
 
+        String helper = read(root.resolve(".github/scripts/check-release-pr-gates.sh"));
+        String admission = "- name: Check workflow admission before expensive verification";
         String canonical = "- name: Run canonical verification on exact snapshot";
         String completeGates =
                 "- name: Wait for complete protected-main pull-request gates";
-        String registration = "required_count=0";
+        String registration = "bash \"$RUNNER_TEMP/check-release-pr-gates.sh\" preflight";
         String watch =
                 "gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast";
+        String verify = "bash \"$RUNNER_TEMP/check-release-pr-gates.sh\" verify";
         String merge = "- name: Merge through protected main";
+        String copy = "cp .github/scripts/check-release-pr-gates.sh "
+                + "\"$RUNNER_TEMP/check-release-pr-gates.sh\"";
+        String checkout = "git checkout --detach \"$EXPECTED_SHA\"";
 
         assertThat(workflow)
+                .contains(copy)
+                .contains(checkout)
+                .contains(admission)
                 .contains(canonical)
                 .contains(completeGates)
                 .contains(registration)
-                .contains("--json name,bucket,state")
-                .contains("checks_exit=$?")
-                .contains("checks_exit\" -eq 8")
-                .contains("No required PR checks were registered for #$PR_NUMBER")
                 .contains(watch)
+                .contains(verify)
                 .contains(merge)
-                .contains("head_before=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
-                .contains("head_after=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
                 .contains("gh pr merge \"$PR_NUMBER\" --rebase --match-head-commit \"$EXPECTED_SHA\"");
-        assertThat(workflow.indexOf(canonical))
-                .isLessThan(workflow.indexOf(completeGates));
-        assertThat(workflow.indexOf(registration))
-                .isLessThan(workflow.indexOf(watch));
-        assertThat(workflow.indexOf(watch))
-                .isLessThan(workflow.indexOf(merge));
+        assertThat(workflow.indexOf(copy)).isLessThan(workflow.indexOf(checkout));
+        assertThat(workflow.indexOf(admission)).isLessThan(workflow.indexOf(canonical));
+        assertThat(workflow.indexOf(registration)).isLessThan(workflow.indexOf(canonical));
+        assertThat(workflow.indexOf(canonical)).isLessThan(workflow.indexOf(completeGates));
+        assertThat(workflow.indexOf(completeGates)).isLessThan(workflow.indexOf(merge));
+
+        // The registration loop moved into the preserved helper. Verify both
+        // call sites and the fail-closed contract there, not obsolete inline code.
+        String gates = workflow.substring(workflow.indexOf(completeGates), workflow.indexOf(merge));
+        String before = "head_before=$(gh pr view \"$PR_NUMBER\" --json headRefOid";
+        String after = "head_after=$(gh pr view \"$PR_NUMBER\" --json headRefOid";
+        assertThat(gates)
+                .contains(before)
+                .contains(registration)
+                .contains(watch)
+                .contains(verify)
+                .contains(after)
+                .contains("test \"$head_before\" = \"$EXPECTED_SHA\"")
+                .contains("test \"$head_after\" = \"$EXPECTED_SHA\"");
+        assertThat(gates.indexOf(before)).isLessThan(gates.indexOf(registration));
+        assertThat(gates.indexOf(registration)).isLessThan(gates.indexOf(watch));
+        assertThat(gates.indexOf(watch)).isLessThan(gates.indexOf(verify));
+        assertThat(gates.indexOf(verify)).isLessThan(gates.indexOf(after));
+
+        assertThat(helper)
+                .contains("--required --json name,bucket,state,link")
+                .contains("status=$?")
+                .contains("\"$status\" == 8")
+                .contains("\"$(jq 'length' <<< \"$latest\")\" -gt 0")
+                .contains("\"$(jq 'length' <<< \"$checks\")\" -gt 0")
+                .contains("Workflow runs or required checks have not registered")
+                .contains(".conclusion == \"action_required\"")
+                .contains("Approve workflows to run")
+                .contains(".state == \"OPEN\" and .baseRefName == \"main\" and .headRefOid == $sha")
+                .contains("all(.[]; .bucket == \"pass\")")
+                .contains("required checks are still pending")
+                .doesNotContain("2>/dev/null");
     }
 
     private static int count(String text, String needle) {

@@ -29,6 +29,7 @@ on:
 permissions:
   actions: write
   checks: read
+  statuses: read
   contents: write
   pull-requests: write
 
@@ -71,6 +72,7 @@ jobs:
             exit 1
           fi
           cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
+          cp .github/scripts/check-release-pr-gates.sh "$RUNNER_TEMP/check-release-pr-gates.sh"
 
       - name: Validate immutable handoff
         env:
@@ -162,6 +164,14 @@ jobs:
           }
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
 
+      - name: Check workflow admission before expensive verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        shell: bash
+        run: bash "$RUNNER_TEMP/check-release-pr-gates.sh" preflight
+
       - name: Run canonical verification on exact snapshot
         id: canonical
         env:
@@ -171,30 +181,56 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run ci-cd.yml --ref "$TEMP_BRANCH"
-
-          run_id=""
-          for _ in $(seq 1 60); do
-            run_id=$(gh run list \
-              --workflow ci-cd.yml \
-              --event workflow_dispatch \
-              --commit "$EXPECTED_SHA" \
-              --limit 20 \
-              --json databaseId,createdAt \
-              --jq 'sort_by(.createdAt) | last | .databaseId // empty')
-            if [[ -n "$run_id" ]]; then break; fi
-            sleep 5
-          done
+          # Select the newest exact-head dispatch, never an older green run
+          # when a more recent run/attempt failed or is still running.
+          latest_run_id() {
+            gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow ci-cd.yml --event workflow_dispatch \
+              --branch "$TEMP_BRANCH" --commit "$EXPECTED_SHA" --limit 1 \
+              --json databaseId,createdAt --jq '.[0].databaseId // empty'
+          }
+          run_id=$(latest_run_id)
           if [[ -z "$run_id" ]]; then
+            gh workflow run ci-cd.yml --ref "$TEMP_BRANCH" --repo "$GITHUB_REPOSITORY"
+            for _ in $(seq 1 60); do
+              run_id=$(latest_run_id)
+              if [[ -n "$run_id" ]]; then break; fi
+              sleep 5
+            done
+          fi
+          if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Could not locate canonical CI for $EXPECTED_SHA"
             exit 1
           fi
-          run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
-          test "$run_sha" = "$EXPECTED_SHA" || {
-            echo "::error::Selected CI run $run_id verifies $run_sha, expected $EXPECTED_SHA"
+          run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")
+          jq -e --arg sha "$EXPECTED_SHA" --arg branch "$TEMP_BRANCH" '
+            .head_sha == $sha and .head_branch == $branch and .event == "workflow_dispatch" and
+            .path == ".github/workflows/ci-cd.yml"' <<< "$run" >/dev/null || {
+              echo "::error::Canonical CI $run_id has a different source or workflow"
+              exit 1
+            }
+          if [[ "$(jq -r '.status' <<< "$run")" == completed &&
+                "$(jq -r '.conclusion' <<< "$run")" != success ]]; then
+            echo "::error::Canonical CI $run_id ended with $(jq -r '.conclusion' <<< "$run"); not retrying it automatically"
+            exit 1
+          fi
+          echo "Canonical CI: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          # A completed exact-source success returns immediately. In-progress
+          # runs are joined rather than duplicated. No test result is fabricated.
+          gh run watch "$run_id" --exit-status --interval 60 --repo "$GITHUB_REPOSITORY"
+          final_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")
+          jq -e --arg sha "$EXPECTED_SHA" --arg branch "$TEMP_BRANCH" '
+            .head_sha == $sha and .head_branch == $branch and .event == "workflow_dispatch" and
+            .path == ".github/workflows/ci-cd.yml" and
+            .status == "completed" and .conclusion == "success"' \
+            <<< "$final_run" >/dev/null || {
+              echo "::error::Canonical CI $run_id did not finish successfully on $EXPECTED_SHA"
+              exit 1
+            }
+          test "$(latest_run_id)" = "$run_id" || {
+            echo '::error::A newer canonical run appeared; do not accept superseded evidence'
             exit 1
           }
-          gh run watch "$run_id" --exit-status
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
       - name: Wait for complete protected-main pull-request gates
@@ -211,31 +247,9 @@ jobs:
             exit 1
           }
 
-          required_count=0
-          checks_json='[]'
-          for _ in $(seq 1 60); do
-            set +e
-            checks_json=$(gh pr checks "$PR_NUMBER" \
-              --required \
-              --json name,bucket,state 2>/dev/null)
-            checks_exit=$?
-            set -e
-            if [[ "$checks_exit" -eq 0 || "$checks_exit" -eq 8 ]]; then
-              required_count=$(jq 'length' <<< "$checks_json")
-              if [[ "$required_count" -gt 0 ]]; then
-                break
-              fi
-            fi
-            sleep 5
-          done
-          if [[ "$required_count" -eq 0 ]]; then
-            echo "::error::No required PR checks were registered for #$PR_NUMBER"
-            exit 1
-          fi
-          jq -r '.[] | "Required check registered: \(.name) [\(.bucket)]"' \
-            <<< "$checks_json"
-
-          gh pr checks "$PR_NUMBER" --required --watch --fail-fast
+          bash "$RUNNER_TEMP/check-release-pr-gates.sh" preflight
+          gh pr checks "$PR_NUMBER" --required --watch --fail-fast --interval 30
+          bash "$RUNNER_TEMP/check-release-pr-gates.sh" verify
 
           head_after=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
           test "$head_after" = "$EXPECTED_SHA" || {
