@@ -32,6 +32,11 @@
     opacity: 1 !important;
 }
 
+#projectList .project-select strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 /* Keep the complete title line box clickable across fonts and line wrapping. */
 #requirementsTable td > strong > a {
     display: inline-block;
@@ -45,6 +50,7 @@
 
 .portfolio-tabs {
     overflow-x: auto;
+    overflow-y: hidden;
     flex-wrap: nowrap;
 }
 
@@ -56,8 +62,13 @@
     color: var(--bs-primary-text-emphasis);
 }
 
-.portfolio-metric {
-    min-height: 6.75rem;
+#portfolioMetrics > * {
+    flex-grow: 1;
+    min-width: min(100%, 8.5rem);
+}
+
+.portfolio-metric .card-body {
+    padding: 0.5rem 0.75rem;
 }
 
 .portfolio-metric .metric-value {
@@ -69,6 +80,39 @@
 .portfolio-metric .metric-label {
     color: var(--bs-secondary-color);
     font-size: 0.82rem;
+}
+
+.portfolio-job-empty {
+    padding: 0.75rem 1rem;
+}
+
+/* An empty history is a short orientation cue, before the requirements. */
+.portfolio-job-center-empty {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 0.25rem 1rem;
+    padding: 0.75rem 1rem;
+}
+
+.portfolio-job-center-empty > .card-header {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.portfolio-job-center-empty .portfolio-job-empty {
+    padding: 0;
+}
+
+.portfolio-job-center-empty > .list-group {
+    border-top: 0;
+}
+
+@media (max-width: 575.98px) {
+    .portfolio-job-center-empty {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 .portfolio-empty {

@@ -1,4 +1,6 @@
 target/
+# Generated QA output belongs in target/ or CI artifacts, not in source reviews.
+/docs/qa/evidence/
 .env
 taxonomy-app/codemirror-build/node_modules/
 taxonomy-app/codemirror-build/package-lock.json

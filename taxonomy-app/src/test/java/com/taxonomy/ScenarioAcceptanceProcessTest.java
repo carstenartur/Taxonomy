@@ -29,6 +29,7 @@ class ScenarioAcceptanceProcessTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"taxonomy.test.browser", "webdriver.chrome.driver", "scenario.chrome.binary",
+            "taxonomy.test.browser.version", "taxonomy.test.browser.cache", "taxonomy.test.browser.offline",
             "selenium.container.image", "scenario.screenshot.directory"})
     void browserRuntimeAndEvidencePathsSurviveTheRealJvmBoundary(String key) throws Exception {
         assertTrue(forwarded(key), "Browser configuration must reach the application JVM: " + key);

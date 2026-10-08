@@ -33,7 +33,7 @@ publication are documented separately in
 `./mvnw verify` is the bounded developer lifecycle. Failsafe is skipped and the
 three external database tags plus real LLM tests are excluded.
 
-`./mvnw -B verify -Pci` is the complete required pull-request lifecycle. It
+`./mvnw -B verify -Pci` is the combined Maven CI profile. It
 activates core/PostgreSQL integration, quality gates and browser/accessibility
 verification. The separate database-compatibility workflow also runs SQL Server
 and Oracle on pull requests to main, release tags, schedules and manual dispatch;
@@ -41,6 +41,11 @@ those profiles are not automatically selected by `-Pci`. Real remote LLM tests
 remain opt-in. The current core CI additionally enables local ONNX tests with
 `-DrunOnnxTests=true`; use the complete command in the authority guide and workflow
 when reproducing that gate.
+
+The profile currently does not reproduce every required Actions check with
+only Java and Maven installed. The remaining runtime and lifecycle gaps are
+listed in [Maven Verification Authority](MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-requirement);
+a passing focused profile must not be reported as full CI parity.
 
 The module-extraction gate lives in `taxonomy-build`, downstream of
 `taxonomy-app`, `taxonomy-coverage`, and `taxonomy-tooling`. The root-level

@@ -88,7 +88,7 @@ Das CI-Paket 11432697634 gehört zum Test-Merge
 `09fe55aaebb61ae57dcd8ba1317793d901048586`. Seine ZIP-Prüfsumme und die
 Original-Blobs der bearbeiteten Dateien wurden abgeglichen. Die Änderungen
 sind nicht Bestandteil dieses älteren Pakets. Die neuen Quellprüfsummen und
-die eingegrenzten Ergebnisse stehen im [Nachweisinventar](evidence/2026-10-06/ci-startup-qa.json).
+die eingegrenzten Ergebnisse stehen im [Nachweisinventar](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/ci-startup-qa.json).
 
 Die tiefere Speicher-/Latenzmessung großer Analyseergebnisse, das dokumentierte
 5.000-Aufträge-Wiederherstellungslimit und eine umfassende manuelle

@@ -17,7 +17,6 @@
 
     <properties>
         <documentTemplateE2E>false</documentTemplateE2E>
-        <taxonomy.node.executable></taxonomy.node.executable>
         <!-- Repository-wide policy tests inspect current reactor outputs and shared files. -->
         <maven.build.cache.enabled>false</maven.build.cache.enabled>
     </properties>
@@ -159,18 +158,9 @@
                 <version>${frontend-maven-plugin.version}</version>
                 <configuration>
                     <workingDirectory>${maven.multiModuleProjectDirectory}/.github</workingDirectory>
-                    <installDirectory>${project.build.directory}/frontend</installDirectory>
+                    <installDirectory>${taxonomy.frontend.directory}</installDirectory>
                 </configuration>
                 <executions>
-                    <execution>
-                        <id>install-pinned-node</id>
-                        <phase>pre-integration-test</phase>
-                        <goals><goal>install-node-and-npm</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.ui.skip}</skip>
-                            <nodeVersion>${node.version}</nodeVersion>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>install-pinned-browser-test-dependencies</id>
                         <phase>pre-integration-test</phase>

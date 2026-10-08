@@ -16,7 +16,7 @@ class ReformulationCancellationControlsTest {
         Path source = Files.writeString(directory.resolve("workspace.js"),
                 RepositoryResources.applicationResource("static/js/portfolio/requirement-reformulation.js"));
         Path log = directory.resolve("controls.log");
-        Process process = new ProcessBuilder("node", script.toString(), source.toString())
+        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"), script.toString(), source.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         boolean done = process.waitFor(30, TimeUnit.SECONDS);
         if (!done) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS); }

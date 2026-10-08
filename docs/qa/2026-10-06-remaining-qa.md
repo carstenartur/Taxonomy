@@ -165,9 +165,11 @@ separately measured roughly 1,473 MiB RSS for its full-catalogue `role=all`
 process; that configuration is not a worker-only memory measurement.
 
 The two machine-readable REST reports and the final unmodified coverage gate
-report are retained in `docs/qa/evidence/2026-10-06/` as
-`local-onnx-reference.json`, `local-onnx-multilingual.json` and
-`coverage-gate.txt`. They preserve measured misses as well as successful checks.
+report are archived in the
+[Git history](https://github.com/carstenartur/Taxonomy/tree/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06)
+as `local-onnx-reference.json`, `local-onnx-multilingual.json` and
+`coverage-gate.txt`. They preserve measured misses as well as successful checks;
+generated reports are no longer kept in the current source tree.
 
 ## Acceptance requirements after local verification
 
@@ -226,7 +228,7 @@ and JavaScript CodeQL, Security Scan, JGit storage, Kubernetes constrained smoke
 document/report E2E, scenario architecture and reformulation usage. The separate
 push CodeQL workflow actually ran both languages; its duplicate PR workflow was
 intentionally skipped. Exact run URLs, statuses and source identities are retained
-in [pr-1175-canonical-runs.json](evidence/2026-10-06/pr-1175-canonical-runs.json).
+in [pr-1175-canonical-runs.json](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/pr-1175-canonical-runs.json).
 
 The final [CI run 37430121528](https://github.com/carstenartur/Taxonomy/actions/runs/37430121528)
 verified merge candidate `c6c932dc9fc04366551bc02eae192756d0249de5`, tree
@@ -234,7 +236,7 @@ verified merge candidate `c6c932dc9fc04366551bc02eae192756d0249de5`, tree
 artifact `11401420925` has SHA-256
 `1653f95261484c2aa222cd029a39991ce86c300060ec078498ccadfb4f7177e6`, matching
 the GitHub artifact digest. The unmodified
-[quality summary](evidence/2026-10-06/pr-1175-quality-summary.json) reports 1,124
+[quality summary](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/pr-1175-quality-summary.json) reports 1,124
 JUnit files, 8,164 cases, 8,085 executed/passed, zero failures/errors and 79
 profile-controlled skips. Those skips are 75 screenshot-generator, three mock
 score-generator and one opt-in document/report case; the separate document/report

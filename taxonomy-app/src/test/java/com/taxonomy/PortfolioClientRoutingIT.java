@@ -1,6 +1,10 @@
 package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.portfolio.dto.PortfolioDtos;
+import com.taxonomy.portfolio.model.PortfolioTypes;
+import com.taxonomy.shared.config.I18nConfig;
+import com.taxonomy.shared.controller.I18nApiController;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -25,6 +29,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.testcontainers.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -32,9 +37,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -56,6 +65,8 @@ class PortfolioClientRoutingIT {
             new PageContract("portfolio-import", "/import", "importProject", "importError"));
     private static final List<String> BRANCHES = List.of("main", "review/portfolio", "release/2026.10");
     private static final String JOB_STORAGE = "taxonomy.portfolio.analysisJobs.v2";
+    private static final Instant LABEL_TIME = Instant.parse("2026-10-07T09:00:00Z");
+    private static final String LABEL_TITLE = "ACTIVE <pump> & \"Planning\"";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, Object> JOB = Map.of("id", "job-7", "status", "SUCCESS", "items", List.of());
     private static final String OBSERVE_FETCH = """
@@ -383,6 +394,350 @@ class PortfolioClientRoutingIT {
         for (String name : List.of("Import", "Matrices", "Reports", "Versioning")) {
             assertThat(driver.findElements(By.cssSelector("#projectTools #project" + name + "Link"))).hasSize(1);
         }
+    }
+
+    @ParameterizedTest(name = "Project counts use localized singular/plural labels [{0}]")
+    @MethodSource("projectCountLabels")
+    void projectCountsUseLocalizedSingularAndPlural(String locale, List<String> expected) {
+        String prefix = "/taxonomy";
+        installRoutes(prefix);
+        var projects = List.of(
+                labelProject(40, PortfolioTypes.ProjectStatus.ACTIVE, 0, 0),
+                labelProject(41, PortfolioTypes.ProjectStatus.ACTIVE, 1, 2),
+                labelProject(42, PortfolioTypes.ProjectStatus.ACTIVE, 2, 1));
+        page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, projects));
+        for (var project : projects) {
+            page.route("GET", prefix + "/api/projects/" + project.id() + "/portfolio", request ->
+                    PortfolioClientTestPage.json(200, labelPortfolio(project, List.of(), List.of(), List.of())));
+            page.route("GET", prefix + "/api/projects/" + project.id() + "/analysis-jobs", request ->
+                    PortfolioClientTestPage.json(200, List.of()));
+        }
+        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
+        assertThat(driver.findElements(By.cssSelector("#projectList .project-select > .small.opacity-75")))
+                .extracting(WebElement::getText)
+                .as("Counts preserve noun capitalization and distinguish zero, one and two")
+                .containsExactlyElementsOf(expected);
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @ParameterizedTest(name = "Project statuses use shared translations without changing user data [{0}]")
+    @MethodSource("projectStatusLabels")
+    void projectStatusesUseSharedTranslationsWithoutChangingData(String locale, List<String> expected) {
+        String prefix = "/taxonomy";
+        installRoutes(prefix);
+        var projects = new ArrayList<Object>();
+        for (var status : PortfolioTypes.ProjectStatus.values()) {
+            var project = labelProject(40 + status.ordinal(), status, 0, 0);
+            projects.add(project);
+            page.route("GET", prefix + "/api/projects/" + project.id() + "/portfolio", request ->
+                    PortfolioClientTestPage.json(200, labelPortfolio(project, List.of(), List.of(), List.of())));
+            page.route("GET", prefix + "/api/projects/" + project.id() + "/analysis-jobs", request ->
+                    PortfolioClientTestPage.json(200, List.of()));
+        }
+        var future = labelProject(45, PortfolioTypes.ProjectStatus.ACTIVE, 0, 0);
+        ObjectNode futureProject = (ObjectNode) JSON.readTree(PortfolioClientTestPage.json(future));
+        futureProject.put("status", "FUTURE_REVIEW");
+        ObjectNode futurePortfolio = (ObjectNode) JSON.readTree(
+                PortfolioClientTestPage.json(labelPortfolio(future, List.of(), List.of(), List.of())));
+        futurePortfolio.set("project", futureProject);
+        projects.add(futureProject);
+        page.route("GET", prefix + "/api/projects/45/portfolio", request ->
+                PortfolioClientTestPage.json(200, futurePortfolio));
+        page.route("GET", prefix + "/api/projects/45/analysis-jobs", request ->
+                PortfolioClientTestPage.json(200, List.of()));
+        page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, projects));
+
+        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
+        assertThat(driver.findElements(By.cssSelector("#projectList .project-select .badge")))
+                .extracting(WebElement::getText).containsExactlyElementsOf(expected);
+        assertThat(driver.findElements(By.cssSelector("#projectList .project-select > .small.mt-1:not(.opacity-75)")))
+                .extracting(WebElement::getText).containsOnly(LABEL_TITLE);
+        assertThat(driver.findElements(By.cssSelector("#projectList pump"))).isEmpty();
+
+        for (int index = 0; index < expected.size(); index++) {
+            int projectId = 40 + index;
+            click(By.cssSelector(".project-select[data-project-id='" + projectId + "']"));
+            wait.until(ignored -> text("selectedProjectKey").equals("P-" + projectId) && hidden("portfolioBusy"));
+            assertThat(text("selectedProjectStatus")).isEqualTo(expected.get(index));
+            assertThat(text("selectedProjectTitle")).isEqualTo(LABEL_TITLE);
+            assertThat(driver.findElements(By.cssSelector("#selectedProjectTitle pump"))).isEmpty();
+        }
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @ParameterizedTest(name = "Portfolio enum labels retain their machine values [{0}]")
+    @ValueSource(strings = {"de", "en"})
+    void portfolioEnumsUseSharedLabelsAndKeepTheirMachineValues(String locale) {
+        String prefix = "/taxonomy";
+        boolean german = locale.equals("de");
+        installRoutes(prefix);
+        var project = labelProject(42, PortfolioTypes.ProjectStatus.ACTIVE, 3, 1);
+        var requirements = Stream.of(PortfolioTypes.ReviewStatus.values())
+                .map(status -> labelRequirement(7 + status.ordinal(), status)).toList();
+        var product = labelProduct();
+        var solution = labelSolution(product);
+        var conflict = new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
+                PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
+                "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
+                LABEL_TIME, "qa-reviewer", LABEL_TIME);
+        page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
+        page.route("GET", prefix + "/api/projects/42/portfolio", request ->
+                PortfolioClientTestPage.json(200, labelPortfolio(project, requirements, List.of(solution), List.of(conflict))));
+        page.route("GET", prefix + "/api/products", request -> PortfolioClientTestPage.json(200, List.of(product)));
+        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+
+        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .badge")))
+                .extracting(WebElement::getText)
+                .containsExactlyElementsOf(german
+                        ? List.of("Vorgeschlagen", "Bestätigt", "Verworfen")
+                        : List.of("Proposed", "Confirmed", "Rejected"));
+
+        click(By.id("solutions-tab"));
+        wait.until(ignored -> driver.findElement(By.cssSelector("#solutionsList .portfolio-solution-card")).isDisplayed());
+        assertThat(driver.findElement(By.cssSelector("#solutionsList h4")).getText()).isEqualTo(LABEL_TITLE);
+        assertThat(driver.findElements(By.cssSelector("#solutionsList pump"))).isEmpty();
+        assertThat(driver.findElements(By.cssSelector("#solutionsList .portfolio-card-meta strong")))
+                .extracting(WebElement::getText)
+                .containsExactlyElementsOf(german ? List.of("Wiederverwenden", "Ausgewählt") : List.of("Reuse", "Selected"));
+        var action = new Select(driver.findElement(By.cssSelector(".solution-action-select")));
+        assertThat(action.getOptions()).extracting(WebElement::getText)
+                .containsExactlyElementsOf(german
+                        ? List.of("Unentschieden", "Bereits erfüllt", "Wiederverwenden", "Ändern", "Erstellen", "Beschaffen",
+                                "Organisatorisch", "Stilllegen oder ersetzen")
+                        : List.of("Undecided", "Satisfied As Is", "Reuse", "Change", "Create", "Procure",
+                                "Organizational", "Retire Or Replace"));
+        assertThat(action.getOptions()).extracting(option -> option.getDomProperty("value"))
+                .containsExactly("UNDECIDED", "SATISFIED_AS_IS", "REUSE", "CHANGE", "CREATE", "PROCURE",
+                        "ORGANIZATIONAL", "RETIRE_OR_REPLACE");
+        action.selectByValue("PROCURE");
+        assertThat(action.getFirstSelectedOption().getDomProperty("value")).isEqualTo("PROCURE");
+
+        String candidateDetails = "#solutionsList details:has(> form.add-product-candidate[data-project-solution-id='61'])";
+        assertThat(driver.findElements(By.cssSelector(candidateDetails))).hasSize(1);
+        click(By.cssSelector(candidateDetails + " > summary"));
+        wait.until(ignored -> driver.findElement(By.cssSelector(candidateDetails + " .product-candidate-review")).isDisplayed());
+        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .badge")).getText())
+                .isEqualTo(german ? "Bestätigt" : "Confirmed");
+        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .small.text-body-secondary")).getText())
+                .isEqualTo(german ? "80% · In engerer Auswahl" : "80% · Shortlisted");
+
+        click(By.id("products-tab"));
+        wait.until(ignored -> driver.findElement(By.cssSelector("#productsList .portfolio-product-card")).isDisplayed());
+        assertThat(driver.findElement(By.cssSelector("#productsList .badge")).getText())
+                .isEqualTo(german ? "Support beendet" : "End Of Support");
+        assertThat(driver.findElement(By.cssSelector("#productsList .portfolio-card-meta strong")).getText())
+                .isEqualTo(german ? "SaaS" : "Saas");
+        click(By.cssSelector("#productsList details > summary"));
+        assertThat(driver.findElement(By.cssSelector("#productsList details[open]")).getText())
+                .contains(german ? "80% · Verworfen" : "80% · Rejected");
+
+        click(By.id("conflicts-tab"));
+        wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .portfolio-conflict-card")).isDisplayed());
+        assertThat(driver.findElements(By.cssSelector("#conflictsList .badge"))).extracting(WebElement::getText)
+                .containsExactlyElementsOf(german ? List.of("Datenstandort", "Gelöst") : List.of("Data Location", "Resolved"));
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @Test void persistedJobsAreDiscoveredAfterDelayedTranslationsWithoutLosingFormDrafts() {
+        String prefix = "/taxonomy";
+        installRoutes(prefix);
+        var releaseDictionary = new CountDownLatch(1);
+        var releaseDiscovery = new CountDownLatch(1);
+        var translations = new I18nApiController(new I18nConfig().messageSource()).getTranslations("de");
+        page.route("GET", prefix + "/api/i18n/de", request -> {
+            awaitFixtureResponse(releaseDictionary, "German dictionary");
+            return PortfolioClientTestPage.json(200, translations);
+        });
+        page.route("GET", prefix + "/api/projects/42/analysis-jobs", request -> {
+            awaitFixtureResponse(releaseDiscovery, "persisted project job list");
+            return PortfolioClientTestPage.json(200, List.of(persistedJob(42)));
+        });
+
+        try {
+            open("projects", prefix, "/projects", "");
+            wait.until(ignored -> !requests("GET", prefix + "/api/i18n/de").isEmpty());
+            double domReady = ((Number) driver.executeScript(
+                    "return performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd;")).doubleValue();
+            assertThat(domReady).as("The actual document reached DOMContentLoaded").isPositive();
+            awaitDiscoveryWindowElapsed(domReady);
+            assertThat(driver.executeScript("return window.TaxonomyI18n.isLoaded();")).isEqualTo(false);
+            assertThat(driver.executeScript("return localStorage.getItem('taxonomy.portfolio.projectId');")).isNull();
+            assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs"))
+                    .as("No project has been selected while the real dictionary response is held").isEmpty();
+            Object loading = driver.executeScript("""
+                    const busy = document.getElementById('portfolioBusy');
+                    const rect = busy.getBoundingClientRect();
+                    const style = getComputedStyle(busy);
+                    const submits = [...document.querySelectorAll('button[type="submit"]')];
+                    return {
+                        busyVisible: rect.width > 0 && rect.height > 0
+                            && style.display !== 'none' && style.visibility !== 'hidden',
+                        allSubmitsDisabled: submits.length > 0 && submits.every(button => button.disabled)
+                    };
+                    """);
+            assertThat(loading)
+                    .as("Existing loading feedback and submit protection remain active during a slow dictionary")
+                    .isEqualTo(Map.of("busyVisible", true, "allSubmitsDisabled", true));
+            assertThat(driver.getCurrentUrl()).isEqualTo(page.origin() + prefix + "/projects?lang=de");
+            assertThat(page.requests()).filteredOn(request ->
+                            !request.method().equals("GET") && !request.method().equals("HEAD"))
+                    .as("Startup does not submit a form or write portfolio data").isEmpty();
+
+            releaseDictionary.countDown();
+            wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+            assertThat(text("selectedProjectStatus")).isEqualTo("Aktiv");
+            click(By.cssSelector("[data-bs-target='#projectModal']"));
+            wait.until(ignored -> element("projectTitle").isDisplayed());
+            String draft = "Unsaved ACTIVE planning draft";
+            element("projectTitle").sendKeys(draft);
+            releaseDiscovery.countDown();
+            click(By.cssSelector("#projectModal .btn-close"));
+            wait.until(ignored -> !element("projectModal").isDisplayed());
+
+            awaitPersistedJob(prefix, 42, "stored-42");
+            assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs")).isNotEmpty();
+            assertThat(element("projectTitle").getDomProperty("value")).isEqualTo(draft);
+            assertThat(text("portfolioError")).isEmpty();
+        } finally {
+            releaseDictionary.countDown();
+            releaseDiscovery.countDown();
+            awaitTranslationContinuations();
+            wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        }
+    }
+
+    @Test void selectingAnotherProjectDiscoversItsPersistedJobsAfterStartup() {
+        String prefix = "";
+        installRoutes(prefix);
+        for (int projectId : List.of(42, 63)) {
+            page.route("GET", prefix + "/api/projects/" + projectId + "/analysis-jobs", request ->
+                    PortfolioClientTestPage.json(200, List.of(persistedJob(projectId))));
+        }
+        open("projects", prefix, "/projects", "");
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        awaitPersistedJob(prefix, 42, "stored-42");
+        double firstSelection = ((Number) driver.executeScript("return performance.now();")).doubleValue();
+        awaitDiscoveryWindowElapsed(firstSelection);
+
+        element("projectFilter").sendKeys("Emergency");
+        click(By.cssSelector(".project-select[data-project-id='63']"));
+        wait.until(ignored -> text("selectedProjectKey").equals("P-63") && hidden("portfolioBusy"));
+        awaitPersistedJob(prefix, 63, "stored-63");
+        assertThat(requests("GET", prefix + "/api/projects/63/analysis-jobs")).isNotEmpty();
+        assertThat(element("projectFilter").getDomProperty("value")).isEqualTo("Emergency");
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    private static Stream<Arguments> projectCountLabels() {
+        return Stream.of(
+                Arguments.of("de", List.of("0 Anforderungen · 0 Lösungen", "1 Anforderung · 2 Lösungen", "2 Anforderungen · 1 Lösung")),
+                Arguments.of("en", List.of("0 requirements · 0 solutions", "1 requirement · 2 solutions", "2 requirements · 1 solution")));
+    }
+
+    private static Stream<Arguments> projectStatusLabels() {
+        return Stream.of(
+                Arguments.of("de", List.of("In Planung", "Aktiv", "Pausiert", "Abgeschlossen", "Archiviert", "Future Review")),
+                Arguments.of("en", List.of("Planning", "Active", "On Hold", "Completed", "Archived", "Future Review")));
+    }
+
+    private static PortfolioDtos.ProjectView labelProject(long id, PortfolioTypes.ProjectStatus status,
+                                                         int requirements, int solutions) {
+        return new PortfolioDtos.ProjectView(id, "P-" + id, LABEL_TITLE, "Reviewed portfolio",
+                status, "qa-reviewer", "shared", null, null, null, null, LABEL_TIME, LABEL_TIME,
+                requirements, solutions, 0);
+    }
+
+    private static PortfolioDtos.ProjectPortfolioView labelPortfolio(
+            PortfolioDtos.ProjectView project, List<PortfolioDtos.RequirementView> requirements,
+            List<PortfolioDtos.ProjectSolutionView> solutions, List<PortfolioDtos.ConflictView> conflicts) {
+        var matrix = new PortfolioDtos.MatrixView(List.of(), List.of(), Map.of());
+        return new PortfolioDtos.ProjectPortfolioView(project,
+                new PortfolioDtos.PortfolioMetrics(requirements.size(), 0, 0, requirements.size(),
+                        solutions.size(), Map.of(), 0, 0, conflicts.size(), 0),
+                requirements, List.of(), solutions, conflicts, matrix, matrix, matrix);
+    }
+
+    private static PortfolioDtos.RequirementView labelRequirement(long id, PortfolioTypes.ReviewStatus review) {
+        var version = new PortfolioDtos.RequirementVersionView(id + 100, 1, "Stop the pump safely.",
+                "content-hash-" + id, "Reviewed text", "qa-reviewer", LABEL_TIME, null);
+        return new PortfolioDtos.RequirementView(id, 42L, "REQ-" + id, LABEL_TITLE,
+                PortfolioTypes.RequirementStatus.APPROVED, 60, PortfolioTypes.Criticality.MEDIUM,
+                PortfolioTypes.RequirementType.FUNCTIONAL, review, "qa-reviewer", version.id(),
+                null, LABEL_TIME, LABEL_TIME, version);
+    }
+
+    private static PortfolioDtos.ProductView labelProduct() {
+        var coverage = new PortfolioDtos.TaxonomyCoverageView(91L, "CP-1", 80,
+                "Recorded coverage evidence", PortfolioTypes.ReviewStatus.REJECTED, "qa-reviewer", LABEL_TIME);
+        return new PortfolioDtos.ProductView(71L, "PRODUCT-71", "Example", "Control", "Reviewed product", "1.0",
+                PortfolioTypes.ProductStatus.END_OF_SUPPORT, null, "Reviewed license", PortfolioTypes.OperatingModel.SAAS,
+                "Reviewed platform", "Reviewed security", "Reviewed compliance", null, null, null,
+                "Recorded source", LABEL_TIME, "qa-reviewer", LABEL_TIME, LABEL_TIME, List.of(coverage));
+    }
+
+    private static PortfolioDtos.ProjectSolutionView labelSolution(PortfolioDtos.ProductView product) {
+        var solution = new PortfolioDtos.SolutionView(31L, "SOLUTION-31", LABEL_TITLE, "Reviewed solution",
+                PortfolioTypes.SolutionType.APPLICATION, PortfolioTypes.OperatingModel.SAAS,
+                PortfolioTypes.LifecycleStatus.ACTIVE, 3, "qa-reviewer", "Example",
+                null, null, null, null, Map.of(), LABEL_TIME, LABEL_TIME, List.of());
+        var candidate = new PortfolioDtos.SolutionProductCandidateView(81L, 61L, product, 80,
+                null, "Reviewed strengths", null, null, 0.8, PortfolioTypes.ReviewStatus.CONFIRMED,
+                PortfolioTypes.ProductSelectionStatus.SHORTLISTED, "qa-reviewer", LABEL_TIME);
+        return new PortfolioDtos.ProjectSolutionView(61L, 42L, solution,
+                PortfolioTypes.ProjectSolutionStatus.SELECTED, PortfolioTypes.ActionStatus.REUSE, 60,
+                "Reviewed rationale", "qa-reviewer", LABEL_TIME, LABEL_TIME, List.of(), List.of(candidate));
+    }
+
+    private static void awaitDiscoveryWindowElapsed(double since) {
+        wait.until(ignored -> Boolean.TRUE.equals(driver.executeScript(
+                "return performance.now() - arguments[0] > 4500;", since)));
+    }
+
+    private static void awaitFixtureResponse(CountDownLatch gate, String resource) {
+        try {
+            if (!gate.await(20, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting to release " + resource);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while holding " + resource, interrupted);
+        }
+    }
+
+    private static void awaitPersistedJob(String prefix, int projectId, String jobId) {
+        String expected = page.origin() + prefix + "/api/projects/" + projectId + "/analysis-jobs/" + jobId;
+        try {
+            new WebDriverWait(driver, Duration.ofSeconds(6))
+                    .until(ignored -> renderedJobUrls().contains(expected));
+        } catch (TimeoutException absent) {
+            // Report missing rendered content as the contract assertion below.
+        }
+        assertThat(renderedJobUrls()).as("The selected project's persisted job is rendered").contains(expected);
+    }
+
+    private static List<String> renderedJobUrls() {
+        Object result = driver.executeScript("""
+                return [...document.querySelectorAll('#portfolioJobList .portfolio-job')].filter(card => {
+                    const rect = card.getBoundingClientRect();
+                    const style = getComputedStyle(card);
+                    return rect.width > 0 && rect.height > 0
+                        && style.display !== 'none' && style.visibility !== 'hidden';
+                }).map(card => card.dataset.jobUrl);
+                """);
+        return ((List<?>) result).stream().map(String.class::cast).toList();
+    }
+
+    private static PortfolioDtos.AnalysisJobView persistedJob(int projectId) {
+        var item = new PortfolioDtos.AnalysisJobItemView(701L, 7L, "REQ-7", 11L, 1,
+                PortfolioTypes.AnalysisStatus.SUCCESS, "stored-snapshot-" + projectId, 1,
+                LABEL_TIME, LABEL_TIME, null);
+        return new PortfolioDtos.AnalysisJobView("stored-" + projectId, (long) projectId,
+                PortfolioTypes.AnalysisStatus.SUCCESS, "persisted-" + projectId, null, 25,
+                "qa-reviewer", "shared", LABEL_TIME, LABEL_TIME, LABEL_TIME,
+                1, 1, 0, 0, null, List.of(item));
     }
 
     private static Stream<Arguments> prefixesAndPages() {

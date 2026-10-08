@@ -367,8 +367,8 @@ Die native Browserfolge wird über
 [Locale-/Druckworkflow](../../.github/scripts/ui-locale-print-workflow.mjs) in die
 bestehende Abnahme eingebunden. Die vollständige ausgewählte Java-Klassenliste
 stehen zusammen mit der Anwendungs-/Paketbindung und den PDF-Prüfergebnissen
-im [maschinellen Nachweis](evidence/2026-10-06/german-ux-architecture-followup.json).
-Der [vollständige Browserbericht](evidence/2026-10-06/german-ux-followup-browser-report.json)
+im [maschinellen Nachweis](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-architecture-followup.json).
+Der [vollständige Browserbericht](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-followup-browser-report.json)
 enthält alle 58 Checks und die 20 einzelnen Axe-Ergebnisse.
 
 ### Sichtbare Nachweise aus dem abschließenden Paketlauf
@@ -380,9 +380,9 @@ enthält alle 58 Checks und die 20 einzelnen Axe-Ergebnisse.
 | Canvas mit aktiver Knotenauswahl | [Bildschirmaufnahme](images/german-ux-architecture-followup-2026-10-06/qa-german-canvas-keyboard.png) |
 | Sunburst mit Rückweg | [Bildschirmaufnahme](images/german-ux-architecture-followup-2026-10-06/qa-german-sunburst-keyboard.png) |
 | Lokalisierte Workbench mit Auswahl | [Bildschirmaufnahme](images/german-ux-architecture-followup-2026-10-06/qa-german-architecture-workbench.png) |
-| Vollständiger Workbench-Seitendruck | [PDF, vier Seiten](evidence/2026-10-06/german-ux-followup-workbench-view-print.pdf) · [erste Seite](images/german-ux-architecture-followup-2026-10-06/workbench-print-page-1.png) |
-| Decision-Ergebnisse | [PDF, zwei Seiten](evidence/2026-10-06/german-ux-followup-decision-results-print.pdf) |
-| Bericht im geladenen Iframe | [PDF, sechs Seiten](evidence/2026-10-06/german-ux-followup-report-frame-print.pdf) |
+| Vollständiger Workbench-Seitendruck | [PDF, vier Seiten](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-followup-workbench-view-print.pdf) · [erste Seite](images/german-ux-architecture-followup-2026-10-06/workbench-print-page-1.png) |
+| Decision-Ergebnisse | [PDF, zwei Seiten](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-followup-decision-results-print.pdf) |
+| Bericht im geladenen Iframe | [PDF, sechs Seiten](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/german-ux-followup-report-frame-print.pdf) |
 
 Die PDFs wurden zusätzlich als Text ausgewertet. Alle 80 Requirementzeilen,
 alle 20 Ergebniszeilen und alle 80 Berichtszeilen sind enthalten; die beiden

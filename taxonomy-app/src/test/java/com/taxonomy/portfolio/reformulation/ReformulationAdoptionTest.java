@@ -20,14 +20,14 @@ class ReformulationAdoptionTest {
             Path path=directory.resolve(Path.of(name).getFileName());
             try(var resource=getClass().getResourceAsStream(name)){assertNotNull(resource,name);Files.copy(resource,path);}paths.add(path.toString());
         }
-        var command=new ArrayList<String>();command.add("node");command.addAll(paths);
+        var command=new ArrayList<String>();command.add(System.getProperty("taxonomy.node.executable"));command.addAll(paths);
         execute(command,"controls",30,"REFORMULATION_ADOPTION_CONTROLS_OK");
     }
     @Test void readOnlyDetailRefreshKeepsUnsavedFieldsAndRejectsLateReads() throws Exception {
         Path script=directory.resolve("detail-refresh.cjs"), source=directory.resolve("requirement-detail.js");
         try(var resource=getClass().getResourceAsStream("/reformulation/adoption-detail-refresh-contract.cjs")){assertNotNull(resource);Files.copy(resource,script);}
         try(var resource=getClass().getResourceAsStream("/static/js/portfolio/requirement-detail.js")){assertNotNull(resource);Files.copy(resource,source);}
-        execute(List.of("node",script.toString(),source.toString()),"detail-refresh",30,"REFORMULATION_ADOPTION_DETAIL_REFRESH_OK");
+        execute(List.of(System.getProperty("taxonomy.node.executable"),script.toString(),source.toString()),"detail-refresh",30,"REFORMULATION_ADOPTION_DETAIL_REFRESH_OK");
     }
     private void run(String mode) throws Exception {
         var command=new ArrayList<String>();command.add(Path.of(System.getProperty("java.home"),"bin","java").toString());command.add("-Xmx768m");

@@ -151,9 +151,15 @@ class ArtemisCoordinatorNotificationRecoveryTest {
         send(completion);
         await(() -> attempts.get() >= 3, "broker-driven notification redelivery");
         failing.close();
+        // Closing the JMS sessions does not wait for the broker's asynchronous
+        // journal commit to finish moving the third failed delivery to the DLQ.
+        var retained = broker.getActiveMQServer().locateQueue(SimpleString.of(destinations.deadLetter()));
+        await(() -> messages(destinations.completion()) == 0 && retained.getMessageCount() == 1
+                        && retained.getDeliveringCount() == 0 && retained.getScheduledCount() == 0,
+                "one failed completion retained after the broker's dead-letter handoff");
         assertThat(failing.redeliveries()).isGreaterThanOrEqualTo(3);
         assertThat(observed.events).isEmpty();
-        assertThat(messages(destinations.completion()) + messages(destinations.deadLetter())).isPositive();
+        assertThat(retained.getMessageCount()).isEqualTo(1);
         assertThat(db.store.snapshot(context).state()).isEqualTo(ClusterAnalysisState.COMPLETED);
         coordinator(db, connect());
         assertRecovered(db, context, observed);

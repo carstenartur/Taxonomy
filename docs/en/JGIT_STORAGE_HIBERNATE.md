@@ -186,6 +186,8 @@ The integration is covered through normal Maven/JUnit/Failsafe authority:
 - The application-schema PostgreSQL migration tests live under `com.taxonomy.composition.persistence` and retain the real database fixtures for upgrade and validate-startup evidence.
 - `JgitStorageDocumentationContractTest` derives dependency/distribution facts from the root POM, keeps the German and English guides aligned, rejects obsolete authenticated access instructions, and verifies the named Core/adoption resources in the resolved artifact.
 
+### CI Command
+
 A clean verification resolves the pinned `jgit-storage-hibernate-core` release anonymously through the configured release repository. Use the repository's authoritative CI command without adding a second variant:
 
 ```bash
@@ -193,3 +195,6 @@ A clean verification resolves the pinned `jgit-storage-hibernate-core` release a
 ```
 
 GitHub Actions may select or parallelize Maven invocations, but it must not own a different migration or documentation pass/fail rule.
+
+The remaining prerequisites and gaps in full Java/Maven-only reproducibility are
+listed in [Maven Verification Authority](../dev/MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-requirement).

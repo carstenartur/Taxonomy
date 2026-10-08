@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Scoped HTTP response fixtures for {@link PortfolioUiAcceptanceIT}.
@@ -57,6 +58,12 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     private volatile boolean active;
     volatile boolean projectsAvailable;
     volatile boolean unknownCoverage;
+    volatile List<AnalysisJobView> analysisJobs = List.of();
+    volatile boolean jobPollingUnavailable;
+    private volatile int runningAnalysisAttempt = 1;
+    volatile AnalysisJobReadGate analysisJobReadGate;
+    final AtomicInteger jobListReads = new AtomicInteger();
+    final AtomicInteger successfulJobPolls = new AtomicInteger();
     volatile String head = "a".repeat(40);
     volatile ReadGate readGate;
     final List<String> unexpected = new CopyOnWriteArrayList<>();
@@ -92,6 +99,10 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         context = contextPath;
         projectsAvailable = false;
         unknownCoverage = false;
+        analysisJobs = List.of();
+        jobPollingUnavailable = false;
+        runningAnalysisAttempt = 1;
+        jobListReads.set(0); successfulJobPolls.set(0);
         head = "a".repeat(40);
         unexpected.clear(); submittedVersions.clear(); reads.clear();
         active = true;
@@ -100,6 +111,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     void deactivate() {
         if (readGate != null) readGate.release.countDown();
         readGate = null;
+        if (analysisJobReadGate != null) analysisJobReadGate.release.countDown();
+        analysisJobReadGate = null;
         active = false;
     }
 
@@ -110,8 +123,60 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         final CountDownLatch release = new CountDownLatch(1);
     }
 
+    AnalysisJobReadGate delayAnalysisJobReads() {
+        analysisJobReadGate = new AnalysisJobReadGate();
+        return analysisJobReadGate;
+    }
+
+    static final class AnalysisJobReadGate {
+        final Set<String> seenJobs = ConcurrentHashMap.newKeySet();
+        final CountDownLatch firstRead = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+    }
+
     RequirementView primaryRequirement(long projectId) {
         return requirements.stream().filter(item -> item.projectId() == projectId).findFirst().orElseThrow();
+    }
+
+    void showAnalysisJobs() {
+        runningAnalysisAttempt = 1;
+        analysisJobs = List.of(analysisJob("qa-pending", AnalysisStatus.PENDING),
+                analysisJob("qa-running", AnalysisStatus.RUNNING), analysisJob("qa-failed", AnalysisStatus.FAILED));
+    }
+
+    void advanceRunningAnalysisAttempt() {
+        runningAnalysisAttempt++;
+        analysisJobs = analysisJobs.stream().map(job -> job.id().equals("qa-running")
+                ? analysisJob(job.id(), AnalysisStatus.RUNNING) : job).toList();
+    }
+
+    void completeRunningAnalysis() {
+        analysisJobs = analysisJobs.stream().map(job -> job.id().equals("qa-running")
+                ? analysisJob(job.id(), AnalysisStatus.SUCCESS) : job).toList();
+        jobPollingUnavailable = false;
+    }
+
+    private AnalysisJobView analysisJob(String id, AnalysisStatus status) {
+        boolean pending = status == AnalysisStatus.PENDING;
+        boolean failed = status == AnalysisStatus.FAILED;
+        boolean completed = status == AnalysisStatus.SUCCESS || failed;
+        var items = new ArrayList<AnalysisJobItemView>();
+        for (int index = 0; index < 2; index++) {
+            RequirementView requirement = requirements.get(index);
+            AnalysisStatus itemStatus = status == AnalysisStatus.RUNNING && index == 0
+                    ? AnalysisStatus.SUCCESS : status;
+            boolean itemCompleted = itemStatus == AnalysisStatus.SUCCESS || itemStatus == AnalysisStatus.FAILED;
+            items.add(new AnalysisJobItemView(7391951L + index, requirement.id(), requirement.requirementKey(),
+                    requirement.currentVersionId(), requirement.currentVersion().versionNumber(), itemStatus,
+                    itemStatus == AnalysisStatus.SUCCESS ? "qa-snapshot-" + index : null,
+                    pending ? 0 : itemStatus == AnalysisStatus.RUNNING ? runningAnalysisAttempt : 1,
+                    pending ? null : TIME, itemCompleted ? TIME : null,
+                    failed ? "QA: Analyse für diesen Eintrag fehlgeschlagen." : null));
+        }
+        return new AnalysisJobView(id, PROJECT_A, status, null, "Mock", 250, "qa-fixture", "qa-context-workspace",
+                TIME, pending ? null : TIME, completed ? TIME : null, 2,
+                status == AnalysisStatus.SUCCESS ? 2 : status == AnalysisStatus.RUNNING ? 1 : 0, 0,
+                failed ? 2 : 0, failed ? "QA: Zwei Analyse-Einträge sind fehlgeschlagen." : null, items);
     }
 
     private void serve(HttpExchange exchange) throws IOException {
@@ -148,9 +213,27 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                             return;
                         }
                     }
+                    if (relative.startsWith("/api/projects/" + PROJECT_A + "/analysis-jobs/")) {
+                        AnalysisJobReadGate gate = analysisJobReadGate;
+                        if (gate != null) {
+                            gate.seenJobs.add(relative.substring(relative.lastIndexOf('/') + 1));
+                            gate.firstRead.countDown();
+                            if (!gate.release.await(30, TimeUnit.SECONDS)) {
+                                reject(exchange, "Timed out waiting for the explicit analysis-job-read release");
+                                return;
+                            }
+                        }
+                    }
                     Object payload = payload(relative);
                     if (payload == null) { reject(exchange, "Unhandled reserved QA resource"); return; }
                     reads.add(relative);
+                    if (payload instanceof AnalysisJobView job && job.id().equals("qa-running")) {
+                        if (jobPollingUnavailable) {
+                            sendJson(exchange, 503, Map.of("detail", "QA: Job polling is temporarily unavailable."));
+                            return;
+                        }
+                        successfulJobPolls.incrementAndGet();
+                    }
                     if (relative.endsWith("/copilot/latest")) send(exchange, 204, "application/json", new byte[0]);
                     else sendJson(exchange, 200, payload);
                     return;
@@ -189,7 +272,15 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
             if (path.equals(prefix)) return project;
             if (path.equals(prefix + "/portfolio")) return portfolio(project);
             if (path.equals(prefix + "/requirements")) return requirements(project.id());
-            if (path.equals(prefix + "/analysis-jobs")) return List.of();
+            if (path.equals(prefix + "/analysis-jobs")) {
+                jobListReads.incrementAndGet();
+                return analysisJobs.stream().filter(job -> job.projectId().equals(project.id())).toList();
+            }
+            if (path.startsWith(prefix + "/analysis-jobs/")) {
+                String jobId = path.substring((prefix + "/analysis-jobs/").length());
+                return analysisJobs.stream().filter(job -> job.projectId().equals(project.id()) && job.id().equals(jobId))
+                        .findFirst().orElse(null);
+            }
             for (RequirementView requirement : requirements(project.id())) {
                 String detail = prefix + "/requirements/" + requirement.id();
                 if (path.equals(detail)) return requirement;

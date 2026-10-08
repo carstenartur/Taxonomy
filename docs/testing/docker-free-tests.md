@@ -7,13 +7,24 @@ Exportprüfungen wie mit dem Selenium-Container.
 
 ## Voraussetzungen und Start
 
-Java 21, der eingecheckte Maven Wrapper, Node für die vorhandenen JavaScript-
-Vertragstests und ein zusammenpassendes Chrome/ChromeDriver-Paar werden benötigt.
-Zum Beispiel liefert [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/)
-beide Programme in derselben Version. Unter Linux müssen deren Systembibliotheken
-installiert und die entpackten Programme ausführbar sein. Es wird kein Browser
-automatisch heruntergeladen und bei fehlenden Voraussetzungen kein Test still
-übersprungen.
+Java 21 und Maven 3.9.16 beziehungsweise der eingecheckte Maven Wrapper starten
+den lokalen Testweg. Maven installiert das festgelegte Node vor den ersten
+JavaScript-Vertragstests. Beim ersten lokalen Browserstart beschafft der
+vorhandene Selenium Manager die im Root-POM festgelegten Chrome-for-Testing- und
+ChromeDriver-Versionen. Ein globales Node, Chrome oder ChromeDriver ist dafür
+nicht erforderlich. Der erste Download benötigt Internetzugang.
+
+```bash
+./mvnw -B verify -Ptest-local
+```
+
+Die Werkzeuge liegen unter `target/test-runtime/`. Unter Linux muss das
+Betriebssystem die vom Browser benötigten Systembibliotheken bereitstellen.
+Fehlende Bibliotheken oder fehlgeschlagene Downloads brechen die Browsertests ab;
+sie werden nicht als bestandene oder übersprungene Tests gewertet. Maven-Offline-
+Ausführung (`-o`) verwendet auch für Selenium ausschließlich vorhandene Caches.
+
+Vorhandene Browserinstallationen können weiterhin ausdrücklich verwendet werden:
 
 `CHROME_BIN` kann auch auf `chrome-headless-shell` zeigen, wenn es zur Version von
 ChromeDriver passt. Der lokale Adapter setzt das echte Downloadverzeichnis auch
@@ -33,9 +44,11 @@ export CHROMEDRIVER=/absolute/path/chromedriver
 ```
 
 Alternativ können die Pfade mit `-Dscenario.chrome.binary=...` und
-`-Dwebdriver.chrome.driver=...` übergeben werden. Maven prüft die Dateien in
-`validate`; der Browserstart prüft absolute, ausführbare Pfade. Ein inkompatibles
-Paar führt zu einem normalen Testfehler mit der ChromeDriver-Diagnose.
+`-Dwebdriver.chrome.driver=...` übergeben werden. Der Browserstart prüft absolute,
+ausführbare Pfade. Werden beide vorgegeben, ist kein Runtime-Download nötig.
+Wird nur der Browser vorgegeben, beschafft Selenium dessen passenden Treiber.
+Ein inkompatibles explizites Paar führt zu einem normalen Testfehler mit der
+ChromeDriver-Diagnose.
 
 Das Profil aktiviert auch Failsafe (`*IT`) und die Browseransicht des
 Architekturszenarios. Eine gezielte Abnahme mit den sechs bereits vorhandenen

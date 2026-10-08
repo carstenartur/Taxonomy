@@ -20,7 +20,7 @@ class ReformulationCancellationAdapterTest {
         Path adapter = Files.writeString(directory.resolve("portfolio-api.js"),
                 RepositoryResources.applicationResource("static/js/api/portfolio-api.js"));
         Path log = directory.resolve("adapter.log");
-        Process process = new ProcessBuilder("node", script.toString(), adapter.toString())
+        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"), script.toString(), adapter.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         boolean done = process.waitFor(30, TimeUnit.SECONDS);
         if (!done) {

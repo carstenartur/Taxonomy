@@ -34,7 +34,7 @@ class ReformulationProgressTest {
         Path script = resource("/reformulation/progress-contract.cjs", "progress.cjs");
         Path api = resource("/static/js/api/portfolio-api.js", "api.js");
         Path workspace = resource("/static/js/portfolio/requirement-reformulation.js", "workspace.js");
-        execute(List.of("node", script.toString(), api.toString(), workspace.toString()), "controls", 30,
+        execute(List.of(System.getProperty("taxonomy.node.executable"), script.toString(), api.toString(), workspace.toString()), "controls", 30,
                 "REFORMULATION_PROGRESS_CONTROLS_OK");
     }
 
@@ -42,7 +42,7 @@ class ReformulationProgressTest {
     void redundantBlurKeepsStatusStableAndPreservesActualEditGenerations() throws Exception {
         Path script = resource("/reformulation/draft-events-contract.cjs", "draft-events.cjs");
         Path workspace = resource("/static/js/portfolio/requirement-reformulation.js", "workspace.js");
-        execute(List.of("node", script.toString(), workspace.toString()), "draft-events", 30,
+        execute(List.of(System.getProperty("taxonomy.node.executable"), script.toString(), workspace.toString()), "draft-events", 30,
                 "REFORMULATION_DRAFT_EVENTS_OK");
     }
 

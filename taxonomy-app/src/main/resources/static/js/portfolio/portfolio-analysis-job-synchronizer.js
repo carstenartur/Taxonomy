@@ -2,8 +2,8 @@
  * Server-backed portfolio analysis job synchronization.
  *
  * The job centre persists browser history for convenience, but the server job
- * resource remains authoritative. Synchronize after analysis actions and on
- * page startup so navigation, a cleared browser store or adapter ordering can
+ * resource remains authoritative. Synchronize after analysis actions and each
+ * successful project selection so navigation, a cleared browser store or adapter ordering can
  * never hide an accepted persisted job.
  */
 (function () {
@@ -16,7 +16,7 @@
         if (!event.target.closest('#analyzeAllBtn, .requirement-analyze')) return;
         scheduleSynchronization();
     });
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('taxonomy:portfolio-project-selected', function () {
         scheduleSynchronization();
     });
 

@@ -51,8 +51,10 @@ build to populate fresh entries for later PR builds.
 `taxonomy-coverage` and `taxonomy-build` explicitly set
 `maven.build.cache.enabled=false`. The separate UI-verification POM does the same.
 These projects therefore always recompute aggregate evidence and repository-wide
-quality gates, and the cache extension cannot stage transient files such as
-`taxonomy-build/target/frontend` between focused Maven invocations. Cached modules restore `target/classes`, `target/test-classes`, Surefire/Failsafe reports and `jacoco.exec`
+quality gates. The root `install-pinned-node` execution is configured to run even
+on a cache hit, restoring the shared `target/test-runtime/frontend` installation
+before JavaScript-consuming tests. Cached modules restore `target/classes`,
+`target/test-classes`, Surefire/Failsafe reports and `jacoco.exec`
 so those aggregate gates never depend on missing evidence.
 
 ## Local use

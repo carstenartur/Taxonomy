@@ -116,6 +116,15 @@
         <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
         <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
         <node.version>v24.18.0</node.version>
+        <taxonomy.frontend.directory>${maven.multiModuleProjectDirectory}/target/test-runtime/frontend</taxonomy.frontend.directory>
+        <taxonomy.node.binary>node</taxonomy.node.binary>
+        <taxonomy.node.executable>${taxonomy.frontend.directory}/node/${taxonomy.node.binary}</taxonomy.node.executable>
+        <taxonomy.test.browser.version>149.0.7827.55</taxonomy.test.browser.version>
+        <taxonomy.test.browser.cache>${maven.multiModuleProjectDirectory}/target/test-runtime/selenium</taxonomy.test.browser.cache>
+        <!-- The prefix converts Maven's Boolean setting to a String for Surefire/Failsafe. -->
+        <taxonomy.test.browser.offline>maven:${settings.offline}</taxonomy.test.browser.offline>
+        <webdriver.chrome.driver></webdriver.chrome.driver>
+        <scenario.chrome.binary></scenario.chrome.binary>
         <releaseCheckCurrentState>development</releaseCheckCurrentState>
         <releaseCheckRequireClean>true</releaseCheckRequireClean>
         <taxonomy.model.revision>e8f8c211226b894fcb81acc59f3b34ba3efd5f42</taxonomy.model.revision>
@@ -183,7 +192,54 @@
     </dependencyManagement>
 
     <build>
+        <!-- Share test JVM settings without activating Failsafe in the parent
+             or in modules that do not own integration tests. -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration><systemPropertyVariables>
+                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                    </systemPropertyVariables></configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration><systemPropertyVariables>
+                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                    </systemPropertyVariables></configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
+            <!-- Surefire contracts in taxonomy-app already execute Node. Provision it
+                 once before any reactor test, including runs with the UI matrix disabled. -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-maven-plugin.version}</version>
+                <inherited>false</inherited>
+                <configuration>
+                    <workingDirectory>${maven.multiModuleProjectDirectory}/.github</workingDirectory>
+                    <installDirectory>${taxonomy.frontend.directory}</installDirectory>
+                </configuration>
+                <executions><execution>
+                    <id>install-pinned-node</id>
+                    <phase>generate-test-resources</phase>
+                    <goals><goal>install-node-and-npm</goal></goals>
+                    <configuration>
+                        <nodeVersion>${node.version}</nodeVersion>
+                        <skipTests>false</skipTests>
+                    </configuration>
+                </execution></executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -342,6 +398,21 @@
         </plugins>
     </build>
     <profiles>
+        <profile>
+            <id>windows-node-runtime</id>
+            <activation><os><family>Windows</family></os></activation>
+            <properties><taxonomy.node.binary>node.exe</taxonomy.node.binary></properties>
+        </profile>
+        <profile>
+            <id>configured-chrome-driver</id>
+            <activation><property><name>env.CHROMEDRIVER</name></property></activation>
+            <properties><webdriver.chrome.driver>${env.CHROMEDRIVER}</webdriver.chrome.driver></properties>
+        </profile>
+        <profile>
+            <id>configured-chrome-binary</id>
+            <activation><property><name>env.CHROME_BIN</name></property></activation>
+            <properties><scenario.chrome.binary>${env.CHROME_BIN}</scenario.chrome.binary></properties>
+        </profile>
         <!-- The same Java/HTTP/browser scenarios on machines without a Docker daemon.
              CI keeps its existing container-backed selection; this is not a second CI lane. -->
         <profile>
@@ -350,28 +421,10 @@
                 <skipITs>false</skipITs>
                 <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle,docker-required</excludedGroups>
                 <taxonomy.test.browser>local</taxonomy.test.browser>
-                <webdriver.chrome.driver>${env.CHROMEDRIVER}</webdriver.chrome.driver>
-                <scenario.chrome.binary>${env.CHROME_BIN}</scenario.chrome.binary>
                 <generateScreenshots>true</generateScreenshots>
                 <scenario.screenshot.directory>${project.build.directory}/scenario-acceptance/screenshots</scenario.screenshot.directory>
             </properties>
-            <build><plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-enforcer-plugin</artifactId>
-                    <executions><execution>
-                        <id>require-local-browser</id>
-                        <phase>validate</phase>
-                        <goals><goal>enforce</goal></goals>
-                        <configuration><rules><requireFilesExist>
-                            <message>test-local needs matching Chrome and ChromeDriver. Set CHROME_BIN and CHROMEDRIVER to absolute executable paths, or use -Dscenario.chrome.binary and -Dwebdriver.chrome.driver. See docs/testing/docker-free-tests.md.</message>
-                            <files>
-                                <file>${scenario.chrome.binary}</file>
-                                <file>${webdriver.chrome.driver}</file>
-                            </files>
-                        </requireFilesExist></rules></configuration>
-                    </execution></executions>
-                </plugin>
+            <build><pluginManagement><plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
@@ -400,7 +453,7 @@
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
-            </plugins></build>
+            </plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>ci</id>

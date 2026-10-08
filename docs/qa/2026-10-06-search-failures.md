@@ -65,7 +65,7 @@ only the node index is ready.
 
 ## Regression evidence
 
-The [machine-readable record](evidence/2026-10-06/search-failures.json) records the
+The [machine-readable record](https://github.com/carstenartur/Taxonomy/blob/eaca4233311dc82b6de227d1f402ab5e14c2e07b/docs/qa/evidence/2026-10-06/search-failures.json) records the
 final focused commands, test counts and source digests. The final local Java run
 passed all 376 selected tests, including the mandatory architecture and build-policy
 checks; the Maven-owned UI contract phase passed 851 tests,
