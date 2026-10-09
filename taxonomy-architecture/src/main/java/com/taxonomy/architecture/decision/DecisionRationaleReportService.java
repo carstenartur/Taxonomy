@@ -1,20 +1,25 @@
 package com.taxonomy.architecture.decision;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.Disposition;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSummary;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReasonSource;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.architecture.report.DecisionTreeEvidenceBuilder;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ExecutiveSummary;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReasonSource;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportMetadata;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisCoverage;
-import com.taxonomy.architecture.report.DecisionTreeOverview;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -233,7 +238,7 @@ public class DecisionRationaleReportService {
 
         Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;
         boolean german = "de".equalsIgnoreCase(effectiveLocale.getLanguage());
-        var labels = new DecisionReportLabels(effectiveLocale.toLanguageTag());
+        var labels = new DecisionReportSourceLabels(effectiveLocale.toLanguageTag());
         Map<String, Integer> scores = sanitizeScores(input.scores());
         Map<String, String> recordedReasons = sanitizeReasons(input.recordedReasons());
 
@@ -386,7 +391,7 @@ public class DecisionRationaleReportService {
                 roots.stream().map(root -> new DecisionReportScope.Root(root.getCode(), displayName(root, german),
                         analysisRootCodes.contains(root.getCode()))).toList(),
                 reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toCollection(LinkedHashSet::new)),
-                selectedCodes, DecisionTreeOverview.fromEvidence(fingerprintTree, scores, chapters,
+                selectedCodes, DecisionTreeEvidenceBuilder.fromEvidence(fingerprintTree, scores, chapters,
                         reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet()), german),
                 options, completeness.complete() && (input.analysisCoverage() == null || !input.analysisCoverage().hasOpenEvaluations()),
                 selectedCompleteness.complete()).withRecordedReasons(recordedReasons.entrySet().stream()

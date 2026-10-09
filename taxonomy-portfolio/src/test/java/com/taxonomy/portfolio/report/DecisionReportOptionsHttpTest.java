@@ -1,7 +1,11 @@
 package com.taxonomy.portfolio.report;
 
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+
 import com.taxonomy.architecture.decision.*;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.extension.api.report.*;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;

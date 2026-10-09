@@ -1,12 +1,21 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
+import com.taxonomy.templates.api.DocumentTemplateContract;
+
+import com.taxonomy.templates.api.DocumentTemplates;
+import com.taxonomy.templates.api.TemplateContribution;
+
+import com.taxonomy.templates.api.TemplateFile;
+import com.taxonomy.templates.api.TemplatePartComparison;
+import com.taxonomy.templates.api.TemplatePartView;
+
+import com.taxonomy.templates.api.PartChange;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateDiff;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateRevision;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,7 +36,7 @@ import java.util.Objects;
 
 /** Application boundary shared by the web UI and virtual WebDAV projection. */
 @Service
-public class DocumentTemplateService {
+public class DocumentTemplateService implements DocumentTemplates {
 
     private static final int DEFAULT_TEXT_PREVIEW_BYTES = 1_048_576;
     static final int COMPARISON_TEXT_PREVIEW_BYTES = 128 * 1024;
@@ -39,6 +48,16 @@ public class DocumentTemplateService {
     private final Map<String, DocumentTemplateContract> contracts;
 
     @Autowired
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List<DocumentTemplateContract> contracts,
+            List<TemplateContribution> contributions,
+            OoxmlActiveContentValidator activeContent,
+            DocumentTemplateMaterializationCache materializations) {
+        this(repository, codec, combinedContracts(contracts, contributions), activeContent, materializations);
+    }
+
     public DocumentTemplateService(
             DocumentTemplateGitRepository repository,
             OoxmlTemplatePackageCodec codec,
@@ -337,6 +356,19 @@ public class DocumentTemplateService {
         }
     }
 
+    private static List<DocumentTemplateContract> combinedContracts(
+            List<DocumentTemplateContract> contracts, List<TemplateContribution> contributions) {
+        var combined = new java.util.ArrayList<>(contracts);
+        for (var contribution : TemplateContributions.index(contributions).values()) {
+            // A contract may also be a Spring bean for its renderer. The very same
+            // instance is one contribution, not a second independently owned rule.
+            if (combined.stream().noneMatch(existing -> existing == contribution.contract())) {
+                combined.add(contribution.contract());
+            }
+        }
+        return combined;
+    }
+
     private static Map<String, DocumentTemplateContract> indexContracts(
             List<DocumentTemplateContract> contracts) {
         LinkedHashMap<String, DocumentTemplateContract> indexed = new LinkedHashMap<>();
@@ -416,28 +448,4 @@ public class DocumentTemplateService {
         }
     }
 
-    public record TemplateFile(
-            TemplateManifest manifest,
-            String commitId,
-            byte[] content,
-            Instant lastModified) {
-        public TemplateFile {
-            Objects.requireNonNull(manifest, "manifest");
-            Objects.requireNonNull(commitId, "commitId");
-            content = content.clone();
-        }
-        @Override public byte[] content() { return content.clone(); }
-        public String etag() { return "\"" + commitId + "\""; }
-    }
-
-    /** A null change denotes unchanged bytes, as in TemplateDiff's absent change entry. */
-    public record TemplatePartComparison(
-            PartChange change, TemplatePartView before, TemplatePartView after) { }
-
-    public record TemplatePartView(
-            String path,
-            long size,
-            String mediaType,
-            String textContent) {
-    }
 }

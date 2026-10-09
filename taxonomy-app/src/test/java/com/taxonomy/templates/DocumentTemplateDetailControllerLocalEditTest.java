@@ -1,10 +1,14 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.api.DocumentTemplateReportPreview;
+
+import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
+
 import com.taxonomy.shared.config.GlobalExceptionHandler;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -41,7 +45,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
     void reloadKeepsTheOriginalRevisionWithoutReadingCurrentHead() throws Exception {
         String id = DecisionRationaleTemplateContract.TEMPLATE_ID;
         when(templates.download(id, REVISION)).thenReturn(file(id));
-        var controller = new DocumentTemplateDetailController(templates, preview);
+        var controller = new DocumentTemplateDetailController(templates, contributions());
         for (int reload = 0; reload < 2; reload++) {
             var model = new ConcurrentModel();
             assertThat(controller.localEdit(id, REVISION, model))
@@ -49,7 +53,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
             var descriptor = (TemplateDescriptor) model.getAttribute("template");
             assertThat(descriptor.headCommit()).isEqualTo(REVISION);
             assertThat(descriptor.templateId()).isEqualTo(id);
-            assertThat(model.getAttribute("decisionReportTemplate")).isEqualTo(true);
+            assertThat(model.getAttribute("templatePreviewAvailable")).isEqualTo(true);
             assertThat(model.getAttribute("maxArchiveBytes"))
                     .isEqualTo(OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
         }
@@ -62,16 +66,16 @@ class DocumentTemplateDetailControllerLocalEditTest {
     void genericTemplateDoesNotAdvertiseADecisionReportPreview() throws Exception {
         when(templates.download("organisation", REVISION)).thenReturn(file("organisation"));
         var model = new ConcurrentModel();
-        new DocumentTemplateDetailController(templates, preview)
+        new DocumentTemplateDetailController(templates, contributions())
                 .localEdit("organisation", REVISION, model);
-        assertThat(model.getAttribute("decisionReportTemplate")).isEqualTo(false);
+        assertThat(model.getAttribute("templatePreviewAvailable")).isEqualTo(false);
     }
 
     @Test
     void missingStartingRevisionIsNotFoundAndNeverFallsBackToHead() throws Exception {
         var missing = new TemplateNotFoundException("organisation", REVISION);
         when(templates.download("organisation", REVISION)).thenThrow(missing);
-        var controller = new DocumentTemplateDetailController(templates, preview);
+        var controller = new DocumentTemplateDetailController(templates, contributions());
         assertThatThrownBy(() -> controller.localEdit("organisation", REVISION, new ConcurrentModel()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
                     assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -88,7 +92,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
     void missingStartingRevisionRetainsCauseWithoutExposingItInMvcResponse() throws Exception {
         var missing = new TemplateNotFoundException("private-storage-marker", REVISION);
         when(templates.download("organisation", REVISION)).thenThrow(missing);
-        var controller = new DocumentTemplateDetailController(templates, preview);
+        var controller = new DocumentTemplateDetailController(templates, contributions());
         var mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new DocumentTemplateExceptionHandler(),
                         new GlobalExceptionHandler(new StaticMessageSource()))
@@ -112,7 +116,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
     @NullAndEmptySource
     @ValueSource(strings = {"main", "HEAD", "bbbbbbb", "../main", "*", "W/\"revision\""})
     void rejectsMissingMutableOrAbbreviatedRevisionsBeforeStorage(String revision) {
-        var controller = new DocumentTemplateDetailController(templates, preview);
+        var controller = new DocumentTemplateDetailController(templates, contributions());
         assertThatThrownBy(() -> controller.localEdit("organisation", revision, new ConcurrentModel()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
@@ -125,4 +129,11 @@ class DocumentTemplateDetailControllerLocalEditTest {
                 "admin", 10, 3, "f".repeat(64));
         return new TemplateFile(manifest, REVISION, new byte[]{1}, Instant.EPOCH);
     }
+    private java.util.List<com.taxonomy.templates.api.TemplateContribution> contributions() {
+        return java.util.List.of(new com.taxonomy.templates.api.TemplateContribution(
+                DecisionRationaleTemplateContract.TEMPLATE_ID, DecisionRationaleTemplateContract.DISPLAY_NAME,
+                () -> getClass().getResourceAsStream("/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE),
+                new DecisionRationaleTemplateContract(), true, preview, "decision-rationale-template-test.docx"));
+    }
+
 }

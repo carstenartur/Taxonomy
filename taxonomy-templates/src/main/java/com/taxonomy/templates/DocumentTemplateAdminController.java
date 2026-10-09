@@ -1,7 +1,11 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateDiff;
+import com.taxonomy.templates.api.TemplateRevision;
+import com.taxonomy.templates.api.TemplateFile;
+import com.taxonomy.templates.api.TemplatePartView;
 import io.swagger.v3.oas.annotations.media.SchemaProperty;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -9,12 +13,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.headers.Header;
-
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
-import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;

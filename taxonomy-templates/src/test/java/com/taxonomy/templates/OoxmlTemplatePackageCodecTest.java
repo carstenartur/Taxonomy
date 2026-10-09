@@ -26,7 +26,7 @@ class OoxmlTemplatePackageCodecTest {
     @BeforeEach
     void loadBundledTemplate() throws Exception {
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             validParts = codec.unpack(input).parts();
         }

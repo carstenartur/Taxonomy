@@ -1,6 +1,6 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.api.TemplateManifest;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuilder;
 import org.eclipse.jgit.dircache.DirCacheEntry;
@@ -45,7 +45,7 @@ class DocumentTemplateGitRepositoryIntegrityTest {
                 new DfsRepositoryDescription("document-template-integrity-test"));
         repository = new DocumentTemplateGitRepository(git);
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             parts = codec.unpack(input).parts();
         }
@@ -125,7 +125,7 @@ class DocumentTemplateGitRepositoryIntegrityTest {
                 .hasMessageContaining("OOXML")
                 .hasMessageContaining("path");
         assertThat(repository.list())
-                .extracting(DocumentTemplateGitRepository.TemplateDescriptor::templateId)
+                .extracting(com.taxonomy.templates.api.TemplateDescriptor::templateId)
                 .containsExactly("alpha");
     }
 

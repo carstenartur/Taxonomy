@@ -88,10 +88,10 @@ class DocumentTemplateRepositoryConcurrencyTest {
             var reader = new DocumentTemplateGitRepository(storage.repository());
             Map<String, byte[]> parts;
             try (var input = LockOrderProbe.class.getResourceAsStream(
-                    "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                    "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
                 parts = new OoxmlTemplatePackageCodec().unpack(input).parts();
             }
-            var manifest = new DocumentTemplateGitRepository.TemplateManifest(
+            var manifest = new com.taxonomy.templates.api.TemplateManifest(
                     1, "alpha", "Alpha", "alpha.dotx", OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
                     Instant.EPOCH.toString(), "writer", parts.values().stream().mapToLong(value -> value.length).sum(),
                     parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));

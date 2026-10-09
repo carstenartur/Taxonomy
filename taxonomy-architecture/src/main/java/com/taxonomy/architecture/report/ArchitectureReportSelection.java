@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.report;
 
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
 import com.taxonomy.diagram.*;
 import java.util.*;
 

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold, savedRevisionFromResponse, verifyLocalEditing } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
-  '../../taxonomy-templates/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
+  '../../taxonomy-reporting/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
 test('browser fixture edits preserve the original archive and final Word section properties', async () => {
@@ -218,8 +218,8 @@ test('sample action and its explanation share the server-side availability condi
   const explanation = html.match(/<p\b(?=[^>]*\bid="localTemplateSampleHelp")[^>]*>/)?.[0];
   for (const tag of [action, explanation]) {
     assert.ok(tag, 'Both sample elements must be identifiable');
-    assert.match(tag, /\bth:if="\$\{decisionReportTemplate\}"/,
-      'Generic templates must render neither the sample action nor its explanation');
+    assert.match(tag, /\bth:if="\$\{templatePreviewAvailable\}"/,
+      'Templates without a contributed preview must render neither the sample action nor its explanation');
   }
   assert.match(action, /\baria-describedby="localTemplateSampleHelp"/);
 });

@@ -24,6 +24,7 @@ RUN chmod +x mvnw
 COPY pom.xml .
 COPY taxonomy-tooling/pom.xml taxonomy-tooling/pom.xml
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
+COPY taxonomy-reporting-api/pom.xml taxonomy-reporting-api/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
@@ -32,6 +33,7 @@ COPY taxonomy-templates/pom.xml taxonomy-templates/pom.xml
 COPY taxonomy-interop/pom.xml taxonomy-interop/pom.xml
 COPY taxonomy-knowledge/pom.xml taxonomy-knowledge/pom.xml
 COPY taxonomy-architecture/pom.xml taxonomy-architecture/pom.xml
+COPY taxonomy-reporting/pom.xml taxonomy-reporting/pom.xml
 COPY taxonomy-analysis/pom.xml taxonomy-analysis/pom.xml
 COPY taxonomy-portfolio/pom.xml taxonomy-portfolio/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
@@ -42,6 +44,7 @@ COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
 # Maven module embeds Markdown help, screenshots and legal notices in the JAR.
 COPY taxonomy-tooling/src taxonomy-tooling/src
 COPY taxonomy-domain/src taxonomy-domain/src
+COPY taxonomy-reporting-api/src taxonomy-reporting-api/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
@@ -50,6 +53,7 @@ COPY taxonomy-templates/src taxonomy-templates/src
 COPY taxonomy-interop/src taxonomy-interop/src
 COPY taxonomy-knowledge/src taxonomy-knowledge/src
 COPY taxonomy-architecture/src taxonomy-architecture/src
+COPY taxonomy-reporting/src taxonomy-reporting/src
 COPY taxonomy-analysis/src taxonomy-analysis/src
 COPY taxonomy-portfolio/src taxonomy-portfolio/src
 COPY taxonomy-app/src taxonomy-app/src

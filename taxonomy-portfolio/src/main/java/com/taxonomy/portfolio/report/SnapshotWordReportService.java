@@ -1,7 +1,17 @@
 package com.taxonomy.portfolio.report;
 
+import com.taxonomy.architecture.report.ArchitectureReportSelection;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import com.taxonomy.reporting.render.document.ArchitectureFigurePlanner;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+import com.taxonomy.reporting.render.document.ArchitectureReportDocuments;
+
 import com.taxonomy.architecture.decision.*;
-import com.taxonomy.architecture.report.*;
+import com.taxonomy.reporting.render.document.*;
 import com.taxonomy.diagram.*;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
@@ -170,7 +180,7 @@ public class SnapshotWordReportService {
                         m.recordedTaxonomyFingerprintSha256(),
                         ArchitectureReportDocument.graphSha256(graph));
         var document =
-                ArchitectureReportDocument.from(
+                ArchitectureReportDocuments.from(
                         title,
                         locale.toLanguageTag(),
                         decision.requirement(),

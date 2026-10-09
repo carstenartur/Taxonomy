@@ -4,6 +4,9 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.library.dependencies.SliceAssignment;
+import com.tngtech.archunit.library.dependencies.SliceIdentifier;
 
 import java.util.Set;
 
@@ -45,7 +48,25 @@ class ArchitectureCycleBoundaryTest {
 
     @ArchTest
     static final ArchRule coreDomainSlicesShouldBeFreeOfUndocumentedCycles = slices()
-            .matching("com.taxonomy.(*)..")
+            .assignedFrom(new SliceAssignment() {
+                @Override
+                public SliceIdentifier getIdentifierOf(JavaClass javaClass) {
+                    String packageName = javaClass.getPackageName();
+                    if (packageName.equals("com.taxonomy.reporting.api")
+                            || packageName.startsWith("com.taxonomy.reporting.api.")) {
+                        return SliceIdentifier.of("reporting-api");
+                    }
+                    if (!packageName.startsWith("com.taxonomy.")) {
+                        return SliceIdentifier.ignore();
+                    }
+                    return SliceIdentifier.of(packageName.substring("com.taxonomy.".length()).split("\\.")[0]);
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Taxonomy contexts with the independently published reporting API";
+                }
+            })
             .should().beFreeOfCycles()
             // Structural contracts are intentionally shared and are not bounded contexts.
             .ignoreDependency(resideInAnyPackage(STRUCTURAL_SHARED_PACKAGES), alwaysTrue())

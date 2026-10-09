@@ -125,7 +125,7 @@ class OoxmlTemplatePrivacyValidatorTest {
 
     private void loadFreshParts() {
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             parts = new LinkedHashMap<>(codec.unpack(input).parts());
         } catch (Exception exception) {
@@ -139,7 +139,7 @@ class OoxmlTemplatePrivacyValidatorTest {
     }
 
     private static byte[] insertBeforeBodyMarker(String xml, String addition) {
-        int marker = xml.indexOf(DecisionRationaleTemplateContract.BODY_MARKER);
+        int marker = xml.indexOf(TemplateTestFixture.BODY_MARKER);
         assertThat(marker).isGreaterThanOrEqualTo(0);
         int paragraph = xml.lastIndexOf("<w:p>", marker);
         assertThat(paragraph).isGreaterThanOrEqualTo(0);

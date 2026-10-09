@@ -1,7 +1,7 @@
 package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.composition.report.DecisionRationaleReportController.DecisionReportRequest;

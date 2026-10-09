@@ -33,6 +33,15 @@
       ]
     },
     {
+      "id": "reporting",
+      "targetModule": "taxonomy-reporting",
+      "packages": [
+        "com.taxonomy.reporting.render..",
+        "com.taxonomy.reporting.templates..",
+        "com.taxonomy.reporting.config.."
+      ]
+    },
+    {
       "id": "analysis",
       "targetModule": "taxonomy-analysis",
       "packages": [

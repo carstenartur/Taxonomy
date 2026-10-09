@@ -1,7 +1,7 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
@@ -49,7 +49,7 @@ class DocumentTemplateRepositoryReadCostTest {
         git = new CountingRepository();
         writer = new DocumentTemplateGitRepository(git);
         try (var input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             parts = new OoxmlTemplatePackageCodec().unpack(input).parts();
         }
@@ -123,7 +123,7 @@ class DocumentTemplateRepositoryReadCostTest {
                 });
         assertThatThrownBy(() -> reader.commit(manifest("template-0", "Stale"), parts,
                 versions.get("template-0"), "stale", "Stale replacement"))
-                .isInstanceOf(DocumentTemplateGitRepository.TemplateConflictException.class);
+                .isInstanceOf(com.taxonomy.templates.api.TemplateConflictException.class);
     }
 
     @Test

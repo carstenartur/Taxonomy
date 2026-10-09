@@ -1,6 +1,6 @@
 package com.taxonomy.composition.report;
 
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;

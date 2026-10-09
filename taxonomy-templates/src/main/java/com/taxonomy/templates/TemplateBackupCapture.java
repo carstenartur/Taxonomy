@@ -5,7 +5,7 @@ import com.taxonomy.backup.BackupLimits;
 import com.taxonomy.backup.PortableGitPaths;
 import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedFile;
 import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedTree;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.api.TemplateManifest;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.treewalk.TreeWalk;

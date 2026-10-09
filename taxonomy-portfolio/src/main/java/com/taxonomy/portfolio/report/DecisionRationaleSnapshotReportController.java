@@ -1,16 +1,15 @@
 package com.taxonomy.portfolio.report;
 
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
-import com.taxonomy.architecture.decision.DecisionReportOptions;
-import com.taxonomy.architecture.decision.DecisionReportScope;
 import com.taxonomy.dto.AnalysisScope;
-import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
-import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;

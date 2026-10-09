@@ -55,7 +55,7 @@ class ArchitectureModuleExtractionTest {
     // is still read class by class from their actual sources and compiled output;
     // no entire package (notably shared/export/dsl) is excluded from the graph.
     private static final Set<String> SUPPORT_MODULES = Set.of(
-            "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling");
+            "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-reporting-api", "taxonomy-tooling");
     private static final Set<String> NON_PRODUCTION_REACTOR_MODULES =
             NON_FEATURE_TARGET_MODULES;
 

@@ -1,14 +1,16 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.api.TemplateContribution;
+import com.taxonomy.templates.api.DocumentTemplates;
+
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateDiff;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateFile;
+import com.taxonomy.templates.api.TemplatePartView;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
-import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -33,14 +35,14 @@ import java.security.Principal;
 @Tag(name = "Document templates")
 public final class DocumentTemplateDetailController {
 
-    private final DocumentTemplateService templates;
-    private final DocumentTemplateReportPreview preview;
+    private final DocumentTemplates templates;
+    private final java.util.Map<String, TemplateContribution> contributions;
 
     public DocumentTemplateDetailController(
-            DocumentTemplateService templates,
-            DocumentTemplateReportPreview preview) {
+            DocumentTemplates templates,
+            java.util.List<TemplateContribution> contributions) {
         this.templates = templates;
-        this.preview = preview;
+        this.contributions = TemplateContributions.index(contributions);
     }
 
     /** The URL, download and upload all retain the same immutable starting revision. */
@@ -59,8 +61,7 @@ public final class DocumentTemplateDetailController {
         }
         model.addAttribute("template", descriptor(original));
         model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
-        model.addAttribute("decisionReportTemplate",
-                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));
+        model.addAttribute("templatePreviewAvailable", hasPreview(templateId));
         return "document-template-local-edit";
     }
 
@@ -76,8 +77,7 @@ public final class DocumentTemplateDetailController {
         TemplateDescriptor descriptor = descriptor(current);
         model.addAttribute("template", descriptor);
         model.addAttribute("history", templates.history(templateId));
-        model.addAttribute("decisionReportTemplate",
-                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));
+        model.addAttribute("templatePreviewAvailable", hasPreview(templateId));
 
         if (from != null && !from.isBlank()) {
             String right = to == null || to.isBlank() ? current.commitId() : to;
@@ -169,11 +169,11 @@ public final class DocumentTemplateDetailController {
             description = "Generates a DOCX preview using the decision-rationale template and the fixed preview data. Other template IDs are rejected. Returns a no-store attachment; this test report is not evidence of a user analysis.")
     @ApiResponse(responseCode = "200", description = "Render a document-template test report response")
     public ResponseEntity<byte[]> testReport(@PathVariable String templateId) {
-        if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId)) {
-            throw new IllegalArgumentException(
-                    "A generated test report is available only for the decision report template");
+        var contribution = contributions.get(templateId);
+        if (!hasPreview(templateId)) {
+            throw new IllegalArgumentException("A generated test report is unavailable for this template family");
         }
-        byte[] docx = preview.renderPreview();
+        byte[] docx = contribution.preview().renderPreview();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.parseMediaType(
@@ -181,9 +181,14 @@ public final class DocumentTemplateDetailController {
                 .contentLength(docx.length)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment()
-                                .filename("decision-rationale-template-test.docx")
+                                .filename(contribution.previewFileName())
                                 .build().toString())
                 .body(docx);
+    }
+
+    private boolean hasPreview(String templateId) {
+        var contribution = contributions.get(templateId);
+        return contribution != null && contribution.preview() != null;
     }
 
     private static TemplateDescriptor descriptor(TemplateFile file) {

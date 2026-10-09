@@ -1,5 +1,7 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.reporting.render.document.WordReportLayoutException;
+
 import com.taxonomy.analysis.session.AnalysisDraftConflictException;
 import com.taxonomy.analysis.session.AnalysisDraftValidationException;
 import jakarta.servlet.http.HttpServletResponse;
@@ -57,9 +59,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);
     }
 
-    @ExceptionHandler(com.taxonomy.architecture.report.WordReportLayoutException.class)
+    @ExceptionHandler(com.taxonomy.reporting.render.document.WordReportLayoutException.class)
     public ResponseEntity<Map<String,Object>> handleWordLayoutConflict(
-            com.taxonomy.architecture.report.WordReportLayoutException exception,WebRequest request) {
+            com.taxonomy.reporting.render.document.WordReportLayoutException exception,WebRequest request) {
         return buildErrorResponse(HttpStatus.CONFLICT,exception.getMessage(),request);
     }
 

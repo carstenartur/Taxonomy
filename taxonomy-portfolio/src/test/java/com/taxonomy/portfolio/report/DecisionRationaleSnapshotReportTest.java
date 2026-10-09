@@ -1,14 +1,17 @@
 package com.taxonomy.portfolio.report;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
-import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
-import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
-import com.taxonomy.architecture.decision.DecisionReportTemplateProvenance;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportMetadata;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportStatus;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.RelationHypothesisDto;
@@ -174,8 +177,8 @@ class DecisionRationaleSnapshotReportTest {
         var snapshot = snapshot("MOCK", "model-a", "taxonomy-sha", "prompt-sha", "main", "commit-a", AnalysisStatus.SUCCESS);
         when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"), eq(41L), anyString())).thenReturn(Optional.of(snapshot));
         when(codec.read("analysis-json", AnalysisResult.class)).thenReturn(reportableAnalysis());
-        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
-                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.COMPACT, java.util.Set.of("CP"), null, null, null);
+        var options = new com.taxonomy.reporting.api.decision.DecisionReportOptions(
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.COMPACT, java.util.Set.of("CP"), null, null, null);
         when(reports.generate(any(), eq(CONTEXT), any(), eq(Locale.ENGLISH), eq(options))).thenReturn(report(7));
         var actual = service.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options);
         assertThat(actual.metadata().analysisSnapshotId()).isEqualTo("snapshot-1");
@@ -378,7 +381,7 @@ class DecisionRationaleSnapshotReportTest {
         var response = controller.export(41L, "snapshot-1", requestedFormat, "en");
 
         assertThat(response.getHeaders().getFirst("X-Taxonomy-Graph-SHA256"))
-                .isEqualTo(com.taxonomy.architecture.report.ArchitectureReportDocument
+                .isEqualTo(com.taxonomy.reporting.api.document.ArchitectureReportDocument
                         .graphSha256(projection.diagram()));
         assertThat(response.getHeaders().getFirst("X-Taxonomy-Snapshot-Id")).isEqualTo("snapshot-1");
         assertThat(response.getHeaders().getFirst("X-Taxonomy-Data-SHA256")).isEqualTo("data-sha");

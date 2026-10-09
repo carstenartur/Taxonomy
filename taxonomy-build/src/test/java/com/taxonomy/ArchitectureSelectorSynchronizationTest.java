@@ -35,6 +35,8 @@ class ArchitectureSelectorSynchronizationTest {
             "ArchitectureCycleRuleRegressionTest",
             "ArchitectureContextDependencyRatchetTest",
             "ArchitectureDecisionReportBoundaryTest",
+            "ReportingIsolationTest",
+            "ReportModelContractTest",
             "ArchitectureCommitHistoryOwnershipTest",
             "ArchitectureDslCompositionBoundaryTest",
             "ArchitectureWorkspaceAuthorityBoundaryTest",
@@ -326,9 +328,19 @@ class ArchitectureSelectorSynchronizationTest {
         String module = switch (guard) {
             case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
                     "ArchitectureSelectorSynchronizationTest" -> "taxonomy-build";
+            case "ReportingIsolationTest" -> "taxonomy-reporting";
+            case "ReportModelContractTest" -> "taxonomy-reporting-api";
             default -> "taxonomy-app";
         };
-        return root.resolve(module + "/src/test/java/com/taxonomy/" + guard + ".java");
+        return root.resolve(module + "/src/test/java/" + guardPackage(guard).replace('.', '/') + "/" + guard + ".java");
+    }
+
+    private static String guardPackage(String guard) {
+        return switch (guard) {
+            case "ReportingIsolationTest" -> "com.taxonomy.reporting";
+            case "ReportModelContractTest" -> "com.taxonomy.reporting.api";
+            default -> "com.taxonomy";
+        };
     }
 
     private void assertRejected(String target, List<String> changed) throws Exception {
@@ -341,7 +353,7 @@ class ArchitectureSelectorSynchronizationTest {
         for (String guard : EXPECTED) {
             Path source = sourcePath(fixture, guard);
             Files.createDirectories(source.getParent());
-            Files.writeString(source, "package com.taxonomy; class " + guard + " {}\n");
+            Files.writeString(source, "package " + guardPackage(guard) + "; class " + guard + " {}\n");
         }
         Files.writeString(fixture.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -409,7 +421,7 @@ class ArchitectureSelectorSynchronizationTest {
                     files.getJavaFileObjectsFromPaths(List.of(source)));
             List<String> declarations = new ArrayList<>();
             for (var unit : task.parse()) {
-                if (unit.getPackageName() != null && unit.getPackageName().toString().equals("com.taxonomy")) {
+                if (unit.getPackageName() != null && unit.getPackageName().toString().equals(guardPackage(guard))) {
                     for (var declaration : unit.getTypeDecls()) {
                         if (declaration instanceof com.sun.source.tree.ClassTree type
                                 && type.getKind() == com.sun.source.tree.Tree.Kind.CLASS) {
@@ -421,7 +433,7 @@ class ArchitectureSelectorSynchronizationTest {
             assertThat(diagnostics.getDiagnostics().stream()
                     .filter(diagnostic -> diagnostic.getKind() == javax.tools.Diagnostic.Kind.ERROR).toList())
                     .as("valid Java declaration for selected architecture guard %s", guard).isEmpty();
-            assertThat(declarations).as("selected architecture guard %s must be declared in com.taxonomy", guard)
+            assertThat(declarations).as("selected architecture guard %s must be declared in %s", guard, guardPackage(guard))
                     .contains(guard);
         }
     }

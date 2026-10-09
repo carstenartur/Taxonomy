@@ -1,6 +1,8 @@
 package com.taxonomy;
 
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer;
+
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.architecture.service.ExplanationTraceService;
 import com.taxonomy.dto.ArchitectureReport;
@@ -66,11 +68,11 @@ class ArchitectureReportTests {
         ArchitectureReport report = sampleReport();
         assertThat(reportRendererRegistry.getRequired("markdown")
                 .render(ReportRenderContext.of(report)).utf8())
-                .isEqualTo(reportService.renderMarkdown(report))
+                .isEqualTo(new com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer().renderMarkdown(report))
                 .contains("# Architecture Analysis Report", "```mermaid");
         assertThat(reportRendererRegistry.getRequired("html")
                 .render(ReportRenderContext.of(report)).utf8())
-                .isEqualTo(reportService.renderHtml(report))
+                .isEqualTo(new com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer().renderHtml(report))
                 .contains("<!DOCTYPE html>", "<table>", "<strong>");
     }
 

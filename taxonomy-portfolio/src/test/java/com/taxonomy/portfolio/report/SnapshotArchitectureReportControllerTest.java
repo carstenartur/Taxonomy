@@ -1,6 +1,6 @@
 package com.taxonomy.portfolio.report;
 
-import com.taxonomy.architecture.report.ArchitectureReportDocxRenderer;
+import com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;

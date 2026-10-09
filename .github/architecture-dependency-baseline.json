@@ -538,14 +538,7 @@
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
-      "classDependencyCount": 7
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.composition.report",
-      "toContext": "architecture",
-      "toPackage": "com.taxonomy.architecture.report",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -571,6 +564,20 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.report",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.decision",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.report",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.document",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.report",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
       "classDependencyCount": 2
@@ -592,13 +599,6 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.shared.config",
-      "toContext": "architecture",
-      "toPackage": "com.taxonomy.architecture.report",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.shared.config",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
       "classDependencyCount": 1
@@ -609,6 +609,13 @@
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences",
       "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.shared.config",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.document",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "app-composition",
@@ -693,13 +700,6 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
       "classDependencyCount": 3
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.decision",
-      "toContext": "templates",
-      "toPackage": "com.taxonomy.templates",
-      "classDependencyCount": 8
     },
     {
       "fromContext": "architecture",
@@ -1084,14 +1084,28 @@
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
-      "classDependencyCount": 26
+      "classDependencyCount": 4
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.report",
-      "classDependencyCount": 12
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.report",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.decision",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.report",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.document",
+      "classDependencyCount": 4
     },
     {
       "fromContext": "portfolio",
@@ -1211,6 +1225,20 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
       "classDependencyCount": 3
+    },
+    {
+      "fromContext": "reporting",
+      "fromPackage": "com.taxonomy.reporting.render.decision",
+      "toContext": "templates",
+      "toPackage": "com.taxonomy.templates.api",
+      "classDependencyCount": 7
+    },
+    {
+      "fromContext": "reporting",
+      "fromPackage": "com.taxonomy.reporting.templates",
+      "toContext": "templates",
+      "toPackage": "com.taxonomy.templates.api",
+      "classDependencyCount": 5
     }
   ]
 }

@@ -1,7 +1,7 @@
 package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.portfolio.report.DecisionRationaleSnapshotReportController;
 import com.taxonomy.portfolio.report.DecisionRationaleSnapshotReportService;
 import com.taxonomy.shared.config.GlobalExceptionHandler;

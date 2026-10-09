@@ -1,7 +1,7 @@
 package com.taxonomy.portfolio.report;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
-import com.taxonomy.architecture.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;

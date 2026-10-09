@@ -1,7 +1,7 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;

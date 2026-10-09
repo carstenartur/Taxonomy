@@ -1,7 +1,11 @@
 package com.taxonomy.architecture.decision;
 
-import com.taxonomy.architecture.report.DecisionTreeOverview;
-import com.taxonomy.architecture.report.DecisionTreeOverview.DecisionTreeRow;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow;
 import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisScoreDetail;

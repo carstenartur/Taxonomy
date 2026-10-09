@@ -1,13 +1,13 @@
 package com.taxonomy;
 
-import com.taxonomy.architecture.decision.DecisionChapterDiagramRenderer;
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
-import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
-import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
-import com.taxonomy.architecture.decision.DecisionReportTemplateProvenance;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateProvenance;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.ProductCoverageGap;
@@ -17,7 +17,7 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.portfolio.service.PortfolioFingerprintService;
-import com.taxonomy.templates.DecisionRationaleTemplateContract;
+import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
