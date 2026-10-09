@@ -57,6 +57,9 @@ final class CodeQlSarifGate {
                         + "/security-severity="
                         + finding.securitySeverity() + "] "
                         + finding.ruleId() + ": " + finding.message());
+                if (finding.artifactUri() != null) {
+                    error.println("  at " + finding.artifactUri());
+                }
             }
             return inspection.blocking().isEmpty() ? 0 : 1;
         } catch (IOException | IllegalArgumentException failure) {

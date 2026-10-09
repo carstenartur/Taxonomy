@@ -228,10 +228,12 @@ public class AiTargetCatalogService {
     }
 
     private static String slug(String value) {
-        String slug = value.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9._-]+", "-")
-                .replaceAll("^-+|-+$", "");
-        return slug.isBlank() ? "unspecified" : slug;
+        String slug = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "-");
+        int start = 0;
+        while (start < slug.length() && slug.charAt(start) == '-') start++;
+        int end = slug.length();
+        while (end > start && slug.charAt(end - 1) == '-') end--;
+        return start == end ? "unspecified" : slug.substring(start, end);
     }
 
     private static String sha256(String value) {
