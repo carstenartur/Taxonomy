@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TemplatesModulePackagingIT {
     @Test
-    void applicationContainsOneTemplateLibraryWithItsCodeAndDefaultResource() throws Exception {
+    void applicationContainsOneGenericTemplateLibraryAndOneReportingOwnedDefault() throws Exception {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (root != null && !Files.isRegularFile(root.resolve(".mvn/verification-suites.json"))) {
             root = root.getParent();
@@ -30,6 +30,9 @@ class TemplatesModulePackagingIT {
             var libraries = names.stream().filter(n -> n.startsWith("BOOT-INF/lib/taxonomy-templates-")
                     && n.endsWith(".jar")).toList();
             assertThat(libraries).hasSize(1);
+            var reporting = names.stream().filter(n -> n.startsWith("BOOT-INF/lib/taxonomy-reporting-")
+                    && !n.startsWith("BOOT-INF/lib/taxonomy-reporting-api-") && n.endsWith(".jar")).toList();
+            assertThat(reporting).hasSize(1);
             assertThat(names).noneMatch(n -> n.startsWith("BOOT-INF/classes/com/taxonomy/templates/"));
             assertThat(names).doesNotContain("BOOT-INF/classes/document-templates/decision-rationale-report.dotx");
             assertThat(names).anyMatch(n -> n.startsWith("BOOT-INF/classes/db/migration/"));
@@ -43,7 +46,9 @@ class TemplatesModulePackagingIT {
                         String path = entry.getName();
                         if ((path.startsWith("com/taxonomy/templates/") && path.endsWith(".class"))
                                 || path.equals("document-templates/decision-rationale-report.dotx")) {
-                            assertThat(name).as("library owning %s", path).isEqualTo(libraries.getFirst());
+                            String expectedOwner = path.equals("document-templates/decision-rationale-report.dotx")
+                                    ? reporting.getFirst() : libraries.getFirst();
+                            assertThat(name).as("library owning %s", path).isEqualTo(expectedOwner);
                             assertThat(entries.add(path)).as("single occurrence of %s", path).isTrue();
                         }
                     }
