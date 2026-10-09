@@ -172,6 +172,8 @@ class CodeQlSarifGateTest {
         Path report = root.resolve("codeql-gate.json");
         writeDriverSarif(
                 sarif, "java/high", "9.0", "warning", "unsafe flow");
+        Files.writeString(sarif, Files.readString(sarif).replace(
+                "\"message\":", "\"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": \"src/Unsafe.java\"}}}], \"message\":"));
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
 
         int exit = CodeQlSarifGate.run(
@@ -183,7 +185,8 @@ class CodeQlSarifGateTest {
         assertThat(exit).isEqualTo(1);
         assertThat(stderr.toString(StandardCharsets.UTF_8))
                 .contains("[warning/security-severity=9.0]")
-                .contains("java/high: unsafe flow");
+                .contains("java/high: unsafe flow")
+                .contains("at src/Unsafe.java");
         assertThat(FlatJson.parseObject(
                 Files.readString(report, StandardCharsets.UTF_8)))
                 .containsEntry("status", "FAIL");
