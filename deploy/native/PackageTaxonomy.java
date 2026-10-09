@@ -68,8 +68,18 @@ public final class PackageTaxonomy {
             int count = 0;
             try (var files = Files.list(source)) {
                 for (Path file : files.sorted().toList()) {
-                    if (Files.isSymbolicLink(file) || !Files.isRegularFile(file) || !file.getFileName().toString().endsWith(".jar"))
+                    if (!Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS))
                         throw new IOException("Unexpected distribution entry: " + kind);
+                    String name = file.getFileName().toString();
+                    if (name.endsWith(".jar.sha256")) {
+                        Path owner = file.resolveSibling(name.substring(0, name.length() - ".sha256".length()));
+                        if (!Files.isRegularFile(owner, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                                || !Files.readString(file).strip().equals(sha256(owner) + " *" + owner.getFileName()))
+                            throw new IOException("Invalid distribution checksum: " + kind);
+                        Files.copy(file, target.resolve(file.getFileName()));
+                        continue;
+                    }
+                    if (!name.endsWith(".jar")) throw new IOException("Unexpected distribution entry: " + kind);
                     if (kind.equals("features")) {
                         var match = java.util.regex.Pattern.compile("taxonomy-(templates|architecture|reporting|analysis|portfolio|interop)-[0-9].*\\.jar").matcher(file.getFileName().toString());
                         if (!match.matches() || !features.add(match.group(1))) throw new IOException("Unknown or duplicated startup feature");
@@ -78,6 +88,18 @@ public final class PackageTaxonomy {
                 }
             }
             if (count == 0 || (kind.equals("features") && features.size() != 6)) throw new IOException("Incomplete standard distribution: " + kind);
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (var input = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
+                input.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
         }
     }
 

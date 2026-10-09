@@ -23,7 +23,7 @@ public final class PackageTaxonomyCases {
         reject("1.4.0", "rpm", true);
         reject("256.1.0", "msi", true);
         distributionInputs();
-        System.out.println("Native packaging contracts: 18 passed");
+        System.out.println("Native packaging contracts: 22 passed");
     }
     private static void distributionInputs() throws Exception {
         Path root=Files.createTempDirectory("taxonomy-native-contract-");
@@ -34,15 +34,27 @@ public final class PackageTaxonomyCases {
             for(String id:List.of("templates","architecture","reporting","analysis","portfolio","interop"))
                 Files.writeString(features.resolve("taxonomy-"+id+"-1.4.1.jar"),id);
             Files.writeString(plugins.resolve("mermaid.jar"),"plugin");
+            String checksum = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest("plugin".getBytes(java.nio.charset.StandardCharsets.UTF_8))) + " *mermaid.jar\n";
+            Path sidecar = plugins.resolve("mermaid.jar.sha256");
+            Files.writeString(sidecar, checksum);
             Path complete=Files.createDirectory(root.resolve("complete"));
             PackageTaxonomy.stageExtensions(distribution,complete);
             check(Files.readString(complete.resolve("plugins/mermaid.jar")).equals("plugin"),"plugin bytes copied");
             try(var entries=Files.list(complete.resolve("features"))) {check(entries.count()==6,"all startup features copied");}
+            check(Files.readString(complete.resolve("plugins/mermaid.jar.sha256")).equals(checksum), "checksum bytes copied");
+            Files.writeString(sidecar, "0".repeat(64) + " *mermaid.jar\n");
+            rejectDistribution(distribution,Files.createDirectory(root.resolve("corrupt-checksum")));
+            Files.writeString(sidecar, checksum.replace("mermaid.jar", "different.jar"));
+            rejectDistribution(distribution,Files.createDirectory(root.resolve("misnamed-checksum")));
+            Files.writeString(sidecar, checksum);
             Path extra=features.resolve("taxonomy-analysis-1.4.0.jar");Files.writeString(extra,"old");
             rejectDistribution(distribution,Files.createDirectory(root.resolve("duplicate")));Files.delete(extra);
             Files.writeString(features.resolve("unexpected.txt"),"unexpected");
             rejectDistribution(distribution,Files.createDirectory(root.resolve("unexpected")));Files.delete(features.resolve("unexpected.txt"));
             Files.delete(plugins.resolve("mermaid.jar"));
+            rejectDistribution(distribution,Files.createDirectory(root.resolve("orphan-checksum")));
+            Files.delete(sidecar);
             rejectDistribution(distribution,Files.createDirectory(root.resolve("missing")));
         } finally {
             try(var paths=Files.walk(root)) {for(Path file:paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);}

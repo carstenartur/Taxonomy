@@ -37,6 +37,16 @@ final class DistributionArchives {
             try (var files = Files.list(root.resolve("taxonomy-app/target/" + directory))) {
                 for (Path file : files.sorted().toList()) {
                     assertThat(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).isTrue();
+                    if (file.getFileName().toString().endsWith(".jar.sha256")) {
+                        String name = file.getFileName().toString();
+                        Path jar = file.resolveSibling(name.substring(0, name.length() - ".sha256".length()));
+                        assertThat(Files.isRegularFile(jar, LinkOption.NOFOLLOW_LINKS))
+                                .as("checksum must have a regular JAR owner: %s", file).isTrue();
+                        assertThat(Files.readString(file).strip())
+                                .as("checksum must identify the exact delivered JAR: %s", file)
+                                .isEqualTo(PackagedPluginSupport.sha256(jar) + " *" + jar.getFileName());
+                        continue;
+                    }
                     assertThat(file.toString()).endsWith(".jar");
                     String name = directory + "/" + file.getFileName(); archives.add(name);
                     visitJar(name, Files.newInputStream(file), visitor);

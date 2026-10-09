@@ -27,12 +27,16 @@ final class PackagedPluginSupport {
             assertThat(jars).as("One built artifact in %s", directory).hasSize(1); return jars.getFirst();
         }
     }
-    static String sha256(Path file) throws Exception {
-        var digest = MessageDigest.getInstance("SHA-256");
-        try (var stream = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
-            stream.transferTo(java.io.OutputStream.nullOutputStream());
+    static String sha256(Path file) throws IOException {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            try (var stream = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
+                stream.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
         }
-        return HexFormat.of().formatHex(digest.digest());
     }
     static Path buildIndependentPlugin(Path root, Path temporary) throws Exception {
         Path localRepository = Files.createDirectory(temporary.resolve("empty-maven-repository"));

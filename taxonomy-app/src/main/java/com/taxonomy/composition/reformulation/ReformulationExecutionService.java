@@ -255,8 +255,12 @@ public class ReformulationExecutionService {
     private String endpointHash(ProviderId provider) {return StableIdentityHash.sha256(provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":endpoint(provider));}
     private String endpoint(ProviderId provider) {return provider.equals(LlmProvider.GEMINI.id())?providers.getGeminiUrl():providers.getOpenAiCompatibleUrl(provider);}
     private String model(ProviderId provider) {
-        return provider.equals(LlmProvider.GEMINI.id())?java.net.URI.create(providers.getGeminiUrl()).getPath().replaceFirst(".*/models/", "").split(":")[0]
-                :providers.getOpenAiCompatibleModel(provider);
+        if (!provider.equals(LlmProvider.GEMINI.id())) return providers.getOpenAiCompatibleModel(provider);
+        String path = java.net.URI.create(providers.getGeminiUrl()).getPath();
+        int marker = path.lastIndexOf("/models/");
+        String name = marker < 0 ? path : path.substring(marker + "/models/".length());
+        int operation = name.indexOf(':');
+        return operation < 0 ? name : name.substring(0, operation);
     }
     private static String failureCode(RuntimeException failure) {
         if(failure instanceof ProviderPluginUnavailableException unavailable)return unavailable.reason();
