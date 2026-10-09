@@ -1,11 +1,13 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.api.DocumentTemplateReportPreview;
+
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateRevision;
+import com.taxonomy.templates.api.TemplateFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -36,7 +38,7 @@ class DocumentTemplateDetailControllerTest {
     private static final String CURRENT = "a".repeat(40);
     private static final String OLD = "b".repeat(40);
     private static final String NEWER = "c".repeat(40);
-    private static final String ID = DecisionRationaleTemplateContract.TEMPLATE_ID;
+    private static final String ID = TemplateTestFixture.TEMPLATE_ID;
 
     @Mock DocumentTemplateService templates;
     @Mock DocumentTemplateReportPreview preview;
@@ -51,7 +53,7 @@ class DocumentTemplateDetailControllerTest {
         String view = controller().detail(ID, null, null, null, null, model);
 
         assertThat(view).isEqualTo("document-template-detail");
-        assertThat(model.getAttribute("decisionReportTemplate")).isEqualTo(true);
+        assertThat(model.getAttribute("templatePreviewAvailable")).isEqualTo(true);
         TemplateDescriptor descriptor = (TemplateDescriptor) model.getAttribute("template");
         assertThat(descriptor.headCommit()).isEqualTo(CURRENT);
     }
@@ -208,7 +210,7 @@ class DocumentTemplateDetailControllerTest {
     }
 
     private DocumentTemplateDetailController controller() {
-        return new DocumentTemplateDetailController(templates, preview);
+        return new DocumentTemplateDetailController(templates, TemplateTestFixture.contributions(preview));
     }
 
     private static TemplateDescriptor metadata(String revision) {

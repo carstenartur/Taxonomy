@@ -1,6 +1,6 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateDescriptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -28,37 +28,41 @@ class DefaultDocumentTemplateBootstrapTest {
 
     @Test
     void seedsTheBundledTemplateWhenTheRepositoryDoesNotContainIt() throws Exception {
-        when(templates.exists(DecisionRationaleTemplateContract.TEMPLATE_ID))
+        when(templates.exists(TemplateTestFixture.TEMPLATE_ID))
                 .thenReturn(false);
-        when(resource.exists()).thenReturn(true);
+
         when(resource.getInputStream())
                 .thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
         when(templates.upload(
-                eq(DecisionRationaleTemplateContract.TEMPLATE_ID),
-                eq(DecisionRationaleTemplateContract.DISPLAY_NAME),
+                eq(TemplateTestFixture.TEMPLATE_ID),
+                eq(TemplateTestFixture.DISPLAY_NAME),
                 any(InputStream.class),
                 isNull(),
                 eq("taxonomy-bootstrap"),
-                eq("Seed bundled decision rationale report template")))
+                eq("Seed bundled template fixture-report")))
                 .thenReturn(descriptor());
 
-        new DefaultDocumentTemplateBootstrap(templates, resource).seedIfMissing();
+        new DefaultDocumentTemplateBootstrap(templates, java.util.List.of(
+                new com.taxonomy.templates.api.TemplateContribution(TemplateTestFixture.TEMPLATE_ID,
+                        TemplateTestFixture.DISPLAY_NAME, resource::getInputStream, new TemplateTestFixture(), true))).seedIfMissing();
 
         verify(templates).upload(
-                eq(DecisionRationaleTemplateContract.TEMPLATE_ID),
-                eq(DecisionRationaleTemplateContract.DISPLAY_NAME),
+                eq(TemplateTestFixture.TEMPLATE_ID),
+                eq(TemplateTestFixture.DISPLAY_NAME),
                 any(InputStream.class),
                 isNull(),
                 eq("taxonomy-bootstrap"),
-                eq("Seed bundled decision rationale report template"));
+                eq("Seed bundled template fixture-report"));
     }
 
     @Test
     void neverOverwritesAnExistingOrganisationTemplate() throws Exception {
-        when(templates.exists(DecisionRationaleTemplateContract.TEMPLATE_ID))
+        when(templates.exists(TemplateTestFixture.TEMPLATE_ID))
                 .thenReturn(true);
 
-        new DefaultDocumentTemplateBootstrap(templates, resource).seedIfMissing();
+        new DefaultDocumentTemplateBootstrap(templates, java.util.List.of(
+                new com.taxonomy.templates.api.TemplateContribution(TemplateTestFixture.TEMPLATE_ID,
+                        TemplateTestFixture.DISPLAY_NAME, resource::getInputStream, new TemplateTestFixture(), true))).seedIfMissing();
 
         verify(resource, never()).getInputStream();
         verify(templates, never()).upload(
@@ -67,9 +71,9 @@ class DefaultDocumentTemplateBootstrapTest {
 
     private static TemplateDescriptor descriptor() {
         return new TemplateDescriptor(
-                DecisionRationaleTemplateContract.TEMPLATE_ID,
-                DecisionRationaleTemplateContract.DISPLAY_NAME,
-                DecisionRationaleTemplateContract.TEMPLATE_ID + ".dotx",
+                TemplateTestFixture.TEMPLATE_ID,
+                TemplateTestFixture.DISPLAY_NAME,
+                TemplateTestFixture.TEMPLATE_ID + ".dotx",
                 "0123456789abcdef0123456789abcdef01234567",
                 "2026-08-22T16:00:00Z",
                 "taxonomy-bootstrap",

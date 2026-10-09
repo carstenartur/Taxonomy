@@ -13,6 +13,18 @@
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
         <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-reporting</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-reporting-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.google.crypto.tink</groupId>
             <artifactId>tink</artifactId>
             <version>${tink.version}</version>

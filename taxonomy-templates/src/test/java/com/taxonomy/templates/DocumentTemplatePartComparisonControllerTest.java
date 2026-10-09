@@ -1,9 +1,9 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
-import com.taxonomy.templates.DocumentTemplateService.TemplatePartComparison;
+import com.taxonomy.templates.api.PartChange;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplatePartView;
+import com.taxonomy.templates.api.TemplatePartComparison;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;

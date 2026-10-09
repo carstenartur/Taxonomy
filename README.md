@@ -263,8 +263,8 @@ The build generates:
 ## Architecture
 
 Taxonomy is a **modular monolith with one deployable Spring Boot application**.
-The Maven reactor contains fifteen child modules: four framework-free foundations,
-seven runtime feature libraries, the application composition root, and three build/tooling modules.
+The Maven reactor contains seventeen child modules: five framework-free foundations,
+eight runtime feature libraries, the application composition root, and three build/tooling modules.
 
 ### How the application fits together
 
@@ -298,11 +298,13 @@ revisions, the durable semantic journal, and explicit Git checkpoints.
 | `taxonomy-dsl` | Framework-free DSL syntax, parsing, mapping, semantic diff, and model processing |
 | `taxonomy-export` | Framework-free export contracts, codecs, and neutral rendering |
 | `taxonomy-extension-api` | Framework-free extension interfaces and metadata |
+| `taxonomy-reporting-api` | Framework-free complete snapshot-bound report models |
 | `taxonomy-workspace` | Repository/workspace identity, versioning, editor operation journal, undo/redo, Git checkpoints, and JGit storage |
 | `taxonomy-knowledge` | Catalogue and seeds, relations and hypotheses, search, indexes, and local embeddings |
 | `taxonomy-templates` | Versioned document templates, OOXML validation, materialization, WebDAV, and template administration |
 | `taxonomy-interop` | External-tool connectors, reviewed exchange, identity mappings, and synchronization checkpoints |
 | `taxonomy-architecture` | Architecture derivation, scoring, gaps, patterns, recommendations, diagrams, and reports |
+| `taxonomy-reporting` | Report renderers, layouts, template contributions, preview and health |
 | `taxonomy-analysis` | Requirement/LLM analysis, provider gateways, prompts and policies, parsing, and analysis sessions |
 | `taxonomy-portfolio` | Projects, versioned requirements, analysis jobs/results, reviews, recovery, and workbench snapshots |
 | `taxonomy-app` | The only executable application: Spring wiring, cross-context HTTP/UI composition, security/observability, deployment configuration, and database migrations |

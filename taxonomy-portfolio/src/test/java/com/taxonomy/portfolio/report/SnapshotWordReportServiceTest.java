@@ -1,9 +1,12 @@
 package com.taxonomy.portfolio.report;
 
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.diagram.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -140,10 +143,10 @@ class SnapshotWordReportServiceTest {
     void selectedReportNamesCrossingEndpointsAsContextAndCompactDoesNotLoadGraph() {
         var decisions = mock(DecisionRationaleSnapshotReportService.class);
         var workbench = mock(ArchitectureWorkbenchService.class);
-        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
-                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.STANDARD, Set.of("A"), null, null, null);
+        var options = new com.taxonomy.reporting.api.decision.DecisionReportOptions(
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.STANDARD, Set.of("A"), null, null, null);
         var base = decision();
-        var selected = base.withScope(new com.taxonomy.architecture.decision.DecisionReportScope(null, null,
+        var selected = base.withScope(new com.taxonomy.reporting.api.decision.DecisionReportScope(null, null,
                 List.of(), Set.of("A"), Set.of("A"), base.scope().decisionTree(), options, true, true));
         when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options)).thenReturn(selected);
         when(workbench.loadIfPresent(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(Optional.of(projection("Saved", "commit-a")));
@@ -151,8 +154,8 @@ class SnapshotWordReportServiceTest {
         var source = service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options);
         assertThat(source.architecture().scope()).contains("Boundary context: B", "Source graph SHA-256:");
         assertThat(source.architecture().relations()).hasSize(1);
-        var compact = new com.taxonomy.architecture.decision.DecisionReportOptions(
-                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.COMPACT, Set.of("A"), null, null, null);
+        var compact = new com.taxonomy.reporting.api.decision.DecisionReportOptions(
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.COMPACT, Set.of("A"), null, null, null);
         when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, compact)).thenReturn(selected);
         clearInvocations(workbench);
         assertThat(service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, compact).architecture()).isNull();
@@ -163,10 +166,10 @@ class SnapshotWordReportServiceTest {
     void aValidSelectionWithoutGraphNodesStillExportsItsDecisionEvidence() {
         var decisions = mock(DecisionRationaleSnapshotReportService.class);
         var workbench = mock(ArchitectureWorkbenchService.class);
-        var options = new com.taxonomy.architecture.decision.DecisionReportOptions(
-                com.taxonomy.architecture.decision.DecisionReportOptions.Profile.STANDARD, Set.of("CP"), null, null, null);
+        var options = new com.taxonomy.reporting.api.decision.DecisionReportOptions(
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.STANDARD, Set.of("CP"), null, null, null);
         var base = decision();
-        var selected = base.withScope(new com.taxonomy.architecture.decision.DecisionReportScope(null, null,
+        var selected = base.withScope(new com.taxonomy.reporting.api.decision.DecisionReportScope(null, null,
                 List.of(), Set.of("CP"), Set.of("CP"), base.scope().decisionTree(), options, true, true));
         when(decisions.generate(41L,"snapshot-1","auditor",CONTEXT,Locale.ENGLISH,options)).thenReturn(selected);
         when(workbench.loadIfPresent(41L,"snapshot-1","auditor",CONTEXT)).thenReturn(Optional.of(projection("Saved","commit-a")));
@@ -199,7 +202,7 @@ class SnapshotWordReportServiceTest {
     void configuredFullExportKeepsDecisionEvidenceWhenNoArchitectureWasSaved() {
         var decisions = mock(DecisionRationaleSnapshotReportService.class);
         var workbench = mock(ArchitectureWorkbenchService.class);
-        var options = com.taxonomy.architecture.decision.DecisionReportOptions.full();
+        var options = com.taxonomy.reporting.api.decision.DecisionReportOptions.full();
         when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH, options)).thenReturn(decision());
         when(workbench.loadIfPresent(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(Optional.empty());
         var service = new SnapshotWordReportService(decisions, workbench);

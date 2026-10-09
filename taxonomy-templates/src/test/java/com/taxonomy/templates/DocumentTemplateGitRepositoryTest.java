@@ -1,8 +1,8 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
@@ -32,7 +32,7 @@ class DocumentTemplateGitRepositoryTest {
                 new DfsRepositoryDescription("document-templates-test"));
         repository = new DocumentTemplateGitRepository(git);
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             parts = codec.unpack(input).parts();
         }

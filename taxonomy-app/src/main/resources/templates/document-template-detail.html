@@ -45,7 +45,7 @@
                 <a class="btn btn-primary"
                    th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId})}"
                    th:text="#{document.template.detail.download}">Download current DOTX</a>
-                <a th:if="${decisionReportTemplate}" class="btn btn-outline-primary"
+                <a th:if="${templatePreviewAvailable}" class="btn btn-outline-primary"
                    th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
                    th:text="#{document.template.detail.test}">Generate test report</a>
             </div>

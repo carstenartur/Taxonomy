@@ -1,5 +1,9 @@
 package com.taxonomy.acceptance;
 
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+
 import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
@@ -150,7 +154,7 @@ public final class ScenarioExportQa {
         assertThat(reportHtml).contains(requirement, snapshot, "FLOOD-001");
         JsonNode decision = JSON.readTree(artifacts.get("decision.json"));
         assertThat(decision.toString()).contains(requirement, snapshot);
-        String wordGraphHash = com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(expected);
+        String wordGraphHash = com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(expected);
         for (String file : List.of("decision.docx", "report.docx")) {
             try (var document = new XWPFDocument(new ByteArrayInputStream(artifacts.get(file)));
                  var extractor = new XWPFWordExtractor(document)) {
@@ -173,14 +177,14 @@ public final class ScenarioExportQa {
                     assertThat(drawing.getAttribute("descr")).isNotBlank();
                 }
                 if (file.equals("decision.docx")) {
-                    var chapters = JSON.treeToValue(decision, com.taxonomy.architecture.decision.DecisionRationaleReport.class).chapters();
+                    var chapters = JSON.treeToValue(decision, com.taxonomy.reporting.api.decision.DecisionRationaleReport.class).chapters();
                     var bookmarks = word.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "bookmarkStart");
                     var links = word.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "hyperlink");
                     Set<String> names=new HashSet<>(), anchors=new HashSet<>();
                     for(int i=0;i<bookmarks.getLength();i++) names.add(((org.w3c.dom.Element)bookmarks.item(i)).getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","name"));
                     for(int i=0;i<links.getLength();i++) anchors.add(((org.w3c.dom.Element)links.item(i)).getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","anchor"));
                     for(var chapter:chapters) {
-                        String bookmark=com.taxonomy.architecture.report.DecisionTreeOverview.bookmark(chapter);
+                        String bookmark=com.taxonomy.reporting.api.document.DecisionTreeOverview.bookmark(chapter);
                         assertThat(names).contains(bookmark);assertThat(anchors).contains(bookmark);
                         assertThat(text).contains(chapter.parentCode(),chapter.decisionSummary(),chapter.comparativeRationale());
                     }

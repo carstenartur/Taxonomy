@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.taxonomy</groupId>
+        <artifactId>taxonomy</artifactId>
+        <version>1.4.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>taxonomy-reporting-api</artifactId>
+    <name>Taxonomy Reporting API</name>
+    <description>Immutable snapshot-bound report models for independently built renderers</description>
+
+    <dependencies>
+        <!-- Preserve the published JSON omission rules without depending on a mapper/runtime. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Contract tests stay framework-free just like this API module. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>enforce-reporting-api-boundaries</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
+                                    <excludes>
+                                        <exclude>com.taxonomy:taxonomy-app</exclude>
+                                        <exclude>com.taxonomy:taxonomy-architecture</exclude>
+                                        <exclude>com.taxonomy:taxonomy-reporting</exclude>
+                                        <exclude>com.taxonomy:taxonomy-templates</exclude>
+                                        <exclude>com.taxonomy:taxonomy-export</exclude>
+                                        <exclude>com.taxonomy:taxonomy-dsl</exclude>
+                                        <exclude>org.springframework:*</exclude>
+                                        <exclude>org.springframework.boot:*</exclude>
+                                        <exclude>org.springframework.data:*</exclude>
+                                        <exclude>jakarta.persistence:*</exclude>
+                                        <exclude>javax.persistence:*</exclude>
+                                        <exclude>org.hibernate:*</exclude>
+                                        <exclude>org.hibernate.orm:*</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -21,7 +21,7 @@ class OoxmlActiveContentValidatorTest {
     @BeforeEach
     void loadTemplate() throws Exception {
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             parts = new LinkedHashMap<>(codec.unpack(input).parts());
         }
@@ -92,7 +92,7 @@ class OoxmlActiveContentValidatorTest {
 
     private void loadFreshParts() {
         try (InputStream input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             parts = new LinkedHashMap<>(codec.unpack(input).parts());
         } catch (Exception exception) {
             throw new AssertionError(exception);

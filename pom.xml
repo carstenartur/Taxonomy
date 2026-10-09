@@ -55,6 +55,7 @@
         <!-- Dependency-free release and repository tooling is built first. -->
         <module>taxonomy-tooling</module>
         <module>taxonomy-domain</module>
+        <module>taxonomy-reporting-api</module>
         <module>taxonomy-dsl</module>
         <module>taxonomy-export</module>
         <module>taxonomy-extension-api</module>
@@ -63,6 +64,7 @@
         <module>taxonomy-interop</module>
         <module>taxonomy-knowledge</module>
         <module>taxonomy-architecture</module>
+        <module>taxonomy-reporting</module>
         <module>taxonomy-analysis</module>
         <module>taxonomy-portfolio</module>
         <module>taxonomy-app</module>
@@ -529,7 +531,7 @@
         </profile>
         <profile>
             <id>architecture-tests</id>
-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
+            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
         </profile>
         <profile>
             <id>document-import-tests</id>

@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.dto.AnalysisMode;

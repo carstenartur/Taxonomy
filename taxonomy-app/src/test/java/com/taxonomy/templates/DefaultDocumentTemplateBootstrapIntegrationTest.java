@@ -1,6 +1,8 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
+
+import com.taxonomy.templates.api.TemplateFile;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

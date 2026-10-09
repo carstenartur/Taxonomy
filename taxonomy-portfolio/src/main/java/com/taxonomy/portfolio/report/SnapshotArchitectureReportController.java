@@ -1,13 +1,12 @@
 package com.taxonomy.portfolio.report;
 
+import com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-
-import com.taxonomy.architecture.report.ArchitectureReportDocxRenderer;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 
 import org.springframework.context.i18n.LocaleContextHolder;

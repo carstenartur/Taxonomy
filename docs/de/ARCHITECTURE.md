@@ -7,7 +7,7 @@ eines mit ihr erzeugten Modells.
 
 Beschrieben wird die implementierte Architektur dieses Branches, keine Roadmap.
 Taxonomy ist ein **modularer Monolith mit genau einer deploybaren Spring-Boot-Anwendung**.
-Der Reactor umfasst fünfzehn Untermodule: vier frameworkfreie Grundlagen, sieben
+Der Reactor umfasst siebzehn Untermodule: fünf frameworkfreie Grundlagen, acht
 Laufzeit-Fachbibliotheken, ein Kompositionsmodul und drei Build-/Werkzeugmodule.
 Inventar und aktuelle Zuständigkeiten stehen in [Modulgrenzen](MODULE_BOUNDARIES.md).
 [English](../en/ARCHITECTURE.md).
@@ -86,7 +86,7 @@ Maven-Abhängigkeit und Speichervorgang dürfen nicht dieselbe mehrdeutige Pfeil
 ## Modularchitektur
 
 Dieser Graph enthält **alle direkten produktiven POM-Abhängigkeiten zwischen den
-sieben extrahierten Fachbibliotheken**. `A --> B` bedeutet eine deklarierte produktive
+acht extrahierten Fachbibliotheken**. `A --> B` bedeutet eine deklarierte produktive
 Abhängigkeit von A nach B, nicht einen ausschließlich in diese Richtung laufenden Datenfluss.
 
 <!-- architecture-feature-graph:start -->
@@ -95,6 +95,7 @@ flowchart TB
     taxonomy-portfolio["taxonomy-portfolio"]
     taxonomy-analysis["taxonomy-analysis"]
     taxonomy-architecture["taxonomy-architecture"]
+    taxonomy-reporting["taxonomy-reporting"]
     taxonomy-knowledge["taxonomy-knowledge"]
     taxonomy-interop["taxonomy-interop"]
     taxonomy-workspace["taxonomy-workspace"]
@@ -107,7 +108,8 @@ flowchart TB
     taxonomy-analysis --> taxonomy-knowledge
     taxonomy-analysis --> taxonomy-workspace
     taxonomy-architecture --> taxonomy-knowledge
-    taxonomy-architecture --> taxonomy-templates
+    taxonomy-reporting --> taxonomy-templates
+    taxonomy-portfolio --> taxonomy-reporting
     taxonomy-architecture --> taxonomy-workspace
     taxonomy-knowledge --> taxonomy-workspace
     taxonomy-interop --> taxonomy-workspace
@@ -115,8 +117,8 @@ flowchart TB
 <!-- architecture-feature-graph:end -->
 
 Abhängigkeiten der Anwendung auf Bibliotheken sowie der Grundlagenmodule sind in
-dieser fokussierten Grafik absichtlich ausgeblendet. Die vier Grundlagen heißen
-`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export` und `taxonomy-extension-api`.
+dieser fokussierten Grafik absichtlich ausgeblendet. Die fünf Grundlagen heißen
+`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, `taxonomy-extension-api` und `taxonomy-reporting-api`.
 Die separate Build-Gruppe besteht aus `taxonomy-tooling`, `taxonomy-coverage` und
 `taxonomy-build`; sie bildet keine Laufzeit-Fachkontexte. Das vollständige Inventar
 steht in [Modulgrenzen](MODULE_BOUNDARIES.md); das bestehende Modul-Gate schreibt

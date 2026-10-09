@@ -11,6 +11,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ArchitectureCycleRuleRegressionTest {
 
     @Test
+    void publicSdkAndItsImplementationCannotHideACycleUnderTheSameNamespace() {
+        var classes = new ClassFileImporter().importClasses(
+                com.taxonomy.reporting.api.fixture.ApiCycleFixture.class,
+                com.taxonomy.reporting.render.fixture.RenderCycleFixture.class);
+        assertThatThrownBy(() -> ArchitectureCycleBoundaryTest
+                .coreDomainSlicesShouldBeFreeOfUndocumentedCycles.check(classes))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("Cycle detected");
+    }
+
+    @Test
     void deliberatelyIntroducedUndocumentedCycleFails() {
         var classes = new ClassFileImporter().importClasses(
                 AlphaCycleFixture.class, BetaCycleFixture.class);

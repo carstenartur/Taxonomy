@@ -46,7 +46,7 @@ class DocumentTemplateSharedRepositoryTest {
         first = service(firstStorage);
         second = service(secondStorage);
         try (var input = getClass().getResourceAsStream(
-                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+                "/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
             bundledTemplate = input.readAllBytes();
         }
@@ -66,29 +66,29 @@ class DocumentTemplateSharedRepositoryTest {
         List<String> initialRefPacks = refPacks();
         assertThat(initialRefPacks).isNotEmpty();
 
-        new DefaultDocumentTemplateBootstrap(first).seedIfMissing();
+        new DefaultDocumentTemplateBootstrap(first, TemplateTestFixture.contributions()).seedIfMissing();
         String winner = first.headCommit();
         assertThat(refPacks()).doesNotContainAnyElementsOf(initialRefPacks);
 
         // The second application opened before the winner published its template.
         // Its pack catalogue still names the removed initial HEAD reftable.
-        new DefaultDocumentTemplateBootstrap(second).seedIfMissing();
+        new DefaultDocumentTemplateBootstrap(second, TemplateTestFixture.contributions()).seedIfMissing();
 
-        assertThat(second.exists(DecisionRationaleTemplateContract.TEMPLATE_ID)).isTrue();
+        assertThat(second.exists(TemplateTestFixture.TEMPLATE_ID)).isTrue();
         assertThat(second.headCommit()).isEqualTo(winner);
-        assertThat(second.history(DecisionRationaleTemplateContract.TEMPLATE_ID)).hasSize(1);
-        assertThat(second.downloadCurrent(DecisionRationaleTemplateContract.TEMPLATE_ID).content())
-                .isEqualTo(first.downloadCurrent(DecisionRationaleTemplateContract.TEMPLATE_ID).content());
+        assertThat(second.history(TemplateTestFixture.TEMPLATE_ID)).hasSize(1);
+        assertThat(second.downloadCurrent(TemplateTestFixture.TEMPLATE_ID).content())
+                .isEqualTo(first.downloadCurrent(TemplateTestFixture.TEMPLATE_ID).content());
     }
 
     @Test
     void laterWriterPreservesOtherTemplatesAndRejectsAStaleTemplateVersion() throws Exception {
-        new DefaultDocumentTemplateBootstrap(first).seedIfMissing();
+        new DefaultDocumentTemplateBootstrap(first, TemplateTestFixture.contributions()).seedIfMissing();
         String winner = first.headCommit();
 
         var alpha = second.upload("alpha", "Alpha", new ByteArrayInputStream(bundledTemplate),
                 null, "second-application", "Create alpha");
-        assertThat(second.downloadCurrent(DecisionRationaleTemplateContract.TEMPLATE_ID).commitId())
+        assertThat(second.downloadCurrent(TemplateTestFixture.TEMPLATE_ID).commitId())
                 .isEqualTo(winner);
 
         var revised = first.upload("alpha", "Alpha revised", new ByteArrayInputStream(bundledTemplate),
@@ -97,12 +97,12 @@ class DocumentTemplateSharedRepositoryTest {
         assertThatThrownBy(() -> second.upload("alpha", "Stale alpha",
                 new ByteArrayInputStream(bundledTemplate), alpha.headCommit(),
                 "second-application", "Stale replacement"))
-                .isInstanceOf(DocumentTemplateGitRepository.TemplateConflictException.class)
+                .isInstanceOf(com.taxonomy.templates.api.TemplateConflictException.class)
                 .hasMessageContaining(revised.headCommit());
         assertThat(second.headCommit()).isEqualTo(revised.headCommit());
         assertThat(second.downloadCurrent("alpha").manifest().displayName()).isEqualTo("Alpha revised");
         assertThat(second.history("alpha")).hasSize(2);
-        assertThat(second.history(DecisionRationaleTemplateContract.TEMPLATE_ID)).hasSize(1);
+        assertThat(second.history(TemplateTestFixture.TEMPLATE_ID)).hasSize(1);
     }
 
     private List<String> refPacks() {
@@ -117,7 +117,7 @@ class DocumentTemplateSharedRepositoryTest {
 
     private static DocumentTemplateService service(HibernateGitStorage storage) {
         return new DocumentTemplateService(new DocumentTemplateGitRepository(storage.repository()),
-                new OoxmlTemplatePackageCodec(), List.of(new DecisionRationaleTemplateContract()));
+                new OoxmlTemplatePackageCodec(), List.of(new TemplateTestFixture()));
     }
 
     private static SessionFactory sessionFactory(String url) {

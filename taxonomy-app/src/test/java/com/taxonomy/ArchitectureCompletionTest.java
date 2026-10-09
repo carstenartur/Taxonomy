@@ -17,7 +17,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /** Final #628 contract: no planned feature implementation may fall back into the Boot app. */
 class ArchitectureCompletionTest {
     @Test
-    void allSevenRuntimeContextsAreLibrariesWithoutApplicationBackDependencies() throws Exception {
+    void allRuntimeContextsAreLibrariesWithoutApplicationBackDependencies() throws Exception {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (root != null && !Files.isRegularFile(root.resolve(".github/architecture-contexts.json"))) {
             root = root.getParent();
@@ -29,6 +29,7 @@ class ArchitectureCompletionTest {
         contexts.put("templates", List.of("templates"));
         contexts.put("interop", List.of("interop"));
         contexts.put("architecture", List.of("architecture"));
+        contexts.put("reporting", List.of("reporting"));
         contexts.put("analysis", List.of("analysis"));
         contexts.put("portfolio", List.of("portfolio"));
         Path appSources = root.resolve("taxonomy-app/src/main/java");

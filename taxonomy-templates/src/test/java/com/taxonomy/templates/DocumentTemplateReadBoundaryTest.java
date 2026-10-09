@@ -1,8 +1,8 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.api.PartChange;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 /** Read-side validation must not require creating a downloadable ZIP archive. */
 @ExtendWith(MockitoExtension.class)
 class DocumentTemplateReadBoundaryTest {
-    private static final String ID = DecisionRationaleTemplateContract.TEMPLATE_ID;
+    private static final String ID = TemplateTestFixture.TEMPLATE_ID;
     private static final String A = "a".repeat(40);
     private static final String B = "b".repeat(40);
     @Mock DocumentTemplateGitRepository repository;
@@ -34,12 +34,12 @@ class DocumentTemplateReadBoundaryTest {
     @BeforeEach
     void setUp() throws IOException {
         codec = spy(new OoxmlTemplatePackageCodec());
-        try (var input = new ClassPathResource(DecisionRationaleTemplateContract.DEFAULT_RESOURCE)
+        try (var input = new ClassPathResource(TemplateTestFixture.DEFAULT_RESOURCE)
                 .getInputStream()) {
             parts = new TreeMap<>(codec.unpack(input).parts());
         }
         service = new DocumentTemplateService(repository, codec,
-                List.of(new DecisionRationaleTemplateContract()));
+                List.of(new TemplateTestFixture()));
         clearInvocations(codec);
     }
 
@@ -72,8 +72,8 @@ class DocumentTemplateReadBoundaryTest {
     @Test
     void metadataStillEnforcesTheActualReportTemplateContract() throws Exception {
         String xml = new String(parts.get("word/document.xml"), StandardCharsets.UTF_8);
-        assertTrue(xml.contains(DecisionRationaleTemplateContract.BODY_MARKER));
-        parts.put("word/document.xml", xml.replace(DecisionRationaleTemplateContract.BODY_MARKER,
+        assertTrue(xml.contains(TemplateTestFixture.BODY_MARKER));
+        parts.put("word/document.xml", xml.replace(TemplateTestFixture.BODY_MARKER,
                 "missing-body-marker").getBytes(StandardCharsets.UTF_8));
         when(repository.read(ID, A)).thenReturn(snapshot(A));
         assertThrows(IllegalArgumentException.class, () -> service.describe(ID, A));
@@ -266,7 +266,7 @@ class DocumentTemplateReadBoundaryTest {
     void comparisonValidatesBothReportContractsBeforeInterpretingPartAbsence() throws Exception {
         var before = snapshot(A);
         String xml = new String(parts.get("word/document.xml"), StandardCharsets.UTF_8);
-        parts.put("word/document.xml", xml.replace(DecisionRationaleTemplateContract.BODY_MARKER,
+        parts.put("word/document.xml", xml.replace(TemplateTestFixture.BODY_MARKER,
                 "removed-marker").getBytes(StandardCharsets.UTF_8));
         when(repository.read(ID, A)).thenReturn(before);
         when(repository.read(ID, B)).thenReturn(snapshot(B));

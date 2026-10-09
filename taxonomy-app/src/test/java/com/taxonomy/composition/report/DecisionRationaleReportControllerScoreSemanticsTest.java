@@ -2,7 +2,7 @@ package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreKind;

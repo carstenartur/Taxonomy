@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;

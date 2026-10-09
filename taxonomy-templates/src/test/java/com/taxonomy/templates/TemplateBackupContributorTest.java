@@ -22,7 +22,7 @@ class TemplateBackupContributorTest {
     @BeforeEach void source() throws Exception {
         git = new InMemoryRepository(new DfsRepositoryDescription("portable-templates"));
         repository = new DocumentTemplateGitRepository(git);
-        try (var input = getClass().getResourceAsStream("/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+        try (var input = getClass().getResourceAsStream("/" + TemplateTestFixture.DEFAULT_RESOURCE)) {
             parts = new TreeMap<>(new OoxmlTemplatePackageCodec().unpack(input).parts());
         }
         parts.put("binary.dat", new byte[]{0, 1, 2, (byte) 255, 10, 0});
@@ -210,7 +210,7 @@ class TemplateBackupContributorTest {
         return commit(id, expected, "Update template");
     }
     private DocumentTemplateGitRepository.TemplateSnapshot commit(String id, String expected, String message) throws Exception {
-        var manifest = new DocumentTemplateGitRepository.TemplateManifest(1, id, id, id + ".dotx",
+        var manifest = new com.taxonomy.templates.api.TemplateManifest(1, id, id, id + ".dotx",
                 OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, now.toString(), "operator",
                 parts.values().stream().mapToLong(value -> value.length).sum(), parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
         return repository.commit(manifest, parts, expected, "operator", message);

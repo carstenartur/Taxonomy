@@ -1,8 +1,8 @@
 package com.taxonomy.templates;
 
 import com.taxonomy.shared.config.I18nConfig;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateFile;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

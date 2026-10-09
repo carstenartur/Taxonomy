@@ -1,14 +1,16 @@
 package com.taxonomy.architecture.decision;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.Disposition;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSummary;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReasonSource;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
-import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ExecutiveSummary;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReasonSource;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportMetadata;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreKind;
 import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;

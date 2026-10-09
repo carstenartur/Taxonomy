@@ -1,14 +1,14 @@
 package com.taxonomy.composition.report;
 
-import com.taxonomy.architecture.decision.DecisionRationaleReport;
-import com.taxonomy.architecture.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.dto.AnalysisScope;
-import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
-import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateHeaders;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreSemantics;

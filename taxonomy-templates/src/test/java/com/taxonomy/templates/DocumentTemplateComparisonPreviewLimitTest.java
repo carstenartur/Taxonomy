@@ -1,6 +1,6 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.api.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -96,7 +96,7 @@ class DocumentTemplateComparisonPreviewLimitTest {
 
         assertEquals("document-template-part-comparison", view);
         assertEquals("TEXT", model.getAttribute("comparisonMode"));
-        var part = (DocumentTemplateService.TemplatePartView) model.getAttribute("beforePart");
+        var part = (com.taxonomy.templates.api.TemplatePartView) model.getAttribute("beforePart");
         assertNotNull(part);
         assertEquals(expected, part.textContent());
         assertSame(part, model.getAttribute("afterPart"));
@@ -123,7 +123,7 @@ class DocumentTemplateComparisonPreviewLimitTest {
     private static TemplateSnapshot snapshot(byte[] content) throws Exception {
         var codec = new OoxmlTemplatePackageCodec();
         Map<String, byte[]> parts;
-        try (var input = new ClassPathResource(DecisionRationaleTemplateContract.DEFAULT_RESOURCE)
+        try (var input = new ClassPathResource(TemplateTestFixture.DEFAULT_RESOURCE)
                 .getInputStream()) {
             parts = new TreeMap<>(codec.unpack(input).parts());
         }

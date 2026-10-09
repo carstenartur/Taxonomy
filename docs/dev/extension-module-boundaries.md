@@ -2,7 +2,7 @@
 
 ## Decision
 
-The extension architecture uses a layered contract model rather than one universal module for every feature-specific SPI. This document distinguishes **framework-free contract ownership** from **Spring adapter ownership** while `taxonomy-app` is being decomposed under #628.
+The extension architecture uses a layered contract model rather than one universal module for every feature-specific SPI. This document distinguishes **framework-free contract ownership** from **Spring adapter ownership** following the completed feature extraction under #628. Independent plugin loading is a further implementation step, not implied by a Maven module.
 
 ### `taxonomy-extension-api`
 
@@ -34,7 +34,34 @@ com.taxonomy.export.spi.ExportContext
 com.taxonomy.export.spi.ExportResult
 ```
 
-This SPI uses the format-neutral `DiagramModel`, which is already owned by the export/diagram domain. Keeping the SPI in `taxonomy-export` avoids forcing the general extension API to depend upward on a feature module.
+This SPI uses the format-neutral `DiagramModel`, whose complete `com.taxonomy.diagram` package is owned by `taxonomy-domain`. Keeping the SPI in `taxonomy-export` avoids forcing the general extension API to depend upward on a feature module.
+
+### Template and report ownership
+
+`taxonomy-templates` owns generic OOXML validation, materialization, Git storage,
+HTTP, WebDAV and Smart-HTTP adapters. Consumers use `com.taxonomy.templates.api`:
+`DocumentTemplates`, its immutable data records and errors, and contributed
+`DocumentTemplateContract` / `DocumentTemplateReportPreview` ports. A template
+family contributes its seed, validation and optional preview through
+`TemplateContribution`. Generic bootstrap never replaces an existing template.
+
+`taxonomy-reporting-api` owns complete immutable decision and architecture report
+models in `com.taxonomy.reporting.api`. It depends only on domain contracts and
+Jackson annotations; no Spring, persistence, export implementation or live reader.
+Report-specific immutable evidence validation belongs here; source traversal and
+locale-dependent presentation do not.
+
+`taxonomy-reporting` owns the renderers, layouts, renderer registry, decision
+DOTX seed, validation, preview and health adapter. Its auto-configuration explicitly imports
+its owned rendering/template components when the template port is assembled. It renders independently supplied
+models without `taxonomy-architecture` or workspace/catalog implementations on
+its runtime classpath. `taxonomy-architecture` generates snapshot-bound report
+models and no longer depends on template storage or report rendering.
+
+Portfolio snapshot orchestration currently depends on both architecture and
+reporting. This is an explicit assembly dependency; selecting portfolio as a
+startup feature must also select reporting (and its templates dependency).
+Application-wide report composition remains in `taxonomy-app`.
 
 ### Spring adapters during the migration
 

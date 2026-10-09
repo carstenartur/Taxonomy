@@ -1,10 +1,13 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateUnavailableException;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateExceptionHandler;
+
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
-import com.taxonomy.templates.DecisionReportAvailabilityContract;
+import com.taxonomy.reporting.templates.DecisionReportAvailabilityContract;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.support.StaticMessageSource;

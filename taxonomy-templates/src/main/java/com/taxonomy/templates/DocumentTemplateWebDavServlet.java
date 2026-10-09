@@ -1,9 +1,9 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
-import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.TemplateFile;
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockConflictException;
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockedWriteResult;
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager.TemplateLock;

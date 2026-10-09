@@ -1,5 +1,13 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.api.TemplateManifest;
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateRevision;
+import com.taxonomy.templates.api.TemplateDiff;
+import com.taxonomy.templates.api.PartChange;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+
 import com.taxonomy.backup.BackupCheckpoint;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
@@ -691,36 +699,6 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         }
     }
 
-    public record TemplateManifest(
-            int schemaVersion,
-            String templateId,
-            String displayName,
-            String fileName,
-            String mediaType,
-            String updatedAt,
-            String updatedBy,
-            long uncompressedSize,
-            int partCount,
-            String packageSha256) {
-    }
-
-    /**
-     * Current per-template representation metadata. Despite the historic field name,
-     * {@code headCommit} is the last commit that changed this template, not the shared
-     * repository branch head.
-     */
-    public record TemplateDescriptor(
-            String templateId,
-            String displayName,
-            String fileName,
-            String headCommit,
-            String updatedAt,
-            String updatedBy,
-            long uncompressedSize,
-            int partCount,
-            String packageSha256) {
-    }
-
     public record TemplateSnapshot(
             TemplateManifest manifest,
             String commitId,
@@ -734,59 +712,4 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         }
     }
 
-    public record TemplateRevision(
-            String commitId,
-            String author,
-            String committedAt,
-            String message) {
-    }
-
-    public record TemplateDiff(
-            String templateId,
-            String fromRevision,
-            String toRevision,
-            Map<String, PartChange> changes) {
-    }
-
-    public enum PartChange {
-        ADDED,
-        MODIFIED,
-        DELETED
-    }
-
-    public static final class TemplateConflictException extends IOException {
-        private final String expectedHead;
-        private final String actualHead;
-
-        TemplateConflictException(String expectedHead, String actualHead) {
-            super(expectedHead == null
-                    ? "Document template already exists"
-                            + (actualHead == null ? "" : "; current version is " + actualHead)
-                    : "Document template changed concurrently"
-                            + (actualHead == null ? "; it no longer exists"
-                                    : "; current version is " + actualHead));
-            this.expectedHead = expectedHead;
-            this.actualHead = actualHead;
-        }
-
-        public String expectedHead() {
-            return expectedHead;
-        }
-
-        public String actualHead() {
-            return actualHead;
-        }
-    }
-
-    public static final class TemplateNotFoundException extends IOException {
-        TemplateNotFoundException(String templateId, String revision) {
-            super("Document template not found"
-                    + (templateId == null || templateId.isBlank()
-                    ? ""
-                    : ": " + templateId)
-                    + (revision == null || revision.isBlank()
-                    ? ""
-                    : " at " + revision));
-        }
-    }
 }

@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ArchitectureTemplatesModuleTest {
 
     @Test
-    void templateImplementationsAndDefaultTemplateBelongToTheLibrary() throws Exception {
+    void templateImplementationAndReportSeedHaveDistinctOwners() throws Exception {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (root != null && !Files.isRegularFile(root.resolve(".github/architecture-contexts.json"))) {
             root = root.getParent();
@@ -35,10 +35,11 @@ class ArchitectureTemplatesModuleTest {
                     .as("runtime owner of %s", implementation.getName()).contains("taxonomy-templates");
         }
         String resource = "document-templates/decision-rationale-report.dotx";
-        assertThat(module.resolve("src/main/resources/" + resource)).isRegularFile();
+        assertThat(module.resolve("src/main/resources/" + resource)).doesNotExist();
+        assertThat(root.resolve("taxonomy-reporting/src/main/resources/" + resource)).isRegularFile();
         assertThat(root.resolve("taxonomy-app/src/main/resources/" + resource)).doesNotExist();
         var resources = java.util.Collections.list(getClass().getClassLoader().getResources(resource));
         assertThat(resources).as("one classpath owner for the bundled template").hasSize(1);
-        assertThat(resources.getFirst().toString()).contains("taxonomy-templates");
+        assertThat(resources.getFirst().toString()).contains("taxonomy-reporting");
     }
 }

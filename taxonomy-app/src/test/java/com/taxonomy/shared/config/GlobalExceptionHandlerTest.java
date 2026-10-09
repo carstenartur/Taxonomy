@@ -1,5 +1,7 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.reporting.render.document.WordReportLayoutException;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -25,7 +27,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void wordTemplateReadingScaleFailureIsClearConflict() {
-        var failure=new com.taxonomy.architecture.report.WordReportLayoutException("Word template cannot fit detail at minimum 8pt reading scale");
+        var failure=new com.taxonomy.reporting.render.document.WordReportLayoutException("Word template cannot fit detail at minimum 8pt reading scale");
         var response=handler(SAFE_INTERNAL_MESSAGE).handleWordLayoutConflict(failure,request("/api/projects/1/snapshots/s/decision-report/docx"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).containsEntry("message",failure.getMessage());
