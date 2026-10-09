@@ -48,6 +48,7 @@ public final class BuiltinCatalog {
 
     private static String moduleId(URL source) {
         try {
+            String artifact = null;
             if (source.getProtocol().equals("file")) {
                 Path path = Path.of(source.toURI());
                 if (Files.isDirectory(path)) {
@@ -56,14 +57,29 @@ public final class BuiltinCatalog {
                                 + (path.getFileName().toString().equals("test-classes") ? "-tests" : "");
                     return "classpath";
                 }
+                artifact = path.getFileName().toString();
             }
-            if (source.toExternalForm().contains("BOOT-INF/classes")) return "taxonomy-app";
-            var matcher = java.util.regex.Pattern.compile("(taxonomy-[a-z-]+)-[0-9][^/!]*\\.jar")
-                    .matcher(source.toExternalForm());
-            String module = null;
-            // Boot's outer taxonomy-app JAR is not the owner of an inner feature JAR.
-            while (matcher.find()) module = matcher.group(1);
-            if (module != null) return module;
+            if (artifact == null && source.toExternalForm().contains("BOOT-INF/classes")) return "taxonomy-app";
+            // Select the innermost complete JAR name, never a matching substring of a
+            // different artifact. Tokenization is linear and the name scan is bounded;
+            // searching a backtracking regex across repeated prefixes is not safe here.
+            if (artifact == null) {
+                for (String segment : source.toExternalForm().split("[/!]")) {
+                    if (segment.endsWith(".jar")) artifact = segment;
+                }
+            }
+            if (artifact != null && artifact.length() <= 255
+                    && artifact.startsWith("taxonomy-") && artifact.endsWith(".jar")) {
+                int firstModuleCharacter = "taxonomy-".length();
+                for (int i = firstModuleCharacter; i < artifact.length() - 4; i++) {
+                    char current = artifact.charAt(i);
+                    if (current == '-' && i > firstModuleCharacter && i + 1 < artifact.length() - 4
+                            && artifact.charAt(i + 1) >= '0' && artifact.charAt(i + 1) <= '9') {
+                        return artifact.substring(0, i);
+                    }
+                    if (current != '-' && (current < 'a' || current > 'z')) break;
+                }
+            }
             throw new IllegalArgumentException("Unrecognized built-in artifact location");
         } catch (java.net.URISyntaxException failure) {
             throw new IllegalArgumentException("Invalid built-in artifact location", failure);
