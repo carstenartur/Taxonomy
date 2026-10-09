@@ -359,7 +359,7 @@ class DecisionRationaleSnapshotReportTest {
         when(workspaceResolver.resolveCurrentContext()).thenReturn(CONTEXT);
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("auditor");
 
-        var renderer = mock(ReportRendererExtension.class);
+        var renderer = mock(ReportRendererExtension.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         when(renderer.reportTypeId()).thenReturn(DecisionRationaleReportPlugin.REPORT_TYPE_ID);
         org.mockito.Mockito.doReturn(DecisionRationaleReport.class).when(renderer).reportModelType();
         when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor(

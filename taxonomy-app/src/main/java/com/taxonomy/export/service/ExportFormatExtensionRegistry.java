@@ -23,10 +23,12 @@ public class ExportFormatExtensionRegistry {
         var key = new ExtensionKey(ExtensionKind.EXPORT_FORMAT, id);
         try (var lease = catalog.acquire(key, ExportFormatExtension.class)) {
             ExportFormatDescriptor metadata = lease.extension().descriptor();
+            var identity = lease.plugin();
             return Optional.of(new ExportFormatExtension() {
                 public ExportFormatDescriptor descriptor() { return metadata; }
                 public ExportResult export(ExportContext context) {
                     try (var admitted = catalog.acquire(key, ExportFormatExtension.class)) {
+                        if (!identity.equals(admitted.plugin())) throw new ExtensionUnavailableException(key);
                         return admitted.extension().export(context);
                     }
                 }

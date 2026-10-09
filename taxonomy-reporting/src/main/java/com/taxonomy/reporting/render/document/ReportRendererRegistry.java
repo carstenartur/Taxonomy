@@ -33,12 +33,14 @@ public class ReportRendererRegistry {
             var metadata = lease.extension().descriptor();
             var model = lease.extension().reportModelType();
             var reportFamily = lease.extension().reportTypeId();
+            var identity = lease.plugin();
             return Optional.of(new ReportRendererExtension() {
                 public String reportTypeId() { return reportFamily; }
                 public Class<?> reportModelType() { return model; }
                 public ReportFormatDescriptor descriptor() { return metadata; }
                 public ReportRenderResult render(ReportRenderContext context) {
                     try (var admitted = catalog.acquire(key, ReportRendererExtension.class)) {
+                        if (!identity.equals(admitted.plugin())) throw new ExtensionUnavailableException(key);
                         ReportRendererExtension effective = admitted.extension();
                         for (ReportRendererDecorator decorator : decorators) {
                             if (decorator.supports(effective)) effective = Objects.requireNonNull(decorator.decorate(effective), "report renderer decorator returned null");
