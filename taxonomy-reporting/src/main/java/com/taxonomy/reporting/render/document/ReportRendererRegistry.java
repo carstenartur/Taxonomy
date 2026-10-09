@@ -49,7 +49,10 @@ public class ReportRendererRegistry {
                     }
                 }
             });
-        } catch (ExtensionUnavailableException unavailable) { return Optional.empty(); }
+        } catch (ExtensionUnavailableException unavailable) {
+            if (unavailable.reason() == ExtensionUnavailableException.Reason.UNKNOWN) return Optional.empty();
+            throw unavailable;
+        }
     }
     public List<ReportFormatDescriptor> listDescriptors() { return listDescriptors(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID); }
     public List<ReportFormatDescriptor> listDescriptors(String family) {

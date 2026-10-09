@@ -538,7 +538,7 @@
             <properties>
                 <skipITs>false</skipITs>
                 <taxonomy.quality.skip>false</taxonomy.quality.skip>
-                <it.test>ExternalPluginPackagedIT,OptionalFeaturePackagedIT</it.test>
+                <it.test>ExternalPluginPackagedIT</it.test>
             </properties>
             <!-- The selected packaging ITs belong to taxonomy-build. Other reactor
                  modules must not fail merely because they do not own those classes. -->

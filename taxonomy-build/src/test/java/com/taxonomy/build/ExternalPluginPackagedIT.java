@@ -10,6 +10,14 @@ import static org.assertj.core.api.Assertions.*;
 /** Real independently built plugin, unchanged packaged host, authenticated HTTP exports. */
 class ExternalPluginPackagedIT {
     @TempDir Path temporary;
+    @Test void standardDistributionIncludesChecksumsForEveryExternalPlugin() throws Exception {
+        Path root = PackagedPluginSupport.repository();
+        Path directory = root.resolve("taxonomy-app/target/plugins");
+        Path plugin = PackagedPluginSupport.artifact(directory, "taxonomy-mermaid-plugin-");
+        assertThat(Files.readString(plugin.resolveSibling(plugin.getFileName() + ".sha256")).strip())
+                .isEqualTo(PackagedPluginSupport.sha256(plugin) + " *" + plugin.getFileName());
+    }
+
     @Test void externalMermaidJarIsOptionalAndDoesNotRequireRebuildingTheHost() throws Exception {
         Path root = PackagedPluginSupport.repository();
         Path host = PackagedPluginSupport.application(root);

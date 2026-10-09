@@ -7,8 +7,9 @@ eines mit ihr erzeugten Modells.
 
 Beschrieben wird die implementierte Architektur dieses Branches, keine Roadmap.
 Taxonomy ist ein **modularer Monolith mit genau einer deploybaren Spring-Boot-Anwendung**.
-Der Reactor umfasst siebzehn Untermodule: fünf frameworkfreie Grundlagen, acht
-Laufzeit-Fachbibliotheken, ein Kompositionsmodul und drei Build-/Werkzeugmodule.
+Der Reactor umfasst neunzehn Untermodule: fünf frameworkfreie Grundlagen, acht
+Laufzeit-Fachbibliotheken, die Plugin-Laufzeit, ein externes Plugin, ein Kompositionsmodul
+und drei Build-/Werkzeugmodule.
 Inventar und aktuelle Zuständigkeiten stehen in [Modulgrenzen](MODULE_BOUNDARIES.md).
 [English](../en/ARCHITECTURE.md).
 

@@ -263,8 +263,9 @@ The build generates:
 ## Architecture
 
 Taxonomy is a **modular monolith with one deployable Spring Boot application**.
-The Maven reactor contains seventeen child modules: five framework-free foundations,
-eight runtime feature libraries, the application composition root, and three build/tooling modules.
+The Maven reactor contains nineteen child modules: five framework-free foundations,
+eight runtime feature libraries, the plugin runtime, one external plugin, the application
+composition root, and three build/tooling modules.
 
 ### How the application fits together
 

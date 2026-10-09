@@ -58,7 +58,16 @@ public final class PluginCatalog implements ExtensionCatalog {
             ExtensionKey key, Class<T> expectedType) {
         Objects.requireNonNull(expectedType, "expectedType");
         Entry entry = current.entries().get(Objects.requireNonNull(key, "key"));
-        if (entry == null) throw new ExtensionUnavailableException(key);
+        if (entry == null) {
+            // Draining registrations remain installed until every admitted call has finished.
+            // Keep that transient state distinct from an unknown ID for request adapters.
+            boolean installed = generations.values().stream()
+                    .flatMap(generation -> generation.entries.stream())
+                    .anyMatch(candidate -> candidate.metadata.key().equals(key));
+            throw new ExtensionUnavailableException(key, installed
+                    ? ExtensionUnavailableException.Reason.UNAVAILABLE
+                    : ExtensionUnavailableException.Reason.UNKNOWN);
+        }
         if (!expectedType.isInstance(entry.extension))
             throw new IllegalArgumentException("Extension contract mismatch: " + key);
         entry.owner.references++;
