@@ -21,6 +21,9 @@ or an HTTP entity return type, and explicit servlet-streaming responses. MVC pag
 names and exception handlers are not REST operations. Explicit `@Hidden` or
 `@Operation(hidden=true)` exclusions remain intentional; there is no debt allowlist.
 Every discovered REST handler must have a nonblank operation summary and description.
+Method discovery includes non-public MVC handlers. Dedicated fixture profiles
+prevent the test configuration from registering in unrelated application contexts;
+a separate regression checks both isolation and explicit activation.
 
 `OpenApiGeneratedContractTest` starts the real Spring MVC, embedded servlet server
 and Springdoc generator with production controllers and inert service dependencies.
@@ -40,7 +43,7 @@ Its focused contracts include:
 
 These checks do not execute an LLM, use production credentials, contact a broker
 or require Docker. They do not replace authentication, authorization, business
-behavior, external-database, browser or broker integration tests. The two shared
+behavior, external-database, browser or broker integration tests. The shared
 `*Cases` classes also expose direct Java entry points for restricted diagnostic
 environments; that execution is not a Maven/JUnit or full-reactor result.
 

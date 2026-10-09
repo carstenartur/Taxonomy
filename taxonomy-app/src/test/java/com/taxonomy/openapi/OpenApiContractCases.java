@@ -53,6 +53,7 @@ public final class OpenApiContractCases {
         var app = new SpringApplication(ApiFixture.class);
         app.setWebApplicationType(WebApplicationType.SERVLET);
         app.setRegisterShutdownHook(false);
+        app.setAdditionalProfiles("openapi-contract-fixture");
         try (var context = app.run(
                 "--spring.config.location=optional:classpath:/openapi-contract-only.properties",
                 "--server.port=0", "--server.address=127.0.0.1",
@@ -221,6 +222,7 @@ public final class OpenApiContractCases {
         System.out.println("OpenAPI generated-contract checks passed");
     }
 
+    @org.springframework.context.annotation.Profile("openapi-contract-fixture")
     @Configuration(proxyBeanMethods = false)
     @ImportAutoConfiguration({
             JacksonAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,

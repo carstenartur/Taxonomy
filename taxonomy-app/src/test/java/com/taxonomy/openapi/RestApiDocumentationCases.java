@@ -36,7 +36,7 @@ public final class RestApiDocumentationCases {
             Class<?> type = Class.forName(candidate.getBeanClassName(), false,
                     RestApiDocumentationCases.class.getClassLoader());
             if (AnnotatedElementUtils.hasAnnotation(type, Hidden.class)) continue;
-            for (var method : type.getMethods()) {
+            for (var method : mappedMethods(type)) {
                 if (AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class) == null
                         || AnnotatedElementUtils.hasAnnotation(method, Hidden.class)) continue;
                 if (!AnnotatedElementUtils.hasAnnotation(type, ResponseBody.class)
@@ -61,5 +61,13 @@ public final class RestApiDocumentationCases {
                 + methods + " REST methods:\n" + String.join("\n", failures));
         System.out.println("REST documentation inventory passed: " + methods + " methods");
     }
+    static java.util.List<java.lang.reflect.Method> mappedMethods(Class<?> type) {
+        // Match MVC's method introspection, including protected/private handlers.
+        return org.springframework.core.MethodIntrospector.selectMethods(type,
+                (org.springframework.core.MethodIntrospector.MetadataLookup<RequestMapping>) method ->
+                        AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class))
+                .keySet().stream().sorted(Comparator.comparing(java.lang.reflect.Method::toGenericString)).toList();
+    }
+
     public static void main(String[] args) throws Exception { verify(); }
 }

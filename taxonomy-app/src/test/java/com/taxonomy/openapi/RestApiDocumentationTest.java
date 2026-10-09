@@ -7,4 +7,13 @@ class RestApiDocumentationTest {
     void everyControllerIncludingConditionalAdaptersHasOperationDocumentation() throws Exception {
         RestApiDocumentationCases.verify();
     }
+    @Test
+    void nonPublicMappedMethodsCannotEvadeDocumentationChecks() {
+        RestApiDocumentationDiscoveryCases.verify();
+    }
+
+    @Test
+    void testFixturesCannotLeakIntoOtherApplicationContexts() {
+        RestApiDocumentationDiscoveryCases.verifyIsolation();
+    }
 }
