@@ -126,6 +126,8 @@ public final class ReformulationProcessRecoveryDriver {
                     return;
                 }
                 var run = app.getBean(ReformulationExecutionService.class).start(p.id(), r.id(), offer.id(), 1, "architect", scope);
+                check(run.providerBinding()!=null, "Admitted provider artifact binding is missing");
+                Files.writeString(directory.resolve("provider-binding.json"),json.writeValueAsString(run.providerBinding()));
                 Files.write(directory.resolve("identity"), List.of(scope.repositoryId(), scope.workspaceId(), scope.currentBranch(), p.id().toString(),
                         r.id().toString(), offer.id(), r.currentVersionId().toString(), run.id(), Integer.toString(remote.getAddress().getPort())));
                 new CountDownLatch(1).await(90, TimeUnit.SECONDS);
@@ -138,7 +140,10 @@ public final class ReformulationProcessRecoveryDriver {
                 var after = proposals.get(p, r, offer, "architect", scope);
                 check(after.currentRevision().number() == 2, "Interrupted synthesis was not automatically recovered; revision=" + after.currentRevision().number());
                 check(proposals.runs(p, r, offer, "architect", scope).size() == 1, "Recovery created a new user run");
-                check(proposals.runs(p, r, offer, "architect", scope).getFirst().status().equals("COMPLETED"), "Recovered run did not complete");
+                var recoveredRun=proposals.runs(p, r, offer, "architect", scope).getFirst();
+                check(recoveredRun.status().equals("COMPLETED"), "Recovered run did not complete");
+                check(json.readTree(Files.readString(directory.resolve("provider-binding.json")))
+                        .equals(json.valueToTree(recoveredRun.providerBinding())), "Provider artifact/configuration binding changed across process death");
                 String question = Files.readString(directory.resolve("kill-ready"));
                 check(after.currentRevision().questions().stream().anyMatch(q -> q.id().equals(question)), "Committed question identity lost");
                 check(calls.get() == 3, "Committed child must be reused; expected 3 remaining requests, got " + calls.get());

@@ -81,6 +81,7 @@
                             <excludes>
                                 <exclude>**/ArchitectureModuleGraphTest.java</exclude>
                                 <exclude>**/ArchitectureModuleExtractionTest.java</exclude>
+                                <exclude>**/PluginModuleBoundaryTest.java</exclude>
                                 <exclude>**/ArchitectureSelectorSynchronizationTest.java</exclude>
                             </excludes>
                         </configuration>
@@ -101,6 +102,16 @@
                         <goals><goal>test</goal></goals>
                         <configuration>
                             <test>ArchitectureModuleExtractionTest</test>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>required-PluginModuleBoundaryTest</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>PluginModuleBoundaryTest</test>
                             <failIfNoTests>true</failIfNoTests>
                             <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
                         </configuration>

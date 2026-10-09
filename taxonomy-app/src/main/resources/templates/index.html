@@ -58,7 +58,7 @@
                         th:text="#{navbar.project.menu}">Project</button>
                 <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="projectMenuButton">
                     <li>
-                        <button id="projectNewAction" class="dropdown-item" type="button"
+                        <button id="projectNewAction" data-taxonomy-feature="portfolio" class="dropdown-item" type="button"
                                 data-analysis-session-action="new-project"
                                 th:text="#{navbar.project.new}">New project</button>
                     </li>
@@ -69,7 +69,7 @@
                     </li>
                     <li><hr class="dropdown-divider"/></li>
                     <li>
-                        <a id="projectOpenAction" class="dropdown-item" th:href="@{/projects}"
+                        <a id="projectOpenAction" data-taxonomy-feature="portfolio" class="dropdown-item" th:href="@{/projects}"
                            href="/projects" th:text="#{navbar.project.open}">Open projects</a>
                     </li>
                 </ul>
@@ -110,10 +110,10 @@
                 <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
             </li>
             <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
+                <a class="nav-link" data-page="architecture" data-taxonomy-feature="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
             </li>
             <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="graph" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
+                <a class="nav-link" data-page="graph" data-taxonomy-feature="architecture" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
             </li>
             <li role="presentation" class="nav-item">
                 <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
@@ -256,7 +256,7 @@
                                     th:title="#{analyze.provider.title}" title="Choose AI provider for this analysis">
                                 <option value="" th:text="#{analyze.provider.default}">🔧 Server Default</option>
                             </select>
-                            <button id="analyzeBtn" class="btn btn-primary flex-grow-1" data-guard="analyze" th:title="#{analyze.btn.analyze.title}" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
+                            <button id="analyzeBtn" data-taxonomy-feature="analysis" class="btn btn-primary flex-grow-1" data-guard="analyze" th:title="#{analyze.btn.analyze.title}" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
                                 <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                                 <span th:text="#{analyze.btn.analyze.text}">Analyze with AI</span>
                             </button>
@@ -657,10 +657,10 @@
                                     </select>
                                 </label>
                                 <button id="exportPdf"       class="btn btn-outline-secondary" th:title="#{export.btn.pdf.title}" title="Export as vector PDF (or Print)" th:text="#{index.ui.vector}">&#128229; PDF (Vector)</button>
-                                <button id="exportVisio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Download experimental bounded Visio 2012 subset — Microsoft Visio desktop certification pending" th:text="#{index.ui.visio}">&#128229; Visio 2012 subset</button>
-                                <button id="exportArchiMate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Download experimental bounded ArchiMate 3.1 subset — mapping profile and loss manifest included; independent-tool acceptance pending" th:text="#{index.ui.archimate}">&#128229; ArchiMate 3.1 subset</button>
-                                <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
-                                <button id="exportStructurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
+                                <button id="exportVisio" data-taxonomy-format="visio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Download experimental bounded Visio 2012 subset — Microsoft Visio desktop certification pending" th:text="#{index.ui.visio}">&#128229; Visio 2012 subset</button>
+                                <button id="exportArchiMate" data-taxonomy-format="archimate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Download experimental bounded ArchiMate 3.1 subset — mapping profile and loss manifest included; independent-tool acceptance pending" th:text="#{index.ui.archimate}">&#128229; ArchiMate 3.1 subset</button>
+                                <button id="exportMermaid" data-taxonomy-format="mermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
+                                <button id="exportStructurizr" data-taxonomy-format="structurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
                             </div>
                             <h6 class="mb-2" th:text="#{export.tree.heading}">Tree Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
@@ -683,7 +683,7 @@
                                 Export the traceable root-to-leaf decision path with one parent/children chapter per hierarchy decision.
                             </p>
                             <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportDecisionReportDocx" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.configure}">&#128221; <span th:text="#{export.btn.decision.configure}">Decision report …</span></button>
+                                <button id="exportDecisionReportDocx" data-taxonomy-feature="reporting" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.configure}">&#128221; <span th:text="#{export.btn.decision.configure}">Decision report …</span></button>
                             </div>
                         </div>
 
@@ -693,7 +693,7 @@
                         <div class="d-flex gap-2 flex-wrap">
                             <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file" th:text="#{index.ui.loadScores}">&#128228; Load Scores</button>
                             <input type="file" id="importJsonFile" accept=".json" style="display:none;">
-                            <button id="archiMateImportBtn" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" th:attr="aria-label=#{ui.aria.import_archimate_xml}" aria-label="Import ArchiMate XML" th:text="#{index.ui.importArchiMate}">&#128228; Import ArchiMate</button>
+                            <button id="archiMateImportBtn" data-taxonomy-feature="interop" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" th:attr="aria-label=#{ui.aria.import_archimate_xml}" aria-label="Import ArchiMate XML" th:text="#{index.ui.importArchiMate}">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
 
@@ -1520,6 +1520,7 @@
 <script th:src="@{/js/shared/taxonomy-operation-result.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-versions.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-variants.js}"></script>
+<script th:src="@{/js/shared/plugin-capabilities.js}" src="/js/shared/plugin-capabilities.js"></script>
 <script th:src="@{/js/shared/decision-export-dialog.js}"></script>
 <script th:src="@{/js/shared/taxonomy-export.js}"></script>
 <script th:src="@{/js/shared/taxonomy-import.js}"></script>

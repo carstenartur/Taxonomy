@@ -24,6 +24,7 @@ import java.util.Map;
  * repair trigger. Exists only in Artemis transport mode; protected by the
  * {@code /api/admin/**} ADMIN rule.
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @RestController
 @Tag(name = "Analysis dispatch", description = "ADMIN-only Artemis delivery status and bounded recovery")
 @RequestMapping("/api/admin/analysis/dispatch")

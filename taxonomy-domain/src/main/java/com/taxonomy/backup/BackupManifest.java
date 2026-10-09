@@ -11,7 +11,7 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
                              List<Repository> repositories, List<BackupEntry> entries,
                              List<String> dependencies, List<String> omissions) {
     public static final int FORMAT_VERSION = 1;
-    public static final Set<String> SUPPORTED_FEATURES = Set.of("component-sha256", "explicit-scope", "writer-barrier-v1");
+    public static final Set<String> SUPPORTED_FEATURES = Set.of("component-sha256", "explicit-scope", "writer-barrier-v1", "plugin-prerequisites-v1");
 
     public record Component(BackupComponentId id, int version, BackupCompleteness completeness,
                             List<String> entryPaths, Set<BackupComponentId> dependencies) {

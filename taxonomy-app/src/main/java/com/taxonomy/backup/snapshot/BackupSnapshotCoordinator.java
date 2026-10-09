@@ -1,5 +1,9 @@
 package com.taxonomy.backup.snapshot;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
+import com.taxonomy.backup.runtime.BackupPaths;
+
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.ArchiveProtectionProvider;
 import com.taxonomy.backup.archive.ArchiveProgress;
@@ -24,6 +28,7 @@ public final class BackupSnapshotCoordinator {
     private final CaptureLimits limits;
     private final Clock clock;
     private final ArchiveProtectionProvider protection;
+    private final com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites;
 
     @FunctionalInterface public interface Inventory {
         CapturePlan inspect(AuthorizedBackupRequest request) throws IOException;
@@ -55,13 +60,16 @@ public final class BackupSnapshotCoordinator {
     }
 
     public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
-                                     Inventory inventory, List<BackupContributor> contributors, Path root, CaptureLimits limits, Clock clock) {
-        this(barrier, authorization, inventory, contributors, root, limits, clock, ArchiveProtectionProvider.unprotected());
+                                     Inventory inventory, List<BackupContributor> contributors, Path root, CaptureLimits limits, Clock clock,
+                                     com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+        this(barrier, authorization, inventory, contributors, root, limits, clock, ArchiveProtectionProvider.unprotected(), prerequisites);
     }
 
     public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
                                      Inventory inventory, List<BackupContributor> contributors, Path root, CaptureLimits limits, Clock clock,
-                                     ArchiveProtectionProvider protection) {
+                                     ArchiveProtectionProvider protection,
+                                     com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+        this.prerequisites = Objects.requireNonNull(prerequisites);
         this.protection = Objects.requireNonNull(protection);
         this.barrier = Objects.requireNonNull(barrier); this.authorization = Objects.requireNonNull(authorization);
         this.inventory = Objects.requireNonNull(inventory); this.root = root.toAbsolutePath().normalize();
@@ -76,6 +84,7 @@ public final class BackupSnapshotCoordinator {
     public CapturedBackup capture(AuthorizedBackupRequest creation, ArchiveProgress progress) throws IOException {
         Objects.requireNonNull(progress).check(0);
         authorization.requireJobAccess(creation.principalId(), creation);
+        prerequisites.requireCapture();
         if (creation.request().secrets() != SecretsSelection.EXCLUDE && !protection.encrypted()) throw new IllegalArgumentException("Encrypted staging is required for secrets");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Backup capture cancelled");
         Path staging = null;
@@ -124,9 +133,11 @@ public final class BackupSnapshotCoordinator {
                         "payloadEntries", sink.entries.size(), "revisions", plan.repositories()));
                 var proofEntry = sink.write("verification/capture.json", new ByteArrayInputStream(proof));
                 components.add(new BackupManifest.Component(PROOF, 1, BackupCompleteness.COMPLETE, List.of(proofEntry.path()), Set.of()));
+                var dependencies = new java.util.LinkedHashSet<>(plan.dependencies());
+                dependencies.addAll(prerequisites.dependencies());
                 var manifest = new BackupManifest(BackupManifest.FORMAT_VERSION, plan.applicationVersion(), plan.build(), id, plan.sourceInstallationId(),
                         creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), BackupManifest.SUPPORTED_FEATURES,
-                        components, plan.repositories(), sink.entries, plan.dependencies(), List.copyOf(omissions));
+                        components, plan.repositories(), sink.entries, List.copyOf(dependencies), List.copyOf(omissions));
                 byte[] document = new BackupManifestCodec().write(manifest);
                 if (document.length > limits.maxTotalBytes() - sink.total) throw new IOException("Capture byte limit exceeded");
                 try (var channel = FileChannel.open(staging.resolve("manifest.json"), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {

@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Import;
 import com.taxonomy.templates.api.DocumentTemplates;
 
 /** Explicit feature assembly. Import exact owned components; never trigger a scan in a partial context. */
-@AutoConfiguration
+@AutoConfiguration(afterName = "com.taxonomy.templates.config.TemplatesFeatureAutoConfiguration")
 @ConditionalOnBean(DocumentTemplates.class)
 @Import({
         com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer.class,

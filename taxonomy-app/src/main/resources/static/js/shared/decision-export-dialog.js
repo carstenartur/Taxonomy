@@ -25,14 +25,14 @@
         });
         return params.toString();
     }
-    async function download(response, format, snapshotId, signal, preparedBlob) {
+    async function download(response, format, snapshotId, signal, preparedBlob, descriptor) {
         if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
         if (!response.ok) {
             const problem = await response.json().catch(() => null);
             throw new Error(problem?.detail || problem?.message || ('HTTP ' + response.status));
         }
         const type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (response.redirected || type !== types[format] || !response.headers.get('X-Taxonomy-Analysis-SHA256'))
+        if (response.redirected || type !== (descriptor?.contentType || types[format] || '').split(';')[0].trim().toLowerCase() || !response.headers.get('X-Taxonomy-Analysis-SHA256'))
             throw new Error(reportText('The response is not a decision report. Please check your session and retry.', 'Die Antwort ist kein Entscheidungsbericht. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut.'));
         if (snapshotId && response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId)
             throw new Error(reportText('The report does not belong to the selected snapshot.', 'Der Bericht gehört nicht zum ausgewählten Snapshot.'));
@@ -42,7 +42,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'taxonomy-decision-report' + (snapshotId ? '-' + snapshotId.replace(/[^A-Za-z0-9_-]/g, '_') : '') + '.' + format;
+        link.download = 'taxonomy-decision-report' + (snapshotId ? '-' + snapshotId.replace(/[^A-Za-z0-9_-]/g, '_') : '') + '.' + (descriptor?.fileExtension || format);
         document.body.appendChild(link); link.click(); link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
@@ -75,7 +75,7 @@
             values.forEach(([value, text]) => { const option = el('option', text, {value}); control.append(option); });
             control.value = initial; wrapper.append(control); parent.append(wrapper); return control;
         }
-        const format = select(t('Format', 'Format'), 'format', [['docx','Word (.docx)'],['html','HTML'],['json','JSON']], config.format || 'docx');
+        const format = select(t('Format', 'Format'), 'format', [], '');
         const presentation = el('div'); fieldset.append(presentation);
         const profile = select(t('Content', 'Umfang'), 'profile', [['COMPACT',t('Compact','Kompakt')],['STANDARD',t('Standard','Standard')],['FULL',t('Full','Vollständig')]], 'COMPACT', presentation);
         const profileNote = el('p'); presentation.append(profileNote);
@@ -104,13 +104,20 @@
         const actions = el('div',null,{class:'export-actions'}); form.append(actions);
         const cancel = el('button', t('Cancel','Abbrechen'), {type:'button'});
         const submit = el('button', t('Download','Herunterladen'), {type:'submit'});actions.append(cancel,submit);
-        let roots = [], checks = [], busy = false, ready = false, exportController = null;
+        let roots = [], checks = [], busy = false, ready = false, exportController = null, availableFormats = [];
         async function load() {
             ready=false; submit.disabled=true; retry.hidden=true;error.textContent='';
             sourceScope.textContent=t('Loading saved scope…','Gespeicherten Umfang laden …');
             try {
-                const data = config.load ? await config.load() : config;
+                const [data, capabilities] = await Promise.all([config.load ? config.load() : config, window.TaxonomyCapabilities.load()]);
                 if (!dialog.open) return;
+                availableFormats = window.TaxonomyCapabilities.formats(capabilities.reports, 'decision-rationale');
+                format.replaceChildren();
+                availableFormats.forEach(item => format.append(el('option', item.displayName + ' (.' + item.fileExtension + ')', {value:item.id})));
+                format.value = availableFormats.some(item => item.id === config.format) ? config.format
+                    : availableFormats.some(item => item.id === 'docx') ? 'docx' : (availableFormats[0]?.id || '');
+                updateFormat();
+                if (!availableFormats.length) throw new Error(t('No decision-report format is installed.', 'Kein Format für Entscheidungsberichte ist installiert.'));
                 roots = data.roots || [];
                 const scope = data.analysisScope;
                 sections.filter(input => input.value === 'ARCHITECTURE').forEach(input => {
@@ -152,7 +159,7 @@
             busy=true;fieldset.disabled=true;submit.disabled=true;error.textContent='';
             submit.textContent=t('Generating…','Wird erstellt …');dialog.setAttribute('aria-busy','true');
             try {
-                await config.submit({format:format.value,options,signal:controller.signal});
+                await config.submit({format:format.value,descriptor:availableFormats.find(item => item.id === format.value),options,signal:controller.signal});
                 if(dialog.open&&!controller.signal.aborted)dialog.close();
             }
             catch(err){if(dialog.open&&!controller.signal.aborted){error.textContent=t('Export failed: ','Export fehlgeschlagen: ')+err.message;error.scrollIntoView({block:'nearest'});}}
@@ -169,7 +176,7 @@
         const projectId=String(config.projectId), snapshotId=String(config.snapshotId);
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
             load:()=>config.api.decisionReportOptions(projectId,snapshotId,config.language),
-            submit:config.submit || (async ({format,options,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,config.language,options,{signal}),format,snapshotId,signal))});
+            submit:config.submit || (async ({format,descriptor,options,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,config.language,options,{signal}),format,snapshotId,signal,undefined,descriptor))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
 }());

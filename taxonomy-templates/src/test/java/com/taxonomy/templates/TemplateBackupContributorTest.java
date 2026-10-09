@@ -211,7 +211,7 @@ class TemplateBackupContributorTest {
     }
     private DocumentTemplateGitRepository.TemplateSnapshot commit(String id, String expected, String message) throws Exception {
         var manifest = new com.taxonomy.templates.api.TemplateManifest(1, id, id, id + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, now.toString(), "operator",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, now.toString(), "operator",
                 parts.values().stream().mapToLong(value -> value.length).sum(), parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
         return repository.commit(manifest, parts, expected, "operator", message);
     }

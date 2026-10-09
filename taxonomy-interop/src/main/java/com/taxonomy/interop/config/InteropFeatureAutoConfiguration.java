@@ -1,0 +1,38 @@
+package com.taxonomy.interop.config;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
+import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.context.ResourceLoaderAware;
+import org.springframework.core.env.Environment;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+
+/** Startup-only owned components; absent JAR means no feature registration. */
+@AutoConfiguration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnBean(name = "taxonomyFeatureHost")
+@Import(InteropFeatureAutoConfiguration.OwnedComponents.class)
+public class InteropFeatureAutoConfiguration {
+    @org.springframework.context.annotation.Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(com.taxonomy.interop.IntegrationPortfolioPort.class)
+    com.taxonomy.interop.IntegrationPortfolioPort unavailablePortfolio() { return new UnavailablePortfolioPort(); }
+
+    /** Registration happens only after the host-marker condition, preserving each component's own conditions and bean name. */
+    static final class OwnedComponents implements ImportBeanDefinitionRegistrar, EnvironmentAware, ResourceLoaderAware {
+        private Environment environment;
+        private ResourceLoader resourceLoader;
+        @Override public void setEnvironment(Environment environment) { this.environment = environment; }
+        @Override public void setResourceLoader(ResourceLoader resourceLoader) { this.resourceLoader = resourceLoader; }
+        @Override public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
+            var scanner = new ClassPathBeanDefinitionScanner(registry);
+            scanner.setEnvironment(environment);
+            scanner.setResourceLoader(resourceLoader);
+            scanner.addExcludeFilter(new AnnotationTypeFilter(AutoConfiguration.class));
+            scanner.scan("com.taxonomy.interop");
+        }
+    }
+}

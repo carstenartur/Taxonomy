@@ -191,13 +191,20 @@ public class ReformulationService {
     @Transactional
     public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
             String promptVersion,String schemaVersion,String promptContent,Map<String,String> reconcileContext,String actor,WorkspaceContext context) {
+        return beginRun(projectId,requirementId,id,expectedRevision,provider,model,promptVersion,schemaVersion,
+                promptContent,reconcileContext,actor,context,null);
+    }
+    @Transactional
+    public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,Map<String,String> reconcileContext,String actor,WorkspaceContext context,
+            com.taxonomy.extension.api.plugin.PluginInvocation providerBinding) {
         var proposal=require(projectId,requirementId,id,actor,context,true);
         if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();
         boolean active=runs.findByProposalIdAndScopeKey(id,proposal.getScopeKey()).stream()
                 .map(r->json.read(r.getPayload(),Run.class)).anyMatch(r->Set.of("QUEUED","RUNNING").contains(r.status()));
         if(active) throw PortfolioException.conflict("Cancel the active synthesis run before starting another run");
         var run=new Run(UUID.randomUUID().toString(),id,expectedRevision,"QUEUED",provider,model,promptVersion,schemaVersion,promptContent,
-                null,null,null,PortfolioScope.username(actor,context),Instant.now(),reconcileContext);
+                null,null,null,PortfolioScope.username(actor,context),Instant.now(),reconcileContext,providerBinding);
         runs.saveAndFlush(new ReformulationRun(run.id(),id,proposal.getScopeKey(),json.write(run)));
         return run;
     }
@@ -328,7 +335,7 @@ public class ReformulationService {
         return runs.lockScoped(runId,proposal.getId(),proposal.getScopeKey()).orElseThrow(()->PortfolioException.notFound("Synthesis run not found"));
     }
     private static Run state(Run old,String status,String failure,Long revision,ReformulationDocument candidate) {
-        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt(),old.reconcileContext());
+        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt(),old.reconcileContext(),old.providerBinding());
     }
     private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
         long number=proposal.getCurrentRevision();

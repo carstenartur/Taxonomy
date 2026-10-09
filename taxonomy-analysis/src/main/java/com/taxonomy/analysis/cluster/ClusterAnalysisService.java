@@ -36,6 +36,9 @@ public final class ClusterAnalysisService {
                 result = Objects.requireNonNull(computation.score(input, task, worker::cancelled), "computed root result");
                 outcome = "SUCCESS".equals(result.getStatus()) ? AnalysisTaskOutcome.COMPLETED
                         : "ERROR".equals(result.getStatus()) ? AnalysisTaskOutcome.FAILED : AnalysisTaskOutcome.PARTIAL;
+            } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {
+                result = failed(unavailable.reason()); result.setStatus("PARTIAL");
+                outcome = AnalysisTaskOutcome.STOPPED; reason = unavailable.reason();
             } catch (AnalysisStoppedException stopped) {
                 result = new AnalysisResult(stopped.partialScores(), List.of());
                 result.setReasons(stopped.partialReasons()); result.setDiscrepancies(stopped.partialDiscrepancies());

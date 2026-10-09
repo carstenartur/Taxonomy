@@ -38,11 +38,13 @@ final class ContainerTestUtils {
             "taxonomy-app-it", false)
             .withFileFromPath("app.jar", findApplicationJar())
             .withFileFromPath("plugins", findApplicationJar().getParent().resolve("plugins"))
+            .withFileFromPath("features", findApplicationJar().getParent().resolve("features"))
             .withDockerfileFromBuilder(builder -> builder
                     .from(APP_RUNTIME_IMAGE)
                     .workDir("/app")
                     .copy("app.jar", "app.jar")
                     .copy("plugins", "plugins")
+                        .copy("features", "features")
                     .expose(8080)
                     .entryPoint("java", "-jar", "app.jar")
                     .build());

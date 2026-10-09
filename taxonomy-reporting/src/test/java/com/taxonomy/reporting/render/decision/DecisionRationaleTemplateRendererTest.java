@@ -91,7 +91,7 @@ class DecisionRationaleTemplateRendererTest {
                 DecisionRationaleTemplateContract.TEMPLATE_ID,
                 DecisionRationaleTemplateContract.DISPLAY_NAME,
                 DecisionRationaleTemplateContract.TEMPLATE_ID + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 "2026-08-22T16:00:00Z",
                 "taxonomy-bootstrap",
                 4_096,
@@ -223,7 +223,7 @@ class DecisionRationaleTemplateRendererTest {
         parts.put("[Content_Types].xml",new String(parts.get("[Content_Types].xml"),StandardCharsets.UTF_8)
                 .replace("wordprocessingml.document.main+xml","wordprocessingml.template.main+xml").getBytes(StandardCharsets.UTF_8));
         template=codec.pack(parts);
-        var manifest=new TemplateManifest(1,DecisionRationaleTemplateContract.TEMPLATE_ID,"Custom","custom.dotx",OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,"2026-08-22T16:00:00Z","administrator",template.length,parts.size(),TEMPLATE_SHA256);
+        var manifest=new TemplateManifest(1,DecisionRationaleTemplateContract.TEMPLATE_ID,"Custom","custom.dotx",com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,"2026-08-22T16:00:00Z","administrator",template.length,parts.size(),TEMPLATE_SHA256);
         when(templates.downloadCurrentValidated(DecisionRationaleTemplateContract.TEMPLATE_ID))
                 .thenReturn(new TemplateFile(manifest,TEMPLATE_COMMIT,template,Instant.EPOCH));
         var base=report();

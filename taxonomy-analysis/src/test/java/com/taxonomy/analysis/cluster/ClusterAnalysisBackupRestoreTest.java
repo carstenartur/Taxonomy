@@ -403,6 +403,24 @@ class ClusterAnalysisBackupRestoreTest {
             assertEquals("PARTIAL", observer.result(restored.operationId(), "bob", scope).getStatus());
         }
     }
+    @Test void restorePreservesExactProviderBindingAndRejectsUnavailableArtifactBeforeWrites() throws Exception {
+        try (var source=new Database(); var target=new Database()) {
+            var original=context("bound-source");var c=command("requirement");
+            var binding=new com.taxonomy.extension.api.plugin.PluginInvocation(
+                    new com.taxonomy.extension.api.plugin.PluginIdentity("example.provider","1.0.0","a".repeat(64)),"b".repeat(64));
+            var bound=new AnalyzeRequirementCommand(c.businessText(),c.includeArchitectureView(),c.maxArchitectureNodes(),c.provider(),c.username(),c.workspaceContext(),c.provenance(),c.analysisScope(),binding);
+            source.store.admit(original,bound,null,Map.of(CP,"{\"root\":\"CP\"}",IP,"{\"root\":\"IP\"}"));
+            var archive=exportedArchive(source);var destination=targetContext("bound-restored");var t=targetCommand();
+            var restoredCommand=new AnalyzeRequirementCommand(t.businessText(),t.includeArchitectureView(),t.maxArchitectureNodes(),t.provider(),t.username(),t.workspaceContext(),t.provenance(),t.analysisScope(),binding);
+            assertThrows(IllegalArgumentException.class,()->new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON).restore(archive,destination,restoredCommand));
+            assertNull(new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId())));
+            new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON,binding::equals).restore(archive,destination,restoredCommand);
+            var stored=new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId()).commandJson);
+            assertEquals(binding,JSON.readValue(stored,AnalyzeRequirementCommand.class).providerBinding());
+            assertNoOperationalState(target);
+        }
+    }
+
     private static Archive exportedArchive(Database database) throws Exception {
         var now = Instant.now();
         var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Workspace("repo", "workspace"),

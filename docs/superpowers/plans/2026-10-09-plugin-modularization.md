@@ -162,11 +162,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `FeatureAssembly.validate(Set<String> installed): FeatureSet`; `FeatureSet.has(String id): boolean`. IDs: `templates`, `architecture`, `reporting`, `analysis`, `portfolio`, `interop`. Mindestabhängigkeiten: `reporting -> templates`; `analysis -> architecture`; `portfolio -> analysis,architecture`. Interop konsumiert weiterhin seine Workspace-Ports; konkrete appseitige Portfolio-Brücken sind nur bei Portfolio aktiv. Zusätzliche echte Abhängigkeiten werden durch den gemessenen Graphen aufgedeckt und vor Umsetzung ausdrücklich bereinigt oder deklariert, nicht versteckt.
 
-- [ ] RED: denselben Host starten mit Kern allein; Kern+Templates; Kern+Architecture; Kern+Templates+Architecture+Reporting; zusätzlich Analysis+Portfolio; Vollausstattung. Die abgewählten Implementierungs-JARs müssen physisch fehlen. Eine invalide Kombination scheitert vor Serving mit konkreter fehlender Fähigkeit, nicht mit `NoClassDefFoundError`.
+- [x] RED: denselben Host starten mit Kern allein; Kern+Templates; Kern+Architecture; Kern+Templates+Architecture+Reporting; zusätzlich Analysis+Portfolio; Vollausstattung. Die abgewählten Implementierungs-JARs müssen physisch fehlen. Eine invalide Kombination scheitert vor Serving mit konkreter fehlender Fähigkeit, nicht mit `NoClassDefFoundError`.
 - [ ] Run: `./mvnw -B verify -Pplugin-packaging-tests`. Expected: aktuelle unbedingte Verdrahtung verhindert mindestens die Kernkombination.
-- [ ] Implementieren: explizite, vor Bean-Erzeugung validierte Startzeit-Zusammensetzung; Boot `PropertiesLauncher`/dokumentierter externer Classpath für Feature-JARs. Kein globaler Scan, der optionale Klassen trotzdem erzwingt. Entities und Migrationen nur beim Start registrieren; keine schema-droppende Abwahl. HTTP-Adapter und Ressourcen gehen mit ihrem Feature. API-Pakete besitzen nach Extraktion genau einen Maven-Eigentümer.
-- [ ] GREEN: alle sechs Kombinationen gegen unveränderten Host; Readiness, ausgewählte echte HTTP-/WebDAV-/Reportaufrufe und fehlende Feature-Routen prüfen. Vollausstattung bleibt mit bisherigen URLs funktionsgleich.
-- [ ] Commit: `feat(modules): support dependency-checked startup feature packages`.
+- [x] Implementieren: explizite, vor Bean-Erzeugung validierte Startzeit-Zusammensetzung; Boot `PropertiesLauncher`/dokumentierter externer Classpath für Feature-JARs. Kein globaler Scan, der optionale Klassen trotzdem erzwingt. Entities und Migrationen nur beim Start registrieren; keine schema-droppende Abwahl. HTTP-Adapter und Ressourcen gehen mit ihrem Feature. API-Pakete besitzen nach Extraktion genau einen Maven-Eigentümer.
+- [x] GREEN: alle sechs Kombinationen gegen unveränderten Host; Readiness, ausgewählte echte HTTP-/WebDAV-/Reportaufrufe und fehlende Feature-Routen prüfen. Vollausstattung bleibt mit bisherigen URLs funktionsgleich.
+- [x] Commit: `feat(modules): support dependency-checked startup feature packages`.
+
+**Zwischennachweis 9. Oktober:** Acht physische Installationen, ein früher Abhängigkeitsfehler und zwei Archiv-/Ressourcentests bestehen (11 Failsafe-Tests, keine Auslassungen). Die kleineren Installationen benötigen einen expliziten Abwesenheitsadapter für den Portfolio-Git-Port; Schreibzugriffe werden vor Provisionierung und Git-Änderungen abgewiesen. Die vollständigen Profile folgen in Task 12.
 
 ## Task 10: Begrenztes dynamisches Laden, Drain und Wiederaufnahme
 
@@ -174,11 +176,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `activate(String id): PluginIdentity`; `deactivate(String id,Duration timeout): PluginOperationResult`, Status `STOPPED`, `DRAINING` oder `REJECTED`. Neue Leases werden nach Deaktivierungsbeginn abgewiesen; bereits erworbene Leases behalten Version und Objekte. Bei Timeout bleibt das Plugin DRAINING und geladen; kein erzwungenes Schließen laufender Ressourcen. Update erfolgt erst nach erfolgreichem Drain.
 
-- [ ] RED: ein mit Latches blockierter echter Renderer hält seine Lease; Deaktivieren blockiert neue Aufrufe, bestehender Aufruf liefert alte Version; erst dessen Abschluss erlaubt Jar-Freigabe. Defekter Start veröffentlicht nichts; 50 Lade-/Stopzyklen lassen keine registrierten Listener/Threads/Dateihandles zurück. Kein blindes GC-Timing als einziger Leak-Nachweis.
-- [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginLifecycleConcurrencyTest,PluginAdministrationSecurityTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: dynamische Operationen fehlen.
-- [ ] Implementieren: Management nur bei `taxonomy.plugins.dynamic.enabled=true`, nur für ADMIN unter bestehenden Auth-/CSRF-Regeln und nur per installierter Plugin-ID. Keine beliebigen Klassen-/Dateipfade. Im Cluster und für STARTUP-Pakete: aussagekräftige Ablehnung. Aktive abhängige Plugins verhindern Entfernung. Endpunkte mit vollständigem OpenAPI-Vertrag und redigierten Fehlern.
-- [ ] GREEN: gleicher Befehl und verpackter Laufzeittest aus dem Packaging-Profil. Expected: Hot-Load/Export/Drain/Unload ohne Neustart, Security-Negativfälle und Fehler-Recovery belegt.
-- [ ] Commit: `feat(plugins): coordinate bounded runtime activation and draining`.
+- [x] RED: ein mit Latches blockierter echter Renderer hält seine Lease; Deaktivieren blockiert neue Aufrufe, bestehender Aufruf liefert alte Version; erst dessen Abschluss erlaubt Jar-Freigabe. Defekter Start veröffentlicht nichts; 50 Lade-/Stopzyklen lassen keine registrierten Listener/Threads/Dateihandles zurück. Kein blindes GC-Timing als einziger Leak-Nachweis.
+- [x] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginLifecycleConcurrencyTest,PluginAdministrationSecurityTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: dynamische Operationen fehlen.
+- [x] Implementieren: Management nur bei `taxonomy.plugins.dynamic.enabled=true`, nur für ADMIN unter bestehenden Auth-/CSRF-Regeln und nur per installierter Plugin-ID. Keine beliebigen Klassen-/Dateipfade. Im Cluster und für STARTUP-Pakete: aussagekräftige Ablehnung. Aktive abhängige Plugins verhindern Entfernung. Endpunkte mit vollständigem OpenAPI-Vertrag und redigierten Fehlern.
+- [x] GREEN: gleicher Befehl und verpackter Laufzeittest aus dem Packaging-Profil. Expected: Hot-Load/Export/Drain/Unload ohne Neustart, Security-Negativfälle und Fehler-Recovery belegt.
+- [x] Commit: `feat(plugins): coordinate bounded runtime activation and draining`.
+
+**Nachweis 9. Oktober:** 19 Runtime-Tests einschließlich 50 echter Ladezyklen, drei ADMIN/USER/CSRF-Sicherheitsfälle und 12 Pakettests sind grün. Der reale Host durchläuft drei HTTP-Deaktivierungs-/Aktivierungszyklen mit unverändertem Artefakt. Die vollständigen Profile und der Abschlussreview bleiben Task 12.
 
 ## Task 11: UI, Aufträge, Backup und Betrieb zusammenführen
 
@@ -186,11 +190,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** Ein Aufruf/Job erhält `PluginIdentity` und eine nicht geheime Konfigurationsrevision, nicht serialisierte Implementierungen oder Classloader. Alte Builtin-Aufträge bleiben lesbar. UI liest verfügbare Deskriptoren, kein statischer Sonderfall pro externem Format; keine beliebigen Plugin-Skripte ausführen.
 
-- [ ] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
+- [x] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
 - [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
-- [ ] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
+- [x] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
 - [ ] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups.
 - [ ] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
+
+**Stand 9. Oktober:** Implementierung vorhanden. 111 Backup-/Restore-/SQL-Vertragstests, 19 Provider-/Report-/Reformulierungsprüfungen (einschließlich separatem Checkpoint-JVM) und 1.011 JavaScript-Vertragstests bestehen ohne Fehler oder Skips. Der unabhängige Review ist durchgeführt; seine wichtigen Befunde sind korrigiert. Vollständige Paket-, Browser-, Prozessabbruch- und CI-Nachweise bleiben vor Abschluss erforderlich.
 
 ## Task 12: Architekturregeln, bestehende Gates und präziser PR-Abschluss
 
@@ -198,7 +204,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** Architekturtests verbieten neue Rückabhängigkeiten, Split Packages und fremde Repositoryzugriffe. Das vorhandene Backup-Split-Package wird aufgelöst, indem app-interne Klassen aus `com.taxonomy.backup` nach `com.taxonomy.backup.runtime` umziehen; frameworkfreie Domainverträge bleiben bei ihrem Besitzer. Keine Paketgrenzen bloß durch zusätzliche Ausnahmen grün machen.
 
-- [ ] RED: um eine gezielte negative Fixture ergänzte Modulprüfung erkennt ein Split Package und eine SDK->Host-Abhängigkeit. Expected: zwei bewusst schlechte Fixtures werden abgewiesen; der reale Vorher-Stand zeigt das vorhandene Backup-Split-Package.
+- [x] RED: um eine gezielte negative Fixture ergänzte Modulprüfung erkennt ein Split Package und eine SDK->Host-Abhängigkeit. Expected: zwei bewusst schlechte Fixtures werden abgewiesen; der reale Vorher-Stand zeigt das vorhandene Backup-Split-Package.
 - [ ] Implementieren und GREEN: Paketumzug samt Verbrauchern, gemessene Modulgraph-/Ressourcenprüfungen und Dokumentation. `./mvnw -B test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` muss ohne abgeschwächte Baselines bestehen.
 - [ ] Run vollständig: `./mvnw -B verify -Pci -DrunOnnxTests=true`; zusätzlich `./mvnw -B verify -Pplugin-packaging-tests`, `./mvnw -B verify -Pdatabase-mssql`, `./mvnw -B verify -Pdatabase-oracle` und die laut aktuellem CI-Katalog separat erforderlichen Security-/Artemis-/Produkt-/Browser-/Recovery-Lanes. Expected: echte positive Testanzahlen, keine erforderliche Lane übersprungen; lokale Runtime-Lücken konkret ausweisen.
 - [ ] Ein unabhängiger Abschlussreview des gesamten Diffs; wichtige Befunde mit RED→GREEN beheben. Dokumentationslinks, tatsächliche Boot-JAR-/Plugin-Inhalte, vollständige Standarddistribution und externe SDK-Builds kontrollieren.

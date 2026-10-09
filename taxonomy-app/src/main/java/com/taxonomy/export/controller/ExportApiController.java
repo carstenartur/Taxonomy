@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Export")

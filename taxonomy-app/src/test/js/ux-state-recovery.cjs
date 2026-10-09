@@ -20,6 +20,7 @@ function dom() {
             removeAttribute(k) {delete this.attributes[k]; if (k === 'src') this.src = '';},
             getAttribute(k) {return this.attributes[k] || null;},
             append(...children) {children.forEach(child => this.appendChild(child));},
+            replaceChildren(...children) {this.children = []; this.append(...children);},
             appendChild(child) {this.children.push(child); child.parentElement = this; return child;},
             addEventListener(name, fn) {if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(fn);},
             fire(name, event = {}) {event.preventDefault ||= () => {event.defaultPrevented = true;}; return Promise.all((listeners.get(name) || []).map(fn => fn(event)));},
@@ -179,8 +180,20 @@ test('load event from an older frame document cannot enable current report print
     await f.frame.fire('load'); assert.equal(f.document.getElementById('printReport').disabled, false);
 });
 
+// These transport/cancellation fixtures use the three installed built-in formats.
+// Capability parsing and real HTTP discovery have their own contract/browser tests.
+function installReportCapabilities(window) {
+    const reports = [
+        {id:'docx', displayName:'Word', fileExtension:'docx', contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+        {id:'html', displayName:'HTML', fileExtension:'html', contentType:'text/html'},
+        {id:'json', displayName:'JSON', fileExtension:'json', contentType:'application/json'}
+    ];
+    window.TaxonomyCapabilities = {load:async () => ({reports}), formats:items => items};
+}
+
 function decisionFixture() {
     const d = dom(), window = {};
+    installReportCapabilities(window);
     vm.runInNewContext(source('shared/decision-export-dialog.js'), {window, document: d.document,
         URLSearchParams, URL: d.urls, setTimeout() {}, AbortController, DOMException});
     return {...d, api: window.TaxonomyDecisionExport};
@@ -265,6 +278,7 @@ test('live-analysis export cancellation reaches the real API client transport', 
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
     vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
     const start = browse.indexOf("if (btnId === 'exportDecisionReportDocx') {");
@@ -323,6 +337,7 @@ async function liveReportBodyFixture() {
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
     vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
     const start = browse.indexOf("if (btnId === 'exportDecisionReportDocx') {");
@@ -370,6 +385,7 @@ async function savedRequirementExportFixture(options = {}) {
         fetch, AbortController, DOMException, Headers, setTimeout: fn => fn(),
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
     vm.runInContext(source('api/portfolio-api.js'), context);
+    installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     vm.runInContext(source('portfolio/requirement-copilot.js'), context);
     await f.document.fire('DOMContentLoaded');

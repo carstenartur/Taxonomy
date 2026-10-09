@@ -119,7 +119,7 @@ public class DocumentTemplateService implements DocumentTemplates {
                 templateId,
                 normalizedDisplayName,
                 templateId + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 Instant.now().toString(),
                 user,
                 packageData.uncompressedSize(),

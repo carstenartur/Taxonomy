@@ -24,6 +24,7 @@ import java.util.List;
  *
  * <p>Falls back gracefully when the LLM is unavailable or returns invalid responses.
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Service
 public class DocumentAnalysisService {
 

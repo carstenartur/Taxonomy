@@ -192,9 +192,8 @@ class ArchitectureContextDependencyRatchetTest {
             for (JsonNode packageNode : packageNodes) {
                 String pattern = packageNode.asText();
                 assertThat(pattern)
-                        .as("package pattern for %s must be a subtree pattern", id)
-                        .startsWith("com.taxonomy.")
-                        .endsWith("..");
+                        .as("package pattern for %s must name a package or subtree", id)
+                        .matches("com\\.taxonomy(?:\\.[A-Za-z_][A-Za-z0-9_]*)+(?:\\.\\.)?");
                 assertThat(patterns.add(pattern)).as("duplicate package pattern %s", pattern).isTrue();
                 contextPatterns.add(pattern);
             }
@@ -399,16 +398,17 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     private static boolean matches(String pattern, String packageName) {
-        String prefix = pattern.substring(0, pattern.length() - 2);
-        return packageName.equals(prefix) || packageName.startsWith(prefix + ".");
+        String prefix = packagePrefix(pattern);
+        return packageName.equals(prefix)
+                || (pattern.endsWith("..") && packageName.startsWith(prefix + "."));
+    }
+
+    private static String packagePrefix(String pattern) {
+        return pattern.endsWith("..") ? pattern.substring(0, pattern.length() - 2) : pattern;
     }
 
     private static boolean patternsOverlap(String left, String right) {
-        String leftPrefix = left.substring(0, left.length() - 2);
-        String rightPrefix = right.substring(0, right.length() - 2);
-        return leftPrefix.equals(rightPrefix)
-                || leftPrefix.startsWith(rightPrefix + ".")
-                || rightPrefix.startsWith(leftPrefix + ".");
+        return matches(left, packagePrefix(right)) || matches(right, packagePrefix(left));
     }
 
     private static String requiredText(JsonNode node, String field) {

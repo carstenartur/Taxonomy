@@ -43,6 +43,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
 
     @Override
     public String merge(String fromBranch, String intoBranch) throws IOException {
+        portfolioGitPort.requireAvailable();
         return mergeVersion(fromBranch, intoBranch, () -> mergeCheckpointedVersions(fromBranch, intoBranch));
     }
 

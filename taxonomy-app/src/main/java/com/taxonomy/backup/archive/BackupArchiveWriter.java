@@ -1,5 +1,7 @@
 package com.taxonomy.backup.archive;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.snapshot.CapturedBackup;
 import org.apache.commons.compress.archivers.zip.*;
@@ -15,8 +17,11 @@ import java.util.zip.CRC32;
 public final class BackupArchiveWriter {
     private final ArchiveProtectionProvider protection;
     private final ArchiveLimits limits;
+    private final com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites;
     public record PublishedArchive(Path path, long length, String sha256, boolean encrypted) { }
-    public BackupArchiveWriter(ArchiveProtectionProvider protection, ArchiveLimits limits) {
+    public BackupArchiveWriter(ArchiveProtectionProvider protection, ArchiveLimits limits,
+                               com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+        this.prerequisites = Objects.requireNonNull(prerequisites);
         this.protection = Objects.requireNonNull(protection); this.limits = Objects.requireNonNull(limits);
     }
     public PublishedArchive write(CapturedBackup captured, Path target) throws IOException { return write(captured, target, ArchiveProgress.NONE); }
@@ -67,7 +72,7 @@ public final class BackupArchiveWriter {
             var versions = manifest.components().stream().collect(Collectors.toMap(BackupManifest.Component::id, BackupManifest.Component::version));
             verification.start(); guard.report(0);
             String digest;
-            try (var verified = new BackupArchiveReader(protection, limits, manifest.applicationVersion(), versions).verify(temporary, guard::report)) {
+            try (var verified = new BackupArchiveReader(protection, limits, manifest.applicationVersion(), versions, prerequisites).verify(temporary, guard::report)) {
                 if (!verified.manifest().equals(manifest)) throw new IOException("Archive manifest changed during writing");
                 digest = verified.archiveSha256();
             }

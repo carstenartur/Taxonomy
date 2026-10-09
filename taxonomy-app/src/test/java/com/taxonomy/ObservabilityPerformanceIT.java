@@ -341,6 +341,8 @@ class ObservabilityPerformanceIT {
                 FROM %s
                 WORKDIR /app
                 COPY app.jar /app/app.jar
+                COPY features/ /app/features/
+                COPY plugins/ /app/plugins/
                 COPY javaagent.properties /tmp/javaagent.properties
                 COPY --from=opentelemetry /javaagent.jar /tmp/opentelemetry-javaagent.jar
                 EXPOSE 8080
@@ -349,6 +351,8 @@ class ObservabilityPerformanceIT {
         return new ImageFromDockerfile("taxonomy-observability-performance-it", false)
                 .withFileFromString("Dockerfile", dockerfile)
                 .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
+                .withFileFromPath("features", ContainerTestUtils.findApplicationJar().getParent().resolve("features"))
+                .withFileFromPath("plugins", ContainerTestUtils.findApplicationJar().getParent().resolve("plugins"))
                 .withFileFromPath(
                         "javaagent.properties",
                         root.resolve("observability/javaagent.properties"));

@@ -169,7 +169,7 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         }
         TemplateFile file = templates.downloadCurrent(resource.templateId());
         byte[] content = file.content();
-        response.setContentType(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+        response.setContentType(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
         response.setHeader("ETag", file.etag());
         response.setHeader("Last-Modified", HTTP_DATE.format(file.lastModified()));
         response.setHeader("Content-Disposition",
@@ -426,7 +426,7 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         element(writer, "displayname", safeXmlText(displayName));
         empty(writer, "resourcetype");
         element(writer, "getcontenttype",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
         element(writer, "getcontentlength", Long.toString(contentLength));
         element(writer, "getetag", "\"" + commitId + "\"");
         element(writer, "getlastmodified", httpDate(updatedAt));

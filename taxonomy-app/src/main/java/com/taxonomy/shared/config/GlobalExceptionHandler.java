@@ -1,9 +1,5 @@
 package com.taxonomy.shared.config;
 
-import com.taxonomy.reporting.render.document.WordReportLayoutException;
-
-import com.taxonomy.analysis.session.AnalysisDraftConflictException;
-import com.taxonomy.analysis.session.AnalysisDraftValidationException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -59,10 +55,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);
     }
 
-    @ExceptionHandler(com.taxonomy.reporting.render.document.WordReportLayoutException.class)
-    public ResponseEntity<Map<String,Object>> handleWordLayoutConflict(
-            com.taxonomy.reporting.render.document.WordReportLayoutException exception,WebRequest request) {
-        return buildErrorResponse(HttpStatus.CONFLICT,exception.getMessage(),request);
+
+    /** A drained or replaced contribution cannot be silently retargeted. */
+    @ExceptionHandler(com.taxonomy.extension.api.plugin.ExtensionUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleExtensionUnavailable(
+            com.taxonomy.extension.api.plugin.ExtensionUnavailableException failure, WebRequest request) {
+        String message = messageSource.getMessage("error.extension.unavailable", null,
+                "The selected format is no longer available. Refresh the selection and retry.", LocaleContextHolder.getLocale());
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);
     }
 
     /**
@@ -76,33 +76,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 clientErrorMessage(exception, HttpStatus.BAD_REQUEST),
-                request);
-    }
-
-    /** Return malformed or oversized working drafts as a stable client error. */
-    @ExceptionHandler(AnalysisDraftValidationException.class)
-    public ResponseEntity<Map<String, Object>> handleAnalysisDraftValidation(
-            AnalysisDraftValidationException exception,
-            WebRequest request) {
-        log.warn("Invalid analysis draft: status=400, type=ANALYSIS_DRAFT_VALIDATION");
-        return buildErrorResponse(
-                HttpStatus.BAD_REQUEST,
-                clientErrorMessage(exception, HttpStatus.BAD_REQUEST),
-                request);
-    }
-
-    /**
-     * Preserve the optimistic-concurrency contract expected by browser tabs.
-     * The generic catch-all must never turn a stale draft revision into HTTP 500.
-     */
-    @ExceptionHandler(AnalysisDraftConflictException.class)
-    public ResponseEntity<Map<String, Object>> handleAnalysisDraftConflict(
-            AnalysisDraftConflictException exception,
-            WebRequest request) {
-        log.warn("Analysis draft conflict: status=409, type=ANALYSIS_DRAFT_CONFLICT");
-        return buildErrorResponse(
-                HttpStatus.CONFLICT,
-                clientErrorMessage(exception, HttpStatus.CONFLICT),
                 request);
     }
 

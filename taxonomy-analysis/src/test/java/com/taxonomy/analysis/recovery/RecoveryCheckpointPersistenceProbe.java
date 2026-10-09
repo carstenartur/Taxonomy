@@ -84,9 +84,10 @@ public final class RecoveryCheckpointPersistenceProbe {
 
     public static void checkpointDoesNotRewriteSavedResult() {
         try (var db = new Database()) {
-            var question = new AnalysisCheckpointSession.Question("1".repeat(64), "2".repeat(64), "MOCK", List.of("BP"), "prompt");
+            String provider = "P".repeat(128);
+            var question = new AnalysisCheckpointSession.Question("1".repeat(64), "2".repeat(64), provider, List.of("BP"), "prompt");
             db.transaction(em -> db.store(em).prepare(db.claim(), question));
-            var answer = new LlmCallDetail(); answer.setScores(Map.of("BP", 70)); answer.setProvider("MOCK");
+            var answer = new LlmCallDetail(); answer.setScores(Map.of("BP", 70)); answer.setProvider(provider);
             db.transaction(em -> { db.store(em).finish(db.claim(), question, "SUCCESS", answer); return null; });
             var updates = db.statements.stream().filter(sql -> sql.startsWith("update analysis_continuation ")).toList();
             check(updates.size() == 2, "Both the attempt and successful answer must be persisted");
@@ -96,6 +97,7 @@ public final class RecoveryCheckpointPersistenceProbe {
             db.transaction(em -> {
                 var run = em.find(AnalysisContinuationRun.class, db.id);
                 var checkpoint = em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + question.key());
+                check(provider.equals(checkpoint.provider), "Open provider identity was truncated at persistence boundary");
                 check(db.savedResult.equals(run.resultJson), "Question update changed the saved catalogue/result");
                 check("SUCCESS".equals(checkpoint.state) && run.version == 2, "Checkpoint or revision not committed");
                 check(run.payloadCharacters == question.prompt().length() + checkpoint.detailJson.length(), "Evidence budget not updated");

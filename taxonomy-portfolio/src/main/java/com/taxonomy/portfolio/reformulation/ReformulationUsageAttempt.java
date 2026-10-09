@@ -15,7 +15,7 @@ public class ReformulationUsageAttempt {
     @Column(name = "owner_id", nullable = false, length = 36, updatable = false) private String ownerId;
     @Column(name = "lease_epoch", nullable = false, updatable = false) private long epoch;
     @Column(name = "invocation_id", nullable = false, length = 36, updatable = false) private String invocationId;
-    @Column(nullable = false, length = 32, updatable = false) private String provider;
+    @Column(nullable = false, length = 128, updatable = false) private String provider;
     @Column(name = "source_kind", nullable = false, length = 24, updatable = false) private String source;
     @Column(name = "retry_index", nullable = false, updatable = false) private int retryIndex;
     @Column(name = "started_at", nullable = false, updatable = false) private Instant startedAt;

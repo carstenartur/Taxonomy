@@ -36,6 +36,11 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
     }
 
     public synchronized PluginIdentity install(Path artifact) {
+        return install(artifact, null);
+    }
+
+    /** Verify an earlier selection against the authoritative immutable bytes before opening a loader. */
+    public synchronized PluginIdentity install(Path artifact, PluginIdentity expected) {
         ensureOpen();
         Path copy = null;
         String loaded = null;
@@ -49,6 +54,8 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
             copy = Files.createTempFile(cache, "admission-", ".jar");
             Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING);
             var descriptor = validator.validate(copy);
+            if (expected != null && !expected.equals(descriptor.identity()))
+                throw new IllegalArgumentException("Plugin artifact changed before admission");
             if (installed.containsKey(descriptor.identity().id()))
                 throw new IllegalArgumentException("Duplicate plugin ID: " + descriptor.identity().id());
             catalog.validateDescriptor(descriptor);
@@ -61,7 +68,7 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
             installed.put(loaded, new Installed(descriptor, copy));
             return descriptor.identity();
         } catch (IOException | RuntimeException failure) {
-            if (loaded != null) manager.unloadPlugin(loaded);
+            if (loaded != null) { String id=loaded; cleanup(() -> manager.unloadPlugin(id), failure); }
             deleteCopy(copy, failure);
             if (failure instanceof IllegalArgumentException invalid) throw invalid;
             throw new IllegalArgumentException("Cannot install local plugin artifact", failure);
@@ -95,8 +102,14 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
             plugin.started = true;
         } catch (RuntimeException | LinkageError | ServiceConfigurationError failure) {
             closeInstances(plugin, failure);
-            manager.stopPlugin(pluginId); manager.unloadPlugin(pluginId);
-            installed.remove(pluginId); deleteCopy(plugin.path, failure);
+            cleanup(() -> manager.stopPlugin(pluginId), failure);
+            cleanup(() -> {
+                if (!manager.unloadPlugin(pluginId)) throw new IllegalStateException("Failed plugin loader could not unload");
+            }, failure);
+            if (manager.getPlugin(pluginId) == null) {
+                installed.remove(pluginId); deleteCopy(plugin.path, failure);
+            } // Otherwise retain the failed loader's inventory so an operator can retry cleanup.
+
             throw new IllegalStateException("Plugin start rejected: " + pluginId, failure);
         }
     }
@@ -131,8 +144,15 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
 
     synchronized int openClassLoaders() { return manager.getPlugins().size(); }
 
+    public synchronized boolean isStarted(String id) { return requireInstalled(id).started; }
+    public synchronized boolean isDraining(String id) {
+        Installed plugin = requireInstalled(id);
+        return plugin.started && catalog.isDraining(plugin.descriptor.identity());
+    }
+
     @Override public synchronized void close() {
         if (closed) return;
+        RuntimeException cleanupFailures = new IllegalStateException("Plugin shutdown cleanup failed");
         List<String> remaining = new ArrayList<>(installed.keySet());
         // Dependents first, irrespective of installation order.
         while (!remaining.isEmpty()) {
@@ -144,12 +164,16 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
                 if (!stop(id, Duration.ofSeconds(30))) throw new IllegalStateException("Plugin still draining: " + id);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt(); throw new IllegalStateException("Plugin shutdown interrupted", interrupted);
+            } catch (RuntimeException failure) {
+                if (requireInstalled(id).started) throw failure;
+                cleanupFailures.addSuppressed(failure);
             }
             unload(id); remaining.remove(id);
         }
         try { Files.deleteIfExists(cache); }
         catch (IOException failure) { throw new IllegalStateException("Cannot remove private plugin directory", failure); }
         closed = true;
+        if (cleanupFailures.getSuppressed().length > 0) throw cleanupFailures;
     }
 
     private void ensureOpen() { if (closed) throw new IllegalStateException("Plugin runtime is closed"); }
@@ -158,9 +182,15 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
         if (plugin == null) throw new IllegalArgumentException("Plugin is not installed: " + id);
         return plugin;
     }
+    private static void cleanup(Runnable action, Throwable failure) {
+        try { action.run(); }
+        catch (RuntimeException | LinkageError | ServiceConfigurationError cleanup) {
+            if (cleanup != failure) failure.addSuppressed(cleanup);
+        }
+    }
     private static void closeInstances(Installed plugin, Throwable failure) {
         for (int i = plugin.instances.size() - 1; i >= 0; i--) {
-            try { plugin.instances.get(i).close(); } catch (RuntimeException close) { failure.addSuppressed(close); }
+            try { plugin.instances.get(i).close(); } catch (RuntimeException | LinkageError | ServiceConfigurationError close) { if (failure != close) failure.addSuppressed(close); }
         }
         plugin.instances.clear();
     }

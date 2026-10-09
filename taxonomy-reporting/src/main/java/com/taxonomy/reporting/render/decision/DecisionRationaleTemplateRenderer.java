@@ -10,7 +10,7 @@ import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.api.DocumentTemplates;
 import com.taxonomy.templates.api.TemplateFile;
-import com.taxonomy.templates.OoxmlTemplatePackageCodec;
+
 import org.apache.poi.ooxml.POIXMLProperties;
 import org.apache.poi.xwpf.usermodel.BodyElementType;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
@@ -350,12 +350,12 @@ public final class DecisionRationaleTemplateRenderer {
                 byte[] content = input.readAllBytes();
                 if ("[Content_Types].xml".equals(entry.getName())) {
                     String xml = new String(content, StandardCharsets.UTF_8);
-                    if (!xml.contains(OoxmlTemplatePackageCodec.DOTX_MAIN_CONTENT_TYPE)) {
+                    if (!xml.contains(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MAIN_CONTENT_TYPE)) {
                         throw new IOException(
                                 "Template package does not declare the DOTX main content type");
                     }
                     xml = xml.replace(
-                            OoxmlTemplatePackageCodec.DOTX_MAIN_CONTENT_TYPE,
+                            com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MAIN_CONTENT_TYPE,
                             DOCX_MAIN_CONTENT_TYPE);
                     content = xml.getBytes(StandardCharsets.UTF_8);
                     contentTypeChanged = true;

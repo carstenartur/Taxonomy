@@ -310,13 +310,17 @@
         if (failed) alert(message);
     }
 
-    function validateResponseType(response, filename) {
+    function validateResponseType(response, filename, descriptor) {
         var type = (response.headers && response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
         var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
             : filename.endsWith('.zip') ? ['application/zip']
             : filename.endsWith('.svg') ? ['image/svg+xml']
             : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
-        if (response.redirected || expected.indexOf(type) < 0) {
+        if (descriptor) expected = [descriptor.contentType.split(';')[0].trim().toLowerCase()];
+        var htmlAttachment = descriptor && type === 'text/html';
+        var disposition = response.headers && response.headers.get('Content-Disposition') || '';
+        if (response.redirected || expected.indexOf(type) < 0
+                || (htmlAttachment && !/^attachment(?:\s*;|\s*$)/i.test(disposition))) {
             throw new Error(exportMessage('The server did not return the requested file format. Sign in again and retry; no file was downloaded.',
                 'Der Server hat nicht das angeforderte Dateiformat geliefert. Melden Sie sich erneut an und versuchen Sie es noch einmal; keine Datei wurde heruntergeladen.'));
         }
@@ -361,7 +365,7 @@
         return { start: start, end: end, nonempty: compressed > 0 && uncompressed > 0 };
     }
 
-    async function validateDownloadBytes(blob, filename) {
+    async function validateDownloadBytes(blob, filename, descriptor) {
         // A transport guard, not a replacement for the server's OPC/schema validation.
         // Read bounded ZIP metadata, never inflate arbitrary archive content.
         var zip = filename.endsWith('.vsdx') || filename.endsWith('.zip');
@@ -404,7 +408,7 @@
                     }
                     var required = filename.endsWith('.vsdx')
                         ? ['[Content_Types].xml', 'visio/document.xml', 'visio/pages/pages.xml']
-                        : ['architecture.xmi', 'manifest.json', 'README.txt'];
+                        : descriptor && descriptor.id !== 'sparx' ? [] : ['architecture.xmi', 'manifest.json', 'README.txt'];
                     ranges.sort(function (left, right) { return left.start - right.start; });
                     invalid = invalid || cursor !== directory.length || required.some(function (name) { return !names.get(name); })
                         || ranges.some(function (range, index) { return index > 0 && ranges[index - 1].end > range.start; });
@@ -412,13 +416,14 @@
             }
         } else if (!invalid) {
             var prefix = (await blob.slice(0, 512).text()).trimStart();
-            invalid = /^(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(prefix);
+            var declaredHtml = descriptor && descriptor.contentType.split(';')[0].trim().toLowerCase() === 'text/html';
+            invalid = !declaredHtml && /^(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(prefix);
         }
         if (invalid) throw new Error(exportMessage('The downloaded file is empty, incomplete or not the requested format. No file was saved.',
             'Die gelieferte Datei ist leer, unvollständig oder nicht im angeforderten Format. Keine Datei wurde gespeichert.'));
     }
 
-    function diagramDownload(url, businessText, filename, responseType, contentHandler) {
+    function diagramDownload(url, businessText, filename, responseType, contentHandler, descriptor) {
         if (diagramExportBusy) return Promise.resolve(false);
         var state = window.TaxonomyState;
         if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
@@ -461,7 +466,7 @@
         if (csrf && csrfHeader) headers[csrfHeader.content] = csrf.content;
         // Keep base-path/workspace routing through the established fetch wrapper.
         return Promise.resolve().then(function () {
-            return fetch(url.replace('/api/diagram/', '/api/diagram/current/'), {
+            return fetch(url.indexOf('/api/diagram/current/') === 0 ? url : url.replace('/api/diagram/', '/api/diagram/current/'), {
                 method: 'POST', headers: headers, credentials: 'same-origin', body: body
             });
         }).then(function (response) {
@@ -470,12 +475,12 @@
                     throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
                 });
             }
-            validateResponseType(response, filename);
+            validateResponseType(response, filename, descriptor);
             diagramStatus(exportMessage('Receiving architecture file…', 'Architekturdatei wird übertragen…'), true, false);
             return responseType === 'text' ? response.text() : response.blob();
         }).then(async function (content) {
             var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
-            await validateDownloadBytes(blob, filename);
+            await validateDownloadBytes(blob, filename, descriptor);
             if (contentHandler) {
                 await contentHandler(content);
             } else {
@@ -599,7 +604,8 @@
         exportStructurizrDsl: exportStructurizrDsl,
         exportJson: exportJson,
         exportDot: exportDot,
-        exportMermaidTree: exportMermaidTree
+        exportMermaidTree: exportMermaidTree,
+        refreshCapabilities: refreshCapabilities
     });
 
     function installSparxExportButton() {
@@ -609,7 +615,7 @@
         var created = !button;
         if (created) {
             button = document.createElement('button');
-            button.id = 'exportSparx'; button.type = 'button'; button.className = 'btn btn-outline-info';
+            button.id = 'exportSparx'; button.setAttribute('data-taxonomy-format', 'sparx'); button.type = 'button'; button.className = 'btn btn-outline-info';
             reference.insertAdjacentElement('afterend', button);
             // Existing templates have no legacy listener for this new button.
             button.addEventListener('click', function () {
@@ -641,7 +647,59 @@
         });
     }
 
+    var capabilityGeneration = 0;
+    async function refreshCapabilities() {
+        if (!window.TaxonomyCapabilities || !document.querySelectorAll) return;
+        var generation = ++capabilityGeneration;
+        var controls = Array.from(document.querySelectorAll('[data-taxonomy-format]'));
+        var existing = document.getElementById('pluginFormatChoice');
+        if (existing) { if (existing._capabilityObserver) existing._capabilityObserver.disconnect(); existing.remove(); }
+        controls.forEach(function (control) { control.hidden = true; });
+        try {
+            var capabilities = await window.TaxonomyCapabilities.load();
+            if (generation !== capabilityGeneration) return;
+            var formats = new Map(capabilities.exports.map(function (value) { return [value.id, value]; }));
+            controls.forEach(function (control) {
+                var id = control.getAttribute('data-taxonomy-format'); control.hidden = !formats.has(id); formats.delete(id);
+            });
+            document.querySelectorAll('[data-taxonomy-feature]').forEach(function (control) {
+                control.hidden = !capabilities.features.includes(control.getAttribute('data-taxonomy-feature'));
+            });
+            var reference = document.getElementById('exportVisio');
+            if (!formats.size || !reference) return;
+            // New formats share one contextual selector, rather than adding a button per plugin.
+            var group = document.createElement('span'); group.id = 'pluginFormatChoice'; group.className = 'd-inline-flex gap-2 align-items-center';
+            var label = document.createElement('label'); label.textContent = exportMessage('Additional format', 'Weiteres Format');
+            var select = document.createElement('select'); select.className = 'form-select form-select-sm';
+            select.setAttribute('aria-label', label.textContent);
+            formats.forEach(function (format) { var option = document.createElement('option'); option.value = format.id; option.textContent = format.displayName; select.appendChild(option); });
+            label.appendChild(select); group.appendChild(label);
+            var download = document.createElement('button'); download.type = 'button'; download.className = 'btn btn-outline-secondary';
+            download.textContent = exportMessage('Download', 'Herunterladen'); download.disabled = reference.disabled;
+            var observer = new MutationObserver(function () { download.disabled = reference.disabled; });
+            observer.observe(reference, {attributes:true, attributeFilter:['disabled']});
+            group.appendChild(download); reference.parentNode.appendChild(group);
+            download.addEventListener('click', function () {
+                var format = formats.get(select.value); if (!format || download.disabled) return;
+                var requirement = document.getElementById('businessText');
+                return diagramDownload('/api/diagram/current/' + encodeURIComponent(format.id), requirement ? requirement.value : '',
+                    'requirement-architecture.' + format.fileExtension, 'blob', null, format);
+            });
+            group._capabilityObserver = observer;
+        } catch (failure) {
+            if (generation === capabilityGeneration) diagramStatus(exportMessage('Available formats could not be loaded. Reopen Export to retry.',
+                'Verfügbare Formate konnten nicht geladen werden. Öffnen Sie Export erneut.'), false, true);
+        }
+    }
+
     installPdfRouteGuard();
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSparxExportButton, { once: true });
     else if (document.readyState) installSparxExportButton();
+    if (document.addEventListener) {
+        document.addEventListener('click', function (event) {
+            if (event.target.closest && event.target.closest('[data-subtab="arch-export"]')) refreshCapabilities();
+        });
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refreshCapabilities, {once:true});
+        else if (document.readyState) refreshCapabilities();
+    }
 }());

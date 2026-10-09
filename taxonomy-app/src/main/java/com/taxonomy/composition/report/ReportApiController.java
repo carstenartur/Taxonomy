@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture", "reporting"})
 @RestController
 @RequestMapping("/api/report")
 @Tag(name = "Report Export")

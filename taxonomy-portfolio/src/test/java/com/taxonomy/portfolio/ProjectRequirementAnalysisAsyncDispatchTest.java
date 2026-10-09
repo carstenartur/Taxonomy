@@ -191,7 +191,9 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
                 org.junit.jupiter.api.Assertions.assertTrue(claimed.await(5, java.util.concurrent.TimeUnit.SECONDS));
                 org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class,
                         () -> running.get(100, java.util.concurrent.TimeUnit.MILLISECONDS));
-                verifyNoInteractions(llmService, claimPersistenceService);
+                verify(llmService).withProviderBinding(any(), any());
+                org.mockito.Mockito.verifyNoMoreInteractions(llmService);
+                verifyNoInteractions(claimPersistenceService);
                 reservations.removeFirst().close();
                 assertThat(running.get(5, java.util.concurrent.TimeUnit.SECONDS).status()).isEqualTo(AnalysisStatus.SUCCESS);
                 verify(claimPersistenceService, org.mockito.Mockito.never()).failItem(any(), any());

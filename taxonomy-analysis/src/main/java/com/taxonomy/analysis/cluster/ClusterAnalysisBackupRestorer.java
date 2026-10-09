@@ -28,14 +28,23 @@ public final class ClusterAnalysisBackupRestorer {
     private final EntityManager em;
     private final TransactionTemplate transactions;
     private final ObjectMapper json;
+    private final java.util.function.Predicate<com.taxonomy.extension.api.plugin.PluginInvocation> plugins;
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
 
     public ClusterAnalysisBackupRestorer(EntityManager em, PlatformTransactionManager transactions, ObjectMapper json) {
+        this(em, transactions, json, binding -> false);
+    }
+    /** Caller supplies its verified installation; no provider is invoked or resumed during restore. */
+    public ClusterAnalysisBackupRestorer(EntityManager em, PlatformTransactionManager transactions, ObjectMapper json,
+            java.util.function.Predicate<com.taxonomy.extension.api.plugin.PluginInvocation> plugins) {
         this.em = Objects.requireNonNull(em); this.transactions = new TransactionTemplate(transactions); this.json = Objects.requireNonNull(json);
+        this.plugins = Objects.requireNonNull(plugins);
     }
 
     public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command) {
         validate(archive, target, command);
+        if (command.providerBinding() != null && !plugins.test(command.providerBinding()))
+            throw new IllegalArgumentException("Required provider artifact or configuration is unavailable for restore");
         boolean interrupted = !ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal();
         // Validate/aggregate committed evidence before writing anything. Missing work is explicit,
         // never a fabricated zero score or an exhausted relation search.
@@ -108,7 +117,8 @@ public final class ClusterAnalysisBackupRestorer {
         require(source.requirement().textSha256().equals(target.requirement().textSha256())
                 && sourceCommand.businessText().equals(command.businessText()) && sourceCommand.analysisScope().equals(command.analysisScope())
                 && sourceCommand.includeArchitectureView() == command.includeArchitectureView()
-                && sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() && Objects.equals(sourceCommand.provider(), command.provider()),
+                && sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() && Objects.equals(sourceCommand.provider(), command.provider())
+                && Objects.equals(sourceCommand.providerBinding(), command.providerBinding()),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
         if (state.terminal()) { require(run.resultJson() != null, "Terminal archived result is missing"); read(run.resultJson(), AnalysisResult.class); }

@@ -192,6 +192,14 @@ public class LlmService {
 
     public void setRequestProviderId(ProviderId provider) { providerConfig.setRequestProviderId(provider); }
 
+    /** A durable job may execute only with its admitted artifact/configuration. */
+    public LlmProviderConfig.RequestProviderScope withProviderBinding(String provider,
+            com.taxonomy.extension.api.plugin.PluginInvocation binding) {
+        String admitted = provider == null || provider.isBlank()
+                ? providerConfig.isMockMode() ? "MOCK" : providerConfig.getActiveProviderId().value() : provider;
+        return providerConfig.withRequestProvider(admitted, binding);
+    }
+
     public ProviderId getActiveProviderId() {
         return providerConfig.getActiveProviderId();
     }
@@ -809,9 +817,18 @@ public class LlmService {
                 : providerConfig.getOpenAiCompatibleModel(provider);
         String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
                 .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
-        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), endpoint, model,
+        String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), endpoint, model,
                 Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
                 Integer.toString(minimumProductScore()), templates);
+        // Existing built-in continuations retain their identity; external transports
+        // must never reuse checkpoints produced by another artifact or configuration.
+        if (LlmProvider.builtin(provider).isEmpty()) {
+            var binding = providerConfig.captureProviderBinding(provider.value());
+            var plugin = binding.plugin();
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint,
+                    plugin.id(), plugin.version(), plugin.artifactSha256(), binding.configurationRevision());
+        }
+        return fingerprint;
     }
     private String productQuestionPrompt(String text, List<TaxonomyNode> nodes) {
         return promptTemplateService.renderProductPrompt(text, buildNodeListWithContext(nodes),

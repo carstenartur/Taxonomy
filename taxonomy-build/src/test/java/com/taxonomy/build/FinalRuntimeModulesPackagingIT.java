@@ -1,95 +1,63 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.zip.ZipFile;
-import java.util.zip.ZipInputStream;
-import static org.assertj.core.api.Assertions.assertThat;
+import java.nio.file.*;
+import java.util.*;
+import static org.assertj.core.api.Assertions.*;
 
-/** Ensures the one executable artifact really contains every extracted context and its assets. */
+/** Full distribution, not only the executable JAR: every owned class and resource appears exactly once. */
 class FinalRuntimeModulesPackagingIT {
-    private static final List<String> CONTEXTS = List.of(
-            "workspace", "knowledge", "templates", "interop", "architecture", "analysis", "portfolio");
-
-    @Test
-    void allSevenLibrariesAndOwnedResourcesArePackagedExactlyOnce() throws Exception {
-        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-        while (root != null && !Files.isRegularFile(root.resolve(".github/architecture-contexts.json"))) {
-            root = root.getParent();
-        }
-        assertThat(root).isNotNull();
+    private static final Set<String> OPTIONAL = Set.of("templates", "interop", "architecture", "analysis", "portfolio", "reporting");
+    private static final List<String> MODULES = List.of("domain", "dsl", "export", "extension-api", "extension-runtime",
+            "workspace", "knowledge", "templates-api", "templates", "interop", "architecture", "analysis", "portfolio", "reporting-api", "reporting");
+    @Test void allLibrariesAndOwnedResourcesAreDistributedExactlyOnce() throws Exception {
+        Path root = PackagedPluginSupport.repository();
         Map<String, String> owners = new HashMap<>();
-        for (String context : CONTEXTS) {
-            String module = "taxonomy-" + context;
-            Path output = root.resolve(module + "/target/classes");
-            assertThat(output).as("compiled feature library %s", module).isDirectory();
-            try (var paths = Files.walk(output)) {
-                for (Path path : paths.filter(p -> p.toString().endsWith(".class")).toList()) {
-                    String name = output.relativize(path).toString().replace('\\', '/');
-                    assertThat(owners.put(name, module)).as("unique compiled owner of %s", name).isNull();
+        for (String context : MODULES) {
+            String module = "taxonomy-" + context; Path output = root.resolve(module + "/target/classes");
+            assertThat(output).as("compiled library %s", module).isDirectory();
+            try (var files = Files.walk(output)) {
+                for (Path file : files.filter(p -> p.toString().endsWith(".class")).toList()) {
+                    String name = output.relativize(file).toString().replace('\\', '/');
+                    assertThat(owners.put(name, context)).as("unique compiled owner of %s", name).isNull();
                 }
             }
         }
         assertThat(owners).isNotEmpty();
-        Map<String, Path> resources = new HashMap<>();
+        Map<String, Path> resources = new HashMap<>(); Map<String, String> resourceOwners = new HashMap<>();
         Path analysis = root.resolve("taxonomy-analysis/src/main/resources");
         for (String directory : List.of("prompts", "mock-scores")) {
-            try (var paths = Files.walk(analysis.resolve(directory))) {
-                for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                    resources.put(analysis.relativize(path).toString().replace('\\', '/'), path);
+            try (var files = Files.walk(analysis.resolve(directory))) {
+                for (Path file : files.filter(Files::isRegularFile).toList()) {
+                    String name = analysis.relativize(file).toString().replace('\\', '/');
+                    resources.put(name, file); resourceOwners.put(name, "analysis");
                 }
             }
         }
-        resources.put("ai-automation-defaults.properties",
-                root.resolve("taxonomy-portfolio/src/main/resources/ai-automation-defaults.properties"));
-        List<Path> applications;
-        try (var paths = Files.list(root.resolve("taxonomy-app/target"))) {
-            applications = paths.filter(p -> {
-                String n = p.getFileName().toString();
-                return n.startsWith("taxonomy-app-") && n.endsWith(".jar")
-                        && !n.endsWith("-sources.jar") && !n.endsWith("-javadoc.jar");
-            }).toList();
+        for (var resource : Map.of("ai-automation-defaults.properties", "portfolio",
+                "document-templates/decision-rationale-report.dotx", "reporting").entrySet()) {
+            resources.put(resource.getKey(), root.resolve("taxonomy-" + resource.getValue() + "/src/main/resources/" + resource.getKey()));
+            resourceOwners.put(resource.getKey(), resource.getValue());
         }
-        assertThat(applications).hasSize(1);
-        Set<String> foundClasses = new HashSet<>();
-        Set<String> foundResources = new HashSet<>();
-        try (var application = new ZipFile(applications.getFirst().toFile())) {
-            var names = application.stream().map(e -> e.getName()).toList();
-            for (String context : CONTEXTS) {
-                assertThat(names.stream().filter(n -> n.startsWith("BOOT-INF/lib/taxonomy-" + context + "-")
-                        && n.endsWith(".jar")).toList()).as("one packaged %s library", context).hasSize(1);
+        Set<String> foundClasses = new HashSet<>(), foundResources = new HashSet<>();
+        var archives = DistributionArchives.inspect(root, (archive, path, bytes) -> {
+            if (owners.containsKey(path)) {
+                String owner = owners.get(path);
+                DistributionArchives.assertOwner(archive, "taxonomy-" + owner, OPTIONAL.contains(owner));
+                assertThat(foundClasses.add(path)).as("unique delivered class %s", path).isTrue();
             }
-            for (String name : names) {
-                if (name.startsWith("BOOT-INF/classes/")) {
-                    String relative = name.substring("BOOT-INF/classes/".length());
-                    assertThat(owners).as("no application copy of %s", relative).doesNotContainKey(relative);
-                    assertThat(resources).as("no application copy of %s", relative).doesNotContainKey(relative);
-                }
-                if (!name.startsWith("BOOT-INF/lib/") || !name.endsWith(".jar")) continue;
-                try (var nested = new ZipInputStream(application.getInputStream(application.getEntry(name)))) {
-                    for (var entry = nested.getNextEntry(); entry != null; entry = nested.getNextEntry()) {
-                        String relative = entry.getName();
-                        if (owners.containsKey(relative)) {
-                            assertThat(name).startsWith("BOOT-INF/lib/" + owners.get(relative) + "-");
-                            assertThat(foundClasses.add(relative)).as("unique packaged class %s", relative).isTrue();
-                        }
-                        if (resources.containsKey(relative)) {
-                            String owner = relative.equals("ai-automation-defaults.properties") ? "portfolio" : "analysis";
-                            assertThat(name).startsWith("BOOT-INF/lib/taxonomy-" + owner + "-");
-                            assertThat(foundResources.add(relative)).as("unique packaged resource %s", relative).isTrue();
-                            assertThat(nested.readAllBytes()).isEqualTo(Files.readAllBytes(resources.get(relative)));
-                        }
-                    }
-                }
+            if (resources.containsKey(path)) {
+                DistributionArchives.assertOwner(archive, "taxonomy-" + resourceOwners.get(path), true);
+                assertThat(foundResources.add(path)).as("unique delivered resource %s", path).isTrue();
+                assertThat(bytes.readAllBytes()).isEqualTo(Files.readAllBytes(resources.get(path)));
             }
-            assertThat(names.stream().anyMatch(n -> n.startsWith("BOOT-INF/classes/db/migration/"))).isTrue();
+        });
+        for (String module : MODULES) {
+            String location = OPTIONAL.contains(module) ? "features/" : "BOOT-INF/lib/";
+            assertThat(archives.stream().filter(n -> n.matches(location + "taxonomy-" + module + "-[0-9].*\\.jar")))
+                    .as("one delivered %s library", module).hasSize(1);
         }
+        assertThat(archives.stream().filter(n -> n.startsWith("features/"))).hasSize(OPTIONAL.size());
         assertThat(foundClasses).containsExactlyInAnyOrderElementsOf(owners.keySet());
         assertThat(foundResources).containsExactlyInAnyOrderElementsOf(resources.keySet());
     }

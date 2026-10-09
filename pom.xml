@@ -62,6 +62,7 @@
         <module>taxonomy-extension-runtime</module>
         <module>plugins/taxonomy-mermaid-plugin</module>
         <module>taxonomy-workspace</module>
+        <module>taxonomy-templates-api</module>
         <module>taxonomy-templates</module>
         <module>taxonomy-interop</module>
         <module>taxonomy-knowledge</module>
@@ -543,7 +544,7 @@
         </profile>
         <profile>
             <id>architecture-tests</id>
-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
+            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
         </profile>
         <profile>
             <id>document-import-tests</id>

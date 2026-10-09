@@ -100,6 +100,13 @@ class AnalysisMessageValidationTest {
         assertRoundTrip(cancellation(reason));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PROVIDER_PLUGIN_UNAVAILABLE", "PROVIDER_CONFIGURATION_CHANGED", "PROVIDER_BINDING_REQUIRED", "PROVIDER_CONFIGURATION_REVISION_REQUIRED"})
+    void pluginStopsHaveAnExplicitFiniteWireVocabulary(String reason) {
+        assertRoundTrip(subCompletion(AnalysisTaskOutcome.STOPPED, reason));
+        assertRoundTrip(relationCompletion(AnalysisTaskOutcome.STOPPED, reason));
+    }
+
     @Test
     void validFactoryMessagesProgressAndWildcardRelationsRemainCompatible() {
         assertRoundTrip(subCompletion(AnalysisTaskOutcome.COMPLETED, null));

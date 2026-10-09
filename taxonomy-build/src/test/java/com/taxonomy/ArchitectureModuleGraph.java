@@ -355,8 +355,13 @@ final class ArchitectureModuleGraph {
     }
 
     private static boolean matches(String pattern, String packageName) {
-        String prefix = pattern.substring(0, pattern.length() - 2);
-        return packageName.equals(prefix) || packageName.startsWith(prefix + ".");
+        String prefix = packagePrefix(pattern);
+        return packageName.equals(prefix)
+                || (pattern.endsWith("..") && packageName.startsWith(prefix + "."));
+    }
+
+    private static String packagePrefix(String pattern) {
+        return pattern.endsWith("..") ? pattern.substring(0, pattern.length() - 2) : pattern;
     }
 
     private static void validatePolicy(Policy policy, Set<String> supportModules) {
@@ -396,12 +401,12 @@ final class ArchitectureModuleGraph {
                 throw new IllegalArgumentException("No packages for context: " + context.id());
             }
             for (String pattern : context.packages()) {
-                if (!pattern.matches("com\\.taxonomy(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\.\\.")) {
+                if (!pattern.matches("com\\.taxonomy(?:\\.[A-Za-z_][A-Za-z0-9_]*)+(?:\\.\\.)?")) {
                     throw new IllegalArgumentException("Invalid context package pattern: " + pattern);
                 }
                 for (String previous : patterns) {
-                    if (matches(previous, pattern.substring(0, pattern.length() - 2))
-                            || matches(pattern, previous.substring(0, previous.length() - 2))) {
+                    if (matches(previous, packagePrefix(pattern))
+                            || matches(pattern, packagePrefix(previous))) {
                         throw new IllegalArgumentException("Overlapping context package patterns: " + previous + ", " + pattern);
                     }
                 }

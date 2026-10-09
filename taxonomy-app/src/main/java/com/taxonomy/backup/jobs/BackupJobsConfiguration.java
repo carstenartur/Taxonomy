@@ -1,6 +1,6 @@
 package com.taxonomy.backup.jobs;
 
-import com.taxonomy.backup.BackupAuthorizationService;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.snapshot.BackupMaintenanceLease;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -29,7 +29,10 @@ public class BackupJobsConfiguration {
         String key = environment.getProperty("taxonomy.backup.keyset-file", "");
         return key.isBlank() ? ArchiveProtectionProvider.unprotected() : DeploymentArchiveProtection.load(Path.of(key), root(environment));
     }
-    @Bean BackupArchiveWriter backupArchiveWriter(ArchiveProtectionProvider protection) { return new BackupArchiveWriter(protection, ArchiveLimits.defaults()); }
+    @Bean BackupArchiveWriter backupArchiveWriter(ArchiveProtectionProvider protection,
+            com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+        return new BackupArchiveWriter(protection, ArchiveLimits.defaults(), prerequisites);
+    }
     @Bean BackupJobService backupJobService(JdbcBackupJobStore store, BackupAuthorizationService authorization,
                                           BackupJobStorage storage, ArchiveProtectionProvider protection) {
         return new BackupJobService(store, authorization, storage, protection.encrypted());

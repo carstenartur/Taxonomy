@@ -12,6 +12,7 @@
     <name>Taxonomy Application</name>
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates-api</artifactId><version>${project.version}</version></dependency>
         <!-- Distribution producer only; never included in the host classpath/BOOT-INF libraries. -->
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency>
@@ -421,6 +422,8 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <skip>false</skip>
+                    <layout>ZIP</layout>
+                    <excludes><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates</artifactId></exclude><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-architecture</artifactId></exclude><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-analysis</artifactId></exclude><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-portfolio</artifactId></exclude><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-interop</artifactId></exclude><exclude><groupId>com.taxonomy</groupId><artifactId>taxonomy-reporting</artifactId></exclude></excludes>
                 </configuration>
                 <executions>
                     <execution>
@@ -563,6 +566,9 @@
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>${maven-dependency-plugin.version}</version>
                 <executions>
+                    <execution><id>stage-startup-features</id><phase>prepare-package</phase><goals><goal>copy</goal></goals>
+                        <configuration><artifactItems><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-architecture</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-analysis</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-portfolio</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-interop</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem><artifactItem><groupId>com.taxonomy</groupId><artifactId>taxonomy-reporting</artifactId><version>${project.version}</version><outputDirectory>${project.build.directory}/features</outputDirectory></artifactItem></artifactItems></configuration>
+                    </execution>
                     <execution><id>stage-standard-external-plugins</id><phase>process-resources</phase><goals><goal>copy</goal></goals>
                         <configuration><artifactItems><artifactItem>
                             <groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version>

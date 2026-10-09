@@ -58,6 +58,10 @@ public class PortfolioAnalysisPersistenceService {
 
     private static final String AUTOMATIC_IDEMPOTENCY_PREFIX = "auto:";
 
+    private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
+    @org.springframework.beans.factory.annotation.Autowired
+    void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }
+
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
     private final ProjectRequirementVersionRepository versionRepository;
@@ -143,6 +147,11 @@ public class PortfolioAnalysisPersistenceService {
                 PortfolioScope.workspaceId(context),
                 requirements.size(),
                 now);
+        if (providerConfiguration != null) {
+            String admitted = providerConfiguration.isMockMode() ? "MOCK" : provider == null || provider.isBlank()
+                    ? providerConfiguration.getActiveProviderId().value() : provider.strip().toUpperCase(java.util.Locale.ROOT);
+            job.bindProvider(admitted, providerConfiguration.captureProviderBinding(admitted));
+        }
         jobRepository.save(job);
 
         List<RequirementAnalysisJobItem> items = requirements.stream()
@@ -607,7 +616,7 @@ public class PortfolioAnalysisPersistenceService {
                 job.getPartialItems(),
                 job.getFailedItems(),
                 job.getErrorSummary(),
-                items);
+                items, job.getProviderBinding());
     }
 
     private AnalysisJobItemView toItemView(RequirementAnalysisJobItem item) {

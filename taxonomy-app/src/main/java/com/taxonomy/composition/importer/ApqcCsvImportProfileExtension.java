@@ -9,6 +9,7 @@ import com.taxonomy.dsl.mapping.profiles.ApqcMappingProfile;
 import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
 import org.springframework.stereotype.Component;
 
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @Component
 public class ApqcCsvImportProfileExtension extends AbstractFrameworkImportProfileExtension {
 

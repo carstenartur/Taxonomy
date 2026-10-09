@@ -47,7 +47,7 @@
     "verify:analysis-cluster-recovery-browser": "node scripts/analysis-cluster-recovery-browser.mjs",
     "test:local-user-management": "node --test scripts/local-user-management-navigation.test.mjs",
     "test:analysis-scope": "node --test scripts/analysis-scope.test.mjs",
-    "test:decision-export": "node --test scripts/decision-export-dialog.test.mjs",
+    "test:decision-export": "node --test scripts/decision-export-dialog.test.mjs scripts/plugin-capabilities.test.mjs",
     "verify:decision-export-dialog": "node scripts/decision-export-browser.mjs",
     "test:ui-localization": "node --test scripts/ui-localization-regression.test.mjs",
     "test:ux-state-recovery": "node --test ../taxonomy-app/src/test/js/ux-state-recovery.cjs",

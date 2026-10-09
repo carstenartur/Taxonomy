@@ -1,5 +1,8 @@
 package com.taxonomy.backup.snapshot;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupPaths;
+
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.ArchiveProtectionProvider;
 import java.io.*;

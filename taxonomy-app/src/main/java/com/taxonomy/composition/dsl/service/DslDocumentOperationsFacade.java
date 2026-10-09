@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 /** Composes document export/materialization and archive-compatible comparison with workspace Git. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @Service
 public class DslDocumentOperationsFacade {
     private final TaxDslExportService exportService;

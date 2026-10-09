@@ -3,7 +3,7 @@ package com.taxonomy.shared.service;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 
-import com.taxonomy.analysis.service.LlmService;
+import org.jspecify.annotations.Nullable;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import org.springframework.stereotype.Service;
@@ -19,11 +19,11 @@ import java.util.Map;
 public class HealthSummaryService {
 
     private final TaxonomyService taxonomyService;
-    private final LlmService llmService;
+    private final @Nullable AiStatusSource llmService;
     private final LocalEmbeddingService embeddingService;
 
     public HealthSummaryService(TaxonomyService taxonomyService,
-                                LlmService llmService,
+                                @Nullable AiStatusSource llmService,
                                 LocalEmbeddingService embeddingService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
@@ -45,11 +45,12 @@ public class HealthSummaryService {
 
         // AI / LLM status
         var ai = new LinkedHashMap<String, Object>();
-        AiAvailabilityLevel level = llmService.getAvailabilityLevel();
+        AiAvailabilityLevel level = llmService == null ? AiAvailabilityLevel.UNAVAILABLE : llmService.getAvailabilityLevel();
         ai.put("available", level != AiAvailabilityLevel.UNAVAILABLE);
         ai.put("level", level.name());
         ai.put("provider", level != AiAvailabilityLevel.UNAVAILABLE
                 ? llmService.getActiveProviderName() : null);
+        ai.put("installed", llmService != null);
         summary.put("ai", ai);
 
         // Embedding status
@@ -70,7 +71,7 @@ public class HealthSummaryService {
 
         // Overall status
         boolean allOk = stateService.isReady()
-                && level != AiAvailabilityLevel.UNAVAILABLE;
+                && (llmService == null || level != AiAvailabilityLevel.UNAVAILABLE);
         summary.put("overall", allOk ? "UP" : "DEGRADED");
 
         return summary;

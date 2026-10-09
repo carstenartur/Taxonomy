@@ -64,8 +64,13 @@ public class RequirementAnalysisJob {
     @Column(name = "idempotency_key", nullable = false, length = 160)
     private String idempotencyKey;
 
-    @Column(length = 40)
+    @Column(length = 128)
     private String provider;
+
+    @Column(name = "provider_plugin_id", length = 128) private String providerPluginId;
+    @Column(name = "provider_plugin_version", length = 128) private String providerPluginVersion;
+    @Column(name = "provider_plugin_sha256", length = 64) private String providerPluginSha256;
+    @Column(name = "provider_config_revision", length = 64) private String providerConfigRevision;
 
     @Column(name = "max_architecture_nodes", nullable = false)
     private int maxArchitectureNodes;
@@ -223,6 +228,19 @@ public class RequirementAnalysisJob {
     public ArchitectureProject getProject() { return project; }
     public AnalysisStatus getStatus() { return status; }
     public String getIdempotencyKey() { return idempotencyKey; }
+    public void bindProvider(String provider, com.taxonomy.extension.api.plugin.PluginInvocation binding) {
+        if (providerPluginId != null) throw new IllegalStateException("Provider admission is immutable");
+        this.provider = provider;
+        if (binding != null) {
+            providerPluginId=binding.plugin().id(); providerPluginVersion=binding.plugin().version();
+            providerPluginSha256=binding.plugin().artifactSha256(); providerConfigRevision=binding.configurationRevision();
+        }
+    }
+    public com.taxonomy.extension.api.plugin.PluginInvocation getProviderBinding() {
+        if (providerPluginId == null && providerPluginVersion == null && providerPluginSha256 == null && providerConfigRevision == null) return null;
+        return new com.taxonomy.extension.api.plugin.PluginInvocation(
+                new com.taxonomy.extension.api.plugin.PluginIdentity(providerPluginId,providerPluginVersion,providerPluginSha256), providerConfigRevision);
+    }
     public String getProvider() { return provider; }
     public int getMaxArchitectureNodes() { return maxArchitectureNodes; }
     public String getRequestedBy() { return requestedBy; }

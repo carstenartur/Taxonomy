@@ -41,7 +41,7 @@ public class PluginRuntimeConfiguration {
                 String next = artifacts.keySet().stream().filter(id -> descriptors.get(id).requires().stream()
                                 .allMatch(r -> available.contains(r.id()))).findFirst()
                         .orElseThrow(() -> new IllegalArgumentException("Missing or cyclic local plugin dependencies: " + artifacts.keySet()));
-                var identity = runtime.install(artifacts.remove(next));
+                var identity = runtime.install(artifacts.remove(next), descriptors.get(next).identity());
                 if (!identity.equals(descriptors.get(next).identity()))
                     throw new IllegalStateException("Operator plugin changed during startup: " + next);
                 runtime.start(identity.id());
@@ -53,6 +53,13 @@ public class PluginRuntimeConfiguration {
         }
     }
     @Bean(destroyMethod = "") Pf4jPluginRuntime pluginRuntime(Installation installation) { return installation.runtime(); }
+    @Bean PluginLifecycleCoordinator pluginLifecycleCoordinator(Pf4jPluginRuntime runtime, Environment environment) {
+        boolean clustered = environment.getProperty("taxonomy.plugins.dynamic.clustered", Boolean.class, false)
+                || !"local".equals(environment.getProperty("taxonomy.analysis.transport.mode", "local"))
+                || !"all".equals(environment.getProperty("taxonomy.analysis.runtime-role", "all"));
+        return new PluginLifecycleCoordinator(runtime, Path.of(environment.getProperty("taxonomy.plugins.directory", "plugins")),
+                environment.getProperty("taxonomy.plugins.dynamic.enabled", Boolean.class, false), clustered);
+    }
     record Installation(PluginCatalog catalog, Pf4jPluginRuntime runtime) implements AutoCloseable {
         @Override public void close() { runtime.close(); }
     }

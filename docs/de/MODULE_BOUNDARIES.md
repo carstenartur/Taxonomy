@@ -16,9 +16,10 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-dsl` | Grundlage | Frameworkfreie TaxDSL-Syntax, Modell, Validierung, Mapping, Diff und Befehle |
 | `taxonomy-export` | Grundlage | Frameworkfreie Exportverträge, Codecs und neutrales Rendering |
 | `taxonomy-extension-api` | Grundlage | Frameworkfreie Erweiterungsverträge und Metadaten |
-| `taxonomy-extension-runtime` | Atomarer Plugin-Katalog, Artefaktvalidierung und gekapselter Classloader |
-| `taxonomy-mermaid-plugin` | Separat gebauter externer Mermaid-Adapter |
+| `taxonomy-extension-runtime` | Laufzeit | Atomarer Plugin-Katalog, Artefaktvalidierung und gekapselter Classloader |
+| `taxonomy-mermaid-plugin` | Plugin | Separat gebauter externer Mermaid-Adapter |
 | `taxonomy-reporting-api` | Grundlage | Vollständige snapshotgebundene Reportmodelle ohne Framework- oder Rendererabhängigkeit |
+| `taxonomy-templates-api` | Grundlage | Generische Vorlagen-Ports, Datentypen und Beitragsverträge |
 | `taxonomy-workspace` | Fachmodul | Workspace-/Repository-Identität, Editorjournal, Undo/Redo, Git-Checkpoints und Speicher |
 | `taxonomy-knowledge` | Fachmodul | Katalog/Seeds, Relationen/Hypothesen, Suche, Indizes und lokale Embeddings |
 | `taxonomy-templates` | Fachmodul | Vorlagenversionen, OOXML-Validierung, Materialisierung, WebDAV und Administration |
@@ -32,8 +33,8 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-coverage` | Build/Werkzeuge | Reactor-weite Coverage-Aggregation; keine Laufzeit-Fachbibliothek |
 | `taxonomy-build` | Build/Werkzeuge | Reactor-weite Qualitätsprüfungen und Browser-/Verifikationsverträge |
 
-Der Root-Aggregator ist kein weiteres Untermodul. Die siebzehn Untermodule bestehen
-aus fünf Grundlagen, acht Fachmodulen, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
+Der Root-Aggregator ist kein weiteres Untermodul. Die zwanzig Untermodule bestehen
+aus sechs Grundlagen, acht Fachmodulen, der Plugin-Laufzeit, einem externen Plugin, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
 Nur `taxonomy-app` ist eine ausführbare Anwendung. Die Build-Gruppe bildet keine
 Laufzeitdienste. Siehe [geprüften Fachmodulgraphen](ARCHITECTURE.md#modularchitektur)
 und [Laufzeit-/Persistenzdarstellungen](ARCHITECTURE.md).

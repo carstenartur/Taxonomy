@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Captured execution scope; recoverable dispatch never reads ambient authentication. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @Service
 public class ReformulationExecutionService {
     private final ReformulationService proposals;
@@ -57,7 +58,7 @@ public class ReformulationExecutionService {
         var dispatch=recovery.enqueue(projectId,requirementId,proposalId,expectedRevision,provider.value(),model,
                 frozen.getOrDefault("reformulationPromptVersion",ReformulationPromptBuilder.PROMPT_VERSION),
                 frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,
-                ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context);
+                ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context,providers.captureProviderBinding(provider.value()));
         submit(dispatch);
         return proposals.runs(projectId,requirementId,proposalId,actor,context).stream()
                 .filter(r->r.id().equals(dispatch.run().id())).findFirst().orElseThrow();
@@ -162,43 +163,43 @@ public class ReformulationExecutionService {
                 recovery.releaseUnadmitted(token);
                 return;
             }
-            var run=dispatch.run();var provider=providers.requireRegisteredProvider(run.provider());
-            providers.setRequestProviderId(provider);
-            if(provider.equals(LlmProvider.LOCAL_ONNX.id()) || !providers.isProviderConfigured(provider)
-                    || providers.getProviderConfigurationError(provider)!=null || providers.isMockMode())
-                throw new IllegalStateException("PROVIDER_NOT_CONFIGURED");
-            if(!run.model().equals(model(provider)) || !dispatch.endpointHash().equals(endpointHash(provider)))
-                throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
-            var proposal=recovery.source(dispatch);
-            var baseline=proposal.baseline();var captured=new java.util.TreeMap<>(baseline.frozenContext());
-            captured.put("reformulationPrompt",run.promptContent());captured.putAll(run.reconcileContext());
-            captured.put("reformulationPromptVersion",run.promptVersion());captured.put("reformulationSchemaVersion",run.schemaVersion());
-            var runBaseline=new com.taxonomy.reformulation.ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),
-                    baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());
-            var revision=proposal.currentRevision();
-            var steps=checkpointExecutor(dispatch.projectId(),dispatch.requirementId(),proposal.id(),run,dispatch.actor(),dispatch.context(),token,local::retired);
-            usage.activate(token);
-            try (var journal = LlmTransportMeter.openJournal(usageJournal(token, local))) {
-                com.taxonomy.reformulation.ReformulationDocument reconciled;
-                if(!revision.impact().sectionIds().isEmpty()) {
-                    var trace=proposals.runs(dispatch.projectId(),dispatch.requirementId(),proposal.id(),dispatch.actor(),dispatch.context()).stream()
-                            .filter(r->r.resultRevision()!=null && r.candidate()!=null && r.resultRevision()<=revision.number())
-                            .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r->r.candidate().reconciliation()).orElse(null);
-                    var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);
-                    reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact(),steps);
-                } else {
-                    var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);
-                    reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);
+            var run=dispatch.run();
+            try (var providerScope=providers.withRequestProvider(run.provider(),run.providerBinding())) {
+                var provider=providers.requireRegisteredProvider(run.provider());
+                if(provider.equals(LlmProvider.LOCAL_ONNX.id()) || !providers.isProviderConfigured(provider)
+                        || providers.getProviderConfigurationError(provider)!=null || providers.isMockMode())
+                    throw new IllegalStateException("PROVIDER_NOT_CONFIGURED");
+                if(!run.model().equals(model(provider)) || !dispatch.endpointHash().equals(endpointHash(provider)))
+                    throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
+                var proposal=recovery.source(dispatch);
+                var baseline=proposal.baseline();var captured=new java.util.TreeMap<>(baseline.frozenContext());
+                captured.put("reformulationPrompt",run.promptContent());captured.putAll(run.reconcileContext());
+                captured.put("reformulationPromptVersion",run.promptVersion());captured.put("reformulationSchemaVersion",run.schemaVersion());
+                var runBaseline=new com.taxonomy.reformulation.ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),
+                        baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());
+                var revision=proposal.currentRevision();
+                var steps=checkpointExecutor(dispatch.projectId(),dispatch.requirementId(),proposal.id(),run,dispatch.actor(),dispatch.context(),token,local::retired);
+                usage.activate(token);
+                try (var journal = LlmTransportMeter.openJournal(usageJournal(token, local))) {
+                    com.taxonomy.reformulation.ReformulationDocument reconciled;
+                    if(!revision.impact().sectionIds().isEmpty()) {
+                        var trace=proposals.runs(dispatch.projectId(),dispatch.requirementId(),proposal.id(),dispatch.actor(),dispatch.context()).stream()
+                                .filter(r->r.resultRevision()!=null && r.candidate()!=null && r.resultRevision()<=revision.number())
+                                .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r->r.candidate().reconciliation()).orElse(null);
+                        var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);
+                        reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact(),steps);
+                    } else {
+                        var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);
+                        reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);
+                    }
+                    recovery.finish(token,reconciled,null,local::beginFinalization);
                 }
-                recovery.finish(token,reconciled,null,local::beginFinalization);
             }
         } catch(RuntimeException failure) {
             // An unclaimed delivery cannot fail another worker. Expired owners also
             // cannot publish failures because finish verifies the exact epoch again.
             if(token==null)throw failure;
             recovery.finish(token,null,failureCode(failure),local::beginFinalization);
-        } finally {
-            providers.clearRequestProvider();
         }
     }
     private LlmTransportMeter.Journal usageJournal(Claim token, LocalExecution local) {
@@ -229,22 +230,26 @@ public class ReformulationExecutionService {
         var provider=providers.requireRegisteredProvider(run.provider());String endpoint=endpoint(provider);
         return ReformulationStepExecutor.of((kind,input,type,work)->{
             if (stopped.getAsBoolean()) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
-            if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("CHECKPOINT_EXECUTION_INSIDE_TRANSACTION");
-            if(!run.model().equals(model(provider)) || !endpoint.equals(endpoint(provider)))throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
-            String fingerprint=StableIdentityHash.sha256(checkpointJson.writeValueAsString(Map.ofEntries(
-                    Map.entry("format","reformulation-step-v1"),Map.entry("inputEncoding",ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry("provider",provider.value()),Map.entry("model",run.model()),
-                    Map.entry("endpointHash",StableIdentityHash.sha256(endpoint)),Map.entry("prompt",run.promptContent()),
-                    Map.entry("promptVersion",run.promptVersion()),Map.entry("schemaVersion",run.schemaVersion()),
-                    Map.entry("reconciliation",run.reconcileContext()),Map.entry("resultType",type.getName()),Map.entry("input",input))));
-            var cached=token==null?proposals.checkpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,actor,context)
-                    :recovery.checkpoint(token,kind,fingerprint);
-            if(cached.isPresent())return checkpointJson.readValue(cached.get(),type);
-            Object result=Objects.requireNonNull(work.get(),"Validated synthesis result is required");
-            if (stopped.getAsBoolean()) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
-            String payload=checkpointJson.writeValueAsString(result);
-            String accepted=token==null?proposals.completeCheckpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,payload,actor,context)
-                    :recovery.completeCheckpoint(token,kind,fingerprint,payload);
-            return checkpointJson.readValue(accepted,type);
+            try (var providerScope=providers.withRequestProvider(run.provider(),run.providerBinding())) {
+                if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("CHECKPOINT_EXECUTION_INSIDE_TRANSACTION");
+                if(!run.model().equals(model(provider)) || !endpoint.equals(endpoint(provider)))throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
+                String fingerprint=StableIdentityHash.sha256(checkpointJson.writeValueAsString(Map.ofEntries(
+                        Map.entry("format","reformulation-step-v1"),Map.entry("inputEncoding",ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry("provider",provider.value()),Map.entry("model",run.model()),
+                        Map.entry("endpointHash",StableIdentityHash.sha256(endpoint)),Map.entry("prompt",run.promptContent()),
+                        Map.entry("promptVersion",run.promptVersion()),Map.entry("schemaVersion",run.schemaVersion()),
+                        Map.entry("reconciliation",run.reconcileContext()),Map.entry("resultType",type.getName()),Map.entry("input",input))));
+                if (run.providerBinding()!=null)
+                    fingerprint=StableIdentityHash.sha256(fingerprint+"\n"+checkpointJson.writeValueAsString(run.providerBinding()));
+                var cached=token==null?proposals.checkpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,actor,context)
+                        :recovery.checkpoint(token,kind,fingerprint);
+                if(cached.isPresent())return checkpointJson.readValue(cached.get(),type);
+                Object result=Objects.requireNonNull(work.get(),"Validated synthesis result is required");
+                if (stopped.getAsBoolean()) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
+                String payload=checkpointJson.writeValueAsString(result);
+                String accepted=token==null?proposals.completeCheckpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,payload,actor,context)
+                        :recovery.completeCheckpoint(token,kind,fingerprint,payload);
+                return checkpointJson.readValue(accepted,type);
+            }
         });
     }
     private String endpointHash(ProviderId provider) {return StableIdentityHash.sha256(provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":endpoint(provider));}
@@ -254,6 +259,7 @@ public class ReformulationExecutionService {
                 :providers.getOpenAiCompatibleModel(provider);
     }
     private static String failureCode(RuntimeException failure) {
+        if(failure instanceof ProviderPluginUnavailableException unavailable)return unavailable.reason();
         if(failure instanceof LlmRateLimitException)return "PROVIDER_RATE_LIMIT";
         if(failure instanceof LlmTimeoutException)return "PROVIDER_TIMEOUT";
         if(failure instanceof LlmProviderException provider)return "PROVIDER_"+provider.getReason().name();

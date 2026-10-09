@@ -125,7 +125,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
 
     private static TemplateFile file(String id) {
         var manifest = new TemplateManifest(1, id, "Organisation", id + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-09-05T00:00:00Z",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, "2026-09-05T00:00:00Z",
                 "admin", 10, 3, "f".repeat(64));
         return new TemplateFile(manifest, REVISION, new byte[]{1}, Instant.EPOCH);
     }

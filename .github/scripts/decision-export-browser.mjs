@@ -7,11 +7,15 @@ import {createHash} from 'node:crypto';
 const {chromium} = await import(process.env.TAXONOMY_PLAYWRIGHT_MODULE || '@playwright/test');
 const sourcePath = new URL('../../taxonomy-app/src/main/resources/static/js/shared/decision-export-dialog.js',import.meta.url);
 const source = await readFile(sourcePath,'utf8');
+const capabilitiesSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/plugin-capabilities.js',import.meta.url),'utf8');
 const browser = await chromium.launch({headless:true, ...(process.env.TAXONOMY_CHROME ? {executablePath:process.env.TAXONOMY_CHROME} : {}),args:['--no-sandbox']});
 try {
     for (const width of [1280,390]) {
         const page = await browser.newPage({viewport:{width,height:850}});
         await page.setContent('<html lang="de"><head></head><body><button id="open">Bericht</button></body></html>');
+        await page.addScriptTag({content:capabilitiesSource});
+        await page.evaluate(() => { window.fetch = async () => ({ok:true,json:async()=>({features:['reporting'],exports:[],reports:
+            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}); });
         await page.addScriptTag({content:source});
         await page.evaluate(()=>{
             window.attempts=[];
@@ -45,6 +49,25 @@ try {
         assert.deepEqual(attempts[1].options.taxonomyRoots,['BP']);
         await page.click('#open');await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
         assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
+        // Capability reload must remove unavailable renderers, accept a new SDK format,
+        // and keep the same host-owned keyboard/focus and error controls.
+        await page.evaluate(() => {window.fetch=async()=>({ok:true,json:async()=>({features:[],exports:[],reports:[]})});});
+        await page.click('#open');
+        await page.locator('[role=alert]').filter({hasText:'Format'}).waitFor();
+        assert.equal(await page.locator('[type=submit]').isDisabled(),true);
+        assert.equal(await page.locator('[name=format] option').count(),0);
+        await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
+        await page.evaluate(() => {window.fetch=async()=>({ok:true,json:async()=>({features:['reporting'],exports:[],reports:[{
+            id:'example-markdown',reportType:'decision-rationale',displayName:'Markdown',fileExtension:'md',contentType:'text/markdown',
+            plugin:{id:'fixture.external',version:'1.0.0',artifactSha256:'b'.repeat(64)}
+        }]})});});
+        await page.click('#open');await page.locator('[type=submit]:enabled').waitFor();
+        assert.equal(await page.locator('[name=format] option').count(),1);
+        assert.equal(await page.locator('[name=format]').inputValue(),'example-markdown');
+        await page.click('[type=submit]');await page.locator('dialog').waitFor({state:'detached'});
+        const external=await page.evaluate(()=>window.attempts.at(-1));
+        assert.equal(external.descriptor.fileExtension,'md');assert.equal(external.descriptor.plugin.artifactSha256,'b'.repeat(64));
+        assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
         await page.close();
     }
     if (process.env.TAXONOMY_DOC_SCREENSHOTS) {
@@ -55,7 +78,10 @@ try {
             const page=await browser.newPage({viewport:{width:1280,height:1250}});
             // Render the production component with explicit sample input. This is not a full-app snapshot.
             await page.setContent(`<html lang="${language}"><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif}</style></head><body></body></html>`);
-            await page.addScriptTag({content:source});
+            await page.addScriptTag({content:capabilitiesSource});
+        await page.evaluate(() => { window.fetch = async () => ({ok:true,json:async()=>({features:['reporting'],exports:[],reports:
+            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}); });
+        await page.addScriptTag({content:source});
             await page.evaluate(language=>window.TaxonomyDecisionExport.open({language,saved:true,
                 source:language==='de'?'Beispielanalyse · Snapshot export-demo':'Example analysis · Snapshot export-demo',
                 roots:[{code:'CP',title:language==='de'?'Fähigkeiten':'Capabilities'},

@@ -139,7 +139,9 @@ class WorkspaceCentralReadBoundaryTest {
                         SyncIntegrationService.DivergedStrategy.valueOf(operation));
             }
         });
-        verifyNoInteractions(factory, semantic, portfolio, editor, rows, syncRows);
+        verify(portfolio, times(operation.equals("MERGE") ? 2 : 1)).requireAvailable();
+        verifyNoMoreInteractions(portfolio);
+        verifyNoInteractions(factory, semantic, editor, rows, syncRows);
         if (explicitEmptyPin) verifyNoInteractions(manager);
     }
 

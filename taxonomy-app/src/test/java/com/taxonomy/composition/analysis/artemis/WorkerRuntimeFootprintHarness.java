@@ -96,9 +96,12 @@ public final class WorkerRuntimeFootprintHarness {
                         command.addAll(List.of("-cp", probeClasses + java.io.File.pathSeparator + runtimeClasspath,
                                 WorkerRuntimeFootprintProbe.class.getName()));
                     } else {
-                        expectedVmArguments.addAll(List.of("-Dloader.path=" + probeClasses,
+                        Path distribution = Path.of(artifact).toAbsolutePath().getParent();
+                        expectedVmArguments.addAll(List.of("-Dloader.path=" + probeClasses + "," + distribution.resolve("features"),
+                                "-Dtaxonomy.plugins.directory=" + distribution.resolve("plugins"),
                                 "-Dloader.main=" + WorkerRuntimeFootprintProbe.class.getName()));
-                        command.addAll(List.of(expectedVmArguments.get(FLAGS.size()), expectedVmArguments.get(FLAGS.size() + 1),
+                        command.addAll(expectedVmArguments.subList(FLAGS.size(), expectedVmArguments.size()));
+                        command.addAll(List.of(
                                 "-cp", Path.of(artifact).toAbsolutePath().toString(), "org.springframework.boot.loader.launch.PropertiesLauncher"));
                     }
                     command.addAll(List.of(role, String.join(",", shards), Boolean.toString(nativeEnabled),

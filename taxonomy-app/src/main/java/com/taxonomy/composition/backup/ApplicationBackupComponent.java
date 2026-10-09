@@ -1,5 +1,7 @@
 package com.taxonomy.composition.backup;
 
+import com.taxonomy.backup.runtime.BackupCoverageInventory;
+
 import com.taxonomy.backup.*;
 import com.taxonomy.preferences.backup.ApplicationConfigurationBackupContributor;
 import com.taxonomy.preferences.backup.PreferencesBackupContributor;

@@ -16,6 +16,38 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class DecisionReportOptionsValidationHttpTest {
+    @Test void contributedFormatUsesTheExistingAuthorizedReportAssemblyAndProvenance() throws Exception {
+        var reports=mock(DecisionRationaleReportService.class);
+        var registry=mock(ReportRendererRegistry.class);
+        var state=mock(RepositoryStateService.class);var workspace=mock(WorkspaceResolver.class);
+        var context=new com.taxonomy.workspace.service.WorkspaceContext("architect","workspace","draft","repository");
+        when(workspace.resolveCurrentContext()).thenReturn(context);
+        when(state.resolveWorkspaceBranch("architect")).thenReturn("draft");
+        var report=mock(com.taxonomy.reporting.api.decision.DecisionRationaleReport.class,RETURNS_DEEP_STUBS);
+        when(report.metadata().taxonomyDataFingerprintSha256()).thenReturn("data-sha");
+        when(report.metadata().analysisSnapshotFingerprintSha256()).thenReturn("analysis-sha");
+        when(reports.generate(any(),eq(context),isNull(),any())).thenReturn(report);
+        var semantics=mock(com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter.class);
+        when(semantics.adapt(same(report),anyMap(),any())).thenReturn(report);
+        var renderer=new com.taxonomy.extension.api.report.ReportRendererExtension() {
+            public String reportTypeId(){return "decision-rationale";}
+            public com.taxonomy.extension.api.report.ReportFormatDescriptor descriptor(){return new com.taxonomy.extension.api.report.ReportFormatDescriptor("example-markdown","Markdown","md","text/markdown",false);}
+            public com.taxonomy.extension.api.report.ReportRenderResult render(com.taxonomy.extension.api.report.ReportRenderContext input) {
+                org.assertj.core.api.Assertions.assertThat(input.payload()).isSameAs(report);
+                return new com.taxonomy.extension.api.report.ReportRenderResult("# Decision".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        };
+        when(registry.getRequired("decision-rationale","example-markdown")).thenReturn(renderer);
+        var controller=new DecisionRationaleReportController(reports,registry,state,workspace,semantics,null);
+        var mvc=MockMvcBuilders.standaloneSetup(controller).build();
+        mvc.perform(post("/api/decision-report/example-markdown").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\",\"provider\":\"MOCK\",\"analysisStatus\":\"SUCCESS\",\"language\":\"en\"}"))
+                .andExpect(status().isOk()).andExpect(content().string("# Decision"))
+                .andExpect(header().string("Content-Type","text/markdown"))
+                .andExpect(header().string("X-Taxonomy-Analysis-SHA256","analysis-sha"))
+                .andExpect(header().string("X-Taxonomy-Data-SHA256","data-sha"));
+        verify(workspace).resolveCurrentContext();verify(state).getViewContext("architect","draft",context);
+    }
     @Test void invalidTypedOptionsRemainClientErrorsWithTheApplicationAdvice() throws Exception {
         var controller = new DecisionRationaleReportController(mock(DecisionRationaleReportService.class),
                 mock(ReportRendererRegistry.class), mock(RepositoryStateService.class), mock(WorkspaceResolver.class));

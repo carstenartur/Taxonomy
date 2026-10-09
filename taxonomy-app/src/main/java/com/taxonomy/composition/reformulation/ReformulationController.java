@@ -20,6 +20,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 
 /** Scope and actor always come from authenticated workspace resolution, never request JSON. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @RestController
 @Tag(name = "Reformulations")
 @RequestMapping("/api/projects/{projectId}/requirements/{requirementId}/reformulations")

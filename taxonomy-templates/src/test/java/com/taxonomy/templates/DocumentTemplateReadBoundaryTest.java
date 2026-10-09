@@ -325,7 +325,7 @@ class DocumentTemplateReadBoundaryTest {
 
     private TemplateSnapshot snapshot(String revision) {
         var manifest = new TemplateManifest(1, ID, "Report template", ID + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",
                 parts.values().stream().mapToLong(bytes -> bytes.length).sum(), parts.size(),
                 OoxmlTemplatePackageCodec.packageSha256(parts));
         return new TemplateSnapshot(manifest, revision, parts);

@@ -76,6 +76,20 @@ class PluginCatalogTest {
         assertThatThrownBy(() -> catalog.publish(plugin("example.llm"), List.of(stateful)))
                 .hasMessageContaining("DYNAMIC");
     }
+    @Test void drainingDependentKeepsItsDependencyAliveUntilRemoval() throws Exception {
+        var catalog=new PluginCatalog();var dependency=plugin("example.base");
+        var dependent=new PluginDescriptor(new PluginIdentity("example.consumer","1.0.0","b".repeat(64)),
+                dependency.hostApiRange(),List.of(new PluginRequirement("example.base",">=1.0.0 & <2.0.0")),Set.of(),PluginMode.DYNAMIC);
+        catalog.publish(dependency,List.of(renderer("base","txt")));
+        catalog.publish(dependent,List.of(renderer("consumer","txt")));
+        try(var lease=catalog.acquire(ExtensionKey.report("consumer","txt"),ReportRendererExtension.class)) {
+            catalog.beginDraining(dependent.identity());
+            assertThatThrownBy(()->catalog.beginDraining(dependency.identity())).isInstanceOf(IllegalStateException.class);
+            assertThat(lease.extension().render(ReportRenderContext.ofPayload("retained" )).utf8()).isEqualTo("retained");
+        }
+        catalog.remove(dependent.identity());catalog.beginDraining(dependency.identity());catalog.remove(dependency.identity());
+        assertThat(catalog.snapshot().plugins()).isEmpty();
+    }
     @Test void leasePinsTheOldVersionAndDrainRefusesNewAcquisitions() throws Exception {
         var catalog = new PluginCatalog(); var plugin = plugin("example.renderer");
         catalog.publish(plugin, List.of(renderer("a", "txt")));

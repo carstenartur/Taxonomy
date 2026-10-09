@@ -24,6 +24,9 @@ class ExternalPluginPackagedIT {
         Files.copy(plugin, installed.resolve("mermaid plugin.jar"));
         try (var app = PackagedPluginSupport.start(host, installed, temporary.resolve("with-plugin"))) {
             assertThat(app.request("GET", "/api/extensions", null).body()).contains("mermaid");
+            var disabled = app.request("POST", "/api/admin/plugins/taxonomy.mermaid/deactivate", null);
+            assertThat(disabled.statusCode()).as(disabled.body()).isEqualTo(409);
+            assertThat(disabled.body()).contains("DYNAMIC_DISABLED");
             for (String locale : List.of("en", "de")) {
                 String request = "{\"businessText\":\"Coordinate civil hospital logistics and medical supplies\",\"locale\":\"" + locale + "\"}";
                 var generic = app.request("POST", "/api/diagram/export/mermaid", request);
@@ -33,6 +36,20 @@ class ExternalPluginPackagedIT {
                 var legacy = app.request("POST", "/api/diagram/mermaid", request);
                 assertThat(legacy.statusCode()).as(legacy.body()).isEqualTo(200);
                 assertThat(legacy.body()).isEqualTo(generic.body());
+            }
+        }
+        try (var app = PackagedPluginSupport.start(host, installed, host.getParent().resolve("features"),
+                temporary.resolve("dynamic"), List.of("--taxonomy.plugins.dynamic.enabled=true"))) {
+            for (int cycle = 0; cycle < 3; cycle++) {
+                var stopped = app.request("POST", "/api/admin/plugins/taxonomy.mermaid/deactivate", null);
+                assertThat(stopped.statusCode()).as(stopped.body()).isEqualTo(200);
+                assertThat(stopped.body()).contains("STOPPED");
+                assertThat(app.request("GET", "/api/extensions", null).body()).doesNotContain("mermaid");
+                assertThat(app.request("POST", "/api/diagram/export/mermaid", "{\"businessText\":\"Offline export\"}").statusCode()).isEqualTo(404);
+                var active = app.request("POST", "/api/admin/plugins/taxonomy.mermaid/activate", null);
+                assertThat(active.statusCode()).as(active.body()).isEqualTo(200);
+                assertThat(active.body()).contains(PackagedPluginSupport.sha256(plugin));
+                assertThat(app.request("POST", "/api/diagram/export/mermaid", "{\"businessText\":\"Offline export\"}").statusCode()).isEqualTo(200);
             }
         }
         Path absent = Files.createDirectory(temporary.resolve("no plugins"));
@@ -46,6 +63,6 @@ class ExternalPluginPackagedIT {
         assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(original);
         Files.writeString(root.resolve("taxonomy-build/target/plugin-packaging-evidence.txt"),
                 "host.sha256=" + original + "\nmermaid.sha256=" + PackagedPluginSupport.sha256(plugin)
-                        + "\nindependent.emptyRepository=true\nhttp.locales=en,de\nwithout.plugin=ready,format404\n");
+                        + "\nindependent.emptyRepository=true\nhttp.locales=en,de\nwithout.plugin=ready,format404\ndynamic.cycles=3\ndynamic.default=disabled\n");
     }
 }

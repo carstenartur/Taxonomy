@@ -15,7 +15,6 @@ final class PluginJarFixture {
     static Path create(Path root, String fileName, String id, Map<String, String> overrides,
                        String body, Map<String, byte[]> extra) throws Exception {
         Files.createDirectories(root);
-        Path sources = Files.createTempDirectory(root.getParent(), "plugin-build-");
         String code = """
                 package example.plugin;
                 import com.taxonomy.extension.api.plugin.TaxonomyPlugin;
@@ -36,6 +35,12 @@ final class PluginJarFixture {
                     }
                 }
                 """.formatted(body);
+        return createSource(root, fileName, id, overrides, code, extra);
+    }
+    static Path createSource(Path root, String fileName, String id, Map<String, String> overrides,
+                             String code, Map<String, byte[]> extra) throws Exception {
+        Files.createDirectories(root);
+        Path sources = Files.createTempDirectory(root.getParent(), "plugin-build-");
         Path source = sources.resolve("ExamplePlugin.java"); Files.writeString(source, code);
         String sdk = Path.of(TaxonomyPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         String domain = Path.of(ArchitectureReport.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();

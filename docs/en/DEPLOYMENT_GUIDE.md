@@ -274,6 +274,54 @@ Complete [Deployment Checklist](DEPLOYMENT_CHECKLIST.md), including:
 6. workspace-specific hypothesis/DSL versioning;
 7. monitoring and incident-response ownership.
 
+## Optional features and external plugins
+
+The standard distribution contains the executable `taxonomy-app` JAR, `features/`
+(six feature JARs) and `plugins/` (the independently built Mermaid adapter). Copy
+all three together. A lone host JAR intentionally provides only the fixed core.
+Docker and native packages include the complete distribution; native launchers
+resolve the two directories against the installation, independently of the working directory.
+After `./mvnw package`, run from the generated distribution:
+
+```sh
+cd taxonomy-app/target
+java -Dloader.path=features -Dtaxonomy.plugins.directory=plugins -jar taxonomy-app-1.4.1-SNAPSHOT.jar
+```
+
+Startup features are `templates`, `architecture`, `reporting`, `analysis`, `portfolio`
+and `interop`. Reporting requires templates; analysis requires architecture;
+portfolio requires analysis, architecture and reporting. Stop every affected instance
+before changing its feature directory. Keep the host and feature versions identical.
+Invalid or duplicate assemblies fail before database initialization. Removing a JAR
+never authorizes deleting its tables or Git history; retain a restorable database and
+artifact backup and reinstall the same artifacts to regain the feature. Schema changes
+are not undone by reinstalling an older JAR.
+
+External plugins are trusted Java code installed by the operator in the configured
+local directory. There is no remote URL or upload installation endpoint. Keep exact
+JARs and SHA-256 digests with the configuration. Startup providers require an explicit
+non-secret `taxonomy.llm.providers.<id>.configuration-revision`; change it whenever
+provider configuration or credential selection changes. Durable jobs retain their
+provider, artifact/version/digest and configuration revision. A missing or changed
+binding stops the job before a provider call or quota consumption; it never selects
+another provider. Upgrade all cluster workers before admitting the new job format.
+
+Runtime activation is disabled by default. Only in a single-instance installation,
+set `taxonomy.plugins.dynamic.enabled=true` to allow ADMIN, CSRF-protected activation
+of locally installed DYNAMIC export/renderer plugins at `/api/admin/plugins`.
+Stateful features and providers remain startup-only. A draining plugin rejects new
+calls; admitted calls finish against the old artifact, and an HTTP 202 drain result
+means resources are still in use. Clustered installations reject these operations.
+The authenticated `/api/capabilities` response drives available host-owned UI controls.
+
+Complete backups require every data-owning feature. Capture and restore use an
+explicit immutable prerequisite inventory from the preflight feature set and startup
+plugin catalog; callers constructing a backup coordinator or archive reader must
+supply it. Manifests record artifact/version/SHA-256 requirements; restore validates
+these before giving an archive to data writers. Stateless dynamic format plugins are
+not data-restore prerequisites. Retain unavailable job bindings and their original
+artifacts during recovery. Existing legacy built-in jobs remain readable.
+
 ## Related documentation
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md)

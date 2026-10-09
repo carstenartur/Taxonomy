@@ -10,7 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AnalysisRuntimeSettingsPortTest {
     @Test
     void existingApplicationSettingsAndWorkspaceProviderImplementReadOnlyPorts() {
-        assertThat(AnalysisRuntimeSettings.class).isAssignableFrom(PreferencesService.class);
+        assertThat(AnalysisRuntimeSettings.class).isAssignableFrom(com.taxonomy.composition.analysis.PreferenceAnalysisRuntimeSettings.class);
+        assertThat(AnalysisRuntimeSettings.class.isAssignableFrom(PreferencesService.class)).isFalse();
         assertThat(WorkspaceViewContextReadPort.class).isAssignableFrom(RepositoryStateService.class);
         assertThat(AnalysisRuntimeSettings.class.getDeclaredMethods()).hasSize(1);
         assertThat(AnalysisRuntimeSettings.class.getDeclaredMethods()[0].getName()).isEqualTo("getInt");

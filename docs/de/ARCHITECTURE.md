@@ -108,7 +108,6 @@ flowchart TB
     taxonomy-analysis --> taxonomy-knowledge
     taxonomy-analysis --> taxonomy-workspace
     taxonomy-architecture --> taxonomy-knowledge
-    taxonomy-reporting --> taxonomy-templates
     taxonomy-portfolio --> taxonomy-reporting
     taxonomy-architecture --> taxonomy-workspace
     taxonomy-knowledge --> taxonomy-workspace
@@ -118,7 +117,7 @@ flowchart TB
 
 Abhängigkeiten der Anwendung auf Bibliotheken sowie der Grundlagenmodule sind in
 dieser fokussierten Grafik absichtlich ausgeblendet. Die fünf Grundlagen heißen
-`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, `taxonomy-extension-api` und `taxonomy-reporting-api`.
+`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, `taxonomy-extension-api`, `taxonomy-reporting-api` und `taxonomy-templates-api`.
 Die separate Build-Gruppe besteht aus `taxonomy-tooling`, `taxonomy-coverage` und
 `taxonomy-build`; sie bildet keine Laufzeit-Fachkontexte. Das vollständige Inventar
 steht in [Modulgrenzen](MODULE_BOUNDARIES.md); das bestehende Modul-Gate schreibt
@@ -310,7 +309,7 @@ Profile oder native Editorfähigkeiten sind damit nicht vorweggenommen.
 | Ausgabe | Grenze |
 |---|---|
 | Mermaid / neutrale Diagramme | Text-/Diagrammprojektionen des ausdrücklich ausgewählten Modells; das README-Beispiel ist ein erzeugtes Fachmodell, nicht der Modulgraph dieser Anwendung. |
-| Berichte einschließlich Word | Berichtserzeugung gehört zur Architektur, Vorlagenlebenszyklus zum Vorlagenmodul und kontextübergreifende HTTP-/Einstellungsverdrahtung zur Anwendung. Verfügbare Vorlagenfunktionen hängen vom konkreten Berichtspfad ab. |
+| Berichte einschließlich Word | Die Ableitung der Berichtsmodelle gehört zur Architektur; Darstellung, Layout, Entscheidungsvorlage und Preview gehören zu Reporting; der generische Vorlagenlebenszyklus liegt bei Templates. Kontextübergreifende HTTP-/Einstellungsverdrahtung gehört zur Anwendung. Verfügbare Vorlagenfunktionen hängen vom konkreten Berichtspfad ab. |
 | Experimentelle begrenzte ArchiMate-3.1-Teilmenge | Schema-validierte Ausgabe mit Identitäts-, Mapping- und Verlustverträgen; eine allgemeine Fremdwerkzeug-Abnahme darf nicht aus Dateierzeugung oder Paketprüfungen abgeleitet werden. |
 | Experimentelle begrenzte Visio-2012-VSDX-Teilmenge | Begrenzte Paket- und Übergabe-/Verlustverträge; Microsoft-Visio-Desktop-Zertifizierung ausstehend. |
 | Geprüfter externer Austausch | Konnektor-/profilspezifische Semantik mit ausdrücklicher Prüfung und Kompatibilitätsgrenzen, kein uneingeschränkter bidirektionaler Modelleditor. |

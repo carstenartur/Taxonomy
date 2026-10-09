@@ -103,7 +103,7 @@ class DocumentTemplateServicePreconditionTest {
                 "report",
                 "Report",
                 "report.dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 Instant.parse("2026-08-22T12:00:00Z").toString(),
                 "admin",
                 1,

@@ -88,6 +88,30 @@ class PluginArtifactLoadingTest {
             }
         }
     }
+    @Test void immutableAdmissionRejectsAChangedManifestIdentityBeforeLoading() throws Exception {
+        Path artifact=PluginJarFixture.create(root(),"changing.jar","example.original");
+        var expected=new PluginArtifactValidator().validate(artifact).identity();
+        PluginJarFixture.create(root(),"changing.jar","example.replacement");
+        try(var runtime=new Pf4jPluginRuntime(root(),cache(),new PluginCatalog())) {
+            assertThatThrownBy(() -> runtime.install(artifact,expected)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(runtime.installed()).isEmpty();assertThat(runtime.openClassLoaders()).isZero();
+        }
+    }
+    @Test void failedStartAndLinkageFailureDuringCloseStillReleaseTheLoader() throws Exception {
+        String code="""
+            package example.plugin;
+            public class ExamplePlugin implements com.taxonomy.extension.api.plugin.TaxonomyPlugin {
+                public java.util.List<com.taxonomy.shared.extension.TaxonomyExtension> extensions() {throw new IllegalStateException("broken start");}
+                public void close() {throw new NoClassDefFoundError("broken cleanup");}
+            }
+            """;
+        Path artifact=PluginJarFixture.createSource(root(),"broken-close.jar","example.broken",Map.of(),code,Map.of());
+        try(var runtime=new Pf4jPluginRuntime(root(),cache(),new PluginCatalog())) {
+            runtime.install(artifact);
+            assertThatThrownBy(() -> runtime.start("example.broken")).isInstanceOf(IllegalStateException.class);
+            assertThat(runtime.installed()).isEmpty();assertThat(runtime.openClassLoaders()).isZero();
+        }
+    }
     @Test void outsideFilesAndEscapingSymlinksAreRejected() throws Exception {
         Path outside = PluginJarFixture.create(temporary.resolve("elsewhere"), "outside.jar", "example.outside");
         var catalog = new PluginCatalog();

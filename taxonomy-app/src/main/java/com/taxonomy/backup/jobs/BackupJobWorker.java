@@ -1,6 +1,6 @@
 package com.taxonomy.backup.jobs;
 
-import com.taxonomy.backup.BackupAuthorizationService;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
 import com.taxonomy.backup.archive.*;
 import org.springframework.security.access.AccessDeniedException;
 import java.io.*;

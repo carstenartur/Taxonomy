@@ -114,7 +114,7 @@ public class RequirementAnalysisSnapshot {
     @Column(name = "analysis_session_id", nullable = false, length = 64)
     private String analysisSessionId;
 
-    @Column(length = 40)
+    @Column(length = 128)
     private String provider;
 
     @Column(name = "model_name", length = 160)

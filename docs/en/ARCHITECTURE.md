@@ -105,7 +105,6 @@ flowchart TB
     taxonomy-analysis --> taxonomy-knowledge
     taxonomy-analysis --> taxonomy-workspace
     taxonomy-architecture --> taxonomy-knowledge
-    taxonomy-reporting --> taxonomy-templates
     taxonomy-portfolio --> taxonomy-reporting
     taxonomy-architecture --> taxonomy-workspace
     taxonomy-knowledge --> taxonomy-workspace
@@ -114,8 +113,8 @@ flowchart TB
 <!-- architecture-feature-graph:end -->
 
 Application-to-library and foundation dependencies are intentionally omitted from
-this focused graph. The five foundations are `taxonomy-domain`, `taxonomy-dsl`,
-`taxonomy-export`, `taxonomy-extension-api`, and `taxonomy-reporting-api`. The separate build group is
+this focused graph. The six framework-free foundations are `taxonomy-domain`, `taxonomy-dsl`,
+`taxonomy-export`, `taxonomy-extension-api`, `taxonomy-reporting-api`, and `taxonomy-templates-api`. The separate build group is
 `taxonomy-tooling`, `taxonomy-coverage`, and `taxonomy-build`; these are not runtime
 feature contexts. The complete reactor inventory is in [Module boundaries](MODULE_BOUNDARIES.md),
 and the existing module gate writes full ownership/dependency evidence to
@@ -303,7 +302,7 @@ profiles and native editor capabilities are not implied by this overview.
 | Output | Boundary |
 |---|---|
 | Mermaid / neutral diagrams | Text or diagram projections of the explicitly selected source model. The README showcase is a generated model example, not this application's module graph. |
-| Reports, including Word | Report generation belongs to architecture; template lifecycle belongs to templates, and cross-context HTTP/preferences wiring belongs to the application. Available template features depend on the concrete report path. |
+| Reports, including Word | Report-model construction belongs to architecture; rendering, layouts, decision template and preview belong to reporting; generic template lifecycle belongs to templates. Cross-context HTTP/preferences wiring belongs to the application. Available template features depend on the concrete report path. |
 | Experimental bounded ArchiMate 3.1 subset | Schema-validated output with identity, mapping and loss contracts; general independent-tool acceptance must not be inferred from file generation or package checks. |
 | Experimental bounded Visio 2012 VSDX subset | Bounded package and handoff/loss contracts; Microsoft Visio desktop certification remains pending. |
 | Reviewed external exchange | Connector- and profile-specific semantics with explicit review and compatibility limits, not an unrestricted bidirectional model editor. |

@@ -11,7 +11,8 @@ Related developer notes:
 
 Use this page when you need the **stable starting point** for a common feature
 addition. It documents the extension anchors that already exist in the codebase.
-It does **not** introduce a plugin framework or runtime loading of external JARs.
+External JARs use the versioned Taxonomy SDK and a private PF4J loader. See
+[installation and lifecycle boundaries](extension-module-boundaries.md#optional-startup-installation-and-runtime-lifecycle).
 
 ## Extension map
 
@@ -41,7 +42,7 @@ The explicit extension points share a small internal SPI in
 - `ExtensionDescriptor` is the framework-free metadata view safe for REST/UI
 
 `taxonomy-app/src/main/java/com/taxonomy/shared/extension/ExtensionRegistry`
-collects all Spring extension beans, validates duplicate IDs per kind, and
+reads the shared atomic catalog of built-in and external contributions, validates duplicate IDs per kind, and
 exposes descriptor lookups (`listAll()`, `listByKind(...)`,
 `findDescriptor(...)`).
 

@@ -29,6 +29,7 @@ import java.util.HexFormat;
 import java.util.TreeMap;
 
 /** Explicit historical revision/receipt downloads; no live architecture or model lookup. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @RestController
 @Tag(name = "Reformulation reports")
 @RequestMapping("/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}")

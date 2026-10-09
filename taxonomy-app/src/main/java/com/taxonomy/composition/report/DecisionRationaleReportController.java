@@ -33,6 +33,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,6 +52,7 @@ import java.util.Set;
  * Format rendering is delegated exclusively to {@link ReportRendererRegistry}; adding
  * another decision-report format therefore requires only another renderer extension.</p>
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture", "reporting"})
 @RestController
 @RequestMapping("/api/decision-report")
 @Tag(name = "Decision Rationale Report")
@@ -210,6 +212,15 @@ public class DecisionRationaleReportController {
     @PostMapping("/json")
     public ResponseEntity<byte[]> exportJson(@RequestBody DecisionReportRequest request) {
         return render(request, "json");
+    }
+
+    @Operation(summary = "Export hierarchical decision rationale using an installed report format")
+    @ApiResponse(responseCode = "200", description = "Report returned with analysis and data provenance")
+    @ApiResponse(responseCode = "400", description = "Invalid report input or unknown format")
+    @ApiResponse(responseCode = "503", description = "Selected renderer is no longer available")
+    @PostMapping("/{formatId}")
+    public ResponseEntity<byte[]> exportFormat(@PathVariable String formatId, @RequestBody DecisionReportRequest request) {
+        return render(request, formatId);
     }
 
     private ResponseEntity<byte[]> render(

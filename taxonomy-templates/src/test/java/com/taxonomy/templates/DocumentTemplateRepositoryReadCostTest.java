@@ -238,7 +238,7 @@ class DocumentTemplateRepositoryReadCostTest {
     }
 
     private TemplateManifest manifest(String id, String name) {
-        return new TemplateManifest(1, id, name, id + ".dotx", OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+        return new TemplateManifest(1, id, name, id + ".dotx", com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 "2026-08-22T16:00:00Z", "tester",
                 parts.values().stream().mapToLong(value -> value.length).sum(), parts.size(),
                 OoxmlTemplatePackageCodec.packageSha256(parts));

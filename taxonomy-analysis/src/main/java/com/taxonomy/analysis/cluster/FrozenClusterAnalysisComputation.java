@@ -70,7 +70,7 @@ public final class FrozenClusterAnalysisComputation implements ClusterAnalysisCo
         var frozen = mapper.readValue(store.shard(context, task.root()), RootCatalogueSnapshot.class);
         var root = task.root().code();
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), Set.of(root), List.of(frozen));
-             var provider = providers.withRequestProvider(command.provider());
+             var provider = providers.withRequestProvider(command.provider(), command.providerBinding());
              var run = AnalysisRunControl.worker(context.operationId(), cancelled, guards.get());
              var operation = InProcessAnalysisOperation.open(context, null)) {
             AnalysisRunControl.checkpoint();

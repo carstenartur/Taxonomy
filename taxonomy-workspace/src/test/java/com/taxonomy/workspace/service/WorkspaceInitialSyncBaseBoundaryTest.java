@@ -88,7 +88,9 @@ class WorkspaceInitialSyncBaseBoundaryTest {
             verify(source, never()).commitDsl(anyString(), anyString(), anyString(), anyString());
             verify(destination, never()).commitDsl(anyString(), anyString(), anyString(), anyString());
             verify(rows, never()).save(any(UserWorkspace.class));
-            verifyNoInteractions(merger, portfolio, syncRows);
+            verify(portfolio, times(2)).requireAvailable();
+            verifyNoMoreInteractions(portfolio);
+            verifyNoInteractions(merger, syncRows);
             assertNull(workspace.getCurrentCommit());
         }
         assertEquals(CAPTURED, workspace.getBaseCommit());
