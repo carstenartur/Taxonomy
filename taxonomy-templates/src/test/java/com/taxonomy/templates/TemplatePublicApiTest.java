@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** Verifies the actual published operation types, including nested record components. */
 class TemplatePublicApiTest {
@@ -36,6 +37,21 @@ class TemplatePublicApiTest {
         assertArrayEquals(new byte[] {1, 2, 3}, file.content());
         assertEquals('"' + revision + '"', file.etag());
         assertEquals(manifest, file.manifest());
+    }
+
+    @Test
+    void diffIsAnImmutableSnapshotWithStablePartOrder() {
+        var input = new java.util.LinkedHashMap<String, com.taxonomy.templates.api.PartChange>();
+        input.put("word/styles.xml", com.taxonomy.templates.api.PartChange.MODIFIED);
+        input.put("word/header1.xml", com.taxonomy.templates.api.PartChange.ADDED);
+        input.put("[Content_Types].xml", com.taxonomy.templates.api.PartChange.MODIFIED);
+        var diff = new com.taxonomy.templates.api.TemplateDiff("report", "before", "after", input);
+        input.clear();
+        assertEquals(java.util.List.of("word/styles.xml", "word/header1.xml", "[Content_Types].xml"),
+                java.util.List.copyOf(diff.changes().keySet()));
+        assertEquals(com.taxonomy.templates.api.PartChange.ADDED, diff.changes().get("word/header1.xml"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> diff.changes().put("word/new.xml", com.taxonomy.templates.api.PartChange.ADDED));
     }
 
     @Test

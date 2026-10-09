@@ -122,7 +122,8 @@ class PluginCatalogTest {
     }
     @Test void concurrentReadersOnlySeeWholeSnapshots() throws Exception {
         var catalog = new PluginCatalog(); var ready = new CountDownLatch(1);
-        try (var executor = Executors.newSingleThreadExecutor()) {
+        var executor = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+        try {
             var reader = executor.submit(() -> {
                 ready.countDown();
                 for (int i = 0; i < 10000; i++) {
@@ -135,6 +136,8 @@ class PluginCatalogTest {
                 catalog.publish(plugin("example.renderer-" + i), List.of(renderer("r"+i, "txt"), renderer("r"+i, "html")));
             }
             reader.get(5, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
         }
     }
 }

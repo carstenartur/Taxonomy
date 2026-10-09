@@ -18,7 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DecisionReportOptionsValidationHttpTest {
     @Test void contributedFormatUsesTheExistingAuthorizedReportAssemblyAndProvenance() throws Exception {
         var reports=mock(DecisionRationaleReportService.class);
-        var registry=mock(ReportRendererRegistry.class);
+        var catalog=new com.taxonomy.extension.runtime.PluginCatalog();
+        var registry=new ReportRendererRegistry(catalog,java.util.List.of());
         var state=mock(RepositoryStateService.class);var workspace=mock(WorkspaceResolver.class);
         var context=new com.taxonomy.workspace.service.WorkspaceContext("architect","workspace","draft","repository");
         when(workspace.resolveCurrentContext()).thenReturn(context);
@@ -37,9 +38,12 @@ class DecisionReportOptionsValidationHttpTest {
                 return new com.taxonomy.extension.api.report.ReportRenderResult("# Decision".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
         };
-        when(registry.getRequired("decision-rationale","example-markdown")).thenReturn(renderer);
+        var identity=new com.taxonomy.extension.api.plugin.PluginIdentity("example.report","1.0.0","a".repeat(64));
+        catalog.publish(new com.taxonomy.extension.api.plugin.PluginDescriptor(identity,">=1.0.0",
+                java.util.List.of(),java.util.Set.of(),com.taxonomy.extension.api.plugin.PluginMode.DYNAMIC),java.util.List.of(renderer));
         var controller=new DecisionRationaleReportController(reports,registry,state,workspace,semantics,null);
-        var mvc=MockMvcBuilders.standaloneSetup(controller).build();
+        var mvc=MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler(mock(MessageSource.class))).build();
         mvc.perform(post("/api/decision-report/example-markdown").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\",\"provider\":\"MOCK\",\"analysisStatus\":\"SUCCESS\",\"language\":\"en\"}"))
                 .andExpect(status().isOk()).andExpect(content().string("# Decision"))
@@ -47,6 +51,13 @@ class DecisionReportOptionsValidationHttpTest {
                 .andExpect(header().string("X-Taxonomy-Analysis-SHA256","analysis-sha"))
                 .andExpect(header().string("X-Taxonomy-Data-SHA256","data-sha"));
         verify(workspace).resolveCurrentContext();verify(state).getViewContext("architect","draft",context);
+        catalog.beginDraining(identity);
+        mvc.perform(post("/api/decision-report/example-markdown").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
+                .andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/decision-report/unknown-format").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
+                .andExpect(status().isBadRequest());
     }
     @Test void invalidTypedOptionsRemainClientErrorsWithTheApplicationAdvice() throws Exception {
         var controller = new DecisionRationaleReportController(mock(DecisionRationaleReportService.class),

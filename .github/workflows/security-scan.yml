@@ -6,6 +6,7 @@ on:
     paths:
       - '**/pom.xml'
       - 'taxonomy-*/src/**'
+      - 'plugins/**'
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - 'deploy/helm/**'

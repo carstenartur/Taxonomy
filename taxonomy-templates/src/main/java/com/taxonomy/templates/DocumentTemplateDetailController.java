@@ -166,7 +166,7 @@ public final class DocumentTemplateDetailController {
 
     @GetMapping("/admin/document-templates/{templateId}/test.docx")
     @io.swagger.v3.oas.annotations.Operation(summary = "Render a document-template test report",
-            description = "Generates a DOCX preview using the decision-rationale template and the fixed preview data. Other template IDs are rejected. Returns a no-store attachment; this test report is not evidence of a user analysis.")
+            description = "Generates a DOCX preview using the template family's contributed preview and fixed preview data. Template families without a preview are rejected. Returns a no-store attachment; this test report is not evidence of a user analysis.")
     @ApiResponse(responseCode = "200", description = "Render a document-template test report response")
     public ResponseEntity<byte[]> testReport(@PathVariable String templateId) {
         var contribution = contributions.get(templateId);

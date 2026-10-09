@@ -116,7 +116,7 @@ flowchart TB
 <!-- architecture-feature-graph:end -->
 
 Abhängigkeiten der Anwendung auf Bibliotheken sowie der Grundlagenmodule sind in
-dieser fokussierten Grafik absichtlich ausgeblendet. Die fünf Grundlagen heißen
+dieser fokussierten Grafik absichtlich ausgeblendet. Die sechs Grundlagen heißen
 `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, `taxonomy-extension-api`, `taxonomy-reporting-api` und `taxonomy-templates-api`.
 Die separate Build-Gruppe besteht aus `taxonomy-tooling`, `taxonomy-coverage` und
 `taxonomy-build`; sie bildet keine Laufzeit-Fachkontexte. Das vollständige Inventar

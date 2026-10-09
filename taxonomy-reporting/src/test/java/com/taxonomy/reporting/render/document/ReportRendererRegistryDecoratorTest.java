@@ -10,8 +10,28 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReportRendererRegistryDecoratorTest {
+
+    @Test
+    void drainingRendererRemainsUnavailableInsteadOfBecomingAnUnknownFormat() {
+        var catalog = new com.taxonomy.extension.runtime.PluginCatalog();
+        var identity = new com.taxonomy.extension.api.plugin.PluginIdentity(
+                "example.report", "1.0.0", "a".repeat(64));
+        catalog.publish(new com.taxonomy.extension.api.plugin.PluginDescriptor(identity,
+                ">=1.0.0", List.of(), java.util.Set.of(),
+                com.taxonomy.extension.api.plugin.PluginMode.DYNAMIC), List.of(renderer("available")));
+        var registry = new ReportRendererRegistry(catalog, List.of());
+        assertThat(registry.getRequired("test", "txt").render(ReportRenderContext.ofPayload("report")).utf8())
+                .isEqualTo("available");
+        catalog.beginDraining(identity);
+        assertThatThrownBy(() -> registry.getRequired("test", "txt"))
+                .isInstanceOf(com.taxonomy.extension.api.plugin.ExtensionUnavailableException.class);
+        assertThat(registry.findByFormatId("test", "unknown")).isEmpty();
+        assertThatThrownBy(() -> registry.getRequired("test", "unknown"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 
     @Test
     void appliesInfrastructureDecoratorsBeforeRendererRegistration() {
