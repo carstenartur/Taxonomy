@@ -143,8 +143,10 @@ class AiAutomationPolicyTest {
 
     private static LlmProviderConfig readyCustomProvider() {
         LlmProviderConfig providers = mock(LlmProviderConfig.class);
-        when(providers.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
+        when(providers.getActiveProviderId()).thenReturn(LlmProvider.CUSTOM_OPENAI.id());
+        when(providers.requireRegisteredProvider("CUSTOM_OPENAI")).thenReturn(LlmProvider.CUSTOM_OPENAI.id());
         when(providers.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true);
+        when(providers.isProviderConfigured(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(true);
         when(providers.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI))
                 .thenReturn("test-model");
         when(providers.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI))

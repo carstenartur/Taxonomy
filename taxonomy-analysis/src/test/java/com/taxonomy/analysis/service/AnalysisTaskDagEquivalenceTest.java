@@ -59,7 +59,7 @@ class AnalysisTaskDagEquivalenceTest {
 
     private static final class Provider extends LlmProviderConfig {
         Provider() { super(null); }
-        @Override public LlmProvider getActiveProvider() { return LlmProvider.GEMINI; }
+        @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return LlmProvider.GEMINI.id(); }
         @Override public String getActiveProviderName() { return "GEMINI"; }
         @Override public String getApiKey(LlmProvider requested) { return "test-key"; }
     }
@@ -86,7 +86,7 @@ class AnalysisTaskDagEquivalenceTest {
     private static LlmService service(Gateway gateway) {
         var config = new Provider();
         var registry = new LlmGatewayRegistry(config, new RestTemplate(), new ObjectMapper(), null, null, null) {
-            @Override public LlmGateway getGateway(LlmProvider selected) { return gateway; }
+            @Override public LlmGateway getGatewayById(com.taxonomy.extension.api.llm.ProviderId selected) { return gateway; }
         };
         var prompts = new PromptTemplateService();
         prompts.loadDefaults();

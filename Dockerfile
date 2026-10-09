@@ -28,6 +28,8 @@ COPY taxonomy-reporting-api/pom.xml taxonomy-reporting-api/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
+COPY taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/pom.xml
+COPY plugins/taxonomy-mermaid-plugin/pom.xml plugins/taxonomy-mermaid-plugin/pom.xml
 COPY taxonomy-workspace/pom.xml taxonomy-workspace/pom.xml
 COPY taxonomy-templates/pom.xml taxonomy-templates/pom.xml
 COPY taxonomy-interop/pom.xml taxonomy-interop/pom.xml
@@ -48,6 +50,8 @@ COPY taxonomy-reporting-api/src taxonomy-reporting-api/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
+COPY taxonomy-extension-runtime/src taxonomy-extension-runtime/src
+COPY plugins/taxonomy-mermaid-plugin/src plugins/taxonomy-mermaid-plugin/src
 COPY taxonomy-workspace/src taxonomy-workspace/src
 COPY taxonomy-templates/src taxonomy-templates/src
 COPY taxonomy-interop/src taxonomy-interop/src
@@ -116,6 +120,7 @@ WORKDIR /app
 RUN mkdir -p /app/data /opt/opentelemetry \
     && chown -R taxonomy:taxonomy /app /opt/opentelemetry
 COPY --from=build --chown=taxonomy:taxonomy /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
+COPY --from=build --chown=taxonomy:taxonomy /workspace/taxonomy-app/target/plugins/ plugins/
 COPY --from=opentelemetry --chown=taxonomy:taxonomy /javaagent.jar /opt/opentelemetry/opentelemetry-javaagent.jar
 COPY --chown=taxonomy:taxonomy observability/javaagent.properties /opt/opentelemetry/javaagent.properties
 # OpenShift runs arbitrary UIDs with root-group membership. Preserve the

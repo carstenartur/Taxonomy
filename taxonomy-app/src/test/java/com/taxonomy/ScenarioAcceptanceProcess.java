@@ -57,7 +57,7 @@ public final class ScenarioAcceptanceProcess {
     }
 
     private static boolean testProperty(String key) {
-        return key.equals("generateScreenshots") || key.equals("java.awt.headless")
+        return key.equals("taxonomy.plugins.directory") || key.equals("generateScreenshots") || key.equals("java.awt.headless")
                 || BrowserSession.JVM_PROPERTIES.contains(key);
     }
 

@@ -2,7 +2,7 @@ name: Kubernetes Constrained Smoke
 
 on:
   pull_request:
-    branches: [ main, feat/artemis-execution-base ]
+    branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - 'Dockerfile'
       - 'pom.xml'
@@ -11,9 +11,11 @@ on:
       - 'taxonomy-dsl/**'
       - 'taxonomy-export/**'
       - 'taxonomy-extension-api/**'
+      - 'taxonomy-extension-runtime/**'
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'plugins/**'
       - 'taxonomy-interop/**'
       - 'taxonomy-analysis/**'
       - 'taxonomy-knowledge/**'
@@ -34,9 +36,11 @@ on:
       - 'taxonomy-dsl/**'
       - 'taxonomy-export/**'
       - 'taxonomy-extension-api/**'
+      - 'taxonomy-extension-runtime/**'
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'plugins/**'
       - 'taxonomy-interop/**'
       - 'taxonomy-analysis/**'
       - 'taxonomy-knowledge/**'

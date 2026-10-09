@@ -24,8 +24,8 @@ class CrossTaxonomyReconciliationTest {
     }
     CrossTaxonomyReconciler reconciler() {
         var registry=mock(LlmGatewayRegistry.class);var config=mock(LlmProviderConfig.class);
-        when(config.getActiveProvider()).thenReturn(LlmProvider.OPENAI);when(config.isProviderConfigured(LlmProvider.OPENAI)).thenReturn(true);
-        when(registry.getGateway(LlmProvider.OPENAI)).thenReturn(new LlmGateway(){
+        when(config.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());when(config.isProviderConfigured(LlmProvider.OPENAI.id())).thenReturn(true);
+        when(registry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(new LlmGateway(){
             public String providerName(){return "fixture";} public String extractResponseText(String s){return s;}
             public String sendHttpRequest(String prompt,String key){
                 assertThat(prompt).contains(baseline().originalText()).doesNotContain("FORBIDDEN_WORKSPACE","UNRELATED_ARCHIVE","NEVER_INCLUDE");

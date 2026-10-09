@@ -148,13 +148,13 @@ public final class LlmDiagnosticChecks {
 
     private static LlmService service(String reply) {
         var config = new LlmProviderConfig(null) {
-            @Override public LlmProvider getActiveProvider() { return LlmProvider.GEMINI; }
+            @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return LlmProvider.GEMINI.id(); }
             @Override public String getActiveProviderName() { return "GEMINI"; }
             @Override public String getApiKey(LlmProvider provider) { return "fixture-not-a-credential"; }
         };
         var parser = new LlmResponseParser(JSON);
         var gateways = new LlmGatewayRegistry(config, new RestTemplate(), JSON, null, null, null) {
-            @Override public LlmGateway getGateway(LlmProvider provider) {
+            @Override public LlmGateway getGatewayById(com.taxonomy.extension.api.llm.ProviderId provider) {
                 return new LlmGateway() {
                     @Override public String providerName() { return "GEMINI"; }
                     @Override public String sendHttpRequest(String prompt, String key) {

@@ -28,7 +28,7 @@ class ProviderConcurrencyGatewayTest {
         var events = new ArrayList<String>();
         var inFlight = new AtomicInteger();
         ProviderConcurrencyPermits permits = (actual, checkpoint) -> {
-            assertThat(actual).isEqualTo(provider);
+            assertThat(actual).isEqualTo(provider.id());
             checkpoint.run();
             events.add("acquire");
             assertThat(inFlight.incrementAndGet()).isOne();

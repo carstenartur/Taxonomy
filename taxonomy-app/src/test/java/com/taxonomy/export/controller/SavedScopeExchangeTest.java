@@ -41,7 +41,7 @@ class SavedScopeExchangeTest {
     private final SavedAnalysisService service = new SavedAnalysisService(mapper, catalogue);
 
     private ExportApiController controller() throws Exception {
-        var facade = new ExportFacade(null, null, null, null, null, null, null, null, null, service);
+        var facade = new ExportFacade(null, null, null, null, null, null, null, null, service);
         var controller = new ExportApiController(facade, null);
         var field = ExportApiController.class.getDeclaredField("recoveryObjectMapper");
         field.setAccessible(true); field.set(controller, mapper);

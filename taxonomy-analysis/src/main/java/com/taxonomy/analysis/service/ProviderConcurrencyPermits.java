@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 /**
  * Transport-neutral admission for one physical provider HTTP attempt. Implementations
  * retain no prompts, credentials or operation payloads. This is concurrency capacity,
@@ -13,7 +15,12 @@ public interface ProviderConcurrencyPermits {
     };
 
     /** Wait cooperatively, invoking the supplied cancellation/deadline checkpoint. */
-    Permit acquire(LlmProvider provider, Runnable checkpoint);
+    Permit acquire(ProviderId provider, Runnable checkpoint);
+
+    /** Existing built-in callers retain their aliases. */
+    default Permit acquire(LlmProvider provider, Runnable checkpoint) {
+        return acquire(provider.id(), checkpoint);
+    }
 
     /** Thread-confined, idempotent return of the capacity held by one HTTP attempt. */
     @FunctionalInterface

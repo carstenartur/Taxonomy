@@ -98,7 +98,7 @@ class ImportProfileRegistryTest {
                 new UafImportProfileExtension(materializeService),
                 new UafImportProfileExtension(materializeService))))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate import profile ID");
+                .hasMessageContaining("Duplicate extension ID").hasMessageContaining("IMPORT_PROFILE");
     }
 
     @Test

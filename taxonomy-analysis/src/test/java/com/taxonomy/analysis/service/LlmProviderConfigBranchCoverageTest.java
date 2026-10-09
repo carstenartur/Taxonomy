@@ -50,7 +50,9 @@ class LlmProviderConfigBranchCoverageTest {
 
         set("llmProviderConfig", "unknown-provider");
         set("deepseekApiKey", "deep-key");
-        assertThat(config.getActiveProvider()).isEqualTo(LlmProvider.DEEPSEEK);
+        assertThatThrownBy(config::getActiveProviderId)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("UNKNOWN-PROVIDER");
     }
 
     @Test

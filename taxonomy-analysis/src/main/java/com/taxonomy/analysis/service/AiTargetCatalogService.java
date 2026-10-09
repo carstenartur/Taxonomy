@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetCatalogView;
 import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
 import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetHealth;
@@ -48,14 +50,20 @@ public class AiTargetCatalogService {
             AiTargetDescriptor mock = mockTarget();
             byId.put(mock.targetId(), mock);
         }
-        LlmProvider activeProvider = providerConfig.getActiveProvider();
+        ProviderId activeProvider = providerConfig.getActiveProviderId();
         for (LlmProvider provider : LlmProvider.values()) {
             AiTargetDescriptor descriptor = describe(provider);
-            if (descriptor.available() || provider == activeProvider) {
+            if (descriptor.available() || provider.id().equals(activeProvider)) {
                 byId.put(descriptor.targetId(), descriptor);
             }
         }
 
+        for (ProviderId id : providerConfig.registeredProviderIds()) {
+            if (LlmProvider.builtin(id).isEmpty()) {
+                var external = describe(id);
+                if (external.available() || id.equals(activeProvider)) byId.put(external.targetId(), external);
+            }
+        }
         List<AiTargetDescriptor> targets = new ArrayList<>(byId.values());
         targets.sort(Comparator
                 .comparing((AiTargetDescriptor target) ->
@@ -66,7 +74,7 @@ public class AiTargetCatalogService {
 
     public AiTargetDescriptor activeTarget() {
         if (providerConfig.isMockMode()) return mockTarget();
-        LlmProvider provider = providerConfig.getActiveProvider();
+        ProviderId provider = providerConfig.getActiveProviderId();
         if (provider == null) {
             throw new IllegalStateException("No active AI provider is configured");
         }
@@ -88,8 +96,7 @@ public class AiTargetCatalogService {
                 return mockTarget();
             }
             try {
-                return describe(LlmProvider.valueOf(
-                        requestedProvider.toUpperCase(Locale.ROOT)));
+                return describe(new ProviderId(requestedProvider));
             } catch (IllegalArgumentException exception) {
                 throw new IllegalArgumentException(
                         "Unknown AI provider: " + requestedProvider, exception);
@@ -111,6 +118,19 @@ public class AiTargetCatalogService {
                 available,
                 available ? null : "MOCK is available only when llm.mock=true.",
                 "mock");
+    }
+
+    private AiTargetDescriptor describe(ProviderId provider) {
+        var builtin = LlmProvider.builtin(provider);
+        if (builtin.isPresent()) return describe(builtin.get());
+        if (!providerConfig.registeredProviderIds().contains(provider)) {
+            throw new IllegalArgumentException("Unknown AI provider: " + provider);
+        }
+        boolean available = providerConfig.isProviderConfigured(provider);
+        return descriptor(provider.value(), providerConfig.getOpenAiCompatibleModel(provider),
+                AiTargetMode.REMOTE, available,
+                available ? null : providerConfig.getProviderConfigurationError(provider),
+                providerConfig.getOpenAiCompatibleUrl(provider));
     }
 
     private AiTargetDescriptor describe(LlmProvider provider) {
@@ -208,10 +228,12 @@ public class AiTargetCatalogService {
     }
 
     private static String slug(String value) {
-        String slug = value.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9._-]+", "-")
-                .replaceAll("^-+|-+$", "");
-        return slug.isBlank() ? "unspecified" : slug;
+        String slug = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "-");
+        int start = 0;
+        while (start < slug.length() && slug.charAt(start) == '-') start++;
+        int end = slug.length();
+        while (end > start && slug.charAt(end - 1) == '-') end--;
+        return start == end ? "unspecified" : slug.substring(start, end);
     }
 
     private static String sha256(String value) {

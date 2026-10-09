@@ -112,11 +112,11 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `ProviderId(String value)` normalisiert trim/`Locale.ROOT`-Großschreibung; zulässig `[A-Z][A-Z0-9_.-]{0,127}`. `LlmTransport` bewahrt `sendHttpRequest(String prompt,String apiKey): String`, `extractResponseText(String rawResponseBody): String` und `providerName(): String` des heutigen Gateways. `LlmTransportExtension` ergänzt die vorhandene Metadaten-SPI um `transport(): LlmTransport`. Das neue frameworkfreie `LlmTransportException` im selben API-Paket trägt `FailureKind` (`RATE_LIMIT`, `TIMEOUT`, `UNAVAILABLE`, `INVALID_RESPONSE`), eine redigierbare Meldung und optional `Duration retryAfter`; Builtin-Adapter übersetzen vorhandene Providerfehler, der Host behält seine Wiederholungs-/Diagnosepolitik. Bestehende Enumwerte bleiben kompatible Builtin-Aliasse; offene IDs dürfen in keinem Ausführungspfad wieder per `LlmProvider.valueOf` abgewiesen werden.
 
-- [ ] RED: deterministischer Anbieter `EXAMPLE_CUSTOM` ohne Enumänderung wird ausgewählt und ausgeführt; alte Builtin-Konfiguration/Jobfixtures lesen identisch. Fehlender Anbieter erzeugt Fehler, keinen Provider-Fallback. Promptlimit/Abbruch/Permits werden genau einmal geprüft und nach Fehler freigegeben; kein echter Netzwerkaufruf.
-- [ ] Run: `./mvnw -B -pl taxonomy-analysis -am test -Dtest=ExternalProviderExecutionTest,LlmProviderExtensionRegistryTest,LlmGatewayRegistryPromptBudgetTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: offene Provider-ID scheitert am heutigen Enum-Gate.
-- [ ] Implementieren: ausführbare Builtin-Beiträge registrieren, String-ID durch Auswahl, Preferences, eingefrorene Aufträge und Cluster-Nachrichten führen; alte IDs/Wire-Felder erhalten. Bestehende Budget-, Permit-, Record/Replay- und Fehlerregeln im fachlichen Host behalten. LOCAL_ONNX nicht als generativen HTTP-Provider ausgeben. API-Key bleibt pro autorisiertem Aufruf, nie Bestandteil des Deskriptors oder Jobmanifests.
-- [ ] GREEN: gleicher Befehl und `./mvnw -B -pl taxonomy-analysis -am test`. Expected: Builtins und neuer deterministischer Anbieter nutzen dieselben Grenzen; alte Jobdaten bleiben lesbar.
-- [ ] Commit: `feat(analysis): support independently supplied provider transports`.
+- [x] RED: deterministischer Anbieter `EXAMPLE_CUSTOM` ohne Enumänderung wird ausgewählt und ausgeführt; alte Builtin-Konfiguration/Jobfixtures lesen identisch. Fehlender Anbieter erzeugt Fehler, keinen Provider-Fallback. Promptlimit/Abbruch/Permits werden genau einmal geprüft und nach Fehler freigegeben; kein echter Netzwerkaufruf.
+- [x] Run: `./mvnw -B -pl taxonomy-analysis -am test -Dtest=ExternalProviderExecutionTest,LlmProviderExtensionRegistryTest,LlmGatewayRegistryPromptBudgetTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: offene Provider-ID scheitert am heutigen Enum-Gate.
+- [x] Implementieren: ausführbare Builtin-Beiträge registrieren, String-ID durch Auswahl, Preferences, eingefrorene Aufträge und Cluster-Nachrichten führen; alte IDs/Wire-Felder erhalten. Bestehende Budget-, Permit-, Record/Replay- und Fehlerregeln im fachlichen Host behalten. LOCAL_ONNX nicht als generativen HTTP-Provider ausgeben. API-Key bleibt pro autorisiertem Aufruf, nie Bestandteil des Deskriptors oder Jobmanifests.
+- [x] GREEN: gleicher Befehl und `./mvnw -B -pl taxonomy-analysis -am test`. Expected: Builtins und neuer deterministischer Anbieter nutzen dieselben Grenzen; alte Jobdaten bleiben lesbar.
+- [x] Commit: `feat(analysis): support independently supplied provider transports`.
 
 ## Task 6: Pluginmanifest und atomarer Erweiterungskatalog
 
@@ -124,11 +124,11 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `PluginIdentity(String id,String version,String artifactSha256)`. `PluginDescriptor(PluginIdentity identity,String hostApiRange,List<PluginRequirement> requires,Set<String> capabilities,PluginMode mode)`, `PluginMode` = `STARTUP` oder `DYNAMIC`. `PluginRequirement(String id,String versionRange)`. Plugin-IDs sind kleingeschriebene `[a-z][a-z0-9.-]{0,127}`; die Host-SPI beginnt bei `1.0.0`, getrennt von der Produktversion. Der Host errechnet `artifactSha256` aus den geladenen Bytes, nicht aus einer selbstbehaupteten Manifest-Prüfsumme. `TaxonomyPlugin.extensions(): List<TaxonomyExtension>`; `ExtensionKey(ExtensionKind kind,String id)`. `ExtensionCatalog.acquire(ExtensionKey key,Class<T> expectedType): ExtensionLease<T>`; Lease hat `extension()`, `plugin()` und `close()`.
 
-- [ ] RED: Publish zweier Beiträge mit einer kollidierenden ID lässt den Katalog vollständig unverändert (`assertEquals(before, after)`); gleiche Format-ID in verschiedenen Reportfamilien bleibt erlaubt; inkompatible Host-Range und fehlende Abhängigkeit werden vor Veröffentlichung abgewiesen.
-- [ ] Run: `./mvnw -B -pl taxonomy-extension-runtime -am test`. Expected: neue Vertragsregression zeigt fehlende Implementierung; keine Compile-Tippfehler als RED werten.
-- [ ] Implementieren: kompletter validierter Katalog-Snapshot pro Veröffentlichung, Referenzzählung pro Pluginversion, deterministische Deskriptorreihenfolge. Builtins und externe Beiträge benutzen denselben Katalog. Bestehende Registries werden Fassaden darüber; keine zweite unabhängig abweichende Liste in `/api/extensions`.
-- [ ] GREEN: gleicher Befehl; bestehende `ExtensionRegistryTest`, `ExportFormatExtensionRegistryTest` und `ReportRendererRegistryDecoratorTest` im jeweiligen Reaktor mitführen. Expected: Dublettenregeln erhalten, alle Leser sehen entweder alten oder neuen vollständigen Stand.
-- [ ] Commit: `feat(extensions): add versioned atomic plugin contribution catalog`.
+- [x] RED: Publish zweier Beiträge mit einer kollidierenden ID lässt den Katalog vollständig unverändert (`assertEquals(before, after)`); gleiche Format-ID in verschiedenen Reportfamilien bleibt erlaubt; inkompatible Host-Range und fehlende Abhängigkeit werden vor Veröffentlichung abgewiesen.
+- [x] Run: `./mvnw -B -pl taxonomy-extension-runtime -am test`. Expected: neue Vertragsregression zeigt fehlende Implementierung; keine Compile-Tippfehler als RED werten.
+- [x] Implementieren: kompletter validierter Katalog-Snapshot pro Veröffentlichung, Referenzzählung pro Pluginversion, deterministische Deskriptorreihenfolge. Builtins und externe Beiträge benutzen denselben Katalog. Bestehende Registries werden Fassaden darüber; keine zweite unabhängig abweichende Liste in `/api/extensions`.
+- [x] GREEN: gleicher Befehl; bestehende `ExtensionRegistryTest`, `ExportFormatExtensionRegistryTest` und `ReportRendererRegistryDecoratorTest` im jeweiligen Reaktor mitführen. Expected: Dublettenregeln erhalten, alle Leser sehen entweder alten oder neuen vollständigen Stand.
+- [x] Commit: `feat(extensions): add versioned atomic plugin contribution catalog`.
 
 ## Task 7: Externe JARs sicher und reproduzierbar laden
 
@@ -136,11 +136,11 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `PluginArtifactValidator.validate(Path artifact): PluginDescriptor`; `Pf4jPluginRuntime.install(Path artifact): PluginIdentity`, `start(String pluginId)`, `stop(String pluginId,Duration deadline)`, `unload(String pluginId)`. Beiträge werden über `ServiceLoader<TaxonomyPlugin>` im Plugin-Classloader gefunden; PF4J ist Loader/Lifecycle-Implementierung, nicht zweite fachliche SPI.
 
-- [ ] RED: echte JAR-Fixtures für gültigen Beitrag, fehlende Abhängigkeit, falsche API-Range, doppelte ID, mitgelieferte Host-SDK-Klassen, defektes Service-Manifest und Pfad außerhalb des Pluginverzeichnisses. `assertEquals(previousCatalog, catalogAfterRejectedArtifact)`; Dateien mit Leerzeichen funktionieren.
-- [ ] Run: `./mvnw -B -pl taxonomy-extension-runtime -am test -Dtest=PluginArtifactLoadingTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: keine externe Lade-/Validierungsfunktion vorhanden.
-- [ ] Implementieren: PF4J `3.16.0` zentral pinnen, Parent-Identität für veröffentlichte Taxonomy-API-Klassen erzwingen, SDK-Kopien im Plugin ablehnen. Artefakte zuerst in einen privaten, unveränderlichen Digest-Pfad übernehmen; exakt diese Bytes validieren und laden, damit ein Dateiaustausch zwischen Prüfung und Classloading keine andere Version einschleust. Keine URL-Downloads, keine Pfadauflösung aus HTTP-Eingaben, keine halb gestarteten Beiträge. Plugin-Verzeichnis und ausführbare Standarddistribution dokumentieren.
-- [ ] GREEN: gleicher Befehl plus Modul-Suite. Expected: tatsächlich getrennte Plugin-Classloader, gemeinsame API-Klassenidentität, fehlgeschlagener Start hinterlässt keine Registrierung/offene Jar-Datei.
-- [ ] Commit: `feat(plugins): load validated external extension artifacts`.
+- [x] RED: echte JAR-Fixtures für gültigen Beitrag, fehlende Abhängigkeit, falsche API-Range, doppelte ID, mitgelieferte Host-SDK-Klassen, defektes Service-Manifest und Pfad außerhalb des Pluginverzeichnisses. `assertEquals(previousCatalog, catalogAfterRejectedArtifact)`; Dateien mit Leerzeichen funktionieren.
+- [x] Run: `./mvnw -B -pl taxonomy-extension-runtime -am test -Dtest=PluginArtifactLoadingTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: keine externe Lade-/Validierungsfunktion vorhanden.
+- [x] Implementieren: PF4J `3.16.0` zentral pinnen, Parent-Identität für veröffentlichte Taxonomy-API-Klassen erzwingen, SDK-Kopien im Plugin ablehnen. Artefakte zuerst in einen privaten, unveränderlichen Digest-Pfad übernehmen; exakt diese Bytes validieren und laden, damit ein Dateiaustausch zwischen Prüfung und Classloading keine andere Version einschleust. Keine URL-Downloads, keine Pfadauflösung aus HTTP-Eingaben, keine halb gestarteten Beiträge. Plugin-Verzeichnis und ausführbare Standarddistribution dokumentieren.
+- [x] GREEN: gleicher Befehl plus Modul-Suite. Expected: tatsächlich getrennte Plugin-Classloader, gemeinsame API-Klassenidentität, fehlgeschlagener Start hinterlässt keine Registrierung/offene Jar-Datei.
+- [x] Commit: `feat(plugins): load validated external extension artifacts`.
 
 ## Task 8: Bestehenden Mermaid-Export als externes Paket liefern
 
@@ -148,11 +148,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** Vorhandenes `ExportFormatExtension.export(ExportContext): ExportResult`, Format-ID `mermaid`, Extension `mmd`, MIME `text/plain; charset=UTF-8`. Bestehender `MermaidExportService` bleibt einziger Algorithmus. Plugin-ID `taxonomy.mermaid`; keine hostinternen Serviceimports.
 
-- [ ] RED: verpackten Host starten, dessen unveränderter SHA-256 festgehalten ist; extern separat gebautes Plugin hinzufügen und über vorhandenen Exportweg ausführen. `assertArrayEquals(existingExpectedOutput, pluginOutput)` für DE/EN. Ohne Plugin ist nur das Format nicht verfügbar, nicht der ganze Server.
+- [x] RED: verpackten Host starten, dessen unveränderter SHA-256 festgehalten ist; extern separat gebautes Plugin hinzufügen und über vorhandenen Exportweg ausführen. `assertArrayEquals(existingExpectedOutput, pluginOutput)` für DE/EN. Ohne Plugin ist nur das Format nicht verfügbar, nicht der ganze Server.
 - [ ] Run: `./mvnw -B verify -Pplugin-packaging-tests` nach Aufnahme dieses Maven-eigenen Profils in den bestehenden Katalog. Expected: das bisherige Paket besteht den externen Installationsnachweis noch nicht.
-- [ ] Implementieren: vorhandenen Adapter verschieben, Tests mitnehmen, unabhängigen Plugin-POM gegen installierte exakte SDK-Artefakte bauen. Der Maven-Integrationstest installiert diese in ein leeres temporäres Repository, kopiert nur das Pluginprojekt dorthin und baut ohne Host-Quellbaum. Standarddistribution liefert das Plugin mit; keine zweite eingebaute Registrierung. Legacy- und generischen Exportweg auf dieselbe Registry führen.
+- [x] Implementieren: vorhandenen Adapter verschieben, Tests mitnehmen, unabhängigen Plugin-POM gegen installierte exakte SDK-Artefakte bauen. Der Maven-Integrationstest installiert diese in ein leeres temporäres Repository, kopiert nur das Pluginprojekt dorthin und baut ohne Host-Quellbaum. Standarddistribution liefert das Plugin mit; keine zweite eingebaute Registrierung. Legacy- und generischen Exportweg auf dieselbe Registry führen.
 - [ ] GREEN: gleicher Profilbefehl; Host-Hash vor/nach Installation gleich, externe JAR nicht in `BOOT-INF/lib`, gültiger realer HTTP-Download und bestehende Mermaid-Regressionsfälle grün.
-- [ ] Commit: `feat(export): package existing Mermaid extension as external plugin`.
+- [x] Commit: `feat(export): package existing Mermaid extension as external plugin`.
+
+**Zwischennachweis 9. Oktober 2026:** Der fokussierte Failsafe-Lauf `test-compile failsafe:integration-test failsafe:verify -Pplugin-packaging-tests -Dit.test=ExternalPluginPackagedIT` ist grün (1 realer Paket-/HTTP-Test und 5 separat ausgeführte Plugin-Tests). 46 Node-Vertragstests sowie der vollständige Architektur-Selektor einschließlich ergänzter Regressionen sind grün. Der vollständige Profil-Lauf bleibt bis Task 9/12 ausdrücklich offen.
 
 ## Task 9: Bestehende Fachpakete startzeitlich optional machen
 

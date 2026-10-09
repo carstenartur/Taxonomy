@@ -12,7 +12,7 @@ package com.taxonomy.analysis.service;
  * @see OpenAiCompatibleGateway
  * @see LlmGatewayRegistry
  */
-public interface LlmGateway {
+public interface LlmGateway extends com.taxonomy.extension.api.llm.LlmTransport {
 
     /**
      * Sends a prompt to the LLM provider and returns the raw API response body.

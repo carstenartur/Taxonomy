@@ -132,10 +132,10 @@ class LlmTransportMeterTest {
                 + "\"questionProposals\":[],\"preservedQuestionIds\":[],\"uncoveredSourceRefs\":[],\"conflictCandidates\":[]}";
         server.expect(requestTo(URL)).andRespond(withSuccess(envelope("{"), MediaType.APPLICATION_JSON));
         server.expect(requestTo(URL)).andRespond(withSuccess(envelope(valid), MediaType.APPLICATION_JSON));
-        var config = mock(LlmProviderConfig.class); when(config.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
-        when(config.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true); when(config.getApiKey(LlmProvider.CUSTOM_OPENAI)).thenReturn(KEY);
+        var config = mock(LlmProviderConfig.class); when(config.getActiveProviderId()).thenReturn(LlmProvider.CUSTOM_OPENAI.id());
+        when(config.isProviderConfigured(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(true); when(config.getApiKey(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(KEY);
         var transport = gateway(http, null);
-        var registry = mock(LlmGatewayRegistry.class); when(registry.getGateway(LlmProvider.CUSTOM_OPENAI)).thenReturn(transport);
+        var registry = mock(LlmGatewayRegistry.class); when(registry.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(transport);
         var scope = new ReformulationBaseline.Scope("repository", "workspace", "draft", 1L, 1L);
         var baseline = ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope, 1L, PROMPT),
                 new ReformulationBaseline.Snapshot(scope, "snapshot", 1L, "{}"), Map.of(), "en", "test");

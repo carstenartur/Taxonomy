@@ -132,7 +132,7 @@ public final class ArtemisAnalysisMetrics {
         Objects.requireNonNull(delegate); Objects.requireNonNull(settings);
         return (provider, checkpoint) -> {
             Objects.requireNonNull(provider); Objects.requireNonNull(checkpoint);
-            Tags tags = Tags.of("provider", provider.name(), "quota_group", settings.providerGroups().getOrDefault(provider, "unconfigured"));
+            Tags tags = Tags.of("provider", provider.value(), "quota_group", settings.providerGroups().getOrDefault(provider, "unconfigured"));
             Activity activity = providers.computeIfAbsent(tags, key -> new Activity("provider", key, true));
             activity.waiting.incrementAndGet();
             long started = registry.config().clock().monotonicTime();

@@ -26,7 +26,7 @@ final class CurrentDiagramExportRegression {
         // Neither the LLM nor the architecture derivation service exists here.
         // Reintroducing an implicit analysis makes these real export calls fail.
         return new ExportFacade(null, null, new DiagramProjectionService(),
-                new VisioDiagramService(), new VisioPackageBuilder(), null, null, null, null, null);
+                new VisioDiagramService(), new VisioPackageBuilder(), null, null, null, null);
     }
 
     private static ExportApiController controller() {

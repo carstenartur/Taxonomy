@@ -29,7 +29,7 @@ class DecisionReportOptionsHttpTest {
         when(workspace.resolveCurrentUsername()).thenReturn("auditor");
         when(words.loadEvidence(eq(41L), eq("snapshot-1"), eq("auditor"), any(), eq(Locale.GERMAN), any()))
                 .thenReturn(new SnapshotWordReportService.Source(SnapshotWordReportServiceTest.decision(), null));
-        var renderer = mock(ReportRendererExtension.class);
+        var renderer = mock(ReportRendererExtension.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         when(renderer.reportTypeId()).thenReturn(DecisionRationaleReportPlugin.REPORT_TYPE_ID);
         doReturn(DecisionRationaleReport.class).when(renderer).reportModelType();
         when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor(format, format, format, "application/octet-stream", false));
@@ -49,7 +49,7 @@ class DecisionReportOptionsHttpTest {
         var workspace = mock(WorkspaceResolver.class);
         when(workspace.resolveCurrentContext()).thenReturn(SnapshotWordReportServiceTest.CONTEXT);
         when(workspace.resolveCurrentUsername()).thenReturn("auditor");
-        var renderer = mock(ReportRendererExtension.class);
+        var renderer = mock(ReportRendererExtension.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         when(renderer.reportTypeId()).thenReturn(DecisionRationaleReportPlugin.REPORT_TYPE_ID);
         doReturn(DecisionRationaleReport.class).when(renderer).reportModelType();
         when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor(format,format,format,"application/octet-stream",false));

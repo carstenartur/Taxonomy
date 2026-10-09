@@ -87,7 +87,7 @@ class StreamRequirementAnalysisUseCaseTest {
 
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());
-        verify(llmService).setRequestProvider(com.taxonomy.analysis.service.LlmProvider.GEMINI);
+        verify(llmService).setRequestProviderId(com.taxonomy.analysis.service.LlmProvider.GEMINI.id());
         verify(llmService).analyzeStreaming(eq(command.businessText()), any());
         verify(llmService).clearRequestProvider();
         verifyNoMoreInteractions(llmService);
@@ -128,6 +128,8 @@ class StreamRequirementAnalysisUseCaseTest {
 
     @Test
     void streamClearsProviderOverrideWhenProviderIsUnknown() {
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("No executable LLM provider registered"))
+                .when(llmService).setRequestProviderId(new com.taxonomy.extension.api.llm.ProviderId("unknown"));
         StreamRequirementAnalysisCommand command =
                 new StreamRequirementAnalysisCommand("Need secure voice comms", "unknown", Locale.ENGLISH);
 
@@ -136,6 +138,7 @@ class StreamRequirementAnalysisUseCaseTest {
                 .hasMessage("Unknown provider: unknown");
 
         verify(llmService).clearRequestProvider();
+        verify(llmService).setRequestProviderId(new com.taxonomy.extension.api.llm.ProviderId("unknown"));
         verifyNoInteractions(promptBudgetPolicy);
         verifyNoMoreInteractions(llmService);
     }

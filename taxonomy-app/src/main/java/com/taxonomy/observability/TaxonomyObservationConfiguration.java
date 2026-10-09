@@ -88,9 +88,11 @@ public class TaxonomyObservationConfiguration {
                 Map.entry("com.taxonomy.catalog.service.importer.FrameworkImportService",
                         new TargetDescriptor("taxonomy.import", "import",
                                 Set.of("preview", "importFile"))),
+                Map.entry("com.taxonomy.export.MermaidExportService",
+                        new TargetDescriptor("taxonomy.export", "export", Set.of("export", "exportShowcase"))),
                 Map.entry("com.taxonomy.export.service.ExportFacade",
                         new TargetDescriptor("taxonomy.export", "export",
-                                Set.of("exportAsVisio", "exportAsArchiMate", "exportAsMermaid",
+                                Set.of("exportAsVisio", "exportAsArchiMate",
                                         "exportAsStructurizrDsl", "buildDiagram",
                                         "importFromJson")))
         );

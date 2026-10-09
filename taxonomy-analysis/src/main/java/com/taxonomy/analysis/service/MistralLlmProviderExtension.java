@@ -1,14 +1,13 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.extension.api.llm.LlmProviderDescriptor;
-import com.taxonomy.extension.api.llm.LlmProviderExtension;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /** Provider metadata adapter for Mistral. */
 @Component
-public class MistralLlmProviderExtension implements LlmProviderExtension {
+public class MistralLlmProviderExtension extends BuiltinLlmTransportExtension {
 
     private static final LlmProviderDescriptor DESCRIPTOR = new LlmProviderDescriptor(
             "MISTRAL", "Mistral", true, false, false, false,

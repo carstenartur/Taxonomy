@@ -38,11 +38,20 @@ class ArchitectureKnowledgeModuleTest {
         }
         var classes = new ClassFileImporter().withImportOption(new ImportOption.DoNotIncludeTests())
                 .importPackages("com.taxonomy.catalog", "com.taxonomy.relations", "com.taxonomy.search");
-        noClasses().that().resideInAnyPackage("com.taxonomy.catalog..", "com.taxonomy.relations..",
-                        "com.taxonomy.search..")
-                .should().dependOnClassesThat().resideInAnyPackage("com.taxonomy.shared..",
-                        "com.taxonomy.composition..", "com.taxonomy.architecture..",
-                        "com.taxonomy.analysis..", "com.taxonomy.portfolio..", "com.taxonomy.dsl.export..")
-                .check(classes);
+        Path repository = root;
+        var forbiddenOwners = new com.tngtech.archunit.base.DescribedPredicate<com.tngtech.archunit.core.domain.JavaClass>(
+                "owned by the application, architecture, analysis or portfolio implementation module") {
+            @Override public boolean test(com.tngtech.archunit.core.domain.JavaClass type) {
+                return ArchitectureSourceOwnership.belongsTo(repository, type, "taxonomy-app", "taxonomy-architecture",
+                        "taxonomy-analysis", "taxonomy-portfolio");
+            }
+        };
+        var ownershipExamples = new ClassFileImporter().importClasses(com.taxonomy.shared.extension.ExtensionKind.class,
+                com.taxonomy.shared.extension.runtime.ExtensionRegistry.class, com.taxonomy.analysis.service.LlmService.class);
+        assertThat(forbiddenOwners.test(ownershipExamples.get(com.taxonomy.shared.extension.ExtensionKind.class))).isFalse();
+        assertThat(forbiddenOwners.test(ownershipExamples.get(com.taxonomy.shared.extension.runtime.ExtensionRegistry.class))).isTrue();
+        assertThat(forbiddenOwners.test(ownershipExamples.get(com.taxonomy.analysis.service.LlmService.class))).isTrue();
+        noClasses().that().resideInAnyPackage("com.taxonomy.catalog..", "com.taxonomy.relations..", "com.taxonomy.search..")
+                .should().dependOnClassesThat(forbiddenOwners).check(classes);
     }
 }

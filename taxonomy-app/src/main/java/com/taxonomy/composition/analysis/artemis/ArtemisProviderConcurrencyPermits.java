@@ -1,6 +1,6 @@
 package com.taxonomy.composition.analysis.artemis;
 
-import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Destination;
@@ -34,7 +34,7 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
     }
 
     @Override
-    public Permit acquire(LlmProvider provider, Runnable checkpoint) {
+    public Permit acquire(ProviderId provider, Runnable checkpoint) {
         Objects.requireNonNull(checkpoint, "checkpoint").run();
         String group = settings.providerGroups().get(Objects.requireNonNull(provider, "provider"));
         if (group == null) throw unavailable("No explicit cluster quota group configured for " + provider, null);

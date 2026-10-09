@@ -27,6 +27,7 @@ class ReportingAutoConfigurationTest {
     void assembledReportingRetainsItsRendererAndHealthAdapters() {
         context.withBean(DocumentTemplates.class, () -> mock(DocumentTemplates.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(com.taxonomy.extension.api.plugin.ExtensionCatalog.class, com.taxonomy.extension.runtime.PluginCatalog::new)
                 .run(application -> assertThat(application).hasNotFailed()
                         .hasSingleBean(DecisionRationaleTemplateHealthIndicator.class)
                         .hasSingleBean(ReportRendererRegistry.class));

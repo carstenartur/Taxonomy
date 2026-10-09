@@ -2,10 +2,11 @@ name: Security Scan
 
 on:
   pull_request:
-    branches: [ main, feat/artemis-execution-base ]
+    branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - '**/pom.xml'
       - 'taxonomy-*/src/**'
+      - 'plugins/**'
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - 'deploy/helm/**'

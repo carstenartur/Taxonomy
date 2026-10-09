@@ -58,10 +58,12 @@ class DocumentTemplateReportDownloadIT {
         ImageFromDockerfile image = new ImageFromDockerfile(
                 "taxonomy-document-template-report-e2e", false)
                 .withFileFromPath("app.jar", applicationJar)
+                .withFileFromPath("plugins", applicationJar.getParent().resolve("plugins"))
                 .withDockerfileFromBuilder(builder -> builder
                         .from(APP_RUNTIME_IMAGE)
                         .workDir("/app")
                         .copy("app.jar", "app.jar")
+                        .copy("plugins", "plugins")
                         .expose(8080)
                         .entryPoint("java", "-jar", "app.jar")
                         .build());

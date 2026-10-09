@@ -7,7 +7,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.dto.RequirementArchitectureView;
-import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.service.ExportFacade;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
@@ -117,6 +116,7 @@ public class ExportApiController {
             description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents. Accepts optional 'locale' field ('en' or 'de') to localize layer and relation labels.",
             tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Mermaid text returned")
+    @ApiResponse(responseCode = "404", description = "Mermaid plugin is not installed or active", content = @Content)
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
             description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
@@ -124,22 +124,11 @@ public class ExportApiController {
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
     @PostMapping("/diagram/mermaid")
     public ResponseEntity<String> exportMermaid(@RequestBody Map<String, Object> body) {
-        String businessText = (String) body.get("businessText");
-        if (businessText == null || businessText.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        MermaidLabels labels = resolveMermaidLabels(body.get("locale"));
-        String mermaid = exportFacade.exportAsMermaid(businessText, labels);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
-                .body(mermaid);
-    }
-
-    private MermaidLabels resolveMermaidLabels(Object localeObj) {
-        if (localeObj instanceof String locale && locale.startsWith("de")) {
-            return MermaidLabels.german();
-        }
-        return MermaidLabels.english();
+        ResponseEntity<byte[]> response = exportByFormat("mermaid", body);
+        var result = ResponseEntity.status(response.getStatusCode());
+        if (response.getStatusCode().is2xxSuccessful()) result.header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
+        return result.body(response.getBody() == null ? null
+                : new String(response.getBody(), java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Operation(summary = "Export Structurizr DSL",

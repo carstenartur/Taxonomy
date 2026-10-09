@@ -1,4 +1,4 @@
-package com.taxonomy.export.service;
+package com.taxonomy.plugins.mermaid;
 
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.MermaidLabels;
@@ -6,13 +6,11 @@ import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.export.spi.ExportFormatDescriptor;
 import com.taxonomy.export.spi.ExportFormatExtension;
 import com.taxonomy.export.spi.ExportResult;
-import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-/** Spring adapter for Mermaid diagram output. */
-@Component
+/** External Mermaid adapter using the host-owned framework-free export algorithm. */
 public class MermaidExportExtension implements ExportFormatExtension {
 
     public static final String FORMAT_ID = "mermaid";

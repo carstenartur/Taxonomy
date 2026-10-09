@@ -21,6 +21,12 @@
     </properties>
 
     <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version></dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-reporting</artifactId>

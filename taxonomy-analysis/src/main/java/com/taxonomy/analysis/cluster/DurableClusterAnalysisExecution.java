@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.cluster;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
@@ -133,19 +135,19 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
     private String frozenProvider(String requested) {
         String explicit = requested == null || requested.isBlank() ? null : requested.toUpperCase(Locale.ROOT);
         if (explicit != null && !"MOCK".equals(explicit)) {
-            try { LlmProvider.valueOf(explicit); }
+            try { providers.requireRegisteredProvider(explicit); }
             catch (IllegalArgumentException invalid) { throw new UnknownAnalysisProviderException(requested); }
             requireSupportedProvider(explicit);
         }
         String effective = "MOCK".equals(explicit) || providers.isMockMode() ? "MOCK"
-                : explicit == null ? providers.getActiveProvider().name() : explicit;
+                : explicit == null ? providers.getActiveProviderId().value() : explicit;
         requireSupportedProvider(effective);
         return effective;
     }
 
     static void requireSupportedProvider(String provider) {
         if (provider == null || provider.isBlank()) throw new IllegalArgumentException("Frozen provider is required");
-        if (!"MOCK".equalsIgnoreCase(provider)) LlmProvider.valueOf(provider.toUpperCase(Locale.ROOT));
+        if (!"MOCK".equalsIgnoreCase(provider)) new ProviderId(provider);
     }
 
     static CatalogueSourceIdentity source(AnalysisOperationContext context) {

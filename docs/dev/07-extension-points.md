@@ -603,3 +603,41 @@ Before you add a new extension or extend an existing one:
    `ExtensionRegistry` / `/api/extensions` where applicable.
 7. For UI-facing changes, verify HTML, JS, and i18n all move together.
 8. For DSL and persisted-model changes, verify round-trip and materialization behavior.
+
+### Trusted local plugin artifacts
+
+The host installs plain plugin JARs from `taxonomy.plugins.directory` (default:
+`plugins/`) before making the shared extension catalog available. This directory
+contains operator-installed trusted application code, not user uploads. Plugins
+are not a sandbox. There is no download URL or arbitrary path execution endpoint.
+`taxonomy.plugins.cache-directory` selects the parent of a private per-process
+artifact cache (default: the JVM temporary directory's `taxonomy-plugin-cache`).
+The host copies each artifact, validates those bytes, computes SHA-256 and loads
+that immutable copy. Replacing an operator file does not alter an admitted version.
+The cache is disposable; it never contains the plugin's user data.
+
+A plugin implements the framework-free `TaxonomyPlugin` service and includes
+`META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin`. Its manifest
+has `Plugin-Id`, a semantic `Plugin-Version`, `Plugin-Requires` for the host SPI
+(currently `1.0.0`), `Taxonomy-Plugin-Mode` (`STARTUP` or `DYNAMIC`) and optional
+comma-separated `Taxonomy-Plugin-Capabilities`. For example, a compatible host
+range is `>=1.0.0 & <2.0.0`. Optional `Plugin-Dependencies` entries use
+`plugin.id@>=1.0.0 & <2.0.0`, separated by commas. Dependencies name catalog
+capabilities, including built-ins; they do not expose another plugin's private
+classes. Missing/incompatible dependencies, duplicate IDs, copied SDK/loader
+classes, nested JARs and manifest `Class-Path`/`Plugin-Class` are rejected.
+
+PF4J 3.16.0 is a private loader implementation. Plugins do not implement PF4J
+interfaces. SDK class identity is parent-owned; plugins compile against the exact
+supported API/domain/export artifacts and must not package copies of them. Their
+own code can use a distinct vendor package or `com.taxonomy.plugins.<name>`.
+The ServiceLoader instance owns its resources and releases them in `close()`;
+closing must never delete persisted user data.
+
+Both modes load at process startup. `DYNAMIC` permits only the export and report
+renderer SPIs; management remains disabled unless explicitly configured. LLM
+transport and importer contributions are `STARTUP` only. External LLM transports
+enter the existing host budget/retry/cancellation/usage policy. Credentials stay
+in host configuration and are never part of catalog metadata. Runtime activation,
+drain and operations are specified separately; metadata discovery alone is not
+proof of those lifecycle guarantees.

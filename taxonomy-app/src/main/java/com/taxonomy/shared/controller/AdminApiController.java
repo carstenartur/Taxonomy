@@ -1,5 +1,7 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
@@ -107,10 +109,10 @@ public class AdminApiController {
         }
 
         Map<String, Object> diagnostics = new LinkedHashMap<>(llmService.getDiagnostics());
-        LlmProvider provider = llmService.getActiveProvider();
+        ProviderId provider = llmService.getActiveProviderId();
         diagnostics.put("providerConfigured", llmProviderConfig.isProviderConfigured(provider));
 
-        if (provider == LlmProvider.CUSTOM_OPENAI
+        if (provider.equals(LlmProvider.CUSTOM_OPENAI.id())
                 && !llmProviderConfig.hasConfiguredApiKey(provider)) {
             // The custom endpoint is intentionally usable without authentication. Do not expose
             // the internal transport marker as though it were a configured operator secret.

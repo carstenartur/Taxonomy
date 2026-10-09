@@ -270,7 +270,7 @@ public class AiAutomationPolicy {
         if (providerConfig.isMockMode()) {
             return "MOCK";
         }
-        return providerConfig.getActiveProvider().name();
+        return providerConfig.getActiveProviderId().value();
     }
 
     private String explicitAutopilotProvider() {
@@ -295,7 +295,7 @@ public class AiAutomationPolicy {
             return providerConfig.isMockMode();
         }
         try {
-            return providerConfig.isProviderConfigured(LlmProvider.valueOf(provider));
+            return providerConfig.isProviderConfigured(providerConfig.requireRegisteredProvider(provider));
         } catch (IllegalArgumentException exception) {
             return false;
         }
@@ -318,7 +318,7 @@ public class AiAutomationPolicy {
         }
         try {
             String error = providerConfig.getProviderConfigurationError(
-                    LlmProvider.valueOf(provider));
+                    providerConfig.requireRegisteredProvider(provider));
             return error != null ? error : "The selected provider is not ready: " + provider;
         } catch (IllegalArgumentException exception) {
             return "Unknown AI provider: " + provider;

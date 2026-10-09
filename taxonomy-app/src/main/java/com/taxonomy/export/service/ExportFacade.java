@@ -11,8 +11,6 @@ import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
-import com.taxonomy.export.MermaidExportService;
-import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
@@ -35,7 +33,6 @@ public class ExportFacade {
     private final VisioPackageBuilder visioPackageBuilder;
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
-    private final MermaidExportService mermaidExportService;
     private final StructurizrExportService structurizrExportService;
     private final SavedAnalysisService savedAnalysisService;
 
@@ -46,7 +43,6 @@ public class ExportFacade {
                         VisioPackageBuilder visioPackageBuilder,
                         ArchiMateDiagramService archiMateDiagramService,
                         ArchiMateXmlExporter archiMateXmlExporter,
-                        MermaidExportService mermaidExportService,
                         StructurizrExportService structurizrExportService,
                         SavedAnalysisService savedAnalysisService) {
         this.llmService = llmService;
@@ -56,7 +52,6 @@ public class ExportFacade {
         this.visioPackageBuilder = visioPackageBuilder;
         this.archiMateDiagramService = archiMateDiagramService;
         this.archiMateXmlExporter = archiMateXmlExporter;
-        this.mermaidExportService = mermaidExportService;
         this.structurizrExportService = structurizrExportService;
         this.savedAnalysisService = savedAnalysisService;
     }
@@ -71,14 +66,6 @@ public class ExportFacade {
         DiagramModel diagram = analyzeAndProject(businessText);
         ArchiMateModel model = archiMateDiagramService.convert(diagram);
         return archiMateXmlExporter.export(model);
-    }
-
-    public String exportAsMermaid(String businessText) {
-        return mermaidExportService.export(analyzeAndProject(businessText));
-    }
-
-    public String exportAsMermaid(String businessText, MermaidLabels labels) {
-        return mermaidExportService.export(analyzeAndProject(businessText), labels);
     }
 
     public String exportAsStructurizrDsl(String businessText) {

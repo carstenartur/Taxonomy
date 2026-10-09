@@ -47,7 +47,7 @@ public class RequirementRelationSearchService {
     public RelationSearchReport search(String original, Map<String,Integer> scores) {
         if (!llm.supportsGenerativeCompletion()) {
             return RequirementRelationSearch.unassessed(original, options().limits().maxCalls(),
-                    "GENERATION_UNSUPPORTED: " + llm.getActiveProvider().name()
+                    "GENERATION_UNSUPPORTED: " + llm.getActiveProviderId().value()
                             + " provides embeddings, not requirement-scoped relation assessments; "
                             + "all relationships remain unassessed.");
         }
@@ -80,7 +80,7 @@ public class RequirementRelationSearchService {
                 AnalysisRunControl::checkpoint, llm.getActiveProviderName());
         if (includeRelations && !llm.supportsGenerativeCompletion()) {
             var disabled = engine.prepare(preparationId, original, scores, sourceResultIds, distributed, false);
-            String reason = "GENERATION_UNSUPPORTED: " + llm.getActiveProvider().name()
+            String reason = "GENERATION_UNSUPPORTED: " + llm.getActiveProviderId().value()
                     + " provides embeddings, not requirement-scoped relation assessments; "
                     + "all relationships remain unassessed.";
             return new RelationSearchDistribution.Plan(disabled.schemaVersion(), disabled.preparationId(),
@@ -106,7 +106,7 @@ public class RequirementRelationSearchService {
         String provider = llm.getActiveProviderName();
         // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
         // are not stable provider keys. Preserve them in logs, not in budget lookup.
-        promptBudget.requireWithinBudget(prompt, llm.getActiveProvider().name());
+        promptBudget.requireWithinBudget(prompt, llm.getActiveProviderId().value());
         return AnalysisRunControl.call(provider, "RELATION_SEARCH", () -> {
             LlmCallDetail detail = new LlmCallDetail();
             detail.setPrompt(prompt); detail.setProvider(provider);

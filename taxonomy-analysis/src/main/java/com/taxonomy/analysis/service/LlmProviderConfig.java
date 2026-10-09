@@ -1,6 +1,13 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.extension.api.llm.ProviderId;
+import com.taxonomy.extension.api.llm.LlmTransportExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +42,7 @@ public class LlmProviderConfig {
     static final String LLAMA_MODEL = "llama3.1-70b";
     static final String MISTRAL_MODEL = "mistral-small-latest";
 
-    private static final ThreadLocal<LlmProvider> requestProviderOverride = new ThreadLocal<>();
+    private static final ThreadLocal<ProviderId> requestProviderOverride = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> requestMockOverride = new ThreadLocal<>();
     private static final ThreadLocal<RequestProviderScope> providerScopes = new ThreadLocal<>();
 
@@ -73,6 +80,106 @@ public class LlmProviderConfig {
     private String customLlmApiKey;
 
     private final LocalEmbeddingService localEmbeddingService;
+    private Map<ProviderId, LlmTransportExtension> externalProviders = Map.of();
+    private Environment environment;
+
+    @Autowired
+    void initializeExtensions(org.springframework.beans.factory.ObjectProvider<LlmTransportExtension> extensions,
+                              Environment environment,
+                              org.springframework.beans.factory.ObjectProvider<com.taxonomy.extension.api.plugin.ExtensionCatalog> catalogs) {
+        var catalog = catalogs.getIfAvailable();
+        if (catalog == null) {
+            configureExtensions(extensions.orderedStream().filter(e -> !(e instanceof BuiltinLlmTransportExtension)).toList(), environment);
+        } else {
+            var leases = catalog.acquireAll(com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, LlmTransportExtension.class);
+            try { configureExtensions(leases.stream().map(com.taxonomy.extension.api.plugin.ExtensionLease::extension)
+                    .filter(e -> !(e instanceof BuiltinLlmTransportExtension)).toList(), environment); }
+            finally { leases.forEach(com.taxonomy.extension.api.plugin.ExtensionLease::close); }
+        }
+    }
+
+    void configureExtensions(List<LlmTransportExtension> extensions, Environment environment) {
+        Map<ProviderId, LlmTransportExtension> validated = new LinkedHashMap<>();
+        for (var extension : extensions) {
+            ProviderId id = new ProviderId(extension.descriptor().providerId());
+            if (LlmProvider.builtin(new ProviderId(id.value().replace('-', '_'))).isPresent()
+                    || validated.putIfAbsent(id, extension) != null) {
+                throw new IllegalStateException("Duplicate LLM provider ID: " + id);
+            }
+            if (extension.transport() == null
+                    || !id.equals(new ProviderId(extension.transport().providerName()))) {
+                throw new IllegalStateException("Provider transport identity mismatch: " + id);
+            }
+        }
+        this.externalProviders = Map.copyOf(validated);
+        this.environment = environment;
+    }
+
+    /** STARTUP-only transports have the lifetime of this application context. */
+    List<LlmTransportExtension> externalTransports() { return List.copyOf(externalProviders.values()); }
+
+    public ProviderId requireRegisteredProvider(String value) {
+        ProviderId id = new ProviderId(value);
+        if (LlmProvider.builtin(id).isEmpty() && !externalProviders.containsKey(id)) {
+            throw new IllegalArgumentException("No executable LLM provider registered: " + id);
+        }
+        return id;
+    }
+
+    public List<ProviderId> registeredProviderIds() {
+        var ids = new java.util.TreeSet<ProviderId>(java.util.Comparator.comparing(ProviderId::value));
+        for (LlmProvider builtin : LlmProvider.values()) ids.add(builtin.id());
+        ids.addAll(externalProviders.keySet());
+        return List.copyOf(ids);
+    }
+
+    private String externalSetting(ProviderId id, String setting, String fallback) {
+        requireRegisteredProvider(id.value());
+        return environment == null ? fallback : environment.getProperty(
+                "taxonomy.llm.providers." + id.value().toLowerCase(Locale.ROOT) + "." + setting, fallback);
+    }
+
+    public String getApiKey(ProviderId id) {
+        var builtin = LlmProvider.builtin(id);
+        return builtin.isPresent() ? getApiKey(builtin.get()) : externalSetting(id, "api-key", "");
+    }
+
+    public boolean requiresApiKey(ProviderId id) {
+        var builtin = LlmProvider.builtin(id);
+        if (builtin.isPresent()) return builtin.get() != LlmProvider.CUSTOM_OPENAI
+                && builtin.get() != LlmProvider.LOCAL_ONNX;
+        requireRegisteredProvider(id.value());
+        return externalProviders.get(id).descriptor().requiresApiKey();
+    }
+
+    public boolean hasConfiguredApiKey(ProviderId id) {
+        return LlmProvider.builtin(id).map(this::hasConfiguredApiKey)
+                .orElseGet(() -> hasText(getApiKey(id)));
+    }
+
+    public String getOpenAiCompatibleUrl(ProviderId id) {
+        return LlmProvider.builtin(id).map(this::getOpenAiCompatibleUrl)
+                .orElseGet(() -> externalSetting(id, "endpoint-identity", "plugin:" + id.value()));
+    }
+
+    public String getOpenAiCompatibleModel(ProviderId id) {
+        return LlmProvider.builtin(id).map(this::getOpenAiCompatibleModel)
+                .orElseGet(() -> externalSetting(id, "model", id.value()));
+    }
+
+    public boolean isProviderConfigured(ProviderId id) {
+        var builtin = LlmProvider.builtin(id);
+        if (builtin.isPresent()) return isProviderConfigured(builtin.get());
+        var extension = externalProviders.get(id);
+        return extension != null && (!extension.descriptor().requiresApiKey() || hasText(getApiKey(id)));
+    }
+
+    public String getProviderConfigurationError(ProviderId id) {
+        var builtin = LlmProvider.builtin(id);
+        if (builtin.isPresent()) return getProviderConfigurationError(builtin.get());
+        if (!externalProviders.containsKey(id)) return "No executable LLM provider registered: " + id;
+        return isProviderConfigured(id) ? null : "Provider credential is required for " + id;
+    }
 
     public LlmProviderConfig(LocalEmbeddingService localEmbeddingService) {
         this.localEmbeddingService = localEmbeddingService;
@@ -95,7 +202,12 @@ public class LlmProviderConfig {
     }
 
     public void setRequestProvider(LlmProvider provider) {
-        requestProviderOverride.set(provider);
+        setRequestProviderId(provider == null ? null : provider.id());
+    }
+
+    public void setRequestProviderId(ProviderId provider) {
+        if (provider == null) requestProviderOverride.remove();
+        else requestProviderOverride.set(requireRegisteredProvider(provider.value()));
     }
 
     public void clearRequestProvider() {
@@ -108,7 +220,7 @@ public class LlmProviderConfig {
             throw new IllegalArgumentException("Frozen provider is required");
         }
         boolean mock = "MOCK".equalsIgnoreCase(frozenProvider);
-        LlmProvider provider = mock ? null : LlmProvider.valueOf(frozenProvider.toUpperCase(java.util.Locale.ROOT));
+        ProviderId provider = mock ? null : requireRegisteredProvider(frozenProvider);
         var scope = new RequestProviderScope();
         if (provider == null) requestProviderOverride.remove(); else requestProviderOverride.set(provider);
         requestMockOverride.set(mock);
@@ -118,7 +230,7 @@ public class LlmProviderConfig {
 
     public static final class RequestProviderScope implements AutoCloseable {
         private final Thread owner = Thread.currentThread();
-        private final LlmProvider previousProvider = requestProviderOverride.get();
+        private final ProviderId previousProvider = requestProviderOverride.get();
         private final Boolean previousMock = requestMockOverride.get();
         private final RequestProviderScope previousScope = providerScopes.get();
         private boolean closed;
@@ -137,32 +249,34 @@ public class LlmProviderConfig {
         }
     }
 
+    /** Compatibility accessor for built-in callers. New execution paths use the open ID. */
     public LlmProvider getActiveProvider() {
-        LlmProvider override = requestProviderOverride.get();
-        if (override != null) return override;
+        return LlmProvider.builtin(getActiveProviderId()).orElseThrow(() ->
+                new IllegalStateException("External provider requires the open provider-ID accessor"));
+    }
 
+    public ProviderId getActiveProviderId() {
+        ProviderId override = requestProviderOverride.get();
+        if (override != null) return requireRegisteredProvider(override.value());
         if (llmProviderConfig != null && !llmProviderConfig.isBlank()) {
-            try {
-                return LlmProvider.valueOf(llmProviderConfig.trim().toUpperCase());
-            } catch (IllegalArgumentException exception) {
-                log.warn("Unknown LLM provider '{}' in config; falling back to auto-detect",
-                        llmProviderConfig);
-            }
+            return requireRegisteredProvider(llmProviderConfig);
         }
-
-        if (hasText(geminiApiKey)) return LlmProvider.GEMINI;
-        if (hasText(openaiApiKey)) return LlmProvider.OPENAI;
-        if (hasText(deepseekApiKey)) return LlmProvider.DEEPSEEK;
-        if (hasText(qwenApiKey)) return LlmProvider.QWEN;
-        if (hasText(llamaApiKey)) return LlmProvider.LLAMA;
-        if (hasText(mistralApiKey)) return LlmProvider.MISTRAL;
-        if (isCustomOpenAiConfigured()) return LlmProvider.CUSTOM_OPENAI;
-        return LlmProvider.GEMINI;
+        if (hasText(geminiApiKey)) return LlmProvider.GEMINI.id();
+        if (hasText(openaiApiKey)) return LlmProvider.OPENAI.id();
+        if (hasText(deepseekApiKey)) return LlmProvider.DEEPSEEK.id();
+        if (hasText(qwenApiKey)) return LlmProvider.QWEN.id();
+        if (hasText(llamaApiKey)) return LlmProvider.LLAMA.id();
+        if (hasText(mistralApiKey)) return LlmProvider.MISTRAL.id();
+        if (isCustomOpenAiConfigured()) return LlmProvider.CUSTOM_OPENAI.id();
+        return LlmProvider.GEMINI.id();
     }
 
     public String getActiveProviderName() {
         if (isMockMode()) return "Mock";
-        return switch (getActiveProvider()) {
+        ProviderId id = getActiveProviderId();
+        var builtin = LlmProvider.builtin(id);
+        if (builtin.isEmpty()) return externalProviders.get(id).descriptor().providerName();
+        return switch (builtin.get()) {
             case GEMINI -> "Gemini";
             case OPENAI -> "OpenAI";
             case DEEPSEEK -> "DeepSeek";
@@ -184,6 +298,8 @@ public class LlmProviderConfig {
         if (hasText(llamaApiKey)) providers.add("LLAMA");
         if (hasText(mistralApiKey)) providers.add("MISTRAL");
         if (isCustomOpenAiConfigured()) providers.add("CUSTOM_OPENAI");
+        externalProviders.keySet().stream().filter(this::isProviderConfigured)
+                .map(ProviderId::value).sorted().forEach(providers::add);
         return providers;
     }
 
@@ -346,13 +462,14 @@ public class LlmProviderConfig {
                 || hasText(qwenApiKey)
                 || hasText(llamaApiKey)
                 || hasText(mistralApiKey)
-                || isCustomOpenAiConfigured();
+                || isCustomOpenAiConfigured()
+                || externalProviders.keySet().stream().anyMatch(this::isProviderConfigured);
     }
 
     public AiAvailabilityLevel getAvailabilityLevel() {
         if (isMockMode()) return AiAvailabilityLevel.FULL;
-        LlmProvider provider = getActiveProvider();
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        ProviderId provider = getActiveProviderId();
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             return localEmbeddingService.isAvailable()
                     ? AiAvailabilityLevel.LIMITED
                     : AiAvailabilityLevel.UNAVAILABLE;

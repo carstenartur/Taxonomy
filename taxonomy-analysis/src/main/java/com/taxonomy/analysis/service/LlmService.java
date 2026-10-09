@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import com.taxonomy.dto.AnalysisResult;
@@ -185,14 +187,19 @@ public class LlmService {
     }
 
     /** Delegates to {@link LlmProviderConfig#getActiveProvider}. */
-    public LlmProvider getActiveProvider() {
-        return providerConfig.getActiveProvider();
+    /** Compatibility accessor for existing built-in integrations. */
+    public LlmProvider getActiveProvider() { return providerConfig.getActiveProvider(); }
+
+    public void setRequestProviderId(ProviderId provider) { providerConfig.setRequestProviderId(provider); }
+
+    public ProviderId getActiveProviderId() {
+        return providerConfig.getActiveProviderId();
     }
 
     /** Mock mode supplies explicit synthetic JSON independently of the selected transport. */
     public boolean supportsGenerativeCompletion() {
         return (providerConfig != null && providerConfig.isMockMode())
-                || getActiveProvider().completionCapability() == LlmProvider.CompletionCapability.GENERATIVE_TEXT;
+                || !getActiveProviderId().equals(LlmProvider.LOCAL_ONNX.id());
     }
 
     /** Delegates to {@link LlmProviderConfig#getAvailabilityLevel}. */
@@ -786,23 +793,23 @@ public class LlmService {
 
     /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
     public String recoveryPolicyFingerprint(String requestedProvider) {
-        LlmProvider provider;
+        ProviderId provider;
         if (requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)) {
-            provider = getActiveProvider();
+            provider = getActiveProviderId();
         } else {
             try {
-                provider = LlmProvider.valueOf(requestedProvider.toUpperCase(Locale.ROOT));
+                provider = providerConfig.requireRegisteredProvider(requestedProvider);
             } catch (IllegalArgumentException invalidProvider) {
                 throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
             }
         }
-        String endpoint = provider == LlmProvider.GEMINI ? providerConfig.getGeminiUrl()
-                : provider == LlmProvider.LOCAL_ONNX ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
-        String model = provider == LlmProvider.GEMINI || provider == LlmProvider.LOCAL_ONNX ? endpoint
+        String endpoint = provider.equals(LlmProvider.GEMINI.id()) ? providerConfig.getGeminiUrl()
+                : provider.equals(LlmProvider.LOCAL_ONNX.id()) ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
+        String model = provider.equals(LlmProvider.GEMINI.id()) || provider.equals(LlmProvider.LOCAL_ONNX.id()) ? endpoint
                 : providerConfig.getOpenAiCompatibleModel(provider);
         String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
                 .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
-        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.name(), endpoint, model,
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), endpoint, model,
                 Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
                 Integer.toString(minimumProductScore()), templates);
     }
@@ -867,8 +874,8 @@ public class LlmService {
             return detail;
         }
 
-        LlmProvider provider = getActiveProvider();
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        ProviderId provider = getActiveProviderId();
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             if (!localEmbeddingService.isAvailable()) {
                 String error = "LOCAL_ONNX embedding model is not available. Product scoring is disabled.";
                 detail.setScores(responseParser.zeroScores(products));
@@ -891,9 +898,9 @@ public class LlmService {
         }
 
         String apiKey = getApiKey(provider);
-        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
+        if (missingCredential(provider, apiKey) && !isReplayActive()) {
             String error = "No API key configured for provider " + provider
-                    + ". Set environment variable " + provider.name() + "_API_KEY.";
+                    + ". Set environment variable " + provider.value() + "_API_KEY.";
             detail.setScores(responseParser.zeroScores(products));
             detail.setReasons(Map.of());
             detail.setPrompt("");
@@ -914,7 +921,7 @@ public class LlmService {
         log.debug("Full product suitability prompt:\n{}", prompt);
 
         long start = System.currentTimeMillis();
-        LlmGateway gateway = gatewayRegistry.getGateway(provider);
+        LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
         String responseBody;
         try {
             responseBody = gateway.sendHttpRequest(prompt, apiKey);
@@ -1107,9 +1114,9 @@ public class LlmService {
                 return buildMockScores(nodes, parentScore);
             }
 
-            LlmProvider provider = getActiveProvider();
+            ProviderId provider = getActiveProviderId();
 
-            if (provider == LlmProvider.LOCAL_ONNX) {
+            if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
                 if (!localEmbeddingService.isAvailable()) {
                     log.warn("⚠️ LOCAL_ONNX embedding model is not available; returning empty scores");
                     recordFailure("LOCAL_ONNX embedding model is not available");
@@ -1123,10 +1130,10 @@ public class LlmService {
             }
 
             String apiKey = getApiKey(provider);
-            if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
+            if (missingCredential(provider, apiKey) && !isReplayActive()) {
                 log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
                         + "Set environment variable {}_API_KEY to enable AI analysis.",
-                        provider, provider.name());
+                        provider, provider.value());
                 return ScoreParseResult.empty(nodes);
             }
 
@@ -1140,7 +1147,7 @@ public class LlmService {
             log.debug("Full LLM prompt:\n{}", prompt);
 
             String rawText;
-            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
             String body = gateway.sendHttpRequest(prompt, apiKey);
             rawText = body != null ? gateway.extractResponseText(body) : null;
 
@@ -1180,9 +1187,9 @@ public class LlmService {
             return buildMockScores(nodes, parentScore).scores();
         }
 
-        LlmProvider provider = getActiveProvider();
+        ProviderId provider = getActiveProviderId();
 
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             if (!localEmbeddingService.isAvailable()) {
                 log.warn("⚠️ LOCAL_ONNX embedding model is not available; returning zero scores");
                 recordFailure("LOCAL_ONNX embedding model is not available");
@@ -1197,10 +1204,10 @@ public class LlmService {
 
         String apiKey = getApiKey(provider);
 
-        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
+        if (missingCredential(provider, apiKey) && !isReplayActive()) {
             log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
                     + "Set environment variable {}_API_KEY to enable AI analysis.",
-                    provider, provider.name());
+                    provider, provider.value());
             return responseParser.zeroScores(nodes);
         }
 
@@ -1213,7 +1220,7 @@ public class LlmService {
                 provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
         log.debug("Full LLM prompt:\n{}", prompt);
 
-        LlmGateway gateway = gatewayRegistry.getGateway(provider);
+        LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
         String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
         if (apiResponseBody == null) return responseParser.zeroScores(nodes);
         String rawText = gateway.extractResponseText(apiResponseBody);
@@ -1252,10 +1259,10 @@ public class LlmService {
             return detail;
         }
 
-        LlmProvider provider = getActiveProvider();
+        ProviderId provider = getActiveProviderId();
 
         // ── Local embedding path ──────────────────────────────────────────────
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             if (!localEmbeddingService.isAvailable()) {
                 String errorMsg = "LOCAL_ONNX embedding model is not available. "
                         + "Semantic scoring is disabled.";
@@ -1282,9 +1289,9 @@ public class LlmService {
         // ── API-based path ────────────────────────────────────────────────────
         String apiKey = getApiKey(provider);
 
-        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
+        if (missingCredential(provider, apiKey) && !isReplayActive()) {
             String errorMsg = "No API key configured for provider " + provider
-                    + ". Set environment variable " + provider.name() + "_API_KEY.";
+                    + ". Set environment variable " + provider.value() + "_API_KEY.";
             log.warn("⚠️ LLM analysis skipped: {}", errorMsg);
             detail.setScores(Map.of());
             detail.setPrompt("");
@@ -1306,7 +1313,7 @@ public class LlmService {
         log.debug("Full LLM prompt:\n{}", prompt);
 
         long start = System.currentTimeMillis();
-        LlmGateway gateway = gatewayRegistry.getGateway(provider);
+        LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
         String apiResponseBody;
         try {
             apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
@@ -1383,7 +1390,13 @@ public class LlmService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private String getApiKey(LlmProvider provider) {
+    private boolean missingCredential(ProviderId provider, String key) {
+        if (key != null && !key.isBlank()) return false;
+        // Existing built-ins retain their credential/no-auth-marker behavior.
+        return LlmProvider.builtin(provider).isPresent() || providerConfig.requiresApiKey(provider);
+    }
+
+    private String getApiKey(ProviderId provider) {
         return providerConfig.getApiKey(provider);
     }
 
@@ -1452,9 +1465,9 @@ public class LlmService {
      * Returns a snapshot of diagnostics information for the {@code /api/diagnostics} endpoint.
      */
     public Map<String, Object> getDiagnostics() {
-        LlmProvider provider = getActiveProvider();
+        ProviderId provider = getActiveProviderId();
         String apiKey = getApiKey(provider);
-        boolean hasRealKey = provider != LlmProvider.LOCAL_ONNX
+        boolean hasRealKey = !provider.equals(LlmProvider.LOCAL_ONNX.id())
                 && apiKey != null && !apiKey.isBlank();
         boolean apiKeyConfigured = providerConfig.isMockMode() || hasRealKey;
         String apiKeyPrefix = hasRealKey
@@ -1465,7 +1478,7 @@ public class LlmService {
         result.put("provider",        providerConfig.isMockMode() ? "Mock" : getActiveProviderName());
         result.put("apiKeyConfigured", apiKeyConfigured);
         result.put("apiKeyPrefix",     apiKeyPrefix);
-        result.put("localModel",       provider == LlmProvider.LOCAL_ONNX
+        result.put("localModel",       provider.equals(LlmProvider.LOCAL_ONNX.id())
                 ? LocalEmbeddingService.DEFAULT_MODEL_URL : null);
         result.put("lastCallTime",     lastCallTime != null ? lastCallTime.toString() : null);
         result.put("lastCallSuccess",  lastCallSuccess);
@@ -1502,15 +1515,15 @@ public class LlmService {
                     + "contribution to the required capability.";
         }
 
-        LlmProvider provider = getActiveProvider();
+        ProviderId provider = getActiveProviderId();
 
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             return "Leaf justification is not available for the LOCAL_ONNX provider "
                     + "(cosine-similarity scores do not produce textual reasons).";
         }
 
         String apiKey = getApiKey(provider);
-        if (apiKey == null || apiKey.isBlank()) {
+        if (missingCredential(provider, apiKey)) {
             return "Leaf justification unavailable: no API key configured for provider " + provider + ".";
         }
 
@@ -1553,7 +1566,7 @@ public class LlmService {
         log.debug("Leaf justification prompt:\n{}", prompt);
 
         try {
-            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
             String body = gateway.sendHttpRequest(prompt, apiKey);
             String rawText = body != null ? gateway.extractResponseText(body) : null;
             if (rawText == null || rawText.isBlank()) {
@@ -1585,20 +1598,20 @@ public class LlmService {
             return MockRelationReplies.reply(prompt);
         }
 
-        LlmProvider provider = getActiveProvider();
-        if (provider == LlmProvider.LOCAL_ONNX) {
+        ProviderId provider = getActiveProviderId();
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             log.warn("callLlmRaw is not supported for LOCAL_ONNX provider");
             return null;
         }
 
         String apiKey = getApiKey(provider);
-        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
+        if (missingCredential(provider, apiKey) && !isReplayActive()) {
             log.warn("No API key for provider {} — cannot call LLM", provider);
             return null;
         }
 
         try {
-            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
             String body = gateway.sendHttpRequest(prompt, apiKey);
             return body != null ? gateway.extractResponseText(body) : null;
         } catch (LlmRateLimitException e) {
