@@ -34,7 +34,8 @@ public class CopilotAnalysisController {
     }
 
     @PostMapping("/requirements/{requirementId}/copilot")
-    @Operation(summary = "Start or reuse a full, persisted Copilot analysis")
+    @Operation(summary = "Start or reuse a full, persisted Copilot analysis",
+            description = "Queues a manually requested Copilot analysis of the authorized project requirement using the supplied run options. Returns 202 with a Location for the persisted operation; acceptance is not completed analysis.")
     public ResponseEntity<CopilotOperationView> analyzeRequirement(
             @PathVariable Long projectId,
             @PathVariable Long requirementId,
@@ -48,7 +49,8 @@ public class CopilotAnalysisController {
     }
 
     @GetMapping("/requirements/{requirementId}/copilot/latest")
-    @Operation(summary = "Resume the newest Copilot or Autopilot operation for a requirement")
+    @Operation(summary = "Resume the newest Copilot or Autopilot operation for a requirement",
+            description = "Reads the newest retained Copilot operation for the authorized requirement so the client can restore its view. Returns 204 when none exists. Despite the compatibility route name, this GET never executes or resumes model work.")
     public ResponseEntity<CopilotOperationView> latest(
             @PathVariable Long projectId,
             @PathVariable Long requirementId) {
@@ -60,7 +62,8 @@ public class CopilotAnalysisController {
     }
 
     @GetMapping("/copilot-operations/{operationId}")
-    @Operation(summary = "Read and resume a persisted Copilot operation")
+    @Operation(summary = "Read and resume a persisted Copilot operation",
+            description = "Reads the persisted Copilot operation, including its passes and review state, after authorizing the project, requirement and current workspace. This endpoint observes existing work and never starts or resumes a pass.")
     public CopilotOperationView getOperation(
             @PathVariable Long projectId,
             @PathVariable String operationId) {
@@ -70,7 +73,8 @@ public class CopilotAnalysisController {
     }
 
     @PostMapping("/copilot-operations/{operationId}/cancel")
-    @Operation(summary = "Cancel all active passes of a Copilot operation")
+    @Operation(summary = "Cancel all active passes of a Copilot operation",
+            description = "Requests cooperative cancellation of the existing requirement Copilot operation and its active passes in the authenticated workspace. Returns the recorded operation state; cancellation does not remove previously committed evidence.")
     public CopilotOperationView cancel(
             @PathVariable Long projectId,
             @PathVariable String operationId) {

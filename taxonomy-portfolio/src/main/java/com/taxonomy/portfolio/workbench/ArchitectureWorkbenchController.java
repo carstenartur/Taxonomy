@@ -105,7 +105,8 @@ public class ArchitectureWorkbenchController {
     @ResponseBody
     @Operation(
             summary = "Load one immutable architecture snapshot "
-                    + "as a render-ready scene")
+                    + "as a render-ready scene",
+            description = "Loads the retained analysis snapshot as a render-ready scene in the authorized project and workspace. Uses the snapshot's recorded evidence and source context, not a new analysis of the current requirement.")
     public Projection projection(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
@@ -124,7 +125,8 @@ public class ArchitectureWorkbenchController {
     @ResponseBody
     @Operation(
             summary = "Export the architecture snapshot "
-                    + "as deterministic standalone SVG")
+                    + "as deterministic standalone SVG",
+            description = "Renders the authorized immutable analysis snapshot as a deterministic standalone SVG attachment. No viewport crop, live editor mutation or new model invocation is performed.")
     public ResponseEntity<String> svg(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
@@ -147,7 +149,8 @@ public class ArchitectureWorkbenchController {
                     + "{snapshotId}.pdf",
             produces = MediaType.APPLICATION_PDF_VALUE)
     @ResponseBody
-    @Operation(summary = "Export the architecture snapshot as a vector PDF")
+    @Operation(summary = "Export the architecture snapshot as a vector PDF",
+            description = "Renders the authorized immutable analysis snapshot as a downloadable PDF diagram. Uses the saved snapshot and does not rerun its requirement analysis.")
     public ResponseEntity<byte[]> pdf(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
@@ -169,7 +172,8 @@ public class ArchitectureWorkbenchController {
     @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.archimate.zip",
             produces = "application/zip")
     @ResponseBody
-    @Operation(summary = "Export experimental ArchiMate XML with the exact mapping profile and loss manifest")
+    @Operation(summary = "Export experimental ArchiMate XML with the exact mapping profile and loss manifest",
+            description = "Exports an ArchiMate bundle for the authorized saved snapshot, retaining the registered export profile and provenance metadata. No remote import or new analysis is triggered.")
     public ResponseEntity<byte[]> archiMateBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
         RequestScope scope = scope();
         return artifactResponse(snapshotExportService.exportArchiMateBundle(
@@ -183,7 +187,8 @@ public class ArchitectureWorkbenchController {
     @ResponseBody
     @Operation(
             summary = "Export the exact persisted architecture snapshot "
-                    + "as the schema-validated ArchiMate 3.1 supported subset")
+                    + "as the schema-validated ArchiMate 3.1 supported subset",
+            description = "Exports the authorized saved architecture snapshot as an ArchiMate exchange attachment, with source and artifact provenance headers. Export does not import or approve the architecture in another tool.")
     public ResponseEntity<byte[]> archiMate(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
@@ -203,7 +208,8 @@ public class ArchitectureWorkbenchController {
     @ResponseBody
     @Operation(
             summary = "Export the exact persisted architecture snapshot "
-                    + "as an experimental bounded Visio 2012 VSDX package")
+                    + "as an experimental bounded Visio 2012 VSDX package",
+            description = "Exports the authorized saved architecture snapshot as a Visio attachment with source and artifact provenance headers. This uses frozen analysis evidence rather than the current mutable editor graph.")
     public ResponseEntity<byte[]> visio(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
@@ -219,7 +225,8 @@ public class ArchitectureWorkbenchController {
     @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.visio.zip",
             produces = "application/zip")
     @ResponseBody
-    @Operation(summary = "Export the exact persisted snapshot as a ZIP bundle containing experimental VSDX, mapping profile and loss manifest")
+    @Operation(summary = "Export the exact persisted snapshot as a ZIP bundle containing experimental VSDX, mapping profile and loss manifest",
+            description = "Exports a Visio bundle for the authorized saved snapshot, retaining its source identity and artifact metadata. The download does not modify the snapshot or publish it to a remote application.")
     public ResponseEntity<byte[]> visioBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
         RequestScope scope = scope();
         return artifactResponse(snapshotExportService.exportVisioBundle(projectId, snapshotId, scope.username(), scope.context()));

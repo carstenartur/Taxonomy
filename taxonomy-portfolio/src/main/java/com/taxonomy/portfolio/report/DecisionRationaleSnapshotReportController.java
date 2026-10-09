@@ -1,5 +1,9 @@
 package com.taxonomy.portfolio.report;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionReportOptions;
 import com.taxonomy.architecture.decision.DecisionReportScope;
@@ -60,7 +64,8 @@ public class DecisionRationaleSnapshotReportController {
     }
 
     @GetMapping("/formats")
-    @Operation(summary = "List report formats available for an immutable analysis snapshot")
+    @Operation(summary = "List report formats available for an immutable analysis snapshot",
+            description = "Lists the registered decision-rationale report formats and their descriptors. This capability read does not load a snapshot, generate a document or start analysis.")
     public List<ReportFormatDescriptor> listFormats() {
         return reportRendererRegistry.listDescriptors(
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID);
@@ -69,8 +74,11 @@ public class DecisionRationaleSnapshotReportController {
     public record AvailableOptions(String snapshotId, AnalysisScope analysisScope, List<DecisionReportScope.Root> roots) {}
 
     @GetMapping("/options")
-    public ResponseEntity<AvailableOptions> options(@PathVariable Long projectId, @PathVariable String snapshotId,
-            @RequestParam(required = false) String language) {
+    @Operation(summary = "Read export options for a frozen decision report",
+            description = "Derives available taxonomy roots and the original analysis scope from the authorized immutable snapshot. Optional language selects report labels. Reading options neither reruns analysis nor changes the saved result.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<AvailableOptions> options(@Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId, @Parameter(description = "Immutable analysis snapshot identifier") @PathVariable String snapshotId,
+            @Parameter(description = "Optional BCP-47 report language; otherwise the current locale") @RequestParam(required = false) String language) {
         var context = workspaceResolver.resolveCurrentContext();
         var report = snapshotReportService.generate(projectId, snapshotId, workspaceResolver.resolveCurrentUsername(), context,
                 resolveLocale(language), new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, null, null, null, null));
@@ -89,9 +97,9 @@ public class DecisionRationaleSnapshotReportController {
             description = "Replays the frozen requirement text, taxonomy hierarchy, scores, AI reasons, "
                     + "provider and Git provenance stored with the selected snapshot.")
     public ResponseEntity<byte[]> export(
-            @PathVariable Long projectId,
-            @PathVariable String snapshotId,
-            @PathVariable String formatId,
+            @Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId,
+            @Parameter(description = "Immutable analysis snapshot identifier") @PathVariable String snapshotId,
+            @Parameter(description = "Registered report or diagram format identifier") @PathVariable String formatId,
             @Parameter(description = "Optional BCP-47 report language such as de or en")
             @RequestParam(required = false) String language,
             @RequestParam(required = false) DecisionReportOptions.Profile profile,

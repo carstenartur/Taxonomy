@@ -55,7 +55,8 @@ public class GitProposalReviewApiController {
         this.membershipService = membershipService;
     }
 
-    @Operation(summary = "Accept a proposal through an exact Git commit")
+    @Operation(summary = "Accept a proposal through an exact Git commit",
+            description = "Accepts a proposal through an authoritative Git commit after validating a writable context, the head precondition and Idempotency-Key. Database projection readiness is distinct from the successful durable Git mutation.")
     @PostMapping("/{proposalId}/accept")
     public ResponseEntity<ReviewResponse> accept(
             @PathVariable Long proposalId,
@@ -75,7 +76,8 @@ public class GitProposalReviewApiController {
                 body);
     }
 
-    @Operation(summary = "Reject a proposal through an exact Git commit")
+    @Operation(summary = "Reject a proposal through an exact Git commit",
+            description = "Rejects a proposal through an authoritative commit in the writable repository context. Requires a Git head precondition and Idempotency-Key; retains the review rationale and reports source conflicts rather than overwriting a changed head.")
     @PostMapping("/{proposalId}/reject")
     public ResponseEntity<ReviewResponse> reject(
             @PathVariable Long proposalId,
@@ -95,7 +97,8 @@ public class GitProposalReviewApiController {
                 body);
     }
 
-    @Operation(summary = "Revert a reviewed proposal through an exact Git commit")
+    @Operation(summary = "Revert a reviewed proposal through an exact Git commit",
+            description = "Reverts a previously reviewed proposal through a new authoritative Git command. Requires the exact head precondition and Idempotency-Key; this is a recorded inverse decision, not deletion of review history.")
     @PostMapping("/{proposalId}/revert")
     public ResponseEntity<ReviewResponse> revert(
             @PathVariable Long proposalId,

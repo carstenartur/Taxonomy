@@ -1,5 +1,12 @@
 package com.taxonomy.security.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.security.service.PasswordChangeService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
@@ -14,6 +21,7 @@ import java.util.Map;
 
 /** Self-service account operations for local API clients. */
 @RestController
+@Tag(name = "Account")
 @RequestMapping("/api/account")
 @Profile("!keycloak")
 @ConditionalOnProperty(name = "taxonomy.security.change-password-enabled",
@@ -27,6 +35,9 @@ public class AccountApiController {
     }
 
     @PostMapping("/change-password")
+    @Operation(summary = "Change the current local account password",
+            description = "Local authentication only; unavailable in the Keycloak profile or when password change is disabled. Requires currentPassword, a different valid newPassword and matching confirmPassword. Changes only the authenticated account and returns PASSWORD_CHANGED on success.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<Map<String, String>> changePassword(
             Authentication authentication,
             @RequestBody Map<String, String> body) {

@@ -38,7 +38,8 @@ public class AnalysisWorkingDraftController {
     }
 
     @GetMapping("/{workspaceId}")
-    @Operation(summary = "Restore the current user's ad-hoc analysis draft")
+    @Operation(summary = "Restore the current user's ad-hoc analysis draft",
+            description = "Reads the authenticated user's current working draft in the explicitly pinned workspace. Returns its optimistic version as an ETag, or 204 when no draft exists; responses must not be cached.")
     public ResponseEntity<AnalysisDraftView> read(
             @PathVariable String workspaceId,
             HttpServletRequest request) {
@@ -49,7 +50,8 @@ public class AnalysisWorkingDraftController {
     }
 
     @PutMapping("/{workspaceId}")
-    @Operation(summary = "Create or optimistically update an ad-hoc analysis draft")
+    @Operation(summary = "Create or optimistically update an ad-hoc analysis draft",
+            description = "Saves the workspace working draft using the supplied optimistic version. Returns the saved representation and its ETag; a mismatched workspace pin or stale version is rejected rather than overwriting another draft.")
     public ResponseEntity<AnalysisDraftView> save(
             @PathVariable String workspaceId,
             @RequestBody SaveAnalysisDraftRequest requestBody,
@@ -61,7 +63,8 @@ public class AnalysisWorkingDraftController {
     }
 
     @PostMapping("/{workspaceId}/reset")
-    @Operation(summary = "Start a new empty ad-hoc analysis lifecycle")
+    @Operation(summary = "Start a new empty ad-hoc analysis lifecycle",
+            description = "Starts a new empty working-draft lifecycle for the authenticated user's explicitly pinned workspace. Returns the new draft and version ETag; this does not start an analysis or delete saved analysis snapshots.")
     public ResponseEntity<AnalysisDraftView> reset(
             @PathVariable String workspaceId,
             @RequestBody(required = false) ResetAnalysisDraftRequest requestBody,
@@ -73,7 +76,8 @@ public class AnalysisWorkingDraftController {
     }
 
     @DeleteMapping("/{workspaceId}")
-    @Operation(summary = "Discard the current user's ad-hoc analysis draft")
+    @Operation(summary = "Discard the current user's ad-hoc analysis draft",
+            description = "Deletes the authenticated user's workspace working draft, optionally checking expectedVersion to reject a stale request. Returns 204 and does not delete saved snapshots or change the architecture.")
     public ResponseEntity<Void> delete(
             @PathVariable String workspaceId,
             @RequestParam(required = false) Long expectedVersion,

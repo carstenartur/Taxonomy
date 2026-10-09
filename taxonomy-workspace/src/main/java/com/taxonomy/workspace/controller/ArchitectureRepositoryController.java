@@ -60,7 +60,8 @@ public class ArchitectureRepositoryController {
     }
 
     @GetMapping
-    @Operation(summary = "List visible central architecture repositories")
+    @Operation(summary = "List visible central architecture repositories",
+            description = "Lists active central repositories visible to the authenticated user. Results are filtered by visibility and membership rather than exposing all repository records.")
     public ResponseEntity<List<Map<String, Object>>> listRepositories() {
         String user = workspaceResolver.resolveCurrentUsername();
         return ResponseEntity.ok(repositoryService.listActiveRepositories().stream()
@@ -70,7 +71,8 @@ public class ArchitectureRepositoryController {
     }
 
     @GetMapping("/{repositoryId}")
-    @Operation(summary = "Get one visible central architecture repository")
+    @Operation(summary = "Get one visible central architecture repository",
+            description = "Reads one central architecture repository visible to the authenticated user. Unavailable and non-visible repositories both return 404; knowing a repository identifier does not grant membership.")
     public ResponseEntity<Map<String, Object>> getRepository(@PathVariable String repositoryId) {
         String user = workspaceResolver.resolveCurrentUsername();
         SystemRepository repository;
@@ -86,7 +88,8 @@ public class ArchitectureRepositoryController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new central architecture repository")
+    @Operation(summary = "Create a new central architecture repository",
+            description = "Provisions a central architecture repository with the supplied name, slug, visibility and default branch for the authenticated creator. Invalid metadata is rejected rather than partially creating a usable repository.")
     public ResponseEntity<?> createRepository(@RequestBody CreateRepositoryRequest request) {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
@@ -108,7 +111,8 @@ public class ArchitectureRepositoryController {
     }
 
     @PostMapping("/{repositoryId}/workspaces")
-    @Operation(summary = "Create a personal working copy from a central repository")
+    @Operation(summary = "Create a personal working copy from a central repository",
+            description = "Creates a working copy from a visible central repository after requiring CONTRIBUTOR permission. The requested source branch is provisioned explicitly; creation does not implicitly switch unrelated users' workspaces.")
     public ResponseEntity<?> createWorkspace(
             @PathVariable String repositoryId,
             @RequestBody CreateWorkspaceRequest request) {
@@ -143,7 +147,8 @@ public class ArchitectureRepositoryController {
     }
 
     @PostMapping("/{repositoryId}/forks")
-    @Operation(summary = "Create a durable central fork")
+    @Operation(summary = "Create a durable central fork",
+            description = "Creates a fork from the selected source repository/branch after checking visibility and CONTRIBUTOR permission. Provisioning records the source authority and does not modify the source repository.")
     public ResponseEntity<?> createFork(
             @PathVariable String repositoryId,
             @RequestBody CreateForkRequest request) {
@@ -175,7 +180,8 @@ public class ArchitectureRepositoryController {
     }
 
     @GetMapping("/{repositoryId}/members")
-    @Operation(summary = "List repository memberships")
+    @Operation(summary = "List repository memberships",
+            description = "Lists membership roles for a visible repository after requiring repository OWNER permission. Ordinary visibility alone is insufficient to inspect or manage memberships.")
     public ResponseEntity<?> listMemberships(@PathVariable String repositoryId) {
         String user = workspaceResolver.resolveCurrentUsername();
         SystemRepository repository = visibleRepository(repositoryId, user);
@@ -191,7 +197,8 @@ public class ArchitectureRepositoryController {
     }
 
     @PutMapping("/{repositoryId}/members/{username}")
-    @Operation(summary = "Assign or change a repository membership")
+    @Operation(summary = "Assign or change a repository membership",
+            description = "Assigns or changes the specified repository member's role after requiring repository OWNER permission. Invalid roles or membership transitions are rejected rather than bypassing ownership constraints.")
     public ResponseEntity<?> updateMembership(
             @PathVariable String repositoryId,
             @PathVariable String username,
@@ -216,7 +223,8 @@ public class ArchitectureRepositoryController {
     }
 
     @DeleteMapping("/{repositoryId}/members/{username}")
-    @Operation(summary = "Remove a repository membership")
+    @Operation(summary = "Remove a repository membership",
+            description = "Removes the specified member after requiring repository OWNER permission and validating membership invariants. Returns 204; a rejected removal leaves existing membership state unchanged.")
     public ResponseEntity<?> removeMembership(
             @PathVariable String repositoryId,
             @PathVariable String username) {

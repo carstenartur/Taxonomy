@@ -45,7 +45,8 @@ public class PortfolioGitController {
         this.repositoryStateService = repositoryStateService;
     }
 
-    @Operation(summary = "Export the current Git-backed portfolio projection")
+    @Operation(summary = "Export the current Git-backed portfolio projection",
+            description = "Exports the current workspace portfolio as DSL. Returns plain text by default; an explicitly compatible application/json Accept header selects the structured exported-DSL representation. Does not create a Git commit.")
     @GetMapping(value = "/export",
             produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
     public ResponseEntity<?> exportPortfolio(
@@ -62,7 +63,8 @@ public class PortfolioGitController {
                 .body(exported.dsl());
     }
 
-    @Operation(summary = "Commit the reviewed current portfolio projection")
+    @Operation(summary = "Commit the reviewed current portfolio projection",
+            description = "Serializes and commits the current portfolio in the authenticated workspace. A body branch overrides the query branch; otherwise the workspace branch is used. Returns commit and materialization information, not an AI analysis.")
     @PostMapping("/commit")
     public PortfolioCommitResult commit(
             @RequestParam(required = false) String branch,
@@ -79,14 +81,16 @@ public class PortfolioGitController {
                 current.workspaceContext());
     }
 
-    @Operation(summary = "Preview branch materialization without changing portfolio data")
+    @Operation(summary = "Preview branch materialization without changing portfolio data",
+            description = "Previews the portfolio represented by the selected Git branch in the current workspace. This read does not apply portfolio changes; materialization requires a separate explicit command with an expected head.")
     @GetMapping("/materialize-preview")
     public MaterializationPreview previewMaterialize(
             @RequestParam(defaultValue = "draft") String branch) throws IOException {
         return gitService.previewMaterialize(branch, context().workspaceContext());
     }
 
-    @Operation(summary = "Materialize one reviewed branch HEAD into the portfolio")
+    @Operation(summary = "Materialize one reviewed branch HEAD into the portfolio",
+            description = "Applies the portfolio from the selected branch only after checking the caller's expected Git head. This explicit write is separate from the read-only materialization preview and rejects a changed source.")
     @PostMapping("/materialize")
     public MaterializePortfolioResult materialize(
             @RequestParam(required = false) String branch,
@@ -103,7 +107,8 @@ public class PortfolioGitController {
                 current.workspaceContext());
     }
 
-    @Operation(summary = "Semantically merge two branches and materialize the target portfolio")
+    @Operation(summary = "Semantically merge two branches and materialize the target portfolio",
+            description = "Semantically merges the requested source into the target portfolio branch and materializes the target result. Branches may be supplied in the body or query, with body values taking precedence; conflicts are not silently discarded.")
     @PostMapping("/merge")
     public MergePortfolioResult merge(
             @RequestParam(required = false) String source,

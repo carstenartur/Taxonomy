@@ -1,5 +1,11 @@
 package com.taxonomy.editor;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
@@ -21,6 +27,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Controller
+@Tag(name = "Architecture editor")
 public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
@@ -38,11 +45,19 @@ public class ArchitectureEditorController {
 
     @GetMapping("/api/architecture/editor")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read the scoped architecture editor state",
+            description = "Reads the authorized repository, workspace and branch at the selected retained semantic revision or Git checkpoint. Supplied scope pins must match the selected context. Returns source and ETag headers; this read does not execute an edit.")
+    @ApiResponse(responseCode = "200", description = "Read the scoped architecture editor state response")
     public ResponseEntity<ArchitectureEditorProjection.View> read(
+            @Parameter(description = "Optional repository pin; must match the authenticated selected context")
             @RequestParam(required = false) String repositoryId,
+            @Parameter(description = "Optional workspace scope pin; must match the authenticated selected context")
             @RequestParam(required = false) String workspaceScopeKey,
+            @Parameter(description = "Optional branch pin; must match the authenticated selected context")
             @RequestParam(required = false) String branch,
+            @Parameter(description = "Exact retained Git checkpoint SHA; omit to read semantic workspace state")
             @RequestParam(required = false) String commit,
+            @Parameter(description = "Retained semantic revision to read; distinct from a Git checkpoint SHA")
             @RequestParam(required = false) Long revision) throws IOException {
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
         var document = service.read(context, commit, revision);
@@ -51,8 +66,19 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/preview")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Preview a semantic editor command",
+            description = "Validates and previews the bounded typed command in the selected repository without applying the edit. Requires the exact semantic revision If-Match; If-None-Match is not a substitute.")
+    @ApiResponse(responseCode = "200", description = "Preview a semantic editor command response")
+    @ApiResponse(responseCode = "400", description = "Invalid command or mismatched HTTP revision format")
+    @ApiResponse(responseCode = "412", description = "Semantic revision moved")
+    @ApiResponse(responseCode = "428", description = "Required semantic revision If-Match is missing")
+    @ApiResponse(responseCode = "409", description = "Command, checkpoint or dependencies conflict")
+    @ApiResponse(responseCode = "422", description = "Semantic command validation failed")
+    @ApiResponse(responseCode = "503", description = "Git storage unavailable")
     public ResponseEntity<Preview> preview(@RequestBody WireCommand body,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for semantic editor commands; supplying this header is rejected")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         Command command = command(body, ifMatch, ifNoneMatch);
         Preview result = service.preview(resolver.resolveCurrentRepositoryContext(), command);
@@ -61,8 +87,20 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/commands")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Execute an idempotent semantic editor command",
+            description = "Executes the bounded command using its command metadata and exact workspace revision. Returns 200 when the projection is ready or 202 when the command is accepted but projection work remains. Undo/redo use an explicit target operation, not a Git reset.")
+    @ApiResponse(responseCode = "200", description = "Execute an idempotent semantic editor command response")
+    @ApiResponse(responseCode = "400", description = "Invalid command or mismatched HTTP revision format")
+    @ApiResponse(responseCode = "412", description = "Semantic revision moved")
+    @ApiResponse(responseCode = "428", description = "Required semantic revision If-Match is missing")
+    @ApiResponse(responseCode = "409", description = "Command, checkpoint or dependencies conflict")
+    @ApiResponse(responseCode = "422", description = "Semantic command validation failed")
+    @ApiResponse(responseCode = "503", description = "Git storage unavailable")
+    @ApiResponse(responseCode = "202", description = "Durable command accepted; projection is not yet ready")
     public ResponseEntity<Accepted> execute(@RequestBody WireCommand body,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for semantic editor commands; supplying this header is rejected")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         Accepted result = service.execute(resolver.resolveCurrentRepositoryContext(), command(body, ifMatch, ifNoneMatch));
         return response("READY".equals(result.projectionState()) ? HttpStatus.OK : HttpStatus.ACCEPTED,
@@ -71,7 +109,17 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/rebuild")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Rebuild the editor projection",
+            description = "Rebuilds the projection of the exact authorized semantic workspace revision. If-Match must equal the supplied context's workspace-revision ETag; this does not create a semantic edit.")
+    @ApiResponse(responseCode = "200", description = "Rebuild the editor projection response")
+    @ApiResponse(responseCode = "400", description = "Invalid command or mismatched HTTP revision format")
+    @ApiResponse(responseCode = "412", description = "Semantic revision moved")
+    @ApiResponse(responseCode = "428", description = "Required semantic revision If-Match is missing")
+    @ApiResponse(responseCode = "409", description = "Command, checkpoint or dependencies conflict")
+    @ApiResponse(responseCode = "422", description = "Semantic command validation failed")
+    @ApiResponse(responseCode = "503", description = "Git storage unavailable")
     public ResponseEntity<Map<String, String>> rebuild(@RequestBody Context context,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
         requireRevision(context, ifMatch, null);
         return response(HttpStatus.OK, context).body(Map.of("projectionState",
@@ -182,6 +230,9 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/versions/recover")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Reconcile editor version state",
+            description = "Explicitly reconciles the editor's version state with its retained journal/checkpoint in the authorized repository. Returns 204 without executing an arbitrary new semantic command.")
+    @ApiResponse(responseCode = "204", description = "Reconcile editor version state response")
     public ResponseEntity<Void> recoverVersion() throws IOException {
         service.reconcileVersion(resolver.resolveCurrentRepositoryContext());
         return ResponseEntity.noContent().build();
@@ -216,7 +267,17 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/checkpoints")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Create an editor Git checkpoint",
+            description = "Creates a Git checkpoint for the explicit semantic revision after checking its If-Match ETag. Semantic operation history remains separate from Git checkpoints; returns the checkpoint receipt.")
+    @ApiResponse(responseCode = "200", description = "Create an editor Git checkpoint response")
+    @ApiResponse(responseCode = "400", description = "Invalid command or mismatched HTTP revision format")
+    @ApiResponse(responseCode = "412", description = "Semantic revision moved")
+    @ApiResponse(responseCode = "428", description = "Required semantic revision If-Match is missing")
+    @ApiResponse(responseCode = "409", description = "Command, checkpoint or dependencies conflict")
+    @ApiResponse(responseCode = "422", description = "Semantic command validation failed")
+    @ApiResponse(responseCode = "503", description = "Git storage unavailable")
     public ResponseEntity<CheckpointAccepted> checkpoint(@RequestBody CreateCheckpointCommand command,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
         requireRevision(command.context(), ifMatch, null);
         var result = service.checkpoint(resolver.resolveCurrentRepositoryContext(), command);
@@ -225,6 +286,9 @@ public class ArchitectureEditorController {
 
     @PostMapping("/api/architecture/editor/checkpoints/resume")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Resume an interrupted editor checkpoint",
+            description = "Resumes the retained checkpoint operation in the authorized repository rather than creating a new semantic command. Returns the checkpoint receipt and the current semantic revision headers.")
+    @ApiResponse(responseCode = "200", description = "Resume an interrupted editor checkpoint response")
     public ResponseEntity<CheckpointAccepted> resumeCheckpoint() throws IOException {
         var result = service.resumeCheckpoint(resolver.resolveCurrentRepositoryContext());
         return response(HttpStatus.OK, result.context()).body(result);

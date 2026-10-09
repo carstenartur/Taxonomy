@@ -1,5 +1,8 @@
 package com.taxonomy.shared.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
 import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension;
 import com.vladsch.flexmark.ext.tables.TablesExtension;
@@ -40,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ol>
  */
 @Controller
+@Tag(name = "Help")
 @RequestMapping("/help")
 public class HelpController {
 
@@ -146,6 +150,9 @@ public class HelpController {
     /** Returns the ordered table of contents as JSON, with locale-resolved titles. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "List localized help documents",
+            description = "Returns the known help-document catalogue with titles and audience labels localized to the current request locale. Does not accept arbitrary filesystem document names.")
+    @ApiResponse(responseCode = "200", description = "List localized help documents response")
     public List<DocEntry> getToc() {
         Locale locale = LocaleContextHolder.getLocale();
         return DOC_METADATA.stream()
@@ -160,6 +167,9 @@ public class HelpController {
     /** Renders a Markdown document to HTML, with locale-aware resolution. */
     @GetMapping(value = "/{docName}", produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read a localized help document",
+            description = "Renders a known bundled document for the current locale with the configured language fallback. Rejects unsafe names with 400 and unknown or unavailable documents with 404; does not read arbitrary filesystem paths.")
+    @ApiResponse(responseCode = "200", description = "Read a localized help document response")
     public ResponseEntity<String> getDoc(@PathVariable String docName) {
         if (!SAFE_NAME.matcher(docName).matches()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid document name");
@@ -183,6 +193,9 @@ public class HelpController {
     /** Serves images from classpath docs/images/. */
     @GetMapping("/images/{imageName}")
     @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read a bundled help illustration",
+            description = "Returns a bundled documentation image using its detected media type. Unsafe names and path traversal are rejected with 400; unavailable images return 404.")
+    @ApiResponse(responseCode = "200", description = "Read a bundled help illustration response")
     public ResponseEntity<byte[]> getImage(@PathVariable String imageName) {
         if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains("..")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();

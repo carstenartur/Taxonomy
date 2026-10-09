@@ -1,5 +1,12 @@
 package com.taxonomy.composition.architecture;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureEditorExportPort;
 import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
@@ -29,6 +36,7 @@ import java.util.Objects;
  * this controller owns the cross-boundary HTTP/export orchestration.</p>
  */
 @RestController
+@Tag(name = "Architecture editor exports")
 public final class ArchitectureEditorExportController {
 
     private final ArchitectureEditorExportPort exports;
@@ -48,12 +56,15 @@ public final class ArchitectureEditorExportController {
     }
 
     @GetMapping(value = "/api/architecture/editor.svg", produces = "image/svg+xml")
+    @Operation(summary = "Export an exact architecture revision as SVG",
+            description = "Requires an exact commit or semantic revision plus repositoryId, workspaceScopeKey and branch matching the authenticated selected context. Exports the full stored scene, not the viewport. Returns a no-store SVG attachment with source, layout and ETag headers; does not change the editor.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<String> svg(
-            @RequestParam String repositoryId,
-            @RequestParam String workspaceScopeKey,
-            @RequestParam String branch,
-            @RequestParam(required = false) String commit,
-            @RequestParam(required = false) Long revision) throws IOException {
+            @Parameter(description = "Repository identity; must match the authenticated selected context") @RequestParam String repositoryId,
+            @Parameter(description = "Workspace overlay scope key for the selected authenticated workspace") @RequestParam String workspaceScopeKey,
+            @Parameter(description = "Exact branch of the selected authenticated repository context") @RequestParam String branch,
+            @Parameter(description = "Exact retained architecture Git commit; required when no semantic revision is supplied") @RequestParam(required = false) String commit,
+            @Parameter(description = "Exact retained revision number or commit, as required by this endpoint") @RequestParam(required = false) Long revision) throws IOException {
         requireExactSelection(commit, revision);
         ExportDocument document = exports.read(
                 readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
@@ -64,12 +75,15 @@ public final class ArchitectureEditorExportController {
     }
 
     @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
+    @Operation(summary = "Export an exact architecture revision as PDF",
+            description = "Requires an exact commit or semantic revision and the authenticated repository/workspace/branch context. Renders the immutable scene with provenance as a PDF attachment; neither the current model nor editor selection is changed.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<byte[]> pdf(
-            @RequestParam String repositoryId,
-            @RequestParam String workspaceScopeKey,
-            @RequestParam String branch,
-            @RequestParam(required = false) String commit,
-            @RequestParam(required = false) Long revision) throws IOException {
+            @Parameter(description = "Repository identity; must match the authenticated selected context") @RequestParam String repositoryId,
+            @Parameter(description = "Workspace overlay scope key for the selected authenticated workspace") @RequestParam String workspaceScopeKey,
+            @Parameter(description = "Exact branch of the selected authenticated repository context") @RequestParam String branch,
+            @Parameter(description = "Exact retained architecture Git commit; required when no semantic revision is supplied") @RequestParam(required = false) String commit,
+            @Parameter(description = "Exact retained revision number or commit, as required by this endpoint") @RequestParam(required = false) Long revision) throws IOException {
         requireExactSelection(commit, revision);
         ExportDocument document = exports.read(
                 readContext(repositoryId, workspaceScopeKey, branch), commit, revision);

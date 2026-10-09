@@ -66,7 +66,8 @@ public class GitRelationCommandApiController {
         this.membershipService = membershipService;
     }
 
-    @Operation(summary = "Add or update one relation through an exact Git commit")
+    @Operation(summary = "Add or update one relation through an exact Git commit",
+            description = "Creates or updates the identified source/type/target relation through an authoritative Git command in a writable context. Requires a head precondition and Idempotency-Key; projection may remain pending after the commit.")
     @PutMapping("/{sourceCode}/{relationType}/{targetCode}")
     public ResponseEntity<MutationResponse> upsert(
             @PathVariable String sourceCode,
@@ -121,7 +122,8 @@ public class GitRelationCommandApiController {
         }
     }
 
-    @Operation(summary = "Remove one relation through an exact Git commit")
+    @Operation(summary = "Remove one relation through an exact Git commit",
+            description = "Removes the identified relation through an idempotent authoritative Git command in the writable context. A missing head precondition yields 428 and a changed head yields 412; this does not erase repository history.")
     @DeleteMapping("/{sourceCode}/{relationType}/{targetCode}")
     public ResponseEntity<MutationResponse> remove(
             @PathVariable String sourceCode,

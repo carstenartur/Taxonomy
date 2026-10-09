@@ -47,7 +47,8 @@ public class ProjectAnalysisController {
     }
 
     @PostMapping("/analyses")
-    @Operation(summary = "Queue independent analyses for selected or all requirements")
+    @Operation(summary = "Queue independent analyses for selected or all requirements",
+            description = "Queues analysis for the selected requirements of an authorized project, using the requested provider, analysis options and idempotency key. Returns 202 with job information; unselected requirements are not implicitly completed.")
     public ResponseEntity<AnalysisJobView> analyzeProject(@PathVariable Long projectId,
                                                           @RequestBody AnalyzeProjectRequest request) {
         RequestScope scope = scope();
@@ -57,7 +58,8 @@ public class ProjectAnalysisController {
     }
 
     @PostMapping("/requirements/{requirementId}/analyses")
-    @Operation(summary = "Queue one requirement analysis and immutable snapshot")
+    @Operation(summary = "Queue one requirement analysis and immutable snapshot",
+            description = "Queues analysis of this single authorized requirement with the supplied provider and options. The requirement path determines the queued item; the 202 response acknowledges a job, not a completed snapshot.")
     public ResponseEntity<AnalysisJobView> analyzeRequirement(
             @PathVariable Long projectId,
             @PathVariable Long requirementId,
@@ -77,14 +79,16 @@ public class ProjectAnalysisController {
     }
 
     @GetMapping("/analysis-jobs")
-    @Operation(summary = "List project analysis jobs")
+    @Operation(summary = "List project analysis jobs",
+            description = "Lists retained analysis jobs and their item states for the authorized project and workspace. Reading the queue does not enqueue or retry work.")
     public List<AnalysisJobView> listJobs(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return analysisService.listJobs(projectId, scope.username(), scope.context());
     }
 
     @GetMapping("/analysis-jobs/{jobId}")
-    @Operation(summary = "Read analysis job and item status")
+    @Operation(summary = "Read analysis job and item status",
+            description = "Reads one authorized project's analysis job with its queued, running and terminal item states. A successful HTTP read is not a statement that the job itself succeeded.")
     public AnalysisJobView getJob(@PathVariable Long projectId,
                                   @PathVariable String jobId) {
         RequestScope scope = scope();
@@ -92,7 +96,8 @@ public class ProjectAnalysisController {
     }
 
     @PostMapping("/analysis-jobs/{jobId}/retry-failed")
-    @Operation(summary = "Queue failed or expired requirement analyses for retry")
+    @Operation(summary = "Queue failed or expired requirement analyses for retry",
+            description = "Queues a retry for eligible failed or expired items of the specified authorized job. Already successful items are retained rather than rerun merely because another item failed.")
     public ResponseEntity<AnalysisJobView> retryFailed(@PathVariable Long projectId,
                                                        @PathVariable String jobId) {
         RequestScope scope = scope();
@@ -102,7 +107,8 @@ public class ProjectAnalysisController {
     }
 
     @GetMapping("/requirements/{requirementId}/snapshots")
-    @Operation(summary = "List immutable analysis snapshots for a requirement")
+    @Operation(summary = "List immutable analysis snapshots for a requirement",
+            description = "Lists immutable analysis snapshots for the authorized project requirement. Snapshots retain the requirement version and source context of their original run.")
     public List<SnapshotSummary> listSnapshots(@PathVariable Long projectId,
                                                @PathVariable Long requirementId) {
         RequestScope scope = scope();
@@ -111,7 +117,8 @@ public class ProjectAnalysisController {
     }
 
     @GetMapping("/snapshots/{snapshotId}")
-    @Operation(summary = "Replay one immutable analysis snapshot")
+    @Operation(summary = "Replay one immutable analysis snapshot",
+            description = "Reads one saved analysis snapshot after checking project, requirement and workspace access. Returns recorded evidence rather than recalculating against the current requirement or architecture.")
     public SnapshotDetail getSnapshot(@PathVariable Long projectId,
                                       @PathVariable String snapshotId) {
         RequestScope scope = scope();
@@ -119,7 +126,8 @@ public class ProjectAnalysisController {
     }
 
     @GetMapping("/snapshots/diff")
-    @Operation(summary = "Compare two analysis snapshots semantically")
+    @Operation(summary = "Compare two analysis snapshots semantically",
+            description = "Compares the two specified saved snapshots of an authorized requirement and reports their recorded differences. This does not run analysis, change either snapshot or adopt mappings.")
     public SnapshotDiff diffSnapshots(@PathVariable Long projectId,
                                       @RequestParam String older,
                                       @RequestParam String newer) {
@@ -129,7 +137,8 @@ public class ProjectAnalysisController {
     }
 
     @PatchMapping("/analysis-mappings/elements/{mappingId}")
-    @Operation(summary = "Review a requirement-to-taxonomy mapping and classify the action")
+    @Operation(summary = "Review a requirement-to-taxonomy mapping and classify the action",
+            description = "Records a human review/classification of one element mapping belonging to the selected saved snapshot. The snapshot's original analysis evidence is preserved and the action is scoped to this mapping.")
     public ElementMappingView reviewElementMapping(
             @PathVariable Long projectId,
             @PathVariable Long mappingId,
@@ -140,7 +149,8 @@ public class ProjectAnalysisController {
     }
 
     @PatchMapping("/analysis-mappings/relations/{mappingId}")
-    @Operation(summary = "Review a requirement-derived architecture relation")
+    @Operation(summary = "Review a requirement-derived architecture relation",
+            description = "Records a human review/classification of a relation mapping from the specified saved snapshot. This review does not by itself create an unrelated globally accepted catalogue relation.")
     public RelationMappingView reviewRelationMapping(
             @PathVariable Long projectId,
             @PathVariable Long mappingId,

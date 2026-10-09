@@ -1,5 +1,12 @@
 package com.taxonomy.security.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.security.config.LocalUserManagementAccess;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +22,7 @@ import java.util.Set;
 
 /** Read-only capability context for the authenticated user interface. */
 @RestController
+@Tag(name = "Account")
 @RequestMapping("/api/account")
 public class AccountContextController {
     private final Environment environment;
@@ -25,6 +33,9 @@ public class AccountContextController {
 
 
     @GetMapping("/me")
+    @Operation(summary = "Read authenticated account capabilities",
+            description = "Returns the current username, granted roles and UI capability flags for administration, architecture mutation and local-user management. These flags describe current authority but do not replace server-side authorization.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<?> currentAccount(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(401).body(Map.of(

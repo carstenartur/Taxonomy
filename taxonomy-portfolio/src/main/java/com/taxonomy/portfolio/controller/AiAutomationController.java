@@ -27,13 +27,15 @@ public class AiAutomationController {
     }
 
     @GetMapping
-    @Operation(summary = "Read effective Copilot and Autopilot policy")
+    @Operation(summary = "Read effective Copilot and Autopilot policy",
+            description = "Returns the effective Copilot and Autopilot enablement, policy and readiness for this installation. This inspection neither queues an analysis nor invokes a model.")
     public AiAutomationStatus status() {
         return automationService.status();
     }
 
     @GetMapping("/targets")
-    @Operation(summary = "List credential-free, addressable AI targets and prompt budgets")
+    @Operation(summary = "List credential-free, addressable AI targets and prompt budgets",
+            description = "Lists addressable AI targets with their capabilities and prompt-budget information, excluding credentials. Availability is configuration-dependent; listing a target does not select it or start an HTTP model request.")
     public AiTargetCatalogView targets() {
         return targetCatalog.catalog();
     }

@@ -1,5 +1,7 @@
 package com.taxonomy.backup;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.json.JsonFactory;
@@ -97,8 +99,13 @@ public final class BackupManifestCodec {
     public enum ScopeKind { WORKSPACE, REPOSITORIES, INSTALLATION }
     public enum TimeKind { CURRENT, SELECTED_VERSION, HISTORY }
 
-    public record WireScope(ScopeKind kind, String repositoryId, String workspaceId,
-                            Map<String, Set<String>> workspacesByRepository) {
+    @Schema(description = "All fields must be supplied; unused scalar IDs are null and unused selections are empty",
+            requiredProperties = {"kind", "repositoryId", "workspaceId", "workspacesByRepository"})
+    public record WireScope(
+            @Schema(description = "Select WORKSPACE, REPOSITORIES or INSTALLATION") ScopeKind kind,
+            @Schema(description = "Repository ID for WORKSPACE; null for other kinds", nullable = true) String repositoryId,
+            @Schema(description = "Workspace ID for WORKSPACE; null for other kinds", nullable = true) String workspaceId,
+            @Schema(description = "Explicit repository/workspace sets for REPOSITORIES; empty for other kinds") Map<String, Set<String>> workspacesByRepository) {
         BackupScope domain() {
             Objects.requireNonNull(workspacesByRepository);
             return switch (kind) {
@@ -127,8 +134,12 @@ public final class BackupManifestCodec {
         }
     }
 
+    @Schema(description = "One exact commit per selected repository", requiredProperties = {"repository", "commit"})
     public record WireSelectedCommit(BackupRepositoryKey repository, String commit) { }
-    public record WireTime(TimeKind kind, List<WireSelectedCommit> commitsByRepository) {
+    @Schema(description = "Time axis must agree with the selected profile", requiredProperties = {"kind", "commitsByRepository"})
+    public record WireTime(
+            @Schema(description = "CURRENT, SELECTED_VERSION or HISTORY") TimeKind kind,
+            @Schema(description = "Exact commits for SELECTED_VERSION; an empty list for CURRENT or HISTORY") List<WireSelectedCommit> commitsByRepository) {
         BackupTime domain() {
             Objects.requireNonNull(commitsByRepository);
             if (kind != TimeKind.SELECTED_VERSION && !commitsByRepository.isEmpty()) throw new IllegalArgumentException("Unexpected selected commits");
@@ -156,8 +167,14 @@ public final class BackupManifestCodec {
         }
     }
 
-    public record WireRequest(BackupProfile profile, WireScope scope, WireTime time,
-                              GitRepresentation gitRepresentation, SecretsSelection secrets) {
+    @Schema(description = "Strict backup JSON wire contract; unknown and missing fields are rejected",
+            requiredProperties = {"profile", "scope", "time", "gitRepresentation", "secrets"})
+    public record WireRequest(
+            @Schema(description = "Backup profile; must agree with the installation scope and time selection") BackupProfile profile,
+            @Schema(description = "Explicit workspace, repository-set or installation selection") WireScope scope,
+            @Schema(description = "Current state, exact selected commits or complete history, as required by the profile") WireTime time,
+            @Schema(description = "Git representation; NONE is invalid for history profiles") GitRepresentation gitRepresentation,
+            @Schema(description = "Secret handling; INCLUDE_ENCRYPTED requires INSTALLATION_FULL and appropriate authorization") SecretsSelection secrets) {
         BackupRequest domain() { return new BackupRequest(profile, scope.domain(), time.domain(), gitRepresentation, secrets); }
         static WireRequest from(BackupRequest r) {
             return new WireRequest(r.profile(), WireScope.from(r.scope()), WireTime.from(r.time()), r.gitRepresentation(), r.secrets());

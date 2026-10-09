@@ -1,5 +1,12 @@
 package com.taxonomy.composition.reformulation;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.export.reformulation.ReformulationReportRenderer;
 import com.taxonomy.export.reformulation.ReformulationDocxPort;
 import com.taxonomy.identity.StableIdentityHash;
@@ -23,6 +30,7 @@ import java.util.TreeMap;
 
 /** Explicit historical revision/receipt downloads; no live architecture or model lookup. */
 @RestController
+@Tag(name = "Reformulation reports")
 @RequestMapping("/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}")
 public class ReformulationReportController {
     private final ReformulationReportService reports;
@@ -39,16 +47,22 @@ public class ReformulationReportController {
     }
 
     @GetMapping("/revisions/{revision}/export")
-    public ResponseEntity<byte[]> revision(@PathVariable Long projectId, @PathVariable Long requirementId,
-            @PathVariable String proposalId, @PathVariable long revision, @RequestParam(defaultValue = "json") String format) {
+    @Operation(summary = "Export a saved reformulation revision",
+            description = "Downloads the exact historical proposal revision using format json, md, html or docx. Uses frozen source evidence rather than a new model call; exporting is not adoption. Response headers include an attachment filename and content SHA-256.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> revision(@Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId, @Parameter(description = "Requirement within the selected project") @PathVariable Long requirementId,
+            @Parameter(description = "Existing reformulation proposal identifier") @PathVariable String proposalId, @Parameter(description = "Exact retained revision number or commit, as required by this endpoint") @PathVariable long revision, @Parameter(description = "Export format: json, md, html or docx") @RequestParam(defaultValue = "json") String format) {
         return response(reports.revision(projectId, requirementId, proposalId, revision,
                 resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format,
                 projectId, requirementId);
     }
 
     @GetMapping("/adoptions/{commandId}/export")
-    public ResponseEntity<byte[]> adoption(@PathVariable Long projectId, @PathVariable Long requirementId,
-            @PathVariable String proposalId, @PathVariable String commandId, @RequestParam(defaultValue = "json") String format) {
+    @Operation(summary = "Export a recorded reformulation adoption",
+            description = "Downloads the historical adoption receipt identified by commandId with its reviewed text, preview and provenance. Supports json, md, html and docx without rerunning synthesis or changing requirement versions.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> adoption(@Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId, @Parameter(description = "Requirement within the selected project") @PathVariable Long requirementId,
+            @Parameter(description = "Existing reformulation proposal identifier") @PathVariable String proposalId, @Parameter(description = "Recorded idempotent adoption command identifier") @PathVariable String commandId, @Parameter(description = "Export format: json, md, html or docx") @RequestParam(defaultValue = "json") String format) {
         return response(reports.adoption(projectId, requirementId, proposalId, commandId,
                 resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format,
                 projectId, requirementId);

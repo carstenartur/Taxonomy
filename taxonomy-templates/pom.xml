@@ -12,6 +12,12 @@
     <name>Taxonomy Templates</name>
     <description>Document template Git storage, OOXML validation, materialization and WebDAV</description>
     <dependencies>
+        <!-- Own the API annotation dependency, as the other REST-bearing feature modules do. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-common</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>

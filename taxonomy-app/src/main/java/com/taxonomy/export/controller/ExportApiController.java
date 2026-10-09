@@ -1,5 +1,9 @@
 package com.taxonomy.export.controller;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -39,6 +43,14 @@ public class ExportApiController {
     private tools.jackson.databind.ObjectMapper recoveryObjectMapper;
 
 
+    /** Schema for existing map-based input; extension options remain accepted unchanged. */
+    @Schema(name = "DiagramAnalysisRequest", additionalProperties = Schema.AdditionalPropertiesValue.TRUE)
+    public record DiagramRequestSchema(
+            @Schema(description = "Non-blank business requirement to analyze", requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1)
+            String businessText,
+            @Schema(description = "Optional output locale; built-in Mermaid uses German for values beginning with de and English otherwise")
+            String locale) { }
+
     private static final Logger log = LoggerFactory.getLogger(ExportApiController.class);
 
     private final ExportFacade exportFacade;
@@ -55,6 +67,11 @@ public class ExportApiController {
             tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Visio file returned as binary attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
+                    + "use /api/diagram/current/{formatId} to export an existing view without another AI call.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
+    @ApiResponse(responseCode = "500", description = "Diagram file generation failed", content = @Content)
     @PostMapping("/diagram/visio")
     public ResponseEntity<byte[]> exportVisio(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -78,6 +95,10 @@ public class ExportApiController {
             tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "ArchiMate XML returned as attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
+                    + "use /api/diagram/current/{formatId} to export an existing view without another AI call.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
     @PostMapping("/diagram/archimate")
     public ResponseEntity<byte[]> exportArchiMate(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -97,6 +118,10 @@ public class ExportApiController {
             tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Mermaid text returned")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
+                    + "use /api/diagram/current/{formatId} to export an existing view without another AI call.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
     @PostMapping("/diagram/mermaid")
     public ResponseEntity<String> exportMermaid(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -122,6 +147,10 @@ public class ExportApiController {
             tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Structurizr DSL returned as text")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
+                    + "use /api/diagram/current/{formatId} to export an existing view without another AI call.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
     @PostMapping("/diagram/structurizr")
     public ResponseEntity<byte[]> exportStructurizrDsl(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -142,9 +171,14 @@ public class ExportApiController {
     @ApiResponse(responseCode = "200", description = "Diagram file returned as attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @ApiResponse(responseCode = "404", description = "Unknown format ID")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Business requirement and optional adapter options. This endpoint may execute analysis; "
+                    + "use /api/diagram/current/{formatId} to export an existing view without another AI call.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiagramRequestSchema.class)))
+    @ApiResponse(responseCode = "500", description = "Diagram file generation failed", content = @Content)
     @PostMapping("/diagram/export/{formatId}")
     public ResponseEntity<byte[]> exportByFormat(
-            @PathVariable String formatId,
+            @Parameter(description = "Registered export format identifier; discover formats through the extensions API") @PathVariable String formatId,
             @RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
         if (businessText == null || businessText.isBlank()) {
@@ -179,8 +213,10 @@ public class ExportApiController {
             description = "Serializes a client-provided working-view snapshot. No re-scoring, second node selection, or persistence occurs. Use project snapshot exports for historical provenance.")
     @ApiResponse(responseCode = "200", description = "Diagram file returned as attachment")
     @ApiResponse(responseCode = "400", description = "Missing, malformed or oversized architecture view")
+    @ApiResponse(responseCode = "404", description = "Unknown format identifier", content = @Content)
+    @ApiResponse(responseCode = "500", description = "File generation failed; working state unchanged")
     @PostMapping("/diagram/current/{formatId}")
-    public ResponseEntity<?> exportCurrentDiagram(@PathVariable("formatId") String formatId,
+    public ResponseEntity<?> exportCurrentDiagram(@Parameter(description = "Registered export format identifier") @PathVariable("formatId") String formatId,
             @RequestBody RequirementArchitectureView view) {
         Optional<ExportFormatExtension> extensionOpt = exportFormatRegistry.findByFormatId(formatId);
         if (extensionOpt.isEmpty()) {

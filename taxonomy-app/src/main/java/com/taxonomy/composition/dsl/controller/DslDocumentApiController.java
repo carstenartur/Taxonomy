@@ -47,7 +47,8 @@ public class DslDocumentApiController {
     // ── Export & current state ────────────────────────────────────────
 
     @GetMapping("/export")
-    @Operation(summary = "Export current architecture as DSL text")
+    @Operation(summary = "Export current architecture as DSL text",
+            description = "Serializes the current materialized architecture as plain-text DSL using the requested namespace. This is a current-state export, not an export of an arbitrary historical Git commit; it does not create a commit.")
     public ResponseEntity<String> exportCurrentArchitecture(
             @RequestParam(defaultValue = "default") String namespace) {
         String dsl = documents.exportAll(namespace);
@@ -57,7 +58,8 @@ public class DslDocumentApiController {
     }
 
     @GetMapping("/current")
-    @Operation(summary = "Get current architecture state as structured JSON")
+    @Operation(summary = "Get current architecture state as structured JSON",
+            description = "Returns the current materialized architecture's elements, relations, requirements, mappings, views and evidence, together with the resolved workspace viewContext. Reading this representation does not commit or materialize changes.")
     public ResponseEntity<Map<String, Object>> getCurrentArchitecture() {
         CanonicalArchitectureModel model = documents.buildCanonicalModel();
         String username = workspaceResolver.resolveCurrentUsername();
@@ -245,7 +247,8 @@ public class DslDocumentApiController {
     // ── Documents ────────────────────────────────────────────────────
 
     @GetMapping("/documents")
-    @Operation(summary = "List stored DSL documents")
+    @Operation(summary = "List stored DSL documents",
+            description = "Lists the stored materialized DSL document records and their source metadata. This read does not materialize documents or advance repository branches.")
     public ResponseEntity<List<ArchitectureDslDocument>> listDocuments() {
         return ResponseEntity.ok(documents.listDocuments());
     }

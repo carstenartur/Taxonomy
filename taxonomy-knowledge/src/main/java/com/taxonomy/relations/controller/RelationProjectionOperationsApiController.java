@@ -54,7 +54,8 @@ public class RelationProjectionOperationsApiController {
         this.membershipService = membershipService;
     }
 
-    @Operation(summary = "Inspect exact-branch projection readiness and recovery")
+    @Operation(summary = "Inspect exact-branch projection readiness and recovery",
+            description = "Inspects relation projection/index readiness against the current Git head in a writable repository context. Returns the head ETag when present and does not trigger a rebuild.")
     @GetMapping("/readiness")
     public ResponseEntity<ProjectionOperationResponse> readiness() {
         RepositoryContext context = writableContext(
@@ -74,7 +75,8 @@ public class RelationProjectionOperationsApiController {
                 context, status));
     }
 
-    @Operation(summary = "Rebuild an exact branch projection from Git")
+    @Operation(summary = "Rebuild an exact branch projection from Git",
+            description = "Rebuilds the database relation projection from the exact expected Git branch head in a writable repository context. Requires a head precondition and rejects source movement; rebuilding is not a new semantic relation edit.")
     @PostMapping("/rebuild")
     public ResponseEntity<ProjectionOperationResponse> rebuild(
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)

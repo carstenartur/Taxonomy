@@ -12,6 +12,12 @@
     <name>Taxonomy Interoperability</name>
     <description>Reviewed external-tool exchanges, durable mappings and OSLC integration</description>
     <dependencies>
+        <!-- Own the API annotation dependency, as the other REST-bearing feature modules do. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-common</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
         <!-- Validate DNS at connection establishment for scoped OSLC transport. -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>

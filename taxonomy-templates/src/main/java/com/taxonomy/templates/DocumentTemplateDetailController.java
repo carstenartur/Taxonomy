@@ -1,5 +1,8 @@
 package com.taxonomy.templates;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
@@ -27,6 +30,7 @@ import java.security.Principal;
 
 /** Accessible server-rendered history, comparison, inspection and restore workspace. */
 @Controller
+@Tag(name = "Document templates")
 public final class DocumentTemplateDetailController {
 
     private final DocumentTemplateService templates;
@@ -161,6 +165,9 @@ public final class DocumentTemplateDetailController {
     }
 
     @GetMapping("/admin/document-templates/{templateId}/test.docx")
+    @io.swagger.v3.oas.annotations.Operation(summary = "Render a document-template test report",
+            description = "Generates a DOCX preview using the decision-rationale template and the fixed preview data. Other template IDs are rejected. Returns a no-store attachment; this test report is not evidence of a user analysis.")
+    @ApiResponse(responseCode = "200", description = "Render a document-template test report response")
     public ResponseEntity<byte[]> testReport(@PathVariable String templateId) {
         if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId)) {
             throw new IllegalArgumentException(

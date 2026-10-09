@@ -1,5 +1,12 @@
 package com.taxonomy.portfolio.report;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.architecture.report.ArchitectureReportDocxRenderer;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 
@@ -11,6 +18,7 @@ import java.util.Locale;
 
 /** Reproducible architecture Word download from one saved analysis. */
 @RestController
+@Tag(name = "Snapshot architecture reports")
 @RequestMapping("/api/projects/{projectId}/snapshots/{snapshotId}/architecture-report")
 public class SnapshotArchitectureReportController {
     private final SnapshotWordReportService reports;
@@ -27,10 +35,13 @@ public class SnapshotArchitectureReportController {
     }
 
     @GetMapping("/docx")
+    @Operation(summary = "Download a frozen architecture report as Word",
+            description = "Loads the immutable project-analysis snapshot in the authenticated workspace and renders a DOCX attachment. Does not run another analysis. Optional language overrides the current locale; response headers identify the snapshot and graph, data and analysis fingerprints.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<byte[]> export(
-            @PathVariable Long projectId,
-            @PathVariable String snapshotId,
-            @RequestParam(required = false) String language) {
+            @Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId,
+            @Parameter(description = "Immutable analysis snapshot identifier") @PathVariable String snapshotId,
+            @Parameter(description = "Optional BCP-47 report language; otherwise the current locale") @RequestParam(required = false) String language) {
         Locale locale =
                 language == null || language.isBlank()
                         ? LocaleContextHolder.getLocale()

@@ -33,7 +33,8 @@ public class ProjectAutopilotController {
     }
 
     @GetMapping
-    @Operation(summary = "Read effective project Autopilot readiness and batch limit")
+    @Operation(summary = "Read effective project Autopilot readiness and batch limit",
+            description = "Reports the effective Autopilot policy, readiness and batch limits for this project. This GET does not enqueue any work or invoke a model.")
     public ProjectAutopilotStatus status(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return autopilotService.status(
@@ -41,7 +42,8 @@ public class ProjectAutopilotController {
     }
 
     @PostMapping("/run")
-    @Operation(summary = "Start bounded Autopilot operations for project requirements")
+    @Operation(summary = "Start bounded Autopilot operations for project requirements",
+            description = "Starts a bounded Autopilot batch for the authorized project according to the effective policy and supplied options. Returns 202 for accepted work; it does not claim that all project requirements have been analyzed.")
     public ResponseEntity<ProjectAutopilotRunView> run(
             @PathVariable Long projectId,
             @RequestBody(required = false) ProjectAutopilotRunRequest request) {
