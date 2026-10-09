@@ -1,0 +1,80 @@
+name: Publish verified REST contracts (one-time)
+
+on:
+  push:
+    branches: [transfer/openapi-contracts-20261009-verified]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-openapi-contract-publication-20261009
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'carstenartur/Taxonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout isolated transfer revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Reproduce hash-verified changes on exact main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/openapi-transfer
+          cp .github/transfer/openapi/part-* /tmp/openapi-transfer/
+          cp .github/transfer/openapi/apply.py /tmp/openapi-transfer/apply.py
+          git switch --detach a8b78e2cad64576ebbb5d1353c86652f985bd06e
+          python3 -S /tmp/openapi-transfer/apply.py
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Run Maven-owned REST documentation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am test \
+            -Dtest=RestApiDocumentationTest,OpenApiGeneratedContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            2>&1 | tee /tmp/openapi-transfer/maven.log
+      - name: Publish only the verified feature branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = a8b78e2cad64576ebbb5d1353c86652f985bd06e
+          git diff --exit-code
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github)"
+          target=fix/openapi-contracts-20261009
+          test -z "$(git ls-remote origin "refs/heads/$target")"
+          git config user.name "Carsten Hammer"
+          git config user.email "3164220+carstenartur@users.noreply.github.com"
+          git commit -m "docs(api): complete REST operation descriptions and verify generated OpenAPI"
+          git rev-parse HEAD | tee /tmp/openapi-transfer/published-commit.txt
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push origin "HEAD:refs/heads/$target"
+      - name: Retain focused verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: openapi-contract-verification
+          path: |
+            /tmp/openapi-transfer/maven.log
+            /tmp/openapi-transfer/published-commit.txt
+            taxonomy-app/target/surefire-reports/*OpenApi*
+            taxonomy-app/target/surefire-reports/*RestApi*
+          if-no-files-found: warn
+          retention-days: 7
