@@ -228,10 +228,21 @@ public class AiTargetCatalogService {
     }
 
     private static String slug(String value) {
-        String slug = value.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9._-]+", "-")
-                .replaceAll("^-+|-+$", "");
+        String slug = trimHyphens(value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-"));
         return slug.isBlank() ? "unspecified" : slug;
+    }
+
+    private static String trimHyphens(String value) {
+        int start = 0;
+        int end = value.length();
+        while (start < end && value.charAt(start) == '-') {
+            start++;
+        }
+        while (end > start && value.charAt(end - 1) == '-') {
+            end--;
+        }
+        return value.substring(start, end);
     }
 
     private static String sha256(String value) {

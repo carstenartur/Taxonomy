@@ -36,4 +36,15 @@ class LocalModelTargetIdentityTest {
         assertThat(target.displayName()).contains("paraphrase-multilingual-MiniLM-L12-v2");
         assertThat(ReflectionTestUtils.getField(embeddings, "model")).isNull();
     }
+
+    @Test
+    void targetSlugTrimsSeparatorsWithoutRegexBacktracking() {
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                AiTargetCatalogService.class, "slug", "  /My Model:v1// ")).isEqualTo("my-model-v1");
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                AiTargetCatalogService.class, "slug", "---")).isEqualTo("unspecified");
+        String hostile = "a" + "-".repeat(200_000) + "b";
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                AiTargetCatalogService.class, "slug", hostile)).isEqualTo(hostile);
+    }
 }
