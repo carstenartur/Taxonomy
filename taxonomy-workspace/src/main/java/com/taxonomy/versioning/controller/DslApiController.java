@@ -69,7 +69,8 @@ public class DslApiController {
     // ── Parse & validate ─────────────────────────────────────────────
 
     @PostMapping("/parse")
-    @Operation(summary = "Parse DSL text and return the canonical model as JSON")
+    @Operation(summary = "Parse DSL text and return the canonical model as JSON",
+            description = "Parses the supplied architecture DSL text into a structured document and returns parse diagnostics. Parsing alone does not commit, publish or materialize the architecture.")
     public ResponseEntity<Map<String, Object>> parseDsl(@RequestBody(required = false) String dslText) {
         var doc = parser.parse(dslText != null ? dslText : "");
         CanonicalArchitectureModel model = astMapper.map(doc);
@@ -89,7 +90,8 @@ public class DslApiController {
     }
 
     @PostMapping("/validate")
-    @Operation(summary = "Validate DSL text and return errors/warnings")
+    @Operation(summary = "Validate DSL text and return errors/warnings",
+            description = "Validates the supplied architecture DSL and returns its errors/warnings. Validation is a read-only check, distinct from the explicit materialization and Git commit operations.")
     public ResponseEntity<Map<String, Object>> validateDsl(@RequestBody(required = false) String dslText) {
         var doc = parser.parse(dslText != null ? dslText : "");
         CanonicalArchitectureModel model = astMapper.map(doc);

@@ -1,5 +1,12 @@
 package com.taxonomy.interop.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.exchange.ExchangeFormatException;
 import com.taxonomy.exchange.ReqifExchangeCodec;
@@ -15,28 +22,53 @@ import java.io.IOException;
 import java.util.*;
 
 @RestController
+@Tag(name = "OSLC provider")
 @RequestMapping("/oslc/scopes/{scope}")
 public class OslcProviderController {
     private final OslcProviderService service;
     private final WorkspaceResolver resolver;
     public OslcProviderController(OslcProviderService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }
-    @GetMapping("/catalog") public ResponseEntity<byte[]> catalog(@PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -> service.catalog(c, links)); }
-    @GetMapping("/projects/{project}/service") public ResponseEntity<byte[]> provider(@PathVariable String scope, @PathVariable long project, HttpServletRequest request) { return response(scope, request, (c, links) -> service.service(c, project, links)); }
-    @GetMapping("/projects/{project}/requirements") public ResponseEntity<byte[]> query(@PathVariable String scope, @PathVariable long project,
-            @RequestParam(defaultValue="0") int page, @RequestParam(name="oslc.pageSize", defaultValue="50") int size, HttpServletRequest request) {
+    @GetMapping("/catalog") @Operation(summary = "Read the scoped OSLC service catalog",
+            description = "Returns the read-only OSLC service catalog for the authenticated repository context. Supports RDF/XML, Turtle and JSON-LD through Accept negotiation, with representation-specific ETags.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> catalog(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -> service.catalog(c, links)); }
+    @GetMapping("/projects/{project}/service") @Operation(summary = "Read a project OSLC service provider",
+            description = "Returns service and query links for the authorized project in the selected OSLC scope. The service describes the supported read-only profile; it does not create or update requirements.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> provider(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, @Parameter(description = "Project identifier in the selected OSLC scope") @PathVariable long project, HttpServletRequest request) { return response(scope, request, (c, links) -> service.service(c, project, links)); }
+    @GetMapping("/projects/{project}/requirements") @Operation(summary = "Query project requirements through OSLC",
+            description = "Returns a bounded requirement page in the selected scope. page is zero-based and oslc.pageSize controls the page size. Only the declared paging and repository-context options are accepted; unsupported OSLC query options return 400.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> query(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, @Parameter(description = "Project identifier in the selected OSLC scope") @PathVariable long project,
+            @Parameter(description = "Zero-based page number") @RequestParam(defaultValue="0") int page, @Parameter(description = "Requested OSLC page size (query parameter oslc.pageSize)") @RequestParam(name="oslc.pageSize", defaultValue="50") int size, HttpServletRequest request) {
         return response(scope, request, (c, links) -> service.query(c, project, page, size, links));
     }
-    @GetMapping("/projects/{project}/requirements/{requirement}") public ResponseEntity<byte[]> requirement(@PathVariable String scope, @PathVariable long project, @PathVariable long requirement, HttpServletRequest request) {
+    @GetMapping("/projects/{project}/requirements/{requirement}") @Operation(summary = "Read the current OSLC requirement resource",
+            description = "Returns the current requirement representation in the authorized project and scope. Use the versions endpoint for immutable historical text; conditional headers can return 304 or 412.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> requirement(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, @Parameter(description = "Project identifier in the selected OSLC scope") @PathVariable long project, @Parameter(description = "Requirement identifier in that project") @PathVariable long requirement, HttpServletRequest request) {
         return response(scope, request, (c, links) -> service.requirement(c, project, requirement, null, links));
     }
-    @GetMapping("/projects/{project}/requirements/{requirement}/versions/{version}") public ResponseEntity<byte[]> version(@PathVariable String scope, @PathVariable long project, @PathVariable long requirement, @PathVariable long version, HttpServletRequest request) {
+    @GetMapping("/projects/{project}/requirements/{requirement}/versions/{version}") @Operation(summary = "Read an immutable OSLC requirement version",
+            description = "Returns the selected retained requirement version, not the current text, after project and scope authorization. Content negotiation and conditional representation ETags apply.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> version(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, @Parameter(description = "Project identifier in the selected OSLC scope") @PathVariable long project, @Parameter(description = "Requirement identifier in that project") @PathVariable long requirement, @Parameter(description = "Immutable requirement version identifier") @PathVariable long version, HttpServletRequest request) {
         return response(scope, request, (c, links) -> service.requirement(c, project, requirement, version, links));
     }
-    @GetMapping("/shapes/requirement") public ResponseEntity<byte[]> shape(@PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -> service.shape(links)); }
-    @GetMapping("/configurations/current") public ResponseEntity<byte[]> configuration(@PathVariable String scope, HttpServletRequest request) {
+    @GetMapping("/shapes/requirement") @Operation(summary = "Read the OSLC requirement resource shape",
+            description = "Describes the supported requirement RDF properties for this read-only provider profile. The authenticated scope is checked even though the shape is shared.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> shape(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -> service.shape(links)); }
+    @GetMapping("/configurations/current") @Operation(summary = "Read the current OSLC configuration context",
+            description = "Returns the configuration resource for the selected authorized repository/workspace/branch. Supplied Configuration-Context must match this exact configuration or the request returns 404.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> configuration(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, HttpServletRequest request) {
         return response(scope, request, (c, links) -> service.configuration(c, links));
     }
-    @GetMapping("/architecture/versions/{commit}") public ResponseEntity<byte[]> architecture(@PathVariable String scope, @PathVariable String commit, HttpServletRequest request) {
+    @GetMapping("/architecture/versions/{commit}") @Operation(summary = "Read an OSLC architecture checkpoint",
+            description = "Returns RDF for the exact architecture Git commit within the authorized scope. Does not substitute a different branch or current version. Temporarily unavailable version storage returns 503.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public ResponseEntity<byte[]> architecture(@Parameter(description = "Authorized OSLC scope identifier; routing data alone never grants access") @PathVariable String scope, @Parameter(description = "Exact retained architecture Git commit; required when no semantic revision is supplied") @PathVariable String commit, HttpServletRequest request) {
         return response(scope, request, (c, links) -> { try { return service.architectureVersion(c, commit, links); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture version is temporarily unavailable"); } });
     }
     private interface Resource { OslcRdf read(com.taxonomy.workspace.service.RepositoryContext context, OslcProviderService.Links links); }

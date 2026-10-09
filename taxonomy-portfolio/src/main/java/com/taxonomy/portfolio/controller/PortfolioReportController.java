@@ -33,7 +33,8 @@ public class PortfolioReportController {
     }
 
     @GetMapping("/{format}")
-    @Operation(summary = "Render a project or requirement portfolio report")
+    @Operation(summary = "Render a project or requirement portfolio report",
+            description = "Renders a downloadable report for the authorized project, optionally narrowed to one requirement and the selected matrix. The format selects the renderer and attachment type; unsupported formats return 400. Uses recorded portfolio evidence rather than starting analysis.")
     public ResponseEntity<byte[]> report(
             @PathVariable Long projectId,
             @PathVariable String format,

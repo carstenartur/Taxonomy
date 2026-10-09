@@ -17,7 +17,8 @@ public class SystemInformationController {
         this.information = information;
     }
 
-    @Operation(summary = "Read system and database persistence information", tags = {"Administration"})
+    @Operation(summary = "Read system and database persistence information", tags = {"Administration"},
+            description = "Returns the application's bounded system-information view for diagnostics, using the information service's redacted representation. This inspection does not trigger analysis or a health repair.")
     @GetMapping("/api/admin/system-information")
     public ResponseEntity<SystemInformationService.Snapshot> information(HttpServletRequest request) {
         if (!request.isUserInRole("ADMIN") && !request.isUserInRole("ROLE_ADMIN")) {

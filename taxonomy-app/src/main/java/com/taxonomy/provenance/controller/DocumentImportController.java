@@ -164,13 +164,15 @@ public class DocumentImportController {
         }
     }
 
-    @Operation(summary = "List source artifacts")
+    @Operation(summary = "List source artifacts",
+            description = "Lists registered source-artifact metadata used by the provenance subsystem. Does not upload, parse or reanalyze a document.")
     @GetMapping("/provenance/sources")
     public ResponseEntity<List<SourceArtifactDto>> listSources() {
         return ResponseEntity.ok(provenanceService.listAllArtifacts());
     }
 
-    @Operation(summary = "Get requirement provenance")
+    @Operation(summary = "Get requirement provenance",
+            description = "Returns the retained source links for the specified requirement identifier, including references to the original source/version. This read does not confirm new candidates or modify provenance.")
     @GetMapping("/provenance/links/{requirementId}")
     public ResponseEntity<List<RequirementSourceLinkDto>> getLinks(
             @PathVariable String requirementId) {

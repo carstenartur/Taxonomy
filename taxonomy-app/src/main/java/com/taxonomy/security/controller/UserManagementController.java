@@ -44,7 +44,8 @@ public class UserManagementController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get user by ID")
+    @Operation(summary = "Get user by ID",
+            description = "Reads one local user administration record. Unknown users return 404; credential secrets are not returned as part of the user view.")
     public ResponseEntity<Map<String, Object>> getUser(@PathVariable Long id) {
         return userManagementService.getUser(id)
                 .map(ResponseEntity::ok)
@@ -52,7 +53,8 @@ public class UserManagementController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new user")
+    @Operation(summary = "Create a new user",
+            description = "Creates a local user account with validated metadata and roles, recording the authenticated administrator as actor. Returns 201, or 409 for a conflicting account and 400 for invalid data.")
     public ResponseEntity<Object> createUser(@RequestBody Map<String, Object> body,
                                               Authentication authentication) {
         try {
@@ -67,7 +69,8 @@ public class UserManagementController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update user details (roles, displayName, email, enabled)")
+    @Operation(summary = "Update user details (roles, displayName, email, enabled)",
+            description = "Updates a local account's roles, display name, email or enabled state through the user-management service. Invalid changes are rejected and unknown users return 404; passwords use a separate command.")
     public ResponseEntity<Object> updateUser(@PathVariable Long id,
                                               @RequestBody Map<String, Object> body,
                                               Authentication authentication) {
@@ -81,7 +84,8 @@ public class UserManagementController {
     }
 
     @PutMapping("/{id}/password")
-    @Operation(summary = "Change a user's password (admin action)")
+    @Operation(summary = "Change a user's password (admin action)",
+            description = "Performs an administrator password change for a local account, recording the authenticated actor. Validates the replacement password, returns 404 for an unknown user and 400 for rejected changes; does not modify Keycloak credentials.")
     public ResponseEntity<Object> changePassword(@PathVariable Long id,
                                                   @RequestBody Map<String, String> body,
                                                   Authentication authentication) {
@@ -96,7 +100,8 @@ public class UserManagementController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Disable a user (soft delete)")
+    @Operation(summary = "Disable a user (soft delete)",
+            description = "Disables a local user account through a soft-delete administrative action and records its actor. Returns a confirmation message without deleting the account's historical records.")
     public ResponseEntity<Object> disableUser(@PathVariable Long id,
                                                Authentication authentication) {
         try {

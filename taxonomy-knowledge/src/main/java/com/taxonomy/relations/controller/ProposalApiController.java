@@ -74,7 +74,8 @@ public class ProposalApiController {
         this.membershipService = membershipService;
     }
 
-    @Operation(summary = "Propose relations")
+    @Operation(summary = "Propose relations",
+            description = "Invokes relation proposal generation for a required sourceCode and supported relationType in a writable repository context. Generated proposals need explicit review before becoming accepted relations.")
     @PostMapping("/proposals/propose")
     public ResponseEntity<List<RelationProposalDto>> proposeRelations(
             @RequestBody Map<String, String> body) {
@@ -109,7 +110,8 @@ public class ProposalApiController {
         }
     }
 
-    @Operation(summary = "List all proposals")
+    @Operation(summary = "List all proposals",
+            description = "Lists relation proposals in the authenticated repository context, including their current review state. Reading proposals does not run generation or accept a relation.")
     @GetMapping("/proposals")
     public ResponseEntity<List<RelationProposalDto>> getAllProposals() {
         RepositoryContext context = workspaceResolver
@@ -118,7 +120,8 @@ public class ProposalApiController {
                 proposalService.getAllProposalsInContext(context));
     }
 
-    @Operation(summary = "List pending proposals")
+    @Operation(summary = "List pending proposals",
+            description = "Lists only pending relation proposals in the authenticated repository context. Pending is an unreviewed state, not a confirmed architecture relation.")
     @GetMapping("/proposals/pending")
     public ResponseEntity<List<RelationProposalDto>> getPendingProposals() {
         RepositoryContext context = workspaceResolver
@@ -127,7 +130,8 @@ public class ProposalApiController {
                 proposalService.getPendingProposalsInContext(context));
     }
 
-    @Operation(summary = "List node proposals")
+    @Operation(summary = "List node proposals",
+            description = "Lists retained proposals involving the specified catalogue node in the authenticated repository context. The node code is validated by the underlying scoped catalogue rather than granting cross-repository access.")
     @GetMapping("/node/{code}/proposals")
     public ResponseEntity<List<RelationProposalDto>> getProposalsForNode(
             @PathVariable String code) {
@@ -142,7 +146,8 @@ public class ProposalApiController {
         return acceptProposal(id, null, null);
     }
 
-    @Operation(summary = "Accept proposal through an authoritative Git commit")
+    @Operation(summary = "Accept proposal through an authoritative Git commit",
+            description = "Accepts the proposal using an authoritative Git command with If-Match and an Idempotency-Key in the current writable repository. Returns the committed authority and projection status; changed heads are rejected.")
     @PostMapping("/proposals/{id}/accept")
     public ResponseEntity<Map<String, Object>> acceptProposal(
             @PathVariable Long id,
@@ -158,7 +163,8 @@ public class ProposalApiController {
         return rejectProposal(id, null, null);
     }
 
-    @Operation(summary = "Reject proposal through an authoritative Git commit")
+    @Operation(summary = "Reject proposal through an authoritative Git commit",
+            description = "Records rejection of the proposal through an authoritative Git command, with If-Match and an Idempotency-Key. Rejection is scoped to the current writable repository and does not discard its history.")
     @PostMapping("/proposals/{id}/reject")
     public ResponseEntity<Map<String, Object>> rejectProposal(
             @PathVariable Long id,
@@ -169,7 +175,8 @@ public class ProposalApiController {
         return reviewProposal(id, ReviewAction.REJECT, ifMatch, idempotencyKey);
     }
 
-    @Operation(summary = "Create proposal from hypothesis")
+    @Operation(summary = "Create proposal from hypothesis",
+            description = "Creates a reviewable proposal from the supplied source, target, relation type, confidence and rationale. The current repository must be writable; creation does not itself accept or publish the relation.")
     @PostMapping("/proposals/from-hypothesis")
     public ResponseEntity<RelationProposalDto> createFromHypothesis(
             @RequestBody Map<String, Object> body) {
@@ -229,7 +236,8 @@ public class ProposalApiController {
         return revertProposal(id, null, null);
     }
 
-    @Operation(summary = "Revert proposal through an authoritative Git commit")
+    @Operation(summary = "Revert proposal through an authoritative Git commit",
+            description = "Records an inverse review decision for the proposal through an authoritative Git command. Requires the current head precondition and an Idempotency-Key; an idempotent retry must not apply a second mutation.")
     @PostMapping("/proposals/{id}/revert")
     public ResponseEntity<Map<String, Object>> revertProposal(
             @PathVariable Long id,
@@ -253,7 +261,8 @@ public class ProposalApiController {
         return bulkAction(body, null, idempotencyKey);
     }
 
-    @Operation(summary = "Ordered Git-first bulk action on proposals")
+    @Operation(summary = "Ordered Git-first bulk action on proposals",
+            description = "Applies the requested proposal actions in order through Git-first commands. The initial head precondition and idempotency key bind the batch; returned per-item outcomes distinguish committed, failed and unexecuted actions.")
     @PostMapping("/proposals/bulk")
     public ResponseEntity<Map<String, Object>> bulkAction(
             @RequestBody Map<String, Object> body,

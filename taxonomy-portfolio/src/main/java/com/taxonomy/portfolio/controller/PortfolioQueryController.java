@@ -37,28 +37,32 @@ public class PortfolioQueryController {
     }
 
     @GetMapping("/portfolio")
-    @Operation(summary = "Build the consolidated requirement/solution/product portfolio")
+    @Operation(summary = "Build the consolidated requirement/solution/product portfolio",
+            description = "Builds the authorized project portfolio view, optionally narrowed by the supplied query filters. The response combines recorded requirements, mappings and coverage; it does not run a new model analysis.")
     public ProjectPortfolioView portfolio(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return aggregationService.build(projectId, scope.username(), scope.context());
     }
 
     @PostMapping("/conflicts/detect")
-    @Operation(summary = "Create deterministic, human-reviewable conflict hypotheses")
+    @Operation(summary = "Create deterministic, human-reviewable conflict hypotheses",
+            description = "Derives conflict candidates from the project's existing portfolio evidence and stores them for review. Detection is not proof that two requirements are incompatible and does not automatically resolve or accept candidates.")
     public List<ConflictView> detectConflicts(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return conflictService.detect(projectId, scope.username(), scope.context());
     }
 
     @GetMapping("/conflicts")
-    @Operation(summary = "List project conflict hypotheses and decisions")
+    @Operation(summary = "List project conflict hypotheses and decisions",
+            description = "Lists retained conflict candidates and their review decisions for the authorized project. An unreviewed candidate is not a confirmed inconsistency.")
     public List<ConflictView> listConflicts(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return conflictService.list(projectId, scope.username(), scope.context());
     }
 
     @PatchMapping("/conflicts/{conflictId}")
-    @Operation(summary = "Confirm, reject or resolve a conflict hypothesis")
+    @Operation(summary = "Confirm, reject or resolve a conflict hypothesis",
+            description = "Records the caller's review decision for an identified portfolio conflict in the authorized project and workspace. Confirmation, rejection or resolution is a human decision and does not rewrite historical analysis evidence.")
     public ConflictView reviewConflict(@PathVariable Long projectId,
                                        @PathVariable Long conflictId,
                                        @RequestBody ReviewConflictRequest request) {

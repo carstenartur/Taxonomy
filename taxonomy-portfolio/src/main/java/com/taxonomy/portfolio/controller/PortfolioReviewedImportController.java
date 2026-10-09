@@ -47,7 +47,8 @@ public class PortfolioReviewedImportController {
     }
 
     @PostMapping("/import-review")
-    @Operation(summary = "Atomically apply a reviewed mixed document import")
+    @Operation(summary = "Atomically apply a reviewed mixed document import",
+            description = "Validates and atomically persists the reviewed mixed-item import in the authorized project. Analysis is queued only when analyzeAfterImport is explicitly enabled and affected requirements exist; imported evidence is not automatically a completed analysis.")
     public ResponseEntity<ReviewedImportResult> importReviewed(
             @PathVariable Long projectId,
             @RequestBody ReviewedImportRequest request) {

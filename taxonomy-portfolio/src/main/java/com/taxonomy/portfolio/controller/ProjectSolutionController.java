@@ -34,7 +34,8 @@ public class ProjectSolutionController {
     }
 
     @PostMapping
-    @Operation(summary = "Add or update a reusable solution in a project")
+    @Operation(summary = "Add or update a reusable solution in a project",
+            description = "Adds a solution to the authorized project using the supplied catalogue reference and project-specific information. Requirement links and product candidates are managed separately.")
     public ProjectSolutionView add(@PathVariable Long projectId,
                                    @RequestBody AddProjectSolutionRequest request) {
         RequestScope scope = scope();
@@ -43,7 +44,8 @@ public class ProjectSolutionController {
     }
 
     @GetMapping
-    @Operation(summary = "List project solutions with requirement and product coverage")
+    @Operation(summary = "List project solutions with requirement and product coverage",
+            description = "Lists the authorized project's solutions together with recorded requirement links and product coverage. Does not invoke a model or refresh external product information.")
     public List<ProjectSolutionView> list(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return solutionService.listProjectSolutions(
@@ -51,7 +53,8 @@ public class ProjectSolutionController {
     }
 
     @PostMapping("/propose-from-taxonomy")
-    @Operation(summary = "Propose reusable solutions from confirmed taxonomy coverage")
+    @Operation(summary = "Propose reusable solutions from confirmed taxonomy coverage",
+            description = "Derives project-solution proposals from the project's existing confirmed taxonomy mappings. Proposed solutions remain subject to review and are not automatically approved product choices.")
     public List<ProjectSolutionView> propose(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return solutionService.proposeFromCurrentMappings(
@@ -59,7 +62,8 @@ public class ProjectSolutionController {
     }
 
     @PatchMapping("/{projectSolutionId}")
-    @Operation(summary = "Review and classify a project solution")
+    @Operation(summary = "Review and classify a project solution",
+            description = "Records the review/classification and metadata changes for a project solution in the authorized workspace. This does not overwrite the source requirement snapshots.")
     public ProjectSolutionView update(@PathVariable Long projectId,
                                       @PathVariable Long projectSolutionId,
                                       @RequestBody UpdateProjectSolutionRequest request) {
@@ -69,7 +73,8 @@ public class ProjectSolutionController {
     }
 
     @PostMapping("/{projectSolutionId}/requirements")
-    @Operation(summary = "Link a project solution to one requirement snapshot")
+    @Operation(summary = "Link a project solution to one requirement snapshot",
+            description = "Links an existing project solution to the explicitly selected requirement snapshot in the authorized project. The link records coverage against that snapshot rather than silently following later requirement edits.")
     public ProjectSolutionView linkRequirement(
             @PathVariable Long projectId,
             @PathVariable Long projectSolutionId,

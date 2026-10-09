@@ -38,7 +38,8 @@ public class ProductCatalogController {
     }
 
     @PostMapping("/products")
-    @Operation(summary = "Create a sourced and dated product catalogue entry")
+    @Operation(summary = "Create a sourced and dated product catalogue entry",
+            description = "Creates a product catalogue entry in the authenticated workspace from the supplied metadata. Taxonomy coverage and project candidacy are managed through their separate operations.")
     public ResponseEntity<ProductView> create(@RequestBody CreateProductRequest request) {
         RequestScope scope = scope();
         ProductView product = productService.createProduct(
@@ -47,21 +48,24 @@ public class ProductCatalogController {
     }
 
     @GetMapping("/products")
-    @Operation(summary = "List sourced products in the current workspace")
+    @Operation(summary = "List sourced products in the current workspace",
+            description = "Lists product catalogue entries in the authenticated workspace. This read does not query external vendors or invoke an AI provider.")
     public List<ProductView> list() {
         RequestScope scope = scope();
         return productService.listProducts(scope.username(), scope.context());
     }
 
     @GetMapping("/products/{productId}")
-    @Operation(summary = "Read one product including claim provenance")
+    @Operation(summary = "Read one product including claim provenance",
+            description = "Reads one product catalogue entry visible in the authenticated workspace, including its retained coverage information. The product identifier does not grant access to another workspace.")
     public ProductView get(@PathVariable Long productId) {
         RequestScope scope = scope();
         return productService.getProduct(productId, scope.username(), scope.context());
     }
 
     @PatchMapping("/products/{productId}")
-    @Operation(summary = "Update a product claim and verification timestamp")
+    @Operation(summary = "Update a product claim and verification timestamp",
+            description = "Updates the specified product's catalogue metadata in the authenticated workspace. Historical requirement analyses are not rerun by this command.")
     public ProductView update(@PathVariable Long productId,
                               @RequestBody UpdateProductRequest request) {
         RequestScope scope = scope();
@@ -70,7 +74,8 @@ public class ProductCatalogController {
     }
 
     @PostMapping("/products/{productId}/taxonomy-coverage")
-    @Operation(summary = "Create or update evidence-backed product taxonomy coverage")
+    @Operation(summary = "Create or update evidence-backed product taxonomy coverage",
+            description = "Creates or updates a product's taxonomy coverage entry in the current authorized workspace. The supplied evidence and review state are recorded; coverage is not inferred from a product name.")
     public ProductView upsertCoverage(
             @PathVariable Long productId,
             @RequestBody UpsertTaxonomyCoverageRequest request) {
@@ -80,7 +85,8 @@ public class ProductCatalogController {
     }
 
     @PostMapping("/projects/{projectId}/solutions/{projectSolutionId}/products")
-    @Operation(summary = "Add or review a product candidate for a project solution")
+    @Operation(summary = "Add or review a product candidate for a project solution",
+            description = "Adds or updates a product candidate for the specified project solution, including its review and rationale data. This does not automatically select the product for unrelated requirements.")
     public SolutionProductCandidateView upsertCandidate(
             @PathVariable Long projectId,
             @PathVariable Long projectSolutionId,
@@ -91,7 +97,8 @@ public class ProductCatalogController {
     }
 
     @GetMapping("/projects/{projectId}/solutions/{projectSolutionId}/products")
-    @Operation(summary = "List product candidates for a project solution")
+    @Operation(summary = "List product candidates for a project solution",
+            description = "Returns product candidates and their evidence for the authorized project-solution context. Candidate status is distinct from an approved product selection.")
     public List<SolutionProductCandidateView> listCandidates(
             @PathVariable Long projectId,
             @PathVariable Long projectSolutionId) {

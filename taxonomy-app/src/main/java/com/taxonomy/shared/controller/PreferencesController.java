@@ -40,7 +40,8 @@ public class PreferencesController {
      * Returns all current preferences. The {@code dsl.remote.token} value is masked.
      */
     @GetMapping
-    @Operation(summary = "Get all preferences (token is masked)")
+    @Operation(summary = "Get all preferences (token is masked)",
+            description = "Reads the effective preference map, combining persisted overrides and application defaults. This read does not create a configuration commit.")
     public ResponseEntity<Map<String, Object>> getAll() {
         return ResponseEntity.ok(preferencesService.getAll());
     }
@@ -53,7 +54,8 @@ public class PreferencesController {
      * @param authentication the current authenticated user (used as commit author)
      */
     @PutMapping
-    @Operation(summary = "Update preferences (creates a new Git commit)")
+    @Operation(summary = "Update preferences (creates a new Git commit)",
+            description = "Applies a partial map of preference changes and commits the complete resulting configuration to JGit for audit. Returns effective preferences; it does not silently treat a persistence failure as a successful update.")
     public ResponseEntity<Map<String, Object>> update(
             @RequestBody Map<String, Object> changes,
             Authentication authentication) {
@@ -71,7 +73,8 @@ public class PreferencesController {
      * Resets all preferences to their application.properties defaults and commits to JGit.
      */
     @PostMapping("/reset")
-    @Operation(summary = "Reset preferences to defaults")
+    @Operation(summary = "Reset preferences to defaults",
+            description = "Resets preferences to the application.properties defaults and commits the resulting configuration with the authenticated actor. Returns the effective preference map; persistence failures return 500.")
     public ResponseEntity<Map<String, Object>> reset(Authentication authentication) {
         try {
             String author = authentication != null ? authentication.getName() : "unknown";
@@ -87,7 +90,8 @@ public class PreferencesController {
      * Returns the commit history of the preferences repository, newest first.
      */
     @GetMapping("/history")
-    @Operation(summary = "Get preferences change history")
+    @Operation(summary = "Get preferences change history",
+            description = "Returns the preferences repository's commit history, newest first, for auditing configuration changes. This read does not reset or apply any previous configuration.")
     public ResponseEntity<List<PreferencesCommit>> getHistory() {
         try {
             return ResponseEntity.ok(preferencesService.getHistory());

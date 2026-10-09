@@ -36,7 +36,8 @@ public class SolutionCatalogController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a reusable workspace solution")
+    @Operation(summary = "Create a reusable workspace solution",
+            description = "Creates a reusable solution catalogue entry in the authenticated workspace. Its coverage and project-specific use are established through separate explicit commands.")
     public ResponseEntity<SolutionView> create(@RequestBody CreateSolutionRequest request) {
         RequestScope scope = scope();
         SolutionView solution = solutionService.createSolution(
@@ -45,21 +46,24 @@ public class SolutionCatalogController {
     }
 
     @GetMapping
-    @Operation(summary = "List reusable solutions in the current workspace")
+    @Operation(summary = "List reusable solutions in the current workspace",
+            description = "Lists reusable solution catalogue entries visible in the authenticated workspace. The response is a catalogue read, not a recommendation or automatic adoption.")
     public List<SolutionView> list() {
         RequestScope scope = scope();
         return solutionService.listSolutions(scope.username(), scope.context());
     }
 
     @GetMapping("/{solutionId}")
-    @Operation(summary = "Read one reusable solution")
+    @Operation(summary = "Read one reusable solution",
+            description = "Reads a reusable solution catalogue entry and its recorded coverage within the authenticated workspace. This does not create a project-specific solution.")
     public SolutionView get(@PathVariable Long solutionId) {
         RequestScope scope = scope();
         return solutionService.getSolution(solutionId, scope.username(), scope.context());
     }
 
     @PatchMapping("/{solutionId}")
-    @Operation(summary = "Update reusable solution metadata")
+    @Operation(summary = "Update reusable solution metadata",
+            description = "Updates the reusable solution's catalogue metadata in the authenticated workspace. Existing immutable requirement analyses are not recomputed.")
     public SolutionView update(@PathVariable Long solutionId,
                                @RequestBody UpdateSolutionRequest request) {
         RequestScope scope = scope();
@@ -68,7 +72,8 @@ public class SolutionCatalogController {
     }
 
     @PostMapping("/{solutionId}/taxonomy-coverage")
-    @Operation(summary = "Create or update evidence-backed taxonomy coverage")
+    @Operation(summary = "Create or update evidence-backed taxonomy coverage",
+            description = "Creates or updates the specified reusable solution's taxonomy coverage in the authenticated workspace. Records the supplied evidence/review state without assigning the solution to every matching project.")
     public SolutionView upsertCoverage(@PathVariable Long solutionId,
                                        @RequestBody UpsertTaxonomyCoverageRequest request) {
         RequestScope scope = scope();

@@ -59,7 +59,8 @@ public class ProjectPortfolioController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a project")
+    @Operation(summary = "Create a project",
+            description = "Creates a project owned/scoped according to the authenticated workspace context. Returns 201 and the project's Location; requirements and analyses are created separately.")
     public ResponseEntity<ProjectView> createProject(@RequestBody CreateProjectRequest request) {
         RequestScope scope = scope();
         ProjectView project = projectService.createProject(request, scope.username(), scope.context());
@@ -67,21 +68,24 @@ public class ProjectPortfolioController {
     }
 
     @GetMapping
-    @Operation(summary = "List projects in the current workspace")
+    @Operation(summary = "List projects in the current workspace",
+            description = "Lists projects visible to the authenticated user in the current workspace. Repository or workspace identifiers from another context do not expand the result.")
     public List<ProjectView> listProjects() {
         RequestScope scope = scope();
         return projectService.listProjects(scope.username(), scope.context());
     }
 
     @GetMapping("/{projectId}")
-    @Operation(summary = "Read one project")
+    @Operation(summary = "Read one project",
+            description = "Reads one project after validating visibility in the authenticated workspace. This read does not create a project or provision analysis work.")
     public ProjectView getProject(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return projectService.getProject(projectId, scope.username(), scope.context());
     }
 
     @PatchMapping("/{projectId}")
-    @Operation(summary = "Update project metadata")
+    @Operation(summary = "Update project metadata",
+            description = "Updates the authorized project's metadata from the supplied request. This command does not change immutable requirement versions or analysis snapshots.")
     public ProjectView updateProject(@PathVariable Long projectId,
                                      @RequestBody UpdateProjectRequest request) {
         RequestScope scope = scope();
@@ -89,7 +93,8 @@ public class ProjectPortfolioController {
     }
 
     @PostMapping("/{projectId}/requirements")
-    @Operation(summary = "Create one project requirement and its initial immutable version")
+    @Operation(summary = "Create one project requirement and its initial immutable version",
+            description = "Creates a requirement and its initial immutable text version in the authorized project. Returns 201 with a Location for the requirement; analysis is a separate action.")
     public ResponseEntity<RequirementView> createRequirement(
             @PathVariable Long projectId,
             @RequestBody CreateRequirementRequest request) {
@@ -102,7 +107,8 @@ public class ProjectPortfolioController {
     }
 
     @PostMapping("/{projectId}/requirements/import")
-    @Operation(summary = "Import candidates as separate requirements, optionally queue their analysis")
+    @Operation(summary = "Import candidates as separate requirements, optionally queue their analysis",
+            description = "Imports a bounded list of reviewed candidates as separate project requirements. Optional analyzeAfterImport queues analysis of the imported IDs only; 201 confirms the import, not completion of the optional job.")
     public ResponseEntity<ImportRequirementsResult> importRequirements(
             @PathVariable Long projectId,
             @RequestBody ImportRequirementsRequest request) {
@@ -126,14 +132,16 @@ public class ProjectPortfolioController {
     }
 
     @GetMapping("/{projectId}/requirements")
-    @Operation(summary = "List project requirements")
+    @Operation(summary = "List project requirements",
+            description = "Lists requirements belonging to the authorized project in the current workspace. Returns recorded requirement state without starting analysis.")
     public List<RequirementView> listRequirements(@PathVariable Long projectId) {
         RequestScope scope = scope();
         return projectService.listRequirements(projectId, scope.username(), scope.context());
     }
 
     @GetMapping("/{projectId}/requirements/{requirementId}")
-    @Operation(summary = "Read one project requirement")
+    @Operation(summary = "Read one project requirement",
+            description = "Reads the specified requirement only within its authorized project and workspace, including the current recorded version information. Does not recalculate analysis results.")
     public RequirementView getRequirement(@PathVariable Long projectId,
                                           @PathVariable Long requirementId) {
         RequestScope scope = scope();
@@ -142,7 +150,8 @@ public class ProjectPortfolioController {
     }
 
     @PatchMapping("/{projectId}/requirements/{requirementId}")
-    @Operation(summary = "Update requirement metadata without rewriting historical text")
+    @Operation(summary = "Update requirement metadata without rewriting historical text",
+            description = "Updates requirement metadata within the authorized project. Text history remains immutable; use the version-creation operation to change the requirement text.")
     public RequirementView updateRequirement(@PathVariable Long projectId,
                                              @PathVariable Long requirementId,
                                              @RequestBody UpdateRequirementRequest request) {
@@ -152,7 +161,8 @@ public class ProjectPortfolioController {
     }
 
     @PostMapping("/{projectId}/requirements/{requirementId}/versions")
-    @Operation(summary = "Create or select an immutable requirement text version")
+    @Operation(summary = "Create or select an immutable requirement text version",
+            description = "Creates or selects the immutable version for the supplied requirement text and records it as the current version. Returns 201 and a version Location without rewriting older text or rerunning saved analyses.")
     public ResponseEntity<RequirementVersionView> addRequirementVersion(
             @PathVariable Long projectId,
             @PathVariable Long requirementId,
@@ -167,7 +177,8 @@ public class ProjectPortfolioController {
     }
 
     @GetMapping("/{projectId}/requirements/{requirementId}/versions")
-    @Operation(summary = "List immutable requirement versions")
+    @Operation(summary = "List immutable requirement versions",
+            description = "Lists the retained immutable text versions of this requirement after authorizing its project and workspace. Reading history does not select a new active version.")
     public List<RequirementVersionView> listRequirementVersions(
             @PathVariable Long projectId,
             @PathVariable Long requirementId) {

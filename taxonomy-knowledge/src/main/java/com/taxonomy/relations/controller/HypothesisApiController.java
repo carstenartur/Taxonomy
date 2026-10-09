@@ -35,7 +35,8 @@ public class HypothesisApiController {
     }
 
     @GetMapping
-    @Operation(summary = "List relation hypotheses, optionally filtered by status")
+    @Operation(summary = "List relation hypotheses, optionally filtered by status",
+            description = "Lists relation hypotheses from the authenticated repository context, optionally restricted to one status. Proposed evidence is not equivalent to an accepted knowledge-graph relation.")
     public ResponseEntity<List<RelationHypothesis>> listHypotheses(
             @RequestParam(required = false) HypothesisStatus status) {
         RepositoryContext context = currentRepositoryContext();
@@ -69,7 +70,8 @@ public class HypothesisApiController {
     }
 
     @PostMapping("/{id}/reject")
-    @Operation(summary = "Reject a relation hypothesis")
+    @Operation(summary = "Reject a relation hypothesis",
+            description = "Marks one relation hypothesis rejected in the authenticated repository context. Missing hypotheses return 404 and invalid state transitions return 400; this does not promote a relation.")
     public ResponseEntity<Map<String, Object>> rejectHypothesis(@PathVariable Long id) {
         RepositoryContext context = currentRepositoryContext();
         try {
@@ -106,7 +108,8 @@ public class HypothesisApiController {
     }
 
     @GetMapping("/{id}/evidence")
-    @Operation(summary = "Get evidence records for a hypothesis")
+    @Operation(summary = "Get evidence records for a hypothesis",
+            description = "Reads retained evidence for one hypothesis in the authenticated repository context. Returns 404 when the hypothesis is unavailable in that context; no model call is made.")
     public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id) {
         RepositoryContext context = currentRepositoryContext();
         try {

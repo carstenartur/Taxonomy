@@ -1,5 +1,12 @@
 package com.taxonomy.shared.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import com.taxonomy.shared.config.I18nConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +33,7 @@ import java.util.Set;
  * <p>Response is cached by the browser using standard HTTP cache headers.
  */
 @RestController
+@Tag(name = "Localization")
 @RequestMapping("/api/i18n")
 public class I18nApiController {
 
@@ -44,7 +52,10 @@ public class I18nApiController {
      * @return key-value map of all messages
      */
     @GetMapping("/{locale}")
-    public Map<String, String> getTranslations(@PathVariable String locale) {
+    @Operation(summary = "Read translated GUI messages",
+            description = "Resolves the default message-bundle keys for a BCP-47 locale such as de or en. Returns a key-to-message JSON object using the configured message-source fallback. Does not change the account language or LLM provider language.")
+    @ApiResponse(responseCode = "200", description = "Operation completed")
+    public Map<String, String> getTranslations(@Parameter(description = "BCP-47 language tag, for example de or en") @PathVariable String locale) {
         Locale resolved = Locale.forLanguageTag(locale);
         Map<String, String> messages = new HashMap<>();
 
