@@ -6,7 +6,11 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
 
-/** Single-process lifecycle. Only operator-installed local IDs can select executable bytes. */
+/**
+ * Single-process lifecycle. Only operator-installed local IDs can select executable bytes.
+ * The runtime monitor covers complete commands and inventory snapshots, including callers
+ * using another coordinator or the runtime shutdown API.
+ */
 public final class PluginLifecycleCoordinator {
     private final Pf4jPluginRuntime runtime;
     private final Path directory;
@@ -20,68 +24,74 @@ public final class PluginLifecycleCoordinator {
         this.enabled = enabled; this.clustered = clustered;
     }
 
-    public synchronized PluginIdentity activate(String id) {
-        requireManagement(id);
-        var existing = findInstalled(id);
-        if (existing != null) {
-            requireDynamic(existing);
-            if (runtime.isDraining(id)) throw new PluginOperationException("DRAINING");
-            if (runtime.isStarted(id)) return existing.identity();
-        } else {
-            Path artifact = localArtifact(id);
-            try {
-                var candidate = validator.validate(artifact);
-                requireDynamic(candidate);
-                runtime.install(artifact, candidate.identity());
-                existing = findInstalled(id);
-                // install reads an immutable copy; never trust the earlier ordering/lookup read.
-                if (existing == null || !existing.identity().equals(candidate.identity())) {
-                    if (existing != null) runtime.unload(id);
-                    throw new PluginOperationException("ARTIFACT_CHANGED");
-                }
+    public PluginIdentity activate(String id) {
+        synchronized (runtime) {
+            requireManagement(id);
+            var existing = findInstalled(id);
+            if (existing != null) {
                 requireDynamic(existing);
-            } catch (PluginOperationException rejected) { throw rejected; }
-            catch (RuntimeException rejected) { throw new PluginOperationException("ADMISSION_REJECTED"); }
+                if (runtime.isDraining(id)) throw new PluginOperationException("DRAINING");
+                if (runtime.isStarted(id)) return existing.identity();
+            } else {
+                Path artifact = localArtifact(id);
+                try {
+                    var candidate = validator.validate(artifact);
+                    requireDynamic(candidate);
+                    runtime.install(artifact, candidate.identity());
+                    existing = findInstalled(id);
+                    // install reads an immutable copy; never trust the earlier ordering/lookup read.
+                    if (existing == null || !existing.identity().equals(candidate.identity())) {
+                        if (existing != null) runtime.unload(id);
+                        throw new PluginOperationException("ARTIFACT_CHANGED");
+                    }
+                    requireDynamic(existing);
+                } catch (PluginOperationException rejected) { throw rejected; }
+                catch (RuntimeException rejected) { throw new PluginOperationException("ADMISSION_REJECTED"); }
+            }
+            try { runtime.start(id); return existing.identity(); }
+            catch (RuntimeException rejected) { throw new PluginOperationException("START_REJECTED"); }
         }
-        try { runtime.start(id); return existing.identity(); }
-        catch (RuntimeException rejected) { throw new PluginOperationException("START_REJECTED"); }
     }
 
-    public synchronized PluginOperationResult deactivate(String id, Duration timeout) {
-        PluginIdentity identity = null;
-        try {
-            requireManagement(id);
-            if (timeout == null || timeout.isNegative() || timeout.compareTo(Duration.ofSeconds(30)) > 0)
-                throw new PluginOperationException("INVALID_TIMEOUT");
-            var plugin = findInstalled(id);
-            if (plugin == null) throw new PluginOperationException("NOT_INSTALLED");
-            identity = plugin.identity(); requireDynamic(plugin);
-            if (!runtime.stop(id, timeout))
-                return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, "INVOCATIONS_ACTIVE");
-            runtime.unload(id);
-            return new PluginOperationResult(id, identity, PluginOperationResult.Status.STOPPED, "STOPPED");
-        } catch (PluginOperationException rejected) {
-            return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, rejected.code());
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, "INTERRUPTED");
-        } catch (RuntimeException failure) {
-            // A failing close must not retain a stopped classloader. A still-active dependent
-            // or a draining invocation must keep its loader and resources intact.
-            if (findInstalled(id) != null && !runtime.isStarted(id)) {
-                try { runtime.unload(id); } catch (RuntimeException ignored) { /* reported as cleanup failure */ }
-                return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, "CLEANUP_FAILED");
+    public PluginOperationResult deactivate(String id, Duration timeout) {
+        synchronized (runtime) {
+            PluginIdentity identity = null;
+            try {
+                requireManagement(id);
+                if (timeout == null || timeout.isNegative() || timeout.compareTo(Duration.ofSeconds(30)) > 0)
+                    throw new PluginOperationException("INVALID_TIMEOUT");
+                var plugin = findInstalled(id);
+                if (plugin == null) throw new PluginOperationException("NOT_INSTALLED");
+                identity = plugin.identity(); requireDynamic(plugin);
+                if (!runtime.stop(id, timeout))
+                    return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, "INVOCATIONS_ACTIVE");
+                runtime.unload(id);
+                return new PluginOperationResult(id, identity, PluginOperationResult.Status.STOPPED, "STOPPED");
+            } catch (PluginOperationException rejected) {
+                return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, rejected.code());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, "INTERRUPTED");
+            } catch (RuntimeException failure) {
+                // A failing close must not retain a stopped classloader. A still-active dependent
+                // or a draining invocation must keep its loader and resources intact.
+                if (findInstalled(id) != null && !runtime.isStarted(id)) {
+                    try { runtime.unload(id); } catch (RuntimeException ignored) { /* reported as cleanup failure */ }
+                    return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, "CLEANUP_FAILED");
+                }
+                return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, "DEPENDENTS_ACTIVE");
             }
-            return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, "DEPENDENTS_ACTIVE");
         }
     }
 
     public boolean enabled() { return enabled; }
     public boolean clustered() { return clustered; }
-    public synchronized List<InstalledPlugin> installed() {
-        return runtime.installed().stream().map(p -> new InstalledPlugin(p,
-                runtime.isDraining(p.identity().id()) ? "DRAINING" : runtime.isStarted(p.identity().id()) ? "ACTIVE" : "INSTALLED"))
-                .toList();
+    public List<InstalledPlugin> installed() {
+        synchronized (runtime) {
+            return runtime.installed().stream().map(p -> new InstalledPlugin(p,
+                    runtime.isDraining(p.identity().id()) ? "DRAINING" : runtime.isStarted(p.identity().id()) ? "ACTIVE" : "INSTALLED"))
+                    .toList();
+        }
     }
     public record InstalledPlugin(PluginDescriptor descriptor, String state) { }
 

@@ -22,6 +22,44 @@ class PluginLifecycleConcurrencyTest {
     private PluginLifecycleCoordinator coordinator(Pf4jPluginRuntime runtime) throws Exception {
         return new PluginLifecycleCoordinator(runtime, root(), true, false);
     }
+    @Test void separateCoordinatorsAdmitTheSameArtifactIdempotently() throws Exception {
+        PluginJarFixture.create(root(), "shared.jar", "example.shared");
+        var executor = Executors.newFixedThreadPool(2, task -> {
+            Thread thread = new Thread(task, "parallel-plugin-management");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            for (int attempt = 0; attempt < 20; attempt++) {
+                var catalog = new PluginCatalog();
+                try (var runtime = runtime(catalog)) {
+                    var first = coordinator(runtime);
+                    var second = coordinator(runtime);
+                    var ready = new CountDownLatch(2);
+                    var release = new CountDownLatch(1);
+                    var calls = new ArrayList<Future<PluginIdentity>>();
+                    for (var management : List.of(first, second)) {
+                        calls.add(executor.submit(() -> {
+                            ready.countDown();
+                            if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("management not released");
+                            return management.activate("example.shared");
+                        }));
+                    }
+                    try { assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue(); }
+                    finally { release.countDown(); }
+                    var identity = calls.getFirst().get(5, TimeUnit.SECONDS);
+                    assertThat(calls.getLast().get(5, TimeUnit.SECONDS)).isEqualTo(identity);
+                    assertThat(runtime.openClassLoaders()).isEqualTo(1);
+                    assertThat(catalog.snapshot().plugins()).extracting(p -> p.identity()).containsExactly(identity);
+                    try (var lease = catalog.acquire(ExtensionKey.report("external", "txt"), ReportRendererExtension.class)) {
+                        assertThat(lease.plugin()).isEqualTo(identity);
+                        assertThat(lease.extension().render(ReportRenderContext.ofPayload("same-generation")).utf8())
+                                .isEqualTo("same-generation");
+                    }
+                }
+            }
+        } finally { executor.shutdownNow(); }
+    }
     @Test void admittedRendererFinishesOnOldVersionWhileNewCallsAreRefusedAndReplacementWaits() throws Exception {
         PluginJarFixture.createSource(root(), "renderer.jar", "example.renderer", Map.of(), BLOCKING, Map.of());
         var catalog = new PluginCatalog();
