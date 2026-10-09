@@ -41,7 +41,7 @@ public class PluginRuntimeConfiguration {
                 String next = artifacts.keySet().stream().filter(id -> descriptors.get(id).requires().stream()
                                 .allMatch(r -> available.contains(r.id()))).findFirst()
                         .orElseThrow(() -> new IllegalArgumentException("Missing or cyclic local plugin dependencies: " + artifacts.keySet()));
-                var identity = runtime.install(artifacts.remove(next));
+                var identity = runtime.install(artifacts.remove(next), descriptors.get(next).identity());
                 if (!identity.equals(descriptors.get(next).identity()))
                     throw new IllegalStateException("Operator plugin changed during startup: " + next);
                 runtime.start(identity.id());
