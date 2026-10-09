@@ -15,7 +15,7 @@ Contains only common, Spring-free extension metadata and feature contracts that 
 - import profile contracts
 - LLM provider contracts
 
-It may depend on `taxonomy-domain`, but it must not depend on:
+It may depend on `taxonomy-domain` and the framework-free `taxonomy-reporting-api`, but it must not depend on:
 
 - `taxonomy-app`
 - `taxonomy-export`
@@ -105,16 +105,14 @@ Application adapters depend on their SPI/port; the SPI never references Spring a
 
 The stable lower-level direction remains:
 
-```text
-taxonomy-domain
-      ↑
-taxonomy-extension-api
-      ↑
-taxonomy-export ───────→ taxonomy-domain
-      ↑
-Spring feature adapters / taxonomy-app composition
-      └────────────────→ taxonomy-dsl where required
-```
+| Consumer | Allowed lower-level contracts |
+|---|---|
+| `taxonomy-reporting-api` | `taxonomy-domain` |
+| `taxonomy-extension-api` | Domain and reporting API |
+| `taxonomy-export` | Domain and extension API |
+| Spring features / host composition | Owned feature APIs and framework-free contracts |
+
+No contract module may depend on a feature implementation or the executable host.
 
 The Maven reactor and Enforcer/ArchUnit rules protect this direction:
 
@@ -133,7 +131,8 @@ Current examples:
 ```text
 com.taxonomy.export.spi            taxonomy-export contracts
 com.taxonomy.export.service        transitional Spring export adapters in taxonomy-app
-com.taxonomy.shared.extension      common extension metadata / current app discovery
+com.taxonomy.shared.extension      common extension metadata in taxonomy-extension-api
+com.taxonomy.shared.extension.runtime  app catalog/discovery adapter
 ```
 
 A new SPI must use a package that identifies its owning contract module. During bounded-context extraction, adapter packages may be renamed/moved so their owner is equally clear. This prevents split packages, ambiguous IDE navigation and future JPMS conflicts.

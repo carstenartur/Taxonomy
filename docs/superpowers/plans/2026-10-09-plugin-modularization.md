@@ -194,7 +194,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 - [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
 - [x] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
 - [ ] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups.
-- [ ] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
+- [x] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
 
 **Stand 9. Oktober:** Implementierung vorhanden. 111 Backup-/Restore-/SQL-Vertragstests, 19 Provider-/Report-/Reformulierungsprüfungen (einschließlich separatem Checkpoint-JVM) und 1.011 JavaScript-Vertragstests bestehen ohne Fehler oder Skips. Der unabhängige Review ist durchgeführt; seine wichtigen Befunde sind korrigiert. Vollständige Paket-, Browser-, Prozessabbruch- und CI-Nachweise bleiben vor Abschluss erforderlich.
 
@@ -205,11 +205,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 **Interfaces:** Architekturtests verbieten neue Rückabhängigkeiten, Split Packages und fremde Repositoryzugriffe. Das vorhandene Backup-Split-Package wird aufgelöst, indem app-interne Klassen aus `com.taxonomy.backup` nach `com.taxonomy.backup.runtime` umziehen; frameworkfreie Domainverträge bleiben bei ihrem Besitzer. Keine Paketgrenzen bloß durch zusätzliche Ausnahmen grün machen.
 
 - [x] RED: um eine gezielte negative Fixture ergänzte Modulprüfung erkennt ein Split Package und eine SDK->Host-Abhängigkeit. Expected: zwei bewusst schlechte Fixtures werden abgewiesen; der reale Vorher-Stand zeigt das vorhandene Backup-Split-Package.
-- [ ] Implementieren und GREEN: Paketumzug samt Verbrauchern, gemessene Modulgraph-/Ressourcenprüfungen und Dokumentation. `./mvnw -B test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` muss ohne abgeschwächte Baselines bestehen.
+- [x] Implementieren und GREEN: Paketumzug samt Verbrauchern, gemessene Modulgraph-/Ressourcenprüfungen und Dokumentation. `./mvnw -B test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` muss ohne abgeschwächte Baselines bestehen.
 - [ ] Run vollständig: `./mvnw -B verify -Pci -DrunOnnxTests=true`; zusätzlich `./mvnw -B verify -Pplugin-packaging-tests`, `./mvnw -B verify -Pdatabase-mssql`, `./mvnw -B verify -Pdatabase-oracle` und die laut aktuellem CI-Katalog separat erforderlichen Security-/Artemis-/Produkt-/Browser-/Recovery-Lanes. Expected: echte positive Testanzahlen, keine erforderliche Lane übersprungen; lokale Runtime-Lücken konkret ausweisen.
-- [ ] Ein unabhängiger Abschlussreview des gesamten Diffs; wichtige Befunde mit RED→GREEN beheben. Dokumentationslinks, tatsächliche Boot-JAR-/Plugin-Inhalte, vollständige Standarddistribution und externe SDK-Builds kontrollieren.
-- [ ] Fokussierte PR-Folge auf dem vorhandenen Architekturauftrag referenzieren: (1) API/Reporting, (2) ausführbare SPIs und Startup-Plugins, (3) Optionalität/Lifecycle/Betrieb. Keine Duplikat-Issues, kein ungeprüfter Merge. Ergebnisse in #628 als Folgearbeit mit konkreten SHAs/PRs/Nachweisen verdichten; die alte abgeschlossene Extraktion nicht rückwirkend als unerledigt bezeichnen.
-- [ ] Commit: `test(architecture): enforce plugin boundaries and distribution contracts`.
+- [x] Ein unabhängiger Abschlussreview des gesamten Diffs; wichtige Befunde mit RED→GREEN beheben. Dokumentationslinks, tatsächliche Boot-JAR-/Plugin-Inhalte, vollständige Standarddistribution und externe SDK-Builds kontrollieren.
+- [x] Fokussierte PR-Folge auf dem vorhandenen Architekturauftrag referenzieren: (1) API/Reporting, (2) ausführbare SPIs und Startup-Plugins, (3) Optionalität/Lifecycle/Betrieb. Keine Duplikat-Issues, kein ungeprüfter Merge. Ergebnisse in #628 als Folgearbeit mit konkreten SHAs/PRs/Nachweisen verdichten; die alte abgeschlossene Extraktion nicht rückwirkend als unerledigt bezeichnen.
+- [x] Commit: `test(architecture): enforce plugin boundaries and distribution contracts`.
+
+**Zusätzliche Verifikation 9. Oktober:** 49 gezielte OpenAPI-/Report-/Interop-/Publikations-/Recovery-Tests sind grün, darunter echte Anwendungsneustarts, erzwungener Prozessabbruch mit gespeicherter Providerbindung und Lease-Fencing. Feature-Scans übernehmen die Boot-Testfilter. V33 lief im PostgreSQL-Job erfolgreich; die Versionsliste und konkrete neuen Spaltenprüfungen sind für den nächsten CI-Lauf aktualisiert. Die vollständigen Profile bleiben offen. PR-Folge: #1189, #1190, #1191; alle Änderungen referenzieren die vorhandene Architekturarbeit #628.
 
 ## Abnahmekriterien des Gesamtauftrags
 

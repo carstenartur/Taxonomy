@@ -1,18 +1,13 @@
 # Task: Add a New LLM Provider
 
-## Goal
+Use the framework-free executable SPI in `taxonomy-extension-api`. New provider IDs
+are open `ProviderId` values; adding a provider does not require changing the built-in
+`LlmProvider` enum or adding a switch to a controller.
 
-Integrate a language-model API whose protocol or capabilities are not already covered by the runtime providers, so users can select it in the analysis panel.
+## First check whether configuration is sufficient
 
-> Start with the stable extension anchor in
-> [`docs/dev/07-extension-points.md#llm-providers`](../07-extension-points.md#llm-providers).
-> Use this page for the end-to-end file, test, and documentation checklist.
-
----
-
-## First decision: is code required?
-
-Do **not** add a provider-specific enum value merely to use another OpenAI-compatible server. The built-in `CUSTOM_OPENAI` provider already supports operator-controlled OpenAI Chat Completions endpoints:
+The built-in `CUSTOM_OPENAI` provider already supports operator-controlled OpenAI
+Chat Completions endpoints:
 
 ```bash
 LLM_PROVIDER=CUSTOM_OPENAI
@@ -21,115 +16,73 @@ CUSTOM_LLM_MODEL=served-model-name
 CUSTOM_LLM_API_KEY=optional-bearer-token
 ```
 
-The API key is optional. See [`docs/dev/custom-llm.md`](../custom-llm.md) and the German operator documentation in `docs/de/AI_PROVIDERS.md`.
+Authentication is optional. See [custom endpoints](../custom-llm.md). Implement a
+transport when the protocol, authentication or response decoding needs different code.
 
-Add new Java code only when at least one of these applies:
+## Public contracts and packaging
 
-- request or response JSON is not OpenAI Chat Completions compatible;
-- authentication cannot be represented by an optional Bearer token;
-- the provider needs provider-specific transport, retry, streaming, or structured-output behaviour;
-- the provider exposes capabilities that must be represented separately in the extension metadata.
-
----
-
-## Primary entry points
-
-| File | What to do |
+| Contract | Responsibility |
 |---|---|
-| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProvider.java` | Add the runtime enum value |
-| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java` | Add configuration, detection, availability, URL/model, and credential handling |
-| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java` | Register the transport gateway |
-| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/*LlmProviderExtension.java` | Publish provider metadata through the extension SPI |
-| `taxonomy-app/src/main/resources/application.properties` | Map environment variables to Spring properties |
+| `com.taxonomy.extension.api.llm.ProviderId` | Normalized stable identity, up to 128 characters |
+| `LlmProviderDescriptor` in the same package | Display name, capabilities and declared configuration |
+| `LlmTransportExtension` | Descriptor plus one executable `LlmTransport` |
+| `LlmTransport` | One request attempt, response decoding and provider name |
+| `com.taxonomy.extension.api.plugin.TaxonomyPlugin` | ServiceLoader entry point returning contributions |
 
-`LlmService` should remain provider-agnostic. Provider-specific HTTP behaviour belongs in an `LlmGateway` implementation, while provider selection and mandatory configuration belong in `LlmProviderConfig`.
+Build an independent Java 21 JAR against the exact `taxonomy-extension-api` SDK
+version, with SDK dependencies in `provided` scope. Do not bundle host SDK classes,
+Spring, host registries or PF4J. The independent [Mermaid project](../../../plugins/taxonomy-mermaid-plugin/pom.xml)
+demonstrates the POM and service entry layout; a provider uses **STARTUP** mode,
+where Mermaid uses DYNAMIC mode.
 
----
+1. Implement `LlmTransportExtension` with a unique descriptor ID and a non-null transport.
+2. Implement `TaxonomyPlugin` and list its implementation in
+   `META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin`.
+3. Declare `Plugin-Id`, `Plugin-Version`, compatible `Plugin-Requires` and
+   `Taxonomy-Plugin-Mode: STARTUP` in the JAR manifest. The current SDK API range is
+   `>=1.0.0 & <2.0.0`; check the target host before releasing an artifact.
+4. Stop the application, install the verified JAR in the operator plugin directory,
+   and restart with the analysis feature and its dependencies installed.
+5. Select the stable provider ID through the existing provider configuration/UI.
+   A descriptor alone is not an executable provider.
 
-## Files usually touched
+The host owns admission, rate limits, retries, usage accounting, cancellation and
+snapshot authority. A transport performs one attempt; it must not retry internally,
+log or retain credentials, or start unmanaged background work. The per-call API key
+is supplied by the host. Provider-specific non-secret transport settings belong to
+operator configuration; the host metadata settings below do not configure a plugin's
+HTTP client automatically.
 
-- `taxonomy-app/…/analysis/service/LlmProvider.java`
-- `taxonomy-app/…/analysis/service/LlmProviderConfig.java`
-- `taxonomy-app/…/analysis/service/LlmGatewayRegistry.java`
-- `taxonomy-app/…/analysis/service/LlmResponseParser.java` only when the response schema differs
-- a provider metadata component implementing `LlmProviderExtension`
-- `taxonomy-app/src/main/resources/application.properties`
-- `docs/en/CONFIGURATION_REFERENCE.md` and the corresponding German documentation
-- `docs/en/AI_PROVIDERS.md` and `docs/de/AI_PROVIDERS.md`
+## Configuration and durable work
 
----
+The host reads `taxonomy.llm.providers.<lowercase-id>.api-key`, `model`,
+`endpoint-identity` and `configuration-revision`. Never put credentials in a model,
+endpoint identity, descriptor or manifest. External providers require a non-blank,
+non-secret `configuration-revision`; change it when relevant transport configuration
+changes outside the model/endpoint identity. Keep these values consistent with the
+transport's actual operator settings.
 
-## Files usually not touched
+New work captures the plugin ID, version, artifact SHA-256 and configuration fingerprint
+before admission. A restart or worker with a different artifact/configuration rejects
+that work before a provider call or usage charge. Do not silently rebind existing jobs.
+Deploy compatible artifacts and message readers on all cluster workers. Provider
+plugins cannot be dynamically unloaded.
 
-- `taxonomy-domain/` — no domain-model change is normally required
-- `taxonomy-dsl/` — unrelated to provider transport
-- `taxonomy-export/` — export formats are provider-independent
-- `taxonomy-app/…/controller/` — controllers use provider-agnostic services
-- `taxonomy-analysis/src/main/resources/prompts/` — existing prompts should remain portable
-- `taxonomy-app/src/main/resources/templates/index.html` — the provider selector is populated dynamically from `/api/ai-status`
+## Verification
 
----
-
-## Backend endpoints
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/ai-status` | Active provider, availability level, and selectable providers |
-| `POST /api/analyze` and related analysis endpoints | Provider-agnostic analysis execution |
-| `GET /api/diagnostics` | Administrative provider diagnostics |
-
-The controller must not contain a provider-specific switch.
-
----
-
-## Implementation checklist
-
-1. Add the enum value.
-2. Add a matching `LlmProviderExtension` descriptor. The descriptor ID must equal the enum name.
-3. Add mandatory configuration and availability logic in `LlmProviderConfig`.
-4. Reuse `OpenAiCompatibleGateway` when the request is `model` plus `messages` and the response text is `choices[0].message.content`.
-5. Implement a dedicated gateway only for a genuinely different protocol.
-6. Register exactly one independent gateway instance so provider throttles do not share state.
-7. Add environment-property mappings without placing secrets in source control.
-8. Ensure missing mandatory configuration produces an unavailable provider rather than an HTTP 500.
-9. Ensure optional authentication really omits the header; do not send dummy credentials to the remote server.
-10. Update English and German operations documentation.
-
----
-
-## Tests to run
+Use a deterministic transport and a local HTTP fixture, never a paid/live LLM.
+Cover a new ID absent from the built-in enum, normalized duplicate rejection, missing
+configuration, exact request/authentication, response parsing, host retry and usage
+ownership, frozen request scope, and restart with an absent or changed artifact.
 
 ```bash
-# Fast provider/unit tests
-./mvnw -pl taxonomy-app test \
-  -Dtest='LlmProviderConfigBranchCoverageTest,LlmGatewayRegistryTest,LlmProviderExtensionRegistryTest,*GatewayTest'
-
-# Canonical repository verification
-./mvnw verify -DexcludedGroups="real-llm"
+./mvnw -B -pl taxonomy-analysis -am test \
+  -Dtest=ExternalProviderExecutionTest,ProviderPluginBindingTest,LlmProviderFrozenScopeTest,LlmTransportMeterTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -B verify -Pplugin-packaging-tests
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
-Required test coverage:
-
-- explicit provider selection and automatic detection priority;
-- mandatory versus optional configuration;
-- gateway registration and independent instances;
-- exact request URL, model, message body, and authentication headers;
-- response-text extraction;
-- rate-limit and timeout behaviour where provider-specific;
-- extension descriptor completeness for every runtime enum value;
-- application-context startup with empty optional configuration.
-
-Do not call a real external LLM in the normal test suite. Any deliberately real-provider test must be tagged `@Tag("real-llm")`.
-
----
-
-## Common pitfalls
-
-1. **Duplicating `CUSTOM_OPENAI`:** Prefer deployment configuration over a new enum value for a compatible endpoint.
-2. **Treating an API key as universally mandatory:** Local or trusted internal servers may intentionally be unauthenticated.
-3. **Sending a dummy Bearer token:** Omit `Authorization` when authentication is disabled.
-4. **Registering metadata without a runtime gateway, or vice versa:** The extension registry tests require both models to stay aligned.
-5. **Changing `LlmService` for provider details:** Keep orchestration separate from transport.
-6. **Assuming every 2xx body is parseable:** Verify the provider's text location and add parser tests.
-7. **Logging secrets or credential-bearing URLs:** Log validation failures without exposing configuration values.
-8. **Forgetting Docker networking:** From the Taxonomy container, `localhost` is not the sibling model server.
+An independent plugin also needs an actual packaged-host invocation; unit registration
+alone is insufficient. Update English/German operator documentation for its concrete
+configuration. See [ownership and lifecycle](../extension-module-boundaries.md#optional-startup-installation-and-runtime-lifecycle).
