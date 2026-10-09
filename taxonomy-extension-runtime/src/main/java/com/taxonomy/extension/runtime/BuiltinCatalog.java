@@ -60,13 +60,13 @@ public final class BuiltinCatalog {
                 artifact = path.getFileName().toString();
             }
             if (artifact == null && source.toExternalForm().contains("BOOT-INF/classes")) return "taxonomy-app";
-            // Select the innermost complete JAR name, never a matching substring of a
-            // different artifact. Tokenization is linear and the name scan is bounded;
-            // searching a backtracking regex across repeated prefixes is not safe here.
+            // A launcher CodeSource names the innermost archive and may end in
+            // the JAR-root delimiter !/. Preserve literal ! characters in its name;
+            // splitting on them lets an unrelated artifact impersonate a module.
             if (artifact == null) {
-                for (String segment : source.toExternalForm().split("[/!]")) {
-                    if (segment.endsWith(".jar")) artifact = segment;
-                }
+                String location = source.toExternalForm();
+                if (location.endsWith("!/")) location = location.substring(0, location.length() - 2);
+                artifact = location.substring(location.lastIndexOf('/') + 1);
             }
             if (artifact != null && artifact.length() <= 255
                     && artifact.startsWith("taxonomy-") && artifact.endsWith(".jar")) {
