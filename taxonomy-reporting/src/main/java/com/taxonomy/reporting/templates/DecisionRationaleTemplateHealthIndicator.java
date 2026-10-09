@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * not make the complete application unavailable or expose package, filesystem or validation
  * details through an operational health endpoint.</p>
  */
-@Component
+@Component("decisionRationaleTemplateHealthIndicator")
 public final class DecisionRationaleTemplateHealthIndicator implements HealthIndicator {
 
     private final DocumentTemplates templates;

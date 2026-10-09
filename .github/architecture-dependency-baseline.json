@@ -1228,6 +1228,13 @@
     },
     {
       "fromContext": "reporting",
+      "fromPackage": "com.taxonomy.reporting.config",
+      "toContext": "templates",
+      "toPackage": "com.taxonomy.templates.api",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "reporting",
       "fromPackage": "com.taxonomy.reporting.render.decision",
       "toContext": "templates",
       "toPackage": "com.taxonomy.templates.api",

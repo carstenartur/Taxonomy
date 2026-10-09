@@ -2,7 +2,7 @@
 
 This is the **current implementation inventory**, not a list of planned extractions.
 Taxonomy remains a modular monolith with one deployable Spring Boot application.
-The seven feature libraries listed below have already been extracted. The former
+The eight feature libraries listed below have already been extracted. The former
 step-by-step account is retained separately as [historical extraction evidence](../internal/MODULE_BOUNDARIES_HISTORY_EN.md).
 Its intermediate blockers, counts, and issue status describe past checkpoints, not today's backlog.
 
@@ -14,11 +14,13 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 | `taxonomy-dsl` | Foundation | Framework-free TaxDSL syntax, model, validation, mapping, diff and commands |
 | `taxonomy-export` | Foundation | Framework-free export contracts, codecs and neutral rendering |
 | `taxonomy-extension-api` | Foundation | Framework-free extension contracts and metadata |
+| `taxonomy-reporting-api` | Foundation | Framework-free complete snapshot-bound report models |
 | `taxonomy-workspace` | Feature | Workspace/repository identity, editor journal, undo/redo, Git checkpoints and storage |
 | `taxonomy-knowledge` | Feature | Catalogue/seeds, relations/hypotheses, search, indexes and local embeddings |
 | `taxonomy-templates` | Feature | Template versions, OOXML validation, materialization, WebDAV and administration |
 | `taxonomy-interop` | Feature | Reviewed exchanges, mappings, connector orchestration and synchronization checkpoints |
 | `taxonomy-architecture` | Feature | Derivation, scoring, gaps, patterns, recommendations, diagrams and reports |
+| `taxonomy-reporting` | Feature | Report renderers, layouts, template contributions, preview and health |
 | `taxonomy-analysis` | Feature | Requirement/LLM analysis, provider policy, prompts, parsing and sessions |
 | `taxonomy-portfolio` | Feature | Projects, versioned requirements, jobs/results/reviews, recovery and snapshots |
 | `taxonomy-app` | Composition | Only executable application: wiring, cross-context adapters, security, migrations and packaging |
@@ -26,8 +28,8 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 | `taxonomy-coverage` | Build/tooling | Reactor-wide coverage aggregation; not a runtime feature library |
 | `taxonomy-build` | Build/tooling | Whole-reactor quality gates and browser/verification contracts |
 
-The root aggregator is not an additional child module. The fifteen children comprise
-four foundations, seven features, the composition root, and three build/tooling modules.
+The root aggregator is not an additional child module. The seventeen children comprise
+five foundations, eight features, the composition root, and three build/tooling modules.
 Only `taxonomy-app` is an executable application. The build/tooling group is not a
 set of runtime services. See [the verified feature dependency graph](ARCHITECTURE.md#module-architecture)
 and [runtime/persistence views](ARCHITECTURE.md).
@@ -51,9 +53,18 @@ Git commits are explicit stable checkpoints, not the operation log.**
 ### `taxonomy-architecture`
 
 Owns architecture derivation, scores, gaps, patterns, recommendations, diagram
-preparation, and reports. Live report preferences enter through `ArchitectureReportMetadataPort`.
+preparation, and report generation. Live report preferences enter through `ArchitectureReportMetadataPort`.
 Report HTTP composition and repository/workspace lookup remain application-owned;
 this library must not acquire an application `WorkspaceResolver` dependency.
+
+### `taxonomy-reporting` and `taxonomy-reporting-api`
+
+The framework-free API owns complete snapshot-bound report models.
+`taxonomy-architecture` generates them; `taxonomy-reporting` owns rendering,
+layouts, the decision template, validation, preview and health adapters.
+Neither implementation depends on the other. Portfolio explicitly consumes both.
+Reporting requires the template port; a database-only context does not activate
+this unassembled feature.
 
 ### `taxonomy-analysis`
 

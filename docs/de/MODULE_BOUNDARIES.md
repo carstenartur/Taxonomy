@@ -2,7 +2,7 @@
 
 Dies ist das **Inventar der heutigen Implementierung**, keine Liste geplanter
 Extraktionen. Taxonomy bleibt ein modularer Monolith mit einer deploybaren
-Spring-Boot-Anwendung. Die sieben unten genannten Fachbibliotheken sind bereits
+Spring-Boot-Anwendung. Die acht unten genannten Fachbibliotheken sind bereits
 extrahiert. Die frühere schrittweise Beschreibung bleibt als
 [historischer Extraktionsnachweis](../internal/MODULE_BOUNDARIES_HISTORY_DE.md) erhalten.
 Deren Zwischenblocker, Zählstände und Issue-Status beschreiben frühere Checkpoints,
@@ -16,11 +16,13 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-dsl` | Grundlage | Frameworkfreie TaxDSL-Syntax, Modell, Validierung, Mapping, Diff und Befehle |
 | `taxonomy-export` | Grundlage | Frameworkfreie Exportverträge, Codecs und neutrales Rendering |
 | `taxonomy-extension-api` | Grundlage | Frameworkfreie Erweiterungsverträge und Metadaten |
+| `taxonomy-reporting-api` | Grundlage | Vollständige snapshotgebundene Reportmodelle ohne Framework- oder Rendererabhängigkeit |
 | `taxonomy-workspace` | Fachmodul | Workspace-/Repository-Identität, Editorjournal, Undo/Redo, Git-Checkpoints und Speicher |
 | `taxonomy-knowledge` | Fachmodul | Katalog/Seeds, Relationen/Hypothesen, Suche, Indizes und lokale Embeddings |
 | `taxonomy-templates` | Fachmodul | Vorlagenversionen, OOXML-Validierung, Materialisierung, WebDAV und Administration |
 | `taxonomy-interop` | Fachmodul | Geprüfter Austausch, Zuordnungen, Konnektorsteuerung und Synchronisationscheckpoints |
 | `taxonomy-architecture` | Fachmodul | Ableitung, Scoring, Lücken, Muster, Empfehlungen, Diagramme und Berichte |
+| `taxonomy-reporting` | Fachmodul | Report-Renderer, Layouts, Vorlagenbeiträge, Vorschau und Health |
 | `taxonomy-analysis` | Fachmodul | Anforderungs-/LLM-Analyse, Anbieterregeln, Prompts, Parsing und Sitzungen |
 | `taxonomy-portfolio` | Fachmodul | Projekte, versionierte Anforderungen, Jobs/Ergebnisse/Reviews, Wiederanlauf und Snapshots |
 | `taxonomy-app` | Komposition | Einzige ausführbare Anwendung: Verdrahtung, Kontextadapter, Sicherheit, Migrationen und Packaging |
@@ -28,8 +30,8 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-coverage` | Build/Werkzeuge | Reactor-weite Coverage-Aggregation; keine Laufzeit-Fachbibliothek |
 | `taxonomy-build` | Build/Werkzeuge | Reactor-weite Qualitätsprüfungen und Browser-/Verifikationsverträge |
 
-Der Root-Aggregator ist kein weiteres Untermodul. Die fünfzehn Untermodule bestehen
-aus vier Grundlagen, sieben Fachmodulen, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
+Der Root-Aggregator ist kein weiteres Untermodul. Die siebzehn Untermodule bestehen
+aus fünf Grundlagen, acht Fachmodulen, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
 Nur `taxonomy-app` ist eine ausführbare Anwendung. Die Build-Gruppe bildet keine
 Laufzeitdienste. Siehe [geprüften Fachmodulgraphen](ARCHITECTURE.md#modularchitektur)
 und [Laufzeit-/Persistenzdarstellungen](ARCHITECTURE.md).
@@ -53,9 +55,18 @@ Revisionen; Git-Commits sind explizite stabile Checkpoints, nicht das Operations
 ### `taxonomy-architecture`
 
 Besitzt Architekturableitung, Bewertungen, Lücken, Muster, Empfehlungen, Diagrammvorbereitung
-und Berichte. Aktuelle Berichtseinstellungen kommen über `ArchitectureReportMetadataPort`.
+und Berichtsmodelle. Aktuelle Berichtseinstellungen kommen über `ArchitectureReportMetadataPort`.
 HTTP-Berichtskomposition und Repository-/Workspace-Auflösung bleiben anwendungseigen;
 die Bibliothek darf nicht von einem anwendungseigenen `WorkspaceResolver` abhängen.
+
+### `taxonomy-reporting` und `taxonomy-reporting-api`
+
+Die frameworkfreie API besitzt vollständige snapshotgebundene Reportmodelle.
+`taxonomy-architecture` erzeugt diese Modelle; `taxonomy-reporting` rendert sie und
+besitzt Layouts, Entscheidungsvorlage, Validierung, Vorschau und Health-Adapter.
+Zwischen beiden Implementierungsmodulen besteht keine Rückabhängigkeit.
+Portfolio nutzt explizit beide Module. Reporting benötigt den Template-Port;
+ein isolierter Datenbank-Kontext aktiviert das Fachmodul nicht.
 
 ### `taxonomy-analysis`
 

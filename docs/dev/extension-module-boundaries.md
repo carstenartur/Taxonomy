@@ -52,8 +52,8 @@ Report-specific immutable evidence validation belongs here; source traversal and
 locale-dependent presentation do not.
 
 `taxonomy-reporting` owns the renderers, layouts, renderer registry, decision
-DOTX seed, validation, preview and health adapter. Its auto-configuration scans
-only its owned rendering/template packages. It renders independently supplied
+DOTX seed, validation, preview and health adapter. Its auto-configuration explicitly imports
+its owned rendering/template components when the template port is assembled. It renders independently supplied
 models without `taxonomy-architecture` or workspace/catalog implementations on
 its runtime classpath. `taxonomy-architecture` generates snapshot-bound report
 models and no longer depends on template storage or report rendering.
