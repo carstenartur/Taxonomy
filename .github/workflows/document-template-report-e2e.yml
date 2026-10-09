@@ -11,6 +11,7 @@ on:
       - 'taxonomy-app/src/main/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-templates-api/**'
       - 'taxonomy-reporting/**'
       - 'taxonomy-reporting-api/**'
       - 'taxonomy-interop/**'

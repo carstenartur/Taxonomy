@@ -191,7 +191,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 **Interfaces:** Ein Aufruf/Job erhält `PluginIdentity` und eine nicht geheime Konfigurationsrevision, nicht serialisierte Implementierungen oder Classloader. Alte Builtin-Aufträge bleiben lesbar. UI liest verfügbare Deskriptoren, kein statischer Sonderfall pro externem Format; keine beliebigen Plugin-Skripte ausführen.
 
 - [x] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
-- [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
+- [x] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
 - [x] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
 - [ ] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups.
 - [x] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
@@ -228,6 +228,45 @@ Die erneute fokussierte Paketprüfung auf `9972e594` führte 14 ITs aus: zwölf 
 **Aktueller Distributionsnachweis:** Der fokussierte Lauf auf `05c68aa6` besteht mit 283 eindeutigen JUnit-Fällen (davon 14 reale Paket-ITs) sowie fünf Tests im unabhängigen SDK-Build. Native Linux-Distribution dieses Heads gebaut und gegen neue persistente HSQLDB gestartet: sechs Features, Mermaid und HTTP 200 für Readiness/Vorlagen/Taxonomie; alle acht JARs und das SHA-256-Sidecar stimmen bytegenau mit den Installationseingaben überein.
 
 CodeQL meldete danach weiterhin genau eine Regex-Laufzeitgefahr. Der Detailartefaktabruf liefert HTTP 403; die vorhandene Gate-Ausgabe nennt deshalb künftig zusätzlich die bereits geparste Quelldatei, ohne Schwelle, Baseline oder Entscheidung zu ändern. Im Provider-Katalog ist außerdem die zweite langsame Identitätsnormalisierung reproduziert (200.000 interne Bindestriche, Timeout nach zwei Sekunden) und linear korrigiert. Die fünf üblichen Target-Identitäten bleiben erhalten. Die aktuellen Gate-/Baseline-/Schwellen- und Target-Regressionen sind erfolgreich. Der jüngste Nachreview findet keine konkreten Fehler. Die abschließende CodeQL-/kanonische CI muss diesen letzten Nachtrag noch prüfen; aktueller verbindlicher Status und genaue Heads stehen in #628 und der bestehenden Architekturdatei.
+
+## Fortsetzung am 10. Oktober 2026
+
+#1189 und #1190 sind inzwischen gemergt; #1191 wurde ohne Änderung des
+Implementierungsbaums mit main `56428217` abgeglichen. Der gezielte Task-11-Befehl
+besteht auf `1c441a53` mit neun Tests (drei Provider-, zwei Backup- und vier
+Recovery-Verträge), ohne Fehler oder Skips. JGit/PostgreSQL, OpenTelemetry,
+Kubernetes mit Artemis-/Worker-Wiederherstellung, Dokument-Download, Datenbankmatrix
+und die sechs vorhandenen Browser-Shards sind auf diesem Head erfolgreich.
+Der vollständige kanonische Lauf und sein Aggregat waren beim folgenden Nachtrag
+noch offen; der separate vollständige Plugin-Profil-PASS bleibt ausdrücklich offen.
+
+Die Abschlussprüfung der CI-Eingaben fand eine konkrete Lücke: reine Änderungen
+an `taxonomy-templates-api` aktivierten Kubernetes, Dokument-E2E und JGit nicht;
+der Performance-Filter erfasste außerdem die neuen Plugin-APIs, den Loader und
+externe Plugins nicht. Die bestehenden Filter enthalten diese Eingaben nun.
+`PluginWorkflowTriggerTest` prüft alle betroffenen PR-/Push-Filter und führt den
+wirklichen Performance-Scope-Befehl in isolierten Git-Repositories aus, einschließlich
+unveränderter Negativkontrollen für Dokumentation und Frontend-Ressourcen.
+
+RED: 28 Fälle, davon 19 erwartete Assertion-Fehlschläge, keine Ausführungsfehler
+oder Skips. GREEN nach unabhängiger Reviewkorrektur der Git-/Shell-Umgebungsisolation:
+259 Fälle ohne Fehler oder Skips (28 neue Verträge, sieben bestehende Workflow-
+Authority-Tests und 224 verpflichtende Architekturguards). Tatsächlicher Maven-Aufruf
+mit Java 21, explizitem Mockito-Startagenten und dem bereitgestellten Proxy/Zertifikatsspeicher:
+
+```bash
+./mvnw -s target/continuation-evidence/toolchain/maven-settings.xml -B \
+  -Dmaven.build.cache.enabled=false -pl taxonomy-build -am test \
+  -Dtest=PluginWorkflowTriggerTest,WorkflowTestAuthorityPolicyTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Kein neuer Workflow, keine zusätzliche Testauswahl in einem Workflow und keine
+abgeschwächte Prüfung. Der unabhängige Nachreview findet keine weiteren Probleme.
+Der neue Commit benötigt weiterhin die vollständige CI; frühere Ergebnisse werden
+nicht als Ausführungen auf seinem Head bezeichnet. Die konkreten Heads, Läufe und
+noch offenen Voraussetzungen stehen weiterhin in #628 und der bestehenden
+Architekturdatei.
 
 ## Abnahmekriterien des Gesamtauftrags
 
