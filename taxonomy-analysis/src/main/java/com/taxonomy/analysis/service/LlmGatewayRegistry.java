@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import com.taxonomy.extension.api.llm.*;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -24,7 +25,7 @@ import java.util.Map;
 @Component
 public class LlmGatewayRegistry {
     private static final Logger log = LoggerFactory.getLogger(LlmGatewayRegistry.class);
-    private final Map<LlmProvider, LlmGateway> gateways;
+    private final Map<ProviderId, LlmGateway> gateways;
     private final List<LlmGateway> transports = new ArrayList<>();
 
     @Autowired
@@ -34,9 +35,10 @@ public class LlmGatewayRegistry {
                                @Autowired(required = false) @Lazy AnalysisRuntimeSettings preferencesService,
                                @Autowired(required = false) SimpleClientHttpRequestFactory llmRequestFactory,
                                @Autowired(required = false) LlmRecordReplayService recordReplayService,
-                               AiPromptBudgetPolicy promptBudgetPolicy) {
+                               AiPromptBudgetPolicy promptBudgetPolicy,
+                               List<LlmTransportExtension> extensions) {
         LlmResponseParser responseParser = new LlmResponseParser(objectMapper);
-        gateways = new EnumMap<>(LlmProvider.class);
+        gateways = new LinkedHashMap<>();
         register(LlmProvider.GEMINI, new GeminiGateway(
                 providerConfig, restTemplate, objectMapper, responseParser,
                 preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
@@ -66,7 +68,29 @@ public class LlmGatewayRegistry {
                 providerConfig.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI),
                 0, restTemplate, objectMapper, responseParser,
                 preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+        Map<ProviderId, LlmTransportExtension> external = new LinkedHashMap<>();
+        for (var extension : providerConfig.externalTransports())
+            external.put(new ProviderId(extension.descriptor().providerId()), extension);
+        for (var extension : extensions) {
+            if (extension instanceof BuiltinLlmTransportExtension) continue;
+            var id = new ProviderId(extension.descriptor().providerId());
+            var previous = external.putIfAbsent(id, extension);
+            if (previous != null && previous != extension)
+                throw new IllegalStateException("Duplicate LLM provider ID: " + id);
+        }
+        for (var extension : external.values()) {
+            ProviderId id = new ProviderId(extension.descriptor().providerId());
+            register(id, new ContributedLlmGateway(id, extension.transport(), preferencesService,
+                    recordReplayService, objectMapper), promptBudgetPolicy);
+        }
         log.info("LlmGatewayRegistry initialised with {} gateways", gateways.size());
+    }
+
+    public LlmGatewayRegistry(LlmProviderConfig providerConfig, RestTemplate restTemplate,
+                              ObjectMapper objectMapper, AnalysisRuntimeSettings settings,
+                              SimpleClientHttpRequestFactory requestFactory,
+                              LlmRecordReplayService recordings, AiPromptBudgetPolicy budget) {
+        this(providerConfig, restTemplate, objectMapper, settings, requestFactory, recordings, budget, List.of());
     }
 
     /** Test-only compatibility constructor preserving direct gateway type assertions. */
@@ -91,6 +115,7 @@ public class LlmGatewayRegistry {
             var limits = new ProviderRequestLimiter.Limits(concurrent, queued, seconds * 1000L);
             if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureRequestLimits(limits);
             else if (gateway instanceof GeminiGateway gemini) gemini.configureRequestLimits(limits);
+            else if (gateway instanceof ContributedLlmGateway contributed) contributed.configureRequestLimits(limits);
         }
     }
 
@@ -105,16 +130,38 @@ public class LlmGatewayRegistry {
         for (LlmGateway gateway : transports) {
             if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureProviderPermits(permits);
             else if (gateway instanceof GeminiGateway gemini) gemini.configureProviderPermits(permits);
+            else if (gateway instanceof ContributedLlmGateway contributed) contributed.configureProviderPermits(permits);
         }
     }
 
     private void register(LlmProvider provider, LlmGateway gateway, AiPromptBudgetPolicy promptBudgetPolicy) {
+        register(provider.id(), gateway, promptBudgetPolicy);
+    }
+
+    private void register(ProviderId provider, LlmGateway gateway, AiPromptBudgetPolicy budget) {
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id()) || gateways.containsKey(provider)) {
+            throw new IllegalStateException("Duplicate or non-generative provider ID: " + provider);
+        }
         transports.add(gateway);
-        gateways.put(provider, promptBudgetPolicy == null
-                ? gateway : new PromptBudgetEnforcingLlmGateway(gateway, promptBudgetPolicy));
+        gateways.put(provider, budget == null ? gateway : new PromptBudgetEnforcingLlmGateway(gateway, budget));
+    }
+
+    /** Built-ins and contributed providers expose the same executable contract to composition. */
+    public List<LlmTransportExtension> executableExtensions(LlmProviderExtensionRegistry metadata) {
+        return gateways.entrySet().stream().sorted(Map.Entry.comparingByKey(
+                java.util.Comparator.comparing(ProviderId::value))).map(entry -> (LlmTransportExtension) new LlmTransportExtension() {
+                    @Override public LlmProviderDescriptor descriptor() {
+                        return metadata.findById(entry.getKey().value()).orElseThrow().descriptor();
+                    }
+                    @Override public LlmTransport transport() { return new ProviderTransportView(entry.getValue()); }
+                }).toList();
     }
 
     public LlmGateway getGateway(LlmProvider provider) {
+        return getGatewayById(provider.id());
+    }
+
+    public LlmGateway getGatewayById(ProviderId provider) {
         LlmGateway gateway = gateways.get(provider);
         if (gateway == null) {
             throw new IllegalArgumentException("No HTTP gateway registered for provider " + provider

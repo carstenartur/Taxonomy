@@ -81,7 +81,6 @@ class ExportFormatExtensionRegistryTest {
 
     @Test
     void stableFormatIdsRemainBackwardCompatible() {
-        assertThat(MermaidExportExtension.FORMAT_ID).isEqualTo("mermaid");
         assertThat(ArchiMateExportExtension.FORMAT_ID).isEqualTo("archimate");
         assertThat(VisioExportExtension.FORMAT_ID).isEqualTo("visio");
         assertThat(StructurizrExportExtension.FORMAT_ID).isEqualTo("structurizr");

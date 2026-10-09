@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <!-- Deliberately independent: no host source tree or inherited host build is required. -->
+    <groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>1.4.1-SNAPSHOT</version>
+    <name>Taxonomy Mermaid Plugin</name>
+    <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <taxonomy.sdk.version>${project.version}</taxonomy.sdk.version>
+        <jacoco.version>0.8.15</jacoco.version>
+    </properties>
+    <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId><version>${taxonomy.sdk.version}</version><scope>provided</scope>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-extension-api</artifactId><version>${taxonomy.sdk.version}</version><scope>provided</scope>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-export</artifactId><version>${taxonomy.sdk.version}</version><scope>provided</scope>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
+        <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>6.1.3</version><scope>test</scope></dependency>
+        <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>3.27.7</version><scope>test</scope></dependency>
+        <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.17</version><scope>provided</scope></dependency>
+    </dependencies>
+    <build><plugins>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version></plugin>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version></plugin>
+        <plugin><groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>${jacoco.version}</version>
+            <executions><execution><goals><goal>prepare-agent</goal></goals></execution></executions></plugin>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version>
+            <!-- App tests use the same external artifact as the distribution, even for mvn test. -->
+            <executions><execution><id>default-jar</id><phase>process-classes</phase><goals><goal>jar</goal></goals></execution></executions>
+            <configuration><archive><manifestEntries>
+                <Plugin-Id>taxonomy.mermaid</Plugin-Id><Plugin-Version>${project.version}</Plugin-Version>
+                <Plugin-Requires>&gt;=1.0.0 &amp; &lt;2.0.0</Plugin-Requires>
+                <Taxonomy-Plugin-Mode>DYNAMIC</Taxonomy-Plugin-Mode>
+                <Taxonomy-Plugin-Capabilities>export</Taxonomy-Plugin-Capabilities>
+            </manifestEntries></archive></configuration>
+        </plugin>
+    </plugins></build>
+</project>

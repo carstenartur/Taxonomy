@@ -54,7 +54,7 @@ class RelationSearchPerformanceTest {
             }
         };
         var llm = new LlmService(null, null, JSON, null, null, null, null) {
-            @Override public LlmProvider getActiveProvider() { return LlmProvider.CUSTOM_OPENAI; }
+            @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return LlmProvider.CUSTOM_OPENAI.id(); }
             @Override public String getActiveProviderName() { return "TEST"; }
             @Override public String callLlmRaw(String prompt) { prompts.add(prompt); return answer(prompt); }
         };

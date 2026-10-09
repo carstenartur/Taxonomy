@@ -1,5 +1,6 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
 import org.springframework.beans.factory.ObjectProvider;
@@ -22,8 +23,18 @@ public class ArtemisProviderPermitsConfiguration {
             throw new IllegalStateException("Cluster provider permits require artemis analysis transport");
         }
         String prefix = "taxonomy.analysis.provider-permits.";
-        Map<LlmProvider, String> groups = Binder.get(environment)
-                .bind(prefix + "provider-groups", Bindable.mapOf(LlmProvider.class, String.class)).orElse(Map.of());
+        Map<String, String> configured = Binder.get(environment)
+                .bind(prefix + "provider-groups", Bindable.mapOf(String.class, String.class)).orElse(Map.of());
+        Map<ProviderId, String> groups = new java.util.LinkedHashMap<>();
+        configured.forEach((key, group) -> {
+            // Retain Spring's former enum binding aliases, without rewriting external IDs.
+            ProviderId literal = new ProviderId(key);
+            ProviderId id = LlmProvider.builtin(new ProviderId(key.replace('-', '_')))
+                    .map(LlmProvider::id).orElse(literal);
+            if (groups.putIfAbsent(id, group) != null) {
+                throw new IllegalArgumentException("Duplicate provider quota group: " + id);
+            }
+        });
         if (groups.isEmpty()) throw new IllegalArgumentException("Cluster provider permits require explicit provider-groups");
         return new ArtemisProviderPermitSettings(environment.getProperty(prefix + "destination-prefix",
                 ArtemisProviderPermitSettings.DEFAULT_PREFIX), groups,

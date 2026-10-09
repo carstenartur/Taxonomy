@@ -27,6 +27,17 @@ public final class ProviderRetryPolicy {
         return new Decision(attempt < Math.max(0, maxRetries) && delay <= MAX_AUTOMATIC_WAIT_MILLIS, delay);
     }
 
+    public static Decision rateLimit(int attempt, int maxRetries, Duration retryAfter) {
+        long delay;
+        if (retryAfter == null) delay = backoffMillis(attempt);
+        else {
+            if (retryAfter.isNegative()) throw new IllegalArgumentException("Negative retry delay");
+            try { delay = retryAfter.toMillis(); }
+            catch (ArithmeticException overflow) { delay = Long.MAX_VALUE; }
+        }
+        return new Decision(attempt < Math.max(0, maxRetries) && delay <= MAX_AUTOMATIC_WAIT_MILLIS, delay);
+    }
+
     public static long backoffMillis(int attempt) {
         return Math.min(MAX_AUTOMATIC_WAIT_MILLIS, 1000L << Math.max(0, Math.min(6, attempt)));
     }

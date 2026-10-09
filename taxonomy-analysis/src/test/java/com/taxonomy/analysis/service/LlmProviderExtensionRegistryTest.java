@@ -97,17 +97,17 @@ class LlmProviderExtensionRegistryTest {
     }
 
     @Test
-    void duplicateAndUnknownDescriptorIdsFailFast() {
+    void duplicateAndMalformedDescriptorIdsFailFast() {
         assertThatThrownBy(() -> new LlmProviderExtensionRegistry(List.of(
                 new GeminiLlmProviderExtension(),
                 new GeminiLlmProviderExtension())))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate LLM provider ID");
+                .hasMessageContaining("Duplicate extension ID").hasMessageContaining("LLM_PROVIDER");
 
         LlmProviderExtension unknown = () -> new LlmProviderDescriptor(
-                "NOT_A_PROVIDER", "Unknown", false, false, false, false, List.of());
+                "NOT A PROVIDER", "Malformed", false, false, false, false, List.of());
         assertThatThrownBy(() -> new LlmProviderExtensionRegistry(List.of(unknown)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("unknown runtime provider ID");
+                .hasMessageContaining("Invalid LLM provider ID");
     }
 }

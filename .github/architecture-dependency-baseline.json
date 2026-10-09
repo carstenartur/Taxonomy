@@ -251,7 +251,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 17
+      "classDependencyCount": 15
     },
     {
       "fromContext": "app-composition",
@@ -711,13 +711,6 @@
     {
       "fromContext": "architecture",
       "fromPackage": "com.taxonomy.architecture.pipeline",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.extension",
-      "classDependencyCount": 2
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.pipeline",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.model",
       "classDependencyCount": 5
@@ -1126,7 +1119,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 6
+      "classDependencyCount": 5
     },
     {
       "fromContext": "portfolio",

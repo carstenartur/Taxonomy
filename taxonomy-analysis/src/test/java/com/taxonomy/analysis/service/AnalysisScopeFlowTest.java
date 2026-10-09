@@ -39,7 +39,7 @@ class AnalysisScopeFlowTest {
     }
     private static class Provider extends LlmProviderConfig {
         Provider() { super(null); }
-        @Override public LlmProvider getActiveProvider() { return LlmProvider.OPENAI; }
+        @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return LlmProvider.OPENAI.id(); }
         @Override public String getActiveProviderName() { return "OPENAI"; }
         @Override public String getApiKey(LlmProvider provider) { return "test-key"; }
     }
@@ -60,7 +60,7 @@ class AnalysisScopeFlowTest {
     private Fixture fixture() {
         var mapper = new ObjectMapper(); var provider = new Provider(); var gateway = new Gateway();
         var registry = new LlmGatewayRegistry(provider, new RestTemplate(), mapper, null, null, null, null) {
-            @Override public LlmGateway getGateway(LlmProvider selected) { return gateway; }
+            @Override public LlmGateway getGatewayById(com.taxonomy.extension.api.llm.ProviderId selected) { return gateway; }
         };
         var prompts = new PromptTemplateService(); prompts.loadDefaults();
         return new Fixture(new LlmService(provider, registry, mapper, new Catalogue(), prompts, null, null), gateway);

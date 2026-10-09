@@ -59,6 +59,8 @@
         <module>taxonomy-dsl</module>
         <module>taxonomy-export</module>
         <module>taxonomy-extension-api</module>
+        <module>taxonomy-extension-runtime</module>
+        <module>plugins/taxonomy-mermaid-plugin</module>
         <module>taxonomy-workspace</module>
         <module>taxonomy-templates</module>
         <module>taxonomy-interop</module>
@@ -76,6 +78,8 @@
 
     <properties>
         <java.version>21</java.version>
+        <pf4j.version>3.16.0</pf4j.version>
+        <taxonomy.maven.user-settings>${user.home}/.m2/settings.xml</taxonomy.maven.user-settings>
         <!-- Keep the complete Boot-managed Tomcat family on the released fixes
              for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989). -->
         <tomcat.version>11.0.25</tomcat.version>
@@ -527,6 +531,14 @@
                 <runOnnxTests>true</runOnnxTests>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>plugin-packaging-tests</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <taxonomy.quality.skip>false</taxonomy.quality.skip>
+                <it.test>ExternalPluginPackagedIT,OptionalFeaturePackagedIT</it.test>
             </properties>
         </profile>
         <profile>

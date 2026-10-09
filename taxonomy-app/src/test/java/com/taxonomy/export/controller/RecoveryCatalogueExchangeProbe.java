@@ -20,7 +20,7 @@ public final class RecoveryCatalogueExchangeProbe {
             }
         };
         var service = new SavedAnalysisService(MAPPER, catalogue);
-        var facade = new ExportFacade(null,null,null,null,null,null,null,null,null,service);
+        var facade = new ExportFacade(null,null,null,null,null,null,null,null,service);
         var controller = new ExportApiController(facade,null);
         var field = ExportApiController.class.getDeclaredField("recoveryObjectMapper"); field.setAccessible(true); field.set(controller,MAPPER);
         String unknown = fabricated ? "NOT_IN_THE_OFFICIAL_CATALOGUE" : "IP";
@@ -52,7 +52,7 @@ public final class RecoveryCatalogueExchangeProbe {
             }
         };
         var service = new SavedAnalysisService(MAPPER, catalogue);
-        var facade = new ExportFacade(null,null,null,null,null,null,null,null,null,service);
+        var facade = new ExportFacade(null,null,null,null,null,null,null,null,service);
         var controller = new ExportApiController(facade,null);
         var field = ExportApiController.class.getDeclaredField("recoveryObjectMapper");
         field.setAccessible(true); field.set(controller, MAPPER);

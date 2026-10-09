@@ -19,3 +19,19 @@ jq -n --arg sourceCommit "$GITHUB_SHA" --arg sourceTree "$source_tree" \
   '{schemaVersion:1,sourceCommit:$sourceCommit,sourceTree:$sourceTree,jarName:$jarName,sha256:$sha256}' \
   > target/ui-application/manifest.json
 printf '%s  %s\n' "$jar_sha" "$jar_name" > target/ui-application/SHA256SUMS
+
+# External code is part of the commit-bound distribution and has its own digest.
+mkdir -p target/ui-application/plugins
+mapfile -t plugins < <(find taxonomy-app/target/plugins -maxdepth 1 -type f -name '*.jar' | sort)
+[[ ${#plugins[@]} -gt 0 ]] || { echo '::error::Standard external plugin distribution is missing'; exit 1; }
+plugin_manifest='[]'
+for plugin in "${plugins[@]}"; do
+  plugin_name=$(basename "$plugin")
+  [[ "$plugin_name" =~ ^taxonomy-[A-Za-z0-9._+-]+\.jar$ ]] || exit 1
+  cp "$plugin" "target/ui-application/plugins/$plugin_name"
+  plugin_sha=$(sha256sum "$plugin" | awk '{print $1}')
+  plugin_manifest=$(jq --arg name "$plugin_name" --arg sha256 "$plugin_sha" '. + [{name:$name,sha256:$sha256}]' <<< "$plugin_manifest")
+  printf '%s  plugins/%s\n' "$plugin_sha" "$plugin_name" >> target/ui-application/SHA256SUMS
+done
+jq --argjson plugins "$plugin_manifest" '. + {plugins:$plugins}' target/ui-application/manifest.json > target/ui-application/manifest.next.json
+mv target/ui-application/manifest.next.json target/ui-application/manifest.json

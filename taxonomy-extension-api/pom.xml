@@ -51,6 +51,7 @@
                                         <exclude>com.taxonomy:taxonomy-app</exclude>
                                         <exclude>com.taxonomy:taxonomy-export</exclude>
                                         <exclude>com.taxonomy:taxonomy-dsl</exclude>
+                                        <exclude>org.pf4j:*</exclude>
                                         <exclude>org.springframework:*</exclude>
                                         <exclude>org.springframework.boot:*</exclude>
                                         <exclude>org.springframework.data:*</exclude>

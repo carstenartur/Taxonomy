@@ -321,7 +321,7 @@ class ArtemisProviderConcurrencyPermitsTest {
             session.rollback();
         }
         var unconfigured = new ArtemisProviderConcurrencyPermits(connection,
-                new ArtemisProviderPermitSettings(PREFIX, Map.of(LlmProvider.OPENAI, "absent"), 100));
+                new ArtemisProviderPermitSettings(PREFIX, Map.of(LlmProvider.OPENAI.id(), "absent"), 100));
         assertThatThrownBy(() -> unconfigured.acquire(LlmProvider.OPENAI, () -> {}))
                 .isInstanceOf(ProviderConcurrencyPermits.UnavailableException.class);
         assertThatThrownBy(() -> unconfigured.acquire(LlmProvider.GEMINI, () -> {}))
@@ -351,7 +351,7 @@ class ArtemisProviderConcurrencyPermitsTest {
 
     private ArtemisProviderConcurrencyPermits permits(ArtemisAnalysisConnection connection, long maximumWait) {
         return new ArtemisProviderConcurrencyPermits(connection, new ArtemisProviderPermitSettings(PREFIX,
-                Map.of(LlmProvider.OPENAI, GROUP, LlmProvider.CUSTOM_OPENAI, GROUP), maximumWait));
+                Map.of(LlmProvider.OPENAI.id(), GROUP, LlmProvider.CUSTOM_OPENAI.id(), GROUP), maximumWait));
     }
 
     private LlmGateway gateway(LlmProvider provider, String url, ProviderConcurrencyPermits permits) {

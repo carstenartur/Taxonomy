@@ -1,74 +1,32 @@
 package com.taxonomy.catalog.service.importer;
 
-import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
-import com.taxonomy.extension.api.importer.ImportProfileExtension;
+import com.taxonomy.extension.api.importer.*;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.runtime.BuiltinCatalog;
+import com.taxonomy.shared.extension.ExtensionKind;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
-/** Spring registry for framework import profile adapters. */
+/** Import contributions have startup lifetime and share the host catalog with other kinds. */
 @Service
 public class ImportProfileRegistry {
-
-    private final Map<String, ImportProfileExtension> byProfileId;
-
-    public ImportProfileRegistry(List<ImportProfileExtension> extensions) {
-        Map<String, ImportProfileExtension> map = new LinkedHashMap<>();
-        extensions.stream()
-                .map(this::validatedRegistration)
-                .sorted(Comparator.comparing(Registration::normalizedProfileId))
-                .forEach(registration -> {
-                    ImportProfileExtension previous = map.putIfAbsent(
-                            registration.normalizedProfileId(), registration.extension());
-                    if (previous != null) {
-                        throw new IllegalStateException(
-                                "Duplicate import profile ID: " + registration.normalizedProfileId());
-                    }
-                });
-        this.byProfileId = Map.copyOf(map);
+    private final ExtensionCatalog catalog;
+    public ImportProfileRegistry(List<ImportProfileExtension> extensions) { this(BuiltinCatalog.create(extensions)); }
+    @Autowired public ImportProfileRegistry(ExtensionCatalog catalog) { this.catalog = catalog; }
+    public ImportProfileExtension getRequired(String id) {
+        return findById(id).orElseThrow(() -> new IllegalArgumentException("Unknown import profile: " + id));
     }
-
-    public ImportProfileExtension getRequired(String profileId) {
-        return findById(profileId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown import profile: " + profileId));
+    public Optional<ImportProfileExtension> findById(String id) {
+        if (id == null || id.isBlank()) return Optional.empty();
+        try (var lease = catalog.acquire(new ExtensionKey(ExtensionKind.IMPORT_PROFILE, id), ImportProfileExtension.class)) {
+            return Optional.of(lease.extension());
+        } catch (ExtensionUnavailableException unavailable) { return Optional.empty(); }
     }
-
-    public Optional<ImportProfileExtension> findById(String profileId) {
-        if (profileId == null || profileId.isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(byProfileId.get(normalize(profileId)));
-    }
-
     public List<ImportProfileDescriptor> listDescriptors() {
-        return byProfileId.values().stream()
-                .map(ImportProfileExtension::descriptor)
-                .toList();
-    }
-
-    private Registration validatedRegistration(ImportProfileExtension extension) {
-        if (extension == null || extension.descriptor() == null) {
-            throw new IllegalStateException("Import profile extension must declare a descriptor");
-        }
-        String profileId = extension.descriptor().profileId();
-        if (profileId == null || profileId.isBlank()) {
-            throw new IllegalStateException(
-                    "Import profile extension %s must declare a non-blank profile ID"
-                            .formatted(extension.getClass().getName()));
-        }
-        return new Registration(normalize(profileId), extension);
-    }
-
-    private String normalize(String profileId) {
-        return profileId.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private record Registration(String normalizedProfileId, ImportProfileExtension extension) {
+        var leases = catalog.acquireAll(ExtensionKind.IMPORT_PROFILE, ImportProfileExtension.class);
+        try { return leases.stream().map(lease -> lease.extension().descriptor()).toList(); }
+        finally { leases.forEach(ExtensionLease::close); }
     }
 }

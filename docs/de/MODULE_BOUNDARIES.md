@@ -16,6 +16,8 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-dsl` | Grundlage | Frameworkfreie TaxDSL-Syntax, Modell, Validierung, Mapping, Diff und Befehle |
 | `taxonomy-export` | Grundlage | Frameworkfreie Exportverträge, Codecs und neutrales Rendering |
 | `taxonomy-extension-api` | Grundlage | Frameworkfreie Erweiterungsverträge und Metadaten |
+| `taxonomy-extension-runtime` | Atomarer Plugin-Katalog, Artefaktvalidierung und gekapselter Classloader |
+| `taxonomy-mermaid-plugin` | Separat gebauter externer Mermaid-Adapter |
 | `taxonomy-reporting-api` | Grundlage | Vollständige snapshotgebundene Reportmodelle ohne Framework- oder Rendererabhängigkeit |
 | `taxonomy-workspace` | Fachmodul | Workspace-/Repository-Identität, Editorjournal, Undo/Redo, Git-Checkpoints und Speicher |
 | `taxonomy-knowledge` | Fachmodul | Katalog/Seeds, Relationen/Hypothesen, Suche, Indizes und lokale Embeddings |

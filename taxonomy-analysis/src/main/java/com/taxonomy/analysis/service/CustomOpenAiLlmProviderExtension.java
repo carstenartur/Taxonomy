@@ -1,14 +1,13 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.extension.api.llm.LlmProviderDescriptor;
-import com.taxonomy.extension.api.llm.LlmProviderExtension;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /** Provider metadata adapter for an operator-configured OpenAI-compatible endpoint. */
 @Component
-public class CustomOpenAiLlmProviderExtension implements LlmProviderExtension {
+public class CustomOpenAiLlmProviderExtension extends BuiltinLlmTransportExtension {
 
     private static final LlmProviderDescriptor DESCRIPTOR = new LlmProviderDescriptor(
             "CUSTOM_OPENAI", "Custom OpenAI-compatible", false, false, false, true,

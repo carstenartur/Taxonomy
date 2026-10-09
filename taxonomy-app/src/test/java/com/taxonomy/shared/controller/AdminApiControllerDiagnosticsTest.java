@@ -53,9 +53,9 @@ class AdminApiControllerDiagnosticsTest {
         serviceDiagnostics.put("apiKeyConfigured", true);
         serviceDiagnostics.put("apiKeyPrefix", "__taxonomy_custom_no_auth__");
         when(llmService.getDiagnostics()).thenReturn(serviceDiagnostics);
-        when(llmService.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
-        when(llmProviderConfig.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true);
-        when(llmProviderConfig.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)).thenReturn(false);
+        when(llmService.getActiveProviderId()).thenReturn(LlmProvider.CUSTOM_OPENAI.id());
+        when(llmProviderConfig.isProviderConfigured(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(true);
+        when(llmProviderConfig.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(false);
 
         ResponseEntity<Map<String, Object>> response = controller.diagnostics(request);
 
@@ -74,9 +74,9 @@ class AdminApiControllerDiagnosticsTest {
         serviceDiagnostics.put("apiKeyConfigured", true);
         serviceDiagnostics.put("apiKeyPrefix", "cust****");
         when(llmService.getDiagnostics()).thenReturn(serviceDiagnostics);
-        when(llmService.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
-        when(llmProviderConfig.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true);
-        when(llmProviderConfig.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)).thenReturn(true);
+        when(llmService.getActiveProviderId()).thenReturn(LlmProvider.CUSTOM_OPENAI.id());
+        when(llmProviderConfig.isProviderConfigured(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(true);
+        when(llmProviderConfig.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(true);
 
         ResponseEntity<Map<String, Object>> response = controller.diagnostics(request);
 

@@ -85,7 +85,7 @@ class ArtemisAnalysisMetricsTest {
     }
 
     @Test void providerMetricsMeasureActualWaitAndLeaseAndCleanUpFailedReturns() {
-        var settings = new ArtemisProviderPermitSettings(ArtemisProviderPermitSettings.DEFAULT_PREFIX, Map.of(LlmProvider.OPENAI, "shared-account"), 1000);
+        var settings = new ArtemisProviderPermitSettings(ArtemisProviderPermitSettings.DEFAULT_PREFIX, Map.of(LlmProvider.OPENAI.id(), "shared-account"), 1000);
         var returns = new AtomicInteger();
         ProviderConcurrencyPermits decorated = metrics.permits((provider, checkpoint) -> {
             assertThat(registry.get("taxonomy.analysis.provider.waiting").gauge().value()).isEqualTo(1);

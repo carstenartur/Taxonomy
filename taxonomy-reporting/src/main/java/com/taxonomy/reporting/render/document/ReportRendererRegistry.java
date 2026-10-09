@@ -1,177 +1,67 @@
 package com.taxonomy.reporting.render.document;
 
-import com.taxonomy.extension.api.report.ReportFormatDescriptor;
-import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.extension.api.report.*;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.runtime.BuiltinCatalog;
+import com.taxonomy.shared.extension.ExtensionKind;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.util.*;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-
-/**
- * Spring registry for report-renderer extensions grouped by report family and format.
- */
+/** Report-family facade over the catalog; decorators execute inside the version-bound lease. */
 @Service
 public class ReportRendererRegistry {
-
-    private final Map<String, Map<String, ReportRendererExtension>> byReportType;
-
-    /** Backward-compatible constructor for focused unit tests. */
-    public ReportRendererRegistry(List<ReportRendererExtension> extensions) {
-        this(extensions, List.of());
+    private final ExtensionCatalog catalog;
+    private final List<ReportRendererDecorator> decorators;
+    public ReportRendererRegistry(List<ReportRendererExtension> extensions) { this(extensions, List.of()); }
+    public ReportRendererRegistry(List<ReportRendererExtension> extensions, List<ReportRendererDecorator> decorators) {
+        this(BuiltinCatalog.create(extensions == null ? List.of() : extensions), decorators);
     }
-
-    /**
-     * Production constructor applying application-layer decorators before registration.
-     */
-    @Autowired
-    public ReportRendererRegistry(
-            List<ReportRendererExtension> extensions,
-            List<ReportRendererDecorator> decorators) {
-        List<ReportRendererExtension> safeExtensions = extensions == null
-                ? List.of() : new ArrayList<>(extensions);
-        List<ReportRendererDecorator> safeDecorators = decorators == null
-                ? List.of() : List.copyOf(decorators);
-
-        List<ReportRendererExtension> effectiveExtensions = safeExtensions.stream()
-                .map(extension -> applyDecorators(extension, safeDecorators))
-                .toList();
-
-        for (ReportRendererExtension extension : effectiveExtensions) {
-            Objects.requireNonNull(extension, "report renderer extension must not be null");
-            Objects.requireNonNull(extension.descriptor(),
-                    "report renderer descriptor must not be null");
-            Objects.requireNonNull(extension.reportModelType(),
-                    "report renderer model type must not be null");
-            normalizeRequired(extension.reportTypeId(), "report type ID");
-            normalizeRequired(extension.descriptor().id(), "report format ID");
-        }
-
-        Map<String, Map<String, ReportRendererExtension>> reportTypes = new LinkedHashMap<>();
-        effectiveExtensions.stream()
-                .sorted(Comparator
-                        .comparing((ReportRendererExtension extension) ->
-                                normalize(extension.reportTypeId()))
-                        .thenComparing(extension -> normalize(extension.descriptor().id())))
-                .forEach(extension -> {
-                    String reportType = normalizeRequired(
-                            extension.reportTypeId(), "report type ID");
-                    String formatId = normalizeRequired(
-                            extension.descriptor().id(), "report format ID");
-                    Map<String, ReportRendererExtension> formats =
-                            reportTypes.computeIfAbsent(reportType,
-                                    ignored -> new LinkedHashMap<>());
-                    ReportRendererExtension previous =
-                            formats.putIfAbsent(formatId, extension);
-                    if (previous != null) {
-                        if (ReportRendererExtension.DEFAULT_REPORT_TYPE_ID
-                                .equals(reportType)) {
-                            throw new IllegalStateException(
-                                    "Duplicate report renderer format ID: " + formatId);
+    @Autowired public ReportRendererRegistry(ExtensionCatalog catalog, List<ReportRendererDecorator> decorators) {
+        this.catalog = Objects.requireNonNull(catalog);
+        this.decorators = decorators == null ? List.of() : List.copyOf(decorators);
+    }
+    public ReportRendererExtension getRequired(String format) { return getRequired(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, format); }
+    public ReportRendererExtension getRequired(String family, String format) {
+        return findByFormatId(family, format).orElseThrow(() -> new IllegalArgumentException("Unknown report renderer: " + family + "/" + format));
+    }
+    public Optional<ReportRendererExtension> findByFormatId(String format) { return findByFormatId(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, format); }
+    public Optional<ReportRendererExtension> findByFormatId(String family, String format) {
+        if (family == null || family.isBlank() || format == null || format.isBlank()) return Optional.empty();
+        var key = ExtensionKey.report(family, format);
+        try (var lease = catalog.acquire(key, ReportRendererExtension.class)) {
+            var metadata = lease.extension().descriptor();
+            var model = lease.extension().reportModelType();
+            var reportFamily = lease.extension().reportTypeId();
+            return Optional.of(new ReportRendererExtension() {
+                public String reportTypeId() { return reportFamily; }
+                public Class<?> reportModelType() { return model; }
+                public ReportFormatDescriptor descriptor() { return metadata; }
+                public ReportRenderResult render(ReportRenderContext context) {
+                    try (var admitted = catalog.acquire(key, ReportRendererExtension.class)) {
+                        ReportRendererExtension effective = admitted.extension();
+                        for (ReportRendererDecorator decorator : decorators) {
+                            if (decorator.supports(effective)) effective = Objects.requireNonNull(decorator.decorate(effective), "report renderer decorator returned null");
                         }
-                        throw new IllegalStateException(
-                                "Duplicate report renderer for report type " + reportType
-                                        + " and format " + formatId);
+                        return effective.render(context);
                     }
-                });
-
-        Map<String, Map<String, ReportRendererExtension>> immutable =
-                new LinkedHashMap<>();
-        reportTypes.forEach((reportType, formats) ->
-                immutable.put(reportType, Map.copyOf(formats)));
-        this.byReportType = Map.copyOf(immutable);
+                }
+            });
+        } catch (ExtensionUnavailableException unavailable) { return Optional.empty(); }
     }
-
-    /** Backward-compatible lookup for the architecture-report family. */
-    public ReportRendererExtension getRequired(String formatId) {
-        return getRequired(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, formatId);
+    public List<ReportFormatDescriptor> listDescriptors() { return listDescriptors(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID); }
+    public List<ReportFormatDescriptor> listDescriptors(String family) {
+        if (family == null || family.isBlank()) return List.of();
+        var leases = catalog.acquireAll(ExtensionKind.REPORT_RENDERER, ReportRendererExtension.class);
+        try {
+            return leases.stream().map(ExtensionLease::extension)
+                    .filter(renderer -> renderer.reportTypeId().trim().equalsIgnoreCase(family.trim()))
+                    .map(ReportRendererExtension::descriptor).sorted(Comparator.comparing(ReportFormatDescriptor::id)).toList();
+        } finally { leases.forEach(ExtensionLease::close); }
     }
-
-    public ReportRendererExtension getRequired(String reportTypeId, String formatId) {
-        return findByFormatId(reportTypeId, formatId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown report renderer: " + reportTypeId + "/" + formatId));
-    }
-
-    /** Backward-compatible lookup for the architecture-report family. */
-    public Optional<ReportRendererExtension> findByFormatId(String formatId) {
-        return findByFormatId(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, formatId);
-    }
-
-    public Optional<ReportRendererExtension> findByFormatId(
-            String reportTypeId,
-            String formatId) {
-        if (reportTypeId == null || reportTypeId.isBlank()
-                || formatId == null || formatId.isBlank()) {
-            return Optional.empty();
-        }
-        Map<String, ReportRendererExtension> formats =
-                byReportType.get(normalize(reportTypeId));
-        if (formats == null) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(formats.get(normalize(formatId)));
-    }
-
-    /** Backward-compatible descriptor list for architecture reports. */
-    public List<ReportFormatDescriptor> listDescriptors() {
-        return listDescriptors(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID);
-    }
-
-    public List<ReportFormatDescriptor> listDescriptors(String reportTypeId) {
-        if (reportTypeId == null || reportTypeId.isBlank()) {
-            return List.of();
-        }
-        Map<String, ReportRendererExtension> formats =
-                byReportType.get(normalize(reportTypeId));
-        if (formats == null) {
-            return List.of();
-        }
-        return formats.values().stream()
-                .map(ReportRendererExtension::descriptor)
-                .sorted(Comparator.comparing(ReportFormatDescriptor::id))
-                .toList();
-    }
-
     public List<String> listReportTypeIds() {
-        return byReportType.keySet().stream().sorted().toList();
-    }
-
-    private static ReportRendererExtension applyDecorators(
-            ReportRendererExtension source,
-            List<ReportRendererDecorator> decorators) {
-        ReportRendererExtension effective =
-                Objects.requireNonNull(source, "report renderer extension must not be null");
-        for (ReportRendererDecorator decorator : decorators) {
-            Objects.requireNonNull(decorator, "report renderer decorator must not be null");
-            if (!decorator.supports(effective)) {
-                continue;
-            }
-            effective = Objects.requireNonNull(
-                    decorator.decorate(effective),
-                    "report renderer decorator returned null");
-        }
-        return effective;
-    }
-
-    private String normalizeRequired(String value, String label) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(label + " must not be blank");
-        }
-        String normalized = normalize(value);
-        if (normalized.contains(":")) {
-            throw new IllegalArgumentException(label + " must not contain ':'");
-        }
-        return normalized;
-    }
-
-    private String normalize(String value) {
-        return value.trim().toLowerCase(Locale.ROOT);
+        var leases = catalog.acquireAll(ExtensionKind.REPORT_RENDERER, ReportRendererExtension.class);
+        try { return leases.stream().map(lease -> lease.extension().reportTypeId().trim().toLowerCase(Locale.ROOT)).distinct().sorted().toList(); }
+        finally { leases.forEach(ExtensionLease::close); }
     }
 }

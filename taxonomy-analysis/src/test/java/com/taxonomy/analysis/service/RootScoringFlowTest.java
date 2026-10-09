@@ -49,7 +49,7 @@ class RootScoringFlowTest {
     private static final class Provider extends LlmProviderConfig {
         private final LlmProvider provider;
         Provider(LlmProvider provider) { super(null); this.provider = provider; }
-        @Override public LlmProvider getActiveProvider() { return provider; }
+        @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
         @Override public String getActiveProviderName() { return provider.name(); }
         @Override public String getApiKey(LlmProvider requested) { return "test-key"; }
     }
@@ -71,7 +71,7 @@ class RootScoringFlowTest {
                                       LocalEmbeddingService embeddings) {
         var config = new Provider(provider);
         var registry = new LlmGatewayRegistry(config, new RestTemplate(), new ObjectMapper(), null, null, null) {
-            @Override public LlmGateway getGateway(LlmProvider selected) { return gateway; }
+            @Override public LlmGateway getGatewayById(com.taxonomy.extension.api.llm.ProviderId selected) { return gateway; }
         };
         var prompts = new PromptTemplateService();
         prompts.loadDefaults();

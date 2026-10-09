@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
@@ -138,7 +140,7 @@ public class StreamRequirementAnalysisUseCase {
             return;
         }
         try {
-            llmService.setRequestProvider(LlmProvider.valueOf(provider.toUpperCase(Locale.ROOT)));
+            llmService.setRequestProviderId(new ProviderId(provider));
         } catch (IllegalArgumentException e) {
             throw new UnknownAnalysisProviderException(provider);
         }

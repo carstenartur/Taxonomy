@@ -72,6 +72,16 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     @Test
+    void extensionSdkAndApplicationRegistryHaveDifferentPhysicalOwners() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        var imported = new ClassFileImporter().importClasses(com.taxonomy.shared.extension.ExtensionKind.class,
+                com.taxonomy.shared.extension.TaxonomyExtension.class, com.taxonomy.shared.extension.runtime.ExtensionRegistry.class);
+        assertThat(contextFor(imported.get(com.taxonomy.shared.extension.ExtensionKind.class), policy)).isNull();
+        assertThat(contextFor(imported.get(com.taxonomy.shared.extension.TaxonomyExtension.class), policy)).isNull();
+        assertThat(contextFor(imported.get(com.taxonomy.shared.extension.runtime.ExtensionRegistry.class), policy).id()).isEqualTo("app-composition");
+    }
+
+    @Test
     void managedContextDependenciesMatchReviewedBaseline() throws Exception {
         Path repositoryRoot = findRepositoryRoot();
         ContextPolicy policy = readAndValidateContextPolicy(
@@ -355,13 +365,12 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     private static ContextDefinition contextFor(JavaClass javaClass, ContextPolicy policy) {
-        // Pure shared types are already owned and checked by taxonomy-domain. Package
-        // names alone cannot distinguish its ports from application adapters using
-        // the same namespace. Never exempt an implementation in a managed module.
-        String topLevel = javaClass.getName().split("\\$", 2)[0];
-        Path sharedSource = findRepositoryRoot().resolve("taxonomy-domain/src/main/java")
-                .resolve(topLevel.replace('.', '/') + ".java");
-        if (Files.isRegularFile(sharedSource)) return null;
+        // Physical SDK ownership wins over a namespace also used by runtime adapters.
+        // Never hide a source in a managed module; the whole-reactor gate also rejects duplicate ownership.
+        Path repository = findRepositoryRoot();
+        if (!ArchitectureSourceOwnership.belongsTo(repository, javaClass, SOURCE_MODULES.toArray(String[]::new))
+                && ArchitectureSourceOwnership.belongsTo(repository, javaClass,
+                "taxonomy-domain", "taxonomy-extension-api", "taxonomy-reporting-api", "taxonomy-templates-api")) return null;
         ContextDefinition packageContext = contextFor(javaClass.getPackageName(), policy.contexts());
         if (packageContext != null || !"com.taxonomy".equals(javaClass.getPackageName())) {
             return packageContext;

@@ -13,6 +13,11 @@
     <description>Report rendering, figures, template contributions and report adapters</description>
     <dependencies>
         <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>

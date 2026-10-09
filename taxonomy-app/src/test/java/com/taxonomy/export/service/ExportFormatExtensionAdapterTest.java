@@ -41,40 +41,6 @@ class ExportFormatExtensionAdapterTest {
     }
 
     @Test
-    void mermaidExtensionMatchesServiceOutputEnglish() {
-        MermaidExportService service = new MermaidExportService();
-        MermaidExportExtension extension = new MermaidExportExtension(service);
-        ExportResult result = extension.export(ExportContext.of(model));
-        assertThat(result.utf8()).isEqualTo(service.export(model, MermaidLabels.english()));
-    }
-
-    @Test
-    void mermaidExtensionMatchesServiceOutputGerman() {
-        MermaidExportService service = new MermaidExportService();
-        MermaidExportExtension extension = new MermaidExportExtension(service);
-        ExportResult result = extension.export(new ExportContext(model, Map.of("locale", "de")));
-        assertThat(result.utf8()).isEqualTo(service.export(model, MermaidLabels.german()));
-    }
-
-    @Test
-    void mermaidExtensionDescriptorHasCorrectMetadata() {
-        ExportFormatDescriptor descriptor =
-                new MermaidExportExtension(new MermaidExportService()).descriptor();
-        assertThat(descriptor.id()).isEqualTo("mermaid");
-        assertThat(descriptor.fileExtension()).isEqualTo("mmd");
-        assertThat(descriptor.contentType()).isEqualTo("text/plain; charset=UTF-8");
-        assertThat(descriptor.binary()).isFalse();
-    }
-
-    @Test
-    void mermaidExtensionReturnsNonEmptyResultForValidModel() {
-        ExportResult result = new MermaidExportExtension(new MermaidExportService())
-                .export(ExportContext.of(model));
-        assertThat(result.utf8()).startsWith("flowchart LR");
-        assertThat(result.bytes()).isNotEmpty();
-    }
-
-    @Test
     void archiMateExtensionMatchesServiceOutput() {
         ArchiMateDiagramService diagramService = new ArchiMateDiagramService();
         ArchiMateXmlExporter xmlExporter = new ArchiMateXmlExporter();

@@ -15,7 +15,7 @@ class FrozenReformulationEngineTest {
             "workspaceDsl","FORBIDDEN live workspace replacement", "relationMappings","[]", "snapshotDetail","ARCHIVE_ONLY_UNRELATED_DETAIL", "promptTemplatesAtCapture","ARCHIVE_ONLY_SCORING_INSTRUCTIONS");
         var baseline=new ReformulationBaseline(base.scope(),1,base.originalText(),base.originalTextHash(),"snap","{\"rawScores\":{\"P\":40,\"Q\":30,\"A\":10,\"B\":20,\"C\":30}}",context,"de","reformulation-v1");
         var prompts=new ArrayList<String>();var registry=mock(LlmGatewayRegistry.class);var config=mock(LlmProviderConfig.class);
-        when(config.getActiveProvider()).thenReturn(LlmProvider.OPENAI);when(config.isProviderConfigured(LlmProvider.OPENAI)).thenReturn(true);when(config.getApiKey(LlmProvider.OPENAI)).thenReturn("test");
+        when(config.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());when(config.isProviderConfigured(LlmProvider.OPENAI.id())).thenReturn(true);when(config.getApiKey(LlmProvider.OPENAI.id())).thenReturn("test");
         var gateway=new LlmGateway() {
             public String providerName(){return "test";}public String extractResponseText(String raw){return raw;}
             public String sendHttpRequest(String prompt,String key) {
@@ -26,7 +26,7 @@ class FrozenReformulationEngineTest {
                 return json.writeValueAsString(Map.of("summary","Useful summary", "statementProposals",List.of(),"preservedStatementIds",ids,"questionProposals",List.of(),"preservedQuestionIds",qids,"uncoveredSourceRefs",List.of(),"conflictCandidates",List.of()));
             }
         };
-        when(registry.getGateway(LlmProvider.OPENAI)).thenReturn(gateway);
+        when(registry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(gateway);
         var result=new FrozenReformulationEngine(new NodeReformulationService(registry,config,json),json).synthesize(baseline,List.of(),List.of());
         assertThat(prompts).hasSize(2).allSatisfy(p->assertThat(p).contains(base.originalText()).doesNotContain("FORBIDDEN live workspace replacement","ARCHIVE_ONLY_UNRELATED_DETAIL","ARCHIVE_ONLY_SCORING_INSTRUCTIONS","snapshotPayload","\"catalogue\""));
         assertThat(prompts.getFirst()).contains("A detail","B detail","Q detail");

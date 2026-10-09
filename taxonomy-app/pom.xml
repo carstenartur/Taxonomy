@@ -12,6 +12,13 @@
     <name>Taxonomy Application</name>
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
+        <!-- Distribution producer only; never included in the host classpath/BOOT-INF libraries. -->
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-reporting</artifactId>
@@ -491,6 +498,7 @@
                 <configuration>
                     <excludedGroups>${excludedGroups}</excludedGroups>
                     <systemPropertyVariables>
+                        <taxonomy.plugins.directory>${project.build.directory}/plugins</taxonomy.plugins.directory>
                         <selenium.container.image>${selenium.container.image}</selenium.container.image>
                         <!--
                             Different Spring test contexts rebuild the same in-memory
@@ -555,6 +563,12 @@
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>${maven-dependency-plugin.version}</version>
                 <executions>
+                    <execution><id>stage-standard-external-plugins</id><phase>process-resources</phase><goals><goal>copy</goal></goals>
+                        <configuration><artifactItems><artifactItem>
+                            <groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version>
+                            <outputDirectory>${project.build.directory}/plugins</outputDirectory>
+                        </artifactItem></artifactItems></configuration>
+                    </execution>
                     <execution>
                         <id>write-packaged-dependency-policy-tree</id>
                         <phase>verify</phase>

@@ -198,7 +198,7 @@ class AnalyzeRequirementUseCaseTest {
 
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());
-        verify(llmService).setRequestProvider(LlmProvider.GEMINI);
+        verify(llmService).setRequestProviderId(LlmProvider.GEMINI.id());
         verify(hypothesisService).persistFromAnalysis(
                 provisionalRelations, null, command.workspaceContext());
         verify(llmService).clearRequestProvider();
@@ -273,6 +273,8 @@ class AnalyzeRequirementUseCaseTest {
 
     @Test
     void analyzeClearsProviderOverrideWhenProviderIsUnknown() {
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("No executable LLM provider registered"))
+                .when(llmService).setRequestProviderId(new com.taxonomy.extension.api.llm.ProviderId("unknown"));
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                 "Need secure voice comms", false, 20, "unknown",
                 "alice", WorkspaceContext.SHARED);

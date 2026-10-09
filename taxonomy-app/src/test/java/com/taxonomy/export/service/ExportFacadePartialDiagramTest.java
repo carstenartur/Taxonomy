@@ -35,7 +35,7 @@ class ExportFacadePartialDiagramTest {
         when(analysis.analyzeWithBudget("requirement")).thenReturn(result);
         when(architecture.build(result.getScores(), "requirement", 20)).thenReturn(view);
         var facade = new ExportFacade(analysis, architecture, new DiagramProjectionService(),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null);
 
         var diagram = facade.buildDiagram("requirement");
 

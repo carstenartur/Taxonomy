@@ -12,6 +12,7 @@
     <name>Taxonomy Knowledge</name>
     <description>Catalogue, knowledge relations, full-text search and local semantic embeddings</description>
     <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-extension-runtime</artifactId><version>${project.version}</version></dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>

@@ -195,7 +195,7 @@ async function runGroup(group, jar, report) {
   };
   report.groups.push(groupTiming);
 
-  const application = spawn('java', ['-jar', jar], {
+  const application = spawn('java', ['-jar', jar, `--taxonomy.plugins.directory=${path.join(path.dirname(jar), 'plugins')}`], {
     cwd: repoRoot,
     env: applicationEnvironment(),
     stdio: ['ignore', logHandle, logHandle]

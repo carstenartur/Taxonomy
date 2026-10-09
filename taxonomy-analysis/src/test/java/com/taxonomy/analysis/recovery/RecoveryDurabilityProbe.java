@@ -202,7 +202,8 @@ public final class RecoveryDurabilityProbe {
         }
     }
     public static void invalidProvider() {
-        var llm = new LlmService(null, null, MAPPER, null, null, null, null);
+        var llm = new LlmService(new com.taxonomy.analysis.service.LlmProviderConfig(null),
+                null, MAPPER, null, null, null, null);
         try { llm.recoveryPolicyFingerprint("not-a-provider"); throw new AssertionError("Invalid provider accepted"); }
         catch (UnknownAnalysisProviderException expected) { check("not-a-provider".equals(expected.getProvider()), "Input not retained"); }
         catch (IllegalArgumentException wrong) { throw new AssertionError("Invalid resumable provider escapes the documented HTTP 400 mapping", wrong); }

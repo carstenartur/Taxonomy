@@ -240,13 +240,13 @@ class LlmServiceBranchCoverageTest {
         service = new LlmService(providerConfig, gatewayRegistry, new ObjectMapper(), taxonomyService,
                 promptTemplateService, localEmbeddingService, savedAnalysisService);
         ReflectionTestUtils.setField(service, "catalogueOverlayService", catalogueOverlayService);
-        lenient().when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
+        lenient().when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());
         lenient().when(providerConfig.getActiveProviderName()).thenReturn("OpenAI");
-        lenient().when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        lenient().when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn("test-key");
         lenient().when(providerConfig.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.FULL);
         lenient().when(providerConfig.isAvailable()).thenReturn(true);
         lenient().when(providerConfig.getAvailableProviders()).thenReturn(List.of("OPENAI", "LOCAL_ONNX"));
-        lenient().when(gatewayRegistry.getGateway(LlmProvider.OPENAI)).thenReturn(gateway);
+        lenient().when(gatewayRegistry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(gateway);
         lenient().when(promptTemplateService.renderPrompt(any(), anyString(), anyString(), anyInt(), anyString()))
                 .thenReturn("rendered prompt");
         lenient().when(promptTemplateService.renderRootPrompt(anyString(), anyString(), anyString()))
@@ -260,6 +260,7 @@ class LlmServiceBranchCoverageTest {
 
     @Test
     void delegatesProviderSelectionAndExposesDiagnostics() {
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
         service.setRequestProvider(LlmProvider.OPENAI);
         service.clearRequestProvider();
 
@@ -282,13 +283,13 @@ class LlmServiceBranchCoverageTest {
     @Test
     void detailedCallCoversNoKeyAndLocalEmbeddingAvailability() {
         TaxonomyNode node = node("A", null, "A");
-        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+        when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn(" ");
 
         LlmCallDetail noKey = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
         assertThat(noKey.getScores()).isEmpty();
         assertThat(noKey.getError()).contains("No API key configured");
 
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.LOCAL_ONNX.id());
         when(providerConfig.getActiveProviderName()).thenReturn("Local (bge-small-en-v1.5)");
         when(localEmbeddingService.isAvailable()).thenReturn(false);
         LlmCallDetail unavailable = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
@@ -348,7 +349,7 @@ class LlmServiceBranchCoverageTest {
         when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn(null);
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.LOCAL_ONNX.id());
         when(localEmbeddingService.isAvailable()).thenReturn(false);
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
@@ -483,16 +484,16 @@ class LlmServiceBranchCoverageTest {
                 .contains("secure voice");
 
         when(providerConfig.isMockMode()).thenReturn(false);
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.LOCAL_ONNX.id());
         assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
                 .contains("not available");
 
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
-        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());
+        when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn(" ");
         assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
                 .contains("no API key");
 
-        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn("test-key");
         when(gateway.sendHttpRequest("leaf prompt", "test-key")).thenReturn("body");
         when(gateway.extractResponseText("body")).thenReturn("  useful justification  ");
         assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
@@ -513,14 +514,14 @@ class LlmServiceBranchCoverageTest {
         assertThat(service.callLlmRaw("prompt")).isEqualTo("[]");
 
         when(providerConfig.isMockMode()).thenReturn(false);
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.LOCAL_ONNX.id());
         assertThat(service.callLlmRaw("prompt")).isNull();
 
-        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
-        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+        when(providerConfig.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());
+        when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn(" ");
         assertThat(service.callLlmRaw("prompt")).isNull();
 
-        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        when(providerConfig.getApiKey(LlmProvider.OPENAI.id())).thenReturn("test-key");
         when(gateway.sendHttpRequest("prompt", "test-key")).thenReturn("body");
         when(gateway.extractResponseText("body")).thenReturn("answer");
         assertThat(service.callLlmRaw("prompt")).isEqualTo("answer");

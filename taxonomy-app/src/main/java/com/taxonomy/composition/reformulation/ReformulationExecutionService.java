@@ -1,5 +1,7 @@
 package com.taxonomy.composition.reformulation;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+
 import com.taxonomy.analysis.reformulation.*;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.portfolio.reformulation.*;
@@ -48,11 +50,11 @@ public class ReformulationExecutionService {
         if (stopping) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
         var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);
         if(proposal.currentRevision().number()!=expectedRevision) throw new ReformulationPreconditionException();
-        var provider=providers.getActiveProvider();
-        String model=provider==LlmProvider.LOCAL_ONNX?"LOCAL_ONNX":model(provider);
+        var provider=providers.getActiveProviderId();
+        String model=provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":model(provider);
         var frozen=proposal.baseline().frozenContext();
         String prompt=frozen.getOrDefault("reformulationPrompt",ReformulationPromptBuilder.template());
-        var dispatch=recovery.enqueue(projectId,requirementId,proposalId,expectedRevision,provider.name(),model,
+        var dispatch=recovery.enqueue(projectId,requirementId,proposalId,expectedRevision,provider.value(),model,
                 frozen.getOrDefault("reformulationPromptVersion",ReformulationPromptBuilder.PROMPT_VERSION),
                 frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,
                 ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context);
@@ -160,9 +162,9 @@ public class ReformulationExecutionService {
                 recovery.releaseUnadmitted(token);
                 return;
             }
-            var run=dispatch.run();var provider=LlmProvider.valueOf(run.provider());
-            providers.setRequestProvider(provider);
-            if(provider==LlmProvider.LOCAL_ONNX || !providers.isProviderConfigured(provider)
+            var run=dispatch.run();var provider=providers.requireRegisteredProvider(run.provider());
+            providers.setRequestProviderId(provider);
+            if(provider.equals(LlmProvider.LOCAL_ONNX.id()) || !providers.isProviderConfigured(provider)
                     || providers.getProviderConfigurationError(provider)!=null || providers.isMockMode())
                 throw new IllegalStateException("PROVIDER_NOT_CONFIGURED");
             if(!run.model().equals(model(provider)) || !dispatch.endpointHash().equals(endpointHash(provider)))
@@ -224,13 +226,13 @@ public class ReformulationExecutionService {
     }
     private ReformulationStepExecutor checkpointExecutor(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context,Claim token,
             java.util.function.BooleanSupplier stopped) {
-        var provider=LlmProvider.valueOf(run.provider());String endpoint=endpoint(provider);
+        var provider=providers.requireRegisteredProvider(run.provider());String endpoint=endpoint(provider);
         return ReformulationStepExecutor.of((kind,input,type,work)->{
             if (stopped.getAsBoolean()) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
             if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("CHECKPOINT_EXECUTION_INSIDE_TRANSACTION");
             if(!run.model().equals(model(provider)) || !endpoint.equals(endpoint(provider)))throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
             String fingerprint=StableIdentityHash.sha256(checkpointJson.writeValueAsString(Map.ofEntries(
-                    Map.entry("format","reformulation-step-v1"),Map.entry("inputEncoding",ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry("provider",provider.name()),Map.entry("model",run.model()),
+                    Map.entry("format","reformulation-step-v1"),Map.entry("inputEncoding",ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry("provider",provider.value()),Map.entry("model",run.model()),
                     Map.entry("endpointHash",StableIdentityHash.sha256(endpoint)),Map.entry("prompt",run.promptContent()),
                     Map.entry("promptVersion",run.promptVersion()),Map.entry("schemaVersion",run.schemaVersion()),
                     Map.entry("reconciliation",run.reconcileContext()),Map.entry("resultType",type.getName()),Map.entry("input",input))));
@@ -245,10 +247,10 @@ public class ReformulationExecutionService {
             return checkpointJson.readValue(accepted,type);
         });
     }
-    private String endpointHash(LlmProvider provider) {return StableIdentityHash.sha256(provider==LlmProvider.LOCAL_ONNX?"LOCAL_ONNX":endpoint(provider));}
-    private String endpoint(LlmProvider provider) {return provider==LlmProvider.GEMINI?providers.getGeminiUrl():providers.getOpenAiCompatibleUrl(provider);}
-    private String model(LlmProvider provider) {
-        return provider==LlmProvider.GEMINI?java.net.URI.create(providers.getGeminiUrl()).getPath().replaceFirst(".*/models/", "").split(":")[0]
+    private String endpointHash(ProviderId provider) {return StableIdentityHash.sha256(provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":endpoint(provider));}
+    private String endpoint(ProviderId provider) {return provider.equals(LlmProvider.GEMINI.id())?providers.getGeminiUrl():providers.getOpenAiCompatibleUrl(provider);}
+    private String model(ProviderId provider) {
+        return provider.equals(LlmProvider.GEMINI.id())?java.net.URI.create(providers.getGeminiUrl()).getPath().replaceFirst(".*/models/", "").split(":")[0]
                 :providers.getOpenAiCompatibleModel(provider);
     }
     private static String failureCode(RuntimeException failure) {

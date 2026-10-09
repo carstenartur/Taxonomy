@@ -1,5 +1,8 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.extension.api.llm.ProviderId;
+import java.time.Duration;
+
 import java.time.Instant;
 import java.util.Locale;
 import java.util.function.Supplier;
@@ -9,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Connects the shared provider policy to existing cancellation, settings and telemetry. */
 final class LlmRequestAdmission {
-    private final LlmProvider provider;
+    private final ProviderId provider;
     private final int defaultRpm;
     private final AnalysisRuntimeSettings settings;
     private ProviderRequestLimiter.Limits limits = new ProviderRequestLimiter.Limits(4, 64);
@@ -18,6 +21,10 @@ final class LlmRequestAdmission {
     private boolean used;
 
     LlmRequestAdmission(LlmProvider provider, int defaultRpm, AnalysisRuntimeSettings settings) {
+        this(provider.id(), defaultRpm, settings);
+    }
+
+    LlmRequestAdmission(ProviderId provider, int defaultRpm, AnalysisRuntimeSettings settings) {
         this.provider = provider;
         this.defaultRpm = defaultRpm;
         this.settings = settings;
@@ -45,8 +52,8 @@ final class LlmRequestAdmission {
             distributed = clusterPermits;
             maximumWait = limits.maximumWaitMillis();
         }
-        String key = provider == LlmProvider.GEMINI ? "llm.rpm"
-                : "llm.rpm." + provider.name().toLowerCase(Locale.ROOT);
+        String key = provider.equals(LlmProvider.GEMINI.id()) ? "llm.rpm"
+                : "llm.rpm." + provider.value().toLowerCase(Locale.ROOT);
         int rpm = settings == null ? 0 : Math.max(0, settings.getInt(key, defaultRpm));
         long queuedAt = System.nanoTime();
         Runnable checkpoint = () -> {
@@ -80,6 +87,13 @@ final class LlmRequestAdmission {
                 permit.close();
             }
         }
+    }
+
+    boolean retryRateLimit(Duration retryAfter, int attempt, int maxRetries) {
+        var decision = ProviderRetryPolicy.rateLimit(attempt, maxRetries, retryAfter);
+        synchronized (this) { limiter.deferFor(decision.delayMillis()); }
+        if (decision.retry()) AnalysisRunControl.phase("WAITING_RATE_LIMIT", null);
+        return decision.retry();
     }
 
     boolean retryRateLimit(HttpClientErrorException failure, ObjectMapper mapper, int attempt, int maxRetries) {

@@ -3,7 +3,7 @@ name: JGit Storage Consumer Contract
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ main, feat/artemis-execution-base ]
+    branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - '.github/jgit-storage-hibernate-contract.sh'
       - '.github/workflows/jgit-storage-hibernate-contract.yml'

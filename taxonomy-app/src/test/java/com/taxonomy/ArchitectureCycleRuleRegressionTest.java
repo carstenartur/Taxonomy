@@ -21,6 +21,15 @@ class ArchitectureCycleRuleRegressionTest {
     }
 
     @Test
+    void pluginSdkAndPrivateLoaderCannotHideABackDependency() {
+        var classes = new ClassFileImporter().importClasses(
+                com.taxonomy.extension.api.fixture.ApiCycleFixture.class,
+                com.taxonomy.extension.runtime.fixture.RuntimeCycleFixture.class);
+        assertThatThrownBy(() -> ArchitectureCycleBoundaryTest.coreDomainSlicesShouldBeFreeOfUndocumentedCycles.check(classes))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("Cycle detected");
+    }
+
+    @Test
     void deliberatelyIntroducedUndocumentedCycleFails() {
         var classes = new ClassFileImporter().importClasses(
                 AlphaCycleFixture.class, BetaCycleFixture.class);

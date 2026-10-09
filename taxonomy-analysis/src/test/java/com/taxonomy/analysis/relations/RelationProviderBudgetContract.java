@@ -22,7 +22,7 @@ public final class RelationProviderBudgetContract {
         for (LlmProvider provider : LlmProvider.values()) {
             int[] calls = {0};
             var llm = new LlmService(null, null, new ObjectMapper(), null, null, null, null) {
-                @Override public LlmProvider getActiveProvider() { return provider; }
+                @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
                 @Override public String getActiveProviderName() { return "Presentation label / " + provider; }
                 @Override public String callLlmRaw(String prompt) { calls[0]++; return "fixture response"; }
             };

@@ -53,8 +53,8 @@ class ArtemisProviderPermitsConfigurationTest {
                 }).run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(ProviderConcurrencyPermits.class);
                     var settings = context.getBean(ArtemisProviderPermitSettings.class);
-                    assertThat(settings.providerGroups()).containsEntry(LlmProvider.OPENAI, "shared-account")
-                            .containsEntry(LlmProvider.CUSTOM_OPENAI, "shared-account");
+                    assertThat(settings.providerGroups()).containsEntry(LlmProvider.OPENAI.id(), "shared-account")
+                            .containsEntry(LlmProvider.CUSTOM_OPENAI.id(), "shared-account");
                     assertThat(settings.maximumWaitMillis()).isEqualTo(350);
                     assertThatThrownBy(() -> context.getBean(LlmGatewayRegistry.class).getGateway(LlmProvider.GEMINI)
                             .sendHttpRequest("fixture", "fixture-key"))

@@ -2,7 +2,7 @@
 
 ## Decision
 
-The extension architecture uses a layered contract model rather than one universal module for every feature-specific SPI. This document distinguishes **framework-free contract ownership** from **Spring adapter ownership** following the completed feature extraction under #628. Independent plugin loading is a further implementation step, not implied by a Maven module.
+The extension architecture uses a layered contract model rather than one universal module for every feature-specific SPI. This document distinguishes **framework-free contract ownership** from **Spring adapter ownership** following the completed feature extraction under #628. Independent plugin loading is implemented by the runtime catalog and loader; a Maven feature module alone still does not imply hot-unload support.
 
 ### `taxonomy-extension-api`
 
@@ -63,12 +63,34 @@ reporting. This is an explicit assembly dependency; selecting portfolio as a
 startup feature must also select reporting (and its templates dependency).
 Application-wide report composition remains in `taxonomy-app`.
 
+### External artifacts and host composition
+
+`taxonomy-extension-runtime` owns manifest compatibility, artifact validation,
+PF4J classloader adaptation, atomic publication and call leases. PF4J does not appear
+in the SDK. Existing registries are facades over the same catalog. LLM transports
+are startup contributions and execute through the existing host policy.
+
+`taxonomy-mermaid-plugin`, under `plugins/`, is an independent Maven project with
+provided SDK dependencies. Its JAR contains the existing Mermaid adapter and a
+`TaxonomyPlugin` service entry. The algorithm remains in `taxonomy-export`.
+The standard distribution places the JAR in `taxonomy-app/target/plugins` and
+Docker's `/app/plugins`, outside the executable host. Both existing Mermaid HTTP
+routes use the registry and return 404 when that contribution is absent. For a
+source checkout, start the packaged app with
+`--taxonomy.plugins.directory=taxonomy-app/target/plugins`.
+
+`./mvnw -B verify -Pplugin-packaging-tests` owns independent SDK builds and real
+packaged HTTP checks. A focused local execution is not the canonical CI gate.
+When Maven uses a non-default settings file, pass its path with
+`-Dtaxonomy.maven.user-settings=/path/to/settings.xml` so the independent build
+uses the same authorized repositories/proxy; credentials are never copied into
+the plugin project or its manifest.
+
 ### Spring adapters during the migration
 
 Today most Spring discovery, HTTP exposure and feature adapters still live in `taxonomy-app`, including:
 
 - `ExportFormatExtensionRegistry`
-- `MermaidExportExtension`
 - `ArchiMateExportExtension`
 - `VisioExportExtension`
 - `StructurizrExportExtension`

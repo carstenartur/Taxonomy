@@ -298,6 +298,8 @@ revisions, the durable semantic journal, and explicit Git checkpoints.
 | `taxonomy-dsl` | Framework-free DSL syntax, parsing, mapping, semantic diff, and model processing |
 | `taxonomy-export` | Framework-free export contracts, codecs, and neutral rendering |
 | `taxonomy-extension-api` | Framework-free extension interfaces and metadata |
+| `taxonomy-extension-runtime` | Atomic plugin catalog, artifact validation and private classloader |
+| `taxonomy-mermaid-plugin` | Independently built external Mermaid adapter |
 | `taxonomy-reporting-api` | Framework-free complete snapshot-bound report models |
 | `taxonomy-workspace` | Repository/workspace identity, versioning, editor operation journal, undo/redo, Git checkpoints, and JGit storage |
 | `taxonomy-knowledge` | Catalogue and seeds, relations and hypotheses, search, indexes, and local embeddings |

@@ -19,10 +19,10 @@ public class NodeReformulationService {
     }
     /** Prepare on the run thread; execute only on dedicated child threads and always clear their override. */
     <T> java.util.function.Supplier<T> captureProvider(java.util.function.Supplier<T> work) {
-        var provider = java.util.Objects.requireNonNull(config.getActiveProvider(), "Missing captured provider");
+        var provider = java.util.Objects.requireNonNull(config.getActiveProviderId(), "Missing captured provider");
         var observedWork = LlmTransportMeter.capture(work);
         return () -> {
-            config.setRequestProvider(provider);
+            config.setRequestProviderId(provider);
             try { return observedWork.get(); }
             finally { config.clearRequestProvider(); }
         };
@@ -32,10 +32,10 @@ public class NodeReformulationService {
     }
     public NodeSynthesisResult synthesize(NodeSynthesisInput input, ReformulationStepExecutor steps) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("LLM_CALL_INSIDE_TRANSACTION");
-        var provider = config.getActiveProvider();
-        if (provider == LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())
+        var provider = config.getActiveProviderId();
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id()) || !config.isProviderConfigured(provider) || config.isMockMode())
             throw new IllegalStateException("PROVIDER_NOT_CONFIGURED: Generative provider required");
-        var gateway = registry.getGateway(provider);
+        var gateway = registry.getGatewayById(provider);
         java.util.function.Predicate<NodeSynthesisInput> fits = candidate -> {
             try { gateway.validatePromptBudget(prompts.build(candidate, null)); return true; }
             catch (PromptBudgetExceededException tooLarge) { return false; }
@@ -60,10 +60,10 @@ public class NodeReformulationService {
     }
     private <T> T call(java.util.function.Function<String,String> prompt,java.util.function.Function<String,T> response) {
         if(TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("LLM_CALL_INSIDE_TRANSACTION");
-        var provider=config.getActiveProvider();String key=config.getApiKey(provider);
-        if(provider==LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())
+        var provider=config.getActiveProviderId();String key=config.getApiKey(provider);
+        if(provider.equals(LlmProvider.LOCAL_ONNX.id()) || !config.isProviderConfigured(provider) || config.isMockMode())
             throw new IllegalStateException("PROVIDER_NOT_CONFIGURED: "+java.util.Objects.toString(config.getProviderConfigurationError(provider),"Generative provider required"));
-        var gateway=registry.getGateway(provider);String errors=null;
+        var gateway=registry.getGatewayById(provider);String errors=null;
         for(int attempt=0;attempt<2;attempt++) {
             String raw;
             try {raw=gateway.sendHttpRequest(prompt.apply(errors),key);}

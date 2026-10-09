@@ -52,6 +52,13 @@ class ArchitectureCycleBoundaryTest {
                 @Override
                 public SliceIdentifier getIdentifierOf(JavaClass javaClass) {
                     String packageName = javaClass.getPackageName();
+                    if (packageName.equals("com.taxonomy.extension.api") || packageName.startsWith("com.taxonomy.extension.api."))
+                        return SliceIdentifier.of("extension-api");
+                    if (packageName.equals("com.taxonomy.extension.runtime") || packageName.startsWith("com.taxonomy.extension.runtime."))
+                        return SliceIdentifier.of("extension-runtime");
+                    if (packageName.equals("com.taxonomy.export.spi") || packageName.startsWith("com.taxonomy.export.spi.")
+                            || ArchitectureSourceOwnership.belongsTo(ArchitectureSourceOwnership.repository(), javaClass, "taxonomy-export"))
+                        return SliceIdentifier.of("export-core");
                     if (packageName.equals("com.taxonomy.reporting.api")
                             || packageName.startsWith("com.taxonomy.reporting.api.")) {
                         return SliceIdentifier.of("reporting-api");
@@ -64,7 +71,7 @@ class ArchitectureCycleBoundaryTest {
 
                 @Override
                 public String getDescription() {
-                    return "Taxonomy contexts with the independently published reporting API";
+                    return "Taxonomy contexts with separate SDK, loader and export implementation owners";
                 }
             })
             .should().beFreeOfCycles()

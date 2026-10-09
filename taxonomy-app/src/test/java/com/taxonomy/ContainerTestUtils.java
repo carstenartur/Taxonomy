@@ -37,10 +37,12 @@ final class ContainerTestUtils {
     private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
             "taxonomy-app-it", false)
             .withFileFromPath("app.jar", findApplicationJar())
+            .withFileFromPath("plugins", findApplicationJar().getParent().resolve("plugins"))
             .withDockerfileFromBuilder(builder -> builder
                     .from(APP_RUNTIME_IMAGE)
                     .workDir("/app")
                     .copy("app.jar", "app.jar")
+                    .copy("plugins", "plugins")
                     .expose(8080)
                     .entryPoint("java", "-jar", "app.jar")
                     .build());

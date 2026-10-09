@@ -1,13 +1,14 @@
 package com.taxonomy.composition.analysis.artemis;
 
 import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.extension.api.llm.ProviderId;
 
 import java.util.Map;
 import java.util.Objects;
 
 /** Explicit aliases only: names, URLs and credentials never infer quota sharing. */
 public record ArtemisProviderPermitSettings(String destinationPrefix,
-                                           Map<LlmProvider, String> providerGroups,
+                                           Map<ProviderId, String> providerGroups,
                                            long maximumWaitMillis) {
     public static final String DEFAULT_PREFIX = "taxonomy.analysis.provider-permits";
 
@@ -21,7 +22,7 @@ public record ArtemisProviderPermitSettings(String destinationPrefix,
         }
         providerGroups = Map.copyOf(Objects.requireNonNull(providerGroups, "providerGroups"));
         providerGroups.forEach((provider, group) -> {
-            if (provider == LlmProvider.LOCAL_ONNX) {
+            if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
                 throw new IllegalArgumentException("LOCAL_ONNX has no physical provider HTTP permits");
             }
             validateGroup(group);
