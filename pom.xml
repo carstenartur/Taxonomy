@@ -541,6 +541,13 @@
                 <taxonomy.quality.skip>false</taxonomy.quality.skip>
                 <it.test>ExternalPluginPackagedIT,OptionalFeaturePackagedIT</it.test>
             </properties>
+            <!-- The selected packaging ITs belong to taxonomy-build. Other reactor
+                 modules must not fail merely because they do not own those classes. -->
+            <build><pluginManagement><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration><failIfNoSpecifiedTests>false</failIfNoSpecifiedTests></configuration>
+            </plugin></plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>architecture-tests</id>
