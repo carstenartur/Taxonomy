@@ -100,7 +100,7 @@ class ArchitectureReportTests {
         ReportRendererExtension duplicate = renderer(" markdown ");
         assertThatThrownBy(() -> new ReportRendererRegistry(List.of(first, duplicate)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate report renderer format ID: markdown");
+                .hasMessageContaining("Duplicate extension ID for kind REPORT_RENDERER: normalized ID 'markdown'");
     }
 
     @Test

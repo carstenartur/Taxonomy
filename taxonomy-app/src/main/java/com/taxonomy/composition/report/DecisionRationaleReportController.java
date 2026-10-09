@@ -214,7 +214,9 @@ public class DecisionRationaleReportController {
         return render(request, "json");
     }
 
-    @Operation(summary = "Export hierarchical decision rationale using an installed report format")
+    @Operation(summary = "Export hierarchical decision rationale using an installed report format",
+            description = "Renders the authorized snapshot-bound report through the selected installed renderer. "
+                    + "Retains analysis/data provenance and rejects a renderer whose captured artifact is no longer available.")
     @ApiResponse(responseCode = "200", description = "Report returned with analysis and data provenance")
     @ApiResponse(responseCode = "400", description = "Invalid report input or unknown format")
     @ApiResponse(responseCode = "503", description = "Selected renderer is no longer available")
