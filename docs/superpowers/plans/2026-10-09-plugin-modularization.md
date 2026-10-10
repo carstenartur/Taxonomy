@@ -289,6 +289,18 @@ ausgeführt. Unabhängiger Review: keine Befunde. Der erste vollständige Lauf d
 neuen Jobs und die endgültige CI-Abnahme sind weiterhin abzuwarten; die lokalen
 Vertragstests sind kein vollständiger Plugin-Profil-PASS.
 
+Die erste CI-Ausführung dieses Nachtrags fand einen zusätzlich zu pflegenden
+bestehenden Vertrag: `ParallelCiEvidenceContractTest` erwartete wortwörtlich die
+bisherigen sechs Abschluss-Jobs. Oracle und SQL Server scheiterten deshalb bereits
+in `taxonomy-tooling` (200 Fälle, ein Fehlschlag), vor ihren Datenbanktests. Der
+Fehler wurde lokal mit zwei Fällen und einem Fehlschlag reproduziert. Der Vertrag
+verlangt jetzt alle bisherigen Voraussetzungen plus Plugin-Profil, dessen Jobnamen
+und Ergebnisbindung. Alle **200 Tooling-Tests** bestehen danach ohne Fehler oder
+Skips (`./mvnw -s target/continuation-evidence/toolchain/maven-settings.xml -B
+-Dmaven.build.cache.enabled=false -pl taxonomy-tooling -am test`, 16,430 Sekunden).
+Der unabhängige Nachreview bestätigt die unverändert strengen Voraussetzungen.
+Der neue Commit muss weiterhin die vollständigen CI-Läufe bestehen.
+
 ## Abnahmekriterien des Gesamtauftrags
 
 Erledigt erst, wenn alle zwölf Tasks samt Nachweisen abgeschlossen sind: bestehende Funktionalität der Vollausstattung; keine Repository-Typen in Template-API; vollständige Reportmodelle; neuer deterministischer Provider ohne Enumänderung; unabhängig gebautes Mermaid-JAR im unveränderten Host; echte Abwesenheit optionaler Fach-JARs; sicheres dynamisches Laden/Drain nur im zugesagten Umfang; UI-/Security-/Backup-/Restart-/Cluster-Negativfälle; aktueller vollständiger Build und präziser PR-Nachweis.
