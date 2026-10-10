@@ -90,6 +90,16 @@ export async function runSystemInformationAcceptance({
       } catch (cause) {
         throw new Error('AI status bootstrap must settle after locale navigation', { cause });
       }
+      // Only a fresh, rendered destination state can reconcile cancellation of
+      // the old document's periodic reads. HTTP failures remain audit blockers.
+      await page.waitForFunction(() => {
+        const context = window.TaxonomyContextBar?.getCurrentContext?.();
+        const contextBar = document.querySelector('#contextBar[data-context-rendered="true"]');
+        const gitBranch = document.querySelector('#gitStatusBar .git-branch');
+        return Boolean(context?.branch && contextBar
+          && gitBranch?.textContent?.trim() === context.branch
+          && !document.querySelector('#gitStatusBar .dot.error'));
+      }, null, { timeout: 20_000 });
       const panel = page.locator('#systemInformation');
       await panel.waitFor({ state: 'attached' });
       assert.equal(await panel.evaluate(element => element.open), false);
@@ -157,7 +167,7 @@ export async function runSystemInformationAcceptance({
       cases.push({ locale, screenshot, dimensions, requests,
         databaseVersionSource: next.database.versionSource, storage: next.database.storage,
         warnings: next.database.warnings, refreshed: true, keyboardOperated: true,
-        aiStatusSettled: true });
+        aiStatusSettled: true, operationalStatusSettled: true });
     } finally {
       page.off('request', observe);
     }

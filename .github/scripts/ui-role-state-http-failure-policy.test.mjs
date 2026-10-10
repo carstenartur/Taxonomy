@@ -108,3 +108,96 @@ test('a workspace switch during saving invalidates locale navigation', async () 
 test('system-information locale reload flushes drafts before its navigation window', async () => {
   assert.match(systemInformationSource, /await settleDraftBeforeLocaleNavigation\(page\);[\s\S]*onLocaleNavigationStart\?\.\(locale\)/);
 });
+
+// Run the actual acceptance observer/reconciliation code. Only the Playwright
+// event boundary is simulated; the classification is never duplicated here.
+function consoleAudit(browserName = 'webkit') {
+  const functionsStart = source.indexOf('function reconcileSystemInformationConsoleErrors(');
+  const functionsEnd = source.indexOf('\ntry {\n', functionsStart);
+  const observersStart = source.indexOf("  page.on('console',");
+  const observersEnd = source.indexOf("\n  taskMeasurements.failedStep = 'isolating", observersStart);
+  assert.ok(functionsStart >= 0 && functionsEnd > functionsStart);
+  assert.ok(observersStart >= 0 && observersEnd > observersStart);
+  return new Function('browserName', `
+    const baseUrl = 'http://127.0.0.1:8080';
+    const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [];
+    let systemInformationNavigationLocale = null;
+    const handlers = {};
+    const page = { on: (event, handler) => { handlers[event] = handler; } };
+    ${source.slice(functionsStart, functionsEnd)}
+    ${source.slice(observersStart, observersEnd)}
+    return {
+      errors: consoleErrors, reconciled: reconciledConsoleErrors,
+      begin(locale) { systemInformationNavigationLocale = locale; },
+      end() { systemInformationNavigationLocale = null; },
+      emit(message, event = 'console') {
+        handlers[event](event === 'console'
+          ? { type: () => 'error', text: () => message } : { message });
+      },
+      settle(cases) { reconcileSystemInformationConsoleErrors(cases); }
+    };
+  `)(browserName);
+}
+
+const settledLocale = { locale: 'de', aiStatusSettled: true, operationalStatusSettled: true };
+const contextCancellation = '/127.0.0.1:8080/api/context/current due to access control checks.';
+const gitCancellation = '/127.0.0.1:8080/api/git/state?branch=draft due to access control checks.';
+
+for (const event of ['console', 'pageerror']) {
+  test(`verified locale reload reconciles both observed WebKit status cancellations from ${event}`, () => {
+    const audit = consoleAudit();
+    audit.begin('de');
+    audit.emit(contextCancellation, event);
+    audit.emit(gitCancellation, event);
+    audit.end();
+    audit.settle([settledLocale]);
+    assert.deepEqual(audit.errors, []);
+    assert.equal(audit.reconciled.length, 2);
+    assert.deepEqual(audit.reconciled.map(item => item.message), [contextCancellation, gitCancellation]);
+  });
+}
+
+test('status cancellations remain blockers until the destination operational status is verified', () => {
+  const audit = consoleAudit();
+  audit.begin('de'); audit.emit(contextCancellation); audit.end();
+  audit.settle([{ locale: 'de', aiStatusSettled: true }]);
+  assert.deepEqual(audit.errors, [contextCancellation]);
+  assert.equal(audit.reconciled.length, 0);
+});
+
+test('a different successful locale cannot reconcile the failed navigation', () => {
+  const audit = consoleAudit();
+  audit.begin('en'); audit.emit(contextCancellation); audit.end();
+  audit.settle([settledLocale]);
+  assert.deepEqual(audit.errors, [contextCancellation]);
+});
+
+test('navigation reconciliation never admits other origins, endpoints or ordinary failures', () => {
+  const messages = [
+    'Fetch API cannot load https://other.invalid/api/ai-status due to access control checks.',
+    '/127.0.0.1:8080/api/analysis-drafts/123 due to access control checks.',
+    '/127.0.0.1:8080/api/admin/system-information due to access control checks.',
+    '/127.0.0.1:8080/api/context/current?unexpected=1 due to access control checks.',
+    '/127.0.0.1:8080/api/git/state?branch=draft&unexpected=1 due to access control checks.',
+    '/127.0.0.1:8080/api/context/current failed with HTTP 503',
+    'Uncaught TypeError: application failed'
+  ];
+  const audit = consoleAudit();
+  audit.begin('de'); messages.forEach(message => audit.emit(message)); audit.end();
+  audit.settle([settledLocale]);
+  assert.deepEqual(audit.errors, messages);
+  assert.equal(audit.reconciled.length, 0);
+});
+
+for (const browserName of ['webkit', 'chromium', 'firefox']) {
+  test(`ordinary ${browserName} console errors remain blockers outside locale navigation`, () => {
+    const audit = consoleAudit(browserName);
+    audit.emit(contextCancellation);
+    audit.begin('de');
+    if (browserName !== 'webkit') audit.emit(gitCancellation);
+    audit.end(); audit.emit(contextCancellation);
+    audit.settle([settledLocale]);
+    assert.equal(audit.errors.length, browserName === 'webkit' ? 2 : 3);
+    assert.equal(audit.reconciled.length, 0);
+  });
+}
