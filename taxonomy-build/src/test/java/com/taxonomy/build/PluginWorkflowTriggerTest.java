@@ -39,8 +39,8 @@ class PluginWorkflowTriggerTest {
         assertThat(root).as("repository root").isNotNull();
     }
 
-    static Stream<Arguments> templateApiTriggers() {
-        return Stream.of(
+    static Stream<Arguments> consumerTriggers() {
+        Stream<Arguments> templateApi = Stream.of(
                 List.of("kubernetes-constrained-smoke.yml", "pull_request"),
                 List.of("kubernetes-constrained-smoke.yml", "push"),
                 List.of("document-template-report-e2e.yml", "pull_request"),
@@ -51,11 +51,15 @@ class PluginWorkflowTriggerTest {
                 List.of("security-scan.yml", "pull_request"))
                 .flatMap(event -> Stream.of(TEMPLATE_API, "taxonomy-templates-api/pom.xml")
                         .map(path -> Arguments.of(event.get(0), event.get(1), path)));
+        // The CI workflow owns the full plugin verification and build commands.
+        // A workflow-only fix must still receive source analysis at its new SHA.
+        return Stream.concat(templateApi, Stream.of("pull_request", "push")
+                .map(event -> Arguments.of("codeql.yml", event, ".github/workflows/ci-cd.yml")));
     }
 
     @ParameterizedTest(name = "{0} / {1} includes {2}")
-    @MethodSource("templateApiTriggers")
-    void templateApiChangesTriggerItsConsumerChecks(String workflow, String event, String changedPath)
+    @MethodSource("consumerTriggers")
+    void consumerInputsTriggerTheirChecks(String workflow, String event, String changedPath)
             throws Exception {
         assertThat(root.resolve(changedPath)).isRegularFile();
         Map<?, ?> document = workflow(workflow);

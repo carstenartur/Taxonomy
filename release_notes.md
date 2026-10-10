@@ -1,12 +1,12 @@
-# Taxonomy 1.4.1
+# Taxonomy 1.5.0
 
-These are the unpublished source-line notes for Taxonomy 1.4.1, not evidence of a completed release. The source combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, an authoritative recoverable Copilot session, a versioned Information Product catalogue overlay, bounded concrete-product analysis, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
+These notes describe the Taxonomy 1.5.0 release line. Publication remains subject to the verification boundary below. The source combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, an authoritative recoverable Copilot session, a versioned Information Product catalogue overlay, bounded concrete-product analysis, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
 
 ## Important release-line note
 
-Publication status checked on **8 October 2026**: the latest stable GitHub Release is **1.3.0**, published on **3 August 2026**. The `v1.4.1` tag exists, but the release transaction stopped before publication; a tag or green component build is not an installable, verified release. Earlier unpublished `v1.3.1` and `v1.4.0` tags likewise remain historical attempts. Do not deploy any of these tags as a substitute for verified release assets.
+Publication status checked on **10 October 2026**: the latest stable GitHub Release is **1.3.0**, published on **3 August 2026**. The `v1.4.1` tag exists, but the release transaction stopped before publication; a tag or green component build is not an installable, verified release. Earlier unpublished `v1.3.1` and `v1.4.0` tags likewise remain historical attempts. Do not deploy any of these tags as a substitute for verified release assets.
 
-The owner has authorized **1.5.0** as an alternative next release. That requires a coherent `1.5.0-SNAPSHOT` preparation, version-aligned notes, a separately anchored release request and the normal release gates. This notes correction does not perform that transition, restart 1.4.1 or establish 1.5.0 readiness. The heading still names the existing 1.4.1 source line; the immutable tags and their historical notes remain unchanged.
+The source preparation targets **1.5.0-SNAPSHOT**, with **1.5.0** as the authorized release and **1.5.1-SNAPSHOT** as the following development version. All reactor modules, including the independent Mermaid plugin, share that product version. Publication requires a separately anchored release request and all normal release gates. Historical attempt tags and their notes remain unchanged.
 
 Feature descriptions below retain their documented scope. A merged implementation slice, a closed foundation issue or a passing selected test must not be read as completion of its broader programme. Publication, feature acceptance and target-product compatibility are separate claims.
 
@@ -151,13 +151,13 @@ The overlay contract:
 
 Concrete `PRODUCT` leaves are evaluated independently from taxonomy categories in deterministic batches of at most ten. All products may score zero. When a relevant family has no suitable catalogued product above the configured threshold, Taxonomy emits a structured product-coverage gap instead of inventing a taxonomy node or a winning product. Failed or incomplete product batches remain `PARTIAL` and never become confirmed gaps. Completed product evidence and an already established gap remain available when a separate category call fails.
 
-Every overlay mapping delivered in 1.4.1 is provisional and requires expert review. The dedicated review queue and runtime Git-promotion workflow are not part of this release. General two-stage analysis for arbitrary taxonomy category nodes with more than ten children also remains follow-up work; the bounded concrete-product path must not be presented as completion of that broader high-fan-out programme.
+Every overlay mapping delivered in 1.5.0 is provisional and requires expert review. The dedicated review queue and runtime Git-promotion workflow are not part of this release. General two-stage analysis for arbitrary taxonomy category nodes with more than ten children also remains follow-up work; the bounded concrete-product path must not be presented as completion of that broader high-fan-out programme.
 
 ### Versioned Word templates and template-backed decision reports
 
 Administrators can maintain DOTX templates through the browser or a virtual WebDAV collection while retaining precise Git history for the unpacked OOXML package contents. Taxonomy stores each template canonically as an unpacked tree in a dedicated Hibernate-backed JGit repository and materialises a valid `.dotx` package on demand. WebDAV exposes complete Office documents only; the unpacked representation remains an internal Git and inspection concern.
 
-The browser administration surface provides upload, current and historical download, version history, and test export. The underlying service and Git model also support per-part inspection, comparison, and conflict-protected restore. A fully guided compare-and-restore workflow in the administrator UI remains follow-up work and is not claimed as complete in 1.4.1.
+The browser administration surface provides upload, current and historical download, version history, and test export. The underlying service and Git model also support per-part inspection, comparison, and conflict-protected restore. A fully guided compare-and-restore workflow in the administrator UI remains follow-up work and is not claimed as complete in 1.5.0.
 
 The template boundary includes:
 
@@ -168,7 +168,7 @@ The template boundary includes:
 - a fail-closed placeholder contract that permits known Taxonomy tokens only in supported body/table paragraphs, headers, and footers and rejects unknown, malformed, text-box, content-control, footnote, metadata, attributes, and other unsupported placements before activation;
 - deterministic package materialisation and semantic-validation caching by immutable template revision.
 
-Taxonomy rejects unsafe or privacy-bearing templates; it does not silently sanitize and activate them. A downloadable sanitization report and optional deterministic cleanup remain post-1.4.1 administration enhancements.
+Taxonomy rejects unsafe or privacy-bearing templates; it does not silently sanitize and activate them. A downloadable sanitization report and optional deterministic cleanup remain post-1.5.0 administration enhancements.
 
 A valid macro-free decision-rationale template is bundled and seeded idempotently without overwriting organisation-specific changes. Generated reports inherit the selected template's branding, page setup, styles, headers, footers, and static metadata while retaining the generated executive summary, decision chapters, diagrams, and appendix. Every emitted XML part is checked for unresolved Taxonomy placeholders.
 
@@ -228,7 +228,7 @@ The PostgreSQL schema removes the redundant non-unique relation-projection check
 
 ### Integrated multi-repository technical foundation
 
-Taxonomy 1.4.1 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.4.1.
+Taxonomy 1.5.0 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.5.0.
 
 ## Security and bounded runtime state
 
@@ -269,24 +269,47 @@ Repairable decision-report template unavailability has a stable, non-sensitive H
 
 All LLM quota, login-lockout, and WebDAV credential-failure counters are process-local. Multi-replica deployments multiply aggregate allowance and keep separate lockout tables unless an outer distributed control is supplied.
 
-## Modular runtime architecture (#628)
+## Modular runtime architecture and plugins
 
-Taxonomy remains one deployable Spring Boot application, with seven physical Maven feature
-libraries: `taxonomy-workspace`, `taxonomy-knowledge`, `taxonomy-templates`, `taxonomy-interop`,
-`taxonomy-architecture`, `taxonomy-analysis`, and `taxonomy-portfolio`. They own workspace/versioning/editor
-state, knowledge/search, document templates, interoperability, architecture derivation,
-requirement/LLM analysis, and the project portfolio respectively.
+Taxonomy remains one deployable Spring Boot application. Workspace, knowledge,
+templates, interoperability, architecture, analysis and portfolio have physical Maven
+owners. Reporting has a separate implementation and framework-free model API; templates
+also expose a framework-free consumer API. Enforced dependencies remain acyclic and
+prevent feature implementations from depending back on the application.
 
-The application is the composition/deployment root rather than the implementation container
-for those seven features. Enforced module boundaries prevent feature libraries from depending
-back on the application and verify an acyclic module graph. Domain, DSL, export, and extension-API
-foundations remain framework-free; database migrations and cross-context security/recovery tests
-stay application-owned. Preferences and provenance remain supporting application contexts.
+The packaged host uses `PropertiesLauncher`. Six feature implementations are installed
+beside the host in `features/`: templates, architecture, reporting, analysis, portfolio
+and interoperability. Startup validates feature dependencies and exact host-version
+compatibility before opening database connections or HTTP listeners. Changing this
+feature set requires a stopped host and restart; removing a feature does not delete its data.
+Workspace, knowledge, security, migrations and application-wide composition remain in
+the core distribution.
 
-Unit tests and feature resources follow their owning modules. Executable-JAR checks verify
-unique class/resource ownership without changing the deployment model. See the
-[module boundaries](docs/en/MODULE_BOUNDARIES.md) and
-[completion scope](docs/dev/MODULE_EXTRACTION_COMPLETION.md).
+Mermaid is an independently built plugin in `plugins/`. The runtime validates artifact
+identity and SDK compatibility, and the existing export routes resolve contributions
+through the shared registry. Optional administrator-controlled activation and draining
+are disabled by default and apply only to eligible dynamic export/renderer contributions
+on supported single-instance deployments. There is no remote plugin upload UI. Startup
+contributions and cluster/Artemis/worker deployments reject dynamic changes.
+
+Durable provider jobs retain exact plugin identity and a non-secret configuration
+fingerprint; workers reject mismatches before contacting the provider. Backups declare
+data-owning feature prerequisites and reject missing or changed artifacts before restore.
+Plugin binaries are not backup payloads; retain the matching verified distribution.
+These safeguards do not complete the broader backup/restore programme in
+[#1146](https://github.com/carstenartur/Taxonomy/issues/1146).
+
+The downloadable `taxonomy-1.5.0-distribution.tar.gz` contains `app.jar`, the six feature
+JARs, plugin JARs with their checksums, legal notices, release notes and launch instructions.
+Verify the archive checksum, extract it, then run `java -jar app.jar` from its distribution
+directory. A standalone host JAR contains only the core; copy the complete distribution
+for the standard installation. Publication requires both the archive and its checksum.
+
+Unit tests, packaged HTTP tests, plugin lifecycle tests, backup compatibility contracts
+and the full `plugin-packaging-tests` profile verify these boundaries. See the
+[module boundaries](docs/en/MODULE_BOUNDARIES.md),
+[extension and startup contracts](docs/dev/extension-module-boundaries.md) and
+[extraction completion scope](docs/dev/MODULE_EXTRACTION_COMPLETION.md).
 
 ## Release and reproducibility
 
@@ -306,7 +329,7 @@ Missing, failed, cancelled, unexpectedly skipped, timed-out, mismatched, or unre
 
 ### Exact-fingerprint CodeQL migration boundary
 
-The 1.4.1 release train removes six previously baselined findings: the WebDAV write-scope authorization dataflow, two unbounded semantic-search arithmetic paths, and three predictable temporary-evidence paths in JavaScript tooling.
+The 1.5.0 release train removes six previously baselined findings: the WebDAV write-scope authorization dataflow, two unbounded semantic-search arithmetic paths, and three predictable temporary-evidence paths in JavaScript tooling.
 
 At the reviewed source `f47c0497dfee663de6a0e865ecfd99bc2151b8b8`, the checked-in [CodeQL baseline](.github/codeql-sarif-baseline.json) contains **3 entries**, all for `java/user-controlled-bypass` in `ProposalApiController`. Each records an exact primary-location fingerprint and a rationale referring to service-side context, authorization and expected-head checks. A retained entry is neither proof of an exploitable bypass nor a claim that the finding disappeared. Further work is tracked in [#857](https://github.com/carstenartur/Taxonomy/issues/857).
 
@@ -317,7 +340,7 @@ The earlier count of eight and its list of remaining logging/bootstrap-password 
 The release transaction aligns source and deployment evidence:
 
 - the release tag and packaged source are verified before use;
-- Maven module JARs, checksums, SBOM/VEX companion, Helm assets, and Kubernetes manifests are archived;
+- the complete application distribution, Maven module JARs, checksums, SBOM/VEX companion, Helm assets, and Kubernetes manifests are archived;
 - the OCI image carries source/version labels and is referenced by immutable digest;
 - provenance and SBOM attestations are enabled;
 - the immutable digest is vulnerability-scanned before the draft release becomes public;
@@ -327,16 +350,16 @@ The release transaction aligns source and deployment evidence:
 
 Maven remains the canonical verification entry point. Deterministic repository policy is owned by JUnit/Failsafe or dependency-free Java tooling, including workflow test authority, documentation links, aggregate reactor coverage, dependency alignment, immutable supply-chain references, packaged dependency hygiene, frontend API boundaries, release version state, request ancestry, CodeQL SARIF enforcement, and SBOM/VEX companion generation.
 
-A bounded set of existing Python release adapters and evidence generators remains in 1.4.1 under Maven/JUnit-owned positive and negative contracts. Remaining adapter migration and release-manifest work is tracked in [#629](https://github.com/carstenartur/Taxonomy/issues/629); [#673](https://github.com/carstenartur/Taxonomy/issues/673) was closed for delivered foundations only, not for complete Python removal. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
+A bounded set of existing Python release adapters and evidence generators remains in 1.5.0 under Maven/JUnit-owned positive and negative contracts. Remaining adapter migration and release-manifest work is tracked in [#629](https://github.com/carstenartur/Taxonomy/issues/629); [#673](https://github.com/carstenartur/Taxonomy/issues/673) was closed for delivered foundations only, not for complete Python removal. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
 
 The Java/Maven-only reproducibility requirement is **not yet fulfilled**. The current [Maven verification inventory](docs/dev/MAVEN_VERIFICATION.md) lists remaining container/Helm prerequisites, checks outside root `verify`, conditional integration lanes and post-test evidence rules. Neither the `ci` profile alone nor `test-local` proves all Actions checks were reproduced. This is a known delivery gap, not a passed release criterion.
 
 ## Compatibility and deliberate exclusions
 
-- AI-generated mappings, architectures, gaps, solutions, products, scores, and rationales remain proposals requiring qualified human review. Taxonomy 1.4.1 does not claim independently benchmarked architecture accuracy or calibrated decision probability.
+- AI-generated mappings, architectures, gaps, solutions, products, scores, and rationales remain proposals requiring qualified human review. Taxonomy 1.5.0 does not claim independently benchmarked architecture accuracy or calibrated decision probability.
 - Provisional Information Product mappings are not external approvals. The dedicated expert review queue and runtime Git-promotion workflow remain follow-up work.
 - General two-stage high-fan-out category analysis is not complete; the bounded concrete-product path covers product leaves, not every taxonomy node with a large child set.
-- The public multi-repository API is disabled by default and is not a production-supported 1.4.1 capability.
+- The public multi-repository API is disabled by default and is not a production-supported 1.5.0 capability.
 - Federated authority and collaborative-editing documents are planning baselines, not claims that those future capabilities are delivered.
 - WebDAV exposes valid packaged DOTX resources only; unpacked OOXML remains an internal Git and inspection concern.
 - The administrator UI does not yet provide the complete guided template compare-and-restore journey, although the versioned backend capabilities exist.
@@ -351,15 +374,15 @@ The Java/Maven-only reproducibility requirement is **not yet fulfilled**. The cu
 - Local semantic embeddings and runtime model download are disabled unless explicitly enabled.
 - Complete Python removal and the remaining release-manifest implementation are open in #629; the closed foundation issue #673 must not be used as proof of completion.
 - The small Kubernetes profile is not a measured production capacity envelope.
-- The unpublished `v1.3.1` and `v1.4.0` tags must not be used as substitutes for 1.4.1 release assets.
+- The unpublished `v1.3.1`, `v1.4.0` and `v1.4.1` tags must not be used as substitutes for 1.5.0 release assets.
 
 ## Upgrade notes
 
-These are preparation requirements for an eventual verified release, not an instruction to install the unpublished 1.4.1 tag. A 1.5.0 release must first align and verify these version-specific instructions against its own source, artifacts and upgrade tests.
+Apply these instructions only to published 1.5.0 assets with matching source and verification evidence. They do not authorize deployment of an unpublished attempt tag.
 
 1. Back up the application database and persistent storage using the normal operational procedure.
 2. Keep existing installations on their supported, verified release until a successor is actually published. Validate the intended upgrade from 1.3.0 on a restorable copy; do not infer upgrade acceptance from a successful fresh install.
-3. After the first 1.4.1 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
+3. After the first 1.5.0 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
 4. Existing or newly uploaded Word templates containing comments, tracked changes, hidden text, custom XML, personal/workstation properties, unsupported Taxonomy token placements, or other rejected constructs must be cleaned in Word before Taxonomy will activate them.
 5. Configure a trusted external HTTPS origin before enabling direct Word/WebDAV actions, and create scoped WebDAV application credentials for users who require them.
 6. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. Review `TAXONOMY_REQUIRE_PASSWORD_CHANGE`, `TAXONOMY_LOGIN_RATE_LIMIT`, `TAXONOMY_LOGIN_MAX_ATTEMPTS`, and `TAXONOMY_LOGIN_LOCKOUT_SECONDS` before production rollout. Forwarded peer addresses are trustworthy only behind a controlled ingress.
@@ -376,4 +399,4 @@ These are preparation requirements for an eventual verified release, not an inst
 
 ## Verification boundary
 
-Taxonomy 1.4.1 is published only after the release request, final source commit, Git tag, GitHub Release, Maven artifacts, checksums, SBOM/VEX evidence, OCI digest, image scan, attestations, Helm package, Kubernetes manifests, deployment evidence, and post-release `1.4.2-SNAPSHOT` state agree with the same release transaction.
+Taxonomy 1.5.0 is published only after the release request, final source commit, Git tag, GitHub Release, Maven artifacts, checksums, SBOM/VEX evidence, OCI digest, image scan, attestations, Helm package, Kubernetes manifests, deployment evidence, and post-release `1.5.1-SNAPSHOT` state agree with the same release transaction.

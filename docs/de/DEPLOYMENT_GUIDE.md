@@ -66,16 +66,30 @@ Vor dem Go-live die [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md) vollständi
 
 ## Optionale Funktionspakete und externe Plugins
 
-Die Standarddistribution besteht aus der ausführbaren `taxonomy-app`-JAR sowie
+Das Release-Archiv `taxonomy-<version>-distribution.tar.gz` enthält `app.jar` sowie
 `features/` mit sechs Fach-JARs und `plugins/` mit dem separat gebauten Mermaid-Adapter.
 Alle drei gemeinsam ausliefern. Die Host-JAR allein enthält absichtlich nur den festen
 Kern. Docker und native Pakete enthalten die Vollausstattung; native Starter beziehen
 beide Verzeichnisse auf die Installation, unabhängig vom Arbeitsverzeichnis.
-Nach `./mvnw package` erfolgt der Start so:
+Bei einem heruntergeladenen Release 1.5.0 zuerst die Prüfsummen prüfen und dann
+aus dem entpackten Verzeichnis starten:
 
 ```sh
+sha256sum --check taxonomy-1.5.0-distribution.tar.gz.sha256
+tar -xzf taxonomy-1.5.0-distribution.tar.gz
+cd taxonomy-1.5.0
+sha256sum --check SHA256SUMS
+java -jar app.jar
+```
+
+Für einen Quellcode-Build nach `./mvnw package` diese Befehle im Repository-Stamm
+ausführen. Die Version wird aus dem Checkout gelesen, damit Release- und
+Entwicklungs-Builds den tatsächlichen Maven-Artefaktnamen verwenden:
+
+```sh
+taxonomy_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 cd taxonomy-app/target
-java -Dloader.path=features -Dtaxonomy.plugins.directory=plugins -jar taxonomy-app-1.4.1-SNAPSHOT.jar
+java -Dloader.path=features -Dtaxonomy.plugins.directory=plugins -jar "taxonomy-app-${taxonomy_version}.jar"
 ```
 
 Startzeitpakete sind `templates`, `architecture`, `reporting`, `analysis`, `portfolio`

@@ -132,7 +132,7 @@ validate_release_notes() {
 }
 
 collect_release_artifacts() {
-  rm -rf target/release-artifacts
+  rm -rf target/release-artifacts target/release-distribution
   mkdir -p target/release-artifacts
   find . -path './target/release-artifacts' -prune -o \
     -path '*/target/*.jar' -type f \
@@ -149,6 +149,76 @@ collect_release_artifacts() {
       echo "::warning::$file not found"
     fi
   done
+
+  # The executable JAR deliberately excludes startup features and external
+  # plugins. Preserve the complete runtime layout in a downloadable distribution.
+  local distribution_name="taxonomy-${RELEASE_VERSION}"
+  local distribution="target/release-distribution/${distribution_name}"
+  local host="taxonomy-app/target/taxonomy-app-${RELEASE_VERSION}.jar"
+  local feature feature_jar plugin plugin_name checksum expected_checksum
+  local -a plugins=()
+  [[ -f "$host" && ! -L "$host" ]] \
+    || fail "Missing release application JAR: $host"
+  mkdir -p "$distribution/features" "$distribution/plugins"
+  cp "$host" "$distribution/app.jar"
+  for feature in analysis architecture interop portfolio reporting templates; do
+    feature_jar="taxonomy-app/target/features/taxonomy-${feature}-${RELEASE_VERSION}.jar"
+    [[ -f "$feature_jar" && ! -L "$feature_jar" ]] \
+      || fail "Missing release startup feature: $feature_jar"
+    cp "$feature_jar" "$distribution/features/"
+  done
+  plugin="taxonomy-app/target/plugins/taxonomy-mermaid-plugin-${RELEASE_VERSION}.jar"
+  [[ -f "$plugin" && ! -L "$plugin" ]] \
+    || fail "Missing standard release plugin: $plugin"
+  mapfile -d '' plugins < <(find taxonomy-app/target/plugins -maxdepth 1 -name '*.jar' -print0 | sort -z)
+  for plugin in "${plugins[@]}"; do
+    plugin_name=$(basename "$plugin")
+    checksum="${plugin}.sha256"
+    [[ -f "$plugin" && ! -L "$plugin" && -f "$checksum" && ! -L "$checksum" ]] \
+      || fail "Missing or invalid release plugin/checksum: $plugin"
+    expected_checksum="$(sha256sum "$plugin" | awk '{print $1}') *${plugin_name}"
+    [[ "$(cat "$checksum")" == "$expected_checksum" ]] \
+      || fail "Release plugin checksum does not match: $plugin"
+    cp "$plugin" "$checksum" "$distribution/plugins/"
+  done
+  cp LICENSE NOTICE THIRD-PARTY-NOTICES.md release_notes.md "$distribution/"
+  cat > "$distribution/README.md" <<EOF
+# Taxonomy ${RELEASE_VERSION}
+
+This distribution requires Java 21. Keep app.jar, features/ and plugins/ together.
+The features/ directory contains the six standard startup features; plugins/
+contains the external Mermaid plugin and its build checksum.
+
+After extracting the archive, change to the distribution directory:
+
+    cd ${distribution_name}
+    sha256sum --check SHA256SUMS
+
+Set TAXONOMY_ADMIN_PASSWORD to a unique secret in your environment for the initial
+administrator account. Configure any model provider and deployment settings using
+the deployment guide, then start the application from this directory:
+
+    java -jar app.jar
+
+The launcher resolves features/ and plugins/ relative to this working directory.
+The executable JAR on its own does not provide the complete standard feature set.
+
+Deployment guide: https://github.com/carstenartur/Taxonomy/blob/v${RELEASE_VERSION}/docs/en/DEPLOYMENT_GUIDE.md
+Release details are included in release_notes.md. SHA256SUMS covers every file in
+this distribution, including each feature and plugin JAR.
+EOF
+  (
+    cd "$distribution"
+    find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+    sha256sum --check --quiet SHA256SUMS
+  )
+  tar -czf "target/release-artifacts/${distribution_name}-distribution.tar.gz" \
+    -C target/release-distribution "$distribution_name"
+  (
+    cd target/release-artifacts
+    sha256sum "${distribution_name}-distribution.tar.gz" \
+      > "${distribution_name}-distribution.tar.gz.sha256"
+  )
   find target/release-artifacts -maxdepth 1 -type f -print | sort
 }
 
@@ -287,7 +357,7 @@ echo "Dry run: $DRY_RUN"
 run_release_plan_check "$RELEASE_CHECK_STATE" true
 
 if [[ "$STATE" == "new" ]]; then
-  ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+  ./mvnw -B versions:set -DprocessAllModules=true -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
   update_release_metadata "$RELEASE_VERSION" --release
   check_version_state --mode release --expected-version "$RELEASE_VERSION"
   # Validate the actual release-state reactor before committing it. The clean-check
@@ -333,7 +403,7 @@ if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
   check_version_state --mode development --expected-version "$NEXT_VERSION"
 else
   git checkout --detach "$RELEASE_COMMIT"
-  ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
+  ./mvnw -B versions:set -DprocessAllModules=true -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
   update_release_metadata "$NEXT_VERSION"
   check_version_state --mode development --expected-version "$NEXT_VERSION"
   stage_version_metadata

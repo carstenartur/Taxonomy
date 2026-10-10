@@ -56,6 +56,9 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
+
       - name: Set up JDK 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -453,6 +456,14 @@ jobs:
             "$RELEASE_NOTES_VALIDATOR"
 
           assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          for expected in \
+            "taxonomy-${RELEASE_VERSION}-distribution.tar.gz" \
+            "taxonomy-${RELEASE_VERSION}-distribution.tar.gz.sha256"; do
+            if ! grep -Fxq "$expected" <<< "$assets"; then
+              echo "::error::Draft release is missing required distribution asset $expected"
+              exit 1
+            fi
+          done
           for expected in \
             "taxonomy-${RELEASE_VERSION}-image-evidence.json" \
             "taxonomy-${RELEASE_VERSION}-image-trivy.sarif" \

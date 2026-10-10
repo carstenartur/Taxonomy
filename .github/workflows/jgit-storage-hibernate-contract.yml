@@ -5,6 +5,7 @@ on:
   pull_request:
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - '.github/jgit-storage-hibernate-contract.sh'
       - '.github/workflows/jgit-storage-hibernate-contract.yml'
       - 'pom.xml'
@@ -30,6 +31,7 @@ on:
   push:
     branches: [ main ]
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - '.github/jgit-storage-hibernate-contract.sh'
       - '.github/workflows/jgit-storage-hibernate-contract.yml'
       - 'pom.xml'
@@ -79,8 +81,8 @@ jobs:
             pom.xml
             taxonomy-app/pom.xml
 
-      - name: Validate Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Validate and run the consumer-owned contract
         shell: bash

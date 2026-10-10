@@ -118,6 +118,7 @@ jobs:
           git checkout -b "$BRANCH"
 
           ./mvnw -B versions:set \
+            -DprocessAllModules=true \
             -DnewVersion="$NEXT_VERSION" \
             -DgenerateBackupPoms=false
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" update-release-metadata \
