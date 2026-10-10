@@ -19,6 +19,8 @@ requireContract(extensions.includes('<version>1.3.0</version>'), 'build-cache ex
 const cache = read('.mvn/maven-build-cache-config.xml');
 requireContract(cache.includes('<enabled>true</enabled>'), 'cache must be enabled');
 requireContract(cache.includes('<mandatoryClean>false</mandatoryClean>'), 'PR cache must not require clean');
+requireContract(cache.includes('<projectVersioning calculateProjectVersionChecksum="true"/>'),
+  'cache keys must include project versions to preserve packaged host/feature identity');
 for (const output of ['classes', 'test-classes', 'surefire-reports', 'failsafe-reports', 'site']) {
   requireContract(cache.includes(`<dirName>${output}</dirName>`), `missing attached output ${output}`);
 }
