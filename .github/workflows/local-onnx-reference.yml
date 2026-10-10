@@ -3,6 +3,7 @@ name: Local ONNX reference evaluation
 on:
   pull_request:
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - '.github/workflows/local-onnx-reference.yml'
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
@@ -40,8 +41,8 @@ jobs:
       - name: Install verified Helm 3.21.0
         run: bash .github/scripts/install-helm.sh
 
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
       - name: Run Maven-owned ONNX suite
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'

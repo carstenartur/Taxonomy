@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - 'Dockerfile'
       - 'pom.xml'
       - 'taxonomy-tooling/**'
@@ -30,6 +31,7 @@ on:
   push:
     branches: [ main ]
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - 'Dockerfile'
       - 'pom.xml'
       - 'taxonomy-tooling/**'
@@ -74,8 +76,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Set up Java 21 for Maven metadata and fixture trust stores
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -125,7 +127,21 @@ jobs:
 
       - name: Create constrained kind cluster
         shell: bash
-        run: kind create cluster --name taxonomy-smoke --wait 180s
+        run: |
+          set -euo pipefail
+          kind create cluster --name taxonomy-smoke --wait 180s
+          # Pods pull through each node's containerd, independently of dockerd.
+          # kind 0.31 enables /etc/containerd/certs.d; hosts files reload live.
+          nodes=$(kind get nodes --name taxonomy-smoke)
+          test -n "$nodes"
+          for node in $nodes; do
+            docker exec "$node" mkdir -p /etc/containerd/certs.d/docker.io
+            printf '%s\n' \
+              'server = "https://registry-1.docker.io"' \
+              '[host."https://mirror.gcr.io"]' \
+              '  capabilities = ["pull", "resolve"]' \
+              | docker exec -i "$node" tee /etc/containerd/certs.d/docker.io/hosts.toml >/dev/null
+          done
 
       - name: Build, install and verify Taxonomy under quota
         env:

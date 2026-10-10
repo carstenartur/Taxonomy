@@ -107,7 +107,8 @@ cannot safely replace:
 - create and verify the immutable release commit and annotated tag;
 - create a maintenance branch without overwriting an existing one;
 - keep the GitHub Release as a draft until downstream artifacts are complete;
-- generate and attach JAR, SBOM, VEX and Helm artifacts;
+- generate and attach the complete application distribution, JAR, SBOM, VEX and
+  Helm artifacts;
 - build the container image from the immutable tag;
 - advance `main` once through a protected pull request using rebase merge;
 - verify the exact resulting `main` commit with canonical CI;
@@ -117,6 +118,37 @@ cannot safely replace:
 This division keeps the Maven checks reproducible on a developer checkout while
 preserving the stronger atomic publication guarantees already required by
 Taxonomy.
+
+## Downloadable application distribution
+
+The release workflow creates `taxonomy-<version>-distribution.tar.gz` and its
+`.tar.gz.sha256` checksum. The archive contains a `taxonomy-<version>/` directory
+with `app.jar`, all six standard startup feature JARs in `features/`, and the
+external Mermaid plugin and its checksum in `plugins/`. It also includes launch
+instructions, legal notices, the reviewed release notes and `SHA256SUMS` covering
+every delivered file. Individual JAR assets remain available for inspection.
+
+Use Java 21 and set `TAXONOMY_ADMIN_PASSWORD` to a unique secret in the environment
+before the first startup. For a downloaded 1.5.0 distribution, run:
+
+```bash
+sha256sum --check taxonomy-1.5.0-distribution.tar.gz.sha256
+tar -xzf taxonomy-1.5.0-distribution.tar.gz
+cd taxonomy-1.5.0
+sha256sum --check SHA256SUMS
+java -jar app.jar
+```
+
+Replace `1.5.0` with the version downloaded. Start from the extracted directory so
+the launcher can find `features/` and the plugin manager can find `plugins/`.
+Configure provider and deployment settings using the tagged deployment guide
+linked in the archive's README.
+
+Collection fails if a standard feature or plugin is missing or a plugin checksum
+is missing or incorrect. Publication requires both the archive and its checksum
+as uploaded release assets. Version transitions use `versions:set` with
+`-DprocessAllModules=true` so the independently versioned Mermaid reactor module
+advances with the host.
 
 ## Linear history and immutable release provenance
 

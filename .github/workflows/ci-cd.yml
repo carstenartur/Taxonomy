@@ -93,8 +93,8 @@ jobs:
       - name: Install verified Helm 3.21.0
         env: { HELM_VERSION: v3.21.0 }
         run: bash .github/scripts/install-helm.sh
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
       - name: Detect production-image changes
         id: production-image-scope
         if: github.event_name == 'pull_request'
@@ -104,6 +104,7 @@ jobs:
         run: |
           if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
               Dockerfile \
+              .github/scripts/configure-docker-mirror.sh \
               .dockerignore \
               pom.xml \
               mvnw \
@@ -202,11 +203,14 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-templates-api/pom.xml taxonomy-templates-api/src/main taxonomy-extension-api/pom.xml taxonomy-extension-api/src/main taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/src/main plugins taxonomy-interop/pom.xml taxonomy-interop/src/main taxonomy-knowledge/pom.xml taxonomy-knowledge/src/main taxonomy-architecture/pom.xml taxonomy-architecture/src/main taxonomy-reporting/pom.xml taxonomy-reporting/src/main taxonomy-reporting-api/pom.xml taxonomy-reporting-api/src/main taxonomy-analysis/pom.xml taxonomy-analysis/src/main taxonomy-portfolio/pom.xml taxonomy-portfolio/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-templates-api/pom.xml taxonomy-templates-api/src/main taxonomy-extension-api/pom.xml taxonomy-extension-api/src/main taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/src/main plugins taxonomy-interop/pom.xml taxonomy-interop/src/main taxonomy-knowledge/pom.xml taxonomy-knowledge/src/main taxonomy-architecture/pom.xml taxonomy-architecture/src/main taxonomy-reporting/pom.xml taxonomy-reporting/src/main taxonomy-reporting-api/pom.xml taxonomy-reporting-api/src/main taxonomy-analysis/pom.xml taxonomy-analysis/src/main taxonomy-portfolio/pom.xml taxonomy-portfolio/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh .github/scripts/configure-docker-mirror.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
           fi
+      - name: Configure and verify Docker Hub cache
+        if: github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'
+        run: bash .github/scripts/configure-docker-mirror.sh
       - name: Measure OpenTelemetry performance budget
         if: github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'
         env: { TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true' }
@@ -340,8 +344,8 @@ jobs:
         with: { java-version: '21', distribution: temurin, cache: maven }
       - name: Install verified Helm 3.21.0
         run: bash .github/scripts/install-helm.sh
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
       - name: Run the complete Maven-owned plugin profile
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'

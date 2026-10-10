@@ -37,8 +37,8 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Install document rendering tools
         shell: bash

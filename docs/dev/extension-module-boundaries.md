@@ -187,13 +187,18 @@ For every new extension family or extracted implementation context:
 
 ### Optional startup installation and runtime lifecycle
 
-The executable host uses Boot `PropertiesLauncher`. The complete distribution contains
-`taxonomy-app-<version>.jar`, `features/` (six implementation JARs) and `plugins/`
-(the independently built Mermaid JAR). `taxonomy-templates-api` remains in the host;
-reporting has only a test dependency on the template implementation. Use
-`java -jar taxonomy-app-<version>.jar` from the distribution directory, or explicitly
-set `-Dloader.path=/operator/features`. Copy the complete distribution when building
-containers, native packages or UI acceptance artifacts; a host JAR alone is the core.
+The executable host uses Boot `PropertiesLauncher`. The release download
+`taxonomy-<version>-distribution.tar.gz` contains `taxonomy-<version>/app.jar`,
+`features/` (six implementation JARs), `plugins/` (the independently built Mermaid
+JAR and its checksum), launch instructions and `SHA256SUMS`. `taxonomy-templates-api`
+remains in the host; reporting has only a test dependency on the template
+implementation. Change into the extracted `taxonomy-<version>` directory and use
+`java -jar app.jar`, or explicitly set `-Dloader.path=/operator/features`.
+The Maven build keeps its original `taxonomy-app/target/taxonomy-app-<version>.jar`
+filename with sibling `features/` and `plugins/` directories. Copy the complete
+distribution when building containers, native packages or UI acceptance artifacts;
+a host JAR alone is the core. See [release downloads](RELEASE_PROCESS.md#downloadable-application-distribution)
+for checksum and startup commands.
 
 Startup IDs are `templates`, `architecture`, `reporting`, `analysis`, `portfolio`,
 `interop`. Reporting requires templates; analysis requires architecture; portfolio

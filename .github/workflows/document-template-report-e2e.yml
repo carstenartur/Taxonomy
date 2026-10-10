@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
+      - '.github/scripts/configure-docker-mirror.sh'
       - '.github/package.json'
       - '.github/package-lock.json'
       - '.github/scripts/document-template-report-download.mjs'
@@ -47,8 +48,8 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Verify Docker availability
-        run: docker info
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Install document rendering tools
         shell: bash
