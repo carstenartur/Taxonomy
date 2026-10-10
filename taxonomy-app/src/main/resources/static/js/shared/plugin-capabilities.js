@@ -16,9 +16,7 @@
         }).map(value => Object.freeze({...value, plugin:Object.freeze({...value.plugin})}));
     }
     async function load() {
-        const response = await fetch('/api/capabilities', {credentials:'same-origin', cache:'no-store', headers:{Accept:'application/json'}});
-        if (!response.ok || response.redirected) throw new Error('Capabilities unavailable (HTTP ' + response.status + ')');
-        const data = await response.json();
+        const data = await window.TaxonomyCapabilitiesApi.load();
         return Object.freeze({revision:data.revision, features:Object.freeze(Array.isArray(data.features) ? [...data.features] : []),
             exports:Object.freeze(formats(data.exports)), reports:Object.freeze(formats(data.reports))});
     }

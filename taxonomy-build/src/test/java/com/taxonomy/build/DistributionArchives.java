@@ -61,6 +61,13 @@ final class DistributionArchives {
                 if (!entry.isDirectory()) visitor.visit(archive, entry.getName(), zip);
         }
     }
+    static void assertSingleLibrary(List<String> archives, String artifact, boolean optional) {
+        String filename = java.util.regex.Pattern.quote(artifact) + "-[0-9][^/]*\\.jar";
+        assertThat(archives.stream().filter(archive ->
+                archive.substring(archive.lastIndexOf('/') + 1).matches(filename)))
+                .as("one delivered %s library", artifact).singleElement()
+                .satisfies(archive -> assertOwner(archive, artifact, optional));
+    }
     static void assertOwner(String archive, String module, boolean optional) {
         assertThat(archive).matches((optional ? "features/" : "BOOT-INF/lib/")
                 + java.util.regex.Pattern.quote(module) + "-[0-9][^/]*\\.jar");

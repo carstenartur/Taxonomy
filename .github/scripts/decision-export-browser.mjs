@@ -14,8 +14,9 @@ try {
         const page = await browser.newPage({viewport:{width,height:850}});
         await page.setContent('<html lang="de"><head></head><body><button id="open">Bericht</button></body></html>');
         await page.addScriptTag({content:capabilitiesSource});
-        await page.evaluate(() => { window.fetch = async () => ({ok:true,json:async()=>({features:['reporting'],exports:[],reports:
-            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}); });
+        // This component fixture replaces the named API; transport has separate contract tests.
+        await page.evaluate(() => { window.TaxonomyCapabilitiesApi = {load:async()=>({features:['reporting'],exports:[],reports:
+            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}; });
         await page.addScriptTag({content:source});
         await page.evaluate(()=>{
             window.attempts=[];
@@ -51,16 +52,16 @@ try {
         assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
         // Capability reload must remove unavailable renderers, accept a new SDK format,
         // and keep the same host-owned keyboard/focus and error controls.
-        await page.evaluate(() => {window.fetch=async()=>({ok:true,json:async()=>({features:[],exports:[],reports:[]})});});
+        await page.evaluate(() => {window.TaxonomyCapabilitiesApi={load:async()=>({features:[],exports:[],reports:[]})};});
         await page.click('#open');
         await page.locator('[role=alert]').filter({hasText:'Format'}).waitFor();
         assert.equal(await page.locator('[type=submit]').isDisabled(),true);
         assert.equal(await page.locator('[name=format] option').count(),0);
         await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
-        await page.evaluate(() => {window.fetch=async()=>({ok:true,json:async()=>({features:['reporting'],exports:[],reports:[{
+        await page.evaluate(() => {window.TaxonomyCapabilitiesApi={load:async()=>({features:['reporting'],exports:[],reports:[{
             id:'example-markdown',reportType:'decision-rationale',displayName:'Markdown',fileExtension:'md',contentType:'text/markdown',
             plugin:{id:'fixture.external',version:'1.0.0',artifactSha256:'b'.repeat(64)}
-        }]})});});
+        }]})};});
         await page.click('#open');await page.locator('[type=submit]:enabled').waitFor();
         assert.equal(await page.locator('[name=format] option').count(),1);
         assert.equal(await page.locator('[name=format]').inputValue(),'example-markdown');
@@ -79,8 +80,8 @@ try {
             // Render the production component with explicit sample input. This is not a full-app snapshot.
             await page.setContent(`<html lang="${language}"><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif}</style></head><body></body></html>`);
             await page.addScriptTag({content:capabilitiesSource});
-        await page.evaluate(() => { window.fetch = async () => ({ok:true,json:async()=>({features:['reporting'],exports:[],reports:
-            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}); });
+        await page.evaluate(() => { window.TaxonomyCapabilitiesApi = {load:async()=>({features:['reporting'],exports:[],reports:
+            ['docx','html','json'].map(id=>({id,reportType:'decision-rationale',displayName:id,fileExtension:id,contentType:id==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':id==='html'?'text/html':'application/json',plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}}))})}; });
         await page.addScriptTag({content:source});
             await page.evaluate(language=>window.TaxonomyDecisionExport.open({language,saved:true,
                 source:language==='de'?'Beispielanalyse · Snapshot export-demo':'Example analysis · Snapshot export-demo',

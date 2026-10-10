@@ -16,19 +16,11 @@ import java.time.Instant;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @ConditionalOnFeature("reporting")
 public final class ReportLayoutExceptionHandler {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ReportLayoutExceptionHandler.class);
     @ExceptionHandler(com.taxonomy.reporting.render.document.WordReportLayoutException.class)
     public ResponseEntity<Map<String,Object>> handleWordLayoutConflict(
             com.taxonomy.reporting.render.document.WordReportLayoutException exception,WebRequest request) {
         return buildErrorResponse(HttpStatus.CONFLICT,exception.getMessage(),request);
     }
-    private static String clientErrorMessage(Exception exception, HttpStatus status) {
-        String message = exception.getMessage();
-        return message == null || message.isBlank()
-                ? status.getReasonPhrase()
-                : message;
-    }
-
     private ResponseEntity<Map<String, Object>> buildErrorResponse(
             HttpStatus status,
             String message,

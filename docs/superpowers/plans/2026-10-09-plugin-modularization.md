@@ -336,6 +336,61 @@ echter Selenium-Nachweis. Der erneute echte Browserlauf und die vollständige
 kanonische Abnahme bleiben erforderlich; der erfolgreiche Plugin-Profillauf
 ersetzt sie nicht.
 
+## Nachlauf: ausgelieferte Pakete, UI-Transport und kritische Coverage
+
+Auf `104117d79f372b5626ade54112be628f871ae1ac` besteht der zuvor fehlerhafte
+`CompleteCopilotSessionIT` mit einem echten Browserfall ohne Fehler oder Skip.
+Der kanonische Lauf `38015962345` erreicht anschließend die abschließenden
+Build-Policies und findet vier Fehler: `ArchitectureModulePackagingIT`,
+`InteropModulePackagingIT`, `FrontendApiBoundaryPolicyIT` und
+`ReactorCoveragePolicyIT`. Das geprüfte Artefakt `11657999403` hat SHA-256
+`9881c9dd6f38fe6767b2df80be5a2f1bc494f6a402389627ca872d4464442fd2`.
+Seine 8.629 JUnit-Fälle enthalten vier Fehlschläge und 80 bedingte Skips;
+dieser fehlgeschlagene Kernlauf ist kein Gesamt-PASS. Die globale Coverage
+besteht mit 92,57 % Zeilen / 76,07 % Branches; verletzt wird die unveränderte
+Changed-Source-Regel in drei Dateien.
+
+Die Paketverträge prüfen jetzt die tatsächliche Distribution über den vorhandenen
+Archivscanner: je ein externes Architecture-/Interop-Feature-JAR, keine Kopien in
+Host, anderen Features, Plugins oder verschachtelten Bibliotheken, weiterhin
+Host-Komposition und gemeinsame Migrationen. Das ist eine Anpassung an die
+beschlossene optionale Distribution, keine Rückverlagerung in den Host.
+
+Capabilities verwenden einen benannten `api/plugin-capabilities-api.js`-Client
+über den bestehenden gemeinsamen HTTP-Transport. Der Shared-Code behält die
+Datenvalidierung. Alle drei Verbraucher laden i18n, Transport und API vor dem
+Verbraucher; Request-ID, Authentifizierungsfehler, `no-store` und Redirect-Ablehnung
+bleiben geprüft. Acht Capability-Vertragstests zeigen zuerst fünf Fehler,
+anschließend bestehen 41 relevante Verträge. Der vollständige Maven-Aufruf
+`./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts` besteht in
+29,377 Sekunden. Ein unabhängiger Review findet den noch alten Fetch-Mock im
+nativen Dialog-Harness; dessen vier Fixtures mocken nun die benannte API-Grenze.
+Der Nachreview ist ohne weitere Befunde; Syntaxprüfung ist kein Browsernachweis.
+
+Der Report-Handler verliert nur einen unbenutzten kopierten Helper und Logger;
+die vorhandene HTTP-409-Antwort bleibt unverändert. Neue Consumer-Tests prüfen
+HTTP 409/400/503, die Abweisung vor Schreibzugriffen sowie reale Git-Merges mit
+Portfolio-Projektion bei Pull und Publish. Alle sieben neuen Java-Fälle bestehen
+lokal mit Java 21 über `-pl taxonomy-app -am test` und den vier benannten
+Testklassen (1:08 Minuten, null Fehler/Skips). Der anschließende JaCoCo-Report
+weist für Handler und beide Ports 100 % Zeilenabdeckung aus. Das ist ein
+fokussierter Nachweis, keine neue Gesamtquote. Der unabhängige Review meldet
+keine Befunde. Coverage-Grenzen, Ausnahmen, Testauswahlen und Zeitlimits werden
+nicht gelockert. Die neue vollständige
+Abnahme bleibt Pflicht; ihren endgültigen commitgebundenen Stand führen #628,
+der PR und die bestehende Architekturdatei.
+
+Die beiden alten Paket-Assertions wurden auch lokal mit zwei Fehlschlägen
+reproduziert. Der anschließende Reaktor-Paketlauf besteht in den 224 dedizierten
+Architekturprüfungen sowie 34 Workflow-Verträgen. Ein dabei entdeckter alter
+Interop-Test-Bytecode wird separat aufbewahrt; nur die generierten Testklassen
+und der Compilerstatus von `taxonomy-build` werden entfernt. Der frische
+Maven-`test-compile`-/Failsafe-Lauf gegen die neu gebaute Distribution besteht
+mit vier Fällen ohne Fehler/Skips: Architecture, Interop, FinalRuntimeModules
+und FrontendApiBoundary (1:16 Minuten). Die Frontend-Schulden liegen wieder
+bei 104 Aufrufen in 23 Dateien, genau wie die unveränderte main-Basis. Der
+unabhängige Review der Paketprüfungen meldet keine abgeschwächten Gates.
+
 ## Abnahmekriterien des Gesamtauftrags
 
 Erledigt erst, wenn alle zwölf Tasks samt Nachweisen abgeschlossen sind: bestehende Funktionalität der Vollausstattung; keine Repository-Typen in Template-API; vollständige Reportmodelle; neuer deterministischer Provider ohne Enumänderung; unabhängig gebautes Mermaid-JAR im unveränderten Host; echte Abwesenheit optionaler Fach-JARs; sicheres dynamisches Laden/Drain nur im zugesagten Umfang; UI-/Security-/Backup-/Restart-/Cluster-Negativfälle; aktueller vollständiger Build und präziser PR-Nachweis.
