@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginCapabilitiesController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.plugins</a> &gt; <span class="el_source">PluginCapabilitiesController.java</span></div><h1>PluginCapabilitiesController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.plugins;
+
+import com.taxonomy.shared.features.FeatureAssembly;
+
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.shared.extension.ExtensionKind;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.*;
+
+/** One immutable catalog revision plus startup capabilities; never exposes executable classes or scripts. */
+@RestController
+@RequestMapping(&quot;/api/capabilities&quot;)
+@Tag(name = &quot;Extensions&quot;)
+public final class PluginCapabilitiesController {
+    private final ExtensionCatalog catalog;
+    private final FeatureAssembly.FeatureSet features;
+<span class="fc" id="L24">    public PluginCapabilitiesController(ExtensionCatalog catalog, FeatureAssembly.FeatureSet features) {</span>
+<span class="fc" id="L25">        this.catalog = catalog; this.features = features;</span>
+<span class="fc" id="L26">    }</span>
+<span class="fc" id="L27">    public record Format(String reportType, String id, String displayName, String fileExtension,</span>
+                         String contentType, boolean binary, PluginIdentity plugin) { }
+<span class="fc" id="L29">    public record Capabilities(long revision, Set&lt;String&gt; features, List&lt;Format&gt; exports, List&lt;Format&gt; reports) { }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Discover available feature and format capabilities&quot;,
+            description = &quot;Authenticated read of a consistent catalog revision. Only formats whose HTTP application service is installed are offered. All plugins use host-owned UI controls; no plugin JavaScript is returned.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Available startup features and exact format artifact identities&quot;)
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Catalog changed repeatedly; retry the capability read&quot;)
+    public Capabilities capabilities() {
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        for (int attempt = 0; attempt &lt; 3; attempt++) {</span>
+<span class="fc" id="L39">            var snapshot = catalog.snapshot();</span>
+<span class="fc" id="L40">            var exports = new ArrayList&lt;Format&gt;(); var reports = new ArrayList&lt;Format&gt;();</span>
+            try {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                for (var registration : snapshot.extensions()) {</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">                    if (registration.key().kind() == ExtensionKind.EXPORT_FORMAT &amp;&amp; features.has(&quot;analysis&quot;)) {</span>
+<span class="fc" id="L44">                        try (var lease = catalog.acquire(registration.key(), ExportFormatExtension.class)) {</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                            if (!lease.plugin().equals(registration.plugin())) throw new ExtensionUnavailableException(registration.key());</span>
+<span class="fc" id="L46">                            var d = lease.extension().descriptor();</span>
+<span class="fc" id="L47">                            exports.add(new Format(null, d.id(), d.displayName(), d.fileExtension(), d.contentType(), d.binary(), lease.plugin()));</span>
+                        }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                    } else if (registration.key().kind() == ExtensionKind.REPORT_RENDERER</span>
+<span class="pc bpc" id="L50" title="2 of 4 branches missed.">                            &amp;&amp; features.has(&quot;reporting&quot;) &amp;&amp; features.has(&quot;architecture&quot;)) {</span>
+<span class="fc" id="L51">                        try (var lease = catalog.acquire(registration.key(), ReportRendererExtension.class)) {</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                            if (!lease.plugin().equals(registration.plugin())) throw new ExtensionUnavailableException(registration.key());</span>
+<span class="fc" id="L53">                            var d = lease.extension().descriptor();</span>
+<span class="fc" id="L54">                            reports.add(new Format(lease.extension().reportTypeId(), d.id(), d.displayName(), d.fileExtension(), d.contentType(), d.binary(), lease.plugin()));</span>
+                        }
+                    }
+<span class="fc" id="L57">                }</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (snapshot.revision() == catalog.snapshot().revision())</span>
+<span class="fc" id="L59">                    return new Capabilities(snapshot.revision(), features.installed(), List.copyOf(exports), List.copyOf(reports));</span>
+<span class="nc" id="L60">            } catch (ExtensionUnavailableException changed) { /* bounded retry of the complete snapshot */ }</span>
+        }
+<span class="nc" id="L62">        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Plugin capabilities are changing; retry&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

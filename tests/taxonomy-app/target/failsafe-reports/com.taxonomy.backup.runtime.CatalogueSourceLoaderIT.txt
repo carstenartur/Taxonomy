@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.backup.runtime.CatalogueSourceLoaderIT
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.516 s -- in com.taxonomy.backup.runtime.CatalogueSourceLoaderIT

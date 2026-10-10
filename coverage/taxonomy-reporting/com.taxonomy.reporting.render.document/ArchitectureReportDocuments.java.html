@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportDocuments.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">ArchitectureReportDocuments.java</span></div><h1>ArchitectureReportDocuments.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+
+import com.taxonomy.diagram.*;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument.*;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import java.util.*;
+
+/** Builds presentation rows from already captured graph evidence. */
+public final class ArchitectureReportDocuments {
+    private ArchitectureReportDocuments() {}
+
+    public static ArchitectureReportDocument from(
+            String title,
+            String language,
+            String requirement,
+            String scope,
+            String recommendation,
+            List&lt;String&gt; gaps,
+            DiagramModel graph,
+            DiagramScene scene,
+            DecisionTreeOverview tree,
+            SnapshotEvidence evidence) {
+<span class="fc" id="L26">        var labels = new com.taxonomy.reporting.render.decision.DecisionReportLabels(language);</span>
+<span class="fc" id="L27">        return new ArchitectureReportDocument(</span>
+                title,
+                language,
+                requirement,
+                scope,
+                recommendation,
+                gaps,
+                graph,
+                scene,
+<span class="fc" id="L36">                graph.nodes().stream()</span>
+<span class="fc" id="L37">                        .sorted(Comparator.comparing(DiagramNode::id))</span>
+<span class="fc" id="L38">                        .map(</span>
+                                n -&gt;
+<span class="fc" id="L40">                                        new ElementRow(</span>
+<span class="fc" id="L41">                                                n.id(),</span>
+<span class="fc" id="L42">                                                n.label(),</span>
+<span class="fc" id="L43">                                                n.type(),</span>
+<span class="fc" id="L44">                                                n.relevance(),</span>
+<span class="fc" id="L45">                                                n.anchor(),</span>
+<span class="fc" id="L46">                                                n.parentId(),</span>
+<span class="fc" id="L47">                                                n.container()))</span>
+<span class="fc" id="L48">                        .toList(),</span>
+<span class="fc" id="L49">                graph.edges().stream()</span>
+<span class="fc" id="L50">                        .sorted(Comparator.comparing(DiagramEdge::id))</span>
+<span class="fc" id="L51">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L53">                                        new RelationRow(</span>
+<span class="fc" id="L54">                                                e.id(),</span>
+<span class="fc" id="L55">                                                e.sourceId(),</span>
+<span class="fc" id="L56">                                                e.targetId(),</span>
+<span class="fc" id="L57">                                                e.relationType(),</span>
+<span class="fc" id="L58">                                                e.relationCategory(),</span>
+<span class="fc" id="L59">                                                e.relevance()))</span>
+<span class="fc" id="L60">                        .toList(),</span>
+<span class="fc" id="L61">                List.of(</span>
+<span class="fc" id="L62">                        new LegendEntry(&quot;●&quot;, labels.anchor()),</span>
+<span class="fc" id="L63">                        new LegendEntry(&quot;→&quot;, labels.directedRelation()),</span>
+<span class="fc" id="L64">                        new LegendEntry(&quot;□&quot;, labels.container())),</span>
+                tree,
+                evidence);
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

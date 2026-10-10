@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisCoverage.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisCoverage.java</span></div><h1>AnalysisCoverage.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.*;
+
+/** Own assessment and completeness of descendants are intentionally separate axes. */
+public record AnalysisCoverage(Map&lt;String, NodeAssessment&gt; nodes, int assessedNodes,
+                               int unknownNodes, int failedOrBlockedNodes) {
+<span class="fc" id="L8">    public enum State { RELEVANT, NOT_RELEVANT, UNKNOWN }</span>
+<span class="fc" id="L9">    public enum Descendants { COMPLETE, PARTIAL, UNASSESSED }</span>
+    public record NodeAssessment(State state, Integer score, Integer effectiveRelevance,
+                                 Descendants descendants, String reason) {
+<span class="fc" id="L12">        public NodeAssessment {</span>
+<span class="pc bpc" id="L13" title="2 of 8 branches missed.">            if (state == null || descendants == null || (reason != null &amp;&amp; reason.length() &gt; 4096))</span>
+<span class="fc" id="L14">                throw new IllegalArgumentException(&quot;Invalid assessment state&quot;);</span>
+<span class="pc bpc" id="L15" title="2 of 10 branches missed.">            if ((state == State.UNKNOWN &amp;&amp; (score != null || effectiveRelevance != null))</span>
+<span class="pc bpc" id="L16" title="1 of 6 branches missed.">                    || (state == State.RELEVANT &amp;&amp; (score == null || score &lt; 1 || score &gt; 100))</span>
+<span class="pc bpc" id="L17" title="1 of 4 branches missed.">                    || (state == State.NOT_RELEVANT &amp;&amp; !Integer.valueOf(0).equals(score))</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">                    || (effectiveRelevance != null &amp;&amp; (effectiveRelevance &lt; 0 || effectiveRelevance &gt; 100)))</span>
+<span class="fc" id="L19">                throw new IllegalArgumentException(&quot;Assessment state and score disagree&quot;);</span>
+<span class="fc" id="L20">        }</span>
+    }
+<span class="fc" id="L22">    public AnalysisCoverage {</span>
+<span class="pc bpc" id="L23" title="3 of 6 branches missed.">        if (nodes == null || nodes.size() &gt; 25000 || nodes.entrySet().stream().anyMatch(e -&gt;</span>
+<span class="pc bpc" id="L24" title="4 of 8 branches missed.">                e.getKey() == null || e.getKey().isBlank() || e.getKey().length() &gt; 256 || e.getValue() == null))</span>
+<span class="nc" id="L25">            throw new IllegalArgumentException(&quot;Invalid assessment coverage&quot;);</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        int assessed = (int) nodes.values().stream().filter(n -&gt; n.state() != State.UNKNOWN).count();</span>
+<span class="fc" id="L27">        int open = (int) nodes.values().stream().filter(n -&gt; unresolved(n.reason())).count();</span>
+<span class="pc bpc" id="L28" title="2 of 6 branches missed.">        if (assessedNodes != assessed || unknownNodes != nodes.size() - assessed || failedOrBlockedNodes != open)</span>
+<span class="fc" id="L29">            throw new IllegalArgumentException(&quot;Coverage counters do not match node evidence&quot;);</span>
+<span class="fc" id="L30">        nodes = Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(nodes));</span>
+<span class="fc" id="L31">    }</span>
+    private static boolean unresolved(String reason) {
+<span class="fc bfc" id="L33" title="All 6 branches covered.">        return reason != null &amp;&amp; (reason.startsWith(&quot;FAILED:&quot;) || reason.startsWith(&quot;LEFT_OPEN:&quot;)</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">                || reason.startsWith(&quot;BLOCKED_BY:&quot;) || reason.startsWith(&quot;INTERRUPTED:&quot;));</span>
+    }
+<span class="fc bfc" id="L36" title="All 2 branches covered.">    public boolean hasOpenEvaluations() { return failedOrBlockedNodes &gt; 0; }</span>
+
+    public static AnalysisCoverage derive(List&lt;TaxonomyNodeDto&gt; tree, Map&lt;String, Integer&gt; raw,
+                                         Map&lt;String, Integer&gt; effective, Map&lt;String, String&gt; failed) {
+<span class="fc" id="L40">        return derive(tree, raw, effective, failed, null);</span>
+    }
+
+    /** A stopped traversal also leaves questions it never reached open, independently of provider failures. */
+    public static AnalysisCoverage derive(List&lt;TaxonomyNodeDto&gt; tree, Map&lt;String, Integer&gt; raw,
+                                         Map&lt;String, Integer&gt; effective, Map&lt;String, String&gt; failed,
+                                         String interruption) {
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">        if (interruption != null &amp;&amp; !interruption.startsWith(&quot;INTERRUPTED:&quot;))</span>
+<span class="nc" id="L48">            throw new IllegalArgumentException(&quot;An unfinished traversal requires an explicit interruption reason&quot;);</span>
+<span class="fc" id="L49">        Map&lt;String, NodeAssessment&gt; nodes = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (TaxonomyNodeDto root : tree) visit(root, raw, effective, failed, null, false, interruption, nodes);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        int assessed = (int) nodes.values().stream().filter(n -&gt; n.state() != State.UNKNOWN).count();</span>
+<span class="fc" id="L52">        int blocked = (int) nodes.values().stream().filter(n -&gt; unresolved(n.reason())).count();</span>
+<span class="fc" id="L53">        return new AnalysisCoverage(nodes, assessed, nodes.size() - assessed, blocked);</span>
+    }
+<span class="fc" id="L55">    private record Visited(boolean complete, boolean anyAssessed) { }</span>
+    private static Visited visit(TaxonomyNodeDto node, Map&lt;String, Integer&gt; raw,
+                                 Map&lt;String, Integer&gt; effective, Map&lt;String, String&gt; failed,
+                                 String blockedBy, boolean pruned, String interruption, Map&lt;String, NodeAssessment&gt; out) {
+<span class="fc" id="L59">        String code = node.getCode();</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (out.containsKey(code)) throw new IllegalArgumentException(&quot;Duplicate catalogue node &quot; + code);</span>
+<span class="fc" id="L61">        Integer value = raw.get(code);</span>
+<span class="fc" id="L62">        String ownFailure = failed.get(code);</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        String reason = value != null ? null : ownFailure != null ? ownFailure</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                : blockedBy != null ? &quot;BLOCKED_BY:&quot; + blockedBy</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                : pruned ? &quot;NOT_VISITED_PARENT_EXCLUDED&quot;</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                : interruption != null ? interruption : &quot;NOT_EVALUATED&quot;;</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">        State state = value == null ? State.UNKNOWN : value &gt; 0 ? State.RELEVANT : State.NOT_RELEVANT;</span>
+<span class="fc" id="L68">        boolean allChildren = true, anyChildren = false;</span>
+<span class="fc" id="L69">        out.put(code, new NodeAssessment(state, value, effective.get(code), Descendants.UNASSESSED, reason));</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">        for (TaxonomyNodeDto child : node.getChildren() == null ? List.&lt;TaxonomyNodeDto&gt;of() : node.getChildren()) {</span>
+<span class="fc" id="L71">            var visit = visit(child, raw, effective, failed,</span>
+<span class="pc bpc" id="L72" title="4 of 10 branches missed.">                    ownFailure != null || (reason != null &amp;&amp; reason.startsWith(&quot;INTERRUPTED:&quot;)) ? code : blockedBy,</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                    pruned || (value != null &amp;&amp; value == 0), interruption, out);</span>
+<span class="fc" id="L74">            allChildren &amp;= visit.complete(); anyChildren |= visit.anyAssessed();</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        Descendants descendants = allChildren ? Descendants.COMPLETE</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                : anyChildren ? Descendants.PARTIAL : Descendants.UNASSESSED;</span>
+<span class="fc" id="L78">        out.put(code, new NodeAssessment(state, value, effective.get(code), descendants, reason));</span>
+<span class="pc bpc" id="L79" title="4 of 14 branches missed.">        return new Visited((value != null || pruned) &amp;&amp; ownFailure == null &amp;&amp; blockedBy == null &amp;&amp; allChildren,</span>
+                value != null || anyChildren);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

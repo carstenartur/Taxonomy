@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupRowScope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">BackupRowScope.java</span></div><h1>BackupRowScope.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import java.util.*;
+
+/** SQL predicates are assembled only from source-owned column names; all selected IDs are parameters. */
+public final class BackupRowScope {
+    private final SnapshotContext snapshot;
+<span class="fc" id="L11">    public BackupRowScope(SnapshotContext snapshot) { this.snapshot = Objects.requireNonNull(snapshot); }</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">    public boolean selectedVersion() { return snapshot.authorization().request().profile() == BackupProfile.SELECTED_VERSION; }</span>
+<span class="fc" id="L13">    public boolean history() { return snapshot.authorization().request().profile().includesHistory(); }</span>
+<span class="fc" id="L14">    public boolean installation() { return snapshot.authorization().request().profile().isInstallation(); }</span>
+    public boolean includesRepository(String repositoryId) {
+<span class="fc bfc" id="L16" title="All 4 branches covered.">        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -&gt; key.repositoryId().equals(repositoryId));</span>
+    }
+    public boolean includesWorkspace(String repositoryId, String workspaceId) {
+<span class="fc bfc" id="L19" title="All 6 branches covered.">        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -&gt; key.repositoryId().equals(repositoryId)</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">                &amp;&amp; Objects.equals(key.workspaceId(), workspaceId));</span>
+    }
+    public Query repositories(String repositoryColumn, String workspaceColumn) {
+<span class="fc" id="L23">        column(repositoryColumn); column(workspaceColumn);</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        if (installation()) return new Query(&quot;1=1&quot;, List.of());</span>
+<span class="fc" id="L25">        var clauses = new ArrayList&lt;String&gt;(); var parameters = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var key : keys()) {</span>
+<span class="fc" id="L27">            String clause = &quot;(&quot; + repositoryColumn + &quot;=? and &quot;; parameters.add(key.repositoryId());</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (key.workspaceId() == null) clause += workspaceColumn + &quot; is null)&quot;;</span>
+<span class="fc" id="L29">            else { clause += workspaceColumn + &quot;=?)&quot;; parameters.add(key.workspaceId()); }</span>
+<span class="fc" id="L30">            clauses.add(clause);</span>
+<span class="fc" id="L31">        }</span>
+<span class="fc" id="L32">        return predicate(clauses, parameters);</span>
+    }
+    public Query repositoryIds(String column) {
+<span class="fc" id="L35">        column(column);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (installation()) return new Query(&quot;1=1&quot;, List.of());</span>
+<span class="fc" id="L37">        var ids = keys().stream().map(BackupRepositoryKey::repositoryId).distinct().sorted().toList();</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        return new Query(ids.isEmpty() ? &quot;1=0&quot; : column + &quot; in (&quot; + String.join(&quot;,&quot;, Collections.nCopies(ids.size(), &quot;?&quot;)) + &quot;)&quot;, ids);</span>
+    }
+    public Query tenants(String column) {
+<span class="fc" id="L41">        column(column);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (installation()) return new Query(&quot;1=1&quot;, List.of());</span>
+<span class="fc" id="L43">        var clauses = new ArrayList&lt;String&gt;(); var parameters = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        for (var key : keys()) {</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            String identity = new RepositoryTenantIdentity(key.repositoryId(), key.workspaceId() == null ? &quot;CENTRAL&quot; : &quot;WORKSPACE:&quot; + key.workspaceId(), &quot;draft&quot;).scopeKey();</span>
+<span class="fc" id="L46">            String prefix = identity.substring(0, identity.length() - &quot;5:draft&quot;.length());</span>
+<span class="fc" id="L47">            clauses.add(column + &quot; like ? escape '!'&quot;);</span>
+<span class="fc" id="L48">            parameters.add(prefix.replace(&quot;!&quot;, &quot;!!&quot;).replace(&quot;%&quot;, &quot;!%&quot;).replace(&quot;_&quot;, &quot;!_&quot;) + &quot;%&quot;);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">        return predicate(clauses, parameters);</span>
+    }
+    public boolean includesTenant(String tenant) {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (installation()) return true;</span>
+<span class="fc" id="L54">        var parsed = RepositoryTenantIdentity.parse(tenant);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        String workspace = parsed.workspaceScope().equals(&quot;CENTRAL&quot;) ? null : parsed.workspaceScope().substring(&quot;WORKSPACE:&quot;.length());</span>
+<span class="fc" id="L56">        return snapshot.repositories().containsKey(new BackupRepositoryKey(parsed.repositoryId(), workspace));</span>
+    }
+    private List&lt;BackupRepositoryKey&gt; keys() {
+<span class="fc" id="L59">        var keys = snapshot.repositories().keySet().stream().sorted(Comparator.comparing(BackupRepositoryKey::repositoryId)</span>
+<span class="fc" id="L60">                .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()))).toList();</span>
+        // Bounded predicates also fit the supported database parameter/IN limits. Larger captures use installation scope.
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (keys.size() &gt; 200) throw new IllegalArgumentException(&quot;Too many selected repositories for one portable capture&quot;);</span>
+<span class="fc" id="L63">        return keys;</span>
+    }
+    private static Query predicate(List&lt;String&gt; clauses, List&lt;Object&gt; parameters) {
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        return new Query(clauses.isEmpty() ? &quot;1=0&quot; : &quot;(&quot; + String.join(&quot; or &quot;, clauses) + &quot;)&quot;, parameters);</span>
+    }
+    private static void column(String column) {
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (column == null || !column.matches(&quot;[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)?&quot;)) throw new IllegalArgumentException(&quot;Invalid source column&quot;);</span>
+<span class="fc" id="L70">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

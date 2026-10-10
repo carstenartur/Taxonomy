@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderPermitProvisioner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderPermitProvisioner.java</span></div><h1>ArtemisProviderPermitProvisioner.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
+import org.apache.activemq.artemis.api.core.ActiveMQQueueExistsException;
+import org.apache.activemq.artemis.api.core.QueueConfiguration;
+import org.apache.activemq.artemis.api.core.RoutingType;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQSession;
+
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Explicit administrative one-shot command, never a Spring startup hook. Broker
+ * queue creation is the exclusive claim: an existing queue ALWAYS rejects, even
+ * when empty or when every token is currently delivering. Token creation commits
+ * as one transaction. A crash between queue creation and commit fails closed and
+ * requires operator inspection with all consumers stopped, never auto-refilling.
+ */
+public final class ArtemisProviderPermitProvisioner {
+    private ArtemisProviderPermitProvisioner() {}
+
+    public static void provision(ActiveMQConnectionFactory factory, String prefix, String group, int capacity) {
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">        if (capacity &lt; 1 || capacity &gt; 10_000) throw new IllegalArgumentException(&quot;Permit capacity must be within 1..10000&quot;);</span>
+<span class="fc" id="L27">        String queue = new ArtemisProviderPermitSettings(prefix, Map.of(), 1).queueName(group);</span>
+<span class="fc" id="L28">        try (var connection = factory.createConnection();</span>
+<span class="fc" id="L29">             var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {</span>
+            // Atomic broker operation, not a racy browse/count/check-then-seed protocol.
+<span class="fc" id="L31">            ((ActiveMQSession) session).getCoreSession().createQueue(QueueConfiguration.of(queue)</span>
+<span class="fc" id="L32">                    .setAddress(queue).setRoutingType(RoutingType.ANYCAST).setDurable(true)</span>
+<span class="fc" id="L33">                    .setAutoCreated(false).setAutoDelete(false).setPurgeOnNoConsumers(false));</span>
+<span class="fc" id="L34">            try (var producer = session.createProducer(session.createQueue(queue + &quot;::&quot; + queue))) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                for (int i = 0; i &lt; capacity; i++) {</span>
+<span class="fc" id="L36">                    producer.send(ArtemisProviderConcurrencyPermits.token(session, group, UUID.randomUUID().toString()),</span>
+                            DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
+                }
+<span class="fc" id="L39">                session.commit();</span>
+            }
+<span class="fc" id="L41">        } catch (ActiveMQQueueExistsException exists) {</span>
+<span class="fc" id="L42">            throw new IllegalStateException(&quot;Provider permit queue already exists; capacity was not modified&quot;, exists);</span>
+<span class="nc" id="L43">        } catch (Exception failure) {</span>
+<span class="nc" id="L44">            throw new IllegalStateException(&quot;Permit provisioning was not confirmed; inspect the queue with consumers stopped&quot;, failure);</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">    }</span>
+
+    /** Uses the same external broker/TLS/secret environment as the application. */
+    public static void main(String[] args) {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (args.length != 2) throw new IllegalArgumentException(&quot;Usage: ArtemisProviderPermitProvisioner &lt;quota-group&gt; &lt;capacity&gt;&quot;);</span>
+<span class="nc" id="L51">        var env = System.getenv();</span>
+<span class="nc" id="L52">        String requireTls = env.getOrDefault(&quot;TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS&quot;, &quot;true&quot;);</span>
+<span class="nc bnc" id="L53" title="All 4 branches missed.">        if (!&quot;true&quot;.equalsIgnoreCase(requireTls) &amp;&amp; !&quot;false&quot;.equalsIgnoreCase(requireTls)) {</span>
+<span class="nc" id="L54">            throw new IllegalArgumentException(&quot;TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS must be 'true' or 'false'&quot;);</span>
+        }
+<span class="nc" id="L56">        var settings = new ArtemisAnalysisSettings(env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL&quot;),</span>
+<span class="nc" id="L57">                Boolean.parseBoolean(requireTls), 1000, 30_000);</span>
+<span class="nc" id="L58">        try (var factory = ArtemisAnalysisTransportConfiguration.connectionFactory(settings,</span>
+<span class="nc" id="L59">                env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_USER&quot;), env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD&quot;))) {</span>
+<span class="nc" id="L60">            factory.setInitialConnectAttempts(0);</span>
+<span class="nc" id="L61">            factory.setReconnectAttempts(0);</span>
+<span class="nc" id="L62">            provision(factory, env.getOrDefault(&quot;TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX&quot;,</span>
+<span class="nc" id="L63">                    ArtemisProviderPermitSettings.DEFAULT_PREFIX), args[0], Integer.parseInt(args[1]));</span>
+        }
+<span class="nc" id="L65">        System.out.println(&quot;Provider permit queue provisioned&quot;);</span>
+<span class="nc" id="L66">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

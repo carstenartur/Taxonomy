@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitStandBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitStandBackupContributor.java</span></div><h1>GitStandBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import java.io.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Fenced projected current/selected stands as files or standalone Git bundles. */
+public final class GitStandBackupContributor implements BackupDataContributor {
+    private static final String METADATA = &quot;data/workspace/git-stands.ndjson&quot;;
+<span class="fc" id="L18">    private static final JsonMapper JSON = PortableRows.json();</span>
+    private final GitStandBackupSource source;
+    private final GitStandBackupSource.Limits limits;
+<span class="fc" id="L21">    public GitStandBackupContributor(GitStandBackupSource source, GitStandBackupSource.Limits limits) {</span>
+<span class="fc" id="L22">        this.source = Objects.requireNonNull(source); this.limits = Objects.requireNonNull(limits);</span>
+<span class="fc" id="L23">    }</span>
+
+    /** Explicit server-selected closure, under the coordinator's fresh authorization and writer fence. */
+    public List&lt;BackupManifest.Repository&gt; inspect(AuthorizedBackupRequest authorization, Set&lt;BackupRepositoryKey&gt; keys, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L28">            requireProfile(authorization.request()); checkpoint.check(); keys = Set.copyOf(keys);</span>
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">            if (keys.size() &gt; BackupLimits.MAX_ITEMS || !(authorization.request().scope() instanceof BackupScope.Installation)</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                    &amp;&amp; !keys.equals(authorization.request().scope().selectedRepositories())) throw failure(&quot;Git stand inventory differs from authorized scope&quot;);</span>
+<span class="fc" id="L31">            var result = new ArrayList&lt;BackupManifest.Repository&gt;(); var budget = new Budget();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (var key : ordered(keys)) {</span>
+<span class="fc" id="L33">                checkpoint.check();</span>
+<span class="fc" id="L34">                try (var stand = source.open(authorization, key, limits, checkpoint)) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                    for (var file : stand.files()) { checkpoint.check(); budget.add(file); }</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                    String selected = authorization.request().time() instanceof BackupTime.SelectedVersion version ? version.commitsByRepository().get(key) : null;</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                    boolean bundle = authorization.request().gitRepresentation() == GitRepresentation.BUNDLE;</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                    String head = bundle ? GitStandBundle.capture(stand, authorization.authorizedAt(), checkpoint).head() : null;</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                    String original = bundle ? stand.state().requiredCommits().stream().findFirst().orElse(null) : selected;</span>
+<span class="fc" id="L40">                    result.add(new BackupManifest.Repository(key, UUID.randomUUID().toString(), authorization.request().gitRepresentation(), stand.state(), null, head, original));</span>
+                }
+<span class="fc" id="L42">            }</span>
+<span class="fc" id="L43">            checkpoint.check(); return List.copyOf(result);</span>
+<span class="fc" id="L44">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+
+    /** Architecture proof selection rechecks the same captured source states under the still-held fence. */
+    public List&lt;BackupDocumentReference&gt; documents(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L50">            requireSnapshot(snapshot); checkpoint.check(); var references = new ArrayList&lt;BackupDocumentReference&gt;(); var budget = new Budget();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            for (var key : ordered(snapshot.repositories().keySet())) {</span>
+<span class="fc" id="L52">                checkpoint.check();</span>
+<span class="fc" id="L53">                try (var stand = source.open(snapshot.authorization(), key, limits, checkpoint)) {</span>
+<span class="fc" id="L54">                    requireState(snapshot, key, stand);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                    for (var file : stand.files()) { checkpoint.check(); budget.add(file); }</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                    if (snapshot.authorization().request().gitRepresentation() == GitRepresentation.BUNDLE) requireBundle(snapshot, key, stand, checkpoint);</span>
+<span class="fc" id="L57">                    references.addAll(stand.documents());</span>
+                }
+<span class="fc" id="L59">            }</span>
+<span class="fc" id="L60">            checkpoint.check(); return List.copyOf(references);</span>
+<span class="fc" id="L61">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+<span class="fc" id="L63">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;workspace&quot;); }</span>
+<span class="fc" id="L64">    @Override public int schemaVersion() { return 1; }</span>
+<span class="nc" id="L65">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;storage.jgit.objects-refs-reflogs&quot;); }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L67">        return List.of(&quot;workspace: stand payloads exclude source Git ancestry, reflogs and other branches; captured refs and checkpoint IDs are source evidence&quot;,</span>
+                &quot;workspace: saved states on other branches remain separate workspace records; no source commit is created&quot;);
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+        try {
+<span class="fc" id="L72">            requireSnapshot(snapshot); sink.checkpoint(); var budget = new Budget();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            boolean bundle = snapshot.authorization().request().gitRepresentation() == GitRepresentation.BUNDLE;</span>
+<span class="fc" id="L74">            var records = new ArrayList&lt;Record&gt;(); records.add(new PortableRows.Header(1, &quot;git-stands&quot;, snapshot.authorization().request().profile()));</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            for (var key : ordered(snapshot.repositories().keySet())) {</span>
+<span class="fc" id="L76">                sink.checkpoint(); String archiveId = snapshot.repositoryArchiveIds().get(key);</span>
+<span class="fc" id="L77">                try (var stand = source.open(snapshot.authorization(), key, limits, sink::checkpoint)) {</span>
+<span class="fc" id="L78">                    requireState(snapshot, key, stand);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                    for (var file : stand.files()) { sink.checkpoint(); budget.add(file); }</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                    if (bundle) {</span>
+<span class="fc" id="L81">                        requireBundle(snapshot, key, stand, sink::checkpoint).write(&quot;repositories/&quot; + archiveId + &quot;/stand.bundle&quot;, sink);</span>
+                        continue;
+                    }
+<span class="fc" id="L84">                    records.add(new RepositoryRecord(&quot;repository&quot;, key, archiveId, stand.state()));</span>
+<span class="fc" id="L85">                    var written = new HashMap&lt;String, BackupEntry&gt;();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    for (var file : stand.files()) {</span>
+<span class="fc" id="L87">                        sink.checkpoint();</span>
+<span class="fc" id="L88">                        String path = &quot;files/workspace-git/&quot; + archiveId + &quot;/&quot; + file.sha256();</span>
+<span class="fc" id="L89">                        var entry = new BackupEntry(path, file.length(), file.sha256()); var prior = written.get(path);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                        if (prior == null) {</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                            if (!entry.equals(stand.writeFile(file, path, sink))) throw failure(&quot;Git stand file receipt differs from captured evidence&quot;);</span>
+<span class="fc" id="L92">                            written.put(path, entry);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                        } else if (!prior.equals(entry)) throw failure(&quot;Git stand content-address collision&quot;);</span>
+<span class="fc" id="L94">                        records.add(new FileRecord(&quot;file&quot;, archiveId, file.path(), file.mode(), entry));</span>
+<span class="fc" id="L95">                    }</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                }</span>
+<span class="fc" id="L97">            }</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            sink.checkpoint(); if (bundle) return;</span>
+<span class="fc" id="L99">            var digest = new DigestOutput(); serialize(records, digest, sink::checkpoint);</span>
+<span class="fc" id="L100">            var entry = new BackupEntry(METADATA, digest.bytes, HexFormat.of().formatHex(digest.digest.digest()));</span>
+<span class="fc" id="L101">            GitTreeCapture.writeGenerated(entry, sink, output -&gt; serialize(records, output, sink::checkpoint)); sink.checkpoint();</span>
+<span class="fc" id="L102">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L103">    }</span>
+
+    private void requireSnapshot(SnapshotContext snapshot) throws IOException {
+<span class="fc" id="L106">        requireProfile(snapshot.authorization().request());</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!Integer.valueOf(schemaVersion()).equals(snapshot.componentVersions().get(componentId()))) throw failure(&quot;Git stand component version differs from capture&quot;);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (!snapshot.repositoryArchiveIds().keySet().equals(snapshot.repositories().keySet())) throw failure(&quot;Git stand payloads require explicit manifest repository IDs&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (snapshot.authorization().request().gitRepresentation() == GitRepresentation.BUNDLE</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                &amp;&amp; !snapshot.exportedHeads().keySet().equals(snapshot.repositories().keySet())) throw failure(&quot;Git stand bundles require explicit manifest exported heads&quot;);</span>
+<span class="fc" id="L111">    }</span>
+    private static void requireProfile(BackupRequest request) throws IOException {
+<span class="fc bfc" id="L113" title="All 6 branches covered.">        if (request.profile().includesHistory() || request.gitRepresentation() != GitRepresentation.NONE &amp;&amp; request.gitRepresentation() != GitRepresentation.BUNDLE)</span>
+<span class="fc" id="L114">            throw failure(&quot;Git stand capture requires a current or selected profile with files or bundles&quot;);</span>
+<span class="fc" id="L115">    }</span>
+    private static GitStandBundle requireBundle(SnapshotContext snapshot, BackupRepositoryKey key, GitStandBackupSource.Stand stand, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L117">        var bundle = GitStandBundle.capture(stand, snapshot.authorization().authorizedAt(), checkpoint);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (!bundle.head().equals(snapshot.exportedHeads().get(key))) throw failure(&quot;Git stand exported head changed after inventory&quot;);</span>
+<span class="fc" id="L119">        return bundle;</span>
+    }
+    private static void requireState(SnapshotContext snapshot, BackupRepositoryKey key, GitStandBackupSource.Stand stand) throws IOException {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (!stand.state().equals(snapshot.repositories().get(key))) throw failure(&quot;Git stand source state changed after inventory&quot;);</span>
+<span class="fc" id="L123">    }</span>
+    private static List&lt;BackupRepositoryKey&gt; ordered(Set&lt;BackupRepositoryKey&gt; keys) {
+<span class="fc" id="L125">        return keys.stream().sorted(Comparator.comparing(BackupRepositoryKey::repositoryId)</span>
+<span class="fc" id="L126">                .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()))).toList();</span>
+    }
+    private static void serialize(List&lt;Record&gt; records, OutputStream output, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L129">        try (var generator = JSON.getFactory().createGenerator(output).disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {</span>
+<span class="fc" id="L130">            generator.setRootValueSeparator(null);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            for (var record : records) { checkpoint.check(); JSON.writeValue(generator, record); generator.writeRaw('\n'); }</span>
+<span class="fc" id="L132">            generator.flush(); checkpoint.check();</span>
+        }
+<span class="fc" id="L134">    }</span>
+<span class="fc" id="L135">    public record RepositoryRecord(String recordType, BackupRepositoryKey repository, String archiveId, SnapshotContext.RepositoryState source) { }</span>
+<span class="fc" id="L136">    public record FileRecord(String recordType, String archiveId, String path, int mode, BackupEntry entry) { }</span>
+<span class="fc" id="L137">    private final class Budget {</span>
+        int files; long bytes;
+        void add(GitStandBackupSource.File file) throws IOException {
+<span class="fc bfc" id="L140" title="All 4 branches covered.">            if (++files &gt; limits.git().maxFiles() || file.length() &gt; limits.git().maxTotalBytes() - bytes)</span>
+<span class="fc" id="L141">                throw failure(&quot;Git stand closure limit exceeded&quot;);</span>
+<span class="fc" id="L142">            bytes += file.length();</span>
+<span class="fc" id="L143">        }</span>
+    }
+    private static final class DigestOutput extends OutputStream {
+        final MessageDigest digest; long bytes;
+<span class="pc" id="L147">        DigestOutput() { try { digest = MessageDigest.getInstance(&quot;SHA-256&quot;); } catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); } }</span>
+<span class="nc" id="L148">        @Override public void write(int value) { digest.update((byte) value); bytes = Math.addExact(bytes, 1); }</span>
+<span class="fc" id="L149">        @Override public void write(byte[] value, int offset, int length) { digest.update(value, offset, length); bytes = Math.addExact(bytes, length); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

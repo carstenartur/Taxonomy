@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenEmbeddingCache.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">FrozenEmbeddingCache.java</span></div><h1>FrozenEmbeddingCache.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueView;
+import com.taxonomy.identity.StableIdentityHash;
+import org.apache.lucene.index.VectorSimilarityFunction;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Bounded vectors of explicitly requested frozen candidates; no JPA, global index or query-result cache. */
+<span class="fc" id="L14">final class FrozenEmbeddingCache {</span>
+<span class="fc" id="L15">    private final Map&lt;Key, float[]&gt; vectors = new LinkedHashMap&lt;&gt;(16, .75f, true);</span>
+
+    Map&lt;String, Integer&gt; score(FrozenCatalogueView catalogue, EmbeddingModelIdentity activeModel,
+                               String businessText, List&lt;TaxonomyNode&gt; candidates,
+                               LocalEmbeddingService embeddings, int capacity) throws Exception {
+<span class="pc bpc" id="L20" title="2 of 4 branches missed.">        if (capacity &lt; 1 || capacity &gt; 100_000) throw new IllegalArgumentException(&quot;Invalid frozen embedding cache limit&quot;);</span>
+<span class="fc" id="L21">        var nodes = catalogue.canonicalNodes(candidates);</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        for (var node : nodes) {</span>
+<span class="fc" id="L23">            var evidence = catalogue.embeddingSnapshot(node.getTaxonomyRoot());</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            if (!activeModel.equals(evidence.model())) {</span>
+<span class="fc" id="L25">                throw new IllegalStateException(&quot;Frozen embedding model does not match the worker model configuration&quot;);</span>
+            }
+<span class="fc" id="L27">        }</span>
+<span class="fc" id="L28">        Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (nodes.isEmpty()) return result;</span>
+<span class="fc" id="L30">        float[] query = checked(embeddings.embedQuery(businessText));</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (var node : nodes) {</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (Thread.currentThread().isInterrupted()) throw new IllegalStateException(&quot;Frozen embedding inference interrupted&quot;);</span>
+<span class="fc" id="L33">            var evidence = catalogue.embeddingSnapshot(node.getTaxonomyRoot());</span>
+<span class="fc" id="L34">            String text = evidence.nodeTexts().get(node.getCode());</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (text == null) throw new IllegalStateException(&quot;Missing frozen embedding text for candidate&quot;);</span>
+<span class="fc" id="L36">            var key = new Key(catalogue.source(), node.getTaxonomyRoot(), activeModel,</span>
+<span class="fc" id="L37">                    evidence.textVersion(), node.getCode(), StableIdentityHash.sha256(text));</span>
+<span class="fc" id="L38">            float[] vector = get(key);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (vector == null) vector = retain(key, checked(embeddings.embedDocument(text)), capacity);</span>
+<span class="fc" id="L40">            float score = VectorSimilarityFunction.COSINE.compare(query, vector);</span>
+<span class="fc" id="L41">            result.put(node.getCode(), Math.max(0, Math.min(100,</span>
+<span class="fc" id="L42">                    (int) Math.round((2.0 * score - 1.0) * 100.0))));</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        return result;</span>
+    }
+
+<span class="fc" id="L47">    private synchronized float[] get(Key key) { return vectors.get(key); }</span>
+
+    private synchronized float[] retain(Key key, float[] vector, int capacity) {
+<span class="fc" id="L50">        float[] existing = vectors.get(key);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (existing != null) return existing;</span>
+<span class="fc" id="L52">        vectors.put(key, vector.clone());</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        while (vectors.size() &gt; capacity) vectors.remove(vectors.keySet().iterator().next());</span>
+<span class="fc" id="L54">        return vector;</span>
+    }
+
+    synchronized LocalEmbeddingService.FrozenCacheStatistics statistics() {
+<span class="fc" id="L58">        return new LocalEmbeddingService.FrozenCacheStatistics(vectors.size(),</span>
+<span class="fc" id="L59">                vectors.values().stream().mapToLong(vector -&gt; (long) vector.length * Float.BYTES).sum());</span>
+    }
+
+<span class="fc" id="L62">    synchronized void clear() { vectors.clear(); }</span>
+
+    private static float[] checked(float[] vector) {
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">        if (vector == null || vector.length != 384) throw new IllegalStateException(&quot;Frozen embedding vector dimension is invalid&quot;);</span>
+<span class="fc" id="L66">        double squared = 0;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (float value : vector) {</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (!Float.isFinite(value)) throw new IllegalStateException(&quot;Frozen embedding vector is not finite&quot;);</span>
+<span class="fc" id="L69">            squared += (double) value * value;</span>
+        }
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (squared == 0) throw new IllegalStateException(&quot;Frozen embedding vector has no direction&quot;);</span>
+<span class="fc" id="L72">        return vector;</span>
+    }
+
+<span class="fc" id="L75">    private record Key(CatalogueSourceIdentity source, String root, EmbeddingModelIdentity model,</span>
+                       String textVersion, String code, String textHash) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

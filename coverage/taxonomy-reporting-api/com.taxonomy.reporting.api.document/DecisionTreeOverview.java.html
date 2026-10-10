@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionTreeOverview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.api.document</a> &gt; <span class="el_source">DecisionTreeOverview.java</span></div><h1>DecisionTreeOverview.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.api.document;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.*;
+import com.taxonomy.dto.TaxonomyNodeDto;
+
+import java.util.*;
+
+/** Complete, ordered navigation evidence, independent of the leading decision path. */
+public record DecisionTreeOverview(List&lt;DecisionTreeRow&gt; rows, List&lt;String&gt; warnings) {
+<span class="fc" id="L13">    public DecisionTreeOverview {</span>
+<span class="fc" id="L14">        rows = List.copyOf(rows);</span>
+<span class="fc" id="L15">        warnings = List.copyOf(warnings);</span>
+<span class="fc" id="L16">    }</span>
+
+<span class="fc" id="L18">    public record DecisionTreeRow(</span>
+            int depth,
+            String code,
+            String title,
+            Integer score,
+            Disposition disposition,
+            Integer chapterNumber,
+            String bookmark) {}
+
+    public static String bookmark(DecisionChapter chapter) {
+<span class="fc" id="L28">        String code = chapter.parentCode().replaceAll(&quot;[^A-Za-z0-9_]&quot;, &quot;_&quot;);</span>
+        // Chapter numbers are unique; truncation cannot collide even for non-Latin codes.
+<span class="fc" id="L30">        return &quot;decision_chapter_&quot;</span>
+<span class="fc" id="L31">                + chapter.number()</span>
+                + &quot;_&quot;
+<span class="fc" id="L33">                + code.substring(0, Math.min(12, code.length()));</span>
+    }
+
+    /** Compatibility factory; new producers can supply the frozen rows directly. */
+    public static DecisionTreeOverview from(List&lt;DecisionChapter&gt; chapters) {
+<span class="fc" id="L38">        return com.taxonomy.reporting.api.decision.DecisionReportScope.legacy(chapters).decisionTree();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

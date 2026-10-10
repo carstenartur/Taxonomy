@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.controller</a> &gt; <span class="el_source">IntegrationController.java</span></div><h1>IntegrationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.controller;
+
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.exchange.ExchangeFormatException;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.IntegrationService;
+import com.taxonomy.interop.IntegrationService.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceRevisionConflict;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Controller
+@Tag(name = &quot;Integrations&quot;)
+public class IntegrationController {
+    private final IntegrationService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L36">    public IntegrationController(IntegrationService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }</span>
+    @GetMapping(&quot;/integrations&quot;) public String page(jakarta.servlet.http.HttpServletRequest request, org.springframework.ui.Model model) {
+<span class="nc bnc" id="L38" title="All 4 branches missed.">        model.addAttribute(&quot;mayWrite&quot;, request.isUserInRole(&quot;ADMIN&quot;) || request.isUserInRole(&quot;ARCHITECT&quot;));</span>
+<span class="nc" id="L39">        return &quot;integrations&quot;;</span>
+    }
+    @GetMapping(&quot;/api/integrations/profiles&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;List available integration profiles&quot;,
+            description = &quot;Lists registered integration descriptors and capabilities for the authorized repository. This capability read does not create a connection or invoke a remote synchronization.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List available integration profiles response&quot;)
+<span class="fc" id="L45">    public List&lt;IntegrationDescriptor&gt; profiles() { return service.profiles(resolver.resolveCurrentRepositoryContext()); }</span>
+    @GetMapping(&quot;/api/integrations&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;List scoped integration connections&quot;,
+            description = &quot;Lists configured connections visible in the authorized repository context. This read does not initiate import, synchronization or publication.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List scoped integration connections response&quot;)
+<span class="nc" id="L50">    public List&lt;Connection&gt; connections() { return service.connections(resolver.resolveCurrentRepositoryContext()); }</span>
+    @PostMapping(&quot;/api/integrations&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Create an integration connection&quot;,
+            description = &quot;Creates a connection to a registered integration profile in the authorized repository context. Configuration alone does not import, synchronize or publish architecture data.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Create an integration connection response&quot;)
+<span class="fc" id="L55">    public Connection create(@RequestBody CreateConnection request) { return service.create(resolver.resolveCurrentRepositoryContext(), request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read an integration overview&quot;,
+            description = &quot;Reads the connection overview in the authorized context, optionally narrowed by root resource and selector fingerprint. This inspection does not apply a change set.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read an integration overview response&quot;)
+    public Overview overview(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Optional external root resource selector for this connection overview&quot;)
+            @RequestParam(required=false) String rootResource, @Parameter(description = &quot;Optional fingerprint of the selected external resource scope&quot;)
+<span class="fc" id="L63">            @RequestParam(required=false) String selectorFingerprint) { return service.overview(resolver.resolveCurrentRepositoryContext(), connection, rootResource, selectorFingerprint); }</span>
+    @PostMapping(value=&quot;/api/integrations/{connection}/previews&quot;, consumes=&quot;multipart/form-data&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview an uploaded exchange file&quot;,
+            description = &quot;Accepts multipart request metadata and an exchange file, bounded to 16 MiB, and prepares an authorized import preview. Review and explicit apply are separate from parsing; oversized files return 413.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview an uploaded exchange file response&quot;)
+    public Operation preview(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @RequestPart(&quot;request&quot;) PreviewRequest request, @RequestPart(&quot;file&quot;) MultipartFile file) throws IOException {
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (file.getSize() &gt; com.taxonomy.exchange.ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;PAYLOAD_LIMIT&quot;, 413, &quot;Exchange exceeds 16 MiB&quot;);</span>
+<span class="fc" id="L71">        return service.preview(resolver.resolveCurrentRepositoryContext(), connection, request, file.getBytes());</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/export-previews&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview a scoped integration export&quot;,
+            description = &quot;Creates an export preview from the requested exact local state for human review. This does not publish to a remote endpoint or implicitly accept a generated change set.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview a scoped integration export response&quot;)
+    public Operation previewExport(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+<span class="fc" id="L78">            @PathVariable UUID connection, @RequestBody ExportRequest request) { return service.previewExport(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/remote-previews&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview a remote integration import&quot;,
+            description = &quot;Obtains a remote-source preview through the configured integration in the authorized context. It may contact that endpoint but does not apply changes to the local architecture.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview a remote integration import response&quot;)
+    public Operation previewRemote(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+<span class="nc" id="L84">            @PathVariable UUID connection, @RequestBody RemoteRequest request) { return service.previewRemote(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read an integration operation&quot;,
+            description = &quot;Returns the retained integration operation after authorizing the connection and current repository context. HTTP success denotes a successful read, not necessarily successful execution of the operation.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read an integration operation response&quot;)
+    public Operation operation(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+<span class="nc" id="L91">            @PathVariable UUID operation) { return service.operation(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/events&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read integration operation history&quot;,
+            description = &quot;Returns the retained event list for the authorized integration operation. This endpoint returns JSON history, not an SSE stream, and does not resume execution.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read integration operation history response&quot;)
+    public List&lt;Event&gt; events(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+<span class="nc" id="L98">            @PathVariable UUID operation) { return service.events(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/identities&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read integration identity mappings&quot;,
+            description = &quot;Lists recorded external-to-internal identity mappings for the authorized connection. Reading mappings does not merge or rebind identities.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read integration identity mappings response&quot;)
+    public List&lt;Identity&gt; identities(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+<span class="nc" id="L104">            @PathVariable UUID connection) { return service.identities(resolver.resolveCurrentRepositoryContext(), connection); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/apply&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Apply a reviewed integration change set&quot;,
+            description = &quot;Applies only the explicitly reviewed change set to the authorized local architecture. The stored preview and exact source state are revalidated; reading or creating a preview never implies acceptance.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Apply a reviewed integration change set response&quot;)
+    public Operation apply(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+<span class="fc" id="L110">            @PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.apply(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/files&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Prepare a reviewed integration file&quot;,
+            description = &quot;Prepares an exchange file from the explicitly reviewed change set in the authorized repository context. The file is retrieved through the operation download endpoint; preparation does not publish it remotely.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Prepare a reviewed integration file response&quot;)
+    public Operation prepareFile(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+<span class="fc" id="L116">            @PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.prepareFile(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/file&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Download a prepared integration file&quot;,
+            description = &quot;Downloads the operation's retained exchange file with its format-specific media type, attachment filename, semantic revision and checkpoint headers. No model or remote publication is started by this GET.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Download a prepared integration file response&quot;)
+    public ResponseEntity&lt;byte[]&gt; file(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation) {
+<span class="fc" id="L124">        var context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L125">        var file = service.file(context, connection, operation); var authority = service.operation(context, connection, operation).context().internalState();</span>
+<span class="fc" id="L126">        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE, file.mediaType())</span>
+<span class="fc" id="L127">                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(file.filename(), java.nio.charset.StandardCharsets.UTF_8).build().toString())</span>
+<span class="fc" id="L128">                .header(HttpHeaders.CACHE_CONTROL, &quot;private, no-store&quot;).header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L129">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(authority.semanticRevision()))</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                .header(&quot;X-Taxonomy-Checkpoint&quot;, authority.commitId() == null ? &quot;none&quot; : authority.commitId()).body(file.content());</span>
+    }
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/endpoint-options&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read integration endpoint choices&quot;,
+            description = &quot;Returns endpoint options for the retained operation in its authorized repository context. Publication operations additionally require the requested branch to match the active authorized branch.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read integration endpoint choices response&quot;)
+    public com.taxonomy.interop.IntegrationDomainAdapter.EndpointIndex endpointOptions(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+            @RequestParam(required=false) String branch) {
+<span class="fc" id="L140">        return service.operationEndpointOptions(operationContext(connection, operation, branch), connection, operation);</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/retry&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Retry an eligible integration operation&quot;,
+            description = &quot;Explicitly retries eligible work using the retained operation and authorized context. Publication operations retain their exact-branch checks; uncertain remote writes are not treated as automatically safe to repeat.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Retry an eligible integration operation response&quot;)
+    public Object retry(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="fc" id="L149">            @RequestParam(required=false) String branch) { return service.retryOperation(operationContext(connection, operation, branch), connection, operation); }</span>
+<span class="nc" id="L150">    public record Cancel(String rationale) {}</span>
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/cancel&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Cancel an integration operation&quot;,
+            description = &quot;Requests cancellation of the specified operation with a rationale in its authorized context. Publication branch pins are checked; cancellation cannot undo a remote write that has already committed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Cancel an integration operation response&quot;)
+    public Object cancel(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation, @RequestBody Cancel request, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="nc" id="L158">            @RequestParam(required=false) String branch) { return service.cancelOperation(operationContext(connection, operation, branch), connection, operation, request.rationale()); }</span>
+
+    /** Nullable wire state is checked before constructing the strict bounded contract. */
+<span class="fc" id="L161">    public record PublicationInput(UUID operationId, InternalState expected, PublicationMode mode, PublicationScope scope, String expectedExternalRevision) {</span>
+        PublicationPreviewRequest request() {
+<span class="pc bpc" id="L163" title="2 of 6 branches missed.">            if (expected == null || expectedExternalRevision == null || expectedExternalRevision.isBlank()) throw new IntegrationProblem(&quot;EXACT_STATE_REQUIRED&quot;, 428, &quot;An exact local state and remote revision are required&quot;);</span>
+<span class="pc bpc" id="L164" title="3 of 6 branches missed.">            if (operationId == null || mode == null || scope == null) throw new IllegalArgumentException(&quot;Publication identity, mode and scope are required&quot;);</span>
+<span class="fc" id="L165">            return new PublicationPreviewRequest(operationId, expected, mode, scope, expectedExternalRevision);</span>
+        }
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/publication-previews&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview an external publication&quot;,
+            description = &quot;Captures review material using the exact local state, publication scope and expected external revision. The optional branch must match the authorized workspace. A preview is not permission to publish; missing exact state returns 428.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview an external publication response&quot;)
+    public PublicationOperation previewPublication(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @RequestBody PublicationInput request, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="fc" id="L174">            @RequestParam(required=false) String branch) { return service.previewPublication(publicationContext(branch), connection, request.request()); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/publish&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Publish an explicitly reviewed change set&quot;,
+            description = &quot;Performs the explicit reviewed publication through the configured provider, after checking the retained preview and exact local/remote preconditions. This operation can mutate the remote system and is not a read-only export.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Publish an explicitly reviewed change set response&quot;)
+    public PublicationOperation publish(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @RequestBody PublicationReview request, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="fc" id="L181">            @RequestParam(required=false) String branch) { return service.publish(publicationContext(branch), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/publication&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read publication operation state&quot;,
+            description = &quot;Reads the retained publication receipt/state in the exact authorized branch. This read does not retry uncertain remote work or assume that a timed-out publication failed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read publication operation state response&quot;)
+    public PublicationOperation publication(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="fc" id="L189">            @RequestParam(required=false) String branch) { return service.publication(publicationContext(branch), connection, operation); }</span>
+<span class="fc" id="L190">    public record ReconciliationInput(UUID predecessorOperationId, PublicationInput request, String rationale) {</span>
+        ReconciliationPreviewRequest checked() {
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">            if (request == null) throw new IntegrationProblem(&quot;EXACT_STATE_REQUIRED&quot;, 428, &quot;An exact local state and remote revision are required&quot;);</span>
+<span class="fc" id="L193">            return new ReconciliationPreviewRequest(predecessorOperationId, request.request(), rationale);</span>
+        }
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/reconciliation-previews&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview reconciliation after publication&quot;,
+            description = &quot;Creates reconciliation review material for the predecessor publication using a fresh exact local state, expected external revision and rationale. It does not blindly repeat an uncertain remote write.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview reconciliation after publication response&quot;)
+    public PublicationOperation reconcile(@Parameter(description = &quot;Connection UUID within the authenticated repository context&quot;)
+            @PathVariable UUID connection, @Parameter(description = &quot;Retained operation UUID belonging to this connection&quot;)
+            @PathVariable UUID operation, @RequestBody ReconciliationInput request, @Parameter(description = &quot;Optional branch pin; publication operations require it to match the authorized workspace branch&quot;)
+<span class="fc" id="L203">            @RequestParam(required=false) String branch) { return service.reconcilePublication(publicationContext(branch), connection, operation, request.checked()); }</span>
+
+    private RepositoryContext publicationContext(String branch) {
+<span class="fc" id="L206">        return requirePublicationBranch(resolver.resolveCurrentRepositoryContext(), branch);</span>
+    }
+    private RepositoryContext operationContext(UUID connection, UUID operation, String branch) {
+<span class="fc" id="L209">        var context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L210">        var direction = service.operation(context, connection, operation).direction();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        return java.util.Set.of(&quot;PUSH&quot;, &quot;SYNCHRONIZE&quot;).contains(direction) ? requirePublicationBranch(context, branch) : context;</span>
+    }
+    private static RepositoryContext requirePublicationBranch(RepositoryContext context, String branch) {
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">        if (branch != null &amp;&amp; !context.branch().equals(branch))</span>
+<span class="fc" id="L215">            throw new IntegrationProblem(&quot;INTERNAL_STATE_CHANGED&quot;, 409, &quot;The requested branch differs from the authorized workspace branch&quot;);</span>
+<span class="fc" id="L216">        return context;</span>
+    }
+
+    @ExceptionHandler(IntegrationProblem.class) @ResponseBody
+<span class="fc" id="L220">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; problem(IntegrationProblem problem) { return ResponseEntity.status(problem.status()).body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(ExchangeFormatException.class) @ResponseBody
+<span class="nc" id="L222">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; format(ExchangeFormatException problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(CommandProblem.class) @ResponseBody
+<span class="nc" id="L224">    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; command(CommandProblem problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage(), &quot;dependencies&quot;, problem.dependencies())); }</span>
+    @ExceptionHandler(WorkspaceRevisionConflict.class) @ResponseBody
+<span class="nc" id="L226">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; revision() { return ResponseEntity.status(409).body(Map.of(&quot;code&quot;, &quot;INTERNAL_STATE_CHANGED&quot;, &quot;message&quot;, &quot;Refresh the exact workspace state and preview again&quot;)); }</span>
+    @ExceptionHandler(IllegalArgumentException.class) @ResponseBody
+<span class="nc" id="L228">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;, &quot;INVALID_REQUEST&quot;, &quot;message&quot;, &quot;Check the required bounded integration fields&quot;)); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

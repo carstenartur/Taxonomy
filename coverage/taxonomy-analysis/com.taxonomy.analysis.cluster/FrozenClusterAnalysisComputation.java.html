@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenClusterAnalysisComputation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">FrozenClusterAnalysisComputation.java</span></div><h1>FrozenClusterAnalysisComputation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
+import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
+import com.taxonomy.analysis.service.AnalysisMemoryGuard;
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScope;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+
+/** Runs the existing scoring algorithm with only this task's admitted catalogue root. */
+public final class FrozenClusterAnalysisComputation implements ClusterAnalysisComputation {
+    private final ClusterAnalysisStore store;
+    private final CatalogueSnapshotService snapshots;
+    private final LlmService llm;
+    private final LlmProviderConfig providers;
+    private final Supplier&lt;AnalysisMemoryGuard&gt; guards;
+    private final ObjectMapper mapper;
+    private final LocalEmbeddingService embeddings;
+
+    public FrozenClusterAnalysisComputation(ClusterAnalysisStore store, CatalogueSnapshotService snapshots,
+            LlmService llm, LlmProviderConfig providers, Supplier&lt;AnalysisMemoryGuard&gt; guards, ObjectMapper mapper) {
+<span class="fc" id="L36">        this(store, snapshots, llm, providers, guards, mapper, null);</span>
+<span class="fc" id="L37">    }</span>
+
+    public FrozenClusterAnalysisComputation(ClusterAnalysisStore store, CatalogueSnapshotService snapshots,
+            LlmService llm, LlmProviderConfig providers, Supplier&lt;AnalysisMemoryGuard&gt; guards, ObjectMapper mapper,
+<span class="fc" id="L41">            LocalEmbeddingService embeddings) {</span>
+<span class="fc" id="L42">        this.store = Objects.requireNonNull(store); this.snapshots = Objects.requireNonNull(snapshots);</span>
+<span class="fc" id="L43">        this.llm = Objects.requireNonNull(llm); this.providers = Objects.requireNonNull(providers);</span>
+<span class="fc" id="L44">        this.guards = Objects.requireNonNull(guards); this.mapper = Objects.requireNonNull(mapper);</span>
+<span class="fc" id="L45">        this.embeddings = embeddings;</span>
+<span class="fc" id="L46">    }</span>
+
+    @Override
+    public AnalysisResult score(ClusterAnalysisStore.Input input, SubtaxonomyAnalysisTask task,
+                                BooleanSupplier cancelled) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (TransactionSynchronizationManager.isActualTransactionActive()) {</span>
+<span class="fc" id="L52">            throw new IllegalStateException(&quot;Root scoring must execute outside a database transaction&quot;);</span>
+        }
+<span class="fc" id="L54">        Objects.requireNonNull(input); Objects.requireNonNull(task); Objects.requireNonNull(cancelled);</span>
+<span class="fc" id="L55">        var context = input.context();</span>
+<span class="fc" id="L56">        var command = input.command();</span>
+<span class="fc" id="L57">        var envelope = task.envelope();</span>
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        if (!input.executable() || !context.operationId().equals(envelope.operationId())</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                || !context.authority().equals(envelope.authority())</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">                || !context.requirement().equals(envelope.requirement())</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                || !context.requirement().matches(command.businessText())</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                || !command.analysisScope().selects(task.root().code())) {</span>
+<span class="fc" id="L63">            throw new IllegalArgumentException(&quot;Root task does not match the admitted operation&quot;);</span>
+        }
+<span class="fc" id="L65">        DurableClusterAnalysisExecution.requireSupportedProvider(command.provider());</span>
+<span class="fc" id="L66">        boolean localOnnx = &quot;LOCAL_ONNX&quot;.equalsIgnoreCase(command.provider());</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">        if (localOnnx &amp;&amp; embeddings == null) {</span>
+<span class="fc" id="L68">            throw new IllegalArgumentException(&quot;LOCAL_ONNX requires frozen embedding worker validation&quot;);</span>
+        }
+<span class="fc" id="L70">        var frozen = mapper.readValue(store.shard(context, task.root()), RootCatalogueSnapshot.class);</span>
+<span class="fc" id="L71">        var root = task.root().code();</span>
+<span class="fc" id="L72">        try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), Set.of(root), List.of(frozen));</span>
+<span class="fc" id="L73">             var provider = providers.withRequestProvider(command.provider(), command.providerBinding());</span>
+<span class="fc" id="L74">             var run = AnalysisRunControl.worker(context.operationId(), cancelled, guards.get());</span>
+<span class="fc" id="L75">             var operation = InProcessAnalysisOperation.open(context, null)) {</span>
+<span class="fc" id="L76">            AnalysisRunControl.checkpoint();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (localOnnx) {</span>
+<span class="fc" id="L78">                embeddings.validateFrozenModel();</span>
+<span class="fc" id="L79">                AnalysisRunControl.checkpoint();</span>
+            }
+<span class="fc" id="L81">            var result = llm.analyzeWithBudget(command.businessText(),</span>
+<span class="fc" id="L82">                    new AnalysisScope(Set.of(root), AnalysisMode.TAXONOMIES_ONLY));</span>
+<span class="fc" id="L83">            AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L84">            return result;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

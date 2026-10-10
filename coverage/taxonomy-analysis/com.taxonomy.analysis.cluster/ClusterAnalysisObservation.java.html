@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisObservation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisObservation.java</span></div><h1>ClusterAnalysisObservation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
+import java.util.Optional;
+
+/** Durable observation boundary. Reading or reconnecting never starts analysis work. */
+public interface ClusterAnalysisObservation {
+    /**
+     * Empty means no durable operation exists. A known operation outside the exact
+     * authenticated scope throws 404, preventing fallback to a process-local record.
+     */
+    Optional&lt;ClusterAnalysisView&gt; snapshot(String operationId, String owner, WorkspaceContext scope);
+
+    /** Persist cancellation before publishing it; uses the same absence/404 contract as snapshot. */
+    Optional&lt;ClusterAnalysisView&gt; cancel(String operationId, String owner, WorkspaceContext scope);
+
+    /** Bounded, newest-first observations visible in the authenticated scope. */
+    List&lt;ClusterAnalysisView&gt; recent(String owner, WorkspaceContext scope, Long projectId, Long requirementId);
+
+    /**
+     * Authorize, subscribe and reconcile a durable view newer than afterSequence without a
+     * read/subscription gap. Replay may coalesce hints into the latest persisted snapshot;
+     * never label a current view with an older event revision. Emit snapshot/progress with its sequence as SSE id.
+     * Broker notifications only wake replay; they are never the authority for view data.
+     */
+    SseEmitter events(String operationId, String owner, WorkspaceContext scope, long afterSequence);
+
+    /** Return the persisted result, 409 before it is ready, or indistinguishable 404 outside scope. */
+    AnalysisResult result(String operationId, String owner, WorkspaceContext scope);
+
+    /** Original user input for an explicit recovery action, never provider credentials or internal command state. */
+    RecoveryInput request(String operationId, String owner, WorkspaceContext scope);
+
+<span class="fc" id="L39">    record RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,</span>
+                         ClusterAnalysisView.ObservationScope scope) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

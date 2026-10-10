@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.backup</a> &gt; <span class="el_source">ArchitectureBackupContributor.java</span></div><h1>ArchitectureBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Legacy parsed documents have no repository columns; only captured content can prove a scoped payload. */
+public final class ArchitectureBackupContributor implements BackupDataContributor {
+    private final PortableRows rows;
+    private final BackupDocumentProjector projector;
+    private final BackupDocumentReference.Selector references;
+
+    public ArchitectureBackupContributor(DataSource database, BackupDocumentProjector projector,
+<span class="fc" id="L23">                                         BackupDocumentReference.Selector references) {</span>
+<span class="fc" id="L24">        rows = new PortableRows(database);</span>
+<span class="fc" id="L25">        this.projector = Objects.requireNonNull(projector);</span>
+<span class="fc" id="L26">        this.references = Objects.requireNonNull(references);</span>
+<span class="fc" id="L27">    }</span>
+
+<span class="nc" id="L29">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;architecture&quot;); }</span>
+<span class="nc" id="L30">    @Override public int schemaVersion() { return 1; }</span>
+<span class="nc" id="L31">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;com.taxonomy.architecture.model.ArchitectureDslDocument&quot;); }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (profile == BackupProfile.INSTALLATION_FULL) return List.of();</span>
+<span class="fc" id="L34">        return List.of(&quot;architecture: unattributed legacy documents and unproven global branch, namespace and parse-event metadata require a full installation backup&quot;,</span>
+                &quot;architecture: scoped documents require captured commit, path and content proof; saved working copies are owned by the workspace component&quot;);
+    }
+
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L39">        var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (profile == BackupProfile.INSTALLATION_FULL) {</span>
+<span class="pc" id="L41">            rows.write(sink, &quot;architecture&quot;, &quot;documents&quot;, profile, null, ignored -&gt; null);</span>
+<span class="fc" id="L42">            rows.write(sink, &quot;architecture&quot;, &quot;legacy-documents&quot;, profile,</span>
+<span class="fc" id="L43">                    new Query(&quot;select id,path,commit_id,branch,namespace,dsl_version,raw_content,parsed_at from architecture_dsl_document order by id&quot;, List.of()), r -&gt; {</span>
+<span class="fc" id="L44">                        sink.checkpoint();</span>
+<span class="fc" id="L45">                        return new LegacyDocument(reference(r, &quot;architecture.legacy-document&quot;, &quot;id&quot;),</span>
+<span class="fc" id="L46">                                LegacyOwnership.INSTALLATION_ONLY, text(r, &quot;path&quot;), text(r, &quot;commit_id&quot;), text(r, &quot;branch&quot;),</span>
+<span class="fc" id="L47">                                text(r, &quot;namespace&quot;), text(r, &quot;dsl_version&quot;), text(r, &quot;raw_content&quot;), instant(r, &quot;parsed_at&quot;));</span>
+                    });
+<span class="fc" id="L49">            return;</span>
+        }
+<span class="fc" id="L51">        var selected = List.copyOf(references.select(snapshot, sink::checkpoint));</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (selected.size() &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Architecture document selection limit exceeded&quot;);</span>
+<span class="fc" id="L53">        var byDocument = new LinkedHashMap&lt;DocumentKey, List&lt;BackupDocumentReference&gt;&gt;();</span>
+<span class="fc" id="L54">        var unique = new HashSet&lt;BackupDocumentReference&gt;();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (var reference : selected) {</span>
+<span class="fc" id="L56">            sink.checkpoint();</span>
+<span class="fc" id="L57">            requireSelection(snapshot, reference);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (!unique.add(reference)) throw new IOException(&quot;Duplicate captured architecture document reference&quot;);</span>
+<span class="fc" id="L59">            byDocument.computeIfAbsent(new DocumentKey(reference.commit(), reference.path()), ignored -&gt; new ArrayList&lt;&gt;()).add(reference);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc" id="L61">        var commits = selected.stream().map(BackupDocumentReference::commit).distinct().sorted().toList();</span>
+<span class="fc" id="L62">        var batches = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (int start = 0; start &lt; commits.size(); start += 200) {</span>
+<span class="fc" id="L64">            var parameters = commits.subList(start, Math.min(start + 200, commits.size()));</span>
+<span class="fc" id="L65">            batches.add(new Query(&quot;select id,path,commit_id,raw_content from architecture_dsl_document where commit_id in (&quot;</span>
+<span class="fc" id="L66">                    + String.join(&quot;,&quot;, Collections.nCopies(parameters.size(), &quot;?&quot;)) + &quot;) order by id desc&quot;, parameters));</span>
+        }
+<span class="fc" id="L68">        var emitted = new HashSet&lt;ContentKey&gt;();</span>
+<span class="fc" id="L69">        rows.writeBatches(sink, &quot;architecture&quot;, &quot;documents&quot;, profile, batches, r -&gt; {</span>
+<span class="fc" id="L70">            sink.checkpoint();</span>
+<span class="fc" id="L71">            var key = new DocumentKey(text(r, &quot;commit_id&quot;), text(r, &quot;path&quot;));</span>
+<span class="fc" id="L72">            var candidates = byDocument.get(key);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (candidates == null) return null;</span>
+<span class="fc" id="L74">            String content = text(r, &quot;raw_content&quot;);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (content == null) throw new IOException(&quot;Stored architecture document content is missing&quot;);</span>
+<span class="fc" id="L76">            String hash = sha256(content);</span>
+<span class="fc" id="L77">            var proven = candidates.stream().filter(candidate -&gt; candidate.sha256().equals(hash)).toList();</span>
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">            if (proven.isEmpty() || !emitted.add(new ContentKey(key, hash))) return null;</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (emitted.size() &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Architecture document capture limit exceeded&quot;);</span>
+<span class="fc" id="L80">            return new ProvenDocument(reference(r, &quot;architecture.document&quot;, &quot;id&quot;), proven,</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                    profile.includesHistory() ? content : projector.currentState(content));</span>
+        });
+<span class="pc" id="L83">        rows.write(sink, &quot;architecture&quot;, &quot;legacy-documents&quot;, profile, null, ignored -&gt; null);</span>
+<span class="fc" id="L84">    }</span>
+
+    private static void requireSelection(SnapshotContext snapshot, BackupDocumentReference reference) throws IOException {
+<span class="fc" id="L87">        var state = snapshot.repositories().get(reference.repository());</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (state == null) throw new IOException(&quot;Architecture document proof is outside captured repository scope&quot;);</span>
+<span class="fc" id="L89">        var request = snapshot.authorization().request();</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (request.time() instanceof BackupTime.SelectedVersion selected) {</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (!reference.commit().equals(selected.commitsByRepository().get(reference.repository())))</span>
+<span class="fc" id="L92">                throw new IOException(&quot;Architecture document proof differs from selected version&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        } else if (request.profile().includesHistory()) {</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">            if (!state.refs().containsValue(reference.commit()) &amp;&amp; !state.requiredCommits().contains(reference.commit()))</span>
+<span class="nc" id="L95">                throw new IOException(&quot;Architecture document proof is outside captured commit inventory&quot;);</span>
+<span class="pc bpc" id="L96" title="1 of 6 branches missed.">        } else if (state.refs().entrySet().stream().noneMatch(ref -&gt; ref.getKey().startsWith(&quot;refs/heads/&quot;) &amp;&amp; ref.getValue().equals(reference.commit()))) {</span>
+<span class="fc" id="L97">            throw new IOException(&quot;Architecture document proof is not a current branch head&quot;);</span>
+        }
+<span class="fc" id="L99">    }</span>
+
+    private static String sha256(String content) {
+<span class="fc" id="L102">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(content.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L103">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+
+<span class="fc" id="L106">    private record DocumentKey(String commit, String path) { }</span>
+<span class="fc" id="L107">    private record ContentKey(DocumentKey document, String hash) { }</span>
+<span class="fc" id="L108">    public record ProvenDocument(SourceRecordId sourceId, List&lt;BackupDocumentReference&gt; capturedDocuments, String rawContent) { }</span>
+<span class="fc" id="L109">    public enum LegacyOwnership { INSTALLATION_ONLY }</span>
+<span class="fc" id="L110">    public record LegacyDocument(SourceRecordId sourceId, LegacyOwnership ownership, String path, String commit,</span>
+                                 String branch, String namespace, String dslVersion, String rawContent, String parsedAt) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

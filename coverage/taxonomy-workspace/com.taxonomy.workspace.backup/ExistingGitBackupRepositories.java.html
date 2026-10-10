@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExistingGitBackupRepositories.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">ExistingGitBackupRepositories.java</span></div><h1>ExistingGitBackupRepositories.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.*;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.Repository;
+import org.hibernate.SessionFactory;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Explicit catalogue routing and existing-only Git handles for fenced capture. Never provisions or seeds storage. */
+public final class ExistingGitBackupRepositories {
+    private final DataSource database;
+    private final SecuredHibernateRepositoryFactory&lt;Access&gt; repositories;
+
+<span class="fc" id="L23">    public ExistingGitBackupRepositories(DataSource database, SessionFactory sessions) {</span>
+<span class="fc" id="L24">        this.database = Objects.requireNonNull(database);</span>
+<span class="fc" id="L25">        repositories = new SecuredHibernateRepositoryFactory&lt;&gt;(Objects.requireNonNull(sessions), (access, request) -&gt; {</span>
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">            if (!access.active().get() || !access.storage().equals(request.repositoryName())</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">                    || request.operation() != RepositoryAccessOperation.DISCOVER &amp;&amp; request.operation() != RepositoryAccessOperation.READ)</span>
+<span class="nc" id="L28">                throw new RepositoryAccessDeniedException(request, &quot;BACKUP_READ_ONLY&quot;, access.decision(), 1);</span>
+<span class="fc" id="L29">        });</span>
+<span class="fc" id="L30">    }</span>
+
+    /** Requires the coordinator's fence and current authorization checks; past decision evidence alone grants no access. */
+    public ReadSession open(AuthorizedBackupRequest authorization, BackupRepositoryKey key, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L35">            Objects.requireNonNull(authorization); Objects.requireNonNull(key); checkpoint.check();</span>
+<span class="fc" id="L36">            var request = authorization.request();</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">            if (!(request.scope() instanceof BackupScope.Installation) &amp;&amp; !request.scope().selectedRepositories().contains(key))</span>
+<span class="fc" id="L38">                throw failure(&quot;Git repository is outside the authorized capture scope&quot;);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            var route = route(key, request.profile() == BackupProfile.SELECTED_VERSION, checkpoint);</span>
+<span class="fc" id="L40">            var access = new Access(new RepositoryName(route.storage()), authorization.decisionId(), new AtomicBoolean(true));</span>
+            // Unlike the default storage factory, the secured public facade opens existing metadata only.
+<span class="fc" id="L42">            var storage = repositories.open(access.storage(), access);</span>
+            try {
+<span class="fc" id="L44">                checkpoint.check(); return new ReadSession(key, request, route.branch(), storage, access);</span>
+<span class="nc" id="L45">            } catch (IOException | RuntimeException problem) {</span>
+<span class="nc" id="L46">                access.active().set(false);</span>
+<span class="nc" id="L47">                try { storage.close(); } catch (RuntimeException cleanup) { problem.addSuppressed(cleanup); }</span>
+<span class="nc" id="L48">                throw problem;</span>
+            }
+<span class="fc" id="L50">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+
+    private Route route(BackupRepositoryKey key, boolean selectedVersion, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        boolean central = key.workspaceId() == null;</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        String sql = central</span>
+<span class="fc" id="L56">                ? &quot;select storage_repository_name,default_branch from system_repository where repository_id=?&quot;</span>
+<span class="fc" id="L57">                : &quot;select w.current_branch from user_workspace w join system_repository r on r.repository_id=w.source_repository_id where r.repository_id=? and w.workspace_id=?&quot;;</span>
+<span class="fc" id="L58">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L59">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L60">            try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L61">                statement.setMaxRows(2); statement.setQueryTimeout(60); statement.setString(1, key.repositoryId());</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                if (!central) statement.setString(2, key.workspaceId());</span>
+<span class="fc" id="L63">                checkpoint.check();</span>
+<span class="fc" id="L64">                try (var row = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    if (!row.next()) throw failure(&quot;Captured repository routing is missing or inconsistent&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                    String storage = central ? row.getString(1) : DslGitRepositoryFactory.workspaceRepositoryName(key.workspaceId());</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">                    String branch = selectedVersion ? null : row.getString(central ? 2 : 1);</span>
+<span class="pc bpc" id="L68" title="4 of 8 branches missed.">                    if (storage == null || storage.isBlank() || !storage.equals(storage.strip()) || storage.length() &gt; 512</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                            || row.next()) throw failure(&quot;Captured repository routing is missing or inconsistent&quot;);</span>
+<span class="pc bpc" id="L70" title="3 of 8 branches missed.">                    if (!selectedVersion &amp;&amp; (branch == null || branch.length() &gt; 255 || !Repository.isValidRefName(Constants.R_HEADS + branch)))</span>
+<span class="nc" id="L71">                        throw failure(&quot;Captured repository has no valid current branch&quot;);</span>
+<span class="fc" id="L72">                    checkpoint.check(); return new Route(storage, branch);</span>
+                }
+            }
+<span class="nc" id="L75">        } catch (SQLException problem) { throw sanitized(problem); }</span>
+    }
+
+    public static final class ReadSession implements AutoCloseable {
+        private final BackupRepositoryKey key;
+        private final BackupRequest request;
+        private final String branch;
+        private final AuthorizedRepositorySession&lt;Access&gt; storage;
+        private final Access access;
+<span class="fc" id="L84">        private ReadSession(BackupRepositoryKey key, BackupRequest request, String branch, AuthorizedRepositorySession&lt;Access&gt; storage, Access access) {</span>
+<span class="fc" id="L85">            this.key = key; this.request = request; this.branch = branch; this.storage = storage; this.access = access;</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">        public BackupRepositoryKey key() { return key; }</span>
+        /** Selected-version capture has no dependency on the live branch. */
+<span class="fc" id="L89">        public String branch() { return branch; }</span>
+        public Optional&lt;GitTreeCapture&gt; captureStand(GitTreeCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+            try {
+<span class="fc" id="L92">                requireOpen();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                if (request.profile().includesHistory()) throw failure(&quot;Git history requires a complete history adapter&quot;);</span>
+<span class="fc" id="L94">                check(checkpoint); String commit;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                if (request.time() instanceof BackupTime.SelectedVersion selected) commit = selected.commitsByRepository().get(key);</span>
+                else {
+<span class="fc" id="L97">                    var ref = storage.repository().getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">                    commit = ref == null || ref.getObjectId() == null ? null : ref.getObjectId().name();</span>
+                }
+<span class="fc" id="L100">                check(checkpoint);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                return commit == null ? Optional.empty() : Optional.of(GitTreeCapture.capture(storage.repository(), commit, limits, checkpoint, this::requireOpen));</span>
+<span class="fc" id="L102">            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+        }
+        private void requireOpen() throws IOException {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (!access.active().get()) throw failure(&quot;Git capture session is closed&quot;);</span>
+<span class="fc" id="L106">        }</span>
+        private void check(BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L108">            requireOpen(); checkpoint.check(); requireOpen();</span>
+<span class="fc" id="L109">        }</span>
+        @Override public void close() throws IOException {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (!access.active().getAndSet(false)) return;</span>
+<span class="pc" id="L112">            try { storage.close(); } catch (RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L113">        }</span>
+    }
+<span class="fc" id="L115">    private record Route(String storage, String branch) { }</span>
+<span class="fc" id="L116">    private record Access(RepositoryName storage, String decision, AtomicBoolean active) { }</span>
+    @FunctionalInterface private interface Rollback extends AutoCloseable { @Override void close() throws SQLException; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

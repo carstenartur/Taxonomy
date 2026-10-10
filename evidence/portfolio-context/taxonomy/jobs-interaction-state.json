@@ -1,0 +1,186 @@
+{
+  "beforeToggle" : {
+    "activeElement" : {
+      "classes" : "btn btn-sm btn-outline-secondary job-toggle",
+      "id" : "",
+      "tag" : "BUTTON"
+    },
+    "expanded" : false,
+    "focusedAction" : "toggle",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+    "lastAttempt" : null,
+    "lastCellRight" : null,
+    "maxScrollLeft" : null,
+    "scrollLeft" : null,
+    "scrollTop" : null,
+    "tableRight" : null,
+    "viewport" : {
+      "height" : 768,
+      "scrollX" : 0,
+      "scrollY" : 0,
+      "width" : 1366
+    }
+  },
+  "afterToggle" : {
+    "activeElement" : {
+      "classes" : "btn btn-sm btn-outline-secondary job-toggle",
+      "id" : "",
+      "tag" : "BUTTON"
+    },
+    "expanded" : true,
+    "focusedAction" : "toggle",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+    "lastAttempt" : "1",
+    "lastCellRight" : 1295,
+    "maxScrollLeft" : 0,
+    "scrollLeft" : 0,
+    "scrollTop" : 0,
+    "tableRight" : 1310,
+    "viewport" : {
+      "height" : 768,
+      "scrollX" : 0,
+      "scrollY" : 0,
+      "width" : 1366
+    }
+  },
+  "afterNextTab" : {
+    "activeElement" : {
+      "classes" : "btn btn-sm btn-outline-primary job-retry",
+      "id" : "",
+      "tag" : "BUTTON"
+    },
+    "expanded" : true,
+    "focusedAction" : "retry",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+    "lastAttempt" : "1",
+    "lastCellRight" : 1295,
+    "maxScrollLeft" : 0,
+    "scrollLeft" : 0,
+    "scrollTop" : 0,
+    "tableRight" : 1310,
+    "viewport" : {
+      "height" : 768,
+      "scrollX" : 0,
+      "scrollY" : 0,
+      "width" : 1366
+    }
+  },
+  "beforeOtherJobPoll" : {
+    "activeElement" : {
+      "classes" : "table-responsive",
+      "id" : "",
+      "tag" : "DIV"
+    },
+    "expanded" : true,
+    "focusedAction" : "details-scroll",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+    "lastAttempt" : "1",
+    "lastCellRight" : 331.140625,
+    "maxScrollLeft" : 142,
+    "scrollLeft" : 142,
+    "scrollTop" : 0,
+    "tableRight" : 346,
+    "viewport" : {
+      "height" : 844,
+      "scrollX" : 0,
+      "scrollY" : 1338,
+      "width" : 390
+    }
+  },
+  "afterOtherJobPoll" : {
+    "activeElement" : {
+      "classes" : "table-responsive",
+      "id" : "",
+      "tag" : "DIV"
+    },
+    "expanded" : true,
+    "focusedAction" : "details-scroll",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-failed",
+    "lastAttempt" : "1",
+    "lastCellRight" : 331.140625,
+    "maxScrollLeft" : 142,
+    "scrollLeft" : 142,
+    "scrollTop" : 0,
+    "tableRight" : 346,
+    "viewport" : {
+      "height" : 844,
+      "scrollX" : 0,
+      "scrollY" : 1338,
+      "width" : 390
+    }
+  },
+  "otherJobPollResponse" : {
+    "activeElement" : {
+      "classes" : "table-responsive",
+      "id" : "",
+      "tag" : "DIV"
+    },
+    "expanded" : true,
+    "focusedAction" : "outside-job",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+    "lastAttempt" : "2",
+    "lastCellRight" : 394.34375,
+    "maxScrollLeft" : 63,
+    "scrollLeft" : 0,
+    "scrollTop" : 0,
+    "tableRight" : 346,
+    "viewport" : {
+      "height" : 844,
+      "scrollX" : 0,
+      "scrollY" : 1338,
+      "width" : 390
+    }
+  },
+  "otherJobHttpPolls" : {
+    "before" : 3,
+    "after" : 6
+  },
+  "beforeOwnJobPoll" : {
+    "activeElement" : {
+      "classes" : "table-responsive",
+      "id" : "",
+      "tag" : "DIV"
+    },
+    "expanded" : true,
+    "focusedAction" : "details-scroll",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+    "lastAttempt" : "2",
+    "lastCellRight" : 331.34375,
+    "maxScrollLeft" : 63,
+    "scrollLeft" : 63,
+    "scrollTop" : 0,
+    "tableRight" : 346,
+    "viewport" : {
+      "height" : 844,
+      "scrollX" : 0,
+      "scrollY" : 1338,
+      "width" : 390
+    }
+  },
+  "afterOwnJobPoll" : {
+    "activeElement" : {
+      "classes" : "table-responsive",
+      "id" : "",
+      "tag" : "DIV"
+    },
+    "expanded" : true,
+    "focusedAction" : "details-scroll",
+    "jobUrl" : "http://host.testcontainers.internal:43427/taxonomy/api/projects/739101/analysis-jobs/qa-running",
+    "lastAttempt" : "3",
+    "lastCellRight" : 331.34375,
+    "maxScrollLeft" : 63,
+    "scrollLeft" : 63,
+    "scrollTop" : 0,
+    "tableRight" : 346,
+    "viewport" : {
+      "height" : 844,
+      "scrollX" : 0,
+      "scrollY" : 1338,
+      "width" : 390
+    }
+  },
+  "ownJobHttpPolls" : {
+    "before" : 6,
+    "after" : 7
+  }
+}

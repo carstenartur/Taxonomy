@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenClusterRelationComputation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">FrozenClusterRelationComputation.java</span></div><h1>FrozenClusterRelationComputation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.relations.*;
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.catalog.snapshot.*;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.*;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import static com.taxonomy.dto.RelationSearchModel.Node;
+
+/** Production relation computation against persisted exact-source snapshots, never the current catalogue. */
+public final class FrozenClusterRelationComputation implements ClusterRelationComputation {
+    private final ClusterRelationService.Store store;
+    private final CatalogueSnapshotService snapshots;
+    private final TaxonomyService taxonomy;
+    private final RequirementRelationSearchService relations;
+    private final LlmProviderConfig providers;
+    private final ObjectMapper mapper;
+    private final Supplier&lt;AnalysisMemoryGuard&gt; guards;
+
+    public FrozenClusterRelationComputation(ClusterRelationService.Store store, CatalogueSnapshotService snapshots,
+            TaxonomyService taxonomy, RequirementRelationSearchService relations, LlmProviderConfig providers,
+<span class="fc" id="L32">            ObjectMapper mapper, Supplier&lt;AnalysisMemoryGuard&gt; guards) {</span>
+<span class="fc" id="L33">        this.store = Objects.requireNonNull(store); this.snapshots = Objects.requireNonNull(snapshots);</span>
+<span class="fc" id="L34">        this.taxonomy = Objects.requireNonNull(taxonomy); this.relations = Objects.requireNonNull(relations);</span>
+<span class="fc" id="L35">        this.providers = Objects.requireNonNull(providers); this.mapper = Objects.requireNonNull(mapper);</span>
+<span class="fc" id="L36">        this.guards = Objects.requireNonNull(guards);</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override public Result compute(ClusterAnalysisStore.Input input, RelationAnalysisTask task, BooleanSupplier cancelled) {
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        if (TransactionSynchronizationManager.isActualTransactionActive())</span>
+<span class="nc" id="L41">            throw new IllegalStateException(&quot;Relation provider computation cannot run inside a database transaction&quot;);</span>
+<span class="fc" id="L42">        Objects.requireNonNull(input); Objects.requireNonNull(task); Objects.requireNonNull(cancelled);</span>
+<span class="fc" id="L43">        var context = input.context();</span>
+<span class="pc bpc" id="L44" title="2 of 4 branches missed.">        if (!input.executable() || !context.equals(ClusterAnalysisStore.context(task.envelope()))</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                || !context.requirement().matches(input.command().businessText()))</span>
+<span class="fc" id="L46">            throw new IllegalArgumentException(&quot;Relation input does not match its immutable task authority&quot;);</span>
+<span class="fc" id="L47">        var source = context.authority();</span>
+<span class="fc" id="L48">        var identity = new CatalogueSourceIdentity(source.repositoryId(), source.workspaceId(), source.branch(), source.sourceCommit());</span>
+<span class="fc" id="L49">        var ordinal = task.taskId().relationWorkOrdinal();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        var work = ordinal.isPresent() ? mapper.readValue(Objects.requireNonNull(input.taskInput()), RelationSearchDistribution.Work.class) : null;</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        var plan = work == null ? null : Objects.requireNonNull(store.relationPlan(context), &quot;persisted relation preparation&quot;);</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">        if (work != null &amp;&amp; (work.ordinal() != ordinal.getAsInt()</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                || !task.targetRoots().equals(List.of(work.targetRoot()))</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                || !work.preparationId().equals(context.operationId() + &quot;:relations&quot;)</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                || !work.preparationId().equals(plan.preparationId())))</span>
+<span class="fc" id="L56">            throw new IllegalArgumentException(&quot;Relation work does not match its persisted grant identity&quot;);</span>
+<span class="fc" id="L57">        Set&lt;String&gt; required = task.targetRoots().stream().map(TaxonomyShardRoot::code).collect(Collectors.toUnmodifiableSet());</span>
+<span class="fc" id="L58">        try (var provider = providers.withRequestProvider(input.command().provider(), input.command().providerBinding());</span>
+<span class="fc" id="L59">             var control = AnalysisRunControl.worker(context.operationId(), cancelled, Objects.requireNonNull(guards.get()))) {</span>
+<span class="fc" id="L60">            AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L61">            List&lt;RootCatalogueSnapshot&gt; roots = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            for (TaxonomyShardRoot root : task.targetRoots()) {</span>
+<span class="fc" id="L63">                AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L64">                roots.add(mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class));</span>
+<span class="fc" id="L65">            }</span>
+<span class="fc" id="L66">            try (var frozen = snapshots.bind(identity, required, roots)) {</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                var catalogue = catalogue(work == null);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                if (work != null) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                    if (!relations.isEnabled()) throw new IllegalStateException(&quot;Hierarchical relation search is disabled&quot;);</span>
+<span class="fc" id="L70">                    return new Evaluation(relations.evaluate(input.command().businessText(), plan, work, catalogue));</span>
+                }
+<span class="fc" id="L72">                var sources = Objects.requireNonNull(store.rootResults(context), &quot;persisted source results&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (!relations.isEnabled()) {</span>
+                    // Use the local score-only algorithm with a lookup that can only resolve admitted bytes.
+<span class="fc" id="L75">                    var generator = new AnalysisRelationGenerator(new RelationCompatibilityMatrix(), code -&gt; {</span>
+<span class="fc" id="L76">                        AnalysisRunControl.checkpoint(); requireFrozen();</span>
+<span class="fc" id="L77">                        return Optional.ofNullable(taxonomy.getNodeByCode(code));</span>
+                    });
+<span class="fc" id="L79">                    var hypotheses = generator.generate(sources.getScores());</span>
+<span class="fc" id="L80">                    AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L81">                    return new ScoreOnly(hypotheses);</span>
+                }
+<span class="fc" id="L83">                var prepared = relations.prepare(context.operationId() + &quot;:relations&quot;, input.command().businessText(),</span>
+<span class="fc" id="L84">                        sources.getScores(), task.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList(), catalogue, true);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">                if (!&quot;SUCCESS&quot;.equals(sources.getStatus()) || !sources.getWarnings().isEmpty()) {</span>
+<span class="fc" id="L86">                    var warnings = new ArrayList&lt;&gt;(prepared.warnings());</span>
+<span class="fc" id="L87">                    warnings.add(&quot;SOURCE_RESULTS_PARTIAL: one or more source shards remain unassessed; no negative finding.&quot;);</span>
+<span class="fc" id="L88">                    prepared = new RelationSearchDistribution.Plan(prepared.schemaVersion(), prepared.preparationId(),</span>
+<span class="fc" id="L89">                            prepared.originalSha256(), prepared.sourceResultIds(), prepared.options(), prepared.sourceNodes(),</span>
+<span class="fc" id="L90">                            prepared.targetRoots(), prepared.sources(), prepared.items(), prepared.sourceCalls(),</span>
+<span class="fc" id="L91">                            prepared.durationMillis(), warnings, prepared.stopReason(), prepared.included());</span>
+                }
+<span class="fc" id="L93">                return new Preparation(prepared);</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">            }</span>
+<span class="pc bpc" id="L95" title="4 of 8 branches missed.">        }</span>
+    }
+
+    private RequirementRelationSearch.InputCatalogue catalogue(boolean preparation) {
+<span class="fc" id="L99">        return new RequirementRelationSearch.InputCatalogue() {</span>
+<span class="fc" id="L100">            private final Map&lt;String, List&lt;Node&gt;&gt; children = new HashMap&lt;&gt;();</span>
+            public Node find(String id) {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                if (!preparation) throw new IllegalStateException(&quot;Target workers cannot reload source catalogue nodes&quot;);</span>
+<span class="fc" id="L103">                requireFrozen(); return scalar(taxonomy.getNodeByCode(id));</span>
+            }
+<span class="fc" id="L105">            public List&lt;Node&gt; roots() { requireFrozen(); return scalars(taxonomy.getRootNodes()); }</span>
+            public List&lt;Node&gt; children(Node node) {
+<span class="fc" id="L107">                requireFrozen(); return children.computeIfAbsent(node.id(), id -&gt; scalars(taxonomy.getChildrenOf(id)));</span>
+            }
+        };
+    }
+    private static void requireFrozen() {
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (FrozenCatalogueContext.current() == null) throw new IllegalStateException(&quot;Relation catalogue requires a frozen source binding&quot;);</span>
+<span class="fc" id="L113">    }</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">    private Node scalar(TaxonomyNode node) { return node == null ? null : scalars(List.of(node)).getFirst(); }</span>
+    private List&lt;Node&gt; scalars(List&lt;TaxonomyNode&gt; nodes) {
+<span class="fc" id="L116">        var descriptions = taxonomy.getAssessmentDescriptions(nodes);</span>
+<span class="fc" id="L117">        return nodes.stream().map(node -&gt; new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(),</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                descriptions.getOrDefault(node.getCode(), node.getDescriptionEn()), node.getParentCode() == null</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                || node.getParentCode().isBlank())).toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

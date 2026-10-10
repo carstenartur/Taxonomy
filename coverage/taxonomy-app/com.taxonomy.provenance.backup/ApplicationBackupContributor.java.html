@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApplicationBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.backup</a> &gt; <span class="el_source">ApplicationBackupContributor.java</span></div><h1>ApplicationBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.model.LinkType;
+import com.taxonomy.model.SourceType;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.*;
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Source records and retained bytes. Other application categories are supplied by separate adapters. */
+public final class ApplicationBackupContributor implements BackupDataContributor {
+    private static final int MAX_DEPENDENCIES=100_000;
+    private final PortableRows rows;
+    private final BackupSourceReference.Selector references;
+    private final SourceContentFiles files;
+<span class="fc" id="L21">    public ApplicationBackupContributor(DataSource database, BackupSourceReference.Selector references, Path contentRoot) {</span>
+<span class="fc" id="L22">        this.rows=new PortableRows(database); this.references=Objects.requireNonNull(references);</span>
+<span class="fc" id="L23">        this.files=new SourceContentFiles(contentRoot);</span>
+<span class="fc" id="L24">    }</span>
+<span class="fc" id="L25">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;application&quot;); }</span>
+<span class="fc" id="L26">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L27">    @Override public Set&lt;String&gt; categories() { return Set.of(</span>
+            &quot;com.taxonomy.provenance.model.SourceArtifact&quot;, &quot;com.taxonomy.provenance.model.SourceVersion&quot;,
+            &quot;com.taxonomy.provenance.model.SourceFragment&quot;, &quot;com.taxonomy.provenance.model.RequirementSourceLink&quot;,
+            &quot;storage.files.source-content&quot;); }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L32">        return List.of(&quot;application.sources: scoped exports use explicit authorized source references; unscoped legacy business-key links are installation data only&quot;,</span>
+                &quot;application.sources: source paths are replaced by portable entries; originals never retained by the source installation are marked NOT_RETAINED&quot;,
+                &quot;application.sources: current installation exports include latest source versions and versions referenced by current records; older legacy links are excluded&quot;);
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L37">        BackupProfile profile=snapshot.authorization().request().profile();</span>
+<span class="fc" id="L38">        List&lt;BackupSourceReference&gt; requested=references.select(snapshot);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (requested.size()&gt;MAX_DEPENDENCIES) throw new IOException(&quot;Source dependency limit exceeded&quot;);</span>
+<span class="fc" id="L40">        var artifacts=new TreeSet&lt;Long&gt;(); var versions=new TreeSet&lt;Long&gt;(); var fragments=new TreeSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (var ref:requested) {</span>
+<span class="fc" id="L42">            add(artifacts,ref.artifact()); add(versions,ref.version());</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            for (var fragment:ref.fragments()) add(fragments,fragment);</span>
+<span class="fc" id="L44">        }</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (profile.isInstallation()) {</span>
+<span class="fc" id="L46">            ids(&quot;select id from source_artifact order by id&quot;,artifacts);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            ids(&quot;select v.id from source_version v&quot;+(profile.includesHistory()?&quot;&quot;:&quot; where not exists (select 1 from source_version newer where newer.source_artifact_id=v.source_artifact_id and (newer.retrieved_at&gt;v.retrieved_at or (newer.retrieved_at=v.retrieved_at and newer.id&gt;v.id)))&quot;)+&quot; order by v.id&quot;,versions);</span>
+        }
+        // Resolve explicit fragment-only references first, then close complete selected versions.
+<span class="fc" id="L50">        var fragmentOwners=new HashMap&lt;Long,FragmentDependency&gt;();</span>
+<span class="fc" id="L51">        discoverFragments(batches(&quot;select id,source_version_id,parent_fragment_id from source_fragment where id in (&quot;,fragments),fragmentOwners,versions);</span>
+<span class="fc" id="L52">        requireFound(fragments,fragmentOwners.keySet());</span>
+<span class="fc" id="L53">        var versionOwners=new HashMap&lt;Long,Long&gt;();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (Query query:batches(&quot;select id,source_artifact_id from source_version where id in (&quot;,versions))</span>
+<span class="fc" id="L55">            rows.visit(query,r-&gt;new VersionDependency(r.getLong(&quot;id&quot;),r.getLong(&quot;source_artifact_id&quot;)),ref-&gt;{</span>
+<span class="fc" id="L56">                versionOwners.put(ref.id(),ref.artifact()); add(artifacts,ref.artifact());</span>
+<span class="fc" id="L57">            });</span>
+<span class="fc" id="L58">        requireFound(versions,versionOwners.keySet());</span>
+<span class="fc" id="L59">        discoverFragments(batches(&quot;select id,source_version_id,parent_fragment_id from source_fragment where source_version_id in (&quot;,versions),fragmentOwners,null);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (var fragment:fragmentOwners.values()) {</span>
+<span class="fc" id="L61">            add(fragments,fragment.id());</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (fragment.parent()!=null) {</span>
+<span class="fc" id="L63">                FragmentDependency parent=fragmentOwners.get(fragment.parent());</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (parent==null || parent.version()!=fragment.version()) throw new IOException(&quot;Invalid source fragment ancestry&quot;);</span>
+            }
+<span class="fc" id="L66">        }</span>
+<span class="fc" id="L67">        validateAncestry(fragmentOwners);</span>
+<span class="fc" id="L68">        var foundArtifacts=new HashSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (Query query:batches(&quot;select id from source_artifact where id in (&quot;,artifacts))</span>
+<span class="fc" id="L70">            rows.visit(query,r-&gt;new Id(r.getLong(&quot;id&quot;)),ref-&gt;foundArtifacts.add(ref.id()));</span>
+<span class="fc" id="L71">        requireFound(artifacts,foundArtifacts);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (var reference:requested) validate(reference,versionOwners,fragmentOwners);</span>
+
+        // A ComponentSink may be a sequential archive. Never open a file entry from inside another entry's reader.
+<span class="fc" id="L75">        var content=new HashMap&lt;Long,CapturedFiles&gt;();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (Query query:batches(&quot;select id,content_hash,storage_location,raw_text_location from source_version where id in (&quot;,versions))</span>
+<span class="fc" id="L77">            rows.visit(query,r-&gt;{</span>
+<span class="fc" id="L78">                long id=r.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L79">                return new CapturedFiles(id,</span>
+<span class="fc" id="L80">                        files.capture(text(r,&quot;storage_location&quot;),&quot;files/source-&quot;+id+&quot;-original&quot;,text(r,&quot;content_hash&quot;),true,sink),</span>
+<span class="fc" id="L81">                        files.capture(text(r,&quot;raw_text_location&quot;),&quot;files/source-&quot;+id+&quot;-text&quot;,null,false,sink));</span>
+<span class="fc" id="L82">            },captured-&gt;content.put(captured.id(),captured));</span>
+<span class="fc" id="L83">        requireFound(versions,content.keySet());</span>
+
+<span class="fc" id="L85">        rows.writeBatches(sink,&quot;application&quot;,&quot;source-artifact&quot;,profile,</span>
+<span class="fc" id="L86">                batches(&quot;select id,source_type,title,canonical_identifier,canonical_url,origin_system,author,description,language,created_at,updated_at from source_artifact where id in (&quot;,artifacts),</span>
+<span class="fc" id="L87">                r-&gt;new ArtifactRecord(reference(r,&quot;application.source-artifact&quot;,&quot;id&quot;),SourceType.valueOf(text(r,&quot;source_type&quot;)),</span>
+<span class="fc" id="L88">                        text(r,&quot;title&quot;),text(r,&quot;canonical_identifier&quot;),text(r,&quot;canonical_url&quot;),text(r,&quot;origin_system&quot;),text(r,&quot;author&quot;),text(r,&quot;description&quot;),text(r,&quot;language&quot;),instant(r,&quot;created_at&quot;),instant(r,&quot;updated_at&quot;)));</span>
+<span class="fc" id="L89">        rows.writeBatches(sink,&quot;application&quot;,&quot;source-version&quot;,profile,</span>
+<span class="fc" id="L90">                batches(&quot;select id,source_artifact_id,version_label,retrieved_at,effective_date,content_hash,mime_type from source_version where id in (&quot;,versions),r-&gt;{</span>
+<span class="fc" id="L91">                    var captured=content.get(r.getLong(&quot;id&quot;));</span>
+<span class="fc" id="L92">                    var original=captured.original(); var rawText=captured.rawText();</span>
+<span class="fc" id="L93">                    var effective=r.getDate(&quot;effective_date&quot;);</span>
+<span class="fc" id="L94">                    return new VersionRecord(reference(r,&quot;application.source-version&quot;,&quot;id&quot;),reference(r,&quot;application.source-artifact&quot;,&quot;source_artifact_id&quot;),</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                            text(r,&quot;version_label&quot;),instant(r,&quot;retrieved_at&quot;),effective==null?null:effective.toLocalDate().toString(),text(r,&quot;content_hash&quot;),text(r,&quot;mime_type&quot;),</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                            original==null?ContentAvailability.NOT_RETAINED:ContentAvailability.INCLUDED,original,rawText);</span>
+                });
+<span class="fc" id="L98">        rows.writeBatches(sink,&quot;application&quot;,&quot;source-fragment&quot;,profile,</span>
+<span class="fc" id="L99">                batches(&quot;select id,source_version_id,section_path,paragraph_ref,page_from,page_to,fragment_text,fragment_hash,parent_fragment_id,chunk_level from source_fragment where id in (&quot;,fragments),</span>
+<span class="fc" id="L100">                r-&gt;new FragmentRecord(reference(r,&quot;application.source-fragment&quot;,&quot;id&quot;),reference(r,&quot;application.source-version&quot;,&quot;source_version_id&quot;),</span>
+<span class="fc" id="L101">                        text(r,&quot;section_path&quot;),text(r,&quot;paragraph_ref&quot;),number(r,&quot;page_from&quot;),number(r,&quot;page_to&quot;),text(r,&quot;fragment_text&quot;),text(r,&quot;fragment_hash&quot;),</span>
+<span class="fc" id="L102">                        reference(r,&quot;application.source-fragment&quot;,&quot;parent_fragment_id&quot;),number(r,&quot;chunk_level&quot;)));</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        rows.write(sink,&quot;application&quot;,&quot;legacy-source-link&quot;,profile,profile.isInstallation()?new Query(</span>
+<span class="fc" id="L104">                &quot;select id,requirement_id,source_artifact_id,source_version_id,source_fragment_id,link_type,confidence,note from requirement_source_link order by id&quot;,List.of()):null,r-&gt;{</span>
+<span class="fc" id="L105">                    Long version=number(r,&quot;source_version_id&quot;),fragment=number(r,&quot;source_fragment_id&quot;);</span>
+<span class="pc bpc" id="L106" title="4 of 8 branches missed.">                    if ((version!=null &amp;&amp; !versions.contains(version)) || (fragment!=null &amp;&amp; !fragments.contains(fragment))) {</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                        if (profile.includesHistory()) throw new IOException(&quot;Missing legacy source dependency&quot;);</span>
+<span class="fc" id="L108">                        return null;</span>
+                    }
+<span class="fc" id="L110">                    var dependency=new BackupSourceReference(reference(r,&quot;application.legacy-source-link&quot;,&quot;id&quot;),</span>
+<span class="fc" id="L111">                            reference(r,&quot;application.source-artifact&quot;,&quot;source_artifact_id&quot;),reference(r,&quot;application.source-version&quot;,&quot;source_version_id&quot;),</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                            fragment==null?List.of():List.of(new SourceRecordId(&quot;application.source-fragment&quot;,fragment.toString())));</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                    if (!artifacts.contains(id(dependency.artifact()))) throw new IOException(&quot;Missing legacy source artifact&quot;);</span>
+<span class="fc" id="L114">                    validate(dependency,versionOwners,fragmentOwners);</span>
+<span class="fc" id="L115">                    return new LegacyLinkRecord(dependency.owner(),text(r,&quot;requirement_id&quot;),dependency.artifact(),dependency.version(),</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                            fragment==null?null:dependency.fragments().getFirst(),LinkType.valueOf(text(r,&quot;link_type&quot;)),</span>
+<span class="fc" id="L117">                            r.getObject(&quot;confidence&quot;,Double.class),text(r,&quot;note&quot;));</span>
+                });
+<span class="fc" id="L119">    }</span>
+<span class="fc" id="L120">    private void ids(String sql,Set&lt;Long&gt; result) throws IOException { rows.visit(new Query(sql,List.of()),r-&gt;new Id(r.getLong(&quot;id&quot;)),ref-&gt;add(result,ref.id())); }</span>
+    private void discoverFragments(List&lt;Query&gt; queries,Map&lt;Long,FragmentDependency&gt; result,Set&lt;Long&gt; versions) throws IOException {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (Query query:queries) rows.visit(query,r-&gt;new FragmentDependency(r.getLong(&quot;id&quot;),r.getLong(&quot;source_version_id&quot;),number(r,&quot;parent_fragment_id&quot;)),ref-&gt;{</span>
+<span class="pc bpc" id="L123" title="3 of 4 branches missed.">            if (result.size()&gt;=MAX_DEPENDENCIES &amp;&amp; !result.containsKey(ref.id())) throw new IOException(&quot;Source dependency limit exceeded&quot;);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            result.put(ref.id(),ref); if (versions!=null) add(versions,ref.version());</span>
+<span class="fc" id="L125">        });</span>
+<span class="fc" id="L126">    }</span>
+    private static void validate(BackupSourceReference ref,Map&lt;Long,Long&gt; versions,Map&lt;Long,FragmentDependency&gt; fragments) throws IOException {
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">        Long artifact=ref.artifact()==null?null:id(ref.artifact()); Long version=ref.version()==null?null:id(ref.version());</span>
+<span class="pc bpc" id="L129" title="3 of 8 branches missed.">        if (version!=null &amp;&amp; (versions.get(version)==null || (artifact!=null &amp;&amp; !artifact.equals(versions.get(version))))) throw new IOException(&quot;Inconsistent source version dependency&quot;);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (var fragmentId:ref.fragments()) {</span>
+<span class="fc" id="L131">            var fragment=fragments.get(id(fragmentId));</span>
+<span class="pc bpc" id="L132" title="4 of 8 branches missed.">            if (fragment==null || (version!=null &amp;&amp; version.longValue()!=fragment.version())</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                    || (artifact!=null &amp;&amp; !artifact.equals(versions.get(fragment.version())))) throw new IOException(&quot;Inconsistent source fragment dependency&quot;);</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">    }</span>
+    private static void validateAncestry(Map&lt;Long,FragmentDependency&gt; fragments) throws IOException {
+<span class="fc" id="L137">        var completed=new HashSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (Long start:fragments.keySet()) {</span>
+<span class="fc" id="L139">            var path=new HashSet&lt;Long&gt;(); Long next=start;</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">            while (next!=null &amp;&amp; !completed.contains(next)) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                if (!path.add(next)) throw new IOException(&quot;Cyclic source fragment ancestry&quot;);</span>
+<span class="fc" id="L142">                next=fragments.get(next).parent();</span>
+            }
+<span class="fc" id="L144">            completed.addAll(path);</span>
+<span class="fc" id="L145">        }</span>
+<span class="fc" id="L146">    }</span>
+    private static void requireFound(Set&lt;Long&gt; requested,Set&lt;Long&gt; found) throws IOException {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (!found.containsAll(requested)) throw new IOException(&quot;Missing referenced source record&quot;);</span>
+<span class="fc" id="L149">    }</span>
+    private static long id(SourceRecordId ref) throws IOException {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        try { long value=Long.parseLong(ref.value()); if (value&lt;1) throw new NumberFormatException(); return value; }</span>
+<span class="nc" id="L152">        catch (NumberFormatException failure) { throw new IOException(&quot;Invalid source record reference&quot;); }</span>
+    }
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">    private static void add(Set&lt;Long&gt; ids,SourceRecordId ref) throws IOException { if (ref!=null) add(ids,id(ref)); }</span>
+    private static void add(Set&lt;Long&gt; ids,long id) throws IOException {
+<span class="pc bpc" id="L156" title="4 of 6 branches missed.">        if (id&lt;1 || (ids.size()&gt;=MAX_DEPENDENCIES &amp;&amp; !ids.contains(id))) throw new IOException(&quot;Source dependency limit exceeded&quot;); ids.add(id);</span>
+<span class="fc" id="L157">    }</span>
+    private static List&lt;Query&gt; batches(String select,Set&lt;Long&gt; ids) {
+<span class="fc" id="L159">        var result=new ArrayList&lt;Query&gt;(); var values=new ArrayList&lt;&gt;(ids);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (int start=0;start&lt;values.size();start+=200) {</span>
+<span class="fc" id="L161">            var batch=values.subList(start,Math.min(start+200,values.size()));</span>
+<span class="fc" id="L162">            result.add(new Query(select+String.join(&quot;,&quot;,Collections.nCopies(batch.size(),&quot;?&quot;))+&quot;) order by id&quot;,batch));</span>
+        }
+<span class="fc" id="L164">        return result;</span>
+    }
+<span class="fc" id="L166">    private record Id(long id) { }</span>
+<span class="fc" id="L167">    private record CapturedFiles(long id,BackupEntry original,BackupEntry rawText) { }</span>
+<span class="fc" id="L168">    private record VersionDependency(long id,long artifact) { }</span>
+<span class="fc" id="L169">    private record FragmentDependency(long id,long version,Long parent) { }</span>
+<span class="fc" id="L170">    public enum ContentAvailability { INCLUDED, NOT_RETAINED }</span>
+<span class="fc" id="L171">    public record ArtifactRecord(SourceRecordId sourceId,SourceType type,String title,String canonicalIdentifier,String canonicalUrl,</span>
+                                 String originSystem,String author,String description,String language,String createdAt,String updatedAt) { }
+<span class="fc" id="L173">    public record VersionRecord(SourceRecordId sourceId,SourceRecordId artifactId,String versionLabel,String retrievedAt,String effectiveDate,</span>
+                                String contentHash,String mimeType,ContentAvailability originalAvailability,BackupEntry original,BackupEntry rawText) { }
+<span class="fc" id="L175">    public record FragmentRecord(SourceRecordId sourceId,SourceRecordId versionId,String sectionPath,String paragraphReference,Long pageFrom,Long pageTo,</span>
+                                 String text,String contentHash,SourceRecordId parentId,Long chunkLevel) { }
+    /** Remains in a legacy global namespace; restore must not bind this key to an arbitrary tenant requirement. */
+<span class="fc" id="L178">    public record LegacyLinkRecord(SourceRecordId sourceId,String legacyRequirementKey,SourceRecordId artifactId,SourceRecordId versionId,</span>
+                                   SourceRecordId fragmentId,LinkType type,Double confidence,String note) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

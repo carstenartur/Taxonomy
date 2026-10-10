@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExternalModelMapper.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.mapping</a> &gt; <span class="el_source">ExternalModelMapper.java</span></div><h1>ExternalModelMapper.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.mapping;
+
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+
+import java.util.*;
+
+/**
+ * Generic converter that transforms external framework data into a
+ * {@link CanonicalArchitectureModel} using a {@link MappingProfile}.
+ *
+ * &lt;p&gt;For every element and relation the profile is consulted to translate the
+ * external type to a canonical type and to enrich the result with
+ * framework-specific extension properties (prefixed with {@code x-}).
+ */
+public class ExternalModelMapper {
+
+    private final MappingProfile profile;
+
+<span class="fc" id="L22">    public ExternalModelMapper(MappingProfile profile) {</span>
+<span class="fc" id="L23">        Objects.requireNonNull(profile, &quot;profile must not be null&quot;);</span>
+<span class="fc" id="L24">        this.profile = profile;</span>
+<span class="fc" id="L25">    }</span>
+
+    /**
+     * Map a list of external elements and relations to a canonical architecture model.
+     *
+     * @param elements  external elements to map
+     * @param relations external relations to map
+     * @return a {@link MappingResult} containing the model, warnings, and statistics
+     */
+    public MappingResult map(List&lt;ExternalElement&gt; elements, List&lt;ExternalRelation&gt; relations) {
+<span class="fc" id="L35">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
+<span class="fc" id="L36">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L37">        Set&lt;String&gt; unmappedTypes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L38">        int mappedElements = 0;</span>
+<span class="fc" id="L39">        int mappedRelations = 0;</span>
+
+        // Map elements
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (ExternalElement ext : elements) {</span>
+<span class="fc" id="L43">            String rootCode = profile.mapElementType(ext.type());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (rootCode == null) {</span>
+<span class="fc" id="L45">                unmappedTypes.add(ext.type());</span>
+<span class="fc" id="L46">                warnings.add(&quot;Unmapped element type: &quot; + ext.type() + &quot; (element &quot; + ext.name() + &quot;)&quot;);</span>
+                // Still create an element, but mark it as unmapped
+<span class="fc" id="L48">                ArchitectureElement el = createUnmappedElement(ext);</span>
+<span class="fc" id="L49">                model.getElements().add(el);</span>
+<span class="fc" id="L50">                continue;</span>
+            }
+
+<span class="fc" id="L53">            String dslType = TaxonomyRootTypes.typeFor(rootCode);</span>
+
+<span class="fc" id="L55">            ArchitectureElement el = new ArchitectureElement();</span>
+<span class="fc" id="L56">            el.setId(ext.id());</span>
+<span class="fc" id="L57">            el.setType(dslType);</span>
+<span class="fc" id="L58">            el.setTitle(ext.name());</span>
+<span class="fc" id="L59">            el.setDescription(ext.description());</span>
+
+            // Set extensions: source framework marker + profile-specific extensions
+<span class="fc" id="L62">            Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L63">            extensions.put(&quot;x-source-framework&quot;, profile.profileId());</span>
+<span class="fc" id="L64">            Map&lt;String, String&gt; profileExtensions = profile.elementExtensions(</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                    ext.type(), ext.properties() != null ? ext.properties() : Map.of());</span>
+<span class="fc" id="L66">            extensions.putAll(profileExtensions);</span>
+<span class="fc" id="L67">            el.setExtensions(extensions);</span>
+
+<span class="fc" id="L69">            model.getElements().add(el);</span>
+<span class="fc" id="L70">            mappedElements++;</span>
+<span class="fc" id="L71">        }</span>
+
+        // Map relations
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (ExternalRelation ext : relations) {</span>
+<span class="fc" id="L75">            String relType = profile.mapRelationType(ext.type());</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (relType == null) {</span>
+<span class="fc" id="L77">                unmappedTypes.add(ext.type());</span>
+<span class="fc" id="L78">                warnings.add(&quot;Unmapped relation type: &quot; + ext.type());</span>
+                // Still create the relation with RELATED_TO as fallback
+<span class="fc" id="L80">                relType = &quot;RELATED_TO&quot;;</span>
+            } else {
+<span class="fc" id="L82">                mappedRelations++;</span>
+            }
+
+<span class="fc" id="L85">            ArchitectureRelation rel = new ArchitectureRelation();</span>
+<span class="fc" id="L86">            rel.setSourceId(ext.sourceId());</span>
+<span class="fc" id="L87">            rel.setRelationType(relType);</span>
+<span class="fc" id="L88">            rel.setTargetId(ext.targetId());</span>
+<span class="fc" id="L89">            rel.setStatus(&quot;proposed&quot;);</span>
+<span class="fc" id="L90">            rel.setProvenance(profile.profileId() + &quot;-import&quot;);</span>
+
+            // Set extensions
+<span class="fc" id="L93">            Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L94">            extensions.put(&quot;x-source-framework&quot;, profile.profileId());</span>
+<span class="fc" id="L95">            Map&lt;String, String&gt; profileExtensions = profile.relationExtensions(</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                    ext.type(), ext.properties() != null ? ext.properties() : Map.of());</span>
+<span class="fc" id="L97">            extensions.putAll(profileExtensions);</span>
+<span class="fc" id="L98">            rel.setExtensions(extensions);</span>
+
+<span class="fc" id="L100">            model.getRelations().add(rel);</span>
+<span class="fc" id="L101">        }</span>
+
+<span class="fc" id="L103">        Map&lt;String, Integer&gt; stats = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L104">        stats.put(&quot;elements&quot;, elements.size());</span>
+<span class="fc" id="L105">        stats.put(&quot;relations&quot;, relations.size());</span>
+<span class="fc" id="L106">        stats.put(&quot;mappedElements&quot;, mappedElements);</span>
+<span class="fc" id="L107">        stats.put(&quot;mappedRelations&quot;, mappedRelations);</span>
+<span class="fc" id="L108">        stats.put(&quot;unmapped&quot;, unmappedTypes.size());</span>
+
+<span class="fc" id="L110">        return new MappingResult(model, warnings, new ArrayList&lt;&gt;(unmappedTypes), stats);</span>
+    }
+
+    private ArchitectureElement createUnmappedElement(ExternalElement ext) {
+<span class="fc" id="L114">        ArchitectureElement el = new ArchitectureElement();</span>
+<span class="fc" id="L115">        el.setId(ext.id());</span>
+<span class="fc" id="L116">        el.setType(&quot;Unknown&quot;);</span>
+<span class="fc" id="L117">        el.setTitle(ext.name());</span>
+<span class="fc" id="L118">        el.setDescription(ext.description());</span>
+
+<span class="fc" id="L120">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L121">        extensions.put(&quot;x-source-framework&quot;, profile.profileId());</span>
+<span class="fc" id="L122">        extensions.put(&quot;x-unmapped-type&quot;, ext.type());</span>
+<span class="fc" id="L123">        el.setExtensions(extensions);</span>
+
+<span class="fc" id="L125">        return el;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

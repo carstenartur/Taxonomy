@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisTaskId.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisTaskId.java</span></div><h1>AnalysisTaskId.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.Collection;
+import java.util.Objects;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * Deterministic, stable identity of one executable unit.
+ *
+ * &lt;p&gt;The same operation, task family and root selection always produce the same
+ * identifier, so a redelivered or republished task is recognised as the same unit
+ * and its durable effect can be applied idempotently.&lt;/p&gt;
+ */
+public record AnalysisTaskId(String value) {
+
+<span class="fc" id="L18">    private static final Pattern OPERATION = Pattern.compile(&quot;[A-Za-z0-9._-]{1,128}&quot;);</span>
+<span class="fc" id="L19">    private static final Pattern VALUE = Pattern.compile(&quot;[A-Za-z0-9._-]{1,128}:[a-z]{1,32}:([A-Za-z0-9_.+-]{1,1024}|\\*)&quot;);</span>
+
+<span class="fc" id="L21">    public AnalysisTaskId {</span>
+<span class="fc" id="L22">        Objects.requireNonNull(value, &quot;value&quot;);</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (!VALUE.matcher(value).matches()) {</span>
+<span class="nc" id="L24">            throw new IllegalArgumentException(&quot;Invalid analysis task identifier&quot;);</span>
+        }
+<span class="fc" id="L26">    }</span>
+
+    /** Validate an operation identifier before it is embedded in a task identity. */
+    public static String requireOperationId(String operationId) {
+<span class="fc" id="L30">        Objects.requireNonNull(operationId, &quot;operationId&quot;);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (!OPERATION.matcher(operationId).matches()) {</span>
+<span class="fc" id="L32">            throw new IllegalArgumentException(&quot;Invalid analysis operation identifier&quot;);</span>
+        }
+<span class="fc" id="L34">        return operationId;</span>
+    }
+
+    public static AnalysisTaskId subtaxonomy(String operationId, TaxonomyShardRoot root) {
+<span class="fc" id="L38">        Objects.requireNonNull(root, &quot;root&quot;);</span>
+<span class="fc" id="L39">        return new AnalysisTaskId(requireOperationId(operationId) + &quot;:&quot;</span>
+<span class="fc" id="L40">                + AnalysisTaskType.SUBTAXONOMY_ANALYSIS.token() + &quot;:&quot; + root.code());</span>
+    }
+
+    /**
+     * Relation identity over a target root set; order-independent. An empty set
+     * denotes the operation's complete scored evidence ({@code *}).
+     */
+    public static AnalysisTaskId relation(String operationId, Collection&lt;TaxonomyShardRoot&gt; targetRoots) {
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">        if (targetRoots == null || targetRoots.isEmpty()) {</span>
+<span class="fc" id="L49">            return new AnalysisTaskId(requireOperationId(operationId) + &quot;:&quot;</span>
+<span class="fc" id="L50">                    + AnalysisTaskType.RELATION_ANALYSIS.token() + &quot;:*&quot;);</span>
+        }
+<span class="fc" id="L52">        String targets = new TreeSet&lt;&gt;(targetRoots).stream()</span>
+<span class="fc" id="L53">                .map(TaxonomyShardRoot::code).collect(Collectors.joining(&quot;+&quot;));</span>
+<span class="fc" id="L54">        return new AnalysisTaskId(requireOperationId(operationId) + &quot;:&quot;</span>
+<span class="fc" id="L55">                + AnalysisTaskType.RELATION_ANALYSIS.token() + &quot;:&quot; + targets);</span>
+    }
+
+    public String operationId() {
+<span class="fc" id="L59">        return value.substring(0, value.indexOf(':'));</span>
+    }
+
+    /** Version-two relation unit: one deterministic, bounded item of a persisted source plan. */
+    public static AnalysisTaskId relationWork(String operationId, TaxonomyShardRoot target, int ordinal) {
+<span class="pc bpc" id="L64" title="4 of 8 branches missed.">        if (target == null || !target.defaultCatalogueRoot() || ordinal &lt; 0 || ordinal &gt;= 512)</span>
+<span class="nc" id="L65">            throw new IllegalArgumentException(&quot;Relation work requires a catalogue root and ordinal 0..511&quot;);</span>
+<span class="fc" id="L66">        return new AnalysisTaskId(requireOperationId(operationId) + &quot;:&quot; + AnalysisTaskType.RELATION_ANALYSIS.token()</span>
+<span class="fc" id="L67">                + &quot;:&quot; + target.code() + &quot;.w&quot; + String.format(java.util.Locale.ROOT, &quot;%06d&quot;, ordinal));</span>
+    }
+
+    /** Empty for the original whole-target-set relation contract. */
+    public java.util.OptionalInt relationWorkOrdinal() {
+<span class="fc" id="L72">        String suffix = value.substring(value.lastIndexOf(':') + 1);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (!suffix.matches(&quot;[A-Z]{2}\\.w[0-9]{6}&quot;)) return java.util.OptionalInt.empty();</span>
+<span class="fc" id="L74">        int ordinal = Integer.parseInt(suffix.substring(4));</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        return ordinal &lt; 512 ? java.util.OptionalInt.of(ordinal) : java.util.OptionalInt.empty();</span>
+    }
+
+    public boolean matchesRelation(String operationId, java.util.List&lt;TaxonomyShardRoot&gt; roots, int schemaVersion) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (equals(relation(operationId, roots))) return true;</span>
+<span class="fc" id="L80">        var ordinal = relationWorkOrdinal();</span>
+<span class="pc bpc" id="L81" title="2 of 6 branches missed.">        return schemaVersion == 2 &amp;&amp; roots.size() == 1 &amp;&amp; roots.getFirst().defaultCatalogueRoot()</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">                &amp;&amp; ordinal.isPresent() &amp;&amp; equals(relationWork(operationId, roots.getFirst(), ordinal.getAsInt()));</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L87">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MockRelationReplies.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">MockRelationReplies.java</span></div><h1>MockRelationReplies.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Explicit mock-mode demonstration, not an assessment of the supplied requirement.
+ * The regular extraction, navigation and verification protocol still executes.
+ */
+final class MockRelationReplies {
+<span class="fc" id="L16">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+    private static final String PREFIX = &quot;You assess requirement-scoped architectural relationships. Protocol: relation-downwalk-v1.\n&quot;;
+    private static final String SOURCE = &quot;UA-1574&quot;;
+    private static final String LABEL = &quot;MOCK demonstration — not a semantic assessment of the supplied requirement&quot;;
+<span class="fc" id="L20">    private static final Map&lt;String, List&lt;String&gt;&gt; PATHS = Map.of(</span>
+<span class="fc" id="L21">            &quot;USES&quot;, List.of(&quot;CR&quot;, &quot;CR-1000&quot;, &quot;CR-1011&quot;, &quot;CR-1014&quot;, &quot;CR-1005&quot;),</span>
+<span class="fc" id="L22">            &quot;CONSUMES&quot;, List.of(&quot;IP&quot;, &quot;IP-1000&quot;, &quot;IP-1049&quot;, &quot;IP-1039&quot;, &quot;IP-1136&quot;));</span>
+
+    private MockRelationReplies() { }
+
+    static String reply(String prompt) {
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">        if (prompt == null || !prompt.startsWith(PREFIX)) {</span>
+<span class="fc" id="L28">            return &quot;[]&quot;;</span>
+        }
+<span class="fc" id="L30">        int input = prompt.indexOf(&quot;INPUT\n&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        if (input &lt; 0) {</span>
+<span class="nc" id="L32">            throw new IllegalArgumentException(&quot;Missing mock relation input&quot;);</span>
+        }
+<span class="fc" id="L34">        JsonNode query = JSON.readTree(prompt.substring(input + 6));</span>
+<span class="fc" id="L35">        String original = query.path(&quot;original&quot;).asString();</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (original.isBlank()) {</span>
+<span class="nc" id="L37">            throw new IllegalArgumentException(&quot;Missing mock original&quot;);</span>
+        }
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (query.has(&quot;nodes&quot;)) {</span>
+<span class="fc" id="L40">            List&lt;Map&lt;String, Object&gt;&gt; selections = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            for (JsonNode node : query.path(&quot;nodes&quot;)) {</span>
+<span class="fc" id="L42">                boolean source = SOURCE.equals(node.path(&quot;id&quot;).asString());</span>
+<span class="fc" id="L43">                selections.add(Map.of(&quot;nodeId&quot;, node.path(&quot;id&quot;).asString(),</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                        &quot;outcome&quot;, source ? &quot;EXPLICIT&quot; : &quot;REJECT&quot;,</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                        &quot;contributions&quot;, source ? List.of(Map.of(&quot;text&quot;, LABEL + &quot;: communication application&quot;,</span>
+<span class="fc" id="L46">                                &quot;quote&quot;, original, &quot;condition&quot;, &quot;&quot;)) : List.of(),</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                        &quot;rationale&quot;, LABEL + (source ? &quot;: selected fixture source&quot; : &quot;: not a fixture source&quot;),</span>
+                        &quot;question&quot;, &quot;&quot;));
+<span class="fc" id="L49">            }</span>
+<span class="fc" id="L50">            return JSON.writeValueAsString(Map.of(&quot;selections&quot;, selections));</span>
+        }
+<span class="fc" id="L52">        List&lt;Map&lt;String, Object&gt;&gt; decisions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L53">        String source = query.path(&quot;contribution&quot;).path(&quot;source&quot;).path(&quot;id&quot;).asString();</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        List&lt;String&gt; path = SOURCE.equals(source) &amp;&amp; &quot;OUTGOING&quot;.equals(query.path(&quot;direction&quot;).asString())</span>
+<span class="fc" id="L55">                ? PATHS.getOrDefault(query.path(&quot;type&quot;).asString(), List.of()) : List.of();</span>
+<span class="fc" id="L56">        boolean verify = &quot;VERIFY&quot;.equals(query.path(&quot;phase&quot;).asString());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (JsonNode node : query.path(&quot;candidates&quot;)) {</span>
+<span class="fc" id="L58">            String id = node.path(&quot;id&quot;).asString();</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">            boolean match = !path.isEmpty() &amp;&amp; id.equals(path.getLast());</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            String contribution = LABEL + &quot;: &quot; + (&quot;CONSUMES&quot;.equals(query.path(&quot;type&quot;).asString())</span>
+<span class="fc" id="L61">                    ? &quot;read treatment records&quot; : &quot;use audio communication service&quot;);</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">            if (verify &amp;&amp; match) {</span>
+<span class="fc" id="L63">                JsonNode proposal = query.path(&quot;proposal&quot;);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                match = id.equals(proposal.path(&quot;targetId&quot;).asString())</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                        &amp;&amp; contribution.equals(proposal.path(&quot;contribution&quot;).asString())</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                        &amp;&amp; original.equals(proposal.path(&quot;quote&quot;).asString())</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                        &amp;&amp; &quot;REQUIRED&quot;.equals(proposal.path(&quot;necessity&quot;).asString())</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                        &amp;&amp; proposal.path(&quot;condition&quot;).asString().isEmpty()</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                        &amp;&amp; proposal.path(&quot;alternativeGroup&quot;).asString().isEmpty();</span>
+            }
+<span class="fc bfc" id="L71" title="All 4 branches covered.">            String outcome = match ? (verify ? &quot;VERIFIED&quot; : &quot;MATCH&quot;)</span>
+<span class="fc bfc" id="L72" title="All 4 branches covered.">                    : !verify &amp;&amp; path.contains(id) ? &quot;DESCEND&quot; : &quot;REJECT&quot;;</span>
+<span class="fc" id="L73">            Map&lt;String, Object&gt; decision = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L74">            decision.put(&quot;targetId&quot;, id);</span>
+<span class="fc" id="L75">            decision.put(&quot;outcome&quot;, outcome);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            decision.put(&quot;contribution&quot;, match ? contribution : &quot;&quot;);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            decision.put(&quot;quote&quot;, match ? original : &quot;&quot;);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            decision.put(&quot;necessity&quot;, match ? &quot;REQUIRED&quot; : null);</span>
+<span class="fc" id="L79">            decision.put(&quot;condition&quot;, &quot;&quot;);</span>
+<span class="fc" id="L80">            decision.put(&quot;alternativeGroup&quot;, &quot;&quot;);</span>
+<span class="fc" id="L81">            decision.put(&quot;rationale&quot;, LABEL + &quot;: &quot; + outcome);</span>
+<span class="fc" id="L82">            decision.put(&quot;question&quot;, &quot;&quot;);</span>
+<span class="fc" id="L83">            decisions.add(decision);</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">        return JSON.writeValueAsString(Map.of(&quot;decisions&quot;, decisions));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

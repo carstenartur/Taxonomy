@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslWorkspacePreResolutionInterceptor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">DslWorkspacePreResolutionInterceptor.java</span></div><h1>DslWorkspacePreResolutionInterceptor.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/**
+ * Resolves an isolated workspace and its exact repository before entering HTTP
+ * endpoints that read or mutate workspace-scoped repository, hypothesis,
+ * analysis or relation state.
+ *
+ * &lt;p&gt;Provisioning and context resolution failures propagate before controller
+ * code runs. Successful results are request-cached by the corresponding
+ * services, so repeated controller lookups cannot later switch repository or
+ * workspace. Despite the historical class name, the interceptor is also used
+ * by analysis and graph-search endpoints whose results carry workspace-scoped
+ * hypotheses or relation visibility.&lt;/p&gt;
+ *
+ * &lt;p&gt;An explicit central selection may read historical portfolio records through
+ * GET/HEAD. Its repository, branch and actor must still match the request-bound
+ * context; writes, analysis and Git operations require an isolated workspace.&lt;/p&gt;
+ */
+@Component
+public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor {
+
+    // Keep this an explicit list: some GET endpoints (notably Copilot status)
+    // can schedule work or promote snapshots, and therefore require isolation.
+<span class="fc" id="L41">    private static final List&lt;Pattern&gt; PORTFOLIO_READ_PATHS = List.of(</span>
+            &quot;/api/(?:projects|solutions|products)(?:/[0-9]+)?/?&quot;,
+            &quot;/api/projects/[0-9]+/requirements(?:/[0-9]+(?:/(?:versions|snapshots))?)?/?&quot;,
+            &quot;/api/projects/[0-9]+/(?:analysis-jobs(?:/[^/]+)?|snapshots/[^/]+|portfolio|conflicts|reports/[^/]+)/?&quot;,
+            &quot;/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?&quot;)
+<span class="fc" id="L46">            .stream().map(Pattern::compile).toList();</span>
+
+    private final WorkspaceResolver workspaceResolver;
+    private final RepositoryStateService repositoryStateService;
+
+    public DslWorkspacePreResolutionInterceptor(WorkspaceResolver workspaceResolver,
+<span class="fc" id="L52">                                                RepositoryStateService repositoryStateService) {</span>
+<span class="fc" id="L53">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L54">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L55">    }</span>
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) {
+<span class="fc" id="L61">        String username = workspaceResolver.resolveCurrentUsername();</span>
+        // 1.3 portfolios can legitimately belong to the central repository.
+        // An explicit central selection may read those records, without creating
+        // workspace state or turning historical data into a personal workspace.
+        // Git operations and every mutation retain the isolation contract below.
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (isExplicitCentralPortfolioRead(request)) {</span>
+<span class="fc" id="L67">            RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L68">            WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">            if (repository == null || workspace == null</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    || repository.scope() != RepositoryScope.CENTRAL_READ</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                    || workspace.workspaceId() != null</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                    || !Objects.equals(repository.repositoryId(), workspace.repositoryId())</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                    || !Objects.equals(repository.branch(), workspace.currentBranch())</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                    || !Objects.equals(repository.username(), workspace.username())</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                    || !Objects.equals(repository.username(), username)) {</span>
+<span class="fc" id="L76">                throw new IllegalStateException(</span>
+                        &quot;Central portfolio read did not resolve one matching repository, branch and actor&quot;);
+            }
+<span class="fc" id="L79">            return true;</span>
+        }
+<span class="fc" id="L81">        repositoryStateService.ensureWorkspaceState(username);</span>
+
+        // Resolve the repository first. Besides request-caching the mandatory
+        // tenant identity, this persists the deterministic primary provenance
+        // for any pre-migration workspace that still lacks source_repository_id.
+<span class="fc" id="L86">        RepositoryContext repositoryContext =</span>
+<span class="fc" id="L87">                workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L88">        WorkspaceContext workspaceContext = workspaceResolver.resolveCurrentContext();</span>
+
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (repositoryContext == null) {</span>
+<span class="fc" id="L91">            throw new IllegalStateException(</span>
+                    &quot;Repository context resolver returned null for a workspace-scoped operation&quot;);
+        }
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (workspaceContext == null) {</span>
+<span class="nc" id="L95">            throw new IllegalStateException(</span>
+                    &quot;Workspace context resolver returned null for a workspace-scoped operation&quot;);
+        }
+        // RepositoryContext permits a workspace ID only for WORKSPACE scope.
+        // Central contexts now carry real repository/user identities and no
+        // longer equal the legacy SHARED sentinel, so validate isolation itself.
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (repositoryContext.workspaceId() == null</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                || workspaceContext.workspaceId() == null</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                || workspaceContext.workspaceId().isBlank()) {</span>
+            // An explicit central selection is valid for read APIs, not for these
+            // isolated-workspace endpoints. Reject the caller without relaxing isolation.
+<span class="fc" id="L106">            String requestedWorkspace =</span>
+<span class="fc" id="L107">                    WorkspaceContextResolver.requestedWorkspaceId(request);</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">            if (requestedWorkspace != null &amp;&amp; requestedWorkspace.isEmpty()) {</span>
+<span class="fc" id="L109">                throw new ResponseStatusException(HttpStatus.FORBIDDEN,</span>
+                        &quot;Select an isolated workspace before starting this operation&quot;);
+            }
+<span class="fc" id="L112">            throw new IllegalStateException(</span>
+                    &quot;Authenticated workspace-scoped operation did not resolve an isolated workspace&quot;);
+        }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (!Objects.equals(</span>
+<span class="fc" id="L116">                repositoryContext.workspaceId(), workspaceContext.workspaceId())) {</span>
+<span class="fc" id="L117">            throw new IllegalStateException(</span>
+                    &quot;Repository and workspace resolution selected different workspace identities&quot;);
+        }
+<span class="fc" id="L120">        return true;</span>
+    }
+
+    private static boolean isExplicitCentralPortfolioRead(HttpServletRequest request) {
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        if (!&quot;GET&quot;.equals(request.getMethod()) &amp;&amp; !&quot;HEAD&quot;.equals(request.getMethod())) {</span>
+<span class="fc" id="L125">            return false;</span>
+        }
+<span class="fc" id="L127">        String path = request.getRequestURI();</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (path == null) return false;</span>
+<span class="fc" id="L129">        String context = request.getContextPath();</span>
+<span class="pc bpc" id="L130" title="1 of 4 branches missed.">        if (context != null &amp;&amp; !context.isEmpty()) {</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (!path.startsWith(context + &quot;/&quot;)) return false;</span>
+<span class="fc" id="L132">            path = path.substring(context.length());</span>
+        }
+<span class="fc" id="L134">        String requestPath = path;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        return &quot;&quot;.equals(WorkspaceContextResolver.requestedWorkspaceId(request))</span>
+<span class="fc" id="L136">                &amp;&amp; PORTFOLIO_READ_PATHS.stream()</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                        .anyMatch(pattern -&gt; pattern.matcher(requestPath).matches());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

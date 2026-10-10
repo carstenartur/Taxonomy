@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JdbcBackupJobStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.jobs</a> &gt; <span class="el_source">JdbcBackupJobStore.java</span></div><h1>JdbcBackupJobStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.jobs;
+
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+
+import com.taxonomy.backup.*;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+import org.springframework.security.access.AccessDeniedException;
+import javax.sql.DataSource;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.sql.*;
+import java.time.*;
+import java.util.*;
+
+/** Short queue transactions use the private coordination pool, including while capture pauses business writers. */
+public final class JdbcBackupJobStore {
+    private static final String RUNNING = &quot;('CAPTURING','WRITING','VERIFYING')&quot;;
+    private final DataSource database;
+    private final BackupJobLimits limits;
+<span class="fc" id="L21">    private final BackupManifestCodec codec = new BackupManifestCodec();</span>
+    private final String lockSql, clockSql;
+
+<span class="fc" id="L24">    public JdbcBackupJobStore(DataSource database, BackupJobLimits limits) {</span>
+<span class="fc" id="L25">        this.database = Objects.requireNonNull(database); this.limits = Objects.requireNonNull(limits);</span>
+<span class="fc" id="L26">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L27">            String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L28">            boolean sqlServer = product.contains(&quot;microsoft&quot;);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">            lockSql = &quot;select next_sequence from backup_job_queue &quot; + (sqlServer</span>
+<span class="pc" id="L30">                    ? &quot;with (updlock, holdlock) where queue_id='exports'&quot; : &quot;where queue_id='exports' for update&quot;);</span>
+<span class="pc bpc" id="L31" title="2 of 4 branches missed.">            String clock = product.contains(&quot;postgres&quot;) ? &quot;clock_timestamp()&quot; : sqlServer ? &quot;sysdatetimeoffset()&quot;</span>
+<span class="pc bpc" id="L32" title="2 of 4 branches missed.">                    : product.contains(&quot;oracle&quot;) ? &quot;systimestamp&quot; : product.contains(&quot;hsql&quot;) ? &quot;current_timestamp&quot; : null;</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">            if (clock == null) throw new IllegalArgumentException(&quot;Unsupported backup job database&quot;);</span>
+<span class="fc" id="L34">            clockSql = &quot;select &quot; + clock + &quot; from backup_job_queue where queue_id='exports'&quot;;</span>
+<span class="pc" id="L35">        } catch (SQLException failure) { throw databaseFailure(failure); }</span>
+<span class="fc" id="L36">    }</span>
+
+<span class="fc" id="L38">    public static final class V2__ExportJobs extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws Exception {
+<span class="fc" id="L40">            var c = context.getConnection(); String product = c.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">            String text = product.contains(&quot;postgres&quot;) ? &quot;text&quot; : product.contains(&quot;microsoft&quot;) ? &quot;nvarchar(max)&quot; : &quot;clob&quot;;</span>
+<span class="fc" id="L42">            update(c, &quot;create table backup_job_queue (queue_id varchar(16) primary key, next_sequence numeric(19,0) not null)&quot;);</span>
+<span class="fc" id="L43">            update(c, &quot;insert into backup_job_queue values ('exports', 0)&quot;);</span>
+<span class="fc" id="L44">            update(c, &quot;create table backup_job (job_id varchar(36) primary key, principal_id varchar(36) not null, authorization_json &quot; + text</span>
+                    + &quot; not null, job_state varchar(16) not null, heavy smallint not null, enqueue_order numeric(19,0) not null unique,&quot;
+                    + &quot; created_at numeric(19,0) not null, updated_at numeric(19,0) not null, owner_id varchar(36), attempt integer not null,&quot;
+                    + &quot; lease_until numeric(19,0) not null, progress_bytes numeric(19,0) not null, cancellation_requested smallint not null,&quot;
+                    + &quot; artifact_name varchar(128), artifact_bytes numeric(19,0), artifact_sha256 varchar(64), encrypted smallint,&quot;
+                    + &quot; expires_at numeric(19,0) not null, failure_code varchar(32) not null, storage_pending smallint default 0 not null)&quot;);
+<span class="fc" id="L50">            update(c, &quot;create index ix_backup_job_queue on backup_job(job_state, heavy, enqueue_order)&quot;);</span>
+<span class="fc" id="L51">            update(c, &quot;create index ix_backup_job_principal on backup_job(principal_id, job_state)&quot;);</span>
+<span class="fc" id="L52">        }</span>
+    }
+
+    public BackupJobId enqueue(AuthorizedBackupRequest authorization) {
+<span class="fc" id="L56">        byte[] document = codec.writeAuthorization(authorization);</span>
+<span class="fc" id="L57">        return transaction(c -&gt; {</span>
+<span class="fc" id="L58">            long sequence = lock(c), now = now(c); recover(c, now);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (scalar(c, &quot;select count(*) from backup_job where principal_id=? and (job_state='QUEUED' or job_state in &quot; + RUNNING + &quot;)&quot;,</span>
+<span class="fc" id="L60">                    authorization.principalId().value().toString()) != 0</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                    || scalar(c, &quot;select count(*) from backup_job where job_state='QUEUED'&quot;) &gt;= limits.queueCapacity()</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                    || scalar(c, &quot;select count(*) from backup_job&quot;) &gt;= BackupLimits.MAX_ITEMS) throw new BackupCapacityException();</span>
+<span class="fc" id="L63">            var id = BackupJobId.create(); var profile = authorization.request().profile();</span>
+<span class="fc" id="L64">            update(c, &quot;update backup_job_queue set next_sequence=? where queue_id='exports'&quot;, Math.addExact(sequence, 1));</span>
+<span class="fc" id="L65">            try (var statement = c.prepareStatement(&quot;insert into backup_job (job_id, principal_id, authorization_json, job_state, heavy, enqueue_order,&quot;</span>
+                    + &quot; created_at, updated_at, owner_id, attempt, lease_until, progress_bytes, cancellation_requested, expires_at, failure_code)&quot;
+                    + &quot; values (?, ?, ?, 'QUEUED', ?, ?, ?, ?, null, 0, 0, 0, 0, ?, 'NONE')&quot;)) {
+<span class="fc" id="L68">                statement.setQueryTimeout(5); statement.setString(1, id.value().toString()); statement.setString(2, authorization.principalId().value().toString());</span>
+<span class="fc" id="L69">                String json = new String(document, StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">                statement.setCharacterStream(3, new StringReader(json), json.length()); statement.setInt(4, profile.includesHistory() || profile.isInstallation() ? 1 : 0);</span>
+<span class="fc" id="L71">                statement.setLong(5, sequence + 1); statement.setLong(6, now); statement.setLong(7, now);</span>
+<span class="fc" id="L72">                statement.setLong(8, Math.addExact(now, limits.retention().toMillis())); statement.executeUpdate();</span>
+            }
+<span class="fc" id="L74">            return id;</span>
+        });
+    }
+
+    public Optional&lt;BackupJobClaim&gt; claim(UUID owner) {
+<span class="fc" id="L79">        Objects.requireNonNull(owner);</span>
+<span class="fc" id="L80">        return transaction(c -&gt; {</span>
+<span class="fc" id="L81">            lock(c); long now = now(c); recover(c, now);</span>
+<span class="fc" id="L82">            if (scalar(c, &quot;select count(*) from backup_job where storage_pending=1&quot;)</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                    &gt;= limits.maxTemporaryBytes() / BackupJobLimits.TEMPORARY_BYTES_PER_JOB) return Optional.empty();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            boolean heavy = scalar(c, &quot;select count(*) from backup_job where job_state in &quot; + RUNNING + &quot; and heavy=1&quot;) &lt; limits.heavyConcurrency();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            boolean current = scalar(c, &quot;select count(*) from backup_job where job_state in &quot; + RUNNING + &quot; and heavy=0&quot;) &lt; limits.currentConcurrency();</span>
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">            if (!heavy &amp;&amp; !current) return Optional.empty();</span>
+            BackupJobId id;
+<span class="fc" id="L88">            try (var query = c.prepareStatement(&quot;select job_id from backup_job where job_state='QUEUED' and expires_at&gt;? and ((heavy=1 and ?=1) or (heavy=0 and ?=1)) order by enqueue_order&quot;)) {</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">                query.setQueryTimeout(5); query.setMaxRows(1); query.setLong(1, now); query.setInt(2, heavy ? 1 : 0); query.setInt(3, current ? 1 : 0);</span>
+<span class="pc bpc" id="L90" title="1 of 4 branches missed.">                try (var rows = query.executeQuery()) { if (!rows.next()) return Optional.empty(); id = new BackupJobId(UUID.fromString(rows.getString(1))); }</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            }</span>
+<span class="fc" id="L92">            update(c, &quot;update backup_job set job_state='CAPTURING', owner_id=?, attempt=attempt+1, lease_until=?, updated_at=?, progress_bytes=0, storage_pending=1 where job_id=?&quot;,</span>
+<span class="fc" id="L93">                    owner.toString(), Math.addExact(now, limits.lease().toMillis()), now, id.value().toString());</span>
+<span class="fc" id="L94">            var job = require(c, id); return Optional.of(new BackupJobClaim(job, owner, job.attempt()));</span>
+        });
+    }
+
+    public void heartbeat(BackupJobClaim claim, long bytes) {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (bytes &lt; 0) throw new IllegalArgumentException(&quot;Negative job progress&quot;);</span>
+<span class="fc" id="L100">        transaction(c -&gt; {</span>
+<span class="fc" id="L101">            lock(c); long now = now(c); var job = owned(c, claim, now, false);</span>
+<span class="fc" id="L102">            update(c, &quot;update backup_job set lease_until=?, updated_at=?, progress_bytes=? where job_id=?&quot;,</span>
+<span class="fc" id="L103">                    Math.addExact(now, limits.lease().toMillis()), now, Math.max(job.progressBytes(), bytes), job.id().value().toString()); return null;</span>
+        });
+<span class="fc" id="L105">    }</span>
+
+    public void transition(BackupJobClaim claim, BackupJobState next) {
+<span class="fc" id="L108">        transaction(c -&gt; {</span>
+<span class="fc" id="L109">            lock(c); long now = now(c); var job = owned(c, claim, now, false);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (job.state() == next) return null;</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">            if (!(job.state() == BackupJobState.CAPTURING &amp;&amp; next == BackupJobState.WRITING</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">                    || job.state() == BackupJobState.WRITING &amp;&amp; next == BackupJobState.VERIFYING)) throw new IllegalStateException(&quot;Invalid backup job transition&quot;);</span>
+<span class="fc" id="L113">            update(c, &quot;update backup_job set job_state=?, updated_at=?, progress_bytes=0 where job_id=?&quot;, next.name(), now, job.id().value().toString()); return null;</span>
+        });
+<span class="fc" id="L115">    }</span>
+
+    public void ready(BackupJobClaim claim, BackupArtifact artifact) {
+<span class="fc" id="L118">        transaction(c -&gt; {</span>
+<span class="fc" id="L119">            lock(c); long now = now(c); var job = owned(c, claim, now, false);</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">            if (job.state() != BackupJobState.VERIFYING || !artifact.name().equals(claim.artifactName())</span>
+<span class="pc bpc" id="L121" title="3 of 4 branches missed.">                    || job.authorization().request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED &amp;&amp; !artifact.encrypted())</span>
+<span class="fc" id="L122">                throw new IllegalStateException(&quot;Unverified backup result&quot;);</span>
+<span class="fc" id="L123">            long retained = scalar(c, &quot;select coalesce(sum(artifact_bytes), 0) from backup_job where artifact_name is not null&quot;);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (artifact.length() &gt; limits.maxRetainedBytes() - retained) throw new BackupCapacityException();</span>
+<span class="fc" id="L125">            update(c, &quot;update backup_job set job_state='READY', lease_until=0, updated_at=?, artifact_name=?, artifact_bytes=?, artifact_sha256=?, encrypted=?, expires_at=?, failure_code='NONE', storage_pending=0 where job_id=?&quot;,</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                    now, artifact.name(), artifact.length(), artifact.sha256(), artifact.encrypted() ? 1 : 0,</span>
+<span class="fc" id="L127">                    Math.addExact(now, limits.retention().toMillis()), job.id().value().toString()); return null;</span>
+        });
+<span class="fc" id="L129">    }</span>
+
+    public boolean cancel(BackupJobId id, PrincipalId actor) {
+<span class="fc" id="L132">        return transaction(c -&gt; {</span>
+<span class="fc" id="L133">            lock(c); var job = require(c, id);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (!job.authorization().principalId().equals(actor)) throw new AccessDeniedException(&quot;Backup access denied&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (!job.state().active()) return false;</span>
+<span class="fc" id="L136">            update(c, &quot;update backup_job set cancellation_requested=1, job_state=?, updated_at=? where job_id=?&quot;,</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                    job.state() == BackupJobState.QUEUED ? &quot;CANCELLED&quot; : job.state().name(), now(c), id.value().toString()); return true;</span>
+        });
+    }
+
+    public void fail(BackupJobClaim claim, BackupJobFailure failure) {
+<span class="fc" id="L142">        Objects.requireNonNull(failure);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (failure == BackupJobFailure.NONE) throw new IllegalArgumentException(&quot;Failure code required&quot;);</span>
+<span class="fc" id="L144">        transaction(c -&gt; {</span>
+<span class="fc" id="L145">            lock(c); long now = now(c); var job = owned(c, claim, now, true);</span>
+<span class="fc" id="L146">            update(c, &quot;update backup_job set job_state=?, failure_code=?, lease_until=0, updated_at=?, expires_at=? where job_id=?&quot;,</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">                    job.cancellationRequested() ? &quot;CANCELLED&quot; : &quot;FAILED&quot;, job.cancellationRequested() ? &quot;NONE&quot; : failure.name(),</span>
+<span class="fc" id="L148">                    now, Math.addExact(now, limits.retention().toMillis()), job.id().value().toString()); return null;</span>
+        });
+<span class="fc" id="L150">    }</span>
+
+<span class="fc" id="L152">    public List&lt;BackupJob&gt; recoverExpired() { return transaction(c -&gt; { lock(c); return recover(c, now(c)); }); }</span>
+    private List&lt;BackupJob&gt; recover(Connection c, long now) throws SQLException {
+<span class="fc" id="L154">        List&lt;BackupJob&gt; lost = select(c, &quot;select * from backup_job where (job_state in &quot; + RUNNING</span>
+<span class="fc" id="L155">                + &quot; and lease_until&lt;=?) or (job_state='QUEUED' and expires_at&lt;=?)&quot;, now, now);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (var job : lost) update(c, &quot;update backup_job set job_state=?, failure_code=?, lease_until=0, updated_at=?, expires_at=? where job_id=?&quot;,</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">                job.cancellationRequested() ? &quot;CANCELLED&quot; : &quot;FAILED&quot;, job.cancellationRequested() ? &quot;NONE&quot;</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                        : job.state() == BackupJobState.QUEUED ? &quot;QUEUE_EXPIRED&quot; : &quot;WORKER_EXPIRED&quot;, now,</span>
+<span class="fc" id="L159">                Math.addExact(now, limits.retention().toMillis()), job.id().value().toString());</span>
+<span class="fc" id="L160">        return lost.stream().map(job -&gt; require(c, job.id())).toList();</span>
+    }
+
+    public Optional&lt;BackupJob&gt; find(BackupJobId id) {
+<span class="fc" id="L164">        return readOnly(c -&gt; select(c, &quot;select * from backup_job where job_id=?&quot;, id.value().toString()).stream().findFirst());</span>
+    }
+    public List&lt;BackupJob&gt; list(PrincipalId actor) {
+<span class="fc" id="L167">        return readOnly(c -&gt; select(c, &quot;select * from backup_job where principal_id=? order by enqueue_order desc&quot;, actor.value().toString()));</span>
+    }
+    public List&lt;BackupJob&gt; expiredArtifacts() {
+<span class="fc" id="L170">        return readOnly(c -&gt; select(c, &quot;select * from backup_job where job_state in ('READY','FAILED','CANCELLED') and expires_at&lt;=?&quot;, now(c)));</span>
+    }
+    public void removeExpired(BackupJobId id) {
+<span class="fc" id="L173">        transaction(c -&gt; {</span>
+<span class="fc" id="L174">            lock(c); var job = require(c, id);</span>
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">            if (job.state().active() || job.expiresAt().toEpochMilli() &gt; now(c)) throw new IllegalStateException(&quot;Job retention is still active&quot;);</span>
+<span class="fc" id="L176">            update(c, &quot;delete from backup_job where job_id=?&quot;, id.value().toString()); return null;</span>
+        });
+<span class="fc" id="L178">    }</span>
+<span class="nc" id="L179">    public BackupJobLimits limits() { return limits; }</span>
+
+    public boolean retained(BackupJobId id) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        return readOnly(c -&gt; scalar(c, &quot;select count(*) from backup_job where job_id=? and job_state='READY' and expires_at&gt;?&quot;,</span>
+<span class="fc" id="L183">                id.value().toString(), now(c)) == 1);</span>
+    }
+
+    /** Lightweight cleanup records never materialize authorization documents for the full retention window. */
+<span class="fc" id="L187">    public record Cleanup(BackupJobId id, UUID owner, int attempt, boolean expired) {</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        public String directoryName() { return owner == null ? null : id.value() + &quot;-&quot; + owner + &quot;-&quot; + attempt + &quot;.taxbackup&quot;; }</span>
+    }
+    public List&lt;Cleanup&gt; cleanupCandidates() {
+<span class="fc" id="L191">        return readOnly(c -&gt; {</span>
+<span class="fc" id="L192">            long now = now(c); var result = new ArrayList&lt;Cleanup&gt;();</span>
+<span class="fc" id="L193">            try (var query = c.prepareStatement(&quot;select job_id, owner_id, attempt, expires_at from backup_job where &quot;</span>
+                    + &quot;(storage_pending=1 and job_state in ('FAILED','CANCELLED')) or (job_state in ('READY','FAILED','CANCELLED') and expires_at&lt;=?)&quot;)) {
+<span class="fc" id="L195">                bind(query, new Object[]{now}); query.setMaxRows(100);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                try (var rows = query.executeQuery()) { while (rows.next()) {</span>
+<span class="fc" id="L197">                    String owner = rows.getString(2);</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                    result.add(new Cleanup(new BackupJobId(UUID.fromString(rows.getString(1))), owner == null ? null : UUID.fromString(owner),</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                            rows.getInt(3), rows.getLong(4) &lt;= now));</span>
+<span class="fc" id="L200">                } }</span>
+            }
+<span class="fc" id="L202">            return List.copyOf(result);</span>
+        });
+    }
+    /** Release a failed worker's reservation only after its private directory has actually been removed. */
+    public void storageCleaned(Cleanup cleaned) {
+<span class="fc" id="L207">        transaction(c -&gt; {</span>
+<span class="fc" id="L208">            lock(c); var job = require(c, cleaned.id());</span>
+<span class="pc bpc" id="L209" title="3 of 6 branches missed.">            if (job.state().active() || !Objects.equals(job.owner(), cleaned.owner()) || job.attempt() != cleaned.attempt())</span>
+<span class="nc" id="L210">                throw new BackupJobFencedException();</span>
+<span class="fc" id="L211">            update(c, &quot;update backup_job set storage_pending=0 where job_id=?&quot;, job.id().value().toString()); return null;</span>
+        });
+<span class="fc" id="L213">    }</span>
+
+    private BackupJob owned(Connection c, BackupJobClaim claim, long now, boolean allowCancellation) {
+<span class="fc" id="L216">        var job = require(c, claim.job().id());</span>
+<span class="pc bpc" id="L217" title="3 of 8 branches missed.">        if (!job.state().running() || !claim.owner().equals(job.owner()) || claim.attempt() != job.attempt() || job.leaseUntil().toEpochMilli() &lt;= now)</span>
+<span class="fc" id="L218">            throw new BackupJobFencedException();</span>
+<span class="fc bfc" id="L219" title="All 4 branches covered.">        if (!allowCancellation &amp;&amp; job.cancellationRequested()) throw new BackupJobCancelledException();</span>
+<span class="fc" id="L220">        return job;</span>
+    }
+    private BackupJob require(Connection c, BackupJobId id) {
+<span class="fc" id="L223">        try { return select(c, &quot;select * from backup_job where job_id=?&quot;, id.value().toString()).stream().findFirst().orElseThrow(BackupJobFencedException::new); }</span>
+<span class="nc" id="L224">        catch (SQLException failure) { throw databaseFailure(failure); }</span>
+    }
+    private List&lt;BackupJob&gt; select(Connection c, String sql, Object... parameters) throws SQLException {
+<span class="fc" id="L227">        try (var query = c.prepareStatement(sql)) {</span>
+<span class="fc" id="L228">            bind(query, parameters); query.setMaxRows(100); var results = new ArrayList&lt;BackupJob&gt;();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            try (var rows = query.executeQuery()) { while (rows.next()) results.add(row(rows)); } return List.copyOf(results);</span>
+        }
+    }
+    private BackupJob row(ResultSet row) throws SQLException {
+        String json;
+<span class="fc" id="L234">        try (Reader input = row.getCharacterStream(&quot;authorization_json&quot;)) {</span>
+<span class="fc" id="L235">            var text = new StringBuilder(); char[] buffer = new char[4096];</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            for (int count; (count = input.read(buffer)) != -1;) {</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                if (count &gt; BackupManifestCodec.MAX_AUTHORIZATION_BYTES - text.length()) throw new IOException(&quot;Oversized authorization record&quot;);</span>
+<span class="fc" id="L238">                text.append(buffer, 0, count);</span>
+            }
+<span class="fc" id="L240">            json = text.toString();</span>
+<span class="pc" id="L241">        } catch (IOException failure) { throw new SQLException(&quot;Invalid backup job authorization record&quot;); }</span>
+<span class="fc" id="L242">        var authorization = codec.readAuthorization(json.getBytes(StandardCharsets.UTF_8));</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (!authorization.principalId().value().toString().equals(row.getString(&quot;principal_id&quot;))) throw new SQLException(&quot;Conflicting job owner&quot;);</span>
+<span class="fc" id="L244">        String name = row.getString(&quot;artifact_name&quot;), owner = row.getString(&quot;owner_id&quot;);</span>
+<span class="pc bpc" id="L245" title="1 of 4 branches missed.">        BackupArtifact artifact = name == null ? null : new BackupArtifact(name, row.getLong(&quot;artifact_bytes&quot;), row.getString(&quot;artifact_sha256&quot;), row.getInt(&quot;encrypted&quot;) == 1);</span>
+<span class="fc" id="L246">        return new BackupJob(new BackupJobId(UUID.fromString(row.getString(&quot;job_id&quot;))), authorization,</span>
+<span class="fc" id="L247">                BackupJobState.valueOf(row.getString(&quot;job_state&quot;)), Instant.ofEpochMilli(row.getLong(&quot;created_at&quot;)), Instant.ofEpochMilli(row.getLong(&quot;updated_at&quot;)),</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                owner == null ? null : UUID.fromString(owner), row.getInt(&quot;attempt&quot;), Instant.ofEpochMilli(row.getLong(&quot;lease_until&quot;)), row.getLong(&quot;progress_bytes&quot;),</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                row.getInt(&quot;cancellation_requested&quot;) == 1, artifact, Instant.ofEpochMilli(row.getLong(&quot;expires_at&quot;)), BackupJobFailure.valueOf(row.getString(&quot;failure_code&quot;)));</span>
+    }
+    private long lock(Connection c) throws SQLException {
+        // HSQLDB MVCC does not lock on SELECT FOR UPDATE. An actual update owns
+        // the row until commit on every supported engine, even when its value is unchanged.
+<span class="fc" id="L254">        update(c, &quot;update backup_job_queue set next_sequence=next_sequence where queue_id='exports'&quot;);</span>
+<span class="fc" id="L255">        return scalar(c, lockSql);</span>
+    }
+    private long now(Connection c) throws SQLException {
+<span class="fc" id="L258">        try (var statement = c.prepareStatement(clockSql)) {</span>
+<span class="fc" id="L259">            statement.setQueryTimeout(5);</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">            try (var rows = statement.executeQuery()) { if (!rows.next()) throw new SQLException(&quot;Missing job queue&quot;); return rows.getObject(1, OffsetDateTime.class).toInstant().toEpochMilli(); }</span>
+        }
+    }
+    private static long scalar(Connection c, String sql, Object... values) throws SQLException {
+<span class="fc" id="L264">        try (var statement = c.prepareStatement(sql)) {</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            bind(statement, values); try (var rows = statement.executeQuery()) { if (!rows.next()) throw new SQLException(&quot;Missing queue row&quot;); return rows.getLong(1); }</span>
+        }
+    }
+    private static void update(Connection c, String sql, Object... values) throws SQLException {
+<span class="fc" id="L269">        try (var statement = c.prepareStatement(sql)) { bind(statement, values); statement.executeUpdate(); }</span>
+<span class="fc" id="L270">    }</span>
+    private static void bind(PreparedStatement statement, Object[] values) throws SQLException {
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        statement.setQueryTimeout(5); for (int i = 0; i &lt; values.length; i++) statement.setObject(i + 1, values[i]);</span>
+<span class="fc" id="L273">    }</span>
+    /** Keep GET-backed queries outside the queue's mutating callback and transaction paths. */
+    private &lt;T&gt; T readOnly(SqlQuery&lt;T&gt; query) {
+<span class="fc" id="L276">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L277">            connection.setReadOnly(true);</span>
+<span class="fc" id="L278">            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</span>
+<span class="fc" id="L279">            connection.setAutoCommit(false);</span>
+<span class="fc" id="L280">            try { return query.read(connection); }</span>
+<span class="fc" id="L281">            finally { connection.rollback(); }</span>
+<span class="fc" id="L282">        } catch (SQLException failure) { throw databaseFailure(failure); }</span>
+    }
+    private &lt;T&gt; T transaction(SqlWork&lt;T&gt; action) {
+<span class="fc" id="L285">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L286">            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</span>
+<span class="fc" id="L287">            connection.setAutoCommit(false);</span>
+<span class="fc" id="L288">            try { T value = action.run(connection); connection.commit(); return value; }</span>
+<span class="pc" id="L289">            catch (SQLException | RuntimeException failure) { try { connection.rollback(); } catch (SQLException ignored) { } throw failure; }</span>
+<span class="nc" id="L290">        } catch (SQLException failure) { throw databaseFailure(failure); }</span>
+    }
+<span class="fc" id="L292">    private static IllegalStateException databaseFailure(SQLException cause) { return new IllegalStateException(&quot;Backup job storage unavailable&quot;); }</span>
+    @FunctionalInterface private interface SqlQuery&lt;T&gt; { T read(Connection c) throws SQLException; }
+    @FunctionalInterface private interface SqlWork&lt;T&gt; { T run(Connection c) throws SQLException; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

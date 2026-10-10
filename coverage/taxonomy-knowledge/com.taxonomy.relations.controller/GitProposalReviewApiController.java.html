@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitProposalReviewApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">GitProposalReviewApiController.java</span></div><h1>GitProposalReviewApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.PendingPhase;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ProposalReviewPendingException;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ReviewResult;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+
+/** Git-authoritative accept, reject and revert commands for relation proposals. */
+@RestController
+@RequestMapping(&quot;/api/architecture/proposals&quot;)
+@Tag(name = &quot;Git-authoritative proposal review&quot;)
+public class GitProposalReviewApiController {
+
+    private static final String IDEMPOTENCY_KEY = &quot;Idempotency-Key&quot;;
+
+    private final GitAuthoritativeProposalReviewService reviewService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SystemRepositoryService repositoryService;
+    private final RepositoryMembershipService membershipService;
+
+    public GitProposalReviewApiController(
+            GitAuthoritativeProposalReviewService reviewService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+<span class="fc" id="L51">            RepositoryMembershipService membershipService) {</span>
+<span class="fc" id="L52">        this.reviewService = reviewService;</span>
+<span class="fc" id="L53">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L54">        this.repositoryService = repositoryService;</span>
+<span class="fc" id="L55">        this.membershipService = membershipService;</span>
+<span class="fc" id="L56">    }</span>
+
+    @Operation(summary = &quot;Accept a proposal through an exact Git commit&quot;,
+            description = &quot;Accepts a proposal through an authoritative Git commit after validating a writable context, the head precondition and Idempotency-Key. Database projection readiness is distinct from the successful durable Git mutation.&quot;)
+    @PostMapping(&quot;/{proposalId}/accept&quot;)
+    public ResponseEntity&lt;ReviewResponse&gt; accept(
+            @PathVariable Long proposalId,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
+            String causationId,
+            @RequestBody(required = false) ReviewBody body) {
+<span class="fc" id="L70">        return review(</span>
+                proposalId,
+                ReviewAction.ACCEPT,
+                ifMatch,
+                ifNoneMatch,
+                causationId,
+                body);
+    }
+
+    @Operation(summary = &quot;Reject a proposal through an exact Git commit&quot;,
+            description = &quot;Rejects a proposal through an authoritative commit in the writable repository context. Requires a Git head precondition and Idempotency-Key; retains the review rationale and reports source conflicts rather than overwriting a changed head.&quot;)
+    @PostMapping(&quot;/{proposalId}/reject&quot;)
+    public ResponseEntity&lt;ReviewResponse&gt; reject(
+            @PathVariable Long proposalId,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
+            String causationId,
+            @RequestBody(required = false) ReviewBody body) {
+<span class="fc" id="L91">        return review(</span>
+                proposalId,
+                ReviewAction.REJECT,
+                ifMatch,
+                ifNoneMatch,
+                causationId,
+                body);
+    }
+
+    @Operation(summary = &quot;Revert a reviewed proposal through an exact Git commit&quot;,
+            description = &quot;Reverts a previously reviewed proposal through a new authoritative Git command. Requires the exact head precondition and Idempotency-Key; this is a recorded inverse decision, not deletion of review history.&quot;)
+    @PostMapping(&quot;/{proposalId}/revert&quot;)
+    public ResponseEntity&lt;ReviewResponse&gt; revert(
+            @PathVariable Long proposalId,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
+            String causationId,
+            @RequestBody(required = false) ReviewBody body) {
+<span class="fc" id="L112">        return review(</span>
+                proposalId,
+                ReviewAction.REVERT,
+                ifMatch,
+                ifNoneMatch,
+                causationId,
+                body);
+    }
+
+    private ResponseEntity&lt;ReviewResponse&gt; review(
+            Long proposalId,
+            ReviewAction action,
+            String ifMatch,
+            String ifNoneMatch,
+            String causationId,
+            ReviewBody body) {
+        try {
+<span class="fc" id="L129">            RepositoryContext context = writableContext(</span>
+<span class="fc" id="L130">                    workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (context == null) {</span>
+<span class="fc" id="L132">                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+            }
+<span class="fc" id="L134">            String expectedHead = GitHttpPrecondition.expectedHead(</span>
+                    ifMatch, ifNoneMatch);
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            String rationale = body == null ? null : body.rationale();</span>
+<span class="fc" id="L137">            CommandMetadata metadata = new CommandMetadata(</span>
+<span class="fc" id="L138">                    GitHttpIdempotencyKey.require(causationId), rationale);</span>
+<span class="fc bfc" id="L139" title="All 3 branches covered.">            ReviewResult result = switch (action) {</span>
+<span class="fc" id="L140">                case ACCEPT -&gt; reviewService.accept(</span>
+                        proposalId,
+                        context,
+                        expectedHead,
+                        metadata);
+<span class="fc" id="L145">                case REJECT -&gt; reviewService.reject(</span>
+                        proposalId,
+                        context,
+                        expectedHead,
+                        metadata);
+<span class="fc" id="L150">                case REVERT -&gt; reviewService.revert(</span>
+                        proposalId,
+                        context,
+                        expectedHead,
+                        metadata);
+            };
+<span class="fc" id="L156">            return projected(result);</span>
+<span class="fc" id="L157">        } catch (GitHttpPrecondition.PreconditionRequiredException error) {</span>
+<span class="fc" id="L158">            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();</span>
+<span class="fc" id="L159">        } catch (BranchHeadConflictException error) {</span>
+<span class="fc" id="L160">            return preconditionFailed(proposalId, action, error);</span>
+<span class="fc" id="L161">        } catch (ProposalReviewPendingException error) {</span>
+<span class="fc" id="L162">            return pending(error);</span>
+<span class="fc" id="L163">        } catch (ReadOnlyRepositoryContextException error) {</span>
+<span class="fc" id="L164">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+<span class="fc" id="L165">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L166">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L167">        } catch (IllegalStateException error) {</span>
+<span class="fc" id="L168">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="fc" id="L169">        } catch (IOException error) {</span>
+<span class="fc" id="L170">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();</span>
+        }
+    }
+
+    private static ResponseEntity&lt;ReviewResponse&gt; projected(
+            ReviewResult result) {
+<span class="fc" id="L176">        CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L177">        return ResponseEntity.ok()</span>
+<span class="fc" id="L178">                .header(</span>
+                        HttpHeaders.ETAG,
+<span class="fc" id="L180">                        GitHttpPrecondition.etag(</span>
+<span class="fc" id="L181">                                authority.authoritativeCommitId()))</span>
+<span class="fc" id="L182">                .body(ReviewResponse.projected(result));</span>
+    }
+
+    private static ResponseEntity&lt;ReviewResponse&gt; pending(
+            ProposalReviewPendingException error) {
+<span class="fc" id="L187">        CommandResult authority = error.getAuthority();</span>
+<span class="fc" id="L188">        return ResponseEntity.status(HttpStatus.ACCEPTED)</span>
+<span class="fc" id="L189">                .header(</span>
+                        HttpHeaders.ETAG,
+<span class="fc" id="L191">                        GitHttpPrecondition.etag(</span>
+<span class="fc" id="L192">                                authority.authoritativeCommitId()))</span>
+<span class="fc" id="L193">                .body(ReviewResponse.pending(error));</span>
+    }
+
+    private static ResponseEntity&lt;ReviewResponse&gt; preconditionFailed(
+            Long proposalId,
+            ReviewAction action,
+            BranchHeadConflictException error) {
+<span class="fc" id="L200">        ResponseEntity.BodyBuilder response = ResponseEntity.status(</span>
+                HttpStatus.PRECONDITION_FAILED);
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (error.getActualHeadCommit() != null) {</span>
+<span class="fc" id="L203">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L205">                    GitHttpPrecondition.etag(</span>
+<span class="fc" id="L206">                            error.getActualHeadCommit()));</span>
+        }
+<span class="fc" id="L208">        return response.body(ReviewResponse.conflict(</span>
+                proposalId, action, error));
+    }
+
+    /** Preserve isolated write scopes; authorize central reads before upgrading. */
+    private RepositoryContext writableContext(RepositoryContext context) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.WORKSPACE</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                || context.scope() == RepositoryScope.FORK) {</span>
+<span class="fc" id="L216">            return context;</span>
+        }
+<span class="fc" id="L218">        SystemRepository repository = repositoryService.getRepository(</span>
+<span class="fc" id="L219">                context.repositoryId());</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (!isApplicationAdmin()</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                &amp;&amp; !membershipService.canMaintain(</span>
+<span class="fc" id="L222">                        repository, context.username())) {</span>
+<span class="fc" id="L223">            return null;</span>
+        }
+<span class="fc" id="L225">        return new RepositoryContext(</span>
+<span class="fc" id="L226">                context.repositoryId(),</span>
+                null,
+<span class="fc" id="L228">                context.branch(),</span>
+<span class="fc" id="L229">                context.username(),</span>
+                RepositoryScope.CENTRAL_WRITE);
+    }
+
+    private static boolean isApplicationAdmin() {
+<span class="fc" id="L234">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L235">                .getAuthentication();</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        return authentication != null</span>
+<span class="fc" id="L237">                &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                .anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(</span>
+<span class="fc" id="L239">                        authority.getAuthority()));</span>
+    }
+
+<span class="fc" id="L242">    public record ReviewBody(String rationale) {</span>
+    }
+
+<span class="fc" id="L245">    public record ReviewResponse(</span>
+            Long proposalId,
+            String action,
+            String intendedProposalStatus,
+            String authoritativeCommitId,
+            String changeKind,
+            boolean commitCreated,
+            String projectionStatus,
+            String projectionOutcome,
+            Boolean relationPresent,
+            String pendingPhase,
+            String expectedHeadCommit,
+            String actualHeadCommit) {
+
+        static ReviewResponse projected(ReviewResult result) {
+<span class="fc" id="L260">            CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L261">            return new ReviewResponse(</span>
+<span class="fc" id="L262">                    result.proposalId(),</span>
+<span class="fc" id="L263">                    result.action().name(),</span>
+<span class="fc" id="L264">                    result.proposalStatus().name(),</span>
+<span class="fc" id="L265">                    authority.authoritativeCommitId(),</span>
+<span class="fc" id="L266">                    authority.changeKind().name(),</span>
+<span class="fc" id="L267">                    authority.commitCreated(),</span>
+                    &quot;PROJECTED&quot;,
+<span class="fc" id="L269">                    result.mutation().projection().outcome().name(),</span>
+<span class="fc" id="L270">                    result.mutation().projection().relationPresent(),</span>
+                    null,
+                    null,
+                    null);
+        }
+
+        static ReviewResponse pending(
+                ProposalReviewPendingException error) {
+<span class="fc" id="L278">            CommandResult authority = error.getAuthority();</span>
+<span class="fc" id="L279">            PendingPhase phase = error.getPhase();</span>
+<span class="fc" id="L280">            return new ReviewResponse(</span>
+<span class="fc" id="L281">                    error.getProposalId(),</span>
+                    null,
+<span class="fc" id="L283">                    error.getIntendedStatus().name(),</span>
+<span class="fc" id="L284">                    authority.authoritativeCommitId(),</span>
+<span class="fc" id="L285">                    authority.changeKind().name(),</span>
+<span class="fc" id="L286">                    authority.commitCreated(),</span>
+                    &quot;PENDING_RECOVERY&quot;,
+                    null,
+                    null,
+<span class="fc" id="L290">                    phase.name(),</span>
+                    null,
+                    null);
+        }
+
+        static ReviewResponse conflict(
+                Long proposalId,
+                ReviewAction action,
+                BranchHeadConflictException error) {
+<span class="fc" id="L299">            return new ReviewResponse(</span>
+                    proposalId,
+<span class="fc" id="L301">                    action.name(),</span>
+                    null,
+                    null,
+                    null,
+                    false,
+                    &quot;PRECONDITION_FAILED&quot;,
+                    null,
+                    null,
+                    null,
+<span class="fc" id="L310">                    error.getExpectedHeadCommit(),</span>
+<span class="fc" id="L311">                    error.getActualHeadCommit());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SensitiveLlmPromptTurboFilter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.logging</a> &gt; <span class="el_source">SensitiveLlmPromptTurboFilter.java</span></div><h1>SensitiveLlmPromptTurboFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.logging;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.turbo.TurboFilter;
+import ch.qos.logback.core.spi.FilterReply;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.springframework.stereotype.Component;
+
+/**
+ * Prevents rendered LLM prompts from entering application logs.
+ *
+ * &lt;p&gt;Rendered prompts can contain requirement text, document excerpts and other
+ * project data. The filter is deliberately independent of the configured log
+ * level so enabling DEBUG for diagnostics cannot expose those values. Structured
+ * request metadata and provider diagnostics remain available.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L23">public final class SensitiveLlmPromptTurboFilter extends TurboFilter {</span>
+
+    static final String LLM_SERVICE_LOGGER = &quot;com.taxonomy.analysis.service.LlmService&quot;;
+    static final String FULL_PROMPT_MESSAGE_PREFIX = &quot;Full LLM prompt:&quot;;
+
+    private LoggerContext loggerContext;
+
+    @PostConstruct
+    void install() {
+<span class="nc bnc" id="L32" title="All 2 branches missed.">        if (LoggerFactory.getILoggerFactory() instanceof LoggerContext context) {</span>
+<span class="nc" id="L33">            loggerContext = context;</span>
+<span class="nc" id="L34">            start();</span>
+<span class="nc" id="L35">            context.addTurboFilter(this);</span>
+        }
+<span class="nc" id="L37">    }</span>
+
+    @PreDestroy
+    void uninstall() {
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (loggerContext != null) {</span>
+<span class="nc" id="L42">            loggerContext.getTurboFilterList().remove(this);</span>
+<span class="nc" id="L43">            stop();</span>
+<span class="nc" id="L44">            loggerContext = null;</span>
+        }
+<span class="nc" id="L46">    }</span>
+
+    @Override
+    public FilterReply decide(Marker marker,
+                              Logger logger,
+                              Level level,
+                              String format,
+                              Object[] parameters,
+                              Throwable throwable) {
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        if (logger != null</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">                &amp;&amp; LLM_SERVICE_LOGGER.equals(logger.getName())</span>
+                &amp;&amp; format != null
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                &amp;&amp; format.startsWith(FULL_PROMPT_MESSAGE_PREFIX)) {</span>
+<span class="fc" id="L59">            return FilterReply.DENY;</span>
+        }
+<span class="fc" id="L61">        return FilterReply.NEUTRAL;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

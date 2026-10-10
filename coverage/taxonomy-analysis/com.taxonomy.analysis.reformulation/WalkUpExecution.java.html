@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WalkUpExecution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">WalkUpExecution.java</span></div><h1>WalkUpExecution.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.BiFunction;
+import java.util.function.Supplier;
+
+/** Bounded ready-task execution; only the caller assembles the ordered result. */
+final class WalkUpExecution {
+    private WalkUpExecution() {}
+
+    static void validateParallelism(int parallelism) {
+<span class="fc bfc" id="L13" title="All 4 branches covered.">        if (parallelism &lt; 1 || parallelism &gt; 8)</span>
+<span class="fc" id="L14">            throw new IllegalArgumentException(&quot;Reformulation parallelism must be between 1 and 8&quot;);</span>
+<span class="fc" id="L15">    }</span>
+
+    static &lt;T&gt; Map&lt;String,T&gt; run(List&lt;WalkUpPlanner.Step&gt; plan, int parallelism,
+            BiFunction&lt;WalkUpPlanner.Step,List&lt;T&gt;,Supplier&lt;T&gt;&gt; prepare) {
+<span class="fc" id="L19">        validateParallelism(parallelism);</span>
+<span class="fc" id="L20">        var ids = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        for (var step : plan) {</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">            if (!ids.containsAll(step.childTaskIds()) || !ids.add(step.nodeId()))</span>
+<span class="fc" id="L23">                throw new IllegalArgumentException(&quot;Walk-up plan is not a unique topological order&quot;);</span>
+<span class="fc" id="L24">        }</span>
+<span class="fc" id="L25">        var results = new LinkedHashMap&lt;String,T&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (parallelism == 1) {</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            for (var step : plan)</span>
+<span class="fc" id="L28">                results.put(step.nodeId(), Objects.requireNonNull(prepare.apply(step,</span>
+<span class="fc" id="L29">                        step.childTaskIds().stream().map(results::get).toList()).get(), &quot;Missing node result&quot;));</span>
+<span class="fc" id="L30">            return Collections.unmodifiableMap(results);</span>
+        }
+        // This pool is distinct from the parent portfolio executor. No parent waits
+        // for work queued into its own saturated executor, and groups remain serial.
+<span class="fc" id="L34">        var workers = Executors.newFixedThreadPool(parallelism,</span>
+<span class="fc" id="L35">                Thread.ofPlatform().daemon().name(&quot;reformulation-node-&quot;, 0).factory());</span>
+        try {
+<span class="fc" id="L37">            var completed = new ExecutorCompletionService&lt;T&gt;(workers);</span>
+<span class="fc" id="L38">            var running = new HashMap&lt;Future&lt;T&gt;,String&gt;();</span>
+<span class="fc" id="L39">            var submitted = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            while (results.size() &lt; plan.size()) {</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                for (var step : plan) {</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                    if (running.size() &gt;= parallelism) break;</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">                    if (submitted.contains(step.nodeId()) || !results.keySet().containsAll(step.childTaskIds())) continue;</span>
+                    // Capture input and provider context on the caller, before dispatch.
+<span class="fc" id="L45">                    Supplier&lt;T&gt; work = prepare.apply(step, step.childTaskIds().stream().map(results::get).toList());</span>
+<span class="fc" id="L46">                    running.put(completed.submit(() -&gt; Objects.requireNonNull(work.get(), &quot;Missing node result&quot;)), step.nodeId());</span>
+<span class="fc" id="L47">                    submitted.add(step.nodeId());</span>
+<span class="fc" id="L48">                }</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                if (running.isEmpty()) throw new IllegalStateException(&quot;Walk-up has no executable task&quot;);</span>
+<span class="fc" id="L50">                var finished = completed.take();</span>
+<span class="fc" id="L51">                results.put(running.remove(finished), finished.get());</span>
+<span class="fc" id="L52">            }</span>
+<span class="fc" id="L53">        } catch (InterruptedException interrupted) {</span>
+<span class="fc" id="L54">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L55">            throw new IllegalStateException(&quot;REFORMULATION_EXECUTION_INTERRUPTED&quot;, interrupted);</span>
+<span class="fc" id="L56">        } catch (ExecutionException failed) {</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (failed.getCause() instanceof RuntimeException runtime) throw runtime;</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">            if (failed.getCause() instanceof Error error) throw error;</span>
+<span class="nc" id="L59">            throw new IllegalStateException(&quot;REFORMULATION_NODE_FAILED&quot;, failed.getCause());</span>
+        } finally {
+            // ExecutorService.close() joins forever, even after caller interruption.
+            // Preserve promptly completed sibling checkpoints, but never let a
+            // stuck provider/supplier prevent failure or shutdown from returning.
+<span class="fc" id="L64">            workers.shutdown();</span>
+            try {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (Thread.currentThread().isInterrupted()</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                        || !workers.awaitTermination(1, TimeUnit.SECONDS)) workers.shutdownNow();</span>
+<span class="nc" id="L68">            } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L69">                workers.shutdownNow();</span>
+<span class="nc" id="L70">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L71">            }</span>
+        }
+        // Completion order never becomes evidence/document order. Late children
+        // remain subject to the existing run/lease fences; they cannot publish.
+<span class="fc" id="L75">        var ordered = new LinkedHashMap&lt;String,T&gt;();</span>
+<span class="fc" id="L76">        plan.forEach(step -&gt; ordered.put(step.nodeId(), results.get(step.nodeId())));</span>
+<span class="fc" id="L77">        return Collections.unmodifiableMap(ordered);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxXmiWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxXmiWriter.java</span></div><h1>SparxXmiWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.w3c.dom.Element;
+
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
+
+/** Writes only frozen, reviewed semantic values; raw source/layout XML is never replayed. */
+final class SparxXmiWriter {
+    private final String version;
+<span class="nc" id="L15">    SparxXmiWriter() { this(&quot;1&quot;); }</span>
+<span class="fc" id="L16">    SparxXmiWriter(String version) { this.version = version; }</span>
+    byte[] write(ExchangeDocument source) {
+<span class="pc bpc" id="L18" title="1 of 4 branches missed.">        if (!PROFILE.equals(source.profile()) || !version.equals(source.profileVersion()))</span>
+<span class="fc" id="L19">            throw ExchangeXml.invalid(&quot;PROFILE_VERSION_CHANGED&quot;, &quot;Sparx output needs the exact supported mapping profile&quot;);</span>
+<span class="fc" id="L20">        var validated = SparxModelValidator.model(source);</span>
+<span class="fc" id="L21">        var objects = validated.objects();</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        if (version.equals(&quot;2&quot;)) for (MappingLoss loss : source.losses()) {</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">            Artifact feature = loss.artifactId() == null ? null : objects.get(loss.artifactId());</span>
+<span class="fc bfc" id="L24" title="All 6 branches covered.">            if (feature != null &amp;&amp; feature.kind() == ArtifactKind.FEATURE &amp;&amp; loss.disposition() == LossDisposition.UNSUPPORTED)</span>
+<span class="fc" id="L25">                throw ExchangeXml.invalid(&quot;SPARX_FEATURE_EXPORT_UNSUPPORTED&quot;, &quot;Reviewed feature contains unsupported content; reject it before lossy delivery&quot;);</span>
+<span class="fc" id="L26">        }</span>
+<span class="fc" id="L27">        var modelId = validated.modelId();</span>
+<span class="fc" id="L28">        var byId = validated.byId();</span>
+<span class="fc" id="L29">        var byObject = validated.byObject();</span>
+<span class="fc" id="L30">        var document = ExchangeXml.parse((&quot;&lt;xmi:XMI xmlns:xmi=\&quot;&quot; + XMI + &quot;\&quot; xmlns:uml=\&quot;&quot; + UML + &quot;\&quot; xmi:version=\&quot;2.1\&quot;/&gt;&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L31">        Element root = document.getDocumentElement();</span>
+<span class="fc" id="L32">        Element documentation = ExchangeXml.append(root, XMI, &quot;xmi:Documentation&quot;);</span>
+<span class="fc" id="L33">        documentation.setAttribute(&quot;exporter&quot;, &quot;Taxonomy&quot;); documentation.setAttribute(&quot;exporterVersion&quot;, PROFILE + &quot;@&quot; + version);</span>
+<span class="fc" id="L34">        Element model = ExchangeXml.append(root, UML, &quot;uml:Model&quot;); model.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(modelId, true));</span>
+<span class="fc" id="L35">        model.setAttribute(&quot;name&quot;, source.metadata().getOrDefault(&quot;title&quot;, &quot;Taxonomy&quot;));</span>
+<span class="fc" id="L36">        Element extension = ExchangeXml.append(root, XMI, &quot;xmi:Extension&quot;); extension.setAttribute(&quot;extender&quot;, &quot;Enterprise Architect&quot;);</span>
+<span class="fc" id="L37">        Element elements = ExchangeXml.append(extension, null, &quot;elements&quot;), connectors = ExchangeXml.append(extension, null, &quot;connectors&quot;);</span>
+<span class="fc" id="L38">        Map&lt;String, Element&gt; nodes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (Artifact artifact : objects.values()) {</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            if (artifact.kind() == ArtifactKind.FEATURE) continue;</span>
+<span class="fc" id="L41">            Element node = document.createElement(&quot;packagedElement&quot;); nodes.put(artifact.id(), node);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            boolean pkg = artifact.kind() == ArtifactKind.SPECIFICATION;</span>
+<span class="fc" id="L43">            node.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(artifact.id(), pkg));</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            node.setAttributeNS(XMI, &quot;xmi:type&quot;, &quot;uml:&quot; + (pkg ? &quot;Package&quot; : artifact.type()));</span>
+<span class="fc" id="L45">            node.setAttribute(&quot;name&quot;, artifact.title());</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (!artifact.text().isEmpty()) {</span>
+<span class="fc" id="L47">                Element comment = ExchangeXml.append(node, null, &quot;ownedComment&quot;);</span>
+<span class="fc" id="L48">                comment.setAttributeNS(XMI, &quot;xmi:type&quot;, &quot;uml:Comment&quot;);</span>
+<span class="fc" id="L49">                comment.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(artifact.id(), pkg) + &quot;_comment&quot;);</span>
+<span class="fc" id="L50">                ExchangeXml.text(comment, null, &quot;body&quot;, artifact.text());</span>
+            }
+<span class="fc" id="L52">            Element detail = detail(elements, &quot;element&quot;, artifact.id(), pkg);</span>
+<span class="fc" id="L53">            Element properties = properties(detail, artifact.attributes()); properties.setAttribute(&quot;documentation&quot;, artifact.text());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (artifact.extensions().containsKey(&quot;stereotype&quot;)) properties.setAttribute(&quot;stereotype&quot;, artifact.extensions().get(&quot;stereotype&quot;));</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (artifact.kind() == ArtifactKind.REQUIREMENT) properties.setAttribute(&quot;sType&quot;, &quot;Requirement&quot;);</span>
+<span class="fc" id="L56">            tags(detail, artifact.attributes(), artifact.extensions());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (version.equals(&quot;2&quot;)) evidence(detail, artifact.attributes(), artifact.extensions());</span>
+<span class="fc" id="L58">        }</span>
+        // Create every node before attaching children, so parent order cannot affect the result.
+<span class="fc bfc" id="L60" title="All 4 branches covered.">        objects.values().stream().filter(a -&gt; a.kind() != ArtifactKind.FEATURE).sorted(Comparator.comparingInt((Artifact a) -&gt; byObject.containsKey(a.id()) ? byObject.get(a.id()).position() : Integer.MAX_VALUE)</span>
+<span class="fc" id="L61">                .thenComparing(Artifact::id)).forEach(artifact -&gt; {</span>
+<span class="fc" id="L62">            Placement p = byObject.get(artifact.id());</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">            Element parent = p == null || p.parentId() == null ? model : nodes.get(byId.get(p.parentId()).artifactId());</span>
+<span class="fc" id="L64">            parent.appendChild(nodes.get(artifact.id()));</span>
+<span class="fc" id="L65">        });</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (version.equals(&quot;2&quot;)) writeFeatures(source, elements, nodes);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (Relation relation : source.relations().stream().sorted(Comparator.comparing(Relation::id)).toList()) {</span>
+<span class="fc" id="L68">            Element node = ExchangeXml.append(model, null, &quot;packagedElement&quot;);</span>
+<span class="fc" id="L69">            node.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(relation.id(), false));</span>
+<span class="fc" id="L70">            boolean association = Set.of(&quot;Association&quot;, &quot;Composition&quot;).contains(relation.type());</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            node.setAttributeNS(XMI, &quot;xmi:type&quot;, &quot;uml:&quot; + (association ? &quot;Association&quot; : relation.type()));</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (relation.attributes().containsKey(&quot;name&quot;)) node.setAttribute(&quot;name&quot;, relation.attributes().get(&quot;name&quot;));</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (association) {</span>
+<span class="fc" id="L74">                String prefix = xmiId(relation.id(), false);</span>
+<span class="fc" id="L75">                node.setAttribute(&quot;memberEnd&quot;, prefix + &quot;_source &quot; + prefix + &quot;_target&quot;);</span>
+<span class="fc" id="L76">                Element sourceEnd = ExchangeXml.append(node, null, &quot;ownedEnd&quot;), targetEnd = ExchangeXml.append(node, null, &quot;ownedEnd&quot;);</span>
+<span class="fc" id="L77">                sourceEnd.setAttributeNS(XMI, &quot;xmi:id&quot;, prefix + &quot;_source&quot;); targetEnd.setAttributeNS(XMI, &quot;xmi:id&quot;, prefix + &quot;_target&quot;);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                sourceEnd.setAttribute(&quot;type&quot;, xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                targetEnd.setAttribute(&quot;type&quot;, xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                if (relation.type().equals(&quot;Composition&quot;)) targetEnd.setAttribute(&quot;aggregation&quot;, &quot;composite&quot;);</span>
+<span class="fc" id="L81">            } else {</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                node.setAttribute(&quot;client&quot;, xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                node.setAttribute(&quot;supplier&quot;, xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));</span>
+            }
+<span class="fc" id="L85">            Element detail = detail(connectors, &quot;connector&quot;, relation.id(), false);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            ExchangeXml.append(detail, null, &quot;source&quot;).setAttributeNS(XMI, &quot;xmi:idref&quot;, xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            ExchangeXml.append(detail, null, &quot;target&quot;).setAttributeNS(XMI, &quot;xmi:idref&quot;, xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));</span>
+<span class="fc" id="L88">            Element properties = properties(detail, relation.attributes()); properties.setAttribute(&quot;ea_type&quot;, relation.type());</span>
+<span class="fc" id="L89">            properties.setAttribute(&quot;direction&quot;, relation.extensions().getOrDefault(&quot;direction&quot;, &quot;Source -&gt; Destination&quot;));</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (relation.extensions().containsKey(&quot;stereotype&quot;)) properties.setAttribute(&quot;stereotype&quot;, relation.extensions().get(&quot;stereotype&quot;));</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (relation.attributes().containsKey(&quot;description&quot;)) properties.setAttribute(&quot;documentation&quot;, relation.attributes().get(&quot;description&quot;));</span>
+<span class="fc" id="L92">            tags(detail, relation.attributes(), relation.extensions());</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (version.equals(&quot;2&quot;)) evidence(detail, relation.attributes(), relation.extensions());</span>
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        byte[] output = ExchangeXml.write(document);</span>
+        // Reparse with the same security and identity checks before any file can be delivered.
+<span class="fc" id="L97">        new SparxXmiCodec(version).read(output, source.externalVersion(), source.completeScope());</span>
+<span class="fc" id="L98">        return output;</span>
+    }
+
+    private static void evidence(Element parent, Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions) {
+<span class="fc" id="L102">        Element evidence = ExchangeXml.append(parent, null, &quot;evidence&quot;);</span>
+<span class="fc" id="L103">        new TreeMap&lt;&gt;(attributes).forEach((key,value) -&gt; field(evidence,&quot;attribute&quot;,key,value));</span>
+<span class="fc" id="L104">        new TreeMap&lt;&gt;(extensions).forEach((key,value) -&gt; field(evidence,&quot;extension&quot;,key,value));</span>
+<span class="fc" id="L105">    }</span>
+    private static void field(Element parent,String type,String key,String value) {
+<span class="fc" id="L107">        Element field=ExchangeXml.append(parent,null,type); field.setAttribute(&quot;key&quot;,key); field.setAttribute(&quot;value&quot;,value);</span>
+<span class="fc" id="L108">    }</span>
+    private static void writeFeatures(ExchangeDocument source, Element elements, Map&lt;String, Element&gt; nodes) {
+<span class="fc" id="L110">        Map&lt;String, Element&gt; details = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (Element detail : ExchangeXml.children(elements)) {</span>
+<span class="fc" id="L112">            details.put(guid(detail.getAttributeNS(XMI, &quot;idref&quot;)), detail);</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        var features = source.artifacts().stream().filter(a -&gt; a.kind() == ArtifactKind.FEATURE)</span>
+<span class="fc" id="L115">                .sorted(Comparator.comparingInt((Artifact a) -&gt; Integer.parseInt(a.extensions().getOrDefault(&quot;position&quot;, &quot;9999&quot;)))</span>
+<span class="fc" id="L116">                        .thenComparing(Artifact::id)).toList();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (Artifact feature : features) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (feature.type().equals(&quot;tagged-value&quot;)) {</span>
+<span class="fc" id="L119">                continue;</span>
+            }
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (feature.type().equals(&quot;external-connector&quot;)) {</span>
+<span class="nc" id="L122">                throw ExchangeXml.invalid(&quot;SPARX_FEATURE_EXPORT_UNSUPPORTED&quot;,</span>
+                        &quot;External connectors are preserved-only evidence; exclude from XMI delivery&quot;);
+            }
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">            String nodeName = switch (feature.type()) {</span>
+<span class="fc" id="L126">                case &quot;attribute&quot; -&gt; &quot;ownedAttribute&quot;;</span>
+<span class="fc" id="L127">                case &quot;operation&quot; -&gt; &quot;ownedOperation&quot;;</span>
+<span class="fc" id="L128">                case &quot;parameter&quot; -&gt; &quot;ownedParameter&quot;;</span>
+<span class="pc" id="L129">                default -&gt; throw ExchangeXml.invalid(&quot;SPARX_FEATURE_EXPORT_UNSUPPORTED&quot;, &quot;Unsupported feature output&quot;);</span>
+            };
+<span class="fc" id="L131">            Element node = elements.getOwnerDocument().createElement(nodeName);</span>
+<span class="fc" id="L132">            node.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(feature.id(), false));</span>
+<span class="fc" id="L133">            node.setAttribute(&quot;name&quot;, feature.title());</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (feature.extensions().containsKey(&quot;position&quot;)) {</span>
+<span class="fc" id="L135">                node.setAttribute(&quot;position&quot;, feature.extensions().get(&quot;position&quot;));</span>
+            }
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (feature.extensions().containsKey(&quot;classifier&quot;)) {</span>
+<span class="nc" id="L138">                node.setAttribute(&quot;classifier&quot;, feature.extensions().get(&quot;classifier&quot;));</span>
+            }
+<span class="fc" id="L140">            feature.attributes().forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                if (key.startsWith(&quot;ea:&quot;)) {</span>
+<span class="fc" id="L142">                    node.setAttribute(key.substring(3), value);</span>
+                }
+<span class="fc" id="L144">            });</span>
+<span class="fc" id="L145">            Element detail = detail(elements, &quot;feature&quot;, feature.id(), false);</span>
+<span class="fc" id="L146">            details.put(feature.id(), detail);</span>
+<span class="fc" id="L147">            properties(detail, feature.attributes()).setAttribute(&quot;documentation&quot;, feature.text());</span>
+            // Non-consumed properties remain in evidence; they are not authored as native UML scalars.
+<span class="fc" id="L149">            evidence(detail, feature.attributes(), feature.extensions());</span>
+<span class="fc" id="L150">            nodes.put(feature.id(), node);</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (Artifact feature : features) {</span>
+<span class="fc" id="L153">            Element owner = details.get(feature.extensions().get(&quot;owner&quot;));</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (feature.type().equals(&quot;tagged-value&quot;)) {</span>
+<span class="fc" id="L155">                Element tags = ExchangeXml.child(owner, &quot;tags&quot;);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                if (tags == null) {</span>
+<span class="nc" id="L157">                    tags = ExchangeXml.append(owner, null, &quot;tags&quot;);</span>
+                }
+<span class="fc" id="L159">                Element tag = ExchangeXml.append(tags, null, &quot;tag&quot;);</span>
+<span class="fc" id="L160">                tag.setAttributeNS(XMI, &quot;xmi:id&quot;, xmiId(feature.id(), false));</span>
+<span class="fc" id="L161">                tag.setAttribute(&quot;name&quot;, feature.title());</span>
+<span class="fc" id="L162">                tag.setAttribute(&quot;value&quot;, feature.text());</span>
+<span class="fc" id="L163">                evidence(tag, feature.attributes(), feature.extensions());</span>
+<span class="fc" id="L164">            } else {</span>
+<span class="fc" id="L165">                nodes.get(feature.extensions().get(&quot;owner&quot;)).appendChild(nodes.get(feature.id()));</span>
+            }
+<span class="fc" id="L167">        }</span>
+<span class="fc" id="L168">    }</span>
+
+    private static Element detail(Element parent, String name, String id, boolean pkg) {
+<span class="fc" id="L171">        Element result = ExchangeXml.append(parent, null, name); result.setAttributeNS(XMI, &quot;xmi:idref&quot;, xmiId(id, pkg)); return result;</span>
+    }
+    private static Element properties(Element parent, Map&lt;String, String&gt; attributes) {
+<span class="fc" id="L174">        Element result = ExchangeXml.append(parent, null, &quot;properties&quot;);</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        new TreeMap&lt;&gt;(attributes).forEach((key, value) -&gt; { if (key.startsWith(&quot;ea:&quot;)) result.setAttribute(key.substring(3), value); });</span>
+<span class="fc" id="L176">        return result;</span>
+    }
+    private void tags(Element parent, Map&lt;String, String&gt; attributes, Map&lt;String, String&gt; extensions) {
+<span class="fc" id="L179">        Element tags = ExchangeXml.append(parent, null, &quot;tags&quot;);</span>
+<span class="fc" id="L180">        Map&lt;String, String&gt; values = new TreeMap&lt;&gt;(attributes);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        extensions.forEach((key, value) -&gt; { if (key.startsWith(&quot;taxonomy:&quot;)) values.put(&quot;tag:taxonomy.&quot; + key.substring(9), value); });</span>
+<span class="fc" id="L182">        values.forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L183" title="All 4 branches covered.">            if (key.startsWith(&quot;tag:&quot;)) { Element tag = ExchangeXml.append(tags, null, &quot;tag&quot;); if (version.equals(&quot;2&quot;)) tag.setAttribute(&quot;projection&quot;, &quot;true&quot;); tag.setAttribute(&quot;name&quot;, key.substring(4)); tag.setAttribute(&quot;value&quot;, value); }</span>
+<span class="fc" id="L184">        });</span>
+<span class="fc" id="L185">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ChildAssessmentContract.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.assessment</a> &gt; <span class="el_source">ChildAssessmentContract.java</span></div><h1>ChildAssessmentContract.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.assessment;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+
+/**
+ * Common, score-independent contract for one complete assessment of offered children.
+ * JSON decoding and duplicate JSON-key detection belong to the caller. Interpretation
+ * belongs to the policy: this class never normalizes scores or infers relationships.
+ */
+public final class ChildAssessmentContract {
+    private ChildAssessmentContract() { }
+
+    /** Reject ambiguous requests before spending a remote evaluation. */
+    public static List&lt;String&gt; validateCandidates(List&lt;String&gt; candidateIds) {
+<span class="fc" id="L22">        Objects.requireNonNull(candidateIds, &quot;candidateIds&quot;);</span>
+<span class="fc" id="L23">        var expected = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (String id : candidateIds) {</span>
+<span class="fc bfc" id="L25" title="All 6 branches covered.">            if (id == null || id.isBlank() || !expected.add(id)) {</span>
+<span class="fc" id="L26">                throw new IllegalArgumentException(&quot;Child candidates contain a blank or duplicate ID&quot;);</span>
+            }
+<span class="fc" id="L28">        }</span>
+<span class="fc" id="L29">        return List.copyOf(expected);</span>
+    }
+
+    /** Validate the entire batch before interpreting any answer; preserve offered order. */
+    public static &lt;R, T&gt; Map&lt;String, T&gt; decode(List&lt;String&gt; candidateIds, Map&lt;String, R&gt; answers,
+                                             BiFunction&lt;String, R, T&gt; decoder) {
+<span class="fc" id="L35">        List&lt;String&gt; expected = validateCandidates(candidateIds);</span>
+<span class="fc" id="L36">        Objects.requireNonNull(answers, &quot;answers&quot;);</span>
+<span class="fc" id="L37">        Objects.requireNonNull(decoder, &quot;decoder&quot;);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!new LinkedHashSet&lt;&gt;(expected).equals(answers.keySet())) {</span>
+<span class="fc" id="L39">            var missing = new LinkedHashSet&lt;&gt;(expected);</span>
+<span class="fc" id="L40">            missing.removeAll(answers.keySet());</span>
+<span class="fc" id="L41">            var unknown = new LinkedHashSet&lt;&gt;(answers.keySet());</span>
+<span class="fc" id="L42">            unknown.removeAll(expected);</span>
+<span class="fc" id="L43">            throw new IllegalArgumentException(&quot;Child assessment keys do not match candidates; missing=&quot;</span>
+                    + missing + &quot;, unknown=&quot; + unknown);
+        }
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (String id : expected) {</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            if (answers.get(id) == null) {</span>
+<span class="fc" id="L48">                throw new IllegalArgumentException(&quot;Child assessment has no value for &quot; + id);</span>
+            }
+<span class="fc" id="L50">        }</span>
+<span class="fc" id="L51">        Map&lt;String, T&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (String id : expected) {</span>
+<span class="fc" id="L53">            T value = decoder.apply(id, answers.get(id));</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (value == null) {</span>
+<span class="fc" id="L55">                throw new IllegalArgumentException(&quot;Child assessment policy returned no decision for &quot; + id);</span>
+            }
+<span class="fc" id="L57">            result.put(id, value);</span>
+<span class="fc" id="L58">        }</span>
+<span class="fc" id="L59">        return Collections.unmodifiableMap(result);</span>
+    }
+
+    /** Preserve duplicate-ID evidence in array protocols before indexing responses. */
+    public static &lt;R, T&gt; Map&lt;String, T&gt; decodeEntries(List&lt;String&gt; candidateIds, List&lt;R&gt; answers,
+                                                    Function&lt;R, String&gt; identity,
+                                                    BiFunction&lt;String, R, T&gt; decoder) {
+<span class="fc" id="L66">        validateCandidates(candidateIds);</span>
+<span class="fc" id="L67">        Objects.requireNonNull(answers, &quot;answers&quot;);</span>
+<span class="fc" id="L68">        Objects.requireNonNull(identity, &quot;identity&quot;);</span>
+<span class="fc" id="L69">        Map&lt;String, R&gt; indexed = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (R answer : answers) {</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (answer == null) {</span>
+<span class="nc" id="L72">                throw new IllegalArgumentException(&quot;Child assessment contains a null answer&quot;);</span>
+            }
+<span class="fc" id="L74">            String id = identity.apply(answer);</span>
+<span class="pc bpc" id="L75" title="2 of 6 branches missed.">            if (id == null || id.isBlank() || indexed.putIfAbsent(id, answer) != null) {</span>
+<span class="fc" id="L76">                throw new IllegalArgumentException(&quot;Child assessment contains a blank or duplicate answer ID&quot;);</span>
+            }
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        return decode(candidateIds, indexed, decoder);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisMessageFactory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisMessageFactory.java</span></div><h1>AnalysisMessageFactory.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.time.Clock;
+import java.util.List;
+import java.util.Objects;
+
+/** Builds consistent envelopes for one operation's tasks, completions and events. */
+public final class AnalysisMessageFactory {
+
+    private final AnalysisOperationContext operation;
+    private final Clock clock;
+
+<span class="fc" id="L13">    public AnalysisMessageFactory(AnalysisOperationContext operation, Clock clock) {</span>
+<span class="fc" id="L14">        this.operation = Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L15">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L16">    }</span>
+
+    public AnalysisOperationContext operation() {
+<span class="fc" id="L19">        return operation;</span>
+    }
+
+    public AnalysisTaskMessage task(AnalysisTaskGraph.Node node) {
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (!node.id().operationId().equals(operation.operationId())) {</span>
+<span class="nc" id="L24">            throw new IllegalArgumentException(&quot;Task belongs to another operation&quot;);</span>
+        }
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        return switch (node.type()) {</span>
+<span class="fc" id="L27">            case SUBTAXONOMY_ANALYSIS -&gt; new SubtaxonomyAnalysisTask(</span>
+<span class="fc" id="L28">                    envelope(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, node.id(), node.type(), node.roots()),</span>
+<span class="fc" id="L29">                    node.roots().get(0));</span>
+<span class="fc" id="L30">            case RELATION_ANALYSIS -&gt; new RelationAnalysisTask(</span>
+<span class="fc" id="L31">                    envelope(AnalysisMessageType.RELATION_ANALYSIS_TASK, node.id(), node.type(), node.roots()),</span>
+<span class="fc" id="L32">                    node.roots(), node.prerequisites());</span>
+        };
+    }
+
+    public SubtaxonomyAnalysisCompleted completed(SubtaxonomyAnalysisTask task, AnalysisTaskOutcome outcome,
+                                                  Integer rootScore, int scoredNodes, String stopReason) {
+<span class="fc" id="L38">        return new SubtaxonomyAnalysisCompleted(</span>
+<span class="fc" id="L39">                task.envelope().derive(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, clock.instant()),</span>
+<span class="fc" id="L40">                task.root(), outcome, rootScore, scoredNodes, stopReason);</span>
+    }
+
+    public RelationAnalysisCompleted completed(RelationAnalysisTask task, AnalysisTaskOutcome outcome,
+                                               int relationCount, String stopReason) {
+<span class="fc" id="L45">        return new RelationAnalysisCompleted(</span>
+<span class="fc" id="L46">                task.envelope().derive(AnalysisMessageType.RELATION_ANALYSIS_COMPLETED, clock.instant()),</span>
+                outcome, relationCount, stopReason);
+    }
+
+    public AnalysisProgressEvent progress(long sequence, AnalysisProgressPhase phase, AnalysisTaskGraph.Node node,
+                                          int completedTasks, int totalTasks) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        AnalysisEnvelope envelope = node == null</span>
+<span class="fc" id="L53">                ? envelope(AnalysisMessageType.ANALYSIS_PROGRESS, null, null, List.of())</span>
+<span class="fc" id="L54">                : envelope(AnalysisMessageType.ANALYSIS_PROGRESS, node.id(), node.type(), node.roots());</span>
+<span class="fc" id="L55">        return new AnalysisProgressEvent(envelope, sequence, phase, completedTasks, totalTasks);</span>
+    }
+
+    public AnalysisCancellationEvent cancellation(String reason) {
+<span class="fc" id="L59">        return new AnalysisCancellationEvent(</span>
+<span class="fc" id="L60">                envelope(AnalysisMessageType.ANALYSIS_CANCELLATION, null, null, List.of()), reason);</span>
+    }
+
+    private AnalysisEnvelope envelope(AnalysisMessageType type, AnalysisTaskId taskId, AnalysisTaskType taskType,
+                                      List&lt;TaxonomyShardRoot&gt; roots) {
+<span class="fc" id="L65">        return new AnalysisEnvelope(AnalysisEnvelope.SCHEMA_VERSION, type, operation.operationId(), taskId,</span>
+<span class="fc" id="L66">                taskType, operation.authority(), operation.requirement(), roots, 1,</span>
+<span class="fc" id="L67">                null, operation.correlationId(), clock.instant(), null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

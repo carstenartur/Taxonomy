@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisTaskCompletionStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisTaskCompletionStore.java</span></div><h1>AnalysisTaskCompletionStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.Optional;
+
+/** Completion and business-result mutations share one atomic, task-keyed commit. */
+public interface AnalysisTaskCompletionStore {
+    Optional&lt;AnalysisCompletionMessage&gt; find(AnalysisTaskId taskId);
+
+    /** Read a replay only when it belongs to this exact immutable task source. */
+    default Optional&lt;AnalysisCompletionMessage&gt; find(AnalysisTaskMessage task) {
+<span class="fc" id="L11">        var recorded = find(task.taskId());</span>
+<span class="fc" id="L12">        recorded.ifPresent(value -&gt; AnalysisTaskIdentity.requireSameSource(task.envelope(), value.envelope()));</span>
+<span class="fc" id="L13">        return recorded;</span>
+    }
+
+    /**
+     * Insert-only completion for a task with no additional durable effects.
+     * Workers with result mutations must use commit instead.
+     */
+    default AnalysisCompletionMessage recordIfAbsent(AnalysisCompletionMessage completion) {
+<span class="fc" id="L21">        return commit(PreparedAnalysisCompletion.withoutEffects(completion));</span>
+    }
+
+    /**
+     * Commit the prepared result and completion atomically, or return the existing
+     * winner without invoking persistEffect. The effect must participate in this
+     * transaction; no acknowledgement is permitted until this method succeeds.
+     */
+    AnalysisCompletionMessage commit(PreparedAnalysisCompletion&lt;?&gt; prepared);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

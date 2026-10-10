@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisFeatureAutoConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.config</a> &gt; <span class="el_source">AnalysisFeatureAutoConfiguration.java</span></div><h1>AnalysisFeatureAutoConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.config;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
+import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.context.ResourceLoaderAware;
+import org.springframework.core.env.Environment;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+
+/** Startup-only owned components; absent JAR means no feature registration. */
+@AutoConfiguration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnBean(name = &quot;taxonomyFeatureHost&quot;)
+@Import(AnalysisFeatureAutoConfiguration.OwnedComponents.class)
+<span class="nc" id="L22">public class AnalysisFeatureAutoConfiguration {</span>
+
+    /** Registration happens only after the host-marker condition, preserving each component's own conditions and bean name. */
+<span class="fc" id="L25">    static final class OwnedComponents implements ImportBeanDefinitionRegistrar, EnvironmentAware, ResourceLoaderAware, BeanFactoryAware {</span>
+        private Environment environment;
+        private ResourceLoader resourceLoader;
+        private BeanFactory beanFactory;
+<span class="fc" id="L29">        @Override public void setBeanFactory(BeanFactory beanFactory) { this.beanFactory = beanFactory; }</span>
+<span class="fc" id="L30">        @Override public void setEnvironment(Environment environment) { this.environment = environment; }</span>
+<span class="fc" id="L31">        @Override public void setResourceLoader(ResourceLoader resourceLoader) { this.resourceLoader = resourceLoader; }</span>
+        @Override public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
+<span class="fc" id="L33">            var scanner = new ClassPathBeanDefinitionScanner(registry);</span>
+<span class="fc" id="L34">            scanner.setEnvironment(environment);</span>
+<span class="fc" id="L35">            scanner.setResourceLoader(resourceLoader);</span>
+            // Preserve the host's Boot test/slice exclusions in this feature-owned scan.
+<span class="fc" id="L37">            var typeExcludeFilter = new TypeExcludeFilter();</span>
+<span class="fc" id="L38">            typeExcludeFilter.setBeanFactory(beanFactory);</span>
+<span class="fc" id="L39">            scanner.addExcludeFilter(typeExcludeFilter);</span>
+<span class="fc" id="L40">            scanner.addExcludeFilter(new AnnotationTypeFilter(AutoConfiguration.class));</span>
+<span class="fc" id="L41">            scanner.scan(&quot;com.taxonomy.analysis&quot;);</span>
+<span class="fc" id="L42">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

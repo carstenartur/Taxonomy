@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisService.java</span></div><h1>ClusterAnalysisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.dto.AnalysisResult;
+import java.time.Clock;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Production worker preparation: no JMS classes, provider credentials or durable side effects. */
+public final class ClusterAnalysisService {
+    private final ClusterAnalysisStore store;
+    private final ClusterAnalysisComputation computation;
+    private final ClusterAnalysisSignals signals;
+
+    public ClusterAnalysisService(ClusterAnalysisStore store, ClusterAnalysisComputation computation,
+<span class="fc" id="L18">                                  ClusterAnalysisSignals signals) {</span>
+<span class="fc" id="L19">        this.store = Objects.requireNonNull(store); this.computation = Objects.requireNonNull(computation);</span>
+<span class="fc" id="L20">        this.signals = Objects.requireNonNull(signals);</span>
+<span class="fc" id="L21">    }</span>
+
+    public PreparedAnalysisCompletion&lt;SubtaxonomyAnalysisCompleted&gt; prepare(SubtaxonomyAnalysisTask task) {
+<span class="fc" id="L24">        var context = ClusterAnalysisStore.context(task.envelope());</span>
+<span class="fc" id="L25">        var messages = new AnalysisMessageFactory(context, Clock.systemUTC());</span>
+        // Register before reading durable state: cancellation cannot fall into the registration gap.
+<span class="fc" id="L27">        try (var worker = signals.worker(context)) {</span>
+<span class="fc" id="L28">            var input = store.start(task);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            if (!input.executable()) return PreparedAnalysisCompletion.withoutEffects(</span>
+<span class="fc" id="L30">                    messages.completed(task, AnalysisTaskOutcome.STOPPED, null, 0, &quot;CANCELLED&quot;));</span>
+            AnalysisResult result;
+            AnalysisTaskOutcome outcome;
+<span class="fc" id="L33">            String reason = null;</span>
+            try {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">                if (worker.cancelled()) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc" id="L36">                result = Objects.requireNonNull(computation.score(input, task, worker::cancelled), &quot;computed root result&quot;);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">                outcome = &quot;SUCCESS&quot;.equals(result.getStatus()) ? AnalysisTaskOutcome.COMPLETED</span>
+<span class="pc bnc" id="L38" title="All 2 branches missed.">                        : &quot;ERROR&quot;.equals(result.getStatus()) ? AnalysisTaskOutcome.FAILED : AnalysisTaskOutcome.PARTIAL;</span>
+<span class="fc" id="L39">            } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {</span>
+<span class="fc" id="L40">                result = failed(unavailable.reason()); result.setStatus(&quot;PARTIAL&quot;);</span>
+<span class="fc" id="L41">                outcome = AnalysisTaskOutcome.STOPPED; reason = unavailable.reason();</span>
+<span class="nc" id="L42">            } catch (AnalysisStoppedException stopped) {</span>
+<span class="nc" id="L43">                result = new AnalysisResult(stopped.partialScores(), List.of());</span>
+<span class="nc" id="L44">                result.setReasons(stopped.partialReasons()); result.setDiscrepancies(stopped.partialDiscrepancies());</span>
+<span class="nc" id="L45">                result.setStatus(&quot;PARTIAL&quot;); result.setErrorMessage(stopped.reason().name());</span>
+<span class="nc" id="L46">                result.setWarnings(new java.util.ArrayList&lt;&gt;(List.of(stopped.reason().name())));</span>
+<span class="nc" id="L47">                outcome = AnalysisTaskOutcome.STOPPED; reason = stopped.reason().name();</span>
+<span class="fc" id="L48">            } catch (RuntimeException failure) {</span>
+                // Preserve failure explicitly without retaining arbitrary provider/credential-bearing exception text.
+<span class="fc" id="L50">                result = failed(&quot;ROOT_EVALUATION_FAILED&quot;); outcome = AnalysisTaskOutcome.FAILED;</span>
+<span class="pc" id="L51">            }</span>
+<span class="fc" id="L52">            var completion = messages.completed(task, outcome, result.getRawScores().get(task.root().code()),</span>
+<span class="fc" id="L53">                    result.getRawScores().size(), reason);</span>
+<span class="fc" id="L54">            var prepared = result;</span>
+<span class="fc" id="L55">            return new PreparedAnalysisCompletion&lt;&gt;(completion, () -&gt; store.persistResult(task, prepared));</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        }</span>
+    }
+
+    private static AnalysisResult failed(String reason) {
+<span class="fc" id="L60">        var result = new AnalysisResult(Map.of(), List.of()); result.setStatus(&quot;ERROR&quot;);</span>
+<span class="fc" id="L61">        result.setErrorMessage(reason); result.setWarnings(new java.util.ArrayList&lt;&gt;(List.of(reason))); return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisTransportModeValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">AnalysisTransportModeValidator.java</span></div><h1>AnalysisTransportModeValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+/** Rejects unknown {@code taxonomy.analysis.transport.mode} values at startup in every mode. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;analysis&quot;})
+@Component
+class AnalysisTransportModeValidator {
+
+    AnalysisTransportModeValidator(@Value(&quot;${taxonomy.analysis.transport.mode:local}&quot;) String mode,
+<span class="fc" id="L12">            @Value(&quot;${taxonomy.analysis.runtime-role:all}&quot;) String role) {</span>
+<span class="nc" id="L13">        ArtemisAnalysisSettings.artemisMode(mode);</span>
+<span class="nc" id="L14">        var runtimeRole = ArtemisAnalysisTransportConfiguration.RuntimeRole.parse(role);</span>
+<span class="nc bnc" id="L15" title="All 4 branches missed.">        if (!ArtemisAnalysisSettings.artemisMode(mode) &amp;&amp; runtimeRole != ArtemisAnalysisTransportConfiguration.RuntimeRole.ALL)</span>
+<span class="nc" id="L16">            throw new IllegalArgumentException(&quot;Dedicated analysis roles require Artemis transport&quot;);</span>
+<span class="nc" id="L17">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

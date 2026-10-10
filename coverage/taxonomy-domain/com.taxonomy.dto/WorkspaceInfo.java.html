@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceInfo.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">WorkspaceInfo.java</span></div><h1>WorkspaceInfo.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+
+/**
+ * Summary information about a user workspace.
+ *
+ * &lt;p&gt;A workspace provides an isolated context for a user to work on the
+ * architecture. Each workspace has its own branch, navigation history,
+ * projection tracking, and operation state. The underlying Git repository
+ * is shared, with branch-level isolation providing logical separation.
+ *
+ * @param workspaceId          unique identifier for this workspace
+ * @param username             the user who owns this workspace
+ * @param displayName          optional human-readable name
+ * @param currentBranch        the branch this workspace is currently on
+ * @param baseBranch           the branch this workspace was created from
+ * @param shared               whether this is the shared integration workspace
+ * @param currentContext       the active context reference (may be null)
+ * @param createdAt            when the workspace was created
+ * @param lastAccessedAt       when the workspace was last accessed
+ * @param provisioningStatus   provisioning lifecycle state (e.g. READY, NOT_PROVISIONED)
+ * @param topologyMode         repository topology mode (e.g. INTERNAL_SHARED)
+ * @param sourceRepositoryId   the system repository this workspace is linked to (may be null)
+ * @param description          optional description of the workspace (may be null)
+ * @param archived             whether this workspace has been soft-deleted
+ * @param isDefault            whether this is the user's default workspace
+ */
+<span class="fc" id="L29">public record WorkspaceInfo(</span>
+    String workspaceId,
+    String username,
+    String displayName,
+    String currentBranch,
+    String baseBranch,
+    boolean shared,
+    ContextRef currentContext,
+    Instant createdAt,
+    Instant lastAccessedAt,
+    String provisioningStatus,
+    String topologyMode,
+    String sourceRepositoryId,
+    String description,
+    boolean archived,
+    boolean isDefault
+) {
+
+    /**
+     * Backward-compatible constructor without the new multi-workspace fields.
+     */
+    public WorkspaceInfo(
+            String workspaceId, String username, String displayName,
+            String currentBranch, String baseBranch, boolean shared,
+            ContextRef currentContext, Instant createdAt, Instant lastAccessedAt,
+            String provisioningStatus, String topologyMode, String sourceRepositoryId) {
+<span class="fc" id="L55">        this(workspaceId, username, displayName, currentBranch, baseBranch, shared,</span>
+                currentContext, createdAt, lastAccessedAt, provisioningStatus,
+                topologyMode, sourceRepositoryId, null, false, false);
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Backward-compatible constructor for existing code that does not supply
+     * provisioning, topology, or source-repository information.
+     */
+    public WorkspaceInfo(
+            String workspaceId, String username, String displayName,
+            String currentBranch, String baseBranch, boolean shared,
+            ContextRef currentContext, Instant createdAt, Instant lastAccessedAt) {
+<span class="fc" id="L68">        this(workspaceId, username, displayName, currentBranch, baseBranch, shared,</span>
+                currentContext, createdAt, lastAccessedAt, &quot;READY&quot;, &quot;INTERNAL_SHARED&quot;, null);
+<span class="fc" id="L70">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

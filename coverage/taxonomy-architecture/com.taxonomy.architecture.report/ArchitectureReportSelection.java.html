@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportSelection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ArchitectureReportSelection.java</span></div><h1>ArchitectureReportSelection.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
+import com.taxonomy.diagram.*;
+import java.util.*;
+
+/** Keeps selected nodes, crossing relation endpoints and their saved containers as explicit context. */
+public final class ArchitectureReportSelection {
+<span class="fc" id="L10">    public record Selection(DiagramModel graph, DiagramScene scene, Set&lt;String&gt; boundaryCodes, String sourceGraphSha256) {}</span>
+    private ArchitectureReportSelection() {}
+    public static Selection select(DiagramModel graph, DiagramScene scene, Set&lt;String&gt; selectedCodes) {
+<span class="fc" id="L13">        Set&lt;String&gt; included = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L14">        graph.nodes().stream().filter(n -&gt; selectedCodes.contains(n.id())).forEach(n -&gt; included.add(n.id()));</span>
+<span class="pc bpc" id="L15" title="1 of 4 branches missed.">        var edges = graph.edges().stream().filter(e -&gt; selectedCodes.contains(e.sourceId()) || selectedCodes.contains(e.targetId())).toList();</span>
+<span class="fc" id="L16">        edges.forEach(e -&gt; { included.add(e.sourceId()); included.add(e.targetId()); });</span>
+        boolean changed;
+        do {
+<span class="fc" id="L19">            changed = false;</span>
+<span class="pc bpc" id="L20" title="1 of 6 branches missed.">            for (var node : graph.nodes()) if (included.contains(node.id()) &amp;&amp; node.parentId() != null)</span>
+<span class="nc" id="L21">                changed |= included.add(node.parentId());</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">        } while (changed);</span>
+<span class="fc" id="L23">        var nodes = graph.nodes().stream().filter(n -&gt; included.contains(n.id())).toList();</span>
+<span class="fc" id="L24">        var edgeIds = edges.stream().map(DiagramEdge::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L25">        var selected = new DiagramModel(graph.title(), nodes, edges, graph.layout());</span>
+<span class="fc" id="L26">        var selectedScene = new DiagramScene(scene.title(), scene.width(), scene.height(), scene.direction(),</span>
+<span class="fc" id="L27">                scene.nodes().stream().filter(n -&gt; included.contains(n.id())).toList(),</span>
+<span class="fc" id="L28">                scene.edges().stream().filter(e -&gt; edgeIds.contains(e.id())).toList());</span>
+<span class="fc" id="L29">        var boundary = new TreeSet&lt;&gt;(included); boundary.removeAll(selectedCodes);</span>
+<span class="fc" id="L30">        return new Selection(selected, selectedScene, Collections.unmodifiableSet(boundary), ArchitectureReportDocument.graphSha256(graph));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

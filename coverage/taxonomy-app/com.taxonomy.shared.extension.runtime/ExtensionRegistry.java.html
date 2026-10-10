@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExtensionRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.extension.runtime</a> &gt; <span class="el_source">ExtensionRegistry.java</span></div><h1>ExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.extension.runtime;
+
+import com.taxonomy.shared.extension.*;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.runtime.BuiltinCatalog;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.Optional;
+
+/** Metadata facade over the one authoritative extension catalog. */
+@Service
+public class ExtensionRegistry {
+    private final ExtensionCatalog catalog;
+<span class="fc" id="L15">    public ExtensionRegistry(List&lt;TaxonomyExtension&gt; extensions) { this(BuiltinCatalog.create(extensions)); }</span>
+<span class="fc" id="L16">    @Autowired public ExtensionRegistry(ExtensionCatalog catalog) { this.catalog = catalog; }</span>
+    public List&lt;ExtensionDescriptor&gt; listAll() {
+<span class="fc" id="L18">        return catalog.snapshot().extensions().stream().map(ExtensionRegistration::descriptor).toList();</span>
+    }
+    public List&lt;ExtensionDescriptor&gt; listByKind(ExtensionKind kind) {
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">        if (kind == null) return List.of();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        return catalog.snapshot().extensions().stream().filter(e -&gt; e.key().kind() == kind)</span>
+<span class="fc" id="L23">                .map(ExtensionRegistration::descriptor).toList();</span>
+    }
+    public Optional&lt;ExtensionDescriptor&gt; findDescriptor(ExtensionKind kind, String id) {
+<span class="pc bpc" id="L26" title="3 of 6 branches missed.">        if (kind == null || id == null || id.isBlank()) return Optional.empty();</span>
+<span class="fc" id="L27">        var key = new ExtensionKey(kind, id);</span>
+<span class="fc" id="L28">        return catalog.snapshot().extensions().stream().filter(e -&gt; e.key().equals(key))</span>
+<span class="fc" id="L29">                .map(ExtensionRegistration::descriptor).findFirst();</span>
+    }
+    public ExtensionDescriptor getRequiredDescriptor(ExtensionKind kind, String id) {
+<span class="pc" id="L32">        return findDescriptor(kind, id).orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown extension %s/%s&quot;.formatted(kind, id)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

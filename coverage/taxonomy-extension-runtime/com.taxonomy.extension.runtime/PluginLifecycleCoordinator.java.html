@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginLifecycleCoordinator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-runtime</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.runtime</a> &gt; <span class="el_source">PluginLifecycleCoordinator.java</span></div><h1>PluginLifecycleCoordinator.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.runtime;
+
+import com.taxonomy.extension.api.plugin.*;
+import java.nio.file.*;
+import java.io.IOException;
+import java.time.Duration;
+import java.util.*;
+
+/**
+ * Single-process lifecycle. Only operator-installed local IDs can select executable bytes.
+ * The runtime monitor covers complete commands and inventory snapshots, including callers
+ * using another coordinator or the runtime shutdown API.
+ */
+public final class PluginLifecycleCoordinator {
+    private final Pf4jPluginRuntime runtime;
+    private final Path directory;
+    private final boolean enabled;
+    private final boolean clustered;
+<span class="fc" id="L19">    private final PluginArtifactValidator validator = new PluginArtifactValidator();</span>
+
+<span class="fc" id="L21">    public PluginLifecycleCoordinator(Pf4jPluginRuntime runtime, Path directory, boolean enabled, boolean clustered) {</span>
+<span class="fc" id="L22">        this.runtime = Objects.requireNonNull(runtime);</span>
+<span class="fc" id="L23">        this.directory = Objects.requireNonNull(directory);</span>
+<span class="fc" id="L24">        this.enabled = enabled; this.clustered = clustered;</span>
+<span class="fc" id="L25">    }</span>
+
+    public PluginIdentity activate(String id) {
+<span class="fc" id="L28">        synchronized (runtime) {</span>
+<span class="fc" id="L29">            requireManagement(id);</span>
+<span class="fc" id="L30">            var existing = findInstalled(id);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="fc" id="L32">                requireDynamic(existing);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                if (runtime.isDraining(id)) throw new PluginOperationException(&quot;DRAINING&quot;);</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                if (runtime.isStarted(id)) return existing.identity();</span>
+            } else {
+<span class="fc" id="L36">                Path artifact = localArtifact(id);</span>
+                try {
+<span class="fc" id="L38">                    var candidate = validator.validate(artifact);</span>
+<span class="fc" id="L39">                    requireDynamic(candidate);</span>
+<span class="fc" id="L40">                    runtime.install(artifact, candidate.identity());</span>
+<span class="fc" id="L41">                    existing = findInstalled(id);</span>
+                    // install reads an immutable copy; never trust the earlier ordering/lookup read.
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">                    if (existing == null || !existing.identity().equals(candidate.identity())) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">                        if (existing != null) runtime.unload(id);</span>
+<span class="nc" id="L45">                        throw new PluginOperationException(&quot;ARTIFACT_CHANGED&quot;);</span>
+                    }
+<span class="fc" id="L47">                    requireDynamic(existing);</span>
+<span class="fc" id="L48">                } catch (PluginOperationException rejected) { throw rejected; }</span>
+<span class="pc" id="L49">                catch (RuntimeException rejected) { throw new PluginOperationException(&quot;ADMISSION_REJECTED&quot;); }</span>
+            }
+<span class="fc" id="L51">            try { runtime.start(id); return existing.identity(); }</span>
+<span class="fc" id="L52">            catch (RuntimeException rejected) { throw new PluginOperationException(&quot;START_REJECTED&quot;); }</span>
+        }
+    }
+
+    public PluginOperationResult deactivate(String id, Duration timeout) {
+<span class="fc" id="L57">        synchronized (runtime) {</span>
+<span class="fc" id="L58">            PluginIdentity identity = null;</span>
+            try {
+<span class="fc" id="L60">                requireManagement(id);</span>
+<span class="pc bpc" id="L61" title="3 of 6 branches missed.">                if (timeout == null || timeout.isNegative() || timeout.compareTo(Duration.ofSeconds(30)) &gt; 0)</span>
+<span class="nc" id="L62">                    throw new PluginOperationException(&quot;INVALID_TIMEOUT&quot;);</span>
+<span class="fc" id="L63">                var plugin = findInstalled(id);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                if (plugin == null) throw new PluginOperationException(&quot;NOT_INSTALLED&quot;);</span>
+<span class="fc" id="L65">                identity = plugin.identity(); requireDynamic(plugin);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (!runtime.stop(id, timeout))</span>
+<span class="fc" id="L67">                    return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, &quot;INVOCATIONS_ACTIVE&quot;);</span>
+<span class="fc" id="L68">                runtime.unload(id);</span>
+<span class="fc" id="L69">                return new PluginOperationResult(id, identity, PluginOperationResult.Status.STOPPED, &quot;STOPPED&quot;);</span>
+<span class="nc" id="L70">            } catch (PluginOperationException rejected) {</span>
+<span class="nc" id="L71">                return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, rejected.code());</span>
+<span class="nc" id="L72">            } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L73">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L74">                return new PluginOperationResult(id, identity, PluginOperationResult.Status.DRAINING, &quot;INTERRUPTED&quot;);</span>
+<span class="fc" id="L75">            } catch (RuntimeException failure) {</span>
+                // A failing close must not retain a stopped classloader. A still-active dependent
+                // or a draining invocation must keep its loader and resources intact.
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">                if (findInstalled(id) != null &amp;&amp; !runtime.isStarted(id)) {</span>
+<span class="nc" id="L79">                    try { runtime.unload(id); } catch (RuntimeException ignored) { /* reported as cleanup failure */ }</span>
+<span class="nc" id="L80">                    return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, &quot;CLEANUP_FAILED&quot;);</span>
+                }
+<span class="fc" id="L82">                return new PluginOperationResult(id, identity, PluginOperationResult.Status.REJECTED, &quot;DEPENDENTS_ACTIVE&quot;);</span>
+            }
+        }
+    }
+
+<span class="nc" id="L87">    public boolean enabled() { return enabled; }</span>
+<span class="nc" id="L88">    public boolean clustered() { return clustered; }</span>
+    public List&lt;InstalledPlugin&gt; installed() {
+<span class="nc" id="L90">        synchronized (runtime) {</span>
+<span class="nc" id="L91">            return runtime.installed().stream().map(p -&gt; new InstalledPlugin(p,</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">                    runtime.isDraining(p.identity().id()) ? &quot;DRAINING&quot; : runtime.isStarted(p.identity().id()) ? &quot;ACTIVE&quot; : &quot;INSTALLED&quot;))</span>
+<span class="nc" id="L93">                    .toList();</span>
+        }
+    }
+<span class="nc" id="L96">    public record InstalledPlugin(PluginDescriptor descriptor, String state) { }</span>
+
+    private void requireManagement(String id) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (!enabled) throw new PluginOperationException(&quot;DYNAMIC_DISABLED&quot;);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (clustered) throw new PluginOperationException(&quot;CLUSTER_UNSUPPORTED&quot;);</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        if (id == null || !id.matches(&quot;[a-z][a-z0-9.-]{0,127}&quot;)) throw new PluginOperationException(&quot;INVALID_ID&quot;);</span>
+<span class="fc" id="L102">    }</span>
+    private static void requireDynamic(PluginDescriptor descriptor) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (descriptor.mode() != PluginMode.DYNAMIC) throw new PluginOperationException(&quot;STARTUP_ONLY&quot;);</span>
+<span class="fc" id="L105">    }</span>
+    private PluginDescriptor findInstalled(String id) {
+<span class="fc" id="L107">        return runtime.installed().stream().filter(p -&gt; p.identity().id().equals(id)).findFirst().orElse(null);</span>
+    }
+    private Path localArtifact(String id) {
+<span class="fc" id="L110">        var matches = new ArrayList&lt;Path&gt;();</span>
+<span class="fc" id="L111">        try (var paths = Files.list(directory)) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            for (Path path : paths.filter(p -&gt; p.getFileName().toString().endsWith(&quot;.jar&quot;)).sorted().toList()) {</span>
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">                if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))</span>
+<span class="nc" id="L114">                    throw new PluginOperationException(&quot;ADMISSION_REJECTED&quot;);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                if (validator.validate(path).identity().id().equals(id)) matches.add(path);</span>
+<span class="fc" id="L116">            }</span>
+<span class="pc" id="L117">        } catch (IOException | IllegalArgumentException invalid) { throw new PluginOperationException(&quot;ADMISSION_REJECTED&quot;); }</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (matches.size() != 1) throw new PluginOperationException(matches.isEmpty() ? &quot;NOT_INSTALLED&quot; : &quot;DUPLICATE_ID&quot;);</span>
+<span class="fc" id="L119">        return matches.getFirst();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OpenAiCompatibleGateway.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">OpenAiCompatibleGateway.java</span></div><h1>OpenAiCompatibleGateway.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.SocketTimeoutException;
+import java.util.*;
+
+/** Gateway for OpenAI-compatible LLM APIs and operator-configured endpoints. */
+public class OpenAiCompatibleGateway implements LlmGateway {
+
+<span class="fc" id="L19">    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleGateway.class);</span>
+
+    private final LlmProvider provider;
+    private final String url;
+    private final String model;
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final LlmResponseParser responseParser;
+    private final AnalysisRuntimeSettings preferencesService;
+    private final SimpleClientHttpRequestFactory llmRequestFactory;
+    private final LlmRecordReplayService recordReplayService;
+    private final LlmRequestAdmission requestAdmission;
+
+    public OpenAiCompatibleGateway(LlmProvider provider,
+                                    String url,
+                                    String model,
+                                    int defaultRpm,
+                                    RestTemplate restTemplate,
+                                    ObjectMapper objectMapper,
+                                    LlmResponseParser responseParser,
+                                    AnalysisRuntimeSettings preferencesService,
+                                    SimpleClientHttpRequestFactory llmRequestFactory,
+<span class="fc" id="L41">                                    LlmRecordReplayService recordReplayService) {</span>
+<span class="fc" id="L42">        this.provider = provider;</span>
+<span class="fc" id="L43">        this.url = url;</span>
+<span class="fc" id="L44">        this.model = model;</span>
+<span class="fc" id="L45">        this.restTemplate = restTemplate;</span>
+<span class="fc" id="L46">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L47">        this.responseParser = responseParser;</span>
+<span class="fc" id="L48">        this.preferencesService = preferencesService;</span>
+<span class="fc" id="L49">        this.llmRequestFactory = llmRequestFactory;</span>
+<span class="fc" id="L50">        this.recordReplayService = recordReplayService;</span>
+<span class="fc" id="L51">        this.requestAdmission = new LlmRequestAdmission(provider, defaultRpm, preferencesService);</span>
+<span class="fc" id="L52">    }</span>
+
+<span class="fc" id="L54">    void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }</span>
+<span class="fc" id="L55">    void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }</span>
+
+<span class="fc" id="L57">    @Override public String providerName() { return provider.name(); }</span>
+
+    @Override public String extractResponseText(String rawResponseBody) {
+<span class="fc" id="L60">        return responseParser.extractOpenAiText(rawResponseBody);</span>
+    }
+
+    @Override
+    public String sendHttpRequest(String prompt, String apiKey) {
+<span class="fc" id="L65">        AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L66">        String usageInvocation = LlmTransportMeter.newInvocation();</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">        if (recordReplayService != null &amp;&amp; recordReplayService.isReplayMode()) {</span>
+<span class="fc" id="L68">            Optional&lt;String&gt; recorded = recordReplayService.replay(prompt);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (recorded.isPresent()) {</span>
+<span class="fc" id="L70">                LlmTransportMeter.replay(usageInvocation, provider.name());</span>
+<span class="fc" id="L71">                return recorded.get();</span>
+            }
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (!recordReplayService.isFallbackLive()) {</span>
+<span class="nc" id="L74">                log.warn(&quot;No LLM recording found for prompt hash — no fallback configured&quot;);</span>
+<span class="nc" id="L75">                return null;</span>
+            }
+<span class="nc" id="L77">            log.warn(&quot;No LLM recording found for prompt hash — falling back to live API&quot;);</span>
+        }
+
+<span class="fc" id="L80">        validateConfiguration();</span>
+<span class="fc" id="L81">        applyCurrentTimeout();</span>
+
+<span class="fc" id="L83">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L84">        Map&lt;String, String&gt; message = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L85">        message.put(&quot;role&quot;, &quot;user&quot;);</span>
+<span class="fc" id="L86">        message.put(&quot;content&quot;, prompt);</span>
+<span class="fc" id="L87">        body.put(&quot;model&quot;, model);</span>
+<span class="fc" id="L88">        body.put(&quot;messages&quot;, List.of(message));</span>
+
+<span class="fc" id="L90">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L91">        headers.setContentType(MediaType.APPLICATION_JSON);</span>
+<span class="pc bpc" id="L92" title="1 of 4 branches missed.">        if (apiKey != null &amp;&amp; !apiKey.isBlank()</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                &amp;&amp; !LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY.equals(apiKey)) {</span>
+<span class="fc" id="L94">            headers.setBearerAuth(apiKey);</span>
+        }
+
+        try {
+<span class="fc" id="L98">            HttpEntity&lt;String&gt; entity = new HttpEntity&lt;&gt;(objectMapper.writeValueAsString(body), headers);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            int maxRetries = Math.max(0, Math.min(6, preferencesService != null</span>
+<span class="fc" id="L100">                    ? preferencesService.getInt(&quot;llm.retry.max&quot;, 2) : 2));</span>
+<span class="fc" id="L101">            int attempt = 0;</span>
+
+            while (true) {
+                ResponseEntity&lt;String&gt; response;
+                try {
+<span class="fc" id="L106">                    response = sendAttempt(usageInvocation, attempt, entity);</span>
+<span class="fc" id="L107">                } catch (HttpClientErrorException exception) {</span>
+<span class="fc" id="L108">                    int status = exception.getStatusCode().value();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    if (status == 429) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                        if (requestAdmission.retryRateLimit(exception, objectMapper, attempt, maxRetries)) {</span>
+<span class="fc" id="L111">                            attempt++;</span>
+<span class="fc" id="L112">                            continue;</span>
+                        }
+<span class="fc" id="L114">                        throw new LlmRateLimitException(provider + &quot; rate limit (HTTP 429)&quot;, exception);</span>
+                    }
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">                    if (status == 401 || status == 403) {</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                        String authenticationMessage = provider == LlmProvider.CUSTOM_OPENAI</span>
+                                ? &quot;CUSTOM_OPENAI endpoint rejected authentication (HTTP &quot; + status
+<span class="fc" id="L119">                                + &quot;). CUSTOM_LLM_API_KEY is optional for unauthenticated endpoints; &quot;</span>
+                                + &quot;set or correct it only when the endpoint requires a bearer token.&quot;
+<span class="pc" id="L121">                                : provider + &quot; endpoint rejected its configured API key (HTTP &quot; + status + &quot;).&quot;;</span>
+<span class="fc" id="L122">                        throw new LlmProviderException(</span>
+                                LlmProviderException.Reason.AUTHENTICATION, authenticationMessage, exception);
+                    }
+<span class="fc" id="L125">                    throw new LlmProviderException(</span>
+                            LlmProviderException.Reason.REQUEST_REJECTED,
+                            provider + &quot; endpoint rejected the request (HTTP &quot; + status + &quot;)&quot;, exception);
+<span class="fc" id="L128">                } catch (HttpServerErrorException exception) {</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                    if (attempt &lt; maxRetries) {</span>
+<span class="fc" id="L130">                        long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);</span>
+<span class="fc" id="L131">                        log.warn(&quot;{} API server error {} — retry {}/{} after {}ms&quot;,</span>
+<span class="fc" id="L132">                                provider, exception.getStatusCode(), attempt, maxRetries, backoffMs);</span>
+<span class="fc" id="L133">                        AnalysisRunControl.pause(&quot;RETRY_WAIT&quot;, backoffMs);</span>
+<span class="fc" id="L134">                        continue;</span>
+                    }
+<span class="nc" id="L136">                    throw new LlmProviderException(</span>
+                            LlmProviderException.Reason.REQUEST_REJECTED,
+<span class="nc" id="L138">                            provider + &quot; endpoint returned a server error &quot; + exception.getStatusCode(), exception);</span>
+<span class="fc" id="L139">                } catch (ResourceAccessException exception) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                    if (exception.getCause() instanceof SocketTimeoutException) {</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">                        int timeoutSeconds = preferencesService != null</span>
+<span class="nc" id="L142">                                ? preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60) : 60;</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                        if (attempt &lt; maxRetries) {</span>
+<span class="nc" id="L144">                            long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);</span>
+<span class="nc" id="L145">                            log.warn(&quot;{} API read timeout after {}s — retry {}/{} after {}ms&quot;,</span>
+<span class="nc" id="L146">                                    provider, timeoutSeconds, attempt, maxRetries, backoffMs);</span>
+<span class="nc" id="L147">                            AnalysisRunControl.pause(&quot;RETRY_WAIT&quot;, backoffMs);</span>
+<span class="nc" id="L148">                            continue;</span>
+                        }
+<span class="nc" id="L150">                        throw new LlmTimeoutException(</span>
+                                provider + &quot; API call timed out after &quot; + timeoutSeconds + &quot;s. &quot;
+                                        + &quot;You can increase the timeout in Preferences → llm.timeout.seconds.&quot;, exception);
+                    }
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                    String endpointMessage = provider == LlmProvider.CUSTOM_OPENAI</span>
+<span class="fc" id="L155">                            ? &quot;CUSTOM_OPENAI endpoint is unreachable. Check CUSTOM_LLM_URL, service &quot;</span>
+                            + &quot;availability, DNS and network policy.&quot;
+<span class="fc" id="L157">                            : provider + &quot; endpoint is unreachable.&quot;;</span>
+<span class="fc" id="L158">                    throw new LlmProviderException(</span>
+                            LlmProviderException.Reason.ENDPOINT_UNREACHABLE, endpointMessage, exception);
+<span class="fc" id="L160">                }</span>
+
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">                if (response.getStatusCode().is2xxSuccessful() &amp;&amp; response.getBody() != null) {</span>
+<span class="fc" id="L163">                    log.info(&quot;LLM Response [{}] received ({} characters)&quot;, provider, response.getBody().length());</span>
+<span class="fc bfc" id="L164" title="All 4 branches covered.">                    if (recordReplayService != null &amp;&amp; recordReplayService.isRecordMode()) {</span>
+<span class="fc" id="L165">                        recordReplayService.record(prompt, response.getBody(), provider.name(), null);</span>
+                    }
+<span class="fc" id="L167">                    return response.getBody();</span>
+                }
+<span class="nc" id="L169">                log.error(&quot;{} API returned status {}&quot;, provider, response.getStatusCode());</span>
+<span class="nc" id="L170">                return null;</span>
+            }
+<span class="fc" id="L172">        } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {</span>
+<span class="fc" id="L173">            throw exception;</span>
+<span class="nc" id="L174">        } catch (LlmTransportMeter.JournalStartException unavailable) {</span>
+<span class="nc" id="L175">            throw unavailable;</span>
+<span class="fc" id="L176">        } catch (AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L177">            throw stopped;</span>
+<span class="fc" id="L178">        } catch (Exception exception) {</span>
+<span class="fc" id="L179">            log.error(&quot;Error calling {} API (exception type {})&quot;, provider, exception.getClass().getSimpleName());</span>
+<span class="fc" id="L180">            return null;</span>
+        }
+    }
+
+    private ResponseEntity&lt;String&gt; sendAttempt(String invocation, int attempt, HttpEntity&lt;String&gt; entity) {
+<span class="fc" id="L185">        return requestAdmission.execute(() -&gt; {</span>
+<span class="fc" id="L186">            AnalysisRunControl.phase(&quot;LLM_REQUEST&quot;, null);</span>
+<span class="fc" id="L187">            return LlmTransportMeter.exchange(invocation, provider.name(), attempt, objectMapper,</span>
+<span class="fc" id="L188">                    () -&gt; restTemplate.exchange(url, HttpMethod.POST, entity, String.class));</span>
+        });
+    }
+
+    private void validateConfiguration() {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (provider != LlmProvider.CUSTOM_OPENAI) return;</span>
+<span class="fc" id="L194">        LlmProviderConfig.CustomOpenAiConfigurationStatus status =</span>
+<span class="fc" id="L195">                LlmProviderConfig.validateCustomOpenAiConfiguration(url, model);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (!status.valid()) {</span>
+<span class="fc" id="L197">            throw new LlmProviderException(LlmProviderException.Reason.CONFIGURATION, status.message());</span>
+        }
+<span class="fc" id="L199">    }</span>
+
+    /** Kept for direct throttle contracts; production admission surrounds every HTTP attempt. */
+<span class="fc" id="L202">    void throttle() { requestAdmission.execute(() -&gt; null); }</span>
+
+    private void applyCurrentTimeout() {
+<span class="fc bfc" id="L205" title="All 4 branches covered.">        if (preferencesService == null || llmRequestFactory == null) return;</span>
+<span class="fc" id="L206">        int timeoutSeconds = preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60);</span>
+<span class="fc" id="L207">        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);</span>
+<span class="fc" id="L208">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

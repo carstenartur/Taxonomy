@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.catalog.provenance.CatalogueSourceBytesTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.111 s -- in com.taxonomy.catalog.provenance.CatalogueSourceBytesTest

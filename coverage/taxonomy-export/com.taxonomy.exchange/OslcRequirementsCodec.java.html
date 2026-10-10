@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OslcRequirementsCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange</a> &gt; <span class="el_source">OslcRequirementsCodec.java</span></div><h1>OslcRequirementsCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.apache.jena.rdf.model.*;
+import org.apache.jena.riot.*;
+import org.apache.jena.riot.system.ErrorHandlerFactory;
+import org.apache.jena.riot.out.NodeFmtLib;
+import org.apache.jena.vocabulary.RDF;
+
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import static com.taxonomy.exchange.OslcRdf.DCT;
+import static com.taxonomy.exchange.OslcRdf.OSLC;
+import static com.taxonomy.exchange.OslcRdf.RM;
+
+/** OSLC RM RDF/XML profile, parsed as RDF instead of depending on one producer's XML spelling. */
+<span class="fc" id="L19">public final class OslcRequirementsCodec {</span>
+    public static final String PROFILE = OslcRdf.RM_PROFILE;
+    public ExchangeDocument read(byte[] content, URI base, String version, String configuration) {
+<span class="fc" id="L22">        Model model = parse(content, base); List&lt;Artifact&gt; artifacts = new ArrayList&lt;&gt;(); List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L23">        List&lt;Resource&gt; subjects = model.listResourcesWithProperty(RDF.type, model.createResource(RM + &quot;Requirement&quot;)).toList();</span>
+<span class="fc" id="L24">        subjects.addAll(model.listResourcesWithProperty(RDF.type, model.createResource(RM + &quot;RequirementCollection&quot;)).toList());</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        for (Resource subject : subjects.stream().distinct().sorted(Comparator.comparing(Resource::toString)).toList()) {</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">            if (!subject.isURIResource() || subject.getURI().length() &gt; 2048) throw ExchangeXml.invalid(&quot;INVALID_IDENTITY&quot;, &quot;An OSLC requirement needs a bounded stable resource URI&quot;);</span>
+<span class="fc" id="L27">            Map&lt;String, String&gt; attributes = new TreeMap&lt;&gt;(), extensions = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L28">            Model evidence = ModelFactory.createDefaultModel();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            for (Statement statement : subject.listProperties().toList()) {</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                if (statement.getObject().isAnon()) throw ExchangeXml.invalid(&quot;OSLC_BLANK_NODE_MAPPING&quot;, &quot;This profile requires explicit mapping of structured blank-node attributes&quot;);</span>
+<span class="fc" id="L31">                evidence.add(statement);</span>
+<span class="fc" id="L32">                String value = NodeFmtLib.strNT(statement.getObject().asNode());</span>
+<span class="fc" id="L33">                attributes.put(statement.getPredicate().getURI() + &quot;:&quot; + ReqifExchangeCodec.digest(value.getBytes(StandardCharsets.UTF_8)), value);</span>
+<span class="fc" id="L34">            }</span>
+<span class="fc" id="L35">            String title = literal(subject, DCT + &quot;title&quot;), body = literal(subject, DCT + &quot;description&quot;);</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (title.isBlank()) losses.add(new MappingLoss(subject.getURI(), &quot;title&quot;, &quot;REQUIREMENT_MAPPING_REQUIRED&quot;, LossDisposition.UNSUPPORTED, &quot;Resource has no mapped title&quot;));</span>
+<span class="fc" id="L37">            Statement description = subject.getProperty(model.createProperty(DCT + &quot;description&quot;));</span>
+<span class="pc bpc" id="L38" title="2 of 6 branches missed.">            if (description != null &amp;&amp; description.getObject().isLiteral() &amp;&amp; RDF.dtXMLLiteral.getURI().equals(description.getLiteral().getDatatypeURI()))</span>
+<span class="fc" id="L39">                body = xmlLiteralText(body);</span>
+<span class="fc" id="L40">            extensions.put(&quot;rdfXml&quot;, new String(serialize(evidence), StandardCharsets.UTF_8)); extensions.put(&quot;uri&quot;, subject.getURI());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (configuration != null) extensions.put(&quot;configuration&quot;, configuration);</span>
+<span class="fc" id="L42">            boolean requirement = subject.hasProperty(RDF.type, model.createResource(RM + &quot;Requirement&quot;));</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            artifacts.add(new Artifact(subject.getURI(), requirement ? ArtifactKind.REQUIREMENT : ArtifactKind.SPECIFICATION,</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                    RM + (requirement ? &quot;Requirement&quot; : &quot;RequirementCollection&quot;), title, body, attributes, extensions));</span>
+<span class="fc" id="L45">        }</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (artifacts.size() &gt; ExchangeXml.MAX_ARTIFACTS) throw ExchangeXml.invalid(&quot;ITEM_LIMIT&quot;, &quot;OSLC response exceeds the object limit&quot;);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        return new ExchangeDocument(PROFILE, &quot;1&quot;, version == null ? ReqifExchangeCodec.digest(content) : version, false,</span>
+<span class="fc" id="L48">                new String(ExchangeXml.write(ExchangeXml.parse(content)), StandardCharsets.UTF_8), artifacts, List.of(), List.of(), Map.of(&quot;resource&quot;, base.toString()), losses);</span>
+    }
+    public DiscoveryResult discover(byte[] content, URI base, String etag, String configuration) {
+<span class="fc" id="L51">        Model model = parse(content, base); List&lt;DiscoveryResource&gt; result = new ArrayList&lt;&gt;(); Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (Statement statement : model.listStatements().toList()) {</span>
+<span class="fc" id="L53">            String predicate = statement.getPredicate().getURI();</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">            if (Set.of(OSLC + &quot;serviceProvider&quot;, OSLC + &quot;queryBase&quot;, OSLC + &quot;nextPage&quot;, &quot;http://www.w3.org/2000/01/rdf-schema#member&quot;).contains(predicate) &amp;&amp; statement.getObject().isURIResource()) {</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                String uri = statement.getResource().getURI(); if (seen.add(uri)) result.add(new DiscoveryResource(uri, predicate, &quot;&quot;, etag, configuration));</span>
+            }
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        return new DiscoveryResult(result, false, etag);</span>
+    }
+    public byte[] write(ExchangeDocument document) {
+<span class="fc" id="L61">        Model result = ModelFactory.createDefaultModel();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (Artifact artifact : document.artifacts()) {</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (artifact.extensions().containsKey(&quot;rdfXml&quot;)) result.add(parse(artifact.extensions().get(&quot;rdfXml&quot;).getBytes(StandardCharsets.UTF_8), URI.create(artifact.id())));</span>
+<span class="fc" id="L64">            Resource subject = result.createResource(artifact.id()); subject.addProperty(RDF.type, result.createResource(artifact.type()));</span>
+<span class="fc" id="L65">            replaceLiteral(subject, DCT + &quot;title&quot;, artifact.title());</span>
+<span class="fc" id="L66">            String existing = literal(subject, DCT + &quot;description&quot;);</span>
+<span class="fc" id="L67">            Statement original = subject.getProperty(result.createProperty(DCT + &quot;description&quot;));</span>
+<span class="pc bpc" id="L68" title="2 of 6 branches missed.">            if (original != null &amp;&amp; original.getObject().isLiteral() &amp;&amp; RDF.dtXMLLiteral.getURI().equals(original.getLiteral().getDatatypeURI()))</span>
+<span class="fc" id="L69">                existing = xmlLiteralText(existing);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (!existing.equals(artifact.text())) replaceLiteral(subject, DCT + &quot;description&quot;, artifact.text());</span>
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">        return serialize(result);</span>
+    }
+    public List&lt;MappingLoss&gt; exportLosses(ExchangeDocument document) {
+<span class="fc" id="L75">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;(document.losses());</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        for (Artifact artifact : document.artifacts()) if (artifact.extensions().containsKey(&quot;rdfXml&quot;)) {</span>
+<span class="fc" id="L77">            Model model = parse(artifact.extensions().get(&quot;rdfXml&quot;).getBytes(StandardCharsets.UTF_8), URI.create(artifact.id()));</span>
+<span class="fc" id="L78">            Resource subject = model.getResource(artifact.id()); Statement original = subject.getProperty(model.createProperty(DCT + &quot;description&quot;));</span>
+<span class="pc bpc" id="L79" title="3 of 6 branches missed.">            if (original != null &amp;&amp; original.getObject().isLiteral() &amp;&amp; RDF.dtXMLLiteral.getURI().equals(original.getLiteral().getDatatypeURI())</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                    &amp;&amp; !xmlLiteralText(original.getString()).equals(artifact.text()))</span>
+<span class="fc" id="L81">                losses.add(new MappingLoss(artifact.id(), &quot;description&quot;, &quot;OSLC_RICH_TEXT_REPLACED&quot;, LossDisposition.TRANSFORMED,</span>
+                        &quot;The edited canonical plain text replaces the original XML literal; old markup is retained only in operation evidence&quot;));
+        }
+<span class="fc" id="L84">        return List.copyOf(losses);</span>
+    }
+    private static String xmlLiteralText(String fragment) {
+<span class="fc" id="L87">        var document = ExchangeXml.parse((&quot;&lt;div xmlns=\&quot;http://www.w3.org/1999/xhtml\&quot;&gt;&quot; + fragment + &quot;&lt;/div&gt;&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">        if (ExchangeXml.all(document, &quot;*&quot;, &quot;*&quot;).stream().anyMatch(e -&gt; !&quot;http://www.w3.org/1999/xhtml&quot;.equals(e.getNamespaceURI())))</span>
+<span class="nc" id="L89">            throw ExchangeXml.invalid(&quot;OSLC_XML_LITERAL_MAPPING&quot;, &quot;Mapped descriptions support passive XHTML fragments only&quot;);</span>
+<span class="fc" id="L90">        return document.getDocumentElement().getTextContent();</span>
+    }
+    private static void replaceLiteral(Resource subject, String predicate, String value) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (literal(subject, predicate).equals(value)) return;</span>
+<span class="fc" id="L94">        Property property = subject.getModel().createProperty(predicate); subject.removeAll(property).addLiteral(property, value);</span>
+<span class="fc" id="L95">    }</span>
+    private static String literal(Resource subject, String predicate) {
+<span class="fc" id="L97">        List&lt;Statement&gt; values = subject.listProperties(subject.getModel().createProperty(predicate)).toList();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (values.isEmpty()) return &quot;&quot;;</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        if (values.stream().anyMatch(s -&gt; !s.getObject().isLiteral())) throw ExchangeXml.invalid(&quot;OSLC_LITERAL_REQUIRED&quot;, &quot;Mapped OSLC text must be a literal&quot;);</span>
+<span class="pc" id="L100">        return values.stream().sorted(Comparator.comparing(s -&gt; s.getLiteral().getLanguage())).findFirst().orElseThrow().getString();</span>
+    }
+    public static Model parse(byte[] content, URI base) {
+        // Eliminate DTD/entities before RDF parsing. No remote context or SPARQL is evaluated.
+<span class="fc" id="L104">        String safe = new String(ExchangeXml.write(ExchangeXml.parse(content)), StandardCharsets.UTF_8);</span>
+        try {
+<span class="fc" id="L106">            Model model = ModelFactory.createDefaultModel();</span>
+<span class="fc" id="L107">            RDFParser.fromString(safe, Lang.RDFXML).base(base.toString()).errorHandler(ErrorHandlerFactory.errorHandlerStrictSilent()).parse(model);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (model.size() &gt; 100000) throw ExchangeXml.invalid(&quot;ITEM_LIMIT&quot;, &quot;RDF response exceeds the triple limit&quot;);</span>
+<span class="fc" id="L109">            return model;</span>
+<span class="nc" id="L110">        } catch (Exception rejected) { throw ExchangeXml.invalid(&quot;INVALID_RDF&quot;, &quot;Response does not satisfy the declared RDF/XML profile&quot;); }</span>
+    }
+    private static byte[] serialize(Model model) {
+<span class="fc" id="L113">        ByteArrayOutputStream out = new ByteArrayOutputStream(); RDFDataMgr.write(out, model, RDFFormat.RDFXML_PLAIN);</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (out.size() &gt; ExchangeXml.MAX_BYTES) throw ExchangeXml.invalid(&quot;PACKAGE_SIZE&quot;, &quot;OSLC output exceeds 16 MiB&quot;); return out.toByteArray();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupAuthorizationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.runtime</a> &gt; <span class="el_source">BackupAuthorizationService.java</span></div><h1>BackupAuthorizationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.runtime;
+
+import com.taxonomy.backup.*;
+
+import org.springframework.security.access.AccessDeniedException;
+import java.time.Clock;
+import java.util.*;
+
+/**
+ * Shared start/status/download policy, registered with the persistent adapter when backup is enabled.
+ */
+public final class BackupAuthorizationService {
+    private final BackupAccessPolicy policy;
+    private final Clock clock;
+
+<span class="fc" id="L16">    public BackupAuthorizationService(BackupAccessPolicy policy, Clock clock) {</span>
+<span class="fc" id="L17">        this.policy = Objects.requireNonNull(policy);</span>
+<span class="fc" id="L18">        this.clock = Objects.requireNonNull(clock);</span>
+<span class="fc" id="L19">    }</span>
+
+    public void require(PrincipalId principal, BackupCapability capability, BackupScope scope) {
+<span class="fc" id="L22">        Objects.requireNonNull(principal); Objects.requireNonNull(capability); Objects.requireNonNull(scope);</span>
+<span class="pc bfc" id="L23" title="All 4 branches covered.">        if (!policy.isEnabled(principal) || !policy.hasCapability(principal, capability, scope)) deny();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (var selected : scope.selectedRepositories()) {</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">            if (!policy.canRead(principal, selected)) deny();</span>
+<span class="fc" id="L26">        }</span>
+<span class="fc" id="L27">    }</span>
+
+    public AuthorizedBackupRequest authorize(PrincipalId principal, BackupRequest request) {
+<span class="fc" id="L30">        Objects.requireNonNull(request);</span>
+<span class="fc" id="L31">        var required = EnumSet.of(BackupCapability.EXPORT_CURRENT);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (request.profile().includesHistory()) required.add(BackupCapability.EXPORT_HISTORY);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (request.profile().isInstallation()) required.add(BackupCapability.EXPORT_INSTALLATION);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (request.secrets() == SecretsSelection.INCLUDE_ENCRYPTED) required.add(BackupCapability.INCLUDE_SECRETS);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (var capability : required) require(principal, capability, request.scope());</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (request.time() instanceof BackupTime.SelectedVersion version) {</span>
+<span class="fc" id="L37">            version.commitsByRepository().forEach((repository, commit) -&gt; {</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">                if (!policy.canReadVersion(principal, repository, commit)) deny();</span>
+<span class="fc" id="L39">            });</span>
+        }
+<span class="fc" id="L41">        return new AuthorizedBackupRequest(request, principal, UUID.randomUUID().toString(), clock.instant(), required);</span>
+    }
+
+    /** Job metadata, including scope and filenames, is also private after revocation. */
+    public void requireJobAccess(PrincipalId requester, AuthorizedBackupRequest creation) {
+<span class="fc" id="L46">        Objects.requireNonNull(creation);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (!creation.principalId().equals(requester)) deny();</span>
+<span class="fc" id="L48">        authorize(requester, creation.request());</span>
+<span class="fc" id="L49">    }</span>
+
+    public void requireDownload(PrincipalId requester, AuthorizedBackupRequest creation) {
+<span class="fc" id="L52">        requireJobAccess(requester, creation);</span>
+<span class="fc" id="L53">        require(requester, BackupCapability.DOWNLOAD_BACKUP, creation.request().scope());</span>
+<span class="fc" id="L54">    }</span>
+
+<span class="fc" id="L56">    private static void deny() { throw new AccessDeniedException(&quot;Backup access denied&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

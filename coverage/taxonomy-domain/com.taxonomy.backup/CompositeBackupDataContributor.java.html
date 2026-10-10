@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CompositeBackupDataContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">CompositeBackupDataContributor.java</span></div><h1>CompositeBackupDataContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.io.IOException;
+import java.util.*;
+
+/**
+ * Verifies the declared inventory coverage of one module before reading its sources.
+ * This does not prove source consistency, reference closure or profile-specific completeness.
+ */
+public final class CompositeBackupDataContributor implements BackupDataContributor {
+    private final BackupComponentId id;
+    private final int version;
+    private final List&lt;BackupDataContributor&gt; delegates;
+    private final Set&lt;String&gt; categories;
+    private final List&lt;String&gt; inventoryOmissions;
+
+    public CompositeBackupDataContributor(BackupComponentId id, int version, BackupInventory inventory,
+<span class="fc" id="L18">                                          List&lt;? extends BackupDataContributor&gt; delegates) {</span>
+<span class="fc" id="L19">        this.id = Objects.requireNonNull(id);</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">        if (version &lt; 1) throw new IllegalArgumentException(&quot;Invalid component schema version&quot;);</span>
+<span class="fc" id="L21">        this.version = version;</span>
+<span class="fc" id="L22">        this.delegates = List.copyOf(delegates);</span>
+<span class="fc" id="L23">        var required = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L24">        var excluded = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L25">        boolean knownOwner = false;</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var category : Objects.requireNonNull(inventory).categories()) {</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            if (!id.equals(category.owner())) continue;</span>
+<span class="fc" id="L28">            knownOwner = true;</span>
+<span class="pc bpc" id="L29" title="1 of 3 branches missed.">            switch (category.rule()) {</span>
+<span class="fc" id="L30">                case PORTABLE_PRIMARY, GIT_PRIMARY, EXTERNAL_DEPENDENCY -&gt; required.add(category.id());</span>
+<span class="fc" id="L31">                case REBUILDABLE, TRANSIENT -&gt; excluded.add(category.id() + &quot;: excluded (&quot; + category.rule() + &quot;); &quot; + category.rationale());</span>
+            }
+<span class="fc" id="L33">        }</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (!knownOwner) throw new IllegalArgumentException(&quot;Component has no inventory owner&quot;);</span>
+<span class="fc" id="L35">        var claimed = new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (var delegate : this.delegates) {</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">            if (!id.equals(delegate.componentId()) || version != delegate.schemaVersion())</span>
+<span class="fc" id="L38">                throw new IllegalArgumentException(&quot;Adapter component or schema differs from composition&quot;);</span>
+<span class="fc" id="L39">            Set&lt;String&gt; declared = Set.copyOf(delegate.categories());</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            if (declared.isEmpty()) throw new IllegalArgumentException(&quot;Adapter declares no inventory categories&quot;);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            for (String category : declared) {</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                if (!required.contains(category)) throw new IllegalArgumentException(&quot;Adapter claims a category outside its owned capture inventory: &quot; + category);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">                if (!claimed.add(category)) throw new IllegalArgumentException(&quot;Duplicate capture category: &quot; + category);</span>
+<span class="fc" id="L44">            }</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        var missing = new TreeSet&lt;&gt;(required);</span>
+<span class="fc" id="L47">        missing.removeAll(claimed);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (!missing.isEmpty()) throw new IllegalArgumentException(&quot;Missing capture categories: &quot; + missing);</span>
+<span class="fc" id="L49">        this.categories = Collections.unmodifiableSet(required);</span>
+<span class="fc" id="L50">        this.inventoryOmissions = List.copyOf(excluded);</span>
+<span class="fc" id="L51">    }</span>
+<span class="fc" id="L52">    @Override public BackupComponentId componentId() { return id; }</span>
+<span class="fc" id="L53">    @Override public int schemaVersion() { return version; }</span>
+<span class="fc" id="L54">    @Override public Set&lt;String&gt; categories() { return categories; }</span>
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L56">        Objects.requireNonNull(profile);</span>
+<span class="fc" id="L57">        var result = new ArrayList&lt;&gt;(inventoryOmissions);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (var delegate : delegates) result.addAll(delegate.omissions(profile));</span>
+<span class="fc" id="L59">        return List.copyOf(result);</span>
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L62">        Objects.requireNonNull(snapshot);</span>
+<span class="fc" id="L63">        Objects.requireNonNull(sink);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (!Integer.valueOf(version).equals(snapshot.componentVersions().get(id)))</span>
+<span class="fc" id="L65">            throw new IOException(&quot;Captured component schema differs from composition&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (var delegate : delegates) {</span>
+<span class="fc" id="L67">            sink.checkpoint();</span>
+<span class="fc" id="L68">            delegate.write(snapshot, sink);</span>
+<span class="fc" id="L69">        }</span>
+        // Includes cancellation after the final adapter and components containing only exclusions.
+<span class="fc" id="L71">        sink.checkpoint();</span>
+<span class="fc" id="L72">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

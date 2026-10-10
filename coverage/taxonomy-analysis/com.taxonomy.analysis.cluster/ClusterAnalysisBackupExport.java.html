@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisBackupExport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisBackupExport.java</span></div><h1>ClusterAnalysisBackupExport.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy;
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.workspace.backup.BackupRowScope;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Scoped, bounded capture of clustered authority. Broker dispatch and permits are never portable. */
+public final class ClusterAnalysisBackupExport {
+    private static final String META = &quot;r.id as run_id,r.username,r.scope_key,r.project_id,r.requirement_id,r.context_json,r.state as run_state,r.total_roots,r.completed_roots,r.event_revision,r.created_at,r.updated_at,r.row_version&quot;;
+    private final PortableRows rows;
+    private final String owner;
+<span class="fc" id="L26">    private final ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L27">    private final AnalysisMessageCodec codec = new AnalysisMessageCodec();</span>
+
+    @FunctionalInterface public interface CurrentSelection {
+        boolean include(String owner, AnalysisSourceAuthority authority, String businessText, boolean terminal);
+    }
+<span class="fc" id="L32">    public ClusterAnalysisBackupExport(PortableRows rows, String owner) {</span>
+<span class="fc" id="L33">        this.rows = Objects.requireNonNull(rows); this.owner = Objects.requireNonNull(owner);</span>
+<span class="fc" id="L34">    }</span>
+    public void write(SnapshotContext snapshot, ComponentSink sink, CurrentSelection current) throws IOException {
+<span class="fc" id="L36">        var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc" id="L37">        var selected = new TreeMap&lt;String, Metadata&gt;(); var latest = new HashMap&lt;Key, Metadata&gt;();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        Query query = scope.selectedVersion() ? null : new Query(&quot;select &quot; + META + &quot; from analysis_cluster_run r&quot;</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">                + (scope.installation() ? &quot;&quot; : &quot; where r.username=?&quot;) + &quot; order by r.id&quot;, scope.installation() ? List.of() : List.of(owner));</span>
+<span class="fc" id="L40">        rows.visit(query, r -&gt; metadata(r, scope), run -&gt; {</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (run == null) return;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (!scope.history()) {</span>
+<span class="fc" id="L43">                Metadata previous = latest.get(run.key());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                if (previous != null) {</span>
+<span class="pc bpc" id="L45" title="5 of 6 branches missed.">                    if (run.createdAt &lt; previous.createdAt || (run.createdAt == previous.createdAt &amp;&amp; run.id.compareTo(previous.id) &lt;= 0)) return;</span>
+<span class="nc" id="L46">                    selected.remove(previous.id);</span>
+                }
+<span class="fc" id="L48">                latest.put(run.key(), run);</span>
+            }
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (selected.size() &gt;= 100_000) throw new IOException(&quot;Cluster analysis selection limit exceeded&quot;);</span>
+<span class="fc" id="L51">            selected.put(run.id, run);</span>
+<span class="fc" id="L52">        });</span>
+<span class="fc" id="L53">        var included = new TreeMap&lt;String, Metadata&gt;();</span>
+<span class="fc" id="L54">        rows.writeBatches(sink, &quot;analysis&quot;, &quot;cluster-runs&quot;, profile,</span>
+<span class="fc" id="L55">                batches(&quot;select &quot; + META + &quot;,r.command_json,r.view_json,r.result_json,r.relation_plan_json from analysis_cluster_run r where r.id in (&quot;, &quot; order by r.id&quot;, selected.keySet()), r -&gt; {</span>
+<span class="fc" id="L56">                    var run = metadata(r, scope);</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">                    if (run == null || !run.equals(selected.remove(run.id))) throw new IOException(&quot;Cluster analysis changed during capture&quot;);</span>
+<span class="fc" id="L58">                    String commandJson = text(r, &quot;command_json&quot;);</span>
+<span class="fc" id="L59">                    var command = read(commandJson, AnalyzeRequirementCommand.class);</span>
+<span class="fc" id="L60">                    validateCommand(run.context, run.owner, command);</span>
+<span class="fc" id="L61">                    var requirement = run.context.requirement();</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">                    boolean projectLineage = requirement.projectId() != null || requirement.requirementId() != null;</span>
+                    // Project requirement snapshots are independent of the editor's ad-hoc text.
+                    // Within each lineage, latest metadata already selected the current operation.
+<span class="fc bfc" id="L65" title="All 4 branches covered.">                    if (!scope.history() &amp;&amp; !projectLineage</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                            &amp;&amp; !current.include(run.owner, run.context.authority(), command.businessText(), run.state.terminal())) return null;</span>
+<span class="fc" id="L67">                    included.put(run.id, run);</span>
+<span class="fc" id="L68">                    return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, commandJson,</span>
+<span class="fc" id="L69">                            text(r, &quot;view_json&quot;), text(r, &quot;result_json&quot;), text(r, &quot;relation_plan_json&quot;), run.state.name(),</span>
+                            ResumePolicy.REVIEW_REQUIRED, run.total, run.completed, run.revision, run.createdAt, run.updatedAt);
+                });
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (!selected.isEmpty()) throw new IOException(&quot;Cluster analysis disappeared during capture&quot;);</span>
+<span class="fc" id="L73">        var rootWork = new HashMap&lt;String, Set&lt;String&gt;&gt;(); var frozenRoots = new HashMap&lt;String, Set&lt;String&gt;&gt;();</span>
+<span class="fc" id="L74">        var completed = new HashMap&lt;String, Integer&gt;();</span>
+<span class="fc" id="L75">        rows.writeBatches(sink, &quot;analysis&quot;, &quot;cluster-work&quot;, profile,</span>
+<span class="fc" id="L76">                children(&quot;w&quot;, &quot;analysis_cluster_work&quot;, &quot;ordinal_number&quot;, included), r -&gt; {</span>
+<span class="fc" id="L77">                    var run = parent(r, scope, included); String messageJson = text(r, &quot;message_json&quot;);</span>
+<span class="fc" id="L78">                    var message = decode(messageJson);</span>
+<span class="fc" id="L79">                    String taskId = text(r, &quot;task_id&quot;), type = text(r, &quot;task_type&quot;), root = text(r, &quot;root_code&quot;);</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                    if (!(message instanceof AnalysisTaskMessage task) || !sameContext(task.envelope(), run.context)</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                            || !task.taskId().value().equals(taskId) || !task.taskType().name().equals(type)</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">                            || !Objects.equals(task.routingRoot() == null ? null : task.routingRoot().code(), root))</span>
+<span class="fc" id="L83">                        throw new IOException(&quot;Cluster analysis task reference is inconsistent&quot;);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                    if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                        if (!rootWork.computeIfAbsent(run.id, ignored -&gt; new HashSet&lt;&gt;()).add(root)) throw new IOException(&quot;Duplicate cluster root work&quot;);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                        if (r.getBoolean(&quot;settled&quot;)) completed.merge(run.id, 1, Integer::sum);</span>
+                    }
+<span class="fc" id="L88">                    return new ClusterAnalysisBackupRecords.Work(PortableRows.reference(r, &quot;analysis.cluster-work&quot;, &quot;id&quot;), reference(run.id), taskId, type,</span>
+<span class="fc" id="L89">                            root, r.getInt(&quot;ordinal_number&quot;), messageJson, text(r, &quot;input_json&quot;), text(r, &quot;result_json&quot;), text(r, &quot;failure_reason&quot;),</span>
+<span class="fc" id="L90">                            text(r, &quot;state&quot;), r.getBoolean(&quot;settled&quot;), r.getInt(&quot;delivery_attempts&quot;), number(r, &quot;started_at&quot;), number(r, &quot;finished_at&quot;));</span>
+                });
+<span class="fc" id="L92">        rows.writeBatches(sink, &quot;analysis&quot;, &quot;cluster-inputs&quot;, profile,</span>
+<span class="fc" id="L93">                children(&quot;i&quot;, &quot;analysis_cluster_input&quot;, &quot;root_code&quot;, included), r -&gt; {</span>
+<span class="fc" id="L94">                    var run = parent(r, scope, included); String root = text(r, &quot;root_code&quot;);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                    if (!TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).toList().contains(root)</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                            || !frozenRoots.computeIfAbsent(run.id, ignored -&gt; new HashSet&lt;&gt;()).add(root))</span>
+<span class="nc" id="L97">                        throw new IOException(&quot;Cluster analysis frozen root is inconsistent&quot;);</span>
+<span class="fc" id="L98">                    return new ClusterAnalysisBackupRecords.Input(PortableRows.reference(r, &quot;analysis.cluster-input&quot;, &quot;id&quot;), reference(run.id), root, text(r, &quot;input_json&quot;));</span>
+                });
+<span class="fc" id="L100">        var revisions = new HashMap&lt;String, Long&gt;();</span>
+<span class="fc" id="L101">        rows.writeBatches(sink, &quot;analysis&quot;, &quot;cluster-events&quot;, profile,</span>
+<span class="fc" id="L102">                children(&quot;e&quot;, &quot;analysis_cluster_event&quot;, &quot;event_revision&quot;, included), r -&gt; {</span>
+<span class="fc" id="L103">                    var run = parent(r, scope, included); String eventJson = text(r, &quot;event_json&quot;);</span>
+<span class="fc" id="L104">                    long revision = r.getLong(&quot;child_revision&quot;); var message = decode(eventJson);</span>
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">                    if (!(message instanceof AnalysisProgressEvent event) || !sameContext(event.envelope(), run.context)</span>
+<span class="pc bpc" id="L106" title="3 of 6 branches missed.">                            || event.sequence() != revision || revision != revisions.getOrDefault(run.id, 0L) + 1 || revision &gt; run.revision)</span>
+<span class="nc" id="L107">                        throw new IOException(&quot;Cluster analysis event reference is inconsistent&quot;);</span>
+<span class="fc" id="L108">                    revisions.put(run.id, revision);</span>
+<span class="fc" id="L109">                    return new ClusterAnalysisBackupRecords.Event(PortableRows.reference(r, &quot;analysis.cluster-event&quot;, &quot;id&quot;), reference(run.id), revision, eventJson);</span>
+                });
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (var run : included.values()) {</span>
+<span class="fc" id="L112">            var roots = rootWork.getOrDefault(run.id, Set.of());</span>
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">            if (roots.size() != run.total || completed.getOrDefault(run.id, 0) != run.completed</span>
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">                    || !frozenRoots.getOrDefault(run.id, Set.of()).containsAll(roots) || revisions.getOrDefault(run.id, 0L) != run.revision)</span>
+<span class="nc" id="L115">                throw new IOException(&quot;Cluster analysis dependency closure is incomplete&quot;);</span>
+<span class="fc" id="L116">        }</span>
+<span class="fc" id="L117">    }</span>
+    private List&lt;Query&gt; children(String alias, String table, String order, Map&lt;String, Metadata&gt; included) {
+<span class="fc" id="L119">        return batches(&quot;select &quot; + META + &quot;,&quot; + alias + &quot;.*,&quot; + alias + &quot;.operation_id as child_run&quot;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                + (alias.equals(&quot;e&quot;) ? &quot;,e.event_revision as child_revision&quot; : &quot;&quot;)</span>
+                + &quot; from &quot; + table + &quot; &quot; + alias + &quot; join analysis_cluster_run r on r.id=&quot; + alias + &quot;.operation_id where r.id in (&quot;,
+<span class="fc" id="L122">                &quot; order by r.id,&quot; + alias + &quot;.&quot; + order, included.keySet());</span>
+    }
+    private Metadata parent(ResultSet row, BackupRowScope scope, Map&lt;String, Metadata&gt; included) throws SQLException, IOException {
+<span class="fc" id="L125">        var run = metadata(row, scope);</span>
+<span class="pc bpc" id="L126" title="3 of 6 branches missed.">        if (run == null || !run.id.equals(text(row, &quot;child_run&quot;)) || !run.equals(included.get(run.id)))</span>
+<span class="nc" id="L127">            throw new IOException(&quot;Cluster analysis child reference changed during capture&quot;);</span>
+<span class="fc" id="L128">        return run;</span>
+    }
+    private Metadata metadata(ResultSet row, BackupRowScope scope) throws SQLException, IOException {
+<span class="fc" id="L131">        String principal = text(row, &quot;username&quot;), id = text(row, &quot;run_id&quot;);</span>
+<span class="pc bpc" id="L132" title="4 of 8 branches missed.">        if (principal == null || principal.isBlank() || (!scope.installation() &amp;&amp; !owner.equals(principal))) throw new IOException(&quot;Cluster analysis owner is inconsistent&quot;);</span>
+<span class="fc" id="L133">        String contextJson = text(row, &quot;context_json&quot;); var context = read(contextJson, AnalysisOperationContext.class);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (!context.operationId().equals(id)) throw new IOException(&quot;Cluster analysis authority is inconsistent&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (!scope.includesWorkspace(context.authority().repositoryId(), context.authority().workspaceId())) return null;</span>
+<span class="fc" id="L136">        var workspace = new com.taxonomy.workspace.service.WorkspaceContext(principal, context.authority().workspaceId(), context.authority().branch(), context.authority().repositoryId());</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (!ClusterAnalysisStore.scopeKey(workspace).equals(text(row, &quot;scope_key&quot;))</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                || !Objects.equals(context.requirement().projectId(), number(row, &quot;project_id&quot;))</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                || !Objects.equals(context.requirement().requirementId(), number(row, &quot;requirement_id&quot;)))</span>
+<span class="nc" id="L140">            throw new IOException(&quot;Cluster analysis indexed authority is inconsistent&quot;);</span>
+        try {
+<span class="fc" id="L142">            return new Metadata(id, principal, context, contextJson, ClusterAnalysisState.valueOf(text(row, &quot;run_state&quot;)),</span>
+<span class="fc" id="L143">                    row.getInt(&quot;total_roots&quot;), row.getInt(&quot;completed_roots&quot;), row.getLong(&quot;event_revision&quot;),</span>
+<span class="fc" id="L144">                    row.getLong(&quot;created_at&quot;), row.getLong(&quot;updated_at&quot;), row.getLong(&quot;row_version&quot;));</span>
+<span class="nc" id="L145">        } catch (IllegalArgumentException invalid) { throw new IOException(&quot;Cluster analysis state is invalid&quot;); }</span>
+    }
+    static void validateCommand(AnalysisOperationContext context, String owner, AnalyzeRequirementCommand command) throws IOException {
+<span class="fc" id="L148">        var workspace = command.workspaceContext();</span>
+<span class="pc bpc" id="L149" title="2 of 6 branches missed.">        if (workspace == null || !owner.equals(command.username()) || !owner.equals(workspace.username())</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">                || !context.requirement().matches(command.businessText()) || !context.authority().repositoryId().equals(workspace.repositoryId())</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">                || !Objects.equals(context.authority().workspaceId(), workspace.workspaceId()) || !Objects.equals(context.authority().branch(), workspace.currentBranch()))</span>
+<span class="fc" id="L152">            throw new IOException(&quot;Cluster analysis command authority is inconsistent&quot;);</span>
+<span class="fc" id="L153">    }</span>
+    static boolean sameContext(AnalysisEnvelope envelope, AnalysisOperationContext context) {
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">        return envelope.operationId().equals(context.operationId()) &amp;&amp; envelope.authority().equals(context.authority())</span>
+<span class="pc bpc" id="L156" title="2 of 4 branches missed.">                &amp;&amp; envelope.requirement().equals(context.requirement()) &amp;&amp; envelope.correlationId().equals(context.correlationId());</span>
+    }
+    private &lt;T&gt; T read(String source, Class&lt;T&gt; type) throws IOException {
+<span class="fc" id="L159">        try { return mapper.readValue(source, type); }</span>
+<span class="nc" id="L160">        catch (RuntimeException invalid) { throw new IOException(&quot;Invalid cluster analysis document&quot;); }</span>
+    }
+    private AnalysisMessage decode(String source) throws IOException {
+<span class="fc" id="L163">        try { return codec.decode(source.getBytes(StandardCharsets.UTF_8)); }</span>
+<span class="nc" id="L164">        catch (RuntimeException invalid) { throw new IOException(&quot;Invalid cluster analysis message&quot;); }</span>
+    }
+<span class="fc" id="L166">    private static SourceRecordId reference(String id) { return new SourceRecordId(&quot;analysis.cluster-run&quot;, id); }</span>
+    private static List&lt;Query&gt; batches(String prefix, String suffix, Set&lt;String&gt; selected) {
+<span class="fc" id="L168">        var ids = new ArrayList&lt;&gt;(selected); var queries = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (int start = 0; start &lt; ids.size(); start += 200) {</span>
+<span class="fc" id="L170">            var batch = ids.subList(start, Math.min(start + 200, ids.size()));</span>
+<span class="fc" id="L171">            queries.add(new Query(prefix + String.join(&quot;,&quot;, Collections.nCopies(batch.size(), &quot;?&quot;)) + &quot;)&quot; + suffix, batch));</span>
+        }
+<span class="fc" id="L173">        return queries;</span>
+    }
+<span class="fc" id="L175">    private record Key(String owner, String repository, String workspace, String branch, Long project, Long requirement) { }</span>
+<span class="fc" id="L176">    private record Metadata(String id, String owner, AnalysisOperationContext context, String contextJson, ClusterAnalysisState state,</span>
+                            int total, int completed, long revision, long createdAt, long updatedAt, long version) {
+        Key key() {
+<span class="fc" id="L179">            var authority = context.authority(); var reference = context.requirement();</span>
+<span class="fc" id="L180">            return new Key(owner, authority.repositoryId(), authority.workspaceId(), authority.branch(), reference.projectId(), reference.requirementId());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

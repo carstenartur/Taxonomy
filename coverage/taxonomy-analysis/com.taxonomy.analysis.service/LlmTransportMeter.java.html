@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmTransportMeter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmTransportMeter.java</span></div><h1>LlmTransportMeter.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * Optional, explicitly scoped observation of actual transport attempts. Does not retain
+ * prompts, response bodies, URLs or credentials and does not infer provider billing.
+ * Consumers are best-effort; an optional journal must durably admit each attempt before transport.
+ */
+public final class LlmTransportMeter {
+<span class="fc" id="L21">    public enum Source { HTTP, RECORDING_REPLAY }</span>
+<span class="fc" id="L22">    public enum Outcome { RESPONSE, HTTP_ERROR, TRANSPORT_ERROR }</span>
+<span class="fc" id="L23">    public record Usage(Long inputTokens, Long outputTokens, Long totalTokens,</span>
+                        Long cachedInputTokens, Long reasoningTokens, boolean invalid) {}
+<span class="fc" id="L25">    public record Observation(String invocationId, String provider, Source source, int retryIndex,</span>
+                              Integer statusCode, Outcome outcome, long durationMillis, Usage usage) {}
+
+<span class="fc" id="L28">    public record Attempt(String id, String invocationId, String provider, Source source, int retryIndex) {}</span>
+    /** Implementations commit started() before returning. Completion failure leaves an unresolved start. */
+    public interface Journal {
+        void started(Attempt attempt);
+        void completed(Attempt attempt, Observation result);
+    }
+    public static final class JournalStartException extends RuntimeException {
+<span class="fc" id="L35">        private JournalStartException() { super(&quot;USAGE_RECORDING_UNAVAILABLE&quot;); }</span>
+    }
+
+<span class="fc" id="L38">    private static final Usage UNKNOWN = new Usage(null, null, null, null, null, false);</span>
+<span class="fc" id="L39">    private static final Usage INVALID = new Usage(null, null, null, null, null, true);</span>
+<span class="fc" id="L40">    private static final ThreadLocal&lt;Scope&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+    private LlmTransportMeter() {}
+
+    public static Scope open(Consumer&lt;Observation&gt; observer) {
+<span class="fc" id="L44">        return new Scope(Objects.requireNonNull(observer, &quot;observer&quot;), journal());</span>
+    }
+
+    public static Scope openJournal(Journal journal) {
+<span class="fc" id="L48">        return new Scope(observer(), Objects.requireNonNull(journal, &quot;journal&quot;));</span>
+    }
+
+    /** Explicit capture only: pooled threads do not inherit another request's observer. */
+    public static &lt;T&gt; Supplier&lt;T&gt; capture(Supplier&lt;T&gt; operation) {
+<span class="fc" id="L53">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L54">        Consumer&lt;Observation&gt; observer = observer();</span>
+<span class="fc" id="L55">        Journal journal = journal();</span>
+<span class="fc" id="L56">        return () -&gt; {</span>
+<span class="fc" id="L57">            try (var ignored = new Scope(observer, journal)) { return operation.get(); }</span>
+        };
+    }
+
+    static String newInvocation() {
+<span class="fc bfc" id="L62" title="All 4 branches covered.">        return observer() == null &amp;&amp; journal() == null ? null : UUID.randomUUID().toString();</span>
+    }
+
+    static void replay(String invocationId, String provider) {
+<span class="fc" id="L66">        Consumer&lt;Observation&gt; observer = observer();</span>
+<span class="fc" id="L67">        Journal journal = journal();</span>
+<span class="pc bpc" id="L68" title="1 of 6 branches missed.">        if ((observer == null &amp;&amp; journal == null) || invocationId == null) return;</span>
+<span class="fc" id="L69">        Attempt attempt = begin(journal, invocationId, provider, Source.RECORDING_REPLAY, 0);</span>
+<span class="fc" id="L70">        completed(journal, attempt, observer, new Observation(invocationId, provider, Source.RECORDING_REPLAY,</span>
+                0, null, Outcome.RESPONSE, 0, UNKNOWN));
+<span class="fc" id="L72">    }</span>
+
+    /** Journal admission is OUTSIDE transport error handling and therefore never causes a retry. */
+    static ResponseEntity&lt;String&gt; exchange(String invocationId, String provider, int retryIndex,
+            ObjectMapper json, Supplier&lt;ResponseEntity&lt;String&gt;&gt; operation) {
+<span class="fc" id="L77">        Consumer&lt;Observation&gt; observer = observer();</span>
+<span class="fc" id="L78">        Journal journal = journal();</span>
+<span class="pc bpc" id="L79" title="1 of 6 branches missed.">        if ((observer == null &amp;&amp; journal == null) || invocationId == null) return operation.get();</span>
+<span class="fc" id="L80">        Attempt attempt = begin(journal, invocationId, provider, Source.HTTP, retryIndex);</span>
+<span class="fc" id="L81">        long started = System.nanoTime();</span>
+        ResponseEntity&lt;String&gt; response;
+        try {
+<span class="fc" id="L84">            response = operation.get();</span>
+<span class="fc" id="L85">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L86">            Integer status = null;</span>
+<span class="fc" id="L87">            Usage usage = UNKNOWN;</span>
+<span class="fc" id="L88">            Outcome outcome = Outcome.TRANSPORT_ERROR;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (failure instanceof RestClientResponseException http) {</span>
+<span class="fc" id="L90">                status = http.getStatusCode().value();</span>
+<span class="fc" id="L91">                outcome = Outcome.HTTP_ERROR;</span>
+<span class="fc" id="L92">                usage = usage(json, provider, http.getResponseBodyAsString());</span>
+            }
+<span class="fc" id="L94">            completed(journal, attempt, observer, new Observation(invocationId, provider, Source.HTTP, retryIndex,</span>
+<span class="fc" id="L95">                    status, outcome, elapsed(started), usage));</span>
+<span class="fc" id="L96">            throw failure;</span>
+<span class="fc" id="L97">        }</span>
+<span class="fc" id="L98">        completed(journal, attempt, observer, new Observation(invocationId, provider, Source.HTTP, retryIndex,</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                response.getStatusCode().value(), response.getStatusCode().isError()</span>
+<span class="pc" id="L100">                        ? Outcome.HTTP_ERROR : Outcome.RESPONSE,</span>
+<span class="fc" id="L101">                elapsed(started), usage(json, provider, response.getBody())));</span>
+<span class="fc" id="L102">        return response;</span>
+    }
+
+    private static Attempt begin(Journal journal, String invocation, String provider, Source source, int retry) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (journal == null) return null;</span>
+<span class="fc" id="L107">        var attempt = new Attempt(UUID.randomUUID().toString(), invocation, provider, source, retry);</span>
+<span class="fc" id="L108">        try { journal.started(attempt); }</span>
+<span class="fc" id="L109">        catch (RuntimeException failure) { throw new JournalStartException(); }</span>
+<span class="fc" id="L110">        return attempt;</span>
+    }
+    private static void completed(Journal journal, Attempt attempt, Consumer&lt;Observation&gt; observer, Observation result) {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (journal != null) {</span>
+<span class="fc" id="L114">            try { journal.completed(attempt, result); }</span>
+<span class="fc" id="L115">            catch (RuntimeException failure) {</span>
+<span class="fc" id="L116">                LoggerFactory.getLogger(LlmTransportMeter.class)</span>
+<span class="fc" id="L117">                        .warn(&quot;LLM attempt completion not recorded; its durable start remains unresolved&quot;);</span>
+<span class="fc" id="L118">            }</span>
+        }
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (observer != null) emit(observer, result);</span>
+<span class="fc" id="L121">    }</span>
+    private static Journal journal() {
+<span class="fc" id="L123">        Scope scope = CURRENT.get();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        return scope == null ? null : scope.journal;</span>
+    }
+
+    private static long elapsed(long started) {
+<span class="fc" id="L128">        return Math.max(0L, (System.nanoTime() - started) / 1_000_000L);</span>
+    }
+
+    private static Consumer&lt;Observation&gt; observer() {
+<span class="fc" id="L132">        Scope scope = CURRENT.get();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        return scope == null ? null : scope.observer;</span>
+    }
+
+    private static void emit(Consumer&lt;Observation&gt; observer, Observation event) {
+<span class="fc" id="L137">        try { observer.accept(event); }</span>
+<span class="fc" id="L138">        catch (RuntimeException failure) {</span>
+            // Do not log exception messages: an observer may have included sensitive context.
+<span class="fc" id="L140">            LoggerFactory.getLogger(LlmTransportMeter.class)</span>
+<span class="fc" id="L141">                    .warn(&quot;LLM transport observation was not accepted; provider outcome is unchanged&quot;);</span>
+<span class="fc" id="L142">        }</span>
+<span class="fc" id="L143">    }</span>
+
+    private static Usage usage(ObjectMapper json, String provider, String body) {
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">        if (body == null || body.isBlank()) return UNKNOWN;</span>
+        try {
+<span class="fc" id="L148">            JsonNode root = json.reader().with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L149">                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(body);</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">            if (root == null || !root.isObject()) return INVALID;</span>
+<span class="fc" id="L151">            boolean gemini = &quot;GEMINI&quot;.equals(provider);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            JsonNode metadata = root.get(gemini ? &quot;usageMetadata&quot; : &quot;usage&quot;);</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">            if (metadata == null || metadata.isNull()) return UNKNOWN;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (!metadata.isObject()) return INVALID;</span>
+<span class="fc" id="L155">            var fields = new TokenFields();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            Long input = fields.read(metadata.get(gemini ? &quot;promptTokenCount&quot; : &quot;prompt_tokens&quot;));</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            Long output = fields.read(metadata.get(gemini ? &quot;candidatesTokenCount&quot; : &quot;completion_tokens&quot;));</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            Long total = fields.read(metadata.get(gemini ? &quot;totalTokenCount&quot; : &quot;total_tokens&quot;));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            Long cached = gemini ? fields.read(metadata.get(&quot;cachedContentTokenCount&quot;))</span>
+<span class="fc" id="L160">                    : fields.detail(metadata, &quot;prompt_tokens_details&quot;, &quot;cached_tokens&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            Long reasoning = gemini ? fields.read(metadata.get(&quot;thoughtsTokenCount&quot;))</span>
+<span class="fc" id="L162">                    : fields.detail(metadata, &quot;completion_tokens_details&quot;, &quot;reasoning_tokens&quot;);</span>
+<span class="fc" id="L163">            return new Usage(input, output, total, cached, reasoning, fields.invalid);</span>
+<span class="fc" id="L164">        } catch (RuntimeException invalid) {</span>
+<span class="fc" id="L165">            return INVALID;</span>
+        }
+    }
+
+    private static final class TokenFields {
+        private boolean invalid;
+        private Long read(JsonNode value) {
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">            if (value == null || value.isNull()) return null;</span>
+<span class="fc bfc" id="L173" title="All 6 branches covered.">            if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() &lt; 0) {</span>
+<span class="fc" id="L174">                invalid = true;</span>
+<span class="fc" id="L175">                return null;</span>
+            }
+<span class="fc" id="L177">            return value.longValue();</span>
+        }
+        private Long detail(JsonNode parent, String field, String key) {
+<span class="fc" id="L180">            JsonNode value = parent.get(field);</span>
+<span class="fc bfc" id="L181" title="All 4 branches covered.">            if (value == null || value.isNull()) return null;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (!value.isObject()) { invalid = true; return null; }</span>
+<span class="fc" id="L183">            return read(value.get(key));</span>
+        }
+    }
+
+    public static final class Scope implements AutoCloseable {
+<span class="fc" id="L188">        private final Scope previous = CURRENT.get();</span>
+<span class="fc" id="L189">        private final Thread owner = Thread.currentThread();</span>
+        private final Consumer&lt;Observation&gt; observer;
+        private final Journal journal;
+        private boolean closed;
+<span class="fc" id="L193">        private Scope(Consumer&lt;Observation&gt; observer, Journal journal) { this.observer = observer; this.journal = journal; CURRENT.set(this); }</span>
+        @Override public void close() {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (Thread.currentThread() != owner) throw new IllegalStateException(&quot;Meter scope closed on another thread&quot;);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            if (closed) return;</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            if (CURRENT.get() != this) throw new IllegalStateException(&quot;Meter scopes must close in nesting order&quot;);</span>
+<span class="fc" id="L198">            closed = true;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (previous == null) CURRENT.remove(); else CURRENT.set(previous);</span>
+<span class="fc" id="L200">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApplicationConfigurationBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences.backup</a> &gt; <span class="el_source">ApplicationConfigurationBackupContributor.java</span></div><h1>ApplicationConfigurationBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import org.springframework.core.convert.support.DefaultConversionService;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.PropertySourcesPropertyResolver;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+
+/** Explicit non-secret configuration values and operator-owned deployment prerequisites. */
+public final class ApplicationConfigurationBackupContributor implements BackupDataContributor {
+    private static final String ENTRY = &quot;configuration/application.json&quot;;
+    private static final int MAX_VALUE_LENGTH = 4096;
+<span class="fc" id="L23">    private static final List&lt;ExternalPrerequisite&gt; PREREQUISITES = List.of(</span>
+<span class="fc" id="L24">            prerequisite(DependencyKind.DEPLOYMENT, ExternalResource.DATABASE_ENDPOINTS_AND_CREDENTIALS,</span>
+                    ExternalResource.NETWORK_AND_TLS, ExternalResource.FILESYSTEM_PATHS,
+                    ExternalResource.RUNTIME_LIMITS_AND_SECURITY_POLICY, ExternalResource.CATALOGUE_SOURCE_LOCATIONS,
+                    ExternalResource.LLM_AND_INTEGRATION_TARGETS),
+<span class="fc" id="L28">            prerequisite(DependencyKind.IDENTITY_PROVIDERS, ExternalResource.PROVIDER_CONFIGURATION_AND_BACKUP,</span>
+                    ExternalResource.VERIFIED_PRINCIPAL_BINDINGS),
+<span class="fc" id="L30">            prerequisite(DependencyKind.SECRET_STORES, ExternalResource.ENCRYPTION_KEY_CUSTODY, ExternalResource.REMOTE_CREDENTIALS),</span>
+<span class="fc" id="L31">            prerequisite(DependencyKind.OBJECT_STORAGE, ExternalResource.REFERENCED_CONTENT_CLOSURE));</span>
+    private final ConfigurableEnvironment environment;
+
+    /** Composition supplies property sources that remain stable during the capture interval. */
+<span class="fc" id="L35">    public ApplicationConfigurationBackupContributor(ConfigurableEnvironment source) { this.environment = Objects.requireNonNull(source); }</span>
+<span class="fc" id="L36">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;application&quot;); }</span>
+<span class="fc" id="L37">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L38">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;configuration.application&quot;, &quot;configuration.deployment&quot;,</span>
+            &quot;external.identity-providers&quot;, &quot;external.secret-stores&quot;, &quot;external.object-storage&quot;); }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (!profile.isInstallation()) return List.of(&quot;configuration: administrative deployment values are outside the selected workspace scope&quot;);</span>
+<span class="fc" id="L42">        return List.of(&quot;configuration: only explicitly typed non-secret business values are captured; other deployment properties remain operator-owned&quot;,</span>
+                &quot;configuration: resolved deployment values precede persisted preferences; absent values remain null and require target review&quot;,
+                &quot;configuration: endpoints, paths, credentials, provider backups and external content availability are not inspected or captured&quot;,
+                &quot;configuration: configuration history is not retained; outgoing actions and changed target policy require explicit approval&quot;);
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L48">        BackupProfile profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (!profile.isInstallation()) {</span>
+<span class="fc" id="L50">            PortableRows.document(sink, ENTRY, inventory(profile, Selection.OUTSIDE_SCOPE, null, List.of()));</span>
+<span class="fc" id="L51">            return;</span>
+        }
+        Settings captured;
+        try {
+<span class="fc" id="L55">            var read = new Reader(sink);</span>
+<span class="fc" id="L56">            var preferences = new PreferencesBackupContributor.Settings(</span>
+<span class="fc" id="L57">                    read.integer(&quot;taxonomy.llm.rpm&quot;), read.integer(&quot;taxonomy.llm.timeout-seconds&quot;),</span>
+<span class="fc" id="L58">                    read.integer(&quot;taxonomy.rate-limit.per-minute&quot;), read.integer(&quot;taxonomy.analysis.min-score&quot;),</span>
+<span class="fc" id="L59">                    read.text(&quot;taxonomy.dsl.default-branch&quot;), read.text(&quot;taxonomy.dsl.project-name&quot;),</span>
+<span class="fc" id="L60">                    read.integer(&quot;taxonomy.dsl.auto-save-interval&quot;), read.integer(&quot;taxonomy.limits.max-business-text&quot;),</span>
+<span class="fc" id="L61">                    read.integer(&quot;taxonomy.limits.max-architecture-nodes&quot;), read.integer(&quot;taxonomy.limits.max-export-nodes&quot;),</span>
+<span class="fc" id="L62">                    read.text(&quot;taxonomy.diagram.policy&quot;));</span>
+<span class="fc" id="L63">            var products = new ProductAnalysis(read.integer(&quot;taxonomy.analysis.product.batch-size&quot;),</span>
+<span class="fc" id="L64">                    read.integer(&quot;taxonomy.analysis.product.min-score&quot;));</span>
+<span class="fc" id="L65">            var portfolio = new Portfolio(read.integer(&quot;taxonomy.portfolio.max-import-requirements&quot;),</span>
+<span class="fc" id="L66">                    read.integer(&quot;taxonomy.portfolio.max-import-characters&quot;), read.integer(&quot;taxonomy.portfolio.max-analysis-batch&quot;),</span>
+<span class="fc" id="L67">                    read.integer(&quot;taxonomy.portfolio.snapshot-stale-after-days&quot;));</span>
+<span class="fc" id="L68">            var documents = new Documents(read.longNumber(&quot;taxonomy.limits.document.max-upload-bytes&quot;),</span>
+<span class="fc" id="L69">                    read.integer(&quot;taxonomy.limits.document.max-pdf-pages&quot;), read.integer(&quot;taxonomy.limits.document.max-extracted-characters&quot;),</span>
+<span class="fc" id="L70">                    read.integer(&quot;taxonomy.limits.document.max-candidates&quot;), read.integer(&quot;taxonomy.limits.document.max-llm-characters&quot;),</span>
+<span class="fc" id="L71">                    read.longNumber(&quot;taxonomy.limits.document.max-docx-entry-bytes&quot;), read.longNumber(&quot;taxonomy.limits.document.max-docx-text-bytes&quot;),</span>
+<span class="fc" id="L72">                    read.decimal(&quot;taxonomy.limits.document.min-docx-inflate-ratio&quot;));</span>
+<span class="fc" id="L73">            var features = new Features(read.flag(&quot;taxonomy.features.multi-repository-api.enabled&quot;),</span>
+<span class="fc" id="L74">                    read.flag(&quot;taxonomy.document-templates.direct-word-enabled&quot;), read.flag(&quot;taxonomy.catalogue.overlay.enabled&quot;));</span>
+<span class="fc" id="L75">            captured = new Settings(preferences, products, portfolio, documents, features,</span>
+<span class="fc" id="L76">                    read.integer(&quot;taxonomy.context.max-history&quot;), read.integer(&quot;taxonomy.analysis-draft.max-characters&quot;),</span>
+<span class="fc" id="L77">                    read.text(&quot;taxonomy.report.time-zone&quot;));</span>
+<span class="fc" id="L78">            sink.checkpoint();</span>
+<span class="fc" id="L79">        } catch (InterruptedIOException cancelled) {</span>
+<span class="fc" id="L80">            throw new InterruptedIOException(&quot;Application configuration capture interrupted&quot;);</span>
+<span class="fc" id="L81">        } catch (IOException | RuntimeException invalid) {</span>
+            // Placeholder/conversion/provider diagnostics can contain secrets or private deployment paths.
+<span class="fc" id="L83">            throw new IOException(&quot;Application configuration cannot be exported safely&quot;);</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">        PortableRows.document(sink, ENTRY, inventory(profile, Selection.INSTALLATION_CONFIGURATION, captured, PREREQUISITES));</span>
+<span class="fc" id="L86">    }</span>
+
+    private final class Reader {
+        private final ComponentSink sink;
+<span class="fc" id="L90">        private Reader(ComponentSink sink) { this.sink = sink; }</span>
+        private String text(String key) throws IOException {
+<span class="fc" id="L92">            sink.checkpoint();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            String environmentAlias = key.equals(&quot;taxonomy.document-templates.direct-word-enabled&quot;)</span>
+<span class="fc" id="L94">                    ? &quot;TAXONOMY_DIRECT_WORD_ENABLED&quot;</span>
+<span class="fc" id="L95">                    : key.toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_');</span>
+<span class="fc" id="L96">            var filtered = new MutablePropertySources();</span>
+<span class="fc" id="L97">            filtered.addLast(new PropertySource&lt;Object&gt;(&quot;backup-business-value&quot;) {</span>
+                @Override public Object getProperty(String name) {
+                    // Spring first probes the entire placeholder text before its key. Decline
+                    // these probes without reading a property named after a fallback expression.
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">                    if (name.startsWith(key + &quot;:&quot;) || name.startsWith(environmentAlias + &quot;:&quot;)) return null;</span>
+                    // Restrict nested placeholders too, before touching the underlying source. Returning
+                    // null here would incorrectly permit an unreviewed placeholder's fallback value.
+<span class="fc bfc" id="L104" title="All 4 branches covered.">                    if (!name.equals(key) &amp;&amp; !name.equals(environmentAlias)) throw new IllegalArgumentException(&quot;Unreviewed configuration reference&quot;);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    for (PropertySource&lt;?&gt; properties : environment.getPropertySources()) {</span>
+<span class="fc" id="L106">                        Object value = properties.getProperty(name);</span>
+<span class="fc bfc" id="L107" title="All 4 branches covered.">                        if (value instanceof CharSequence text &amp;&amp; text.length() &gt; MAX_VALUE_LENGTH)</span>
+<span class="fc" id="L108">                            throw new IllegalArgumentException(&quot;Configuration value limit exceeded&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                        if (value != null) return value;</span>
+<span class="fc" id="L110">                    }</span>
+<span class="fc" id="L111">                    return null;</span>
+                }
+            });
+<span class="fc" id="L114">            String value = new PropertySourcesPropertyResolver(filtered).getProperty(key);</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">            if (value != null &amp;&amp; value.length() &gt; MAX_VALUE_LENGTH) throw new IOException(&quot;Configuration value limit exceeded&quot;);</span>
+<span class="fc" id="L116">            return value;</span>
+        }
+        private &lt;T&gt; T converted(String key, Class&lt;T&gt; type) throws IOException {
+<span class="fc" id="L119">            String value = text(key);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            if (value == null) return null;</span>
+<span class="fc" id="L121">            T result = DefaultConversionService.getSharedInstance().convert(value, type);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (result == null) throw new IOException(&quot;Empty typed configuration value&quot;);</span>
+<span class="fc" id="L123">            return result;</span>
+        }
+<span class="fc" id="L125">        private Integer integer(String key) throws IOException { return converted(key, Integer.class); }</span>
+<span class="fc" id="L126">        private Long longNumber(String key) throws IOException { return converted(key, Long.class); }</span>
+<span class="fc" id="L127">        private Boolean flag(String key) throws IOException { return converted(key, Boolean.class); }</span>
+        private String decimal(String key) throws IOException {
+<span class="fc" id="L129">            BigDecimal number = converted(key, BigDecimal.class);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (number == null) return null;</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">            if (Math.abs((long) number.scale()) &gt; 32 || number.precision() &gt; 32)</span>
+<span class="fc" id="L132">                throw new IOException(&quot;Configuration decimal limit exceeded&quot;);</span>
+<span class="fc" id="L133">            return number.stripTrailingZeros().toPlainString();</span>
+        }
+    }
+
+    private static ExternalPrerequisite prerequisite(DependencyKind kind, ExternalResource... resources) {
+<span class="fc" id="L138">        return new ExternalPrerequisite(kind, ExternalStatus.NOT_CAPTURED_OPERATOR_VERIFICATION_REQUIRED, List.of(resources));</span>
+    }
+    private static Inventory inventory(BackupProfile profile, Selection selection, Settings settings, List&lt;ExternalPrerequisite&gt; prerequisites) {
+<span class="fc" id="L141">        return new Inventory(1, profile, selection, SettingsBasis.DEPLOYMENT_VALUES_BEFORE_PREFERENCES, settings,</span>
+                prerequisites, RestorePolicy.MANUAL_TARGET_REVIEW, AutomaticExecution.DISABLED_UNTIL_APPROVED);
+    }
+
+<span class="fc" id="L145">    public enum Selection { INSTALLATION_CONFIGURATION, OUTSIDE_SCOPE }</span>
+<span class="fc" id="L146">    public enum SettingsBasis { DEPLOYMENT_VALUES_BEFORE_PREFERENCES }</span>
+<span class="fc" id="L147">    public enum RestorePolicy { MANUAL_TARGET_REVIEW }</span>
+<span class="fc" id="L148">    public enum AutomaticExecution { DISABLED_UNTIL_APPROVED }</span>
+<span class="fc" id="L149">    public enum DependencyKind { DEPLOYMENT, IDENTITY_PROVIDERS, SECRET_STORES, OBJECT_STORAGE }</span>
+<span class="fc" id="L150">    public enum ExternalStatus { NOT_CAPTURED_OPERATOR_VERIFICATION_REQUIRED }</span>
+<span class="fc" id="L151">    public enum ExternalResource {</span>
+<span class="fc" id="L152">        DATABASE_ENDPOINTS_AND_CREDENTIALS, NETWORK_AND_TLS, FILESYSTEM_PATHS, RUNTIME_LIMITS_AND_SECURITY_POLICY,</span>
+<span class="fc" id="L153">        CATALOGUE_SOURCE_LOCATIONS, LLM_AND_INTEGRATION_TARGETS, PROVIDER_CONFIGURATION_AND_BACKUP,</span>
+<span class="fc" id="L154">        VERIFIED_PRINCIPAL_BINDINGS, ENCRYPTION_KEY_CUSTODY, REMOTE_CREDENTIALS, REFERENCED_CONTENT_CLOSURE</span>
+    }
+<span class="fc" id="L156">    public record ProductAnalysis(Integer batchSize, Integer minimumScore) { }</span>
+<span class="fc" id="L157">    public record Portfolio(Integer maximumImportRequirements, Integer maximumImportCharacters,</span>
+                            Integer maximumAnalysisBatch, Integer snapshotStaleAfterDays) { }
+<span class="fc" id="L159">    public record Documents(Long maximumUploadBytes, Integer maximumPdfPages, Integer maximumExtractedCharacters,</span>
+                            Integer maximumCandidates, Integer maximumLlmCharacters, Long maximumDocxEntryBytes,
+                            Long maximumDocxTextBytes, String minimumDocxInflateRatio) { }
+<span class="fc" id="L162">    public record Features(Boolean multiRepositoryApi, Boolean directWordEditing, Boolean catalogueOverlay) { }</span>
+<span class="fc" id="L163">    public record Settings(PreferencesBackupContributor.Settings preferenceDefaults, ProductAnalysis productAnalysis,</span>
+                           Portfolio portfolio, Documents documents, Features features, Integer maximumContextHistory,
+                           Integer maximumAnalysisDraftCharacters, String reportTimeZone) { }
+    public record ExternalPrerequisite(DependencyKind kind, ExternalStatus status, List&lt;ExternalResource&gt; resources) {
+<span class="fc" id="L167">        public ExternalPrerequisite { resources = List.copyOf(resources); }</span>
+    }
+    public record Inventory(int schemaVersion, BackupProfile profile, Selection selection, SettingsBasis settingsBasis,
+                            Settings settings, List&lt;ExternalPrerequisite&gt; externalPrerequisites,
+                            RestorePolicy restorePolicy, AutomaticExecution automaticExecution) {
+<span class="fc" id="L172">        public Inventory { externalPrerequisites = List.copyOf(externalPrerequisites); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureArtifactEnvelope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.artifact</a> &gt; <span class="el_source">ArchitectureArtifactEnvelope.java</span></div><h1>ArchitectureArtifactEnvelope.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.artifact;
+
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/**
+ * Deterministic envelope binding an export payload to one immutable snapshot and
+ * one explicit loss profile.
+ */
+public record ArchitectureArtifactEnvelope(
+        String schemaVersion,
+        String artifactId,
+        ArchitectureArtifactFormat format,
+        ArchitectureArtifactSource source,
+        String mediaType,
+        String fileName,
+        String payloadSha256,
+        ArchitectureArtifactLossManifest lossManifest,
+        String payload) {
+
+    public static final String SCHEMA_VERSION = &quot;1.0&quot;;
+
+<span class="fc" id="L23">    private static final Pattern SHA256 =</span>
+<span class="fc" id="L24">            Pattern.compile(&quot;[0-9a-f]{64}&quot;);</span>
+<span class="fc" id="L25">    private static final Pattern SAFE_FILE_NAME =</span>
+<span class="fc" id="L26">            Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,127}&quot;);</span>
+
+<span class="fc" id="L28">    public ArchitectureArtifactEnvelope {</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        if (!SCHEMA_VERSION.equals(schemaVersion)) {</span>
+<span class="fc" id="L30">            throw new IllegalArgumentException(&quot;Unsupported schemaVersion&quot;);</span>
+        }
+<span class="fc" id="L32">        artifactId = requireSha256(artifactId, &quot;artifactId&quot;);</span>
+<span class="fc" id="L33">        format = Objects.requireNonNull(format, &quot;format&quot;);</span>
+<span class="fc" id="L34">        source = Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (!format.mediaType().equals(mediaType)) {</span>
+<span class="nc" id="L36">            throw new IllegalArgumentException(</span>
+                    &quot;mediaType does not match format &quot; + format);
+        }
+<span class="fc" id="L39">        fileName = requireFileName(fileName, format);</span>
+<span class="fc" id="L40">        payloadSha256 = requireSha256(payloadSha256, &quot;payloadSha256&quot;);</span>
+<span class="fc" id="L41">        lossManifest = Objects.requireNonNull(lossManifest, &quot;lossManifest&quot;);</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">        if (payload == null || payload.isBlank()) {</span>
+<span class="nc" id="L43">            throw new IllegalArgumentException(&quot;payload must not be blank&quot;);</span>
+        }
+<span class="fc" id="L45">        String expectedPayloadSha256 =</span>
+<span class="fc" id="L46">                ArchitectureArtifactEnvelopeFactory.payloadSha256(payload);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (!payloadSha256.equals(expectedPayloadSha256)) {</span>
+<span class="nc" id="L48">            throw new IllegalArgumentException(</span>
+                    &quot;payloadSha256 does not match payload&quot;);
+        }
+<span class="fc" id="L51">        String expectedArtifactId =</span>
+<span class="fc" id="L52">                ArchitectureArtifactEnvelopeFactory.artifactId(</span>
+                        format,
+                        source,
+                        fileName,
+                        payloadSha256,
+                        lossManifest);
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (!artifactId.equals(expectedArtifactId)) {</span>
+<span class="nc" id="L59">            throw new IllegalArgumentException(</span>
+                    &quot;artifactId does not match envelope identity&quot;);
+        }
+<span class="fc" id="L62">    }</span>
+
+    static String requireFileName(
+            String fileName,
+            ArchitectureArtifactFormat format) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (fileName == null</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                || !SAFE_FILE_NAME.matcher(fileName).matches()</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                || !fileName.endsWith(format.fileSuffix())) {</span>
+<span class="fc" id="L70">            throw new IllegalArgumentException(</span>
+                    &quot;Unsafe or format-incompatible fileName&quot;);
+        }
+<span class="fc" id="L73">        return fileName;</span>
+    }
+
+    private static String requireSha256(String value, String field) {
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">        if (value == null || !SHA256.matcher(value).matches()) {</span>
+<span class="nc" id="L78">            throw new IllegalArgumentException(</span>
+                    field + &quot; must be a lowercase SHA-256 value&quot;);
+        }
+<span class="fc" id="L81">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

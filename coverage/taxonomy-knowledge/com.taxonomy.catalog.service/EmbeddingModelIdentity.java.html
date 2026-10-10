@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EmbeddingModelIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">EmbeddingModelIdentity.java</span></div><h1>EmbeddingModelIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/** Content identity of the actual loaded model, tokenizer and scoring configuration; paths are not identity. */
+public record EmbeddingModelIdentity(String modelSha256, String tokenizerSha256,
+                                     Map&lt;String, String&gt; configurationSha256, String queryPrefix,
+                                     String inferenceVersion) {
+<span class="fc" id="L17">    public static final String INFERENCE_VERSION = &quot;djl-&quot; + ai.djl.Model.class.getPackage().getSpecificationVersion()</span>
+<span class="fc" id="L18">            + &quot;:tokenizer-&quot; + ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory.class.getPackage().getSpecificationVersion()</span>
+            + &quot;:onnx:cls:normalize:token-types:384:lucene-&quot; + org.apache.lucene.util.Version.LATEST + &quot;:cosine:v1&quot;;
+
+<span class="fc" id="L21">    public EmbeddingModelIdentity {</span>
+<span class="fc" id="L22">        requireHash(modelSha256);</span>
+<span class="fc" id="L23">        requireHash(tokenizerSha256);</span>
+<span class="fc" id="L24">        configurationSha256 = Map.copyOf(configurationSha256);</span>
+<span class="fc" id="L25">        configurationSha256.values().forEach(EmbeddingModelIdentity::requireHash);</span>
+<span class="fc" id="L26">        queryPrefix = Objects.requireNonNull(queryPrefix, &quot;queryPrefix&quot;);</span>
+<span class="pc bpc" id="L27" title="2 of 4 branches missed.">        if (inferenceVersion == null || inferenceVersion.isBlank()) {</span>
+<span class="nc" id="L28">            throw new IllegalArgumentException(&quot;Embedding inference version is required&quot;);</span>
+        }
+<span class="fc" id="L30">    }</span>
+
+    public static EmbeddingModelIdentity capture(Path directory, String queryPrefix) throws IOException {
+<span class="fc" id="L33">        return capture(directory, queryPrefix, INFERENCE_VERSION);</span>
+    }
+
+    public static EmbeddingModelIdentity capture(Path directory, String queryPrefix,
+                                                 EmbeddingModelProfile profile) throws IOException {
+<span class="fc" id="L38">        String version = &quot;djl-&quot; + ai.djl.Model.class.getPackage().getSpecificationVersion()</span>
+<span class="fc" id="L39">                + &quot;:tokenizer-&quot; + ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory.class.getPackage().getSpecificationVersion()</span>
+                + &quot;:onnx:normalize:token-types:384:lucene-&quot; + org.apache.lucene.util.Version.LATEST
+<span class="fc" id="L41">                + &quot;:cosine:v2:profile-&quot; + profile.name()</span>
+<span class="fc" id="L42">                + &quot;:pooling-&quot; + profile.pooling() + &quot;:max-tokens-&quot; + profile.maxTokens()</span>
+<span class="fc" id="L43">                + &quot;:document-prefix-&quot; + com.taxonomy.identity.StableIdentityHash.sha256(profile.documentPrefix());</span>
+<span class="fc" id="L44">        return capture(directory, queryPrefix, version);</span>
+    }
+
+    /** Canonical keyword attached to each indexed vector; never compare unlike vector spaces. */
+    public String indexKey() {
+<span class="fc" id="L49">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L50">        append(text, modelSha256); append(text, tokenizerSha256);</span>
+<span class="fc" id="L51">        new java.util.TreeMap&lt;&gt;(configurationSha256).forEach((name, hash) -&gt; {</span>
+<span class="fc" id="L52">            append(text, name); append(text, hash);</span>
+<span class="fc" id="L53">        });</span>
+<span class="fc" id="L54">        append(text, queryPrefix); append(text, inferenceVersion);</span>
+<span class="fc" id="L55">        return com.taxonomy.identity.StableIdentityHash.sha256(text.toString());</span>
+    }
+
+    private static void append(StringBuilder text, String field) {
+<span class="fc" id="L59">        text.append(field.length()).append(':').append(field);</span>
+<span class="fc" id="L60">    }</span>
+
+    private static EmbeddingModelIdentity capture(Path directory, String queryPrefix, String inferenceVersion) throws IOException {
+<span class="fc" id="L63">        String model = hashFile(directory.resolve(&quot;model.onnx&quot;), true);</span>
+<span class="fc" id="L64">        String tokenizer = hashFile(directory.resolve(&quot;tokenizer.json&quot;), true);</span>
+<span class="fc" id="L65">        Map&lt;String, String&gt; configuration = new LinkedHashMap&lt;&gt;();</span>
+        // Serving properties can change tokenizer options; ONNX models can use companion weight files.
+        // Hash the complete self-contained artifact bundle instead of guessing a subset of option names.
+<span class="fc" id="L68">        try (var paths = Files.walk(directory, java.nio.file.FileVisitOption.FOLLOW_LINKS)) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            for (Path file : paths.filter(Files::isRegularFile).sorted().toList()) {</span>
+<span class="fc" id="L70">                String name = directory.relativize(file).toString().replace('\\', '/');</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">                if (!name.equals(&quot;model.onnx&quot;) &amp;&amp; !name.equals(&quot;tokenizer.json&quot;)) {</span>
+<span class="fc" id="L72">                    configuration.put(name, hashFile(file, false));</span>
+                }
+<span class="fc" id="L74">            }</span>
+        }
+<span class="fc" id="L76">        return new EmbeddingModelIdentity(model, tokenizer, configuration,</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                queryPrefix == null ? &quot;&quot; : queryPrefix, inferenceVersion);</span>
+    }
+
+    private static String hashFile(Path file, boolean required) throws IOException {
+<span class="pc bpc" id="L81" title="1 of 6 branches missed.">        if (!Files.isRegularFile(file) || required &amp;&amp; Files.size(file) == 0) {</span>
+<span class="fc" id="L82">            throw new IOException(&quot;Required embedding artifact is missing or empty: &quot; + file.getFileName());</span>
+        }
+        try {
+<span class="fc" id="L85">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L86">            try (var input = Files.newInputStream(file)) {</span>
+<span class="fc" id="L87">                byte[] buffer = new byte[64 * 1024];</span>
+                int count;
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                while ((count = input.read(buffer)) &gt;= 0) digest.update(buffer, 0, count);</span>
+            }
+<span class="fc" id="L91">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L92">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L93">            throw new IllegalStateException(impossible);</span>
+        }
+    }
+
+    private static void requireHash(String value) {
+<span class="pc bpc" id="L98" title="2 of 4 branches missed.">        if (value == null || !value.matches(&quot;[a-f0-9]{64}&quot;)) {</span>
+<span class="nc" id="L99">            throw new IllegalArgumentException(&quot;Embedding artifact requires a SHA-256 identity&quot;);</span>
+        }
+<span class="fc" id="L101">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

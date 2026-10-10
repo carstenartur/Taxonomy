@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationBaseline.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reformulation</a> &gt; <span class="el_source">ReformulationBaseline.java</span></div><h1>ReformulationBaseline.java</h1><pre class="source lang-java linenums">package com.taxonomy.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import java.util.Map;
+import java.util.Objects;
+
+/** Exact immutable source and context CONTENT; no framework or active-version authority. */
+public record ReformulationBaseline(Scope scope, long sourceVersionId, String originalText,
+        String originalTextHash, String snapshotId, String snapshotPayload,
+        Map&lt;String,String&gt; frozenContext, String language, String algorithmVersion) {
+<span class="fc" id="L11">    public ReformulationBaseline {</span>
+<span class="fc" id="L12">        Objects.requireNonNull(scope, &quot;scope&quot;);</span>
+<span class="pc bpc" id="L13" title="1 of 2 branches missed.">        if (sourceVersionId &lt;= 0) throw new IllegalArgumentException(&quot;sourceVersionId must be positive&quot;);</span>
+<span class="fc" id="L14">        Objects.requireNonNull(originalText, &quot;originalText&quot;);</span>
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (!StableIdentityHash.sha256(originalText).equals(originalTextHash))</span>
+<span class="nc" id="L16">            throw new IllegalArgumentException(&quot;Original text hash does not match exact source&quot;);</span>
+<span class="fc" id="L17">        requireText(snapshotId,&quot;snapshotId&quot;); requireText(snapshotPayload,&quot;snapshotPayload&quot;);</span>
+<span class="fc" id="L18">        frozenContext = Map.copyOf(frozenContext);</span>
+<span class="fc bfc" id="L19" title="All 4 branches covered.">        if (!&quot;de&quot;.equals(language) &amp;&amp; !&quot;en&quot;.equals(language)) throw new IllegalArgumentException(&quot;language must be de or en&quot;);</span>
+<span class="fc" id="L20">        requireText(algorithmVersion,&quot;algorithmVersion&quot;);</span>
+<span class="fc" id="L21">    }</span>
+    public static ReformulationBaseline freeze(Source source, Snapshot snapshot, Map&lt;String,String&gt; content,
+            String language, String algorithmVersion) {
+<span class="fc bfc" id="L24" title="All 4 branches covered.">        if (!source.scope().equals(snapshot.scope()) || source.versionId() != snapshot.sourceVersionId())</span>
+<span class="fc" id="L25">            throw new IllegalArgumentException(&quot;Snapshot must match the exact requirement, version and scope&quot;);</span>
+<span class="fc" id="L26">        return new ReformulationBaseline(source.scope(),source.versionId(),source.text(),StableIdentityHash.sha256(source.text()),</span>
+<span class="fc" id="L27">                snapshot.id(),snapshot.payload(),content,language,algorithmVersion);</span>
+    }
+    public record Scope(String repositoryId, String workspaceId, String branch, long projectId, long requirementId) {
+<span class="fc" id="L30">        public Scope {</span>
+<span class="fc" id="L31">            requireText(repositoryId,&quot;repositoryId&quot;); requireText(branch,&quot;branch&quot;);</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (workspaceId != null) requireText(workspaceId,&quot;workspaceId&quot;);</span>
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">            if (projectId &lt;= 0 || requirementId &lt;= 0) throw new IllegalArgumentException(&quot;Project and requirement IDs must be positive&quot;);</span>
+<span class="fc" id="L34">        }</span>
+    }
+    public record Source(Scope scope, long versionId, String text) {
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        public Source { Objects.requireNonNull(scope); Objects.requireNonNull(text); if(versionId&lt;=0) throw new IllegalArgumentException(&quot;versionId&quot;); }</span>
+    }
+    public record Snapshot(Scope scope, String id, long sourceVersionId, String payload) {
+<span class="fc" id="L40">        public Snapshot { Objects.requireNonNull(scope); requireText(id,&quot;snapshotId&quot;); requireText(payload,&quot;payload&quot;); }</span>
+    }
+    static String requireText(String value,String field) {
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">        if(value==null || value.isBlank()) throw new IllegalArgumentException(field+&quot; is required&quot;); return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

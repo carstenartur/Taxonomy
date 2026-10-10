@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisConnection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisConnection.java</span></div><h1>ArtemisAnalysisConnection.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dag.AnalysisTransportUnavailableException;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+import org.apache.activemq.artemis.api.core.client.FailoverEventType;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnection;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * One shared, self-reconnecting JMS connection to an external Artemis broker.
+ *
+ * &lt;p&gt;The connection is opened on a background thread so application startup
+ * never blocks on the broker. Artemis' own failover/reconnect logic re-attaches
+ * sessions and consumers; this class only reports the transitions so that
+ * dispatch recovery runs on &lt;em&gt;events&lt;/em&gt; — first connect and reconnect —
+ * rather than on a timer.&lt;/p&gt;
+ */
+public final class ArtemisAnalysisConnection implements AutoCloseable {
+
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(ArtemisAnalysisConnection.class);</span>
+
+    /** Observable connection state; contains no broker address or credential. */
+<span class="fc" id="L31">    public enum State { CONNECTING, CONNECTED, RECONNECTING, FAILED, CLOSED }</span>
+
+    /** Callback after the connection is usable. */
+    @FunctionalInterface
+    public interface Listener {
+        /** @param reconnect {@code false} for the first connection, {@code true} after a detected failure */
+        void connected(boolean reconnect);
+    }
+
+    private final ActiveMQConnectionFactory factory;
+<span class="fc" id="L41">    private final List&lt;Listener&gt; listeners = new CopyOnWriteArrayList&lt;&gt;();</span>
+<span class="fc" id="L42">    private volatile State state = State.CONNECTING;</span>
+    private volatile Connection connection;
+    private volatile Thread connector;
+
+<span class="fc" id="L46">    public ArtemisAnalysisConnection(ActiveMQConnectionFactory factory) {</span>
+<span class="fc" id="L47">        this.factory = Objects.requireNonNull(factory, &quot;factory&quot;);</span>
+<span class="fc" id="L48">    }</span>
+
+    public void addListener(Listener listener) {
+<span class="fc" id="L51">        listeners.add(Objects.requireNonNull(listener, &quot;listener&quot;));</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (state == State.CONNECTED) listener.connected(false);</span>
+<span class="fc" id="L53">    }</span>
+
+    /** Start connecting in the background; returns immediately. */
+    public synchronized void start() {
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">        if (connector != null || state == State.CLOSED) return;</span>
+<span class="fc" id="L58">        connector = Thread.ofPlatform().daemon().name(&quot;taxonomy-analysis-broker-connect&quot;).start(this::connect);</span>
+<span class="fc" id="L59">    }</span>
+
+    private void connect() {
+        try {
+<span class="fc" id="L63">            Connection opened = factory.createConnection();</span>
+<span class="fc" id="L64">            ((ActiveMQConnection) opened).setFailoverListener(this::failover);</span>
+            // Artemis reports transient failures here asynchronously, possibly after the reconnect
+            // completed; the failover events above are the authoritative state transitions.
+<span class="fc" id="L67">            opened.setExceptionListener(failure -&gt; log.debug(&quot;Analysis broker connection exception ({})&quot;,</span>
+<span class="fc" id="L68">                    failure.getClass().getSimpleName()));</span>
+<span class="fc" id="L69">            opened.start();</span>
+<span class="fc" id="L70">            synchronized (this) {</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (state == State.CLOSED) {</span>
+<span class="nc" id="L72">                    opened.close();</span>
+<span class="nc" id="L73">                    return;</span>
+                }
+<span class="fc" id="L75">                connection = opened;</span>
+<span class="fc" id="L76">                state = State.CONNECTED;</span>
+<span class="fc" id="L77">            }</span>
+<span class="fc" id="L78">            log.info(&quot;Analysis broker connection established&quot;);</span>
+<span class="fc" id="L79">            notifyListeners(false);</span>
+<span class="fc" id="L80">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (state != State.CLOSED) {</span>
+<span class="nc" id="L82">                state = State.FAILED;</span>
+<span class="nc" id="L83">                log.warn(&quot;Analysis broker connection could not be established ({})&quot;,</span>
+<span class="nc" id="L84">                        failure.getClass().getSimpleName());</span>
+            }
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">    }</span>
+
+    private void failover(FailoverEventType type) {
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        if (state == State.CLOSED) return;</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">        switch (type) {</span>
+            case FAILURE_DETECTED -&gt; {
+<span class="fc" id="L93">                state = State.RECONNECTING;</span>
+<span class="fc" id="L94">                log.warn(&quot;Analysis broker connection lost; reconnecting&quot;);</span>
+<span class="fc" id="L95">            }</span>
+            case FAILOVER_COMPLETED -&gt; {
+<span class="fc" id="L97">                state = State.CONNECTED;</span>
+<span class="fc" id="L98">                log.info(&quot;Analysis broker connection re-established&quot;);</span>
+                // Listener work (e.g. dispatch recovery) must not run on the client's failover thread.
+<span class="fc" id="L100">                Thread.ofPlatform().daemon().name(&quot;taxonomy-analysis-broker-reconnected&quot;)</span>
+<span class="fc" id="L101">                        .start(() -&gt; notifyListeners(true));</span>
+<span class="fc" id="L102">            }</span>
+            case FAILOVER_FAILED -&gt; {
+<span class="nc" id="L104">                state = State.FAILED;</span>
+<span class="nc" id="L105">                log.warn(&quot;Analysis broker reconnection failed&quot;);</span>
+            }
+        }
+<span class="fc" id="L108">    }</span>
+
+    private void notifyListeners(boolean reconnect) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (Listener listener : listeners) {</span>
+            try {
+<span class="fc" id="L113">                listener.connected(reconnect);</span>
+<span class="nc" id="L114">            } catch (RuntimeException failure) {</span>
+<span class="nc" id="L115">                log.warn(&quot;Analysis broker connection listener failed ({})&quot;, failure.getClass().getSimpleName());</span>
+<span class="fc" id="L116">            }</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">    }</span>
+
+    public State state() {
+<span class="fc" id="L121">        return state;</span>
+    }
+
+    public boolean connected() {
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        return state == State.CONNECTED;</span>
+    }
+
+    /** Create a session, failing fast while the broker is not reachable. */
+    public Session createSession(boolean transacted) {
+<span class="fc" id="L130">        Connection current = connection;</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">        if (current == null || state != State.CONNECTED) {</span>
+<span class="fc" id="L132">            throw new AnalysisTransportUnavailableException(&quot;Analysis broker is not connected&quot;, null);</span>
+        }
+        try {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            return transacted ? current.createSession(true, Session.SESSION_TRANSACTED)</span>
+<span class="fc" id="L136">                    : current.createSession(false, Session.AUTO_ACKNOWLEDGE);</span>
+<span class="nc" id="L137">        } catch (JMSException failure) {</span>
+<span class="nc" id="L138">            throw new AnalysisTransportUnavailableException(&quot;Analysis broker session unavailable&quot;, failure);</span>
+        }
+    }
+
+    @Override
+    public void close() {
+        Connection current;
+<span class="fc" id="L145">        synchronized (this) {</span>
+<span class="fc" id="L146">            state = State.CLOSED;</span>
+<span class="fc" id="L147">            current = connection;</span>
+<span class="fc" id="L148">            connection = null;</span>
+<span class="fc" id="L149">        }</span>
+        try {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (current != null) current.close();</span>
+<span class="nc" id="L152">        } catch (JMSException ignored) {</span>
+            // Closing is best effort; the broker redelivers unacknowledged work.
+        } finally {
+<span class="fc" id="L155">            factory.close();</span>
+<span class="fc" id="L156">            Thread pending = connector;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (pending != null) pending.interrupt();</span>
+        }
+<span class="fc" id="L159">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

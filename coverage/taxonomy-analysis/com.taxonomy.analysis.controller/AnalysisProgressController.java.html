@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisProgressController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisProgressController.java</span></div><h1>AnalysisProgressController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.cluster.ClusterAnalysisObservation;
+import com.taxonomy.analysis.cluster.ClusterAnalysisView;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+
+/** Read-only live telemetry plus explicit cooperative cancellation; never starts analysis. */
+@RestController
+@RequestMapping(&quot;/api/analysis-runs&quot;)
+@Tag(name = &quot;Analysis progress&quot;, description = &quot;Scoped observation and cancellation of existing analyses&quot;)
+public class AnalysisProgressController {
+    private final AnalysisProgressRegistry registry;
+    private final WorkspaceResolver workspaceResolver;
+    private final ClusterAnalysisObservation cluster;
+
+    public AnalysisProgressController(AnalysisProgressRegistry registry, WorkspaceResolver workspaceResolver) {
+<span class="fc" id="L46">        this(registry, workspaceResolver, (ClusterAnalysisObservation) null);</span>
+<span class="fc" id="L47">    }</span>
+
+    @Autowired
+    public AnalysisProgressController(AnalysisProgressRegistry registry, WorkspaceResolver workspaceResolver,
+                                      ObjectProvider&lt;ClusterAnalysisObservation&gt; cluster) {
+<span class="fc" id="L52">        this(registry, workspaceResolver, cluster.getIfAvailable());</span>
+<span class="fc" id="L53">    }</span>
+
+    public AnalysisProgressController(AnalysisProgressRegistry registry, WorkspaceResolver workspaceResolver,
+<span class="fc" id="L56">                                      ClusterAnalysisObservation cluster) {</span>
+<span class="fc" id="L57">        this.registry = registry;</span>
+<span class="fc" id="L58">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L59">        this.cluster = cluster;</span>
+<span class="fc" id="L60">    }</span>
+
+    @Operation(summary = &quot;List recent visible analysis runs&quot;,
+            description = &quot;Returns bounded durable cluster and local observations in the authenticated workspace, repository and branch. Never starts work.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Visible recent runs&quot;, content = @Content(
+            array = @ArraySchema(schema = @Schema(oneOf = {AnalysisProgressRegistry.Snapshot.class, ClusterAnalysisView.class}))))
+    @GetMapping
+    public ResponseEntity&lt;List&lt;?&gt;&gt; recent(
+            @Parameter(description = &quot;Restrict results to this project&quot;) @RequestParam(required = false) Long projectId,
+            @Parameter(description = &quot;Restrict results to this requirement&quot;) @RequestParam(required = false) Long requirementId) {
+<span class="fc" id="L70">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L71">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (cluster == null) return privateResponse(registry.recent(owner, context, projectId, requirementId));</span>
+<span class="fc" id="L73">        var visible = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L74">        cluster.recent(owner, context, projectId, requirementId)</span>
+<span class="fc" id="L75">                .forEach(view -&gt; visible.put(view.snapshot().operationId(), view));</span>
+<span class="fc" id="L76">        registry.recent(owner, context, projectId, requirementId)</span>
+<span class="fc" id="L77">                .forEach(view -&gt; visible.putIfAbsent(view.operationId(), view));</span>
+<span class="fc" id="L78">        return privateResponse(new ArrayList&lt;&gt;(visible.values()));</span>
+    }
+
+    @Operation(summary = &quot;Read analysis progress&quot;, description = &quot;Prefers authoritative durable cluster state when present. Local observations retain the compatibility response shape.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Current progress&quot;, content = @Content(
+            schema = @Schema(oneOf = {AnalysisProgressRegistry.Snapshot.class, ClusterAnalysisView.class})))
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Registration has not yet been observed; no analysis was started&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Analysis absent or outside the authenticated scope&quot;)
+    @GetMapping(&quot;/{operationId}&quot;)
+    public ResponseEntity&lt;?&gt; status(
+            @Parameter(description = &quot;Existing analysis operation identifier&quot;) @PathVariable String operationId,
+            @Parameter(description = &quot;Allow a pending response while the initial analysis request is registering&quot;)
+            @RequestParam(defaultValue = &quot;false&quot;) boolean waitForRegistration) {
+<span class="fc" id="L91">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L92">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+        // A known foreign durable record must remain 404, never pending or a local fallback.
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (cluster != null) {</span>
+<span class="fc" id="L95">            var durable = cluster.snapshot(operationId, owner, context);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (durable.isPresent()) return privateResponse(durable.get());</span>
+        }
+        try {
+<span class="fc" id="L99">            return privateResponse(registry.snapshot(operationId, owner, context));</span>
+<span class="fc" id="L100">        } catch (ResponseStatusException unavailable) {</span>
+<span class="fc bfc" id="L101" title="All 4 branches covered.">            if (!waitForRegistration || unavailable.getStatusCode().value() != 404) throw unavailable;</span>
+            // An early poll can precede POST registration. Reveal no foreign run and allocate no work.
+            // This acknowledges a pending observation, not acceptance of the analysis request itself.
+<span class="fc" id="L104">            return ResponseEntity.accepted().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L105">                    .header(&quot;Retry-After&quot;, &quot;1&quot;).build();</span>
+        }
+    }
+
+    @Operation(summary = &quot;Read bounded local call diagnostics&quot;,
+            description = &quot;Loads retained prompt/response diagnostics only after an explicit request in the original authenticated scope.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Retained call diagnostics&quot;, content = @Content(
+            schema = @Schema(implementation = AnalysisProgressRegistry.CallDetail.class)))
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Run or diagnostics absent, or outside the authenticated scope&quot;)
+    @GetMapping(&quot;/{operationId}/calls/{callId}&quot;)
+    public ResponseEntity&lt;AnalysisProgressRegistry.CallDetail&gt; detail(
+            @Parameter(description = &quot;Existing analysis operation identifier&quot;) @PathVariable String operationId,
+            @Parameter(description = &quot;Call identifier from the progress snapshot&quot;) @PathVariable long callId) {
+<span class="fc" id="L118">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L119">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L120" title="3 of 4 branches missed.">        if (cluster != null &amp;&amp; cluster.snapshot(operationId, owner, context).isPresent()) throw notFound();</span>
+<span class="fc" id="L121">        return privateResponse(registry.callDetail(operationId, callId, owner, context));</span>
+    }
+
+    @Operation(summary = &quot;Cancel an existing analysis&quot;, description = &quot;Cluster cancellation is persisted before it is published to workers. Local runs stop cooperatively.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Authoritative cancellation state&quot;, content = @Content(
+            schema = @Schema(oneOf = {AnalysisProgressRegistry.Snapshot.class, ClusterAnalysisView.class})))
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Analysis absent or outside the authenticated scope&quot;)
+    @PostMapping(&quot;/{operationId}/cancel&quot;)
+    public ResponseEntity&lt;?&gt; cancel(
+            @Parameter(description = &quot;Existing analysis operation identifier&quot;) @PathVariable String operationId) {
+<span class="fc" id="L131">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L132">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (cluster != null) {</span>
+<span class="fc" id="L134">            var durable = cluster.cancel(operationId, owner, context);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (durable.isPresent()) return privateResponse(durable.get());</span>
+        }
+<span class="fc" id="L137">        return privateResponse(registry.cancel(operationId, owner, context));</span>
+    }
+
+    @Operation(summary = &quot;Observe durable analysis events&quot;,
+            description = &quot;Replays durable snapshots and then follows event notifications. SSE ids are monotonic operation sequences; reconnect resumes after the greater of afterSequence and Last-Event-ID. Does not start analysis or poll for work.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Scoped snapshot/progress event stream&quot;, content = @Content(
+            mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = @Schema(implementation = ClusterAnalysisView.class)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid replay cursor&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Cluster analysis absent or outside the authenticated scope&quot;)
+    @GetMapping(value = &quot;/{operationId}/events&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity&lt;SseEmitter&gt; events(
+            @Parameter(description = &quot;Existing cluster analysis operation identifier&quot;) @PathVariable String operationId,
+            @Parameter(description = &quot;Last accepted sequence from an initial durable snapshot&quot;, schema = @Schema(minimum = &quot;0&quot;))
+            @RequestParam(defaultValue = &quot;0&quot;) long afterSequence,
+            @Parameter(description = &quot;Last SSE event identifier automatically supplied during reconnect&quot;)
+            @RequestHeader(value = &quot;Last-Event-ID&quot;, required = false) String lastEventId) {
+<span class="fc" id="L153">        long cursor = replayCursor(afterSequence, lastEventId);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (cluster == null) throw notFound();</span>
+<span class="fc" id="L155">        String owner = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L156">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L157">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(&quot;X-Accel-Buffering&quot;, &quot;no&quot;)</span>
+<span class="fc" id="L158">                .body(cluster.events(operationId, owner, context, cursor));</span>
+    }
+
+    @Operation(summary = &quot;Recover a persisted cluster analysis result&quot;,
+            description = &quot;Retrieves the existing immutable result after reload or reconnect without submitting another analysis.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Persisted analysis result&quot;, content = @Content(
+            schema = @Schema(implementation = AnalysisResult.class)))
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Result is not ready&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Cluster analysis absent or outside the authenticated scope&quot;)
+    @GetMapping(&quot;/{operationId}/result&quot;)
+    public ResponseEntity&lt;AnalysisResult&gt; result(
+            @Parameter(description = &quot;Existing cluster analysis operation identifier&quot;) @PathVariable String operationId) {
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (cluster == null) throw notFound();</span>
+<span class="fc" id="L171">        return privateResponse(cluster.result(operationId, workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L172">                workspaceResolver.resolveCurrentContext()));</span>
+    }
+
+    @Operation(summary = &quot;Recover the original cluster analysis input&quot;,
+            description = &quot;Returns the original requirement and selected analysis scope for an explicit recovery action. Excludes credentials and internal command metadata.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Original scoped user input&quot;, content = @Content(
+            schema = @Schema(implementation = ClusterAnalysisObservation.RecoveryInput.class)))
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Cluster analysis absent or outside the authenticated scope&quot;)
+    @GetMapping(&quot;/{operationId}/request&quot;)
+    public ResponseEntity&lt;ClusterAnalysisObservation.RecoveryInput&gt; request(
+            @Parameter(description = &quot;Existing cluster analysis operation identifier&quot;) @PathVariable String operationId) {
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (cluster == null) throw notFound();</span>
+<span class="fc" id="L184">        return privateResponse(cluster.request(operationId, workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L185">                workspaceResolver.resolveCurrentContext()));</span>
+    }
+
+    private static long replayCursor(long afterSequence, String lastEventId) {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (afterSequence &lt; 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid replay cursor&quot;);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (lastEventId == null) return afterSequence;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (!lastEventId.matches(&quot;[0-9]{1,19}&quot;)) {</span>
+<span class="fc" id="L192">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid replay cursor&quot;);</span>
+        }
+<span class="fc" id="L194">        try { return Math.max(afterSequence, Long.parseLong(lastEventId)); }</span>
+<span class="fc" id="L195">        catch (NumberFormatException invalid) {</span>
+<span class="fc" id="L196">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid replay cursor&quot;);</span>
+        }
+    }
+
+    private static ResponseStatusException notFound() {
+<span class="nc" id="L201">        return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis not found&quot;);</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; privateResponse(T value) {
+<span class="fc" id="L205">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

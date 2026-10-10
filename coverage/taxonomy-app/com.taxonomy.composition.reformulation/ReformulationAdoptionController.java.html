@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoptionController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationAdoptionController.java</span></div><h1>ReformulationAdoptionController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.portfolio.reformulation.ReformulationAdoptionService;
+import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos.*;
+import com.taxonomy.portfolio.reformulation.ReformulationPreconditionException;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.List;
+
+/** Dedicated two-stage command boundary, separate from proposal editing and generation. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;})
+@RestController
+@Tag(name = &quot;Reformulation adoption&quot;, description = &quot;Explicit preview and confirmed adoption; never automatic acceptance&quot;)
+@RequestMapping(&quot;/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}&quot;)
+public class ReformulationAdoptionController {
+    private final ReformulationAdoptionService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L27">    public ReformulationAdoptionController(ReformulationAdoptionService service,WorkspaceResolver resolver){this.service=service;this.resolver=resolver;}</span>
+    @Operation(summary = &quot;Prepare an immutable reformulation adoption preview&quot;,
+            description = &quot;Creates review material for the current proposal revision and requirement version in the authenticated workspace. Does not adopt the text or approve the architecture. If-Match must contain the quoted positive proposal revision, for example \&quot;3\&quot;. Review the returned final text, warnings, blocking reasons and preview hash before confirmation.&quot;)
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Immutable adoption preview&quot;)
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Proposal or preview absent or outside the authorized scope&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid revision format or confirmation request&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Expected proposal revision is stale&quot;,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required If-Match header is missing&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Required authority or CSRF protection is missing&quot;, content = @Content)
+    @PostMapping(&quot;/adoption-previews&quot;) public ResponseEntity&lt;Preview&gt; preview(@Parameter(description = &quot;Project containing the requirement&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement whose text is being reviewed&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Required quoted positive proposal revision, for example \&quot;3\&quot;&quot;,
+                    required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected) {
+<span class="fc" id="L42">        return ResponseEntity.status(201).cacheControl(CacheControl.noStore()).body(service.preview(projectId,requirementId,proposalId,</span>
+<span class="fc" id="L43">                expected(expected),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @Operation(summary = &quot;Read an existing adoption preview&quot;,
+            description = &quot;Returns the previously captured immutable preview for this proposal after owner and workspace authorization. Does not refresh the preview or change requirement text.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Stored adoption preview&quot;)
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Proposal or preview absent or outside the authorized scope&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @GetMapping(&quot;/adoption-previews/{previewId}&quot;) public ResponseEntity&lt;Preview&gt; read(@Parameter(description = &quot;Project containing the requirement&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement whose text is being reviewed&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Immutable preview identifier from the preview response&quot;) @PathVariable String previewId) {
+<span class="fc" id="L52">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.readPreview(projectId,requirementId,proposalId,previewId,</span>
+<span class="fc" id="L53">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @Operation(summary = &quot;Confirm adoption of reviewed requirement text&quot;,
+            description = &quot;Applies an explicitly confirmed preview using its id and hash, an idempotent commandId, and the quoted proposal revision in If-Match. Stale proposal or requirement versions are rejected. Required warning acknowledgement and rationale are validated. Creates the requirement version and adoption receipt atomically; does not approve the architecture or launch a new analysis. Exact command replays return the recorded result.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Recorded adoption receipt&quot;)
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Proposal or preview absent or outside the authorized scope&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid revision format or confirmation request&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Expected proposal revision is stale&quot;,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required If-Match header is missing&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Required authority or CSRF protection is missing&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Confirmation conflicts with the stored preview, command or requirement version&quot;,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @PostMapping(&quot;/adoptions&quot;) public ResponseEntity&lt;Result&gt; adopt(@Parameter(description = &quot;Project containing the requirement&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement whose text is being reviewed&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Required quoted positive proposal revision, for example \&quot;3\&quot;&quot;,
+                    required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    description = &quot;Exact preview confirmation; all acknowledgement fields are deliberate user decisions&quot;,
+                    content = @Content(schema = @Schema(implementation = ConfirmRequest.class)))
+            @RequestBody ConfirmRequest request) {
+<span class="fc" id="L74">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.adopt(projectId,requirementId,proposalId,expected(expected),request,</span>
+<span class="fc" id="L75">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @Operation(summary = &quot;List recorded reformulation adoptions&quot;,
+            description = &quot;Returns the existing adoption receipts for this proposal in the authenticated owner and workspace scope. Historical receipts are not previews and reading them never applies requirement changes.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Recorded adoption history&quot;)
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Proposal or preview absent or outside the authorized scope&quot;, content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @GetMapping(&quot;/adoptions&quot;) public ResponseEntity&lt;List&lt;Result&gt;&gt; history(@Parameter(description = &quot;Project containing the requirement&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement whose text is being reviewed&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId) {
+<span class="fc" id="L83">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.history(projectId,requirementId,proposalId,</span>
+<span class="fc" id="L84">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+
+    private static long expected(String value) {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if(value==null)throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,&quot;If-Match is required&quot;);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if(!value.matches(&quot;\&quot;[1-9][0-9]*\&quot;&quot;))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Expected quoted proposal revision&quot;);</span>
+<span class="fc" id="L90">        try{return Long.parseLong(value.substring(1,value.length()-1));}</span>
+<span class="nc" id="L91">        catch(NumberFormatException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Invalid proposal revision&quot;);}</span>
+    }
+    @ExceptionHandler(ReformulationPreconditionException.class) public ResponseEntity&lt;ProblemDetail&gt; stale(ReformulationPreconditionException e) {
+<span class="fc" id="L94">        return ResponseEntity.status(412).cacheControl(CacheControl.noStore()).body(ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,e.getMessage()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

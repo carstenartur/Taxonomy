@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AiTargetCatalogService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AiTargetCatalogService.java</span></div><h1>AiTargetCatalogService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetCatalogView;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetHealth;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetMode;
+import com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Resolves stable, non-secret identities for configured AI endpoints and models.
+ * Credentials and raw custom endpoint URLs never leave this component.
+ */
+@Component
+public class AiTargetCatalogService {
+
+    private static final String MOCK_MODEL = &quot;taxonomy-deterministic-v1&quot;;
+    private static final String GEMINI_MODEL = &quot;gemini-3-flash-preview&quot;;
+<span class="fc" id="L33">    private static final PromptBudget DEFAULT_PROMPT_BUDGET =</span>
+            new PromptBudget(120_000, 262_144, 30_000);
+
+    private final LlmProviderConfig providerConfig;
+    private final PromptBudget promptBudget;
+
+<span class="fc" id="L39">    public AiTargetCatalogService(LlmProviderConfig providerConfig) {</span>
+<span class="fc" id="L40">        this.providerConfig = providerConfig;</span>
+<span class="fc" id="L41">        this.promptBudget = DEFAULT_PROMPT_BUDGET;</span>
+<span class="fc" id="L42">    }</span>
+
+    public AiTargetCatalogView catalog() {
+<span class="fc" id="L45">        AiTargetDescriptor active = activeTarget();</span>
+<span class="fc" id="L46">        Map&lt;String, AiTargetDescriptor&gt; byId = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L47">        byId.put(active.targetId(), active);</span>
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
+<span class="nc" id="L50">            AiTargetDescriptor mock = mockTarget();</span>
+<span class="nc" id="L51">            byId.put(mock.targetId(), mock);</span>
+        }
+<span class="fc" id="L53">        ProviderId activeProvider = providerConfig.getActiveProviderId();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (LlmProvider provider : LlmProvider.values()) {</span>
+<span class="fc" id="L55">            AiTargetDescriptor descriptor = describe(provider);</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">            if (descriptor.available() || provider.id().equals(activeProvider)) {</span>
+<span class="fc" id="L57">                byId.put(descriptor.targetId(), descriptor);</span>
+            }
+        }
+
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        for (ProviderId id : providerConfig.registeredProviderIds()) {</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (LlmProvider.builtin(id).isEmpty()) {</span>
+<span class="nc" id="L63">                var external = describe(id);</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">                if (external.available() || id.equals(activeProvider)) byId.put(external.targetId(), external);</span>
+            }
+<span class="nc" id="L66">        }</span>
+<span class="fc" id="L67">        List&lt;AiTargetDescriptor&gt; targets = new ArrayList&lt;&gt;(byId.values());</span>
+<span class="fc" id="L68">        targets.sort(Comparator</span>
+<span class="fc" id="L69">                .comparing((AiTargetDescriptor target) -&gt;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                        !Objects.equals(target.targetId(), active.targetId()))</span>
+<span class="fc" id="L71">                .thenComparing(AiTargetDescriptor::displayName));</span>
+<span class="fc" id="L72">        return new AiTargetCatalogView(active, List.copyOf(targets));</span>
+    }
+
+    public AiTargetDescriptor activeTarget() {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (providerConfig.isMockMode()) return mockTarget();</span>
+<span class="fc" id="L77">        ProviderId provider = providerConfig.getActiveProviderId();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (provider == null) {</span>
+<span class="nc" id="L79">            throw new IllegalStateException(&quot;No active AI provider is configured&quot;);</span>
+        }
+<span class="fc" id="L81">        return describe(provider);</span>
+    }
+
+    public AiTargetDescriptor resolve(String targetId, String legacyProvider) {
+<span class="fc" id="L85">        String requestedTarget = normalize(targetId);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (requestedTarget != null) {</span>
+<span class="fc" id="L87">            return catalog().targets().stream()</span>
+<span class="fc" id="L88">                    .filter(candidate -&gt; candidate.targetId().equals(requestedTarget))</span>
+<span class="fc" id="L89">                    .findFirst()</span>
+<span class="pc" id="L90">                    .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                            &quot;Unknown AI target: &quot; + requestedTarget));
+        }
+<span class="fc" id="L93">        String requestedProvider = normalize(legacyProvider);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (requestedProvider != null) {</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (&quot;MOCK&quot;.equalsIgnoreCase(requestedProvider)) {</span>
+<span class="fc" id="L96">                return mockTarget();</span>
+            }
+            try {
+<span class="fc" id="L99">                return describe(new ProviderId(requestedProvider));</span>
+<span class="nc" id="L100">            } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L101">                throw new IllegalArgumentException(</span>
+                        &quot;Unknown AI provider: &quot; + requestedProvider, exception);
+            }
+        }
+<span class="fc" id="L105">        return activeTarget();</span>
+    }
+
+    public AiTargetDescriptor describeProvider(String provider) {
+<span class="fc" id="L109">        return resolve(null, provider);</span>
+    }
+
+    private AiTargetDescriptor mockTarget() {
+<span class="fc" id="L113">        boolean available = providerConfig.isMockMode();</span>
+<span class="fc" id="L114">        return descriptor(</span>
+                &quot;MOCK&quot;,
+                MOCK_MODEL,
+                AiTargetMode.MOCK,
+                available,
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                available ? null : &quot;MOCK is available only when llm.mock=true.&quot;,</span>
+                &quot;mock&quot;);
+    }
+
+    private AiTargetDescriptor describe(ProviderId provider) {
+<span class="fc" id="L124">        var builtin = LlmProvider.builtin(provider);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (builtin.isPresent()) return describe(builtin.get());</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (!providerConfig.registeredProviderIds().contains(provider)) {</span>
+<span class="nc" id="L127">            throw new IllegalArgumentException(&quot;Unknown AI provider: &quot; + provider);</span>
+        }
+<span class="fc" id="L129">        boolean available = providerConfig.isProviderConfigured(provider);</span>
+<span class="fc" id="L130">        return descriptor(provider.value(), providerConfig.getOpenAiCompatibleModel(provider),</span>
+                AiTargetMode.REMOTE, available,
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                available ? null : providerConfig.getProviderConfigurationError(provider),</span>
+<span class="fc" id="L133">                providerConfig.getOpenAiCompatibleUrl(provider));</span>
+    }
+
+    private AiTargetDescriptor describe(LlmProvider provider) {
+<span class="fc" id="L137">        boolean available = providerConfig.isProviderConfigured(provider);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        String reason = available ? null : providerConfig.getProviderConfigurationError(provider);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        AiTargetMode mode = provider == LlmProvider.LOCAL_ONNX</span>
+<span class="fc" id="L140">                ? AiTargetMode.LOCAL : AiTargetMode.REMOTE;</span>
+<span class="fc" id="L141">        return descriptor(</span>
+<span class="fc" id="L142">                provider.name(),</span>
+<span class="fc" id="L143">                model(provider),</span>
+                mode,
+                available,
+                reason,
+<span class="fc" id="L147">                endpointIdentity(provider));</span>
+    }
+
+    private AiTargetDescriptor descriptor(
+            String provider,
+            String model,
+            AiTargetMode mode,
+            boolean available,
+            String unavailableReason,
+            String endpointIdentity) {
+<span class="fc" id="L157">        String normalizedProvider = provider.toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        String safeModel = model == null || model.isBlank() ? &quot;unspecified&quot; : model.strip();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        String safeEndpoint = endpointIdentity == null ? &quot;&quot; : endpointIdentity;</span>
+<span class="fc" id="L160">        String fingerprintMaterial = String.join(&quot;\n&quot;,</span>
+                normalizedProvider,
+                safeModel,
+<span class="fc" id="L163">                mode.name(),</span>
+                safeEndpoint,
+<span class="fc" id="L165">                Integer.toString(promptBudget.maxInputCharacters()),</span>
+<span class="fc" id="L166">                Integer.toString(promptBudget.maxInputBytes()),</span>
+<span class="fc" id="L167">                Integer.toString(promptBudget.estimatedMaxInputTokens()));</span>
+<span class="fc" id="L168">        String fingerprint = sha256(fingerprintMaterial);</span>
+<span class="fc" id="L169">        String id = normalizedProvider.toLowerCase(Locale.ROOT).replace('_', '-')</span>
+<span class="fc" id="L170">                + &quot;:&quot; + slug(safeModel)</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                + (&quot;CUSTOM_OPENAI&quot;.equals(normalizedProvider)</span>
+<span class="fc" id="L172">                        ? &quot;:&quot; + fingerprint.substring(0, 12) : &quot;&quot;);</span>
+<span class="fc" id="L173">        String display = displayProvider(normalizedProvider) + &quot; / &quot; + safeModel;</span>
+<span class="fc" id="L174">        return new AiTargetDescriptor(</span>
+                id,
+                display,
+                normalizedProvider,
+                safeModel,
+                mode,
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                available ? AiTargetHealth.READY : AiTargetHealth.UNAVAILABLE,</span>
+                available,
+                false,
+                false,
+                promptBudget,
+                fingerprint,
+                unavailableReason);
+    }
+
+    private String model(LlmProvider provider) {
+<span class="fc bfc" id="L190" title="All 3 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L191">            case GEMINI -&gt; GEMINI_MODEL;</span>
+<span class="fc" id="L192">            case LOCAL_ONNX -&gt; providerConfig.getLocalModelId();</span>
+            case OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI -&gt;
+<span class="fc" id="L194">                    providerConfig.getOpenAiCompatibleModel(provider);</span>
+        };
+    }
+
+    private String endpointIdentity(LlmProvider provider) {
+<span class="fc bfc" id="L199" title="All 3 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L200">            case GEMINI -&gt; withoutTrailingEmptyGeminiKey(providerConfig.getGeminiUrl());</span>
+<span class="fc" id="L201">            case LOCAL_ONNX -&gt; &quot;local:&quot; + providerConfig.getLocalModelId();</span>
+            case OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI -&gt;
+<span class="fc" id="L203">                    providerConfig.getOpenAiCompatibleUrl(provider);</span>
+        };
+    }
+
+    private static String withoutTrailingEmptyGeminiKey(String url) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        return url == null ? &quot;&quot; : url.replaceAll(&quot;\\?key=$&quot;, &quot;&quot;);</span>
+    }
+
+    private static String displayProvider(String provider) {
+<span class="fc bfc" id="L212" title="All 10 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L213">            case &quot;MOCK&quot; -&gt; &quot;Mock&quot;;</span>
+<span class="fc" id="L214">            case &quot;GEMINI&quot; -&gt; &quot;Gemini&quot;;</span>
+<span class="fc" id="L215">            case &quot;OPENAI&quot; -&gt; &quot;OpenAI&quot;;</span>
+<span class="fc" id="L216">            case &quot;DEEPSEEK&quot; -&gt; &quot;DeepSeek&quot;;</span>
+<span class="fc" id="L217">            case &quot;QWEN&quot; -&gt; &quot;Qwen&quot;;</span>
+<span class="fc" id="L218">            case &quot;LLAMA&quot; -&gt; &quot;Llama&quot;;</span>
+<span class="fc" id="L219">            case &quot;MISTRAL&quot; -&gt; &quot;Mistral&quot;;</span>
+<span class="fc" id="L220">            case &quot;CUSTOM_OPENAI&quot; -&gt; &quot;Custom OpenAI-compatible&quot;;</span>
+<span class="fc" id="L221">            case &quot;LOCAL_ONNX&quot; -&gt; &quot;Local ONNX&quot;;</span>
+<span class="fc" id="L222">            default -&gt; provider;</span>
+        };
+    }
+
+    private static String normalize(String value) {
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String slug(String value) {
+<span class="fc" id="L231">        String slug = value.toLowerCase(Locale.ROOT).replaceAll(&quot;[^a-z0-9._-]+&quot;, &quot;-&quot;);</span>
+<span class="fc" id="L232">        int start = 0;</span>
+<span class="fc bfc" id="L233" title="All 4 branches covered.">        while (start &lt; slug.length() &amp;&amp; slug.charAt(start) == '-') start++;</span>
+<span class="fc" id="L234">        int end = slug.length();</span>
+<span class="fc bfc" id="L235" title="All 4 branches covered.">        while (end &gt; start &amp;&amp; slug.charAt(end - 1) == '-') end--;</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        return start == end ? &quot;unspecified&quot; : slug.substring(start, end);</span>
+    }
+
+    private static String sha256(String value) {
+        try {
+<span class="fc" id="L241">            return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;)</span>
+<span class="fc" id="L242">                    .digest(value.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L243">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L244">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, impossible);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

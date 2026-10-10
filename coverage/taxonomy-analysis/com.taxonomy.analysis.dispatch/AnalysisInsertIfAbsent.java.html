@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisInsertIfAbsent.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dispatch</a> &gt; <span class="el_source">AnalysisInsertIfAbsent.java</span></div><h1>AnalysisInsertIfAbsent.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dispatch;
+
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Savepoint;
+import java.util.Optional;
+
+/**
+ * Insert on the caller's connection, containing only a duplicate-key failure.
+ *
+ * &lt;p&gt;Do not catch a failed JPA flush: Hibernate's persistence context and the
+ * enclosing transaction would already be unusable. Flush caller-owned state
+ * BEFORE the savepoint and perform only JDBC work after it. No entity is added
+ * to the persistence context by the tentative insert. The caller must read and
+ * validate the winning row when a duplicate is returned.&lt;/p&gt;
+ */
+final class AnalysisInsertIfAbsent {
+    @FunctionalInterface
+    interface Parameters {
+        void bind(PreparedStatement statement) throws SQLException;
+    }
+
+    private AnalysisInsertIfAbsent() { }
+
+    static Optional&lt;SQLException&gt; insert(EntityManager em, String sql, Parameters parameters) {
+<span class="fc" id="L31">        em.flush();</span>
+<span class="fc" id="L32">        return em.unwrap(Session.class).doReturningWork(connection -&gt; {</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">            if (connection.getAutoCommit()) throw new SQLException(&quot;An analysis insert requires a transaction&quot;);</span>
+<span class="fc" id="L34">            Savepoint savepoint = connection.setSavepoint();</span>
+            try {
+<span class="fc" id="L36">                try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L37">                    parameters.bind(statement);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">                    if (statement.executeUpdate() != 1) throw new SQLException(&quot;Analysis insert affected no row&quot;);</span>
+                }
+<span class="fc" id="L40">                release(connection, savepoint);</span>
+<span class="fc" id="L41">                return Optional.empty();</span>
+<span class="fc" id="L42">            } catch (SQLException failure) {</span>
+                try {
+<span class="fc" id="L44">                    connection.rollback(savepoint);</span>
+<span class="nc" id="L45">                } catch (SQLException rollbackFailure) {</span>
+<span class="nc" id="L46">                    rollbackFailure.addSuppressed(failure);</span>
+<span class="nc" id="L47">                    throw rollbackFailure;</span>
+<span class="fc" id="L48">                }</span>
+                // HSQLDB invalidates the target on rollback; other databases retain
+                // it until transaction completion. Do not release an invalidated point.
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                if (!duplicateKey(failure)) throw failure;</span>
+<span class="fc" id="L52">                return Optional.of(failure);</span>
+            }
+        });
+    }
+
+    /** Only unique-key violations, not arbitrary integrity/connection failures. */
+    static boolean duplicateKey(SQLException failure) {
+<span class="fc" id="L59">        String state = failure.getSQLState();</span>
+<span class="fc" id="L60">        int code = failure.getErrorCode();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        return &quot;23505&quot;.equals(state) // PostgreSQL / HSQLDB</span>
+<span class="fc bfc" id="L62" title="All 8 branches covered.">                || (&quot;23000&quot;.equals(state)</span>
+                    &amp;&amp; (code == 1 || code == 2601 || code == 2627)); // Oracle / SQL Server
+    }
+
+    private static void release(Connection connection, Savepoint savepoint) throws SQLException {
+        // SQL Server supports SAVE/ROLLBACK TRANSACTION but not RELEASE SAVEPOINT.
+        // Its savepoints are released by the enclosing transaction's completion.
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (&quot;Microsoft SQL Server&quot;.equals(connection.getMetaData().getDatabaseProductName())) return;</span>
+        try {
+<span class="fc" id="L71">            connection.releaseSavepoint(savepoint);</span>
+<span class="nc" id="L72">        } catch (SQLFeatureNotSupportedException unsupported) {</span>
+            // Releasing early is optional; transaction completion still releases it.
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleSnapshotReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.report</a> &gt; <span class="el_source">DecisionRationaleSnapshotReportController.java</span></div><h1>DecisionRationaleSnapshotReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.report;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionReportScope;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.render.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/** Download API for reports generated from immutable project-analysis snapshots. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/snapshots/{snapshotId}/decision-report&quot;)
+@Tag(name = &quot;Decision Rationale Report&quot;)
+public class DecisionRationaleSnapshotReportController {
+
+    private final DecisionRationaleSnapshotReportService snapshotReportService;
+    private final ReportRendererRegistry reportRendererRegistry;
+    private final SnapshotWordReportService wordReportService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public DecisionRationaleSnapshotReportController(DecisionRationaleSnapshotReportService service,
+            ReportRendererRegistry registry,WorkspaceResolver resolver) {
+<span class="fc" id="L51">        this(service,registry,resolver,null);</span>
+<span class="fc" id="L52">    }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DecisionRationaleSnapshotReportController(
+            DecisionRationaleSnapshotReportService snapshotReportService,
+            ReportRendererRegistry reportRendererRegistry,
+<span class="fc" id="L58">            WorkspaceResolver workspaceResolver, SnapshotWordReportService wordReportService) {</span>
+<span class="fc" id="L59">        this.snapshotReportService = snapshotReportService;</span>
+<span class="fc" id="L60">        this.wordReportService = wordReportService;</span>
+<span class="fc" id="L61">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L62">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L63">    }</span>
+
+    @GetMapping(&quot;/formats&quot;)
+    @Operation(summary = &quot;List report formats available for an immutable analysis snapshot&quot;,
+            description = &quot;Lists the registered decision-rationale report formats and their descriptors. This capability read does not load a snapshot, generate a document or start analysis.&quot;)
+    public List&lt;ReportFormatDescriptor&gt; listFormats() {
+<span class="fc" id="L69">        return reportRendererRegistry.listDescriptors(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID);
+    }
+
+<span class="nc" id="L73">    public record AvailableOptions(String snapshotId, AnalysisScope analysisScope, List&lt;DecisionReportScope.Root&gt; roots) {}</span>
+
+    @GetMapping(&quot;/options&quot;)
+    @Operation(summary = &quot;Read export options for a frozen decision report&quot;,
+            description = &quot;Derives available taxonomy roots and the original analysis scope from the authorized immutable snapshot. Optional language selects report labels. Reading options neither reruns analysis nor changes the saved result.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;AvailableOptions&gt; options(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId, @Parameter(description = &quot;Immutable analysis snapshot identifier&quot;) @PathVariable String snapshotId,
+            @Parameter(description = &quot;Optional BCP-47 report language; otherwise the current locale&quot;) @RequestParam(required = false) String language) {
+<span class="nc" id="L81">        var context = workspaceResolver.resolveCurrentContext();</span>
+<span class="nc" id="L82">        var report = snapshotReportService.generate(projectId, snapshotId, workspaceResolver.resolveCurrentUsername(), context,</span>
+<span class="nc" id="L83">                resolveLocale(language), new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, null, null, null, null));</span>
+<span class="nc" id="L84">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AvailableOptions(</span>
+<span class="nc" id="L85">                report.metadata().analysisSnapshotId(), report.scope().analysisScope(), report.scope().availableRoots()));</span>
+    }
+
+    /** Existing Java callers and unconfigured links retain their established full-report behavior. */
+    public ResponseEntity&lt;byte[]&gt; export(Long projectId, String snapshotId, String formatId, String language) {
+<span class="fc" id="L90">        return export(projectId, snapshotId, formatId, language, null, null, null, null, null);</span>
+    }
+
+    @GetMapping(&quot;/{formatId}&quot;)
+    @Operation(
+            summary = &quot;Download a hierarchical decision rationale for one immutable snapshot&quot;,
+            description = &quot;Replays the frozen requirement text, taxonomy hierarchy, scores, AI reasons, &quot;
+                    + &quot;provider and Git provenance stored with the selected snapshot.&quot;)
+    public ResponseEntity&lt;byte[]&gt; export(
+            @Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,
+            @Parameter(description = &quot;Immutable analysis snapshot identifier&quot;) @PathVariable String snapshotId,
+            @Parameter(description = &quot;Registered report or diagram format identifier&quot;) @PathVariable String formatId,
+            @Parameter(description = &quot;Optional BCP-47 report language such as de or en&quot;)
+            @RequestParam(required = false) String language,
+            @RequestParam(required = false) DecisionReportOptions.Profile profile,
+            @RequestParam(required = false) Set&lt;String&gt; taxonomyRoots,
+            @RequestParam(required = false) DecisionReportOptions.Contents contents,
+            @RequestParam(required = false) DecisionReportOptions.TreeLayout treeLayout,
+            @RequestParam(required = false) Set&lt;DecisionReportOptions.Section&gt; sections) {
+<span class="pc bpc" id="L109" title="4 of 10 branches missed.">        DecisionReportOptions options = profile == null &amp;&amp; taxonomyRoots == null &amp;&amp; contents == null &amp;&amp; treeLayout == null &amp;&amp; sections == null</span>
+<span class="fc" id="L110">                ? null : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections);</span>
+<span class="fc" id="L111">        ReportRendererExtension renderer = reportRendererRegistry.findByFormatId(</span>
+                        DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId)
+<span class="fc" id="L113">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Unknown decision-report format: &quot; + formatId));
+<span class="fc" id="L115">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L116">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L117">        ReportFormatDescriptor format = renderer.descriptor();</span>
+        DecisionRationaleReport report;
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (options == null) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            report = &quot;docx&quot;.equals(format.id().trim().toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L121">                    ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language)).decision()</span>
+<span class="fc" id="L122">                    : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        } else if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; wordReportService != null) {</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            report = (&quot;docx&quot;.equals(format.id().trim().toLowerCase(Locale.ROOT))</span>
+<span class="nc" id="L125">                    ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language), options)</span>
+<span class="fc" id="L126">                    : wordReportService.loadEvidence(projectId, snapshotId, username, context, resolveLocale(language), options)).decision();</span>
+<span class="fc" id="L127">        } else report = snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language), options);</span>
+<span class="fc" id="L128">        ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));</span>
+<span class="fc" id="L129">        String filename = DecisionRationaleReportPlugin.BASE_FILENAME</span>
+<span class="fc" id="L130">                + &quot;-v&quot; + valueOrUnknown(report.metadata().requirementVersionNumber())</span>
+<span class="fc" id="L131">                + &quot;.&quot; + format.fileExtension();</span>
+<span class="fc" id="L132">        ResponseEntity.BodyBuilder response = ResponseEntity.ok()</span>
+<span class="fc" id="L133">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L134">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;&quot; + filename + &quot;\&quot;&quot;)
+<span class="fc" id="L136">                .header(&quot;X-Taxonomy-Snapshot-Id&quot;, report.metadata().analysisSnapshotId())</span>
+<span class="fc" id="L137">                .header(&quot;X-Taxonomy-Data-SHA256&quot;,</span>
+<span class="fc" id="L138">                        report.metadata().taxonomyDataFingerprintSha256())</span>
+<span class="fc" id="L139">                .header(&quot;X-Taxonomy-Analysis-SHA256&quot;,</span>
+<span class="fc" id="L140">                        report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if(report.architecture()!=null)response.header(&quot;X-Taxonomy-Graph-SHA256&quot;,report.architecture().evidence().graphSha256());</span>
+<span class="fc" id="L142">        DecisionReportTemplateHeaders.apply(response, rendered);</span>
+<span class="fc" id="L143">        return response</span>
+<span class="fc" id="L144">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L145">                .body(rendered.bytes());</span>
+    }
+
+    private Locale resolveLocale(String language) {
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">        if (language == null || language.isBlank()) {</span>
+<span class="fc" id="L150">            return LocaleContextHolder.getLocale();</span>
+        }
+<span class="fc" id="L152">        Locale locale = Locale.forLanguageTag(language.strip());</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        return locale.getLanguage().isBlank()</span>
+<span class="fc" id="L154">                ? LocaleContextHolder.getLocale() : locale;</span>
+    }
+
+    private String valueOrUnknown(Object value) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        return value == null ? &quot;unknown&quot; : String.valueOf(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

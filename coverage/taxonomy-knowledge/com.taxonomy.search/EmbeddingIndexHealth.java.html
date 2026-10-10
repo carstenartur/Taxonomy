@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EmbeddingIndexHealth.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">EmbeddingIndexHealth.java</span></div><h1>EmbeddingIndexHealth.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Latches skipped vector writes without retaining document text or backend exceptions.
+ * Recovery requires a restart and complete rebuild: an in-process reset could forget
+ * a failed write whose transaction has not yet finished indexing.
+ */
+@Component
+<span class="fc" id="L17">public class EmbeddingIndexHealth {</span>
+<span class="fc" id="L18">    private static final Logger log = LoggerFactory.getLogger(EmbeddingIndexHealth.class);</span>
+<span class="fc" id="L19">    private final AtomicBoolean nodeFailure = new AtomicBoolean();</span>
+<span class="fc" id="L20">    private final AtomicBoolean relationFailure = new AtomicBoolean();</span>
+
+    void recordFailure(Object entity) {
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        if (entity instanceof TaxonomyNode &amp;&amp; nodeFailure.compareAndSet(false, true)) {</span>
+<span class="fc" id="L24">            log.warn(&quot;Node vector write failed (code=NODE_VECTOR_WRITE_FAILED)&quot;);</span>
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">        } else if (entity instanceof TaxonomyRelation &amp;&amp; relationFailure.compareAndSet(false, true)) {</span>
+<span class="fc" id="L26">            log.warn(&quot;Relation vector write failed (code=RELATION_VECTOR_WRITE_FAILED)&quot;);</span>
+        }
+<span class="fc" id="L28">    }</span>
+
+<span class="fc" id="L30">    boolean hasNodeFailure() { return nodeFailure.get(); }</span>
+<span class="fc" id="L31">    boolean hasRelationFailure() { return relationFailure.get(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisScoreKind.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisScoreKind.java</span></div><h1>AnalysisScoreKind.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * Declares the meaning of one analysis score.
+ *
+ * &lt;p&gt;Only {@link #PRODUCT_SUITABILITY} is conditional on another node and therefore must not be
+ * compared directly with absolute hierarchical relevance values.&lt;/p&gt;
+ */
+<span class="fc" id="L9">public enum AnalysisScoreKind {</span>
+    /** Independent 0–100 relevance of one taxonomy root. */
+<span class="fc" id="L11">    ROOT_RELEVANCE,</span>
+
+    /** Absolute relevance carried through the hierarchical parent budget. */
+<span class="fc" id="L14">    HIERARCHICAL_RELEVANCE,</span>
+
+    /** Independent 0–100 suitability of a concrete product, conditional on its product family. */
+<span class="fc" id="L17">    PRODUCT_SUITABILITY</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

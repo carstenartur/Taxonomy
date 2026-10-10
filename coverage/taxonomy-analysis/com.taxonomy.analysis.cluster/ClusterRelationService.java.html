@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterRelationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterRelationService.java</span></div><h1>ClusterRelationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RelationHypothesisDto;
+
+import java.time.Clock;
+import java.util.List;
+import java.util.Objects;
+
+/** Typed relation worker preparation; only the winning completion callback writes evidence. */
+public final class ClusterRelationService {
+    /** The implementation authorizes reads and joins the completion ledger's transaction for writes. */
+    public interface Store {
+        ClusterAnalysisStore.Input start(AnalysisTaskMessage task);
+        String shard(AnalysisOperationContext context, TaxonomyShardRoot root);
+        AnalysisResult rootResults(AnalysisOperationContext context);
+        RelationSearchDistribution.Plan relationPlan(AnalysisOperationContext context);
+        void persistRelationPlan(RelationAnalysisTask task, RelationSearchDistribution.Plan plan);
+        void persistRelationResult(RelationAnalysisTask task, RelationSearchDistribution.WorkResult result);
+        void persistScoreOnlyRelations(RelationAnalysisTask task, List&lt;RelationHypothesisDto&gt; hypotheses);
+        void persistRelationFailure(RelationAnalysisTask task, String reason);
+    }
+
+    private final Store store;
+    private final ClusterRelationComputation computation;
+    private final ClusterAnalysisSignals signals;
+
+<span class="fc" id="L31">    public ClusterRelationService(Store store, ClusterRelationComputation computation, ClusterAnalysisSignals signals) {</span>
+<span class="fc" id="L32">        this.store = Objects.requireNonNull(store); this.computation = Objects.requireNonNull(computation);</span>
+<span class="fc" id="L33">        this.signals = Objects.requireNonNull(signals);</span>
+<span class="fc" id="L34">    }</span>
+
+    public PreparedAnalysisCompletion&lt;RelationAnalysisCompleted&gt; prepare(RelationAnalysisTask task) {
+<span class="fc" id="L37">        var context = ClusterAnalysisStore.context(task.envelope());</span>
+<span class="fc" id="L38">        var messages = new AnalysisMessageFactory(context, Clock.systemUTC());</span>
+        // Register before the authoritative read so cancellation cannot fall into a registration gap.
+<span class="fc" id="L40">        try (var worker = signals.worker(context)) {</span>
+<span class="fc" id="L41">            var input = store.start(task);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (!input.executable()) return PreparedAnalysisCompletion.withoutEffects(</span>
+<span class="fc" id="L43">                    messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, &quot;CANCELLED&quot;));</span>
+            try {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                if (worker.cancelled()) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc" id="L46">                var result = Objects.requireNonNull(computation.compute(input, task, worker::cancelled), &quot;relation result&quot;);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                if (worker.cancelled()) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc" id="L48">                boolean evaluation = task.taskId().relationWorkOrdinal().isPresent();</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">                if (result instanceof ClusterRelationComputation.Preparation prepared &amp;&amp; !evaluation) {</span>
+<span class="fc" id="L50">                    var plan = prepared.plan();</span>
+<span class="fc" id="L51">                    String stopped = stopped(plan.stopReason());</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">                    var outcome = outcome(stopped, plan.stopReason(), !plan.warnings().isEmpty(), !plan.sources().isEmpty());</span>
+<span class="fc" id="L53">                    return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, outcome, 0, stopped),</span>
+<span class="fc" id="L54">                            () -&gt; store.persistRelationPlan(task, plan));</span>
+                }
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">                if (result instanceof ClusterRelationComputation.ScoreOnly scoreOnly &amp;&amp; !evaluation) {</span>
+<span class="fc" id="L57">                    return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, AnalysisTaskOutcome.COMPLETED,</span>
+<span class="fc" id="L58">                            scoreOnly.hypotheses().size(), null),</span>
+<span class="fc" id="L59">                            () -&gt; store.persistScoreOnlyRelations(task, scoreOnly.hypotheses()));</span>
+                }
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">                if (result instanceof ClusterRelationComputation.Evaluation evaluated &amp;&amp; evaluation) {</span>
+<span class="fc" id="L62">                    var evidence = evaluated.result();</span>
+<span class="fc" id="L63">                    String stopped = stopped(evidence.stopReason());</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    var outcome = outcome(stopped, evidence.stopReason(), !evidence.result().searchExhausted(),</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                            !evidence.result().edges().isEmpty());</span>
+<span class="fc" id="L66">                    return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, outcome, evidence.result().edges().size(), stopped),</span>
+<span class="fc" id="L67">                            () -&gt; store.persistRelationResult(task, evidence));</span>
+                }
+<span class="fc" id="L69">                throw new IllegalArgumentException(&quot;Relation computation returned the wrong phase&quot;);</span>
+<span class="nc" id="L70">            } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {</span>
+<span class="nc" id="L71">                String reason = unavailable.reason();</span>
+<span class="nc" id="L72">                return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),</span>
+<span class="nc" id="L73">                        () -&gt; store.persistRelationFailure(task, reason));</span>
+<span class="fc" id="L74">            } catch (AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L75">                String reason = stopped.reason().name();</span>
+<span class="fc" id="L76">                return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),</span>
+<span class="fc" id="L77">                        () -&gt; store.persistRelationFailure(task, reason));</span>
+<span class="fc" id="L78">            } catch (RuntimeException failed) {</span>
+                // A malformed input cannot be represented by an invented empty Plan or Work grant.
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                String reason = task.taskId().relationWorkOrdinal().isPresent()</span>
+<span class="fc" id="L81">                        ? &quot;RELATION_EVALUATION_FAILED&quot; : &quot;RELATION_PREPARATION_FAILED&quot;;</span>
+<span class="fc" id="L82">                return new PreparedAnalysisCompletion&lt;&gt;(messages.completed(task, AnalysisTaskOutcome.FAILED, 0, null),</span>
+<span class="fc" id="L83">                        () -&gt; store.persistRelationFailure(task, reason));</span>
+            }
+<span class="pc bpc" id="L85" title="7 of 12 branches missed.">        }</span>
+    }
+
+    private static AnalysisTaskOutcome outcome(String stopped, String failure, boolean partial, boolean evidence) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (stopped != null) return AnalysisTaskOutcome.STOPPED;</span>
+<span class="pc bpc" id="L90" title="3 of 4 branches missed.">        if (!failure.isEmpty()) return evidence ? AnalysisTaskOutcome.PARTIAL : AnalysisTaskOutcome.FAILED;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        return partial ? AnalysisTaskOutcome.PARTIAL : AnalysisTaskOutcome.COMPLETED;</span>
+    }
+    private static String stopped(String reason) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (var value : AnalysisStoppedException.Reason.values()) {</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">            if (reason.equals(value.name()) || reason.startsWith(value.name() + &quot;:&quot;)) return value.name();</span>
+        }
+<span class="fc" id="L97">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

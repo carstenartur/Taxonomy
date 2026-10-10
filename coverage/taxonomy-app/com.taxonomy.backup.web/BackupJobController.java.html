@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.web</a> &gt; <span class="el_source">BackupJobController.java</span></div><h1>BackupJobController.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.web;
+
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.SchemaProperty;
+import io.swagger.v3.oas.annotations.headers.Header;
+
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.jobs.*;
+import jakarta.servlet.http.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import java.io.*;
+import java.util.*;
+
+@Controller
+@Tag(name = &quot;Backup jobs&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+public final class BackupJobController {
+    private final ObjectProvider&lt;BackupJobService&gt; services;
+    private final BackupPrincipalResolver principals;
+<span class="fc" id="L34">    private final BackupManifestCodec codec = new BackupManifestCodec();</span>
+<span class="fc" id="L35">    public BackupJobController(ObjectProvider&lt;BackupJobService&gt; services, BackupPrincipalResolver principals) {</span>
+<span class="fc" id="L36">        this.services = services; this.principals = principals;</span>
+<span class="fc" id="L37">    }</span>
+    @GetMapping(&quot;/backup-jobs&quot;) public String page(Authentication authentication, HttpServletResponse response) {
+<span class="fc" id="L39">        principals.require(authentication); response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;); return &quot;backup-jobs&quot;;</span>
+    }
+    @PostMapping(value = &quot;/api/backups/jobs&quot;, consumes = MediaType.APPLICATION_JSON_VALUE) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Submit a bounded backup job&quot;,
+            description = &quot;Accepts a bounded JSON backup request after resolving the authorized principal and queues a backup job. Returns 202 with its identifier; capacity exhaustion is 429, oversized input 413 and unavailable storage 503.&quot;)
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Submit a bounded backup job response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid bounded backup request&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;413&quot;, description = &quot;JSON request exceeds 64 KiB&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;429&quot;, description = &quot;Backup job capacity exhausted&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Backup source or storage unavailable&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Backup authority denied&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = &quot;Strict JSON request: profile, scope and time must agree; all wire fields must be present&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;,
+                    schema = @Schema(implementation = BackupManifestCodec.WireRequest.class,
+                            requiredProperties = {&quot;profile&quot;, &quot;scope&quot;, &quot;time&quot;, &quot;gitRepresentation&quot;, &quot;secrets&quot;})))
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; submit(Authentication authentication, HttpServletRequest request) throws IOException {
+<span class="fc" id="L66">        var actor = principals.require(authentication);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (request.getContentLengthLong() &gt; BackupManifestCodec.MAX_REQUEST_BYTES) throw new RequestTooLarge();</span>
+<span class="fc" id="L68">        byte[] document = request.getInputStream().readNBytes(BackupManifestCodec.MAX_REQUEST_BYTES + 1);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (document.length &gt; BackupManifestCodec.MAX_REQUEST_BYTES) throw new RequestTooLarge();</span>
+<span class="fc" id="L70">        var id = service().submit(codec.readRequest(document), actor);</span>
+<span class="fc" id="L71">        return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of(&quot;id&quot;, id.value().toString()));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;List visible backup jobs&quot;,
+            description = &quot;Lists backup jobs visible to the authorized backup principal without starting work or revealing another principal's archives.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List visible backup jobs response&quot;)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Backup authority denied&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Backup service unavailable&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    public ResponseEntity&lt;List&lt;BackupJobService.JobView&gt;&gt; list(Authentication authentication) {
+<span class="nc" id="L84">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service().list(principals.require(authentication)));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs/{id}&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read a backup job&quot;,
+            description = &quot;Reads the persisted state and progress of one authorized backup job. A successful HTTP read does not mean the backup itself has completed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read a backup job response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid backup job identifier&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Backup authority denied&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Backup job unavailable&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    public ResponseEntity&lt;BackupJobService.JobView&gt; status(@Parameter(description = &quot;Backup job UUID visible to the authorized backup principal&quot;)
+            @PathVariable String id, Authentication authentication) {
+<span class="nc" id="L101">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service().status(id(id), principals.require(authentication)));</span>
+    }
+    @PostMapping(&quot;/api/backups/jobs/{id}/cancel&quot;) @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Cancel a backup job&quot;,
+            description = &quot;Requests cancellation of the authorized backup job and returns whether cancellation was accepted. This does not delete an already downloaded archive or report unfinished work as successful.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Cancel a backup job response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid backup job identifier&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Backup authority denied&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Backup job unavailable&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; cancel(@Parameter(description = &quot;Backup job UUID visible to the authorized backup principal&quot;)
+            @PathVariable String id, Authentication authentication) {
+<span class="nc" id="L118">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(&quot;cancelled&quot;, service().cancel(id(id), principals.require(authentication))));</span>
+    }
+    @GetMapping(&quot;/api/backups/jobs/{id}/download&quot;)
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Download a completed backup archive&quot;,
+            description = &quot;Streams the completed archive for an authorized backup job as an application/octet-stream attachment. The response is private and no-store; unfinished or unavailable archives are not replaced with empty successful downloads.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Completed backup archive&quot;,
+            content = @Content(mediaType = &quot;application/octet-stream&quot;, schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;)),
+            headers = @Header(name = &quot;Content-Disposition&quot;, description = &quot;Archive attachment filename&quot;, schema = @Schema(type = &quot;string&quot;)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid backup job identifier&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Backup authority denied&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Backup archive not available&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;code&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;code&quot;, schema = @Schema(type = &quot;string&quot;))))
+    public void download(@Parameter(description = &quot;Backup job UUID visible to the authorized backup principal&quot;)
+            @PathVariable String id, Authentication authentication, HttpServletResponse response) throws IOException {
+<span class="nc" id="L137">        try (var download = service().download(id(id), principals.require(authentication))) {</span>
+<span class="nc" id="L138">            response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;); response.setHeader(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;);</span>
+<span class="nc" id="L139">            response.setHeader(&quot;Content-Disposition&quot;, ContentDisposition.attachment().filename(download.filename()).build().toString());</span>
+<span class="nc" id="L140">            response.setContentType(&quot;application/octet-stream&quot;); response.setContentLengthLong(download.length());</span>
+<span class="nc" id="L141">            download.writeTo(response.getOutputStream());</span>
+        }
+<span class="nc" id="L143">    }</span>
+<span class="nc" id="L144">    @ExceptionHandler(AccessDeniedException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; denied() { return error(403, &quot;BACKUP_ACCESS_DENIED&quot;); }</span>
+<span class="nc" id="L145">    @ExceptionHandler(BackupCapacityException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; capacity() { return error(429, &quot;BACKUP_CAPACITY&quot;); }</span>
+<span class="fc" id="L146">    @ExceptionHandler(RequestTooLarge.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; tooLarge() { return error(413, &quot;BACKUP_REQUEST_TOO_LARGE&quot;); }</span>
+<span class="fc" id="L147">    @ExceptionHandler(IllegalArgumentException.class) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return error(400, &quot;BACKUP_INVALID_REQUEST&quot;); }</span>
+<span class="fc" id="L148">    @ExceptionHandler({IllegalStateException.class, IOException.class}) @ResponseBody ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() { return error(503, &quot;BACKUP_UNAVAILABLE&quot;); }</span>
+    private ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(int status, String code) {
+<span class="fc" id="L150">        return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(Map.of(&quot;code&quot;, code));</span>
+    }
+    private BackupJobService service() {
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        var service = services.getIfAvailable(); if (service == null) throw new IllegalStateException(&quot;Backup source is unavailable&quot;); return service;</span>
+    }
+<span class="nc" id="L155">    private static BackupJobId id(String id) { return new BackupJobId(UUID.fromString(id)); }</span>
+    private static final class RequestTooLarge extends RuntimeException { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

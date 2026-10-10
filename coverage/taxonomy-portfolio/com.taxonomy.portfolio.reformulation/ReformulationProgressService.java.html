@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationProgressService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationProgressService.java</span></div><h1>ReformulationProgressService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.Run;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.reformulation.NodeSynthesisResult;
+import com.taxonomy.reformulation.ReconciliationResult;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+/** Read-only inspection of committed outputs; never publishes a draft or reconstructs one from mixed runs. */
+@Service
+@Transactional(readOnly = true)
+public class ReformulationProgressService {
+<span class="fc" id="L26">    public record CheckpointSummary(String checkpointId, String kind, Instant createdAt) {}</span>
+<span class="fc" id="L27">    public record Progress(String runId, long sourceVersionId, long sourceRevision, String status,</span>
+                           String failureCode, Instant createdAt, Instant lastCheckpointAt,
+                           long runCheckpointCount, long proposalCheckpointCount, Map&lt;String, Long&gt; countsByKind,
+                           List&lt;CheckpointSummary&gt; items, String nextAfter) {}
+<span class="fc" id="L31">    public record Partial(String checkpointId, String runId, long sourceVersionId, long sourceRevision,</span>
+                          String kind, Instant createdAt, NodeSynthesisResult node, ReconciliationResult reconciliation) {}
+<span class="fc" id="L33">    private record Authorized(String proposalId, String scope, long sourceVersionId, Run run) {}</span>
+    private static final String FILTER = &quot;c.proposalId = :proposal and c.scopeKey = :scope and c.runId = :run&quot;;
+<span class="fc" id="L35">    private static final Set&lt;String&gt; NODE_KINDS = Set.of(&quot;NODE&quot;, &quot;REWORD&quot;, &quot;NODE_GROUP&quot;, &quot;NODE_AGGREGATE&quot;);</span>
+    private final ProjectPortfolioService projects;
+    private final ObjectMapper json;
+    @PersistenceContext private EntityManager em;
+
+<span class="fc" id="L40">    public ReformulationProgressService(ProjectPortfolioService projects, ObjectMapper json) {</span>
+<span class="fc" id="L41">        this.projects = projects;</span>
+<span class="fc" id="L42">        this.json = json;</span>
+<span class="fc" id="L43">    }</span>
+
+    public Progress progress(Long projectId, Long requirementId, String proposalId, String runId,
+                             int limit, String after, String actor, WorkspaceContext context) {
+<span class="fc" id="L47">        var a = authorize(projectId, requirementId, proposalId, runId, actor, context);</span>
+<span class="fc bfc" id="L48" title="All 4 branches covered.">        if (limit &lt; 1 || limit &gt; 50) throw PortfolioException.validation(&quot;Progress page size must be between 1 and 50&quot;);</span>
+<span class="fc" id="L49">        Instant afterTime = null;</span>
+<span class="fc bfc" id="L50" title="All 4 branches covered.">        if (after != null &amp;&amp; !after.isEmpty()) {</span>
+<span class="fc" id="L51">            requireId(after);</span>
+<span class="fc" id="L52">            afterTime = query(&quot;select c.createdAt from ReformulationNodeCheckpoint c where &quot; + FILTER + &quot; and c.id = :id&quot;, Instant.class, a)</span>
+<span class="fc" id="L53">                    .setParameter(&quot;id&quot;, after).getResultStream().findFirst()</span>
+<span class="fc" id="L54">                    .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Progress cursor not found in this run&quot;));</span>
+        }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        String cursor = afterTime == null ? &quot;&quot; : &quot; and (c.createdAt &gt; :time or (c.createdAt = :time and c.id &gt; :after))&quot;;</span>
+<span class="fc" id="L57">        var rows = query(&quot;select c.id, c.taskKind, c.createdAt from ReformulationNodeCheckpoint c where &quot; + FILTER</span>
+<span class="fc" id="L58">                + cursor + &quot; order by c.createdAt, c.id&quot;, Object[].class, a).setMaxResults(limit + 1);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (afterTime != null) rows.setParameter(&quot;time&quot;, afterTime).setParameter(&quot;after&quot;, after);</span>
+<span class="fc" id="L60">        var available = rows.getResultList();</span>
+<span class="fc" id="L61">        var page = available.stream().limit(limit).map(row -&gt; new CheckpointSummary((String) row[0], (String) row[1], (Instant) row[2])).toList();</span>
+<span class="fc" id="L62">        var counts = new TreeMap&lt;String, Long&gt;();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (var row : query(&quot;select c.taskKind, count(c) from ReformulationNodeCheckpoint c where &quot; + FILTER</span>
+<span class="fc" id="L64">                + &quot; group by c.taskKind&quot;, Object[].class, a).getResultList()) counts.put((String) row[0], (Long) row[1]);</span>
+<span class="fc" id="L65">        long total = em.createQuery(&quot;select count(c) from ReformulationNodeCheckpoint c where c.proposalId = :proposal and c.scopeKey = :scope&quot;, Long.class)</span>
+<span class="fc" id="L66">                .setParameter(&quot;proposal&quot;, proposalId).setParameter(&quot;scope&quot;, a.scope()).getSingleResult();</span>
+<span class="fc" id="L67">        Instant last = query(&quot;select max(c.createdAt) from ReformulationNodeCheckpoint c where &quot; + FILTER, Instant.class, a).getSingleResult();</span>
+<span class="fc" id="L68">        return new Progress(runId, a.sourceVersionId(), a.run().sourceRevision(), a.run().status(), a.run().failureCode(), a.run().createdAt(),</span>
+<span class="fc" id="L69">                last, counts.values().stream().mapToLong(Long::longValue).sum(), total, Map.copyOf(counts), page,</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                available.size() &gt; limit ? page.getLast().checkpointId() : null);</span>
+    }
+
+    /** A full typed result is fetched only on demand; overview pages never load result LOBs. */
+    public Partial partial(Long projectId, Long requirementId, String proposalId, String runId,
+                           String checkpointId, String actor, WorkspaceContext context) {
+<span class="fc" id="L76">        var a = authorize(projectId, requirementId, proposalId, runId, actor, context);</span>
+<span class="fc" id="L77">        requireId(checkpointId);</span>
+<span class="fc" id="L78">        var row = query(&quot;select c.taskKind, c.createdAt, c.resultPayload from ReformulationNodeCheckpoint c where &quot; + FILTER + &quot; and c.id = :id&quot;, Object[].class, a)</span>
+<span class="fc" id="L79">                .setParameter(&quot;id&quot;, checkpointId).getResultStream().findFirst()</span>
+<span class="fc" id="L80">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Partial result not found in this run&quot;));</span>
+<span class="fc" id="L81">        String kind = (String) row[0];</span>
+<span class="fc" id="L82">        NodeSynthesisResult node = null;</span>
+<span class="fc" id="L83">        ReconciliationResult reconciliation = null;</span>
+        try {
+<span class="fc" id="L85">            var tree = json.readTree((String) row[2]);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (!tree.isObject()) throw new IllegalArgumentException(&quot;Untyped output&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (NODE_KINDS.contains(kind)) {</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">                if (!tree.path(&quot;nodeId&quot;).isString() || !tree.path(&quot;summary&quot;).isString()) throw new IllegalArgumentException(&quot;Missing node text&quot;);</span>
+<span class="fc" id="L89">                node = json.treeToValue(tree, NodeSynthesisResult.class);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            } else if (&quot;RECONCILE&quot;.equals(kind)) {</span>
+<span class="pc bpc" id="L91" title="3 of 6 branches missed.">                if (!tree.path(&quot;affectedSectionIds&quot;).isArray() || !tree.path(&quot;sourceResolutions&quot;).isObject() || !tree.path(&quot;findings&quot;).isArray())</span>
+<span class="nc" id="L92">                    throw new IllegalArgumentException(&quot;Missing reconciliation contract&quot;);</span>
+<span class="fc" id="L93">                reconciliation = json.treeToValue(tree, ReconciliationResult.class);</span>
+<span class="fc" id="L94">            } else throw new IllegalArgumentException(&quot;Unsupported output kind&quot;);</span>
+<span class="fc" id="L95">        } catch (RuntimeException unreadable) {</span>
+            // Legacy/incompatible/corrupt data is not a reason to return arbitrary raw JSON or prompts.
+<span class="fc" id="L97">            throw PortfolioException.conflict(&quot;PARTIAL_RESULT_UNAVAILABLE: stored output has an unsupported format&quot;);</span>
+<span class="fc" id="L98">        }</span>
+<span class="fc" id="L99">        return new Partial(checkpointId, runId, a.sourceVersionId(), a.run().sourceRevision(), kind, (Instant) row[1], node, reconciliation);</span>
+    }
+
+    private Authorized authorize(Long projectId, Long requirementId, String proposalId, String runId, String actor, WorkspaceContext context) {
+        // Reuse the same requirement/project/workspace authorization as ordinary offer reads.
+<span class="fc" id="L104">        projects.requireRequirement(projectId, requirementId, actor, context);</span>
+<span class="fc" id="L105">        String scope = PortfolioScope.key(actor, context);</span>
+<span class="fc" id="L106">        Long sourceVersion = em.createQuery(&quot;select p.sourceVersionId from ReformulationProposal p where p.id = :proposal and p.projectId = :project and p.requirementId = :requirement and p.scopeKey = :scope&quot;, Long.class)</span>
+<span class="fc" id="L107">                .setParameter(&quot;proposal&quot;, proposalId).setParameter(&quot;project&quot;, projectId).setParameter(&quot;requirement&quot;, requirementId).setParameter(&quot;scope&quot;, scope)</span>
+<span class="pc" id="L108">                .getResultStream().findFirst().orElseThrow(() -&gt; PortfolioException.notFound(&quot;Reformulation proposal not found&quot;));</span>
+<span class="fc" id="L109">        String payload = em.createQuery(&quot;select r.payload from ReformulationRun r where r.id = :run and r.proposalId = :proposal and r.scopeKey = :scope&quot;, String.class)</span>
+<span class="fc" id="L110">                .setParameter(&quot;run&quot;, runId).setParameter(&quot;proposal&quot;, proposalId).setParameter(&quot;scope&quot;, scope).getResultStream().findFirst()</span>
+<span class="fc" id="L111">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Synthesis run not found&quot;));</span>
+<span class="fc" id="L112">        return new Authorized(proposalId, scope, sourceVersion, json.readValue(payload, Run.class));</span>
+    }
+    private &lt;T&gt; jakarta.persistence.TypedQuery&lt;T&gt; query(String jpql, Class&lt;T&gt; type, Authorized a) {
+<span class="fc" id="L115">        return em.createQuery(jpql, type).setParameter(&quot;proposal&quot;, a.proposalId()).setParameter(&quot;scope&quot;, a.scope()).setParameter(&quot;run&quot;, a.run().id());</span>
+    }
+    private static void requireId(String id) {
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (id == null || !id.matches(&quot;[0-9a-f]{64}&quot;)) throw PortfolioException.validation(&quot;Invalid checkpoint identifier&quot;);</span>
+<span class="fc" id="L119">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

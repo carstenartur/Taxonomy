@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CapturedBackup.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.snapshot</a> &gt; <span class="el_source">CapturedBackup.java</span></div><h1>CapturedBackup.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.snapshot;
+
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupPaths;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.ArchiveProtectionProvider;
+import java.io.*;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/** Immutable capture metadata and verified streams from an application-private durable spool. */
+public final class CapturedBackup implements AutoCloseable {
+    static final String EVIDENCE_PREFIX = &quot;writer-barrier-v1:installation:generation=&quot;;
+    private final Path directory;
+    private final BackupManifest manifest;
+    private final SnapshotContext snapshot;
+    private final Map&lt;String, BackupEntry&gt; entries;
+    private final ArchiveProtectionProvider protection;
+
+<span class="fc" id="L25">    private CapturedBackup(Path directory, BackupManifest manifest, AuthorizedBackupRequest authorization, ArchiveProtectionProvider protection) {</span>
+<span class="fc" id="L26">        this.protection = protection;</span>
+<span class="fc" id="L27">        this.directory = directory; this.manifest = manifest;</span>
+<span class="fc" id="L28">        String evidence = manifest.consistencyEvidence();</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (!evidence.startsWith(EVIDENCE_PREFIX)) throw new IllegalArgumentException(&quot;Unsupported capture evidence&quot;);</span>
+<span class="fc" id="L30">        long generation = Long.parseLong(evidence.substring(EVIDENCE_PREFIX.length()));</span>
+<span class="fc" id="L31">        this.snapshot = new SnapshotContext(manifest.backupId(), authorization, manifest.captureStartedAt(), manifest.captureCompletedAt(), generation,</span>
+<span class="fc" id="L32">                manifest.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)),</span>
+<span class="fc" id="L33">                manifest.components().stream().collect(Collectors.toMap(BackupManifest.Component::id, BackupManifest.Component::version)),</span>
+<span class="fc" id="L34">                manifest.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                manifest.repositories().stream().filter(repository -&gt; repository.exportedHead() != null)</span>
+<span class="fc" id="L36">                        .collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));</span>
+<span class="fc" id="L37">        this.entries = manifest.entries().stream().collect(Collectors.toUnmodifiableMap(BackupEntry::path, e -&gt; e));</span>
+<span class="fc" id="L38">    }</span>
+
+    /** Internal recovery API; the job boundary must reauthorize before using this handle. */
+    public static CapturedBackup open(Path directory, AuthorizedBackupRequest authorization) throws IOException {
+<span class="fc" id="L42">        return open(directory, authorization, ArchiveProtectionProvider.unprotected());</span>
+    }
+
+    public static CapturedBackup open(Path directory, AuthorizedBackupRequest authorization, ArchiveProtectionProvider protection) throws IOException {
+<span class="fc" id="L46">        Path root = directory.toAbsolutePath().normalize();</span>
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || !root.toRealPath().equals(root))</span>
+<span class="nc" id="L48">            throw new IOException(&quot;Invalid capture directory&quot;);</span>
+        BackupId id;
+<span class="fc" id="L50">        try { id = new BackupId(UUID.fromString(root.getFileName().toString().substring(&quot;capture-&quot;.length()))); }</span>
+<span class="pc" id="L51">        catch (RuntimeException failure) { throw new IOException(&quot;Invalid capture identifier&quot;); }</span>
+        BackupManifest manifest;
+<span class="fc" id="L53">        try (var input = SpoolStreams.input(root.resolve(&quot;manifest.json&quot;), protection, id, &quot;manifest.json&quot;)) {</span>
+<span class="fc" id="L54">            manifest = new BackupManifestCodec().read(input.readNBytes(BackupManifestCodec.MAX_MANIFEST_BYTES + 1));</span>
+        }
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (!root.getFileName().toString().equals(&quot;capture-&quot; + manifest.backupId().value())</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                || !manifest.request().equals(authorization.request())) throw new IOException(&quot;Capture does not match the authorized job&quot;);</span>
+<span class="fc" id="L58">        Set&lt;String&gt; paths = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (var entry : manifest.entries()) {</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if (!paths.add(BackupPaths.collisionKey(entry.path()))) throw new IOException(&quot;Colliding capture path&quot;);</span>
+<span class="fc" id="L61">        }</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">        if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED &amp;&amp; !protection.encrypted())</span>
+<span class="nc" id="L63">            throw new IOException(&quot;Encrypted staging is required for secrets&quot;);</span>
+<span class="fc" id="L64">        var captured = new CapturedBackup(root, manifest, authorization, protection);</span>
+        // Never adopt extra files or symlinks left by a replaced/tampered staging directory.
+<span class="fc" id="L66">        try (var files = Files.walk(root)) {</span>
+<span class="fc" id="L67">            var iterator = files.iterator(); int count = 0;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc" id="L69">                Path file = iterator.next();</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                if (++count &gt; 1 + manifest.entries().size() * 32 + 2) throw new IOException(&quot;Capture directory entry limit exceeded&quot;);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (Files.isSymbolicLink(file)) throw new IOException(&quot;Symlink in capture&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) continue;</span>
+<span class="fc" id="L73">                String relative = root.relativize(file).toString().replace(file.getFileSystem().getSeparator(), &quot;/&quot;);</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">                if (!relative.equals(&quot;manifest.json&quot;) &amp;&amp; !captured.entries.containsKey(relative)) throw new IOException(&quot;Undeclared capture entry&quot;);</span>
+<span class="fc" id="L75">            }</span>
+        }
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (var entry : manifest.entries()) captured.entryPath(entry);</span>
+<span class="fc" id="L78">        return captured;</span>
+    }
+
+<span class="fc" id="L81">    public SnapshotContext snapshot() { return snapshot; }</span>
+<span class="fc" id="L82">    public BackupManifest manifest() { return manifest; }</span>
+<span class="fc" id="L83">    public Path directory() { return directory; }</span>
+
+    public InputStream openEntry(String path) throws IOException {
+<span class="fc" id="L86">        BackupEntry entry = entries.get(BackupPaths.requireEntry(path));</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (entry == null) throw new IOException(&quot;Entry is not part of the captured manifest&quot;);</span>
+<span class="fc" id="L88">        return new VerifiedInput(SpoolStreams.input(entryPath(entry), protection, manifest.backupId(), path), entry);</span>
+    }
+
+    private Path entryPath(BackupEntry entry) throws IOException {
+<span class="fc" id="L92">        Path file = directory.resolve(entry.path());</span>
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().equals(file)</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">                || !protection.encrypted() &amp;&amp; Files.size(file) != entry.length()) throw new IOException(&quot;Capture entry length or path differs from its manifest&quot;);</span>
+<span class="fc" id="L95">        return file;</span>
+    }
+
+<span class="fc" id="L98">    @Override public void close() throws IOException { delete(directory); }</span>
+
+    static void delete(Path root) throws IOException {
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        if (root == null || !Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return;</span>
+<span class="fc" id="L102">        Files.walkFileTree(root, new SimpleFileVisitor&lt;&gt;() {</span>
+            @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+<span class="fc" id="L104">                Files.delete(file); return FileVisitResult.CONTINUE;</span>
+            }
+            @Override public FileVisitResult postVisitDirectory(Path dir, IOException failure) throws IOException {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                if (failure != null) throw failure;</span>
+<span class="fc" id="L108">                Files.delete(dir); return FileVisitResult.CONTINUE;</span>
+            }
+        });
+<span class="fc" id="L111">    }</span>
+
+    static MessageDigest sha256() {
+<span class="fc" id="L114">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L115">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private static final class VerifiedInput extends FilterInputStream {
+        private final BackupEntry entry;
+<span class="fc" id="L120">        private final MessageDigest digest = sha256();</span>
+        private long count;
+        private boolean verified;
+<span class="fc" id="L123">        VerifiedInput(InputStream input, BackupEntry entry) { super(input); this.entry = entry; }</span>
+        @Override public int read() throws IOException {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            byte[] one = new byte[1]; return read(one, 0, 1) &lt; 0 ? -1 : Byte.toUnsignedInt(one[0]);</span>
+        }
+        @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup capture read cancelled&quot;);</span>
+<span class="fc" id="L129">            int read = in.read(bytes, offset, length);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (read &gt; 0) {</span>
+<span class="fc" id="L131">                count = Math.addExact(count, read);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                if (count &gt; entry.length()) throw new IOException(&quot;Capture entry length changed&quot;);</span>
+<span class="fc" id="L133">                digest.update(bytes, offset, read);</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">            } else if (read &lt; 0 &amp;&amp; !verified) {</span>
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">                if (count != entry.length() || !HexFormat.of().formatHex(digest.digest()).equals(entry.sha256()))</span>
+<span class="fc" id="L136">                    throw new IOException(&quot;Capture entry digest mismatch&quot;);</span>
+<span class="fc" id="L137">                verified = true;</span>
+            }
+<span class="fc" id="L139">            return read;</span>
+        }
+        @Override public long skip(long count) throws IOException {
+<span class="nc" id="L142">            long remaining = Math.max(0, count); byte[] buffer = new byte[8192];</span>
+<span class="nc bnc" id="L143" title="All 4 branches missed.">            while (remaining &gt; 0) { int read = read(buffer, 0, (int) Math.min(remaining, buffer.length)); if (read &lt; 0) break; remaining -= read; }</span>
+<span class="nc" id="L144">            return Math.max(0, count) - remaining;</span>
+        }
+<span class="nc" id="L146">        @Override public boolean markSupported() { return false; }</span>
+<span class="nc" id="L147">        @Override public synchronized void reset() throws IOException { throw new IOException(&quot;Captured streams cannot be rewound&quot;); }</span>
+        @Override public void close() throws IOException {
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            try { if (!verified) transferTo(OutputStream.nullOutputStream()); }</span>
+<span class="fc" id="L150">            finally { in.close(); }</span>
+<span class="fc" id="L151">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

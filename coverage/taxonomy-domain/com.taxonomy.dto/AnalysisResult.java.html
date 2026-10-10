@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisResult.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisResult.java</span></div><h1>AnalysisResult.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public class AnalysisResult {
+
+<span class="fc" id="L11">    private AnalysisScope analysisScope = AnalysisScope.full();</span>
+<span class="fc" id="L12">    public AnalysisScope getAnalysisScope() { return analysisScope; }</span>
+<span class="fc" id="L13">    public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }</span>
+
+    private AnalysisCoverage analysisCoverage;
+<span class="fc" id="L16">    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }</span>
+<span class="fc" id="L17">    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }</span>
+    private AnalysisRecoveryView recovery;
+<span class="fc" id="L19">    public AnalysisRecoveryView getRecovery() { return recovery; }</span>
+<span class="fc" id="L20">    public void setRecovery(AnalysisRecoveryView value) { recovery = value; }</span>
+
+    /** Server-measured scoring, relation and architecture work; null for older/unmeasured results. */
+    private Long analysisDurationMillis;
+<span class="fc" id="L24">    public Long getAnalysisDurationMillis() { return analysisDurationMillis; }</span>
+    public void setAnalysisDurationMillis(Long value) {
+<span class="fc bfc" id="L26" title="All 4 branches covered.">        if (value != null &amp;&amp; value &lt; 0) throw new IllegalArgumentException(&quot;Analysis duration must not be negative&quot;);</span>
+<span class="fc" id="L27">        analysisDurationMillis = value;</span>
+<span class="fc" id="L28">    }</span>
+
+
+    /** Immutable, requirement-scoped search evidence; never a global catalogue mutation. */
+    private RelationSearchReport relationSearchReport;
+<span class="fc" id="L33">    public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }</span>
+<span class="fc" id="L34">    public void setRelationSearchReport(RelationSearchReport report) { this.relationSearchReport = report; }</span>
+
+
+    /**
+     * Original node scores returned by analysis. Concrete PRODUCT entries are independent
+     * suitability values and are retained separately from comparable relevance.
+     */
+<span class="fc" id="L41">    private Map&lt;String, Integer&gt; rawScores = new LinkedHashMap&lt;&gt;();</span>
+
+    /**
+     * True after a constructor or setter supplied non-null {@code rawScores}, even an empty
+     * map. It makes JSON deserialization order-independent when both legacy {@code scores} and {@code rawScores}
+     * are present.
+     */
+    private transient boolean explicitRawScores;
+
+    /** Whether the current raw evidence came from the legacy JSON setter. */
+    private transient boolean legacyScoresSupplied;
+
+    /** Taxonomy-tree instance used to derive the currently cached score semantics. */
+    private transient List&lt;TaxonomyNodeDto&gt; scoreSemanticsTree;
+
+    /** Scalar metadata for a tree-less partial result; retained across serialization and recalculation. */
+<span class="fc" id="L57">    private Map&lt;String, AnalysisScoreSemantics.NodeContext&gt; scoreSemanticsContext = Map.of();</span>
+
+    /** Version of the explicit score-semantics envelope. */
+    private int scoreSemanticsVersion;
+
+    /** SHA-256 of raw, effective, kind and parent score evidence. */
+    private String scoreSemanticsFingerprintSha256;
+
+    /** Node code → typed interpretation of the original score. */
+<span class="fc" id="L66">    private Map&lt;String, AnalysisScoreDetail&gt; scoreDetails = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Node code → comparable 0–100 relevance used by generic downstream consumers. */
+<span class="fc" id="L69">    private Map&lt;String, Integer&gt; effectiveScores = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Concrete product code → original independent 0–100 suitability. */
+<span class="fc" id="L72">    private Map&lt;String, Integer&gt; productSuitabilityScores = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Bounded compatibility warnings produced while deriving semantics for legacy payloads. */
+<span class="fc" id="L75">    private List&lt;String&gt; scoreSemanticsWarnings = new ArrayList&lt;&gt;();</span>
+
+    /** Original node-code → reason text returned by the scoring provider. */
+<span class="fc" id="L78">    private Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Effective provider used for this analysis (informational/provenance). */
+    private String provider;
+
+    private List&lt;TaxonomyNodeDto&gt; tree;
+
+    /** &quot;SUCCESS&quot;, &quot;PARTIAL&quot;, or &quot;ERROR&quot; */
+    private String status;
+
+    /** Accumulated warning messages (e.g. which roots were skipped). */
+<span class="fc" id="L89">    private List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+
+    /** Human-readable error/partial message; set when status is PARTIAL or ERROR. */
+    private String errorMessage;
+
+    /** Optional architecture view built from relation-aware propagation. */
+    private RequirementArchitectureView architectureView;
+
+    /**
+     * Scoring discrepancies detected during analysis. Each entry indicates
+     * a case where the LLM's raw child scores exceeded the parent's budget,
+     * signalling a potential taxonomy inconsistency.
+     */
+<span class="fc" id="L102">    private List&lt;TaxonomyDiscrepancy&gt; discrepancies = new ArrayList&lt;&gt;();</span>
+
+    /** Relevant product families for which no catalogued product met the suitability threshold. */
+<span class="fc" id="L105">    private List&lt;ProductCoverageGap&gt; productCoverageGaps = new ArrayList&lt;&gt;();</span>
+
+    /** Provisional (not-yet-persisted) relation hypotheses generated from scores. */
+<span class="fc" id="L108">    private List&lt;RelationHypothesisDto&gt; provisionalRelations = new ArrayList&lt;&gt;();</span>
+
+    /** Git commit provenance and projection/index freshness metadata. */
+    private ViewContext viewContext;
+
+<span class="fc" id="L113">    public AnalysisResult() {}</span>
+
+<span class="fc" id="L115">    public AnalysisResult(Map&lt;String, Integer&gt; rawScores, List&lt;TaxonomyNodeDto&gt; tree) {</span>
+<span class="fc" id="L116">        setRawScores(rawScores);</span>
+<span class="fc" id="L117">        this.tree = tree;</span>
+<span class="fc" id="L118">        refreshScoreSemantics();</span>
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Returns comparable relevance values. Existing generic consumers therefore cannot silently
+     * rank conditional product suitability as though it were absolute hierarchical relevance.
+     * Use {@link #getRawScores()} or {@link #getProductSuitabilityScores()} for scoring evidence.
+     */
+    public Map&lt;String, Integer&gt; getScores() {
+<span class="fc" id="L127">        ensureScoreSemantics();</span>
+<span class="fc" id="L128">        return effectiveScores;</span>
+    }
+
+    /**
+     * Legacy JSON input. Old payloads contain only {@code scores}; new payloads also contain
+     * {@code rawScores}, which takes precedence independently of property order.
+     */
+    public void setScores(Map&lt;String, Integer&gt; scores) {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (!explicitRawScores) {</span>
+<span class="fc" id="L137">            this.rawScores = normalizeRawScores(scores);</span>
+<span class="fc" id="L138">            this.legacyScoresSupplied = true;</span>
+        }
+<span class="fc" id="L140">    }</span>
+
+    public Map&lt;String, Integer&gt; getRawScores() {
+<span class="fc" id="L143">        return rawScores;</span>
+    }
+
+    /**
+     * Non-null raw evidence always wins over the legacy alias, including an explicit empty map.
+     * Null means no new-format evidence: preserve an accepted legacy input, or clear a previous
+     * constructor/explicit raw value. This also covers property-based JSON construction.
+     */
+    public void setRawScores(Map&lt;String, Integer&gt; rawScores) {
+<span class="fc bfc" id="L152" title="All 4 branches covered.">        if (rawScores == null &amp;&amp; legacyScoresSupplied) {</span>
+<span class="fc" id="L153">            return;</span>
+        }
+<span class="fc" id="L155">        this.rawScores = normalizeRawScores(rawScores);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        this.explicitRawScores = rawScores != null;</span>
+<span class="fc" id="L157">        this.legacyScoresSupplied = false;</span>
+<span class="fc" id="L158">    }</span>
+
+    public int getScoreSemanticsVersion() {
+<span class="fc" id="L161">        ensureScoreSemantics();</span>
+<span class="fc" id="L162">        return scoreSemanticsVersion;</span>
+    }
+    public void setScoreSemanticsVersion(int scoreSemanticsVersion) {
+<span class="fc" id="L165">        this.scoreSemanticsVersion = scoreSemanticsVersion;</span>
+<span class="fc" id="L166">    }</span>
+
+    public String getScoreSemanticsFingerprintSha256() {
+<span class="fc" id="L169">        ensureScoreSemantics();</span>
+<span class="fc" id="L170">        return scoreSemanticsFingerprintSha256;</span>
+    }
+    public void setScoreSemanticsFingerprintSha256(String scoreSemanticsFingerprintSha256) {
+<span class="fc" id="L173">        this.scoreSemanticsFingerprintSha256 = scoreSemanticsFingerprintSha256;</span>
+<span class="fc" id="L174">    }</span>
+
+    public Map&lt;String, AnalysisScoreDetail&gt; getScoreDetails() {
+<span class="fc" id="L177">        ensureScoreSemantics();</span>
+<span class="fc" id="L178">        return scoreDetails;</span>
+    }
+    public void setScoreDetails(Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        this.scoreDetails = scoreDetails != null</span>
+<span class="pc" id="L182">                ? new LinkedHashMap&lt;&gt;(scoreDetails) : new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L183">    }</span>
+
+    public Map&lt;String, Integer&gt; getEffectiveScores() {
+<span class="fc" id="L186">        ensureScoreSemantics();</span>
+<span class="fc" id="L187">        return effectiveScores;</span>
+    }
+    public void setEffectiveScores(Map&lt;String, Integer&gt; effectiveScores) {
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        this.effectiveScores = effectiveScores != null</span>
+<span class="pc" id="L191">                ? new LinkedHashMap&lt;&gt;(effectiveScores) : new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L192">    }</span>
+
+    public Map&lt;String, Integer&gt; getProductSuitabilityScores() {
+<span class="fc" id="L195">        ensureScoreSemantics();</span>
+<span class="fc" id="L196">        return productSuitabilityScores;</span>
+    }
+    public void setProductSuitabilityScores(Map&lt;String, Integer&gt; productSuitabilityScores) {
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        this.productSuitabilityScores = productSuitabilityScores != null</span>
+<span class="pc" id="L200">                ? new LinkedHashMap&lt;&gt;(productSuitabilityScores) : new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L201">    }</span>
+
+    public List&lt;String&gt; getScoreSemanticsWarnings() {
+<span class="fc" id="L204">        ensureScoreSemantics();</span>
+<span class="fc" id="L205">        return scoreSemanticsWarnings;</span>
+    }
+    public void setScoreSemanticsWarnings(List&lt;String&gt; scoreSemanticsWarnings) {
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        this.scoreSemanticsWarnings = scoreSemanticsWarnings != null</span>
+<span class="pc" id="L209">                ? new ArrayList&lt;&gt;(scoreSemanticsWarnings) : new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L210">    }</span>
+
+    public Map&lt;String, AnalysisScoreSemantics.NodeContext&gt; getScoreSemanticsContext() {
+<span class="fc" id="L213">        return scoreSemanticsContext;</span>
+    }
+
+    public void setScoreSemanticsContext(Map&lt;String, AnalysisScoreSemantics.NodeContext&gt; context) {
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        scoreSemanticsContext = context == null ? Map.of() : Map.copyOf(context);</span>
+<span class="fc" id="L218">        scoreSemanticsVersion = 0;</span>
+<span class="fc" id="L219">    }</span>
+
+    /** Rebuilds derived score views from the response tree or its compact partial-result context. */
+    public final void refreshScoreSemantics() {
+<span class="fc" id="L223">        rawScores = normalizeRawScores(rawScores);</span>
+<span class="fc bfc" id="L224" title="All 6 branches covered.">        AnalysisScoreSemantics.Derived derived = (tree == null || tree.isEmpty()) &amp;&amp; !scoreSemanticsContext.isEmpty()</span>
+<span class="fc" id="L225">                ? AnalysisScoreSemantics.deriveWithContexts(rawScores, scoreSemanticsContext)</span>
+<span class="fc" id="L226">                : AnalysisScoreSemantics.derive(rawScores, tree);</span>
+<span class="fc" id="L227">        scoreSemanticsVersion = AnalysisScoreSemantics.CURRENT_VERSION;</span>
+<span class="fc" id="L228">        scoreDetails = new LinkedHashMap&lt;&gt;(derived.scoreDetails());</span>
+<span class="fc" id="L229">        effectiveScores = new LinkedHashMap&lt;&gt;(derived.effectiveScores());</span>
+<span class="fc" id="L230">        productSuitabilityScores = new LinkedHashMap&lt;&gt;(derived.productSuitabilityScores());</span>
+<span class="fc" id="L231">        scoreSemanticsWarnings = new ArrayList&lt;&gt;(derived.warnings());</span>
+<span class="fc" id="L232">        scoreSemanticsFingerprintSha256 =</span>
+<span class="fc" id="L233">                AnalysisScoreSemanticsFingerprint.sha256(scoreDetails);</span>
+<span class="fc" id="L234">        scoreSemanticsTree = tree;</span>
+<span class="fc" id="L235">    }</span>
+
+    private static Map&lt;String, Integer&gt; normalizeRawScores(Map&lt;String, Integer&gt; scores) {
+<span class="fc" id="L238">        return new LinkedHashMap&lt;&gt;(AnalysisScoreSemantics.normalizeScores(scores));</span>
+    }
+
+    private void ensureScoreSemantics() {
+        // Empty or absent raw evidence must invalidate stale derived views too.
+<span class="pc bpc" id="L243" title="1 of 4 branches missed.">        if (rawScores == null || !hasCompleteScoreSemantics()) {</span>
+<span class="fc" id="L244">            refreshScoreSemantics();</span>
+        }
+<span class="fc" id="L246">    }</span>
+
+    private boolean hasCompleteScoreSemantics() {
+<span class="pc bpc" id="L249" title="3 of 10 branches missed.">        if (scoreSemanticsTree != tree</span>
+                || scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
+                || scoreDetails == null || effectiveScores == null
+                || productSuitabilityScores == null
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                || !scoreDetails.keySet().equals(rawScores.keySet())</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                || !effectiveScores.keySet().equals(rawScores.keySet())) {</span>
+<span class="fc" id="L255">            return false;</span>
+        }
+<span class="fc" id="L257">        int productCount = 0;</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : rawScores.entrySet()) {</span>
+<span class="fc" id="L259">            AnalysisScoreDetail detail = scoreDetails.get(entry.getKey());</span>
+<span class="fc" id="L260">            Integer effective = effectiveScores.get(entry.getKey());</span>
+<span class="pc bpc" id="L261" title="3 of 6 branches missed.">            if (entry.getValue() == null || detail == null || effective == null</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                    || !entry.getKey().equals(detail.nodeCode())</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                    || detail.rawScore() != Math.max(0, Math.min(100, entry.getValue()))</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                    || detail.effectiveRelevance() != effective) {</span>
+<span class="fc" id="L265">                return false;</span>
+            }
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            if (detail.isProductSuitability()) {</span>
+<span class="fc" id="L268">                productCount++;</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                if (!Objects.equals(productSuitabilityScores.get(entry.getKey()), detail.rawScore())) {</span>
+<span class="fc" id="L270">                    return false;</span>
+                }
+            }
+<span class="fc" id="L273">        }</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        return productSuitabilityScores.size() == productCount</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(scoreSemanticsFingerprintSha256,</span>
+<span class="fc" id="L276">                        AnalysisScoreSemanticsFingerprint.sha256(scoreDetails));</span>
+    }
+
+<span class="fc" id="L279">    public Map&lt;String, String&gt; getReasons() { return reasons; }</span>
+    public void setReasons(Map&lt;String, String&gt; reasons) {
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        this.reasons = reasons != null ? reasons : new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L282">    }</span>
+
+<span class="fc" id="L284">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L285">    public void setProvider(String provider) { this.provider = provider; }</span>
+
+<span class="fc" id="L287">    public List&lt;TaxonomyNodeDto&gt; getTree() { return tree; }</span>
+    public void setTree(List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="fc" id="L289">        this.tree = tree;</span>
+<span class="fc" id="L290">        this.scoreSemanticsTree = null;</span>
+<span class="fc" id="L291">        this.scoreSemanticsVersion = 0;</span>
+<span class="fc" id="L292">        this.scoreSemanticsFingerprintSha256 = null;</span>
+<span class="fc" id="L293">    }</span>
+
+<span class="fc" id="L295">    public String getStatus() { return status; }</span>
+<span class="fc" id="L296">    public void setStatus(String status) { this.status = status; }</span>
+
+<span class="fc" id="L298">    public List&lt;String&gt; getWarnings() { return warnings; }</span>
+    public void setWarnings(List&lt;String&gt; warnings) {
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        this.warnings = warnings != null ? warnings : new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L301">    }</span>
+
+<span class="fc" id="L303">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="fc" id="L304">    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }</span>
+
+<span class="fc" id="L306">    public RequirementArchitectureView getArchitectureView() { return architectureView; }</span>
+<span class="fc" id="L307">    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }</span>
+
+<span class="fc" id="L309">    public List&lt;TaxonomyDiscrepancy&gt; getDiscrepancies() { return discrepancies; }</span>
+    public void setDiscrepancies(List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        this.discrepancies = discrepancies != null ? discrepancies : new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L312">    }</span>
+
+<span class="fc" id="L314">    public List&lt;ProductCoverageGap&gt; getProductCoverageGaps() { return productCoverageGaps; }</span>
+    public void setProductCoverageGaps(List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        this.productCoverageGaps = productCoverageGaps != null</span>
+<span class="pc" id="L317">                ? productCoverageGaps : new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L318">    }</span>
+
+<span class="fc" id="L320">    public List&lt;RelationHypothesisDto&gt; getProvisionalRelations() { return provisionalRelations; }</span>
+    public void setProvisionalRelations(List&lt;RelationHypothesisDto&gt; provisionalRelations) {
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        this.provisionalRelations = provisionalRelations != null</span>
+<span class="pc" id="L323">                ? provisionalRelations : new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L324">    }</span>
+
+<span class="fc" id="L326">    public ViewContext getViewContext() { return viewContext; }</span>
+<span class="fc" id="L327">    public void setViewContext(ViewContext viewContext) { this.viewContext = viewContext; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionAnswer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reformulation</a> &gt; <span class="el_source">DecisionAnswer.java</span></div><h1>DecisionAnswer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reformulation;
+
+import java.time.Instant;
+import java.util.List;
+
+/** Human evidence only. Corrections explicitly supersede events; history is never removed. */
+public record DecisionAnswer(String id, String questionId, String proposalId, long proposalRevision,
+        List&lt;String&gt; values, DecisionQuestion.State state, String author, Instant occurredAt, String rationale,
+        String otherText, String disposition, List&lt;String&gt; supersedes) {
+    public DecisionAnswer(String id, String questionId, String proposalId, long proposalRevision,
+            List&lt;String&gt; values, DecisionQuestion.State state, String author, Instant occurredAt, String rationale) {
+<span class="fc" id="L12">        this(id, questionId, proposalId, proposalRevision, values, state, author, occurredAt, rationale, null, &quot;ANSWER&quot;, List.of());</span>
+<span class="fc" id="L13">    }</span>
+<span class="fc" id="L14">    public DecisionAnswer {</span>
+<span class="fc" id="L15">        values = List.copyOf(values);</span>
+<span class="pc bpc" id="L16" title="1 of 2 branches missed.">        supersedes = supersedes == null ? List.of() : List.copyOf(supersedes);</span>
+<span class="fc" id="L17">        ReformulationBaseline.requireText(author, &quot;human author&quot;);</span>
+<span class="fc" id="L18">        java.util.Objects.requireNonNull(occurredAt);</span>
+<span class="fc" id="L19">    }</span>
+    public static List&lt;DecisionAnswer&gt; active(List&lt;DecisionAnswer&gt; history) {
+<span class="fc" id="L21">        var superseded = history.stream().flatMap(a -&gt; a.supersedes().stream()).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        return history.stream().filter(a -&gt; !superseded.contains(a.id())).toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

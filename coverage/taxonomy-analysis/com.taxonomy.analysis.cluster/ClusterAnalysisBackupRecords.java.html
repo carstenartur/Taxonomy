@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisBackupRecords.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisBackupRecords.java</span></div><h1>ClusterAnalysisBackupRecords.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.backup.SourceRecordId;
+import java.util.List;
+
+/** Explicit archive DTOs. Source IDs name archive-local evidence, never target database keys. */
+public final class ClusterAnalysisBackupRecords {
+    private ClusterAnalysisBackupRecords() { }
+<span class="fc" id="L11">    public record Run(SourceRecordId sourceId, String principalScope, AnalysisOperationContext context,</span>
+                      String commandJson, String viewJson, String resultJson, String relationPlanJson,
+                      String sourceState, ResumePolicy resumePolicy, int totalRoots, int completedRoots,
+                      long revision, long createdAt, long updatedAt) { }
+<span class="fc" id="L15">    public record Work(SourceRecordId sourceId, SourceRecordId run, String taskId, String taskType,</span>
+                       String root, int ordinal, String messageJson, String inputJson, String resultJson,
+                       String failureReason, String sourceState, boolean settled, int attempts,
+                       Long startedAt, Long finishedAt) { }
+<span class="fc" id="L19">    public record Input(SourceRecordId sourceId, SourceRecordId run, String root, String inputJson) { }</span>
+<span class="fc" id="L20">    public record Event(SourceRecordId sourceId, SourceRecordId run, long revision, String eventJson) { }</span>
+    public record Archive(Run run, List&lt;Work&gt; work, List&lt;Input&gt; inputs, List&lt;Event&gt; events) {
+<span class="fc" id="L22">        public Archive { work = List.copyOf(work); inputs = List.copyOf(inputs); events = List.copyOf(events); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

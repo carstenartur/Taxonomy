@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderPermitsConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderPermitsConfiguration.java</span></div><h1>ArtemisProviderPermitsConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+
+import java.util.Map;
+
+/** Independent opt-in; the existing gateway registry injects its neutral permit port. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;analysis&quot;})
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = &quot;taxonomy.analysis.provider-permits.enabled&quot;, havingValue = &quot;true&quot;)
+<span class="fc" id="L20">public class ArtemisProviderPermitsConfiguration {</span>
+    @Bean
+    ArtemisProviderPermitSettings artemisProviderPermitSettings(Environment environment) {
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!ArtemisAnalysisSettings.artemisMode(environment.getProperty(&quot;taxonomy.analysis.transport.mode&quot;, &quot;local&quot;))) {</span>
+<span class="fc" id="L24">            throw new IllegalStateException(&quot;Cluster provider permits require artemis analysis transport&quot;);</span>
+        }
+<span class="fc" id="L26">        String prefix = &quot;taxonomy.analysis.provider-permits.&quot;;</span>
+<span class="fc" id="L27">        Map&lt;String, String&gt; configured = Binder.get(environment)</span>
+<span class="fc" id="L28">                .bind(prefix + &quot;provider-groups&quot;, Bindable.mapOf(String.class, String.class)).orElse(Map.of());</span>
+<span class="fc" id="L29">        Map&lt;ProviderId, String&gt; groups = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L30">        configured.forEach((key, group) -&gt; {</span>
+            // Retain Spring's former enum binding aliases, without rewriting external IDs.
+<span class="fc" id="L32">            ProviderId literal = new ProviderId(key);</span>
+<span class="fc" id="L33">            ProviderId id = LlmProvider.builtin(new ProviderId(key.replace('-', '_')))</span>
+<span class="fc" id="L34">                    .map(LlmProvider::id).orElse(literal);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (groups.putIfAbsent(id, group) != null) {</span>
+<span class="nc" id="L36">                throw new IllegalArgumentException(&quot;Duplicate provider quota group: &quot; + id);</span>
+            }
+<span class="fc" id="L38">        });</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (groups.isEmpty()) throw new IllegalArgumentException(&quot;Cluster provider permits require explicit provider-groups&quot;);</span>
+<span class="fc" id="L40">        return new ArtemisProviderPermitSettings(environment.getProperty(prefix + &quot;destination-prefix&quot;,</span>
+                ArtemisProviderPermitSettings.DEFAULT_PREFIX), groups,
+<span class="fc" id="L42">                environment.getProperty(prefix + &quot;maximum-wait-ms&quot;, Long.class, 120_000L));</span>
+    }
+
+    @Bean
+    ProviderConcurrencyPermits artemisProviderConcurrencyPermits(
+            ArtemisAnalysisConnection connection, ArtemisProviderPermitSettings settings,
+            ObjectProvider&lt;ArtemisAnalysisMetrics&gt; instrumentation) {
+<span class="fc" id="L49">        var permits = new ArtemisProviderConcurrencyPermits(connection, settings);</span>
+<span class="fc" id="L50">        var metrics = instrumentation.getIfAvailable();</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        return metrics == null ? permits : metrics.permits(permits, settings);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

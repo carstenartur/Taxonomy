@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitectureReportService.java</span></div><h1>ArchitectureReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.*;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.export.MermaidExportService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.dto.DetectedPattern;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.IncompletePattern;
+import com.taxonomy.dto.MissingRelation;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.RecommendedElement;
+import com.taxonomy.dto.RelationProposalDto;
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.SuggestedRelation;
+import com.taxonomy.relations.service.RelationProposalService;
+
+/**
+ * Aggregates data from existing services and produces an {@link ArchitectureReport},
+ * which can then be rendered as Markdown, HTML, or DOCX.
+ */
+@Service
+public class ArchitectureReportService {
+
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(ArchitectureReportService.class);</span>
+    private static final int DEFAULT_MIN_SCORE = 20;
+
+    private final RequirementArchitectureViewService architectureViewService;
+    private final ArchitectureGapService gapService;
+    private final ArchitecturePatternService patternService;
+    private final ArchitectureRecommendationService recommendationService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final MermaidExportService mermaidExportService;
+    private final RelationProposalService proposalService;
+    private final ArchitectureReportMetadataPort metadataPort;
+
+    public ArchitectureReportService(RequirementArchitectureViewService architectureViewService,
+                                      ArchitectureGapService gapService,
+                                      ArchitecturePatternService patternService,
+                                      ArchitectureRecommendationService recommendationService,
+                                      DiagramProjectionService diagramProjectionService,
+                                      MermaidExportService mermaidExportService,
+                                      RelationProposalService proposalService,
+<span class="fc" id="L58">                                      ArchitectureReportMetadataPort metadataPort) {</span>
+<span class="fc" id="L59">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L60">        this.gapService = gapService;</span>
+<span class="fc" id="L61">        this.patternService = patternService;</span>
+<span class="fc" id="L62">        this.recommendationService = recommendationService;</span>
+<span class="fc" id="L63">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L64">        this.mermaidExportService = mermaidExportService;</span>
+<span class="fc" id="L65">        this.proposalService = proposalService;</span>
+<span class="fc" id="L66">        this.metadataPort = metadataPort;</span>
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * Generates a full architecture report by calling all existing analysis services.
+     *
+     * @param scores       nodeCode → score map (0–100)
+     * @param businessText the business requirement text
+     * @param minScore     minimum score threshold (0 → default 20)
+     * @return populated {@link ArchitectureReport}
+     */
+    @Transactional(readOnly = true)
+    public ArchitectureReport generateReport(Map&lt;String, Integer&gt; scores,
+                                              String businessText, int minScore) {
+<span class="fc" id="L80">        ArchitectureReport report = new ArchitectureReport();</span>
+<span class="fc" id="L81">        report.setBusinessText(businessText);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        report.setScores(scores != null ? scores : Map.of());</span>
+<span class="fc" id="L83">        report.setGeneratedAt(Instant.now());</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        int threshold = minScore &gt; 0 ? minScore : DEFAULT_MIN_SCORE;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        Map&lt;String, Integer&gt; safeScores = scores != null ? scores : Map.of();</span>
+
+        // 1. Architecture View
+<span class="fc" id="L89">        RequirementArchitectureView archView = architectureViewService.build(</span>
+                safeScores, businessText, 20);
+<span class="fc" id="L91">        DiagramViewMetadata meta = metadataPort.resolve();</span>
+<span class="fc" id="L92">        archView.setViewTitle(meta.viewTitle());</span>
+<span class="fc" id="L93">        archView.setViewDescription(meta.viewDescription());</span>
+<span class="fc" id="L94">        archView.setContainmentEnabled(meta.containmentEnabled());</span>
+<span class="fc" id="L95">        archView.setActiveRules(meta.activeRules());</span>
+<span class="fc" id="L96">        report.setArchitectureView(archView);</span>
+
+        // 2. Gap Analysis
+<span class="fc" id="L99">        GapAnalysisView gaps = gapService.analyze(safeScores, businessText, threshold);</span>
+<span class="fc" id="L100">        report.setGapAnalysis(gaps);</span>
+
+        // 3. Pattern Detection
+<span class="fc" id="L103">        PatternDetectionView patterns = patternService.detectForScores(safeScores, threshold);</span>
+<span class="fc" id="L104">        report.setPatternDetection(patterns);</span>
+
+        // 4. Recommendation
+<span class="fc" id="L107">        ArchitectureRecommendation recommendation = recommendationService.recommend(</span>
+                safeScores, businessText, threshold);
+<span class="fc" id="L109">        report.setRecommendation(recommendation);</span>
+
+        // 5. Pending Proposals
+<span class="fc" id="L112">        List&lt;RelationProposalDto&gt; pending = proposalService.getPendingProposals();</span>
+<span class="fc" id="L113">        report.setPendingProposals(pending);</span>
+
+        // 6. Mermaid Diagram
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">        String title = businessText != null &amp;&amp; businessText.length() &gt; 60</span>
+<span class="fc" id="L117">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                : (businessText != null ? businessText : &quot;Report&quot;);</span>
+<span class="fc" id="L119">        DiagramModel diagram = diagramProjectionService.project(archView, title);</span>
+<span class="fc" id="L120">        String mermaid = mermaidExportService.export(diagram);</span>
+<span class="fc" id="L121">        report.setMermaidDiagram(mermaid);</span>
+
+<span class="fc" id="L123">        log.info(&quot;Report generated: {} anchors, {} gaps, {} patterns, {} recommendations&quot;,</span>
+<span class="fc" id="L124">                archView.getTotalAnchors(),</span>
+<span class="fc" id="L125">                gaps.getTotalGaps(),</span>
+<span class="fc" id="L126">                patterns.getMatchedPatterns().size(),</span>
+<span class="fc" id="L127">                recommendation.getConfirmedElements().size());</span>
+
+<span class="fc" id="L129">        return report;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

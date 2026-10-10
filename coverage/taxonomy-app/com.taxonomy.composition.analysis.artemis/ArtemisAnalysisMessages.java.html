@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisMessages.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisMessages.java</span></div><h1>ArtemisAnalysisMessages.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.dag.json.AnalysisMessageFormatException;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
+
+/** JMS mapping of the versioned JSON analysis contract. */
+final class ArtemisAnalysisMessages {
+
+    /** Artemis duplicate-detection header; an optimization, never the only idempotency guarantee. */
+    static final String DUPLICATE_ID = &quot;_AMQ_DUPL_ID&quot;;
+    static final String SCHEMA_VERSION = &quot;taxonomySchemaVersion&quot;;
+    static final String REJECTION = &quot;taxonomyRejection&quot;;
+    static final String ORIGIN = &quot;taxonomyOrigin&quot;;
+    static final String DELIVERY_COUNT = &quot;JMSXDeliveryCount&quot;;
+
+    private ArtemisAnalysisMessages() { }
+
+    static BytesMessage encode(Session session, AnalysisMessageCodec codec, AnalysisMessage message)
+            throws JMSException {
+<span class="fc" id="L26">        byte[] body = codec.encode(message);</span>
+<span class="fc" id="L27">        BytesMessage jms = session.createBytesMessage();</span>
+<span class="fc" id="L28">        jms.writeBytes(body);</span>
+<span class="fc" id="L29">        jms.setJMSType(message.envelope().messageType().name());</span>
+<span class="fc" id="L30">        jms.setIntProperty(SCHEMA_VERSION, message.envelope().schemaVersion());</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (message instanceof AnalysisTaskMessage task) {</span>
+<span class="fc" id="L32">            jms.setStringProperty(DUPLICATE_ID, task.taskId().value());</span>
+        }
+<span class="fc" id="L34">        return jms;</span>
+    }
+
+    /** Read a bounded body without trusting the declared size. */
+    static byte[] body(Message message) throws JMSException {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (!(message instanceof BytesMessage bytes)) {</span>
+<span class="fc" id="L40">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.MALFORMED,</span>
+                    &quot;analysis messages must be bytes messages&quot;, null);
+        }
+<span class="fc" id="L43">        long length = bytes.getBodyLength();</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (length &gt; AnalysisMessageCodec.MAX_MESSAGE_BYTES) {</span>
+<span class="nc" id="L45">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.TOO_LARGE,</span>
+                    &quot;message exceeds &quot; + AnalysisMessageCodec.MAX_MESSAGE_BYTES + &quot; bytes&quot;, null);
+        }
+<span class="fc" id="L48">        byte[] body = new byte[(int) length];</span>
+<span class="fc" id="L49">        bytes.reset();</span>
+<span class="fc" id="L50">        bytes.readBytes(body);</span>
+<span class="fc" id="L51">        return body;</span>
+    }
+
+    static int deliveryAttempt(Message message) {
+        try {
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            return message.propertyExists(DELIVERY_COUNT) ? Math.max(1, message.getIntProperty(DELIVERY_COUNT)) : 1;</span>
+<span class="nc" id="L57">        } catch (JMSException | NumberFormatException unreadable) {</span>
+<span class="nc" id="L58">            return 1;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

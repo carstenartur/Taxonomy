@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExtensionKey.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.plugin</a> &gt; <span class="el_source">ExtensionKey.java</span></div><h1>ExtensionKey.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.plugin;
+
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import java.io.Serializable;
+import java.util.Locale;
+import java.util.Objects;
+
+/** Case-insensitive extension identity within its kind. Report families own their formats. */
+public record ExtensionKey(ExtensionKind kind, String id) implements Serializable, Comparable&lt;ExtensionKey&gt; {
+<span class="fc" id="L11">    public ExtensionKey {</span>
+<span class="fc" id="L12">        Objects.requireNonNull(kind, &quot;kind&quot;);</span>
+<span class="pc bpc" id="L13" title="3 of 6 branches missed.">        if (id == null || id.isBlank() || id.length() &gt; 257)</span>
+<span class="nc" id="L14">            throw new IllegalArgumentException(&quot;Extension ID must not be blank or exceed 257 characters&quot;);</span>
+<span class="fc" id="L15">        id = id.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L16">    }</span>
+    public static ExtensionKey report(String family, String format) {
+<span class="fc" id="L18">        String f = reportPart(family, &quot;report type ID&quot;), t = reportPart(format, &quot;report format ID&quot;);</span>
+<span class="fc" id="L19">        return new ExtensionKey(ExtensionKind.REPORT_RENDERER,</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">                ReportRendererExtension.DEFAULT_REPORT_TYPE_ID.equals(f) ? t : f + &quot;:&quot; + t);</span>
+    }
+    private static String reportPart(String value, String name) {
+<span class="pc bpc" id="L23" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) throw new IllegalArgumentException(name + &quot; must not be blank&quot;);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (value.contains(&quot;:&quot;)) throw new IllegalArgumentException(name + &quot; must not contain ':'&quot;);</span>
+<span class="fc" id="L25">        return value.trim().toLowerCase(Locale.ROOT);</span>
+    }
+    @Override public int compareTo(ExtensionKey other) {
+<span class="fc" id="L28">        int compared = kind.compareTo(other.kind);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        return compared == 0 ? id.compareTo(other.id) : compared;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

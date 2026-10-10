@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupMaintenanceLease.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.snapshot</a> &gt; <span class="el_source">BackupMaintenanceLease.java</span></div><h1>BackupMaintenanceLease.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.snapshot;
+
+import com.taxonomy.backup.BackupScope;
+import com.taxonomy.backup.BackupWriteBarrier;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Installation-wide gate shared by every instance. The database clock owns lease
+ * expiry. Registration/draining use short transactions; a writer's final fence
+ * holds the gate row lock on its own connection until its actual commit.
+ */
+public final class BackupMaintenanceLease implements BackupWriteBarrier {
+    private final DataSource database;
+    private final long lifetime;
+    private final String gateSql;
+    private final String clockSql;
+    private final boolean utcWithoutOffset;
+<span class="fc" id="L29">    private final ThreadLocal&lt;Writer&gt; currentWriter = new ThreadLocal&lt;&gt;();</span>
+    private volatile StartupMaintenance localStartup;
+
+<span class="fc" id="L32">    public BackupMaintenanceLease(DataSource database, Duration lifetime) {</span>
+<span class="fc" id="L33">        this.database = Objects.requireNonNull(database);</span>
+<span class="fc" id="L34">        this.lifetime = bounded(lifetime);</span>
+<span class="fc" id="L35">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L36">            String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L37">            boolean sqlServer = product.contains(&quot;microsoft&quot;);</span>
+<span class="fc" id="L38">            gateSql = &quot;select generation, owner_id, expires_at, phase from backup_barrier_state &quot;</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                    + (sqlServer ? &quot;with (updlock, holdlock) where barrier_id='global'&quot;</span>
+<span class="fc" id="L40">                    : &quot;where barrier_id='global' for update&quot;);</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">            utcWithoutOffset = product.contains(&quot;mysql&quot;) || product.contains(&quot;mariadb&quot;);</span>
+            String clock;
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if (product.contains(&quot;postgresql&quot;)) clock = &quot;clock_timestamp()&quot;;</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            else if (sqlServer) clock = &quot;sysdatetimeoffset()&quot;;</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            else if (product.contains(&quot;oracle&quot;)) clock = &quot;systimestamp&quot;;</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            else if (utcWithoutOffset) clock = &quot;utc_timestamp(3)&quot;;</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">            else if (product.contains(&quot;hsql&quot;)) clock = &quot;current_timestamp&quot;;</span>
+<span class="nc" id="L48">            else throw new IllegalArgumentException(&quot;Unsupported backup coordination database&quot;);</span>
+<span class="fc" id="L49">            clockSql = &quot;select &quot; + clock + &quot; from backup_barrier_state where barrier_id='global'&quot;;</span>
+<span class="pc" id="L50">        } catch (SQLException failure) { throw new IllegalStateException(&quot;Cannot inspect barrier database&quot;, failure); }</span>
+<span class="fc" id="L51">    }</span>
+
+    public static void initialize(DataSource database) {
+<span class="fc" id="L54">        Flyway.configure().dataSource(database).table(&quot;backup_schema_history&quot;)</span>
+<span class="fc" id="L55">                .baselineOnMigrate(true).baselineVersion(&quot;0&quot;).locations(&quot;classpath:db/backup-java-migrations&quot;)</span>
+<span class="fc" id="L56">                .javaMigrations(new V1__WriterBarrier(), new com.taxonomy.backup.jobs.JdbcBackupJobStore.V2__ExportJobs()).load().migrate();</span>
+<span class="fc" id="L57">    }</span>
+
+<span class="fc" id="L59">    public static final class V1__WriterBarrier extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws Exception {
+<span class="fc" id="L61">            var connection = context.getConnection();</span>
+<span class="fc" id="L62">            update(connection, &quot;create table backup_barrier_state (barrier_id varchar(16) primary key, generation numeric(19,0) not null, owner_id varchar(36), expires_at numeric(19,0) not null, phase smallint not null)&quot;);</span>
+<span class="fc" id="L63">            update(connection, &quot;insert into backup_barrier_state values ('global', 1, null, 0, 0)&quot;);</span>
+<span class="fc" id="L64">            update(connection, &quot;create table backup_writer_lease (writer_id varchar(36) primary key, generation numeric(19,0) not null, expires_at numeric(19,0) not null)&quot;);</span>
+<span class="fc" id="L65">        }</span>
+    }
+
+    /** Exposes only the typed transient job store; callers cannot obtain the unfenced coordination datasource. */
+    public com.taxonomy.backup.jobs.JdbcBackupJobStore jobs(com.taxonomy.backup.jobs.BackupJobLimits limits) {
+<span class="fc" id="L70">        return new com.taxonomy.backup.jobs.JdbcBackupJobStore(database, limits);</span>
+    }
+
+    @Override public Section enter(BackupScope scope) {
+<span class="fc" id="L74">        Objects.requireNonNull(scope);</span>
+<span class="fc" id="L75">        var startup = localStartup;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (startup != null) {</span>
+<span class="fc" id="L77">            startup.checkValid();</span>
+<span class="fc" id="L78">            return new Section() {</span>
+                private boolean closed;
+<span class="nc" id="L80">                @Override public long generation() { return startup.generation; }</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                @Override public void checkValid() { if (closed) throw fenced(); startup.checkValid(); }</span>
+<span class="fc" id="L82">                @Override public void close() { closed = true; }</span>
+            };
+        }
+<span class="fc" id="L85">        var existing = currentWriter.get();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc" id="L87">            validate(existing); existing.references++;</span>
+<span class="fc" id="L88">            return new WriterSection(existing);</span>
+        }
+<span class="fc" id="L90">        var writer = transaction(connection -&gt; {</span>
+<span class="fc" id="L91">            Gate gate = lock(connection);</span>
+<span class="fc" id="L92">            long now = now(connection);</span>
+<span class="fc" id="L93">            gate = expireMaintenance(connection, gate, now);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (gate.owner != null) throw new IllegalStateException(&quot;Backup maintenance is in progress&quot;);</span>
+<span class="fc" id="L95">            String id = UUID.randomUUID().toString();</span>
+<span class="fc" id="L96">            update(connection, &quot;insert into backup_writer_lease values (?, ?, ?)&quot;, id, gate.generation, Math.addExact(now, lifetime));</span>
+<span class="fc" id="L97">            return new Writer(id, gate.generation);</span>
+        });
+<span class="fc" id="L99">        currentWriter.set(writer);</span>
+<span class="fc" id="L100">        return new WriterSection(writer);</span>
+    }
+
+    public Maintenance acquire(BackupScope scope, Duration waitFor) {
+<span class="fc" id="L104">        Objects.requireNonNull(scope);</span>
+<span class="fc" id="L105">        long waitMillis = bounded(waitFor);</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (currentWriter.get() != null) throw new IllegalStateException(&quot;Cannot capture inside a write section&quot;);</span>
+<span class="fc" id="L107">        String owner = UUID.randomUUID().toString();</span>
+<span class="fc" id="L108">        transaction(connection -&gt; {</span>
+<span class="fc" id="L109">            Gate gate = expireMaintenance(connection, lock(connection), now(connection));</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (gate.owner != null) throw new IllegalStateException(&quot;Backup maintenance is already in progress&quot;);</span>
+<span class="fc" id="L111">            update(connection, &quot;update backup_barrier_state set owner_id=?, expires_at=?, phase=1 where barrier_id='global'&quot;,</span>
+<span class="fc" id="L112">                    owner, Math.addExact(now(connection), lifetime));</span>
+<span class="fc" id="L113">            return null;</span>
+        });
+<span class="fc" id="L115">        long deadline = System.nanoTime() + Duration.ofMillis(waitMillis).toNanos();</span>
+        try {
+            while (true) {
+<span class="fc" id="L118">                Long generation = transaction(connection -&gt; {</span>
+<span class="fc" id="L119">                    Gate gate = lock(connection);</span>
+<span class="fc" id="L120">                    long now = now(connection);</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">                    if (!owner.equals(gate.owner) || gate.expires &lt;= now) throw fenced();</span>
+<span class="fc" id="L122">                    update(connection, &quot;delete from backup_writer_lease where expires_at&lt;=?&quot;, now);</span>
+                    long count;
+<span class="fc" id="L124">                    try (var query = connection.prepareStatement(&quot;select count(*) from backup_writer_lease&quot;)) {</span>
+<span class="fc" id="L125">                        query.setQueryTimeout(5);</span>
+<span class="fc" id="L126">                        try (var rows = query.executeQuery()) { rows.next(); count = rows.getLong(1); }</span>
+                    }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                    if (count != 0) {</span>
+<span class="fc" id="L129">                        update(connection, &quot;update backup_barrier_state set expires_at=? where barrier_id='global'&quot;, Math.addExact(now, lifetime));</span>
+<span class="fc" id="L130">                        return null;</span>
+                    }
+<span class="fc" id="L132">                    long next = Math.addExact(gate.generation, 1);</span>
+<span class="fc" id="L133">                    update(connection, &quot;update backup_barrier_state set generation=?, phase=2, expires_at=? where barrier_id='global'&quot;,</span>
+<span class="fc" id="L134">                            next, Math.addExact(now, lifetime));</span>
+<span class="fc" id="L135">                    return next;</span>
+                });
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (generation != null) return new Maintenance(owner, generation);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                if (System.nanoTime() &gt;= deadline) throw new IllegalStateException(&quot;Timed out draining backup writers&quot;);</span>
+<span class="fc" id="L139">                try { Thread.sleep(20); }</span>
+<span class="pc" id="L140">                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(&quot;Backup maintenance interrupted&quot;, interrupted); }</span>
+<span class="fc" id="L141">            }</span>
+<span class="nc" id="L142">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L143">            try { release(owner); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="nc" id="L144">            throw failure;</span>
+        }
+    }
+
+    /**
+     * DDL can implicitly commit on supported databases. A crashed bootstrap must
+     * therefore stay blocked until operator recovery has stopped/fenced its process.
+     * It must never be made safe merely by expiring a timestamp.
+     */
+    public StartupMaintenance beginStartup(Duration waitFor) {
+<span class="fc" id="L154">        Maintenance acquired = acquire(new BackupScope.Installation(), waitFor);</span>
+        try {
+<span class="fc" id="L156">            transaction(connection -&gt; {</span>
+<span class="fc" id="L157">                Gate gate = lock(connection);</span>
+<span class="pc bpc" id="L158" title="3 of 6 branches missed.">                if (!acquired.owner.equals(gate.owner) || gate.generation != acquired.generation || gate.expires &lt;= now(connection)) throw fenced();</span>
+<span class="fc" id="L159">                update(connection, &quot;update backup_barrier_state set phase=3, expires_at=0 where barrier_id='global'&quot;);</span>
+<span class="fc" id="L160">                return null;</span>
+            });
+<span class="fc" id="L162">            acquired.closed.set(true); // Ownership is transferred, not released.</span>
+<span class="fc" id="L163">            var startup = new StartupMaintenance(acquired.owner, acquired.generation);</span>
+<span class="fc" id="L164">            localStartup = startup;</span>
+<span class="fc" id="L165">            return startup;</span>
+<span class="nc" id="L166">        } catch (RuntimeException failure) { acquired.close(); throw failure; }</span>
+    }
+
+    public final class StartupMaintenance {
+        private final String owner;
+        private final long generation;
+        private volatile boolean finished;
+<span class="fc" id="L173">        private StartupMaintenance(String owner, long generation) { this.owner = owner; this.generation = generation; }</span>
+<span class="fc" id="L174">        public void checkValid() { transaction(connection -&gt; { validate(connection); return null; }); }</span>
+        private void validate(Connection connection) throws SQLException {
+<span class="fc" id="L176">            Gate gate = lock(connection);</span>
+<span class="pc bpc" id="L177" title="4 of 8 branches missed.">            if (finished || !owner.equals(gate.owner) || gate.generation != generation || gate.phase != 3) throw fenced();</span>
+<span class="fc" id="L178">        }</span>
+        void successful() {
+<span class="fc" id="L180">            transaction(connection -&gt; {</span>
+<span class="fc" id="L181">                validate(connection);</span>
+<span class="fc" id="L182">                update(connection, &quot;update backup_barrier_state set owner_id=null, phase=0, expires_at=0 where barrier_id='global'&quot;);</span>
+<span class="fc" id="L183">                return null;</span>
+            });
+<span class="fc" id="L185">            finished = true;</span>
+<span class="fc" id="L186">            localStartup = null;</span>
+<span class="fc" id="L187">        }</span>
+    }
+
+    void fenceStartupCommit(Connection connection, StartupMaintenance startup) throws SQLException {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (connection.getAutoCommit()) throw fenced();</span>
+<span class="fc" id="L192">        startup.validate(connection);</span>
+<span class="fc" id="L193">    }</span>
+
+    /** Must be followed by commit on this exact connection, with autocommit off. */
+    void fenceCommit(Connection connection, Section section) throws SQLException {
+<span class="pc bpc" id="L197" title="3 of 6 branches missed.">        if (!(section instanceof WriterSection writer) || writer.closed || connection.getAutoCommit()) throw fenced();</span>
+<span class="fc" id="L198">        validate(connection, writer.writer);</span>
+<span class="fc" id="L199">    }</span>
+
+    private void validate(Writer writer) {
+<span class="fc" id="L202">        transaction(connection -&gt; { validate(connection, writer); return null; });</span>
+<span class="fc" id="L203">    }</span>
+
+    private void validate(Connection connection, Writer writer) throws SQLException {
+<span class="fc" id="L206">        Gate gate = lock(connection);</span>
+<span class="fc" id="L207">        long now = now(connection);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (gate.generation != writer.generation) throw fenced();</span>
+<span class="fc" id="L209">        try (var query = connection.prepareStatement(&quot;select expires_at from backup_writer_lease where writer_id=? and generation=?&quot;)) {</span>
+<span class="fc" id="L210">            query.setQueryTimeout(5); query.setString(1, writer.id); query.setLong(2, writer.generation);</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">            try (var rows = query.executeQuery()) { if (!rows.next() || rows.getLong(1) &lt;= now) throw fenced(); }</span>
+        }
+<span class="fc" id="L213">    }</span>
+
+    private Gate expireMaintenance(Connection connection, Gate gate, long now) throws SQLException {
+<span class="fc bfc" id="L216" title="All 6 branches covered.">        if (gate.owner == null || gate.phase == 3 || gate.expires &gt; now) return gate;</span>
+<span class="fc" id="L217">        long next = Math.addExact(gate.generation, 1);</span>
+<span class="fc" id="L218">        update(connection, &quot;update backup_barrier_state set generation=?, owner_id=null, expires_at=0, phase=0 where barrier_id='global'&quot;, next);</span>
+<span class="fc" id="L219">        update(connection, &quot;delete from backup_writer_lease&quot;);</span>
+<span class="fc" id="L220">        return new Gate(next, null, 0, 0);</span>
+    }
+
+    private void release(String owner) {
+<span class="fc" id="L224">        transaction(connection -&gt; {</span>
+<span class="fc" id="L225">            lock(connection);</span>
+<span class="fc" id="L226">            update(connection, &quot;update backup_barrier_state set owner_id=null, expires_at=0, phase=0 where barrier_id='global' and owner_id=?&quot;, owner);</span>
+<span class="fc" id="L227">            return null;</span>
+        });
+<span class="fc" id="L229">    }</span>
+
+    public final class Maintenance implements Section {
+        private final String owner;
+        private final long generation;
+<span class="fc" id="L234">        private final AtomicBoolean closed = new AtomicBoolean();</span>
+<span class="fc" id="L235">        private Maintenance(String owner, long generation) { this.owner = owner; this.generation = generation; }</span>
+<span class="fc" id="L236">        @Override public long generation() { return generation; }</span>
+<span class="fc" id="L237">        @Override public void checkValid() { check(false); }</span>
+<span class="fc" id="L238">        public void renew() { check(true); }</span>
+        private void check(boolean renew) {
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            if (closed.get()) throw fenced();</span>
+<span class="fc" id="L241">            transaction(connection -&gt; {</span>
+<span class="fc" id="L242">                Gate gate = lock(connection);</span>
+<span class="fc" id="L243">                long now = now(connection);</span>
+<span class="pc bpc" id="L244" title="3 of 8 branches missed.">                if (!owner.equals(gate.owner) || gate.generation != generation || gate.phase != 2 || gate.expires &lt;= now) throw fenced();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (renew) update(connection, &quot;update backup_barrier_state set expires_at=? where barrier_id='global'&quot;, Math.addExact(now, lifetime));</span>
+<span class="fc" id="L246">                return null;</span>
+            });
+<span class="fc" id="L248">        }</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        @Override public void close() { if (closed.compareAndSet(false, true)) release(owner); }</span>
+    }
+
+    private final class WriterSection implements Section {
+        private final Writer writer;
+        private boolean closed;
+<span class="fc" id="L255">        private WriterSection(Writer writer) { this.writer = writer; }</span>
+<span class="fc" id="L256">        @Override public long generation() { return writer.generation; }</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        @Override public void checkValid() { if (closed) throw fenced(); validate(writer); }</span>
+        @Override public void close() {
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (closed) return;</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">            if (currentWriter.get() != writer) throw new IllegalStateException(&quot;Write section belongs to another thread&quot;);</span>
+<span class="fc" id="L261">            closed = true;</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            if (--writer.references &gt; 0) return;</span>
+<span class="fc" id="L263">            currentWriter.remove();</span>
+<span class="fc" id="L264">            transaction(connection -&gt; { lock(connection); update(connection, &quot;delete from backup_writer_lease where writer_id=?&quot;, writer.id); return null; });</span>
+<span class="fc" id="L265">        }</span>
+    }
+
+    private static final class Writer {
+        final String id;
+        final long generation;
+<span class="fc" id="L271">        int references = 1;</span>
+<span class="fc" id="L272">        Writer(String id, long generation) { this.id = id; this.generation = generation; }</span>
+    }
+<span class="fc" id="L274">    private record Gate(long generation, String owner, long expires, int phase) { }</span>
+
+    private Gate lock(Connection connection) throws SQLException {
+        // SELECT FOR UPDATE alone does not acquire an exclusive row lock in HSQLDB MVCC.
+        // Keep this write in the caller's transaction, including the final business commit fence.
+<span class="fc" id="L279">        update(connection, &quot;update backup_barrier_state set generation=generation where barrier_id='global'&quot;);</span>
+<span class="fc" id="L280">        try (var query = connection.prepareStatement(gateSql)) {</span>
+<span class="fc" id="L281">            query.setQueryTimeout(5);</span>
+<span class="fc" id="L282">            try (var row = query.executeQuery()) {</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                if (!row.next()) throw new IllegalStateException(&quot;Backup gate is missing&quot;);</span>
+<span class="fc" id="L284">                return new Gate(row.getLong(1), row.getString(2), row.getLong(3), row.getInt(4));</span>
+            }
+        }
+    }
+
+    private long now(Connection connection) throws SQLException {
+<span class="fc" id="L290">        try (var query = connection.prepareStatement(clockSql)) {</span>
+<span class="fc" id="L291">            query.setQueryTimeout(5);</span>
+<span class="fc" id="L292">            try (var row = query.executeQuery()) {</span>
+<span class="fc" id="L293">                row.next();</span>
+                // Preserve the database offset, independently of each instance's JVM zone.
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">                return (utcWithoutOffset</span>
+<span class="nc" id="L296">                        ? row.getObject(1, java.time.LocalDateTime.class).toInstant(java.time.ZoneOffset.UTC)</span>
+<span class="fc" id="L297">                        : row.getObject(1, java.time.OffsetDateTime.class).toInstant()).toEpochMilli();</span>
+            }
+        }
+    }
+
+    private static long bounded(Duration duration) {
+<span class="fc" id="L303">        long millis = Objects.requireNonNull(duration).toMillis();</span>
+<span class="pc bpc" id="L304" title="2 of 4 branches missed.">        if (millis &lt; 1 || millis &gt; Duration.ofMinutes(30).toMillis()) throw new IllegalArgumentException(&quot;Barrier duration must be within 1 ms and 30 minutes&quot;);</span>
+<span class="fc" id="L305">        return millis;</span>
+    }
+
+    private &lt;T&gt; T transaction(SqlAction&lt;T&gt; action) {
+<span class="fc" id="L309">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L310">            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</span>
+<span class="fc" id="L311">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L313">                T result = action.run(connection); connection.commit(); return result;</span>
+<span class="fc" id="L314">            } catch (SQLException | RuntimeException failure) {</span>
+<span class="pc" id="L315">                try { connection.rollback(); } catch (SQLException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="fc" id="L316">                throw failure;</span>
+            }
+<span class="nc" id="L318">        } catch (SQLException failure) { throw new IllegalStateException(&quot;Backup barrier database operation failed&quot;, failure); }</span>
+    }
+    @FunctionalInterface private interface SqlAction&lt;T&gt; { T run(Connection connection) throws SQLException; }
+<span class="fc" id="L321">    private static IllegalStateException fenced() { return new IllegalStateException(&quot;Backup operation was fenced; restart from current state&quot;); }</span>
+    private static void update(Connection connection, String sql, Object... values) throws SQLException {
+<span class="fc" id="L323">        try (var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L324">            statement.setQueryTimeout(5);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">            for (int i = 0; i &lt; values.length; i++) statement.setObject(i + 1, values[i]);</span>
+<span class="fc" id="L326">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L328">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

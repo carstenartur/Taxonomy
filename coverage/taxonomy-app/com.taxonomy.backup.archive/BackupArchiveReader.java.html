@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupArchiveReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.archive</a> &gt; <span class="el_source">BackupArchiveReader.java</span></div><h1>BackupArchiveReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.archive;
+
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupPaths;
+
+import com.taxonomy.backup.*;
+import org.apache.commons.compress.archivers.zip.*;
+import java.io.*;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.*;
+import java.util.*;
+
+/** Fail-closed ZIP64 import boundary. Never extracts files or instantiates package-supplied classes. */
+public final class BackupArchiveReader {
+    private final ArchiveProtectionProvider protection;
+    private final ArchiveLimits limits;
+    private final String applicationVersion;
+    private final Map&lt;BackupComponentId, Integer&gt; components;
+    private final com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites;
+    public BackupArchiveReader(ArchiveProtectionProvider protection, ArchiveLimits limits, String applicationVersion,
+                               Map&lt;BackupComponentId, Integer&gt; components,
+<span class="fc" id="L22">                               com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {</span>
+<span class="fc" id="L23">        this.prerequisites = Objects.requireNonNull(prerequisites);</span>
+<span class="fc" id="L24">        this.protection = Objects.requireNonNull(protection); this.limits = Objects.requireNonNull(limits);</span>
+<span class="fc" id="L25">        this.applicationVersion = Objects.requireNonNull(applicationVersion); this.components = Map.copyOf(components);</span>
+<span class="fc" id="L26">    }</span>
+<span class="fc" id="L27">    public VerifiedBackup verify(Path path) throws IOException { return verify(path, ArchiveProgress.NONE); }</span>
+    public VerifiedBackup verify(Path path, ArchiveProgress progress) throws IOException {
+<span class="fc" id="L29">        Path file = path.toAbsolutePath().normalize(); var guard = new ArchiveIO.Guard(limits, progress); guard.check();</span>
+<span class="pc bpc" id="L30" title="2 of 4 branches missed.">        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().equals(file)) throw new IOException(&quot;Invalid archive file&quot;);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (Files.size(file) &gt; limits.maxArchiveBytes()) throw new IOException(&quot;Archive byte limit exceeded&quot;);</span>
+<span class="fc" id="L32">        var source = java.nio.channels.FileChannel.open(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);</span>
+<span class="fc" id="L33">        SeekableByteChannel channel = source; ZipFile zip = null;</span>
+        try {
+            // Hash and verify the same open file, even if the upload pathname is replaced concurrently.
+<span class="fc" id="L36">            String digest = ArchiveIO.digest(source, limits.maxArchiveBytes(), guard);</span>
+<span class="fc" id="L37">            channel = protection.open(source, ArchiveIO.CONTEXT);</span>
+<span class="fc" id="L38">            var directory = ZipDirectoryBounds.inspect(channel, limits, guard);</span>
+<span class="fc" id="L39">            zip = ZipFile.builder().setSeekableByteChannel(channel).setUseUnicodeExtraFields(false).setMaxNumberOfDisks(1).get();</span>
+<span class="fc" id="L40">            var entries = inspectEntries(zip, channel, directory, guard);</span>
+<span class="fc" id="L41">            var manifestEntry = entries.remove(&quot;manifest.json&quot;);</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">            if (manifestEntry == null || manifestEntry.getSize() &gt; BackupManifestCodec.MAX_MANIFEST_BYTES) throw new IOException(&quot;Manifest missing or size limit exceeded&quot;);</span>
+            BackupManifest manifest;
+<span class="fc" id="L44">            try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(manifestEntry), manifestEntry.getSize(), null, manifestEntry.getCrc(), guard.readGuard())) {</span>
+<span class="fc" id="L45">                var document = new ByteArrayOutputStream();</span>
+<span class="fc" id="L46">                consume(input, document, guard);</span>
+<span class="fc" id="L47">                manifest = new BackupManifestCodec().read(document.toByteArray());</span>
+            }
+<span class="fc" id="L49">            manifest.requireCompatible(applicationVersion, components);</span>
+<span class="fc" id="L50">            prerequisites.requireRestore(manifest);</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">            if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED &amp;&amp; !protection.encrypted())</span>
+<span class="fc" id="L52">                throw new IOException(&quot;Secret-bearing archives require authenticated encryption&quot;);</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">            if ((!protection.encrypted() || manifest.request().secrets() != SecretsSelection.INCLUDE_ENCRYPTED)</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                    &amp;&amp; entries.keySet().stream().anyMatch(p -&gt; p.startsWith(&quot;protected/&quot;)))</span>
+<span class="nc" id="L55">                throw new IOException(&quot;Protected payload requires authenticated encryption&quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (manifest.entries().size() != entries.size()) throw new IOException(&quot;Missing or undeclared archive entries&quot;);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for (var expected : manifest.entries()) {</span>
+<span class="fc" id="L58">                var actual = entries.remove(expected.path());</span>
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">                if (actual == null || actual.getSize() != expected.length()) throw new IOException(&quot;Missing entry or manifest length mismatch&quot;);</span>
+<span class="fc" id="L60">                try (var input = new VerifiedBackup.CheckedInput(zip.getInputStream(actual), expected.length(), expected.sha256(), actual.getCrc(), guard.readGuard())) {</span>
+<span class="fc" id="L61">                    consume(input, OutputStream.nullOutputStream(), guard);</span>
+                }
+<span class="fc" id="L63">            }</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (!entries.isEmpty()) throw new IOException(&quot;Undeclared archive entries&quot;);</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (!digest.equals(ArchiveIO.digest(source, limits.maxArchiveBytes(), guard)))</span>
+<span class="nc" id="L66">                throw new IOException(&quot;Archive changed during verification&quot;);</span>
+<span class="fc" id="L67">            guard.check(); return new VerifiedBackup(digest, manifest, zip, guard.readGuard());</span>
+<span class="fc" id="L68">        } catch (IOException | RuntimeException failure) {</span>
+<span class="pc bfc" id="L69" title="All 2 branches covered.">            try { if (zip == null) channel.close(); else zip.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (failure instanceof IOException io) throw io;</span>
+            // Package fields, crypto provider details and malformed JSON must never enter a public error.
+<span class="fc" id="L72">            throw new IOException(&quot;Invalid or unsupported backup archive&quot;);</span>
+        }
+    }
+    /** Worker progress belongs to active verification, never to a general-purpose InputStream read or close. */
+    private static void consume(VerifiedBackup.CheckedInput input, OutputStream output, ArchiveIO.Guard guard) throws IOException {
+        try {
+<span class="fc" id="L78">            byte[] buffer = new byte[65536];</span>
+            while (true) {
+<span class="fc" id="L80">                guard.check(); int count = input.read(buffer);</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (count &lt; 0) break;</span>
+<span class="fc" id="L82">                guard.advance(count); output.write(buffer, 0, count);</span>
+<span class="fc" id="L83">            }</span>
+<span class="fc" id="L84">        } catch (IOException | RuntimeException | Error failure) {</span>
+            // Callback failures occur outside read(); do not let close drain an abandoned verification.
+<span class="fc" id="L86">            input.abort(); throw failure;</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">    }</span>
+    private Map&lt;String, ZipArchiveEntry&gt; inspectEntries(ZipFile zip, SeekableByteChannel channel,
+                                                       ZipDirectoryBounds.Directory directory, ArchiveIO.Guard guard) throws IOException {
+<span class="fc" id="L91">        var entries = new LinkedHashMap&lt;String, ZipArchiveEntry&gt;(); var paths = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L92">        long expanded = 0, expectedOffset = 0;</span>
+<span class="fc" id="L93">        var enumeration = zip.getEntriesInPhysicalOrder();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        while (enumeration.hasMoreElements()) {</span>
+<span class="fc" id="L95">            guard.check(); var entry = enumeration.nextElement(); String path = entry.getName();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (entries.size() &gt;= limits.maxEntries() + 1) throw new IOException(&quot;Archive entry count limit exceeded&quot;);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            String canonical = path.equals(&quot;manifest.json&quot;) ? path : BackupPaths.collisionKey(path);</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">            if (!paths.add(canonical) || entries.put(path, entry) != null) throw new IOException(&quot;Duplicate or colliding archive path&quot;);</span>
+<span class="fc" id="L99">            long size = entry.getSize(), compressed = entry.getCompressedSize();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            long entryLimit = path.equals(&quot;manifest.json&quot;) ? BackupManifestCodec.MAX_MANIFEST_BYTES : limits.maxEntryBytes();</span>
+<span class="pc bpc" id="L101" title="4 of 8 branches missed.">            if (size &lt; 0 || compressed &lt; 0 || size &gt; entryLimit || size &gt; limits.maxExpandedBytes() - expanded</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                    || size / (double) Math.max(1, compressed) &gt; limits.maxCompressionRatio()) throw new IOException(&quot;Archive expansion or compression limit exceeded&quot;);</span>
+<span class="fc" id="L103">            expanded += size;</span>
+<span class="fc" id="L104">            int kind = entry.getUnixMode() &amp; 0170000;</span>
+<span class="pc bpc" id="L105" title="4 of 10 branches missed.">            if (entry.isDirectory() || entry.isUnixSymlink() || kind != 0 &amp;&amp; kind != 0100000 || entry.getDiskNumberStart() != 0</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">                    || entry.getGeneralPurposeBit().usesEncryption() || !zip.canReadEntryData(entry)</span>
+<span class="pc bpc" id="L107" title="3 of 4 branches missed.">                    || entry.getMethod() != ZipArchiveEntry.STORED &amp;&amp; entry.getMethod() != ZipArchiveEntry.DEFLATED</span>
+<span class="pc bpc" id="L108" title="3 of 6 branches missed.">                    || entry.getUnparseableExtraFieldData() != null || entry.getComment() != null &amp;&amp; !entry.getComment().isEmpty())</span>
+<span class="fc" id="L109">                throw new IOException(&quot;Unsupported archive entry type&quot;);</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">            for (var extra : entry.getExtraFields()) if (!extra.getHeaderId().equals(new ZipShort(0x0001)))</span>
+<span class="nc" id="L111">                throw new IOException(&quot;Unsupported archive entry metadata&quot;);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (entry.getLocalHeaderOffset() != expectedOffset) throw new IOException(&quot;Overlapping or hidden archive payload&quot;);</span>
+<span class="fc" id="L113">            var local = ZipDirectoryBounds.read(channel, expectedOffset, 30);</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (local.getInt() != 0x04034b50) throw ZipDirectoryBounds.invalid();</span>
+<span class="fc" id="L115">            local.position(26); int nameLength = ZipDirectoryBounds.u16(local), extraLength = ZipDirectoryBounds.u16(local);</span>
+<span class="pc bpc" id="L116" title="3 of 6 branches missed.">            if (nameLength &gt; 2048 || extraLength &gt; 128 || entry.getDataOffset() != expectedOffset + 30 + nameLength + extraLength)</span>
+<span class="nc" id="L117">                throw ZipDirectoryBounds.invalid();</span>
+<span class="fc" id="L118">            byte[] name = ZipDirectoryBounds.read(channel, expectedOffset + 30, nameLength).array();</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (!Arrays.equals(name, entry.getRawName())) throw new IOException(&quot;Local and central archive paths differ&quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            if (compressed &gt; directory.offset() - entry.getDataOffset()) throw ZipDirectoryBounds.invalid();</span>
+<span class="fc" id="L121">            expectedOffset = entry.getDataOffset() + compressed;</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (entry.getGeneralPurposeBit().usesDataDescriptor()) {</span>
+<span class="nc" id="L123">                var descriptor = ZipDirectoryBounds.read(channel, expectedOffset, 4);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">                boolean signature = descriptor.getInt() == 0x08074b50;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                boolean zip64 = entry.getExtraField(new ZipShort(0x0001)) != null;</span>
+<span class="nc bnc" id="L126" title="All 4 branches missed.">                var values = ZipDirectoryBounds.read(channel, expectedOffset + (signature ? 4 : 0), zip64 ? 20 : 12);</span>
+<span class="nc bnc" id="L127" title="All 4 branches missed.">                long crc = ZipDirectoryBounds.u32(values), packed = zip64 ? values.getLong() : ZipDirectoryBounds.u32(values), unpacked = zip64 ? values.getLong() : ZipDirectoryBounds.u32(values);</span>
+<span class="nc bnc" id="L128" title="All 6 branches missed.">                if (crc != entry.getCrc() || packed != compressed || unpacked != size) throw ZipDirectoryBounds.invalid();</span>
+<span class="nc bnc" id="L129" title="All 4 branches missed.">                expectedOffset += (signature ? 4 : 0) + (zip64 ? 20 : 12);</span>
+            }
+<span class="fc" id="L131">        }</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (expectedOffset != directory.offset() || entries.size() != directory.entries()) throw ZipDirectoryBounds.invalid();</span>
+<span class="fc" id="L133">        return entries;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

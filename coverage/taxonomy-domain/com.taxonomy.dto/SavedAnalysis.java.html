@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SavedAnalysis.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">SavedAnalysis.java</span></div><h1>SavedAnalysis.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * DTO representing a saved (exported/imported) taxonomy analysis result.
+ *
+ * &lt;p&gt;Semantic distinction:
+ * &lt;ul&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;present with value {@code 0}&lt;/b&gt; → the node was &lt;b&gt;evaluated and scored 0%&lt;/b&gt; (not relevant)&lt;/li&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;absent / {@code null}&lt;/b&gt; → the node was &lt;b&gt;not yet evaluated&lt;/b&gt;&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Version history:
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 1&lt;/b&gt;: Original format with requirement, scores, reasons&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 2&lt;/b&gt;: Adds optional provenance data (sources, sourceVersions, sourceFragments, requirementSourceLinks)&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 3&lt;/b&gt;: Requires raw scores, own assessment/subtree coverage and analysis status; older readers reject it rather than silently losing unknowns.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+public class SavedAnalysis {
+
+    /** Optional frozen automatic-run provenance; manual and legacy evidence may have none. */
+    private AnalysisScope analysisScope;
+<span class="fc" id="L26">    public AnalysisScope getAnalysisScope() { return analysisScope; }</span>
+<span class="fc" id="L27">    public void setAnalysisScope(AnalysisScope value) { analysisScope = value; }</span>
+
+    /** Format version — {@code 1} for legacy, {@code 2} for provenance support. */
+<span class="fc" id="L30">    private int version = 2;</span>
+
+    /** The business requirement text that was analyzed. */
+    private String requirement;
+
+    /** ISO 8601 timestamp of when the analysis was performed or exported. */
+    private String timestamp;
+
+    /** Name of the LLM provider that generated these scores (informational). */
+    private String provider;
+
+    /**
+     * Node code → score (0–100).
+     * {@code 0} means the node was evaluated but scored zero (not relevant).
+     * An absent key means the node was not evaluated at all.
+     */
+    private Map&lt;String, Integer&gt; scores;
+
+    /**
+     * Node code → reason text (optional, may be sparse).
+     */
+    private Map&lt;String, String&gt; reasons;
+
+    /** Source artifacts referenced by this analysis (optional, may be null). */
+    private List&lt;SourceArtifactDto&gt; sources;
+
+    /** Source versions (optional, may be null). */
+    private List&lt;SourceVersionDto&gt; sourceVersions;
+
+    /** Source fragments (optional, may be null). */
+    private List&lt;SourceFragmentDto&gt; sourceFragments;
+
+    /** Requirement-to-source links (optional, may be null). */
+    private List&lt;RequirementSourceLinkDto&gt; requirementSourceLinks;
+
+    private AnalysisCoverage analysisCoverage;
+    private String analysisStatus;
+    private Map&lt;String, Integer&gt; rawScores;
+<span class="fc" id="L68">    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }</span>
+<span class="fc" id="L69">    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }</span>
+<span class="fc" id="L70">    public String getAnalysisStatus() { return analysisStatus; }</span>
+<span class="fc" id="L71">    public void setAnalysisStatus(String value) { analysisStatus = value; }</span>
+<span class="fc" id="L72">    public Map&lt;String, Integer&gt; getRawScores() { return rawScores; }</span>
+<span class="fc" id="L73">    public void setRawScores(Map&lt;String, Integer&gt; value) { rawScores = value; }</span>
+
+    /** Validate version 3 before publishing or consuming a score file. */
+    public void validateCoverageEvidence() {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (this.getVersion() &gt;= 3) {</span>
+<span class="fc" id="L78">            var coverage = this.getAnalysisCoverage(); var raw = this.getRawScores();</span>
+<span class="pc bpc" id="L79" title="2 of 6 branches missed.">            if (coverage == null || raw == null || this.getAnalysisStatus() == null</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                    || this.getAnalysisStatus().isBlank() || raw.size() &gt; 25000</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                    || !raw.keySet().containsAll(this.getScores().keySet()))</span>
+<span class="fc" id="L82">                throw new IllegalArgumentException(&quot;Version 3 requires complete raw evidence, status and coverage metadata&quot;);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            for (var entry : raw.entrySet()) {</span>
+<span class="fc" id="L84">                var assessment = coverage.nodes().get(entry.getKey());</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">                if (assessment == null || assessment.state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                        || !java.util.Objects.equals(entry.getValue(), assessment.score()))</span>
+<span class="fc" id="L87">                    throw new IllegalArgumentException(&quot;Raw evidence disagrees with assessment coverage&quot;);</span>
+<span class="fc" id="L88">            }</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            for (var entry : coverage.nodes().entrySet()) if (entry.getValue().state() != com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                    &amp;&amp; !raw.containsKey(entry.getKey()))</span>
+<span class="nc" id="L91">                throw new IllegalArgumentException(&quot;Coverage contains a completed assessment without its raw evidence&quot;);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            for (var entry : this.getScores().entrySet()) {</span>
+<span class="fc" id="L93">                var assessment = coverage.nodes().get(entry.getKey());</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">                if (assessment == null || !java.util.Objects.equals(entry.getValue(), assessment.effectiveRelevance()))</span>
+<span class="nc" id="L95">                    throw new IllegalArgumentException(&quot;Effective evidence disagrees with assessment coverage&quot;);</span>
+<span class="fc" id="L96">            }</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (coverage.hasOpenEvaluations()) this.setAnalysisStatus(&quot;PARTIAL&quot;);</span>
+        }
+
+<span class="fc" id="L100">    }</span>
+
+<span class="fc" id="L102">    public SavedAnalysis() {}</span>
+
+<span class="fc" id="L104">    public int getVersion() { return version; }</span>
+<span class="fc" id="L105">    public void setVersion(int version) { this.version = version; }</span>
+
+<span class="fc" id="L107">    public String getRequirement() { return requirement; }</span>
+<span class="fc" id="L108">    public void setRequirement(String requirement) { this.requirement = requirement; }</span>
+
+<span class="fc" id="L110">    public String getTimestamp() { return timestamp; }</span>
+<span class="fc" id="L111">    public void setTimestamp(String timestamp) { this.timestamp = timestamp; }</span>
+
+<span class="fc" id="L113">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L114">    public void setProvider(String provider) { this.provider = provider; }</span>
+
+<span class="fc" id="L116">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
+<span class="fc" id="L117">    public void setScores(Map&lt;String, Integer&gt; scores) { this.scores = scores; }</span>
+
+<span class="fc" id="L119">    public Map&lt;String, String&gt; getReasons() { return reasons; }</span>
+<span class="fc" id="L120">    public void setReasons(Map&lt;String, String&gt; reasons) { this.reasons = reasons; }</span>
+
+<span class="fc" id="L122">    public List&lt;SourceArtifactDto&gt; getSources() { return sources; }</span>
+<span class="fc" id="L123">    public void setSources(List&lt;SourceArtifactDto&gt; sources) { this.sources = sources; }</span>
+
+<span class="fc" id="L125">    public List&lt;SourceVersionDto&gt; getSourceVersions() { return sourceVersions; }</span>
+<span class="fc" id="L126">    public void setSourceVersions(List&lt;SourceVersionDto&gt; sourceVersions) { this.sourceVersions = sourceVersions; }</span>
+
+<span class="fc" id="L128">    public List&lt;SourceFragmentDto&gt; getSourceFragments() { return sourceFragments; }</span>
+<span class="fc" id="L129">    public void setSourceFragments(List&lt;SourceFragmentDto&gt; sourceFragments) { this.sourceFragments = sourceFragments; }</span>
+
+<span class="fc" id="L131">    public List&lt;RequirementSourceLinkDto&gt; getRequirementSourceLinks() { return requirementSourceLinks; }</span>
+<span class="fc" id="L132">    public void setRequirementSourceLinks(List&lt;RequirementSourceLinkDto&gt; requirementSourceLinks) { this.requirementSourceLinks = requirementSourceLinks; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

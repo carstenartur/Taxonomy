@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueSourceBytes.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.provenance</a> &gt; <span class="el_source">CatalogueSourceBytes.java</span></div><h1>CatalogueSourceBytes.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.provenance;
+
+import java.io.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
+/** Exact bounded bytes supplied to a catalogue parser. */
+public final class CatalogueSourceBytes {
+    public static final int MAX_BYTES = 64 * 1024 * 1024;
+    private final byte[] content;
+    private final String sha256;
+<span class="fc" id="L13">    private CatalogueSourceBytes(byte[] content) {</span>
+<span class="fc" id="L14">        this.content = content;</span>
+<span class="fc" id="L15">        try { sha256 = HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(content)); }</span>
+<span class="pc" id="L16">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;); }</span>
+<span class="fc" id="L17">    }</span>
+    /** The caller owns input; bounded bytes are copied once and every parser reads that immutable copy. */
+    public static CatalogueSourceBytes read(InputStream input) throws IOException {
+        try {
+<span class="fc" id="L21">            checkpoint();</span>
+<span class="fc" id="L22">            var bytes = new ByteArrayOutputStream(); var buffer = new byte[8192];</span>
+            while (true) {
+<span class="fc" id="L24">                checkpoint(); int count = input.read(buffer); checkpoint();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">                if (count &lt; 0) break;</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                if (count == 0) {</span>
+                    // Some wrapped streams legally make no progress on a bulk read. A single read still advances or terminates.
+<span class="nc" id="L28">                    int value = input.read(); checkpoint();</span>
+<span class="nc bnc" id="L29" title="All 2 branches missed.">                    if (value &lt; 0) break;</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">                    if (bytes.size() == MAX_BYTES) throw new IOException();</span>
+<span class="nc" id="L31">                    bytes.write(value);</span>
+<span class="nc" id="L32">                } else {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                    if (count &gt; MAX_BYTES - bytes.size()) throw new IOException();</span>
+<span class="fc" id="L34">                    bytes.write(buffer, 0, count);</span>
+                }
+<span class="fc" id="L36">            }</span>
+<span class="fc" id="L37">            return new CatalogueSourceBytes(bytes.toByteArray());</span>
+<span class="fc" id="L38">        } catch (InterruptedIOException failure) {</span>
+<span class="fc" id="L39">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Catalogue source capture interrupted&quot;);</span>
+<span class="fc" id="L40">        } catch (IOException | RuntimeException failure) {</span>
+<span class="fc" id="L41">            checkpoint(); throw new IOException(&quot;Catalogue source is unavailable or exceeds the retained-input limit&quot;);</span>
+        }
+    }
+    @FunctionalInterface public interface Opener { InputStream open() throws IOException; }
+
+    /** Own the resource lifetime without exposing provider diagnostics from open, read or close. */
+    public static CatalogueSourceBytes capture(Opener source) throws IOException {
+        try {
+<span class="fc" id="L49">            checkpoint();</span>
+            CatalogueSourceBytes captured;
+<span class="fc" id="L51">            try (InputStream input = source.open()) { captured = read(input); }</span>
+<span class="fc" id="L52">            checkpoint();</span>
+<span class="fc" id="L53">            return captured;</span>
+<span class="fc" id="L54">        } catch (InterruptedIOException failure) {</span>
+<span class="fc" id="L55">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Catalogue source capture interrupted&quot;);</span>
+<span class="fc" id="L56">        } catch (IOException | RuntimeException failure) {</span>
+            // A read failure can suppress a close interruption without the provider setting the thread flag.
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            for (Throwable closing : failure.getSuppressed()) {</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                if (closing instanceof InterruptedIOException) Thread.currentThread().interrupt();</span>
+            }
+<span class="fc" id="L61">            checkpoint(); throw new IOException(&quot;Catalogue source is unavailable or exceeds the retained-input limit&quot;);</span>
+        }
+    }
+<span class="fc" id="L64">    public String sha256() { return sha256; }</span>
+<span class="fc" id="L65">    public long length() { return content.length; }</span>
+    // ByteArrayInputStream.transferTo passes its backing array to the destination.
+    // Give each consumer its own array so even that callback cannot mutate retained evidence.
+<span class="fc" id="L68">    public InputStream openStream() { return new ByteArrayInputStream(content.clone()); }</span>
+<span class="fc" id="L69">    byte[] copyForStorage() { return content.clone(); }</span>
+    private static void checkpoint() throws InterruptedIOException {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Catalogue source capture interrupted&quot;);</span>
+<span class="fc" id="L72">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

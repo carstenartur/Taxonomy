@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalSetup.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">LocalSetup.java</span></div><h1>LocalSetup.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.regex.Pattern;
+
+/** Creates an explicit local installation; never called as a fallback after startup failure. */
+public final class LocalSetup {
+    // Match credential values, not metadata such as token-uri or api-key-file.
+    // Keep the same suffix policy as the Helm config and environment guards.
+<span class="fc" id="L25">    private static final Pattern CREDENTIAL_KEY = Pattern.compile(</span>
+            &quot;(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$&quot;);
+
+    private LocalSetup() { }
+
+    public static Properties localProperties(Path dataDirectory) {
+<span class="fc" id="L31">        Path data = dataDirectory.toAbsolutePath().normalize();</span>
+<span class="fc" id="L32">        String dbPath = data.resolve(&quot;taxonomydb&quot;).toString().replace('\\', '/');</span>
+<span class="pc bpc" id="L33" title="3 of 6 branches missed.">        if (dbPath.contains(&quot;;&quot;) || dbPath.contains(&quot;\n&quot;) || dbPath.contains(&quot;\r&quot;)) {</span>
+<span class="nc" id="L34">            throw new IllegalArgumentException(&quot;The data directory must not contain JDBC option separators.&quot;);</span>
+        }
+<span class="fc" id="L36">        Properties result = new Properties();</span>
+<span class="fc" id="L37">        result.setProperty(&quot;spring.profiles.active&quot;, &quot;hsqldb,local-user-management&quot;);</span>
+<span class="fc" id="L38">        result.setProperty(&quot;spring.datasource.url&quot;, &quot;jdbc:hsqldb:file:&quot; + dbPath</span>
+                + &quot;;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true&quot;);
+<span class="fc" id="L40">        result.setProperty(&quot;spring.jpa.hibernate.ddl-auto&quot;, &quot;update&quot;);</span>
+<span class="fc" id="L41">        result.setProperty(&quot;server.address&quot;, &quot;127.0.0.1&quot;);</span>
+<span class="fc" id="L42">        result.setProperty(&quot;server.port&quot;, &quot;8080&quot;);</span>
+<span class="fc" id="L43">        result.setProperty(&quot;taxonomy.init.reload-existing&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L44">        result.setProperty(&quot;embedding.enabled&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L45">        result.setProperty(&quot;embedding.allow-download&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L46">        result.setProperty(&quot;spring.jpa.properties.hibernate.search.backend.directory.type&quot;, &quot;local-heap&quot;);</span>
+<span class="fc" id="L47">        return result;</span>
+    }
+
+    /** Publish application.properties last; until then the installation is incomplete. */
+    public static void write(Path directory, Properties settings, Map&lt;String, String&gt; secrets) throws IOException {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (String key : settings.stringPropertyNames()) {</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (secretKey(key)) { throw new IOException(&quot;Credentials must be provided through the separate secrets map.&quot;); }</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (String key : secrets.keySet()) {</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (!key.matches(&quot;[A-Za-z0-9][A-Za-z0-9._-]*&quot;)) { throw new IOException(&quot;Invalid configtree key.&quot;); }</span>
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        Path target = directory.toAbsolutePath().normalize();</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (!Files.isDirectory(target.getParent())) { throw new IOException(&quot;The configuration parent directory must exist.&quot;); }</span>
+<span class="fc" id="L60">        createPrivateDirectory(target);</span>
+<span class="fc" id="L61">        createPrivateDirectory(target.resolve(&quot;data&quot;));</span>
+<span class="fc" id="L62">        Path secretDirectory = target.resolve(&quot;secrets&quot;);</span>
+<span class="fc" id="L63">        createPrivateDirectory(secretDirectory);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for (var entry : secrets.entrySet()) {</span>
+<span class="fc" id="L65">            Path file = secretDirectory.resolve(entry.getKey());</span>
+<span class="fc" id="L66">            createPrivateFile(file);</span>
+<span class="fc" id="L67">            Files.writeString(file, entry.getValue(), StandardCharsets.UTF_8, StandardOpenOption.WRITE);</span>
+<span class="fc" id="L68">        }</span>
+<span class="fc" id="L69">        Properties copy = new Properties();</span>
+<span class="fc" id="L70">        copy.putAll(settings);</span>
+        // ConfigData configtree locations are filesystem paths, not file: URIs.
+<span class="fc" id="L72">        copy.setProperty(&quot;spring.config.import&quot;, &quot;configtree:&quot; + secretDirectory.toString().replace('\\', '/') + &quot;/&quot;);</span>
+<span class="fc" id="L73">        Path temporary = target.resolve(&quot;.application.properties.tmp&quot;);</span>
+<span class="fc" id="L74">        createPrivateFile(temporary);</span>
+<span class="fc" id="L75">        try (var stream = Files.newOutputStream(temporary, StandardOpenOption.WRITE)) {</span>
+<span class="fc" id="L76">            copy.store(stream, &quot;Taxonomy configuration; environment and command-line overrides still apply.&quot;);</span>
+        }
+        // The target directory was exclusively created above; no existing installation is replaced.
+<span class="fc" id="L79">        Files.move(temporary, target.resolve(&quot;application.properties&quot;), StandardCopyOption.ATOMIC_MOVE);</span>
+<span class="fc" id="L80">    }</span>
+
+    private static boolean secretKey(String key) {
+<span class="fc" id="L83">        return CREDENTIAL_KEY.matcher(key.toLowerCase(Locale.ROOT)).find();</span>
+    }
+
+    private static void createPrivateDirectory(Path path) throws IOException {
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (Files.getFileStore(path.getParent()).supportsFileAttributeView(&quot;posix&quot;)) {</span>
+<span class="fc" id="L88">            Files.createDirectory(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(&quot;rwx------&quot;)));</span>
+        } else {
+<span class="nc" id="L90">            Files.createDirectory(path);</span>
+<span class="nc" id="L91">            restrictAcl(path);</span>
+        }
+<span class="fc" id="L93">    }</span>
+
+    private static void createPrivateFile(Path path) throws IOException {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (Files.getFileStore(path.getParent()).supportsFileAttributeView(&quot;posix&quot;)) {</span>
+<span class="fc" id="L97">            Files.createFile(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(&quot;rw-------&quot;)));</span>
+        } else {
+<span class="nc" id="L99">            Files.createFile(path);</span>
+<span class="nc" id="L100">            restrictAcl(path);</span>
+        }
+<span class="fc" id="L102">    }</span>
+
+    private static void restrictAcl(Path path) throws IOException {
+<span class="nc" id="L105">        AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (view == null) { throw new IOException(&quot;A private POSIX or Windows ACL directory is required.&quot;); }</span>
+<span class="nc" id="L107">        AclEntry entry = AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(path))</span>
+<span class="nc" id="L108">                .setPermissions(EnumSet.allOf(AclEntryPermission.class)).build();</span>
+<span class="nc" id="L109">        view.setAcl(List.of(entry));</span>
+<span class="nc" id="L110">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,578 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmProviderConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmProviderConfig.java</span></div><h1>LlmProviderConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.extension.api.llm.ProviderId;
+import com.taxonomy.extension.api.llm.LlmTransportExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Centralises LLM provider selection, credentials, endpoints and readiness diagnostics. */
+@Component
+public class LlmProviderConfig {
+
+<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(LlmProviderConfig.class);</span>
+
+    static final String GEMINI_URL =
+            &quot;https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=&quot;;
+
+    static final String OPENAI_URL = &quot;https://api.openai.com/v1/chat/completions&quot;;
+    static final String DEEPSEEK_URL = &quot;https://api.deepseek.com/v1/chat/completions&quot;;
+    static final String QWEN_URL = &quot;https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions&quot;;
+    static final String LLAMA_URL = &quot;https://api.llama-api.com/chat/completions&quot;;
+    static final String MISTRAL_URL = &quot;https://api.mistral.ai/v1/chat/completions&quot;;
+
+    /** Internal marker for an intentionally unauthenticated custom endpoint. Never sent as a header. */
+    static final String CUSTOM_NO_AUTH_API_KEY = &quot;__taxonomy_custom_no_auth__&quot;;
+
+    static final String OPENAI_MODEL = &quot;gpt-4o-mini&quot;;
+    static final String DEEPSEEK_MODEL = &quot;deepseek-chat&quot;;
+    static final String QWEN_MODEL = &quot;qwen-plus&quot;;
+    static final String LLAMA_MODEL = &quot;llama3.1-70b&quot;;
+    static final String MISTRAL_MODEL = &quot;mistral-small-latest&quot;;
+
+<span class="fc" id="L45">    private static final ThreadLocal&lt;ProviderId&gt; requestProviderOverride = new ThreadLocal&lt;&gt;();</span>
+<span class="fc" id="L46">    private static final ThreadLocal&lt;Boolean&gt; requestMockOverride = new ThreadLocal&lt;&gt;();</span>
+<span class="fc" id="L47">    private static final ThreadLocal&lt;RequestProviderScope&gt; providerScopes = new ThreadLocal&lt;&gt;();</span>
+
+    @Value(&quot;${llm.provider:}&quot;)
+    private String llmProviderConfig;
+
+    @Value(&quot;${llm.mock:false}&quot;)
+    private boolean llmMock;
+
+    @Value(&quot;${gemini.api.key:}&quot;)
+    private String geminiApiKey;
+
+    @Value(&quot;${openai.api.key:}&quot;)
+    private String openaiApiKey;
+
+    @Value(&quot;${deepseek.api.key:}&quot;)
+    private String deepseekApiKey;
+
+    @Value(&quot;${qwen.api.key:}&quot;)
+    private String qwenApiKey;
+
+    @Value(&quot;${llama.api.key:}&quot;)
+    private String llamaApiKey;
+
+    @Value(&quot;${mistral.api.key:}&quot;)
+    private String mistralApiKey;
+
+    @Value(&quot;${custom.llm.url:}&quot;)
+    private String customLlmUrl;
+
+    @Value(&quot;${custom.llm.model:}&quot;)
+    private String customLlmModel;
+
+    @Value(&quot;${custom.llm.api.key:}&quot;)
+    private String customLlmApiKey;
+
+    private final LocalEmbeddingService localEmbeddingService;
+<span class="fc" id="L83">    private Map&lt;ProviderId, LlmTransportExtension&gt; externalProviders = Map.of();</span>
+    private Environment environment;
+    private com.taxonomy.extension.api.plugin.ExtensionCatalog catalog;
+
+    @Autowired
+    void initializeExtensions(org.springframework.beans.factory.ObjectProvider&lt;LlmTransportExtension&gt; extensions,
+                              Environment environment,
+                              org.springframework.beans.factory.ObjectProvider&lt;com.taxonomy.extension.api.plugin.ExtensionCatalog&gt; catalogs) {
+<span class="fc" id="L91">        var catalog = catalogs.getIfAvailable();</span>
+<span class="fc" id="L92">        this.catalog = catalog;</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (catalog == null) {</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">            configureExtensions(extensions.orderedStream().filter(e -&gt; !(e instanceof BuiltinLlmTransportExtension)).toList(), environment);</span>
+        } else {
+<span class="fc" id="L96">            var leases = catalog.acquireAll(com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, LlmTransportExtension.class);</span>
+<span class="fc" id="L97">            try { configureExtensions(leases.stream().map(com.taxonomy.extension.api.plugin.ExtensionLease::extension)</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                    .filter(e -&gt; !(e instanceof BuiltinLlmTransportExtension)).toList(), environment); }</span>
+<span class="fc" id="L99">            finally { leases.forEach(com.taxonomy.extension.api.plugin.ExtensionLease::close); }</span>
+        }
+<span class="fc" id="L101">    }</span>
+
+    void configureExtensions(List&lt;LlmTransportExtension&gt; extensions, Environment environment) {
+<span class="fc" id="L104">        Map&lt;ProviderId, LlmTransportExtension&gt; validated = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (var extension : extensions) {</span>
+<span class="fc" id="L106">            ProviderId id = new ProviderId(extension.descriptor().providerId());</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (LlmProvider.builtin(new ProviderId(id.value().replace('-', '_'))).isPresent()</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                    || validated.putIfAbsent(id, extension) != null) {</span>
+<span class="nc" id="L109">                throw new IllegalStateException(&quot;Duplicate LLM provider ID: &quot; + id);</span>
+            }
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            if (extension.transport() == null</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                    || !id.equals(new ProviderId(extension.transport().providerName()))) {</span>
+<span class="nc" id="L113">                throw new IllegalStateException(&quot;Provider transport identity mismatch: &quot; + id);</span>
+            }
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        this.externalProviders = Map.copyOf(validated);</span>
+<span class="fc" id="L117">        this.environment = environment;</span>
+<span class="fc" id="L118">    }</span>
+
+    /** STARTUP-only transports have the lifetime of this application context. */
+<span class="fc" id="L121">    List&lt;LlmTransportExtension&gt; externalTransports() { return List.copyOf(externalProviders.values()); }</span>
+
+    public ProviderId requireRegisteredProvider(String value) {
+<span class="fc" id="L124">        ProviderId id = new ProviderId(value);</span>
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        if (LlmProvider.builtin(id).isEmpty() &amp;&amp; !externalProviders.containsKey(id)) {</span>
+<span class="fc" id="L126">            throw new IllegalArgumentException(&quot;No executable LLM provider registered: &quot; + id);</span>
+        }
+<span class="fc" id="L128">        return id;</span>
+    }
+
+    public List&lt;ProviderId&gt; registeredProviderIds() {
+<span class="nc" id="L132">        var ids = new java.util.TreeSet&lt;ProviderId&gt;(java.util.Comparator.comparing(ProviderId::value));</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        for (LlmProvider builtin : LlmProvider.values()) ids.add(builtin.id());</span>
+<span class="nc" id="L134">        ids.addAll(externalProviders.keySet());</span>
+<span class="nc" id="L135">        return List.copyOf(ids);</span>
+    }
+
+    private String externalSetting(ProviderId id, String setting, String fallback) {
+<span class="fc" id="L139">        requireRegisteredProvider(id.value());</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        return environment == null ? fallback : environment.getProperty(</span>
+<span class="fc" id="L141">                &quot;taxonomy.llm.providers.&quot; + id.value().toLowerCase(Locale.ROOT) + &quot;.&quot; + setting, fallback);</span>
+    }
+
+    public String getApiKey(ProviderId id) {
+<span class="fc" id="L145">        var builtin = LlmProvider.builtin(id);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        return builtin.isPresent() ? getApiKey(builtin.get()) : externalSetting(id, &quot;api-key&quot;, &quot;&quot;);</span>
+    }
+
+    public boolean requiresApiKey(ProviderId id) {
+<span class="fc" id="L150">        var builtin = LlmProvider.builtin(id);</span>
+<span class="pc bpc" id="L151" title="3 of 4 branches missed.">        if (builtin.isPresent()) return builtin.get() != LlmProvider.CUSTOM_OPENAI</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                &amp;&amp; builtin.get() != LlmProvider.LOCAL_ONNX;</span>
+<span class="fc" id="L153">        requireRegisteredProvider(id.value());</span>
+<span class="fc" id="L154">        return externalProviders.get(id).descriptor().requiresApiKey();</span>
+    }
+
+    public boolean hasConfiguredApiKey(ProviderId id) {
+<span class="fc" id="L158">        return LlmProvider.builtin(id).map(this::hasConfiguredApiKey)</span>
+<span class="pc" id="L159">                .orElseGet(() -&gt; hasText(getApiKey(id)));</span>
+    }
+
+    public String getOpenAiCompatibleUrl(ProviderId id) {
+<span class="fc" id="L163">        return LlmProvider.builtin(id).map(this::getOpenAiCompatibleUrl)</span>
+<span class="fc" id="L164">                .orElseGet(() -&gt; externalSetting(id, &quot;endpoint-identity&quot;, &quot;plugin:&quot; + id.value()));</span>
+    }
+
+    public String getOpenAiCompatibleModel(ProviderId id) {
+<span class="fc" id="L168">        return LlmProvider.builtin(id).map(this::getOpenAiCompatibleModel)</span>
+<span class="fc" id="L169">                .orElseGet(() -&gt; externalSetting(id, &quot;model&quot;, id.value()));</span>
+    }
+
+    public boolean isProviderConfigured(ProviderId id) {
+<span class="fc" id="L173">        var builtin = LlmProvider.builtin(id);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (builtin.isPresent()) return isProviderConfigured(builtin.get());</span>
+<span class="fc" id="L175">        var extension = externalProviders.get(id);</span>
+<span class="pc bpc" id="L176" title="4 of 6 branches missed.">        return extension != null &amp;&amp; (!extension.descriptor().requiresApiKey() || hasText(getApiKey(id)));</span>
+    }
+
+    public String getProviderConfigurationError(ProviderId id) {
+<span class="fc" id="L180">        var builtin = LlmProvider.builtin(id);</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (builtin.isPresent()) return getProviderConfigurationError(builtin.get());</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (!externalProviders.containsKey(id)) return &quot;No executable LLM provider registered: &quot; + id;</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        return isProviderConfigured(id) ? null : &quot;Provider credential is required for &quot; + id;</span>
+    }
+
+<span class="fc" id="L186">    public LlmProviderConfig(LocalEmbeddingService localEmbeddingService) {</span>
+<span class="fc" id="L187">        this.localEmbeddingService = localEmbeddingService;</span>
+<span class="fc" id="L188">    }</span>
+
+    /** Configured inference family; resolving a target never loads model weights. */
+    public String getLocalModelId() {
+<span class="fc" id="L192">        return localEmbeddingService.configuredModelId();</span>
+    }
+
+    /** Structured, operator-facing validation result for {@code CUSTOM_OPENAI}. */
+<span class="fc" id="L196">    public record CustomOpenAiConfigurationStatus(boolean valid, String code, String message) {</span>
+        static CustomOpenAiConfigurationStatus ready() {
+<span class="fc" id="L198">            return new CustomOpenAiConfigurationStatus(true, &quot;READY&quot;, &quot;CUSTOM_OPENAI is configured.&quot;);</span>
+        }
+
+        static CustomOpenAiConfigurationStatus invalid(String code, String message) {
+<span class="fc" id="L202">            return new CustomOpenAiConfigurationStatus(false, code, message);</span>
+        }
+    }
+
+    public void setRequestProvider(LlmProvider provider) {
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        setRequestProviderId(provider == null ? null : provider.id());</span>
+<span class="fc" id="L208">    }</span>
+
+    public void setRequestProviderId(ProviderId provider) {
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        if (provider == null) requestProviderOverride.remove();</span>
+<span class="fc" id="L212">        else requestProviderOverride.set(requireRegisteredProvider(provider.value()));</span>
+<span class="fc" id="L213">    }</span>
+
+    public void clearRequestProvider() {
+<span class="fc" id="L216">        requestProviderOverride.remove();</span>
+<span class="fc" id="L217">    }</span>
+
+    /** Bind the admitted provider identity, including MOCK, independently of this worker's defaults. */
+    public RequestProviderScope withRequestProvider(String frozenProvider) {
+<span class="pc bpc" id="L221" title="2 of 4 branches missed.">        if (frozenProvider == null || frozenProvider.isBlank()) {</span>
+<span class="nc" id="L222">            throw new IllegalArgumentException(&quot;Frozen provider is required&quot;);</span>
+        }
+<span class="fc" id="L224">        boolean mock = &quot;MOCK&quot;.equalsIgnoreCase(frozenProvider.trim());</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        ProviderId provider = mock ? null : requireRegisteredProvider(frozenProvider);</span>
+<span class="fc" id="L226">        com.taxonomy.extension.api.plugin.ExtensionLease&lt;com.taxonomy.extension.api.llm.LlmProviderExtension&gt; lease = null;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        if (catalog != null) {</span>
+<span class="fc" id="L228">            lease = catalog.acquire(new com.taxonomy.extension.api.plugin.ExtensionKey(</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                    com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, mock ? &quot;LOCAL_ONNX&quot; : provider.value()),</span>
+                    com.taxonomy.extension.api.llm.LlmProviderExtension.class);
+        }
+<span class="fc" id="L232">        var scope = new RequestProviderScope(lease);</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (provider == null) requestProviderOverride.remove(); else requestProviderOverride.set(provider);</span>
+<span class="fc" id="L234">        requestMockOverride.set(mock);</span>
+<span class="fc" id="L235">        providerScopes.set(scope);</span>
+<span class="fc" id="L236">        return scope;</span>
+    }
+
+    /** Freeze the exact admitted artifact and public configuration before any quota reservation. */
+    public com.taxonomy.extension.api.plugin.PluginInvocation captureProviderBinding(String provider) {
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        boolean mock = &quot;MOCK&quot;.equalsIgnoreCase(provider == null ? null : provider.trim());</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        ProviderId id = mock ? new ProviderId(&quot;LOCAL_ONNX&quot;) : requireRegisteredProvider(provider);</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (catalog == null) {</span>
+<span class="pc bpc" id="L244" title="1 of 4 branches missed.">            if (mock || LlmProvider.builtin(id).isPresent()) return null; // isolated/legacy built-in integrations</span>
+<span class="nc" id="L245">            throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;);</span>
+        }
+<span class="fc" id="L247">        try (var lease = catalog.acquire(new com.taxonomy.extension.api.plugin.ExtensionKey(</span>
+<span class="fc" id="L248">                com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, id.value()),</span>
+                com.taxonomy.extension.api.llm.LlmProviderExtension.class)) {
+<span class="fc bfc" id="L250" title="All 4 branches covered.">            String revision = mock ? &quot;mock-v1&quot; : id.value().equals(&quot;LOCAL_ONNX&quot;)</span>
+<span class="fc" id="L251">                    ? &quot;onnx:&quot; + getLocalModelId() : publicConfiguration(id);</span>
+<span class="fc" id="L252">            var hash = java.security.MessageDigest.getInstance(&quot;SHA-256&quot;).digest(</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                    ((mock ? &quot;MOCK&quot; : id.value()) + &quot;\0&quot; + revision).getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+<span class="fc" id="L254">            return new com.taxonomy.extension.api.plugin.PluginInvocation(lease.plugin(), java.util.HexFormat.of().formatHex(hash));</span>
+<span class="fc" id="L255">        } catch (ProviderPluginUnavailableException unavailable) { throw unavailable; }</span>
+<span class="nc" id="L256">        catch (Exception unavailable) { throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;); }</span>
+    }
+
+    private String publicConfiguration(ProviderId id) {
+<span class="fc" id="L260">        String operatorRevision = &quot;builtin-v1&quot;;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (LlmProvider.builtin(id).isEmpty()) {</span>
+<span class="fc" id="L262">            operatorRevision = externalSetting(id, &quot;configuration-revision&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            if (!operatorRevision.matches(&quot;[A-Za-z0-9._-]{1,128}&quot;))</span>
+<span class="fc" id="L264">                throw new ProviderPluginUnavailableException(&quot;PROVIDER_CONFIGURATION_REVISION_REQUIRED&quot;);</span>
+        }
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        String endpoint = id.value().equals(&quot;GEMINI&quot;) ? GEMINI_URL : getOpenAiCompatibleUrl(id);</span>
+        try {
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">            URI uri = URI.create(endpoint == null ? &quot;&quot; : endpoint);</span>
+            // Credentials, query and fragment are never included, even if an old endpoint allowed them.
+<span class="fc" id="L270">            endpoint = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getPath(), null, null).toString();</span>
+<span class="fc" id="L271">        } catch (Exception invalid) { endpoint = &quot;plugin:&quot; + id.value(); }</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        String model = id.value().equals(&quot;GEMINI&quot;) ? endpoint : getOpenAiCompatibleModel(id);</span>
+<span class="fc" id="L273">        return operatorRevision + &quot;\0&quot; + endpoint + &quot;\0&quot; + model;</span>
+    }
+
+    public RequestProviderScope withRequestProvider(String provider,
+            com.taxonomy.extension.api.plugin.PluginInvocation frozen) {
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (frozen == null) {</span>
+<span class="fc bfc" id="L279" title="All 4 branches covered.">            if (!&quot;MOCK&quot;.equalsIgnoreCase(provider) &amp;&amp; LlmProvider.builtin(new ProviderId(provider)).isEmpty())</span>
+<span class="fc" id="L280">                throw new ProviderPluginUnavailableException(&quot;PROVIDER_BINDING_REQUIRED&quot;);</span>
+        } else {
+            com.taxonomy.extension.api.plugin.PluginInvocation available;
+<span class="fc" id="L283">            try { available = captureProviderBinding(provider); }</span>
+<span class="fc" id="L284">            catch (IllegalArgumentException unavailable) { throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;); }</span>
+<span class="pc bpc" id="L285" title="1 of 4 branches missed.">            if (available == null || !frozen.plugin().equals(available.plugin()))</span>
+<span class="fc" id="L286">                throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (!frozen.configurationRevision().equals(available.configurationRevision()))</span>
+<span class="fc" id="L288">                throw new ProviderPluginUnavailableException(&quot;PROVIDER_CONFIGURATION_CHANGED&quot;);</span>
+        }
+        try {
+<span class="fc" id="L291">            var scope = withRequestProvider(provider);</span>
+<span class="pc bpc" id="L292" title="2 of 6 branches missed.">            if (frozen != null &amp;&amp; (scope.lease == null || !frozen.plugin().equals(scope.lease.plugin()))) {</span>
+<span class="nc" id="L293">                scope.close(); throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;);</span>
+            }
+<span class="fc" id="L295">            return scope;</span>
+<span class="nc" id="L296">        } catch (com.taxonomy.extension.api.plugin.ExtensionUnavailableException unavailable) {</span>
+<span class="nc" id="L297">            throw new ProviderPluginUnavailableException(&quot;PROVIDER_PLUGIN_UNAVAILABLE&quot;);</span>
+        }
+    }
+
+    public static final class RequestProviderScope implements AutoCloseable {
+<span class="fc" id="L302">        private final Thread owner = Thread.currentThread();</span>
+<span class="fc" id="L303">        private final ProviderId previousProvider = requestProviderOverride.get();</span>
+<span class="fc" id="L304">        private final Boolean previousMock = requestMockOverride.get();</span>
+<span class="fc" id="L305">        private final RequestProviderScope previousScope = providerScopes.get();</span>
+        private boolean closed;
+
+        private final com.taxonomy.extension.api.plugin.ExtensionLease&lt;com.taxonomy.extension.api.llm.LlmProviderExtension&gt; lease;
+<span class="fc" id="L309">        private RequestProviderScope(com.taxonomy.extension.api.plugin.ExtensionLease&lt;com.taxonomy.extension.api.llm.LlmProviderExtension&gt; lease) {</span>
+<span class="fc" id="L310">            this.lease = lease;</span>
+<span class="fc" id="L311">        }</span>
+
+        @Override public void close() {
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">            if (closed) return;</span>
+<span class="pc bpc" id="L315" title="2 of 4 branches missed.">            if (Thread.currentThread() != owner || providerScopes.get() != this) {</span>
+<span class="nc" id="L316">                throw new IllegalStateException(&quot;Provider scopes must close in order on their owning thread&quot;);</span>
+            }
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            if (previousProvider == null) requestProviderOverride.remove(); else requestProviderOverride.set(previousProvider);</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">            if (previousMock == null) requestMockOverride.remove(); else requestMockOverride.set(previousMock);</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            if (previousScope == null) providerScopes.remove(); else providerScopes.set(previousScope);</span>
+<span class="fc" id="L321">            closed = true;</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">            if (lease != null) lease.close();</span>
+<span class="fc" id="L323">        }</span>
+    }
+
+    /** Compatibility accessor for built-in callers. New execution paths use the open ID. */
+    public LlmProvider getActiveProvider() {
+<span class="fc" id="L328">        return LlmProvider.builtin(getActiveProviderId()).orElseThrow(() -&gt;</span>
+<span class="nc" id="L329">                new IllegalStateException(&quot;External provider requires the open provider-ID accessor&quot;));</span>
+    }
+
+    public ProviderId getActiveProviderId() {
+<span class="fc" id="L333">        ProviderId override = requestProviderOverride.get();</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        if (override != null) return requireRegisteredProvider(override.value());</span>
+<span class="fc bfc" id="L335" title="All 4 branches covered.">        if (llmProviderConfig != null &amp;&amp; !llmProviderConfig.isBlank()) {</span>
+<span class="fc" id="L336">            return requireRegisteredProvider(llmProviderConfig);</span>
+        }
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (hasText(geminiApiKey)) return LlmProvider.GEMINI.id();</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (hasText(openaiApiKey)) return LlmProvider.OPENAI.id();</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        if (hasText(deepseekApiKey)) return LlmProvider.DEEPSEEK.id();</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (hasText(qwenApiKey)) return LlmProvider.QWEN.id();</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        if (hasText(llamaApiKey)) return LlmProvider.LLAMA.id();</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (hasText(mistralApiKey)) return LlmProvider.MISTRAL.id();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (isCustomOpenAiConfigured()) return LlmProvider.CUSTOM_OPENAI.id();</span>
+<span class="fc" id="L345">        return LlmProvider.GEMINI.id();</span>
+    }
+
+    public String getActiveProviderName() {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (isMockMode()) return &quot;Mock&quot;;</span>
+<span class="fc" id="L350">        ProviderId id = getActiveProviderId();</span>
+<span class="fc" id="L351">        var builtin = LlmProvider.builtin(id);</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">        if (builtin.isEmpty()) return externalProviders.get(id).descriptor().providerName();</span>
+<span class="fc bfc" id="L353" title="All 8 branches covered.">        return switch (builtin.get()) {</span>
+<span class="fc" id="L354">            case GEMINI -&gt; &quot;Gemini&quot;;</span>
+<span class="fc" id="L355">            case OPENAI -&gt; &quot;OpenAI&quot;;</span>
+<span class="fc" id="L356">            case DEEPSEEK -&gt; &quot;DeepSeek&quot;;</span>
+<span class="fc" id="L357">            case QWEN -&gt; &quot;Qwen&quot;;</span>
+<span class="fc" id="L358">            case LLAMA -&gt; &quot;Llama&quot;;</span>
+<span class="fc" id="L359">            case MISTRAL -&gt; &quot;Mistral&quot;;</span>
+<span class="fc" id="L360">            case CUSTOM_OPENAI -&gt; &quot;Custom OpenAI-compatible&quot;;</span>
+<span class="fc" id="L361">            case LOCAL_ONNX -&gt; &quot;Local (ONNX embeddings)&quot;;</span>
+        };
+    }
+
+    public List&lt;String&gt; getAvailableProviders() {
+<span class="fc" id="L366">        List&lt;String&gt; providers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L367">        providers.add(&quot;LOCAL_ONNX&quot;);</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        if (hasText(geminiApiKey)) providers.add(&quot;GEMINI&quot;);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        if (hasText(openaiApiKey)) providers.add(&quot;OPENAI&quot;);</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        if (hasText(deepseekApiKey)) providers.add(&quot;DEEPSEEK&quot;);</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">        if (hasText(qwenApiKey)) providers.add(&quot;QWEN&quot;);</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">        if (hasText(llamaApiKey)) providers.add(&quot;LLAMA&quot;);</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (hasText(mistralApiKey)) providers.add(&quot;MISTRAL&quot;);</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">        if (isCustomOpenAiConfigured()) providers.add(&quot;CUSTOM_OPENAI&quot;);</span>
+<span class="fc" id="L375">        externalProviders.keySet().stream().filter(this::isProviderConfigured)</span>
+<span class="fc" id="L376">                .map(ProviderId::value).sorted().forEach(providers::add);</span>
+<span class="fc" id="L377">        return providers;</span>
+    }
+
+    /**
+     * Returns the transport credential. CUSTOM_OPENAI always returns either the real optional
+     * bearer token or an internal no-auth marker, even when URL/model validation fails. This keeps
+     * provider-agnostic callers from misdiagnosing an invalid endpoint as a missing API key.
+     */
+    public String getApiKey(LlmProvider provider) {
+<span class="fc bfc" id="L386" title="All 8 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L387">            case GEMINI -&gt; geminiApiKey;</span>
+<span class="fc" id="L388">            case OPENAI -&gt; openaiApiKey;</span>
+<span class="fc" id="L389">            case DEEPSEEK -&gt; deepseekApiKey;</span>
+<span class="fc" id="L390">            case QWEN -&gt; qwenApiKey;</span>
+<span class="fc" id="L391">            case LLAMA -&gt; llamaApiKey;</span>
+<span class="fc" id="L392">            case MISTRAL -&gt; mistralApiKey;</span>
+<span class="fc" id="L393">            case CUSTOM_OPENAI -&gt; customOpenAiTransportApiKey();</span>
+<span class="fc" id="L394">            case LOCAL_ONNX -&gt; null;</span>
+        };
+    }
+
+    public boolean hasConfiguredApiKey(LlmProvider provider) {
+<span class="fc bfc" id="L399" title="All 8 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L400">            case GEMINI -&gt; hasText(geminiApiKey);</span>
+<span class="fc" id="L401">            case OPENAI -&gt; hasText(openaiApiKey);</span>
+<span class="fc" id="L402">            case DEEPSEEK -&gt; hasText(deepseekApiKey);</span>
+<span class="fc" id="L403">            case QWEN -&gt; hasText(qwenApiKey);</span>
+<span class="fc" id="L404">            case LLAMA -&gt; hasText(llamaApiKey);</span>
+<span class="fc" id="L405">            case MISTRAL -&gt; hasText(mistralApiKey);</span>
+<span class="fc" id="L406">            case CUSTOM_OPENAI -&gt; hasText(customLlmApiKey);</span>
+<span class="fc" id="L407">            case LOCAL_ONNX -&gt; false;</span>
+        };
+    }
+
+    public String getOpenAiCompatibleUrl(LlmProvider provider) {
+<span class="fc bfc" id="L412" title="All 7 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L413">            case OPENAI -&gt; OPENAI_URL;</span>
+<span class="fc" id="L414">            case DEEPSEEK -&gt; DEEPSEEK_URL;</span>
+<span class="fc" id="L415">            case QWEN -&gt; QWEN_URL;</span>
+<span class="fc" id="L416">            case LLAMA -&gt; LLAMA_URL;</span>
+<span class="fc" id="L417">            case MISTRAL -&gt; MISTRAL_URL;</span>
+<span class="fc" id="L418">            case CUSTOM_OPENAI -&gt; trimToEmpty(customLlmUrl);</span>
+<span class="fc" id="L419">            default -&gt; throw new IllegalArgumentException(&quot;Not an OpenAI-compatible provider: &quot; + provider);</span>
+        };
+    }
+
+    public String getOpenAiCompatibleModel(LlmProvider provider) {
+<span class="fc bfc" id="L424" title="All 7 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L425">            case OPENAI -&gt; OPENAI_MODEL;</span>
+<span class="fc" id="L426">            case DEEPSEEK -&gt; DEEPSEEK_MODEL;</span>
+<span class="fc" id="L427">            case QWEN -&gt; QWEN_MODEL;</span>
+<span class="fc" id="L428">            case LLAMA -&gt; LLAMA_MODEL;</span>
+<span class="fc" id="L429">            case MISTRAL -&gt; MISTRAL_MODEL;</span>
+<span class="fc" id="L430">            case CUSTOM_OPENAI -&gt; trimToEmpty(customLlmModel);</span>
+<span class="fc" id="L431">            default -&gt; throw new IllegalArgumentException(&quot;Unknown provider: &quot; + provider);</span>
+        };
+    }
+
+    public String getGeminiUrl() {
+<span class="fc" id="L436">        return GEMINI_URL;</span>
+    }
+
+    public CustomOpenAiConfigurationStatus getCustomOpenAiConfigurationStatus() {
+<span class="fc" id="L440">        return validateCustomOpenAiConfiguration(customLlmUrl, customLlmModel);</span>
+    }
+
+    /** Shared validation used by readiness diagnostics and the HTTP gateway. */
+    static CustomOpenAiConfigurationStatus validateCustomOpenAiConfiguration(
+            String configuredUrl, String configuredModel) {
+<span class="fc bfc" id="L446" title="All 2 branches covered.">        if (!hasText(configuredUrl)) {</span>
+<span class="fc" id="L447">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_URL&quot;,</span>
+                    &quot;CUSTOM_LLM_URL is required when LLM_PROVIDER=CUSTOM_OPENAI.&quot;);
+        }
+<span class="fc bfc" id="L450" title="All 2 branches covered.">        if (!hasText(configuredModel)) {</span>
+<span class="fc" id="L451">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_MODEL&quot;,</span>
+                    &quot;CUSTOM_LLM_MODEL is required when LLM_PROVIDER=CUSTOM_OPENAI.&quot;);
+        }
+
+        URI uri;
+        try {
+<span class="fc" id="L457">            uri = URI.create(configuredUrl.trim());</span>
+<span class="fc" id="L458">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L459">            return CustomOpenAiConfigurationStatus.invalid(&quot;INVALID_URL&quot;,</span>
+                    &quot;CUSTOM_LLM_URL is not a valid URI.&quot;);
+<span class="fc" id="L461">        }</span>
+
+<span class="fc" id="L463">        String scheme = uri.getScheme();</span>
+<span class="fc bfc" id="L464" title="All 4 branches covered.">        if (!&quot;http&quot;.equalsIgnoreCase(scheme) &amp;&amp; !&quot;https&quot;.equalsIgnoreCase(scheme)) {</span>
+<span class="fc" id="L465">            return CustomOpenAiConfigurationStatus.invalid(&quot;UNSUPPORTED_SCHEME&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must use http or https.&quot;);
+        }
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        if (uri.getHost() == null) {</span>
+<span class="fc" id="L469">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_HOST&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must contain a host name.&quot;);
+        }
+<span class="fc bfc" id="L472" title="All 2 branches covered.">        if (uri.getUserInfo() != null) {</span>
+<span class="fc" id="L473">            return CustomOpenAiConfigurationStatus.invalid(&quot;USER_INFO_NOT_ALLOWED&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must not contain credentials; use optional CUSTOM_LLM_API_KEY instead.&quot;);
+        }
+<span class="fc" id="L476">        String path = uri.getPath();</span>
+<span class="pc bpc" id="L477" title="1 of 4 branches missed.">        if (path == null || !path.endsWith(&quot;/chat/completions&quot;)) {</span>
+<span class="fc" id="L478">            return CustomOpenAiConfigurationStatus.invalid(&quot;INVALID_PATH&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must end with /chat/completions.&quot;);
+        }
+<span class="fc" id="L481">        return CustomOpenAiConfigurationStatus.ready();</span>
+    }
+
+    public boolean isCustomOpenAiConfigured() {
+<span class="fc" id="L485">        return getCustomOpenAiConfigurationStatus().valid();</span>
+    }
+
+    public boolean isProviderConfigured(LlmProvider provider) {
+<span class="fc bfc" id="L489" title="All 8 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L490">            case GEMINI -&gt; hasText(geminiApiKey);</span>
+<span class="fc" id="L491">            case OPENAI -&gt; hasText(openaiApiKey);</span>
+<span class="fc" id="L492">            case DEEPSEEK -&gt; hasText(deepseekApiKey);</span>
+<span class="fc" id="L493">            case QWEN -&gt; hasText(qwenApiKey);</span>
+<span class="fc" id="L494">            case LLAMA -&gt; hasText(llamaApiKey);</span>
+<span class="fc" id="L495">            case MISTRAL -&gt; hasText(mistralApiKey);</span>
+<span class="fc" id="L496">            case CUSTOM_OPENAI -&gt; isCustomOpenAiConfigured();</span>
+<span class="fc" id="L497">            case LOCAL_ONNX -&gt; localEmbeddingService.isAvailable();</span>
+        };
+    }
+
+    /** Returns a precise operator-facing reason when the selected provider is not ready. */
+    public String getProviderConfigurationError(LlmProvider provider) {
+<span class="pc bpc" id="L503" title="3 of 8 branches missed.">        return switch (provider) {</span>
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">            case GEMINI -&gt; hasText(geminiApiKey) ? null : &quot;GEMINI_API_KEY is required.&quot;;</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">            case OPENAI -&gt; hasText(openaiApiKey) ? null : &quot;OPENAI_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">            case DEEPSEEK -&gt; hasText(deepseekApiKey) ? null : &quot;DEEPSEEK_API_KEY is required.&quot;;</span>
+<span class="pc bpc" id="L507" title="1 of 2 branches missed.">            case QWEN -&gt; hasText(qwenApiKey) ? null : &quot;DASHSCOPE_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">            case LLAMA -&gt; hasText(llamaApiKey) ? null : &quot;LLAMA_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">            case MISTRAL -&gt; hasText(mistralApiKey) ? null : &quot;MISTRAL_API_KEY is required.&quot;;</span>
+            case CUSTOM_OPENAI -&gt; {
+<span class="fc" id="L511">                CustomOpenAiConfigurationStatus status = getCustomOpenAiConfigurationStatus();</span>
+<span class="fc bfc" id="L512" title="All 2 branches covered.">                yield status.valid() ? null : status.message();</span>
+            }
+<span class="pc bpc" id="L514" title="1 of 2 branches missed.">            case LOCAL_ONNX -&gt; localEmbeddingService.isAvailable()</span>
+<span class="nc" id="L515">                    ? null</span>
+<span class="fc" id="L516">                    : &quot;Local semantic embedding is disabled or unavailable. Set &quot;</span>
+                    + &quot;TAXONOMY_EMBEDDING_ENABLED=true and provide a local model or explicitly &quot;
+                    + &quot;allow a runtime download.&quot;;
+        };
+    }
+
+    public boolean hasAnyCloudApiKey() {
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">        return hasText(geminiApiKey)</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">                || hasText(openaiApiKey)</span>
+<span class="nc bnc" id="L525" title="All 2 branches missed.">                || hasText(deepseekApiKey)</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">                || hasText(qwenApiKey)</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">                || hasText(llamaApiKey)</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">                || hasText(mistralApiKey)</span>
+<span class="pc bnc" id="L529" title="All 2 branches missed.">                || hasText(customLlmApiKey);</span>
+    }
+
+    public boolean hasAnyHttpProviderConfiguration() {
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">        return hasText(geminiApiKey)</span>
+<span class="nc bnc" id="L534" title="All 2 branches missed.">                || hasText(openaiApiKey)</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">                || hasText(deepseekApiKey)</span>
+<span class="nc bnc" id="L536" title="All 2 branches missed.">                || hasText(qwenApiKey)</span>
+<span class="nc bnc" id="L537" title="All 2 branches missed.">                || hasText(llamaApiKey)</span>
+<span class="nc bnc" id="L538" title="All 2 branches missed.">                || hasText(mistralApiKey)</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">                || isCustomOpenAiConfigured()</span>
+<span class="pc bnc" id="L540" title="All 2 branches missed.">                || externalProviders.keySet().stream().anyMatch(this::isProviderConfigured);</span>
+    }
+
+    public AiAvailabilityLevel getAvailabilityLevel() {
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (isMockMode()) return AiAvailabilityLevel.FULL;</span>
+<span class="fc" id="L545">        ProviderId provider = getActiveProviderId();</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {</span>
+<span class="pc bpc" id="L547" title="1 of 2 branches missed.">            return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L548">                    ? AiAvailabilityLevel.LIMITED</span>
+<span class="nc" id="L549">                    : AiAvailabilityLevel.UNAVAILABLE;</span>
+        }
+<span class="fc bfc" id="L551" title="All 2 branches covered.">        if (isProviderConfigured(provider)) return AiAvailabilityLevel.FULL;</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">        return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L553">                ? AiAvailabilityLevel.LIMITED</span>
+<span class="fc" id="L554">                : AiAvailabilityLevel.UNAVAILABLE;</span>
+    }
+
+    public boolean isAvailable() {
+<span class="fc bfc" id="L558" title="All 2 branches covered.">        return getAvailabilityLevel() != AiAvailabilityLevel.UNAVAILABLE;</span>
+    }
+
+    public boolean isMockMode() {
+<span class="fc" id="L562">        Boolean override = requestMockOverride.get();</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">        return override == null ? llmMock : override;</span>
+    }
+
+    private String customOpenAiTransportApiKey() {
+<span class="fc bfc" id="L567" title="All 2 branches covered.">        return hasText(customLlmApiKey) ? customLlmApiKey : CUSTOM_NO_AUTH_API_KEY;</span>
+    }
+
+    private static boolean hasText(String value) {
+<span class="fc bfc" id="L571" title="All 4 branches covered.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    private static String trimToEmpty(String value) {
+<span class="fc bfc" id="L575" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value.trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

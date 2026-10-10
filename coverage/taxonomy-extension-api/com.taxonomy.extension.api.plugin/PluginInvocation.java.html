@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginInvocation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.plugin</a> &gt; <span class="el_source">PluginInvocation.java</span></div><h1>PluginInvocation.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.plugin;
+
+import java.util.Objects;
+
+/** Durable invocation binding. It contains no credentials, implementation object or classloader. */
+public record PluginInvocation(PluginIdentity plugin, String configurationRevision) {
+<span class="fc" id="L7">    public PluginInvocation {</span>
+<span class="fc" id="L8">        Objects.requireNonNull(plugin, &quot;plugin&quot;);</span>
+<span class="pc bpc" id="L9" title="2 of 4 branches missed.">        if (configurationRevision == null || !configurationRevision.matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L10">            throw new IllegalArgumentException(&quot;Configuration revision must be a SHA-256 fingerprint&quot;);</span>
+<span class="fc" id="L11">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

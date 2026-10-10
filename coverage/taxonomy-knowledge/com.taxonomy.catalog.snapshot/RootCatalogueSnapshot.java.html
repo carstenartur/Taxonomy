@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RootCatalogueSnapshot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">RootCatalogueSnapshot.java</span></div><h1>RootCatalogueSnapshot.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.service.CatalogueOverlayService.NodeMetadata;
+import com.taxonomy.catalog.service.CatalogueOverlayService.OverlayMetadata;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Versioned scalar analysis catalogue evidence, suitable for durable JSON storage.
+ * No JPA associations, mutable relation projections, vectors or current-source references are retained.
+ */
+public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode,
+                                    List&lt;Node&gt; nodes, OverlayMetadata overlayMetadata,
+                                    CatalogueSourceJournal.Snapshot catalogueProvenance,
+                                    RootEmbeddingSnapshot embeddings) {
+    public static final int SCHEMA_VERSION = 2;
+
+    public RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode,
+                                  List&lt;Node&gt; nodes, OverlayMetadata overlayMetadata,
+                                  CatalogueSourceJournal.Snapshot catalogueProvenance) {
+<span class="fc" id="L29">        this(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, null);</span>
+<span class="fc" id="L30">    }</span>
+
+<span class="fc" id="L32">    public RootCatalogueSnapshot {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (schemaVersion != SCHEMA_VERSION) throw new IllegalArgumentException(&quot;Unsupported catalogue snapshot schema&quot;);</span>
+<span class="fc" id="L34">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc" id="L35">        CatalogueRoot.require(rootCode);</span>
+<span class="fc" id="L36">        nodes = List.copyOf(nodes);</span>
+<span class="fc" id="L37">        Objects.requireNonNull(overlayMetadata, &quot;overlayMetadata&quot;);</span>
+<span class="fc" id="L38">        requireMatchingOverlay(catalogueProvenance, overlayMetadata);</span>
+<span class="fc" id="L39">        Map&lt;String, Node&gt; byCode = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (Node node : nodes) {</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">            if (!rootCode.equals(node.taxonomyRoot()) || byCode.putIfAbsent(node.code(), node) != null) {</span>
+<span class="nc" id="L42">                throw new IllegalArgumentException(&quot;Duplicate or foreign node in root snapshot: &quot; + node.code());</span>
+            }
+<span class="fc" id="L44">        }</span>
+<span class="pc bpc" id="L45" title="2 of 6 branches missed.">        if (embeddings != null &amp;&amp; (!source.equals(embeddings.source()) || !rootCode.equals(embeddings.rootCode())</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                || !byCode.keySet().equals(embeddings.nodeTexts().keySet()))) {</span>
+<span class="nc" id="L47">            throw new IllegalArgumentException(&quot;Frozen embeddings must cover exactly the source and nodes of this root&quot;);</span>
+        }
+<span class="fc" id="L49">        Node root = byCode.get(rootCode);</span>
+<span class="pc bpc" id="L50" title="2 of 6 branches missed.">        if (root == null || root.parentCode() != null || root.level() != 0) {</span>
+<span class="fc" id="L51">            throw new IllegalArgumentException(&quot;Root snapshot must contain its parentless catalogue root&quot;);</span>
+        }
+<span class="fc" id="L53">        Set&lt;String&gt; reached = new HashSet&lt;&gt;(Set.of(rootCode));</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (Node node : nodes) {</span>
+<span class="fc" id="L55">            Set&lt;String&gt; path = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L56">            Node current = node;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            while (!reached.contains(current.code())) {</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (!path.add(current.code())) throw new IllegalArgumentException(&quot;Cycle in root snapshot&quot;);</span>
+<span class="fc" id="L59">                current = byCode.get(current.parentCode());</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">                if (current == null) throw new IllegalArgumentException(&quot;Missing parent in root snapshot: &quot; + node.code());</span>
+            }
+<span class="fc" id="L62">            reached.addAll(path);</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">    }</span>
+
+    public RootCatalogueSnapshot withEmbeddings(RootEmbeddingSnapshot evidence) {
+<span class="fc" id="L67">        return new RootCatalogueSnapshot(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, evidence);</span>
+    }
+
+    static void requireMatchingOverlay(CatalogueSourceJournal.Snapshot provenance, OverlayMetadata overlay) {
+<span class="fc" id="L71">        Objects.requireNonNull(provenance, &quot;catalogueProvenance&quot;);</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">        if (provenance.id() == null || !java.util.UUID.fromString(provenance.id()).toString().equals(provenance.id())</span>
+<span class="pc bpc" id="L73" title="3 of 6 branches missed.">                || provenance.createdAt() == null || provenance.workbook() == null || provenance.relations() == null)</span>
+<span class="nc" id="L74">            throw new IllegalArgumentException(&quot;Invalid catalogue generation evidence&quot;);</span>
+<span class="fc" id="L75">        var recorded = Objects.requireNonNull(provenance.overlay(), &quot;catalogueProvenance.overlay&quot;);</span>
+<span class="fc" id="L76">        requireInputReference(provenance.workbook());</span>
+<span class="fc" id="L77">        requireInputReference(recorded);</span>
+<span class="fc" id="L78">        requireInputReference(provenance.relations());</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        boolean matches = overlay.enabled()</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                ? recorded.use() == CatalogueSourceJournal.Use.APPLIED &amp;&amp; recorded.sha256() != null</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                    &amp;&amp; recorded.sha256().equals(overlay.sha256())</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">                : recorded.use() == CatalogueSourceJournal.Use.NOT_USED &amp;&amp; recorded.sha256() == null;</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (!matches) throw new IllegalArgumentException(&quot;Runtime overlay differs from retained catalogue generation&quot;);</span>
+<span class="fc" id="L84">    }</span>
+
+    private static void requireInputReference(CatalogueSourceJournal.InputReference reference) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (reference.use() == null) throw new IllegalArgumentException(&quot;Catalogue input use is required&quot;);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        boolean valid = switch (reference.use()) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            case APPLIED, PARSE_FAILED -&gt; reference.sha256() != null</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    &amp;&amp; reference.sha256().matches(&quot;[0-9a-f]{64}&quot;)</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">                    &amp;&amp; reference.length() &gt;= 0 &amp;&amp; reference.length() &lt;= CatalogueSourceBytes.MAX_BYTES;</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">            case NOT_USED, NOT_RETAINED -&gt; reference.sha256() == null &amp;&amp; reference.length() == 0;</span>
+        };
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (!valid) throw new IllegalArgumentException(&quot;Invalid retained catalogue input reference&quot;);</span>
+<span class="fc" id="L95">    }</span>
+
+    /** Official catalogue fields and frozen overlay semantics; every collection is immutable. */
+    public record Node(Long id, String code, String uuid, String nameEn, String nameDe,
+                       String descriptionEn, String descriptionDe, String parentCode,
+                       String taxonomyRoot, int level, String dataset, String externalId,
+                       String source, String reference, Integer sortOrder, String state,
+                       NodeMetadata metadata, boolean parentPatch) {
+<span class="fc" id="L103">        public Node {</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">            if (code == null || code.isBlank()) throw new IllegalArgumentException(&quot;Snapshot node code is required&quot;);</span>
+<span class="fc" id="L105">            CatalogueRoot.require(taxonomyRoot);</span>
+<span class="fc" id="L106">            Objects.requireNonNull(nameEn, &quot;nameEn&quot;);</span>
+<span class="fc" id="L107">            Objects.requireNonNull(metadata, &quot;metadata&quot;);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (metadata.analysisRole() == null</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    || !Set.of(&quot;CATEGORY&quot;, &quot;PRODUCT&quot;, &quot;PRODUCT_FAMILY&quot;).contains(metadata.analysisRole())) {</span>
+<span class="fc" id="L110">                throw new IllegalArgumentException(&quot;Unsupported snapshot analysis role&quot;);</span>
+            }
+<span class="fc" id="L112">            metadata = new NodeMetadata(metadata.analysisRole(), List.copyOf(metadata.secondaryClassificationCodes()),</span>
+<span class="fc" id="L113">                    metadata.confidence(), metadata.reviewRequired(), metadata.justification());</span>
+<span class="fc" id="L114">        }</span>
+
+        public static Node capture(TaxonomyNode node, NodeMetadata metadata, boolean parentPatch) {
+<span class="fc" id="L117">            return new Node(node.getId(), node.getCode(), node.getUuid(), node.getNameEn(), node.getNameDe(),</span>
+<span class="fc" id="L118">                    node.getDescriptionEn(), node.getDescriptionDe(), node.getParentCode(), node.getTaxonomyRoot(),</span>
+<span class="fc" id="L119">                    node.getLevel(), node.getDataset(), node.getExternalId(), node.getSource(), node.getReference(),</span>
+<span class="fc" id="L120">                    node.getSortOrder(), node.getState(), metadata, parentPatch);</span>
+        }
+
+        TaxonomyNode detached() {
+<span class="fc" id="L124">            TaxonomyNode node = new TaxonomyNode();</span>
+<span class="fc" id="L125">            node.setId(id);</span>
+<span class="fc" id="L126">            node.setCode(code);</span>
+<span class="fc" id="L127">            node.setUuid(uuid);</span>
+<span class="fc" id="L128">            node.setNameEn(nameEn);</span>
+<span class="fc" id="L129">            node.setNameDe(nameDe);</span>
+<span class="fc" id="L130">            node.setDescriptionEn(descriptionEn);</span>
+<span class="fc" id="L131">            node.setDescriptionDe(descriptionDe);</span>
+<span class="fc" id="L132">            node.setParentCode(parentCode);</span>
+<span class="fc" id="L133">            node.setTaxonomyRoot(taxonomyRoot);</span>
+<span class="fc" id="L134">            node.setLevel(level);</span>
+<span class="fc" id="L135">            node.setDataset(dataset);</span>
+<span class="fc" id="L136">            node.setExternalId(externalId);</span>
+<span class="fc" id="L137">            node.setSource(source);</span>
+<span class="fc" id="L138">            node.setReference(reference);</span>
+<span class="fc" id="L139">            node.setSortOrder(sortOrder);</span>
+<span class="fc" id="L140">            node.setState(state);</span>
+<span class="fc" id="L141">            return node;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

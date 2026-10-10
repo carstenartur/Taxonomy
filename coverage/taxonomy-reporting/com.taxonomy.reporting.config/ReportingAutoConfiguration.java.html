@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportingAutoConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.config</a> &gt; <span class="el_source">ReportingAutoConfiguration.java</span></div><h1>ReportingAutoConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.config;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.context.annotation.Import;
+import com.taxonomy.templates.api.DocumentTemplates;
+
+/** Explicit feature assembly. Import exact owned components; never trigger a scan in a partial context. */
+@AutoConfiguration(afterName = &quot;com.taxonomy.templates.config.TemplatesFeatureAutoConfiguration&quot;)
+@ConditionalOnBean(DocumentTemplates.class)
+@Import({
+        com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleDocxRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleHtmlRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleTemplatePreviewService.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleTemplateRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionRationaleTemplateRendererDecorator.class,
+        com.taxonomy.reporting.render.decision.DecisionReportTemplateExceptionHandler.class,
+        com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer.class,
+        com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer.class,
+        com.taxonomy.reporting.render.document.DocxReportRendererExtension.class,
+        com.taxonomy.reporting.render.document.HtmlReportRendererExtension.class,
+        com.taxonomy.reporting.render.document.JsonReportRendererExtension.class,
+        com.taxonomy.reporting.render.document.MarkdownReportRendererExtension.class,
+        com.taxonomy.reporting.render.document.ReformulationReportDocxRenderer.class,
+        com.taxonomy.reporting.render.document.ReportRendererRegistry.class,
+        com.taxonomy.reporting.templates.DecisionRationaleTemplateContract.class,
+        com.taxonomy.reporting.templates.DecisionRationaleTemplateHealthIndicator.class,
+        com.taxonomy.reporting.templates.DecisionTemplateConfiguration.class
+})
+<span class="fc" id="L32">public class ReportingAutoConfiguration {</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

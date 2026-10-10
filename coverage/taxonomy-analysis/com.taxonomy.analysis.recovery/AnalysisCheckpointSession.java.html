@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisCheckpointSession.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisCheckpointSession.java</span></div><h1>AnalysisCheckpointSession.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.dto.LlmCallDetail;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.function.Supplier;
+
+/** Request-local adapter around the existing evaluator, not a second traversal implementation. */
+public final class AnalysisCheckpointSession implements AutoCloseable {
+    public record Question(String key, String inputHash, String provider, List&lt;String&gt; nodes, String prompt) {
+<span class="fc" id="L14">        public Question { nodes = List.copyOf(nodes); }</span>
+    }
+<span class="fc" id="L16">    public record Checkpoint(Question question, String state, LlmCallDetail detail) { }</span>
+    public interface Store {
+        Checkpoint prepare(Question question);
+        void finish(Question question, String state, LlmCallDetail detail);
+        void checkActive();
+<span class="fc" id="L21">        default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }</span>
+    }
+<span class="fc" id="L23">    private static final ThreadLocal&lt;AnalysisCheckpointSession&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+    private final AnalysisCheckpointSession previous;
+    private final Store store;
+    private boolean closed;
+<span class="fc" id="L27">    public AnalysisCheckpointSession(Store store) {</span>
+<span class="fc" id="L28">        this.store = Objects.requireNonNull(store); previous = CURRENT.get(); CURRENT.set(this);</span>
+<span class="fc" id="L29">    }</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">    public static boolean active() { return CURRENT.get() != null; }</span>
+    public static com.taxonomy.dto.RelationSearchReport previousRelations() {
+<span class="fc" id="L32">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        return current == null ? null : current.store.previousRelations();</span>
+    }
+    /** No provider request was made; the existing question remains ready for explicit continuation. */
+    public static final class DeferredException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+<span class="fc" id="L38">        public DeferredException(String reason) { super(reason); }</span>
+    }
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">    public static boolean isRelationQuestion(String key) { return key != null &amp;&amp; key.startsWith(&quot;R&quot;); }</span>
+
+    /** Relation evidence uses the same scoped journal without fabricating node scores. */
+    public static LlmCallDetail evaluateEvidence(String kind, String provider, List&lt;String&gt; nodes,
+                                                String input, Supplier&lt;LlmCallDetail&gt; operation) {
+<span class="fc" id="L45">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (current == null) return operation.get();</span>
+<span class="fc" id="L47">        current.store.checkActive();</span>
+        // 252-bit namespace-separated identity fits the existing 64-character schema.
+<span class="fc" id="L49">        String key = &quot;R&quot; + digest(kind, provider, String.join(&quot;\n&quot;, nodes), input).substring(1);</span>
+<span class="fc" id="L50">        Question question = new Question(key, digest(provider, input), provider, nodes, input);</span>
+<span class="fc" id="L51">        Checkpoint saved = current.store.prepare(question);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (&quot;SUCCESS&quot;.equals(saved.state())) return copy(saved.detail());</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (&quot;SKIPPED&quot;.equals(saved.state())) {</span>
+<span class="nc" id="L54">            var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);</span>
+<span class="nc" id="L55">            skipped.setError(&quot;RELATION_LEFT_OPEN&quot;); return skipped;</span>
+        }
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (!&quot;ATTEMPT&quot;.equals(saved.state())) throw paused();</span>
+        LlmCallDetail result;
+<span class="fc" id="L59">        try { result = Objects.requireNonNull(operation.get()); }</span>
+<span class="fc" id="L60">        catch (DeferredException deferred) {</span>
+<span class="fc" id="L61">            var ready = new LlmCallDetail(); ready.setProvider(provider); ready.setScores(Map.of());</span>
+<span class="fc" id="L62">            ready.setError(deferred.getMessage()); current.store.finish(question, &quot;READY&quot;, ready);</span>
+<span class="fc" id="L63">            throw deferred;</span>
+<span class="nc" id="L64">        } catch (AnalysisStoppedException stopped) { throw stopped; }</span>
+<span class="fc" id="L65">        catch (RuntimeException failed) {</span>
+<span class="fc" id="L66">            result = new LlmCallDetail(); result.setProvider(provider); result.setPrompt(input);</span>
+<span class="fc" id="L67">            result.setScores(Map.of()); result.setError(&quot;RELATION_FAILURE: &quot; + failed.getClass().getSimpleName());</span>
+<span class="fc" id="L68">        }</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">        if (result.getError() != null &amp;&amp; !result.getError().isBlank()</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">                || result.getRawResponse() == null || result.getRawResponse().isBlank()) {</span>
+<span class="fc" id="L71">            current.store.finish(question, &quot;FAILED&quot;, copy(result)); throw paused();</span>
+        }
+<span class="fc" id="L73">        current.store.finish(question, &quot;SUCCESS&quot;, copy(result));</span>
+<span class="fc" id="L74">        current.store.checkActive();</span>
+<span class="fc" id="L75">        return copy(result);</span>
+    }
+    public static void checkpoint() {
+<span class="fc" id="L78">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (current != null) current.store.checkActive();</span>
+<span class="fc" id="L80">    }</span>
+    public static LlmCallDetail evaluate(String kind, String provider, List&lt;String&gt; nodes,
+                                        String input, Supplier&lt;LlmCallDetail&gt; operation) {
+<span class="fc" id="L83">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L84">        var current = CURRENT.get();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (current == null) return operation.get();</span>
+<span class="fc" id="L86">        current.store.checkActive();</span>
+<span class="fc" id="L87">        List&lt;String&gt; offered = List.copyOf(nodes);</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">        if (offered.isEmpty() || new HashSet&lt;&gt;(offered).size() != offered.size()</span>
+<span class="pc bpc" id="L89" title="3 of 6 branches missed.">                || offered.stream().anyMatch(node -&gt; node == null || node.isBlank())) {</span>
+<span class="nc" id="L90">            throw new IllegalArgumentException(&quot;A recovery question requires unique catalogue node identities&quot;);</span>
+        }
+<span class="fc" id="L92">        Question question = new Question(digest(kind, String.join(&quot;\n&quot;, offered)),</span>
+<span class="fc" id="L93">                digest(provider, input), provider, offered, input);</span>
+<span class="fc" id="L94">        Checkpoint checkpoint = current.store.prepare(question);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (&quot;SUCCESS&quot;.equals(checkpoint.state())) return copy(checkpoint.detail());</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (&quot;SKIPPED&quot;.equals(checkpoint.state())) {</span>
+<span class="fc" id="L97">            var unknown = new LlmCallDetail();</span>
+<span class="fc" id="L98">            unknown.setScores(Map.of()); unknown.setReasons(Map.of());</span>
+<span class="fc" id="L99">            unknown.setProvider(provider);</span>
+<span class="fc" id="L100">            unknown.setError(&quot;UNASSESSED: &quot; + String.join(&quot;, &quot;, offered));</span>
+<span class="fc" id="L101">            return unknown;</span>
+        }
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (!&quot;ATTEMPT&quot;.equals(checkpoint.state())) throw paused();</span>
+        LlmCallDetail result;
+        try {
+<span class="fc" id="L106">            result = Objects.requireNonNull(operation.get(), &quot;assessment result&quot;);</span>
+<span class="nc" id="L107">        } catch (AnalysisStoppedException stopped) {</span>
+            // A response may have completed just before cancellation. Retain it exactly once,
+            // but never turn an erroneous response's fallback zeros into completed evidence.
+<span class="nc" id="L110">            var completed = stopped.completedCallEvidence();</span>
+<span class="nc bnc" id="L111" title="All 6 branches missed.">            if (completed != null &amp;&amp; (completed.getError() == null || completed.getError().isBlank())</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                    &amp;&amp; completed.getScores() != null</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                    &amp;&amp; completed.getScores().keySet().equals(new HashSet&lt;&gt;(offered))) {</span>
+<span class="nc" id="L114">                current.store.finish(question, &quot;SUCCESS&quot;, copy(completed));</span>
+            }
+<span class="nc" id="L116">            throw stopped;</span>
+<span class="nc" id="L117">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L118">            result = new LlmCallDetail();</span>
+<span class="nc" id="L119">            result.setProvider(provider); result.setPrompt(input); result.setScores(Map.of());</span>
+<span class="nc" id="L120">            result.setError(failure.getClass().getSimpleName() + &quot;: &quot;</span>
+<span class="nc" id="L121">                    + Objects.toString(failure.getMessage(), &quot;Provider call failed&quot;));</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">        String problem = result.getError();</span>
+<span class="fc" id="L124">        Map&lt;String, Integer&gt; scores = result.getScores();</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">        if (problem == null || problem.isBlank()) {</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">            if (scores == null || !scores.keySet().equals(new HashSet&lt;&gt;(offered))</span>
+<span class="pc bpc" id="L127" title="4 of 8 branches missed.">                    || scores.values().stream().anyMatch(value -&gt; value == null || value &lt; 0 || value &gt; 100)) {</span>
+<span class="fc" id="L128">                problem = &quot;INCOMPLETE_ASSESSMENT: response must cover the complete question with valid scores&quot;;</span>
+            }
+        }
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">        if (problem != null &amp;&amp; !problem.isBlank()) {</span>
+<span class="fc" id="L132">            var evidence = copy(result); evidence.setError(problem);</span>
+            // Retain failed raw evidence for inspection, but never return its error zeros to traversal.
+<span class="fc" id="L134">            current.store.finish(question, &quot;FAILED&quot;, evidence);</span>
+<span class="fc" id="L135">            throw paused();</span>
+        }
+<span class="fc" id="L137">        current.store.finish(question, &quot;SUCCESS&quot;, copy(result));</span>
+<span class="fc" id="L138">        try { current.store.checkActive(); }</span>
+<span class="pc" id="L139">        catch (AnalysisStoppedException stopped) { throw stopped.withPartial(result); }</span>
+<span class="fc" id="L140">        return copy(result);</span>
+    }
+    private static AnalysisStoppedException paused() {
+<span class="fc" id="L143">        return new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);</span>
+    }
+    public static String digest(String... values) {
+        try {
+<span class="fc" id="L147">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            for (String value : values) {</span>
+<span class="fc" id="L149">                byte[] bytes = Objects.toString(value, &quot;&quot;).getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L150">                digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());</span>
+<span class="fc" id="L151">                digest.update(bytes);</span>
+            }
+<span class="fc" id="L153">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L154">        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+    public static LlmCallDetail copy(LlmCallDetail value) {
+<span class="fc" id="L157">        var copy = new LlmCallDetail();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        copy.setScores(value.getScores() == null ? new LinkedHashMap&lt;&gt;() : new LinkedHashMap&lt;&gt;(value.getScores()));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        copy.setReasons(value.getReasons() == null ? new LinkedHashMap&lt;&gt;() : new LinkedHashMap&lt;&gt;(value.getReasons()));</span>
+<span class="fc" id="L160">        copy.setProvider(value.getProvider()); copy.setPrompt(value.getPrompt()); copy.setRawResponse(value.getRawResponse());</span>
+<span class="fc" id="L161">        copy.setError(value.getError()); copy.setDurationMs(value.getDurationMs()); copy.setDiscrepancy(value.getDiscrepancy());</span>
+<span class="fc" id="L162">        return copy;</span>
+    }
+    @Override public void close() {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if (closed) return;</span>
+<span class="fc" id="L166">        closed = true;</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (previous == null) CURRENT.remove(); else CURRENT.set(previous);</span>
+<span class="fc" id="L168">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

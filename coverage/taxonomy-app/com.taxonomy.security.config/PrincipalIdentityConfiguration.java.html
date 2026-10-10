@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalIdentityConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">PrincipalIdentityConfiguration.java</span></div><h1>PrincipalIdentityConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.security.persistence.PrincipalSchemaMigration;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import javax.sql.DataSource;
+import java.util.LinkedHashSet;
+import java.util.List;
+
+/** Upgrade the identity contract before JPA validates existing application tables. */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L14">public class PrincipalIdentityConfiguration {</span>
+    @Bean(initMethod = &quot;migrate&quot;)
+    PrincipalSchemaInitialization principalSchemaInitialization(DataSource database) {
+<span class="fc" id="L17">        return new PrincipalSchemaInitialization(database);</span>
+    }
+
+    @Bean PrincipalIdentityService principalIdentityService(DataSource database, PrincipalSchemaInitialization initialized) {
+<span class="fc" id="L21">        return new PrincipalIdentityService(database);</span>
+    }
+
+    @Bean static BeanFactoryPostProcessor principalSchemaOrder() {
+<span class="fc" id="L25">        return beans -&gt; {</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">            if (beans.containsBeanDefinition(&quot;flywayInitializer&quot;))</span>
+<span class="fc" id="L27">                dependsOn(beans, &quot;principalSchemaInitialization&quot;, &quot;flywayInitializer&quot;);</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            if (beans.containsBeanDefinition(&quot;entityManagerFactory&quot;))</span>
+<span class="fc" id="L29">                dependsOn(beans, &quot;entityManagerFactory&quot;, &quot;principalSchemaInitialization&quot;);</span>
+<span class="fc" id="L30">        };</span>
+    }
+
+    private static void dependsOn(org.springframework.beans.factory.config.ConfigurableListableBeanFactory beans,
+                                   String bean, String prerequisite) {
+<span class="fc" id="L35">        var definition = beans.getBeanDefinition(bean);</span>
+<span class="fc" id="L36">        var dependencies = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (definition.getDependsOn() != null) dependencies.addAll(List.of(definition.getDependsOn()));</span>
+<span class="fc" id="L38">        dependencies.add(prerequisite);</span>
+<span class="fc" id="L39">        definition.setDependsOn(dependencies.toArray(String[]::new));</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="fc" id="L42">    public record PrincipalSchemaInitialization(DataSource database) {</span>
+<span class="fc" id="L43">        public void migrate() { PrincipalSchemaMigration.migrate(database); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

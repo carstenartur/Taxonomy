@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslDocumentApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.dsl.controller</a> &gt; <span class="el_source">DslDocumentApiController.java</span></div><h1>DslDocumentApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.dsl.controller;
+
+import com.taxonomy.dsl.diff.DiffSummary;
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.diff.SemanticDiffDescriber;
+import com.taxonomy.dsl.export.DslMaterializeService;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.composition.dsl.service.DslDocumentOperationsFacade;
+import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
+import com.taxonomy.versioning.service.DslOperationsFacade;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
+
+/** Composes knowledge documents, archive compatibility, and workspace response context. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;architecture&quot;})
+@RestController
+@RequestMapping(&quot;/api/dsl&quot;)
+@Tag(name = &quot;Architecture DSL&quot;)
+public class DslDocumentApiController {
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(DslDocumentApiController.class);</span>
+    private final DslDocumentOperationsFacade documents;
+    private final DslOperationsFacade dslOps;
+    private final WorkspaceResolver workspaceResolver;
+    private final DslReadWorkspaceContextResolver readContextResolver;
+
+    public DslDocumentApiController(DslDocumentOperationsFacade documents, DslOperationsFacade dslOps,
+                                    WorkspaceResolver workspaceResolver,
+<span class="fc" id="L41">                                    DslReadWorkspaceContextResolver readContextResolver) {</span>
+<span class="fc" id="L42">        this.documents = documents;</span>
+<span class="fc" id="L43">        this.dslOps = dslOps;</span>
+<span class="fc" id="L44">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L45">        this.readContextResolver = readContextResolver;</span>
+<span class="fc" id="L46">    }</span>
+
+    // ── Export &amp; current state ────────────────────────────────────────
+
+    @GetMapping(&quot;/export&quot;)
+    @Operation(summary = &quot;Export current architecture as DSL text&quot;,
+            description = &quot;Serializes the current materialized architecture as plain-text DSL using the requested namespace. This is a current-state export, not an export of an arbitrary historical Git commit; it does not create a commit.&quot;)
+    public ResponseEntity&lt;String&gt; exportCurrentArchitecture(
+            @RequestParam(defaultValue = &quot;default&quot;) String namespace) {
+<span class="fc" id="L55">        String dsl = documents.exportAll(namespace);</span>
+<span class="fc" id="L56">        return ResponseEntity.ok()</span>
+<span class="fc" id="L57">                .contentType(MediaType.TEXT_PLAIN)</span>
+<span class="fc" id="L58">                .body(dsl);</span>
+    }
+
+    @GetMapping(&quot;/current&quot;)
+    @Operation(summary = &quot;Get current architecture state as structured JSON&quot;,
+            description = &quot;Returns the current materialized architecture's elements, relations, requirements, mappings, views and evidence, together with the resolved workspace viewContext. Reading this representation does not commit or materialize changes.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getCurrentArchitecture() {
+<span class="fc" id="L65">        CanonicalArchitectureModel model = documents.buildCanonicalModel();</span>
+<span class="fc" id="L66">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L67">        WorkspaceContext workspaceContext = readContextResolver.resolve(username);</span>
+<span class="fc" id="L68">        String branch = dslOps.resolveWorkspaceBranch(workspaceContext.username());</span>
+<span class="fc" id="L69">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L70">        result.put(&quot;elements&quot;, model.getElements());</span>
+<span class="fc" id="L71">        result.put(&quot;relations&quot;, model.getRelations());</span>
+<span class="fc" id="L72">        result.put(&quot;requirements&quot;, model.getRequirements());</span>
+<span class="fc" id="L73">        result.put(&quot;mappings&quot;, model.getMappings());</span>
+<span class="fc" id="L74">        result.put(&quot;views&quot;, model.getViews());</span>
+<span class="fc" id="L75">        result.put(&quot;evidence&quot;, model.getEvidence());</span>
+<span class="fc" id="L76">        result.put(&quot;viewContext&quot;, dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext));</span>
+<span class="fc" id="L77">        return ResponseEntity.ok(result);</span>
+    }
+
+    // ── Materialization ──────────────────────────────────────────────
+
+    @PostMapping(&quot;/materialize&quot;)
+    @Operation(summary = &quot;Parse, validate, and materialize DSL into the database&quot;,
+            description = &quot;Relations with status=accepted become TaxonomyRelation entities. &quot; +
+                    &quot;Relations with status=proposed/provisional become RelationHypothesis entities.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; materializeDsl(
+            @RequestBody String dslText,
+            @RequestParam(required = false) String path,
+            @RequestParam(required = false) String branch,
+            @RequestParam(required = false) String commitId) {
+
+<span class="fc" id="L92">        DslMaterializeService.MaterializeResult matResult =</span>
+<span class="fc" id="L93">                documents.materialize(dslText, path, branch, commitId);</span>
+
+<span class="fc" id="L95">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L96">        result.put(&quot;valid&quot;, matResult.valid());</span>
+<span class="fc" id="L97">        result.put(&quot;errors&quot;, matResult.errors());</span>
+<span class="fc" id="L98">        result.put(&quot;warnings&quot;, matResult.warnings());</span>
+<span class="fc" id="L99">        result.put(&quot;relationsCreated&quot;, matResult.relationsCreated());</span>
+<span class="fc" id="L100">        result.put(&quot;hypothesesCreated&quot;, matResult.hypothesesCreated());</span>
+<span class="fc" id="L101">        result.put(&quot;documentId&quot;, matResult.documentId());</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        String effectiveBranch = branch != null ? branch : &quot;draft&quot;;</span>
+<span class="fc" id="L104">        result.put(&quot;viewContext&quot;, dslOps.getViewContext(effectiveBranch));</span>
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (!matResult.valid()) {</span>
+<span class="fc" id="L107">            return ResponseEntity.badRequest().body(result);</span>
+        }
+<span class="fc" id="L109">        return ResponseEntity.ok(result);</span>
+    }
+
+    @PostMapping(&quot;/materialize-incremental&quot;)
+    @Operation(summary = &quot;Incrementally materialize only the delta between two DSL versions&quot;,
+            description = &quot;Computes a diff between the before and after documents, then only &quot; +
+                    &quot;creates/updates the changed relations. More efficient than full materialization.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; materializeIncremental(
+            @RequestParam(required = false) Long beforeDocId,
+            @RequestParam Long afterDocId) {
+        try {
+<span class="fc" id="L120">            DslMaterializeService.MaterializeResult matResult =</span>
+<span class="fc" id="L121">                    documents.materializeIncremental(beforeDocId, afterDocId);</span>
+
+            // Derive branch from the after document when available
+<span class="fc" id="L124">            String branch = &quot;draft&quot;;</span>
+<span class="fc" id="L125">            var afterDoc = documents.findDocumentById(afterDocId);</span>
+<span class="fc bfc" id="L126" title="All 4 branches covered.">            if (afterDoc.isPresent() &amp;&amp; afterDoc.get().getBranch() != null) {</span>
+<span class="fc" id="L127">                branch = afterDoc.get().getBranch();</span>
+            }
+
+<span class="fc" id="L130">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L131">            result.put(&quot;valid&quot;, matResult.valid());</span>
+<span class="fc" id="L132">            result.put(&quot;warnings&quot;, matResult.warnings());</span>
+<span class="fc" id="L133">            result.put(&quot;relationsCreated&quot;, matResult.relationsCreated());</span>
+<span class="fc" id="L134">            result.put(&quot;hypothesesCreated&quot;, matResult.hypothesesCreated());</span>
+<span class="fc" id="L135">            result.put(&quot;documentId&quot;, matResult.documentId());</span>
+<span class="fc" id="L136">            result.put(&quot;viewContext&quot;, dslOps.getViewContext(branch));</span>
+<span class="fc" id="L137">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L138">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L139">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L140">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L141">            return ResponseEntity.badRequest().body(error);</span>
+        }
+    }
+
+    @GetMapping(&quot;/history&quot;)
+    @Operation(summary = &quot;Get commit history for a branch&quot;,
+            description = &quot;Returns all DSL commits on the specified branch from the JGit &quot; +
+                    &quot;repository (database-backed), newest first.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getHistory(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
+
+        try {
+<span class="fc" id="L153">            String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L154">            WorkspaceContext workspaceContext = readContextResolver.resolve(username);</span>
+<span class="fc" id="L155">            List&lt;DslCommit&gt; gitHistory = dslOps.getDslHistory(branch, workspaceContext);</span>
+<span class="fc" id="L156">            List&lt;Map&lt;String, Object&gt;&gt; history = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            for (DslCommit c : gitHistory) {</span>
+<span class="fc" id="L158">                Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L159">                entry.put(&quot;commitId&quot;, c.commitId());</span>
+<span class="fc" id="L160">                entry.put(&quot;branch&quot;, branch);</span>
+<span class="fc" id="L161">                entry.put(&quot;author&quot;, c.author());</span>
+<span class="fc" id="L162">                entry.put(&quot;message&quot;, c.message());</span>
+<span class="fc" id="L163">                entry.put(&quot;timestamp&quot;, c.timestamp());</span>
+                // Resolve documentId from the materialized document (if it exists)
+<span class="fc" id="L165">                entry.put(&quot;documentId&quot;, documents.findDocumentIdByCommitId(c.commitId()).orElse(null));</span>
+<span class="fc" id="L166">                history.add(entry);</span>
+<span class="fc" id="L167">            }</span>
+<span class="fc" id="L168">            ViewContext viewContext = dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext);</span>
+<span class="fc" id="L169">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L170">            result.put(&quot;currentBranch&quot;, branch);</span>
+<span class="fc" id="L171">            result.put(&quot;headCommit&quot;, viewContext.basedOnCommit());</span>
+<span class="fc" id="L172">            result.put(&quot;commits&quot;, history);</span>
+<span class="fc" id="L173">            result.put(&quot;viewContext&quot;, viewContext);</span>
+<span class="fc" id="L174">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L175">        } catch (Exception e) {</span>
+<span class="fc" id="L176">            log.error(&quot;Failed to read history for branch '{}'&quot;, branch, e);</span>
+<span class="fc" id="L177">            Map&lt;String, Object&gt; errorResult = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L178">            errorResult.put(&quot;errorCode&quot;, &quot;HISTORY_LOAD_FAILED&quot;);</span>
+<span class="fc" id="L179">            errorResult.put(&quot;commits&quot;, List.of());</span>
+<span class="fc" id="L180">            errorResult.put(&quot;currentBranch&quot;, branch);</span>
+<span class="fc" id="L181">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)</span>
+<span class="fc" id="L182">                    .body(errorResult);</span>
+        }
+    }
+
+    @GetMapping(&quot;/diff/{beforeId}/{afterId}&quot;)
+    @Operation(summary = &quot;Compute semantic diff between two DSL commits&quot;,
+            description = &quot;Returns the added, removed, and changed elements and relations &quot; +
+                    &quot;between two Git commit SHAs.&quot;)
+    public ResponseEntity&lt;?&gt; diffDocuments(
+            @PathVariable String beforeId,
+            @PathVariable String afterId) {
+        try {
+<span class="fc" id="L194">            ModelDiff diff = documents.diffBetween(beforeId, afterId);</span>
+
+<span class="fc" id="L196">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L197">            result.put(&quot;totalChanges&quot;, diff.totalChanges());</span>
+<span class="fc" id="L198">            result.put(&quot;isEmpty&quot;, diff.isEmpty());</span>
+<span class="fc" id="L199">            result.put(&quot;addedElements&quot;, diff.addedElements().size());</span>
+<span class="fc" id="L200">            result.put(&quot;removedElements&quot;, diff.removedElements().size());</span>
+<span class="fc" id="L201">            result.put(&quot;changedElements&quot;, diff.changedElements().size());</span>
+<span class="fc" id="L202">            result.put(&quot;addedRelations&quot;, diff.addedRelations().size());</span>
+<span class="fc" id="L203">            result.put(&quot;removedRelations&quot;, diff.removedRelations().size());</span>
+<span class="fc" id="L204">            result.put(&quot;changedRelations&quot;, diff.changedRelations().size());</span>
+
+            // Include structural details
+<span class="fc" id="L207">            Map&lt;String, Object&gt; details = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L208">            details.put(&quot;addedElements&quot;, diff.addedElements());</span>
+<span class="fc" id="L209">            details.put(&quot;removedElements&quot;, diff.removedElements());</span>
+<span class="fc" id="L210">            details.put(&quot;changedElements&quot;, diff.changedElements());</span>
+<span class="fc" id="L211">            details.put(&quot;addedRelations&quot;, diff.addedRelations());</span>
+<span class="fc" id="L212">            details.put(&quot;removedRelations&quot;, diff.removedRelations());</span>
+<span class="fc" id="L213">            details.put(&quot;changedRelations&quot;, diff.changedRelations());</span>
+<span class="fc" id="L214">            result.put(&quot;details&quot;, details);</span>
+
+            // Include semantic changes for better reviewability
+<span class="fc" id="L217">            SemanticDiffDescriber describer = new SemanticDiffDescriber();</span>
+<span class="fc" id="L218">            result.put(&quot;semanticChanges&quot;, describer.describe(diff));</span>
+<span class="fc" id="L219">            result.put(&quot;semanticSummary&quot;, describer.summarize(diff));</span>
+
+<span class="fc" id="L221">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L222">        } catch (Exception e) {</span>
+<span class="fc" id="L223">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L224">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L225">            return ResponseEntity.badRequest().body(error);</span>
+        }
+    }
+
+    @GetMapping(&quot;/diff/semantic/{beforeId}/{afterId}&quot;)
+    @Operation(summary = &quot;Compute semantic diff between two DSL commits&quot;,
+            description = &quot;Returns human-readable semantic change descriptions &quot; +
+                    &quot;(e.g. 'Title changed', 'Relation added') together with statistics &quot; +
+                    &quot;and before/after values—designed for reviews and change documentation.&quot;)
+    public ResponseEntity&lt;?&gt; semanticDiff(
+            @PathVariable String beforeId,
+            @PathVariable String afterId) {
+        try {
+<span class="fc" id="L238">            ModelDiff diff = documents.diffBetween(beforeId, afterId);</span>
+<span class="fc" id="L239">            DiffSummary summary = DiffSummary.fromDiff(diff);</span>
+<span class="fc" id="L240">            return ResponseEntity.ok(summary);</span>
+<span class="fc" id="L241">        } catch (Exception e) {</span>
+<span class="fc" id="L242">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L243">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L244">            return ResponseEntity.badRequest().body(error);</span>
+        }
+    }
+
+    // ── Documents ────────────────────────────────────────────────────
+
+    @GetMapping(&quot;/documents&quot;)
+    @Operation(summary = &quot;List stored DSL documents&quot;,
+            description = &quot;Lists the stored materialized DSL document records and their source metadata. This read does not materialize documents or advance repository branches.&quot;)
+    public ResponseEntity&lt;List&lt;ArchitectureDslDocument&gt;&gt; listDocuments() {
+<span class="fc" id="L254">        return ResponseEntity.ok(documents.listDocuments());</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

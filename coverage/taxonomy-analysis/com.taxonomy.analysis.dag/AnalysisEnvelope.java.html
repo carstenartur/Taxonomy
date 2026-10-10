@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisEnvelope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisEnvelope.java</span></div><h1>AnalysisEnvelope.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/**
+ * Common, explicitly versioned header of every analysis task and event.
+ *
+ * &lt;p&gt;The envelope contains stable identifiers and immutable source references
+ * only. It never contains credentials, the requirement text or a prompt, and it
+ * is never forwarded into an LLM prompt.&lt;/p&gt;
+ *
+ * @param schemaVersion  contract version; consumers reject unknown versions
+ * @param messageType    explicit contract discriminator
+ * @param operationId    durable analysis operation identity
+ * @param taskId         executable unit, or {@code null} for operation-level events
+ * @param taskType       task family, or {@code null} for operation-level events
+ * @param authority      exact repository/workspace/branch/source-commit identity
+ * @param requirement    requirement version reference
+ * @param roots          sub-taxonomy roots addressed by this message (may be empty)
+ * @param attempt        1-based delivery attempt observed by the producer/consumer
+ * @param causationId    message that directly caused this one, or {@code null}
+ * @param correlationId  operation-wide correlation identity
+ * @param createdAt      creation instant
+ * @param deadline       latest useful completion instant, or {@code null}
+ */
+public record AnalysisEnvelope(
+        int schemaVersion,
+        AnalysisMessageType messageType,
+        String operationId,
+        AnalysisTaskId taskId,
+        AnalysisTaskType taskType,
+        AnalysisSourceAuthority authority,
+        RequirementReference requirement,
+        List&lt;TaxonomyShardRoot&gt; roots,
+        int attempt,
+        String causationId,
+        String correlationId,
+        Instant createdAt,
+        Instant deadline) {
+
+    /** Current contract version. Increment for any incompatible change. */
+    public static final int SCHEMA_VERSION = 1;
+
+<span class="fc" id="L47">    private static final Pattern REFERENCE = Pattern.compile(&quot;[A-Za-z0-9._:+*-]{1,1280}&quot;);</span>
+
+<span class="fc" id="L49">    public AnalysisEnvelope {</span>
+<span class="fc bfc" id="L50" title="All 4 branches covered.">        if (schemaVersion != SCHEMA_VERSION &amp;&amp; schemaVersion != 2) {</span>
+<span class="fc" id="L51">            throw new IllegalArgumentException(&quot;Unsupported analysis message schema version: &quot; + schemaVersion);</span>
+        }
+<span class="fc bfc" id="L53" title="All 4 branches covered.">        if (schemaVersion == 2 &amp;&amp; taskType != AnalysisTaskType.RELATION_ANALYSIS)</span>
+<span class="fc" id="L54">            throw new IllegalArgumentException(&quot;Version 2 is defined only for relation work and its completions&quot;);</span>
+<span class="fc" id="L55">        Objects.requireNonNull(messageType, &quot;messageType&quot;);</span>
+<span class="fc" id="L56">        AnalysisTaskId.requireOperationId(operationId);</span>
+<span class="fc" id="L57">        Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L58">        Objects.requireNonNull(requirement, &quot;requirement&quot;);</span>
+<span class="fc" id="L59">        Objects.requireNonNull(createdAt, &quot;createdAt&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        roots = roots == null ? List.of() : List.copyOf(roots);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (attempt &lt; 1) throw new IllegalArgumentException(&quot;attempt must be &gt;= 1&quot;);</span>
+<span class="fc bfc" id="L62" title="All 6 branches covered.">        if ((taskId == null) != (taskType == null)) {</span>
+<span class="fc" id="L63">            throw new IllegalArgumentException(&quot;taskId and taskType must be present together&quot;);</span>
+        }
+<span class="fc bfc" id="L65" title="All 4 branches covered.">        if (taskId != null &amp;&amp; !taskId.operationId().equals(operationId)) {</span>
+<span class="fc" id="L66">            throw new IllegalArgumentException(&quot;taskId belongs to another operation&quot;);</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (taskId != null) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            AnalysisTaskId expectedId = switch (taskType) {</span>
+                case SUBTAXONOMY_ANALYSIS -&gt; {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                    if (roots.size() != 1) {</span>
+<span class="fc" id="L72">                        throw new IllegalArgumentException(&quot;A sub-taxonomy task must address exactly one root&quot;);</span>
+                    }
+<span class="fc" id="L74">                    yield AnalysisTaskId.subtaxonomy(operationId, roots.get(0));</span>
+                }
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                case RELATION_ANALYSIS -&gt; taskId.matchesRelation(operationId, roots, schemaVersion)</span>
+<span class="fc" id="L77">                        ? taskId : AnalysisTaskId.relation(operationId, roots);</span>
+            };
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (!taskId.equals(expectedId)) {</span>
+<span class="fc" id="L80">                throw new IllegalArgumentException(&quot;taskId does not match taskType and roots&quot;);</span>
+            }
+        }
+<span class="fc" id="L83">        requireReference(causationId, &quot;causationId&quot;, true);</span>
+<span class="fc" id="L84">        requireReference(correlationId, &quot;correlationId&quot;, false);</span>
+<span class="pc bpc" id="L85" title="1 of 8 branches missed.">        if (deadline != null &amp;&amp; deadline.isBefore(createdAt)</span>
+                &amp;&amp; messageType != AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED
+                &amp;&amp; messageType != AnalysisMessageType.RELATION_ANALYSIS_COMPLETED) {
+<span class="fc" id="L88">            throw new IllegalArgumentException(&quot;deadline must not precede createdAt&quot;);</span>
+        }
+<span class="fc" id="L90">    }</span>
+
+    private static void requireReference(String value, String name, boolean nullable) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">            if (nullable) return;</span>
+<span class="nc" id="L95">            throw new NullPointerException(name);</span>
+        }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (!REFERENCE.matcher(value).matches()) throw new IllegalArgumentException(&quot;Invalid &quot; + name);</span>
+<span class="fc" id="L98">    }</span>
+
+    /** Envelope of a redelivered/retried message: same identities, next attempt. */
+    public AnalysisEnvelope nextAttempt() {
+<span class="fc" id="L102">        return new AnalysisEnvelope(schemaVersion, messageType, operationId, taskId, taskType, authority,</span>
+                requirement, roots, attempt + 1, causationId, correlationId, createdAt, deadline);
+    }
+
+    /**
+     * Envelope as observed on delivery {@code deliveryAttempt} (1-based), e.g. a
+     * broker's delivery count. Identities are unchanged.
+     */
+    public AnalysisEnvelope withAttempt(int deliveryAttempt) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (deliveryAttempt == attempt) return this;</span>
+<span class="fc" id="L112">        return new AnalysisEnvelope(schemaVersion, messageType, operationId, taskId, taskType, authority,</span>
+                requirement, roots, deliveryAttempt, causationId, correlationId, createdAt, deadline);
+    }
+
+    public boolean redelivered() {
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        return attempt &gt; 1;</span>
+    }
+
+    /** Derive a reply/event header caused by this message, keeping operation identity. */
+    public AnalysisEnvelope derive(AnalysisMessageType type, Instant now) {
+<span class="fc" id="L122">        return new AnalysisEnvelope(schemaVersion, type, operationId, taskId, taskType, authority,</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                requirement, roots, 1, taskId == null ? correlationId : taskId.value(), correlationId,</span>
+                now, deadline);
+    }
+
+    /** Fail closed if a message does not target the expected contract. */
+    public void requireType(AnalysisMessageType expected) {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (messageType != expected) {</span>
+<span class="nc" id="L130">            throw new IllegalArgumentException(&quot;Expected &quot; + expected + &quot; but envelope declares &quot; + messageType);</span>
+        }
+<span class="fc" id="L132">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EmbeddingModelProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">EmbeddingModelProfile.java</span></div><h1>EmbeddingModelProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import java.util.Map;
+
+/** Explicit, dimension-compatible inference contracts. Paths and URLs never select pooling semantics. */
+<span class="fc" id="L6">public enum EmbeddingModelProfile {</span>
+<span class="fc" id="L7">    MULTILINGUAL_MINILM_L12(</span>
+            &quot;https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2&quot;,
+            &quot;e8f8c211226b894fcb81acc59f3b34ba3efd5f42&quot;, &quot;onnx/model_quint8_avx2.onnx&quot;,
+            &quot;98a01d88b7de996cdea58c32ca71208c09968d143798814b2ea09d3439dc334f&quot;,
+            &quot;2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8&quot;,
+            &quot;5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b&quot;,
+            &quot;378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d&quot;,
+            &quot;6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e&quot;,
+            &quot;mean&quot;, 128, &quot;&quot;, &quot;&quot;),
+<span class="fc" id="L16">    BGE_SMALL_EN(</span>
+            &quot;https://huggingface.co/BAAI/bge-small-en-v1.5&quot;,
+            &quot;5c38ec7c405ec4b44b94cc5a9bb96e735b38267a&quot;, &quot;onnx/model.onnx&quot;,
+            &quot;828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35&quot;,
+            &quot;d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66&quot;,
+            &quot;9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3&quot;,
+            &quot;b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3&quot;,
+            &quot;094f8e891b932f2000c92cfc663bac4c62069f5d8af5b5278c4306aef3084750&quot;,
+            &quot;cls&quot;, 512, &quot;Represent this sentence for searching relevant passages: &quot;, &quot;&quot;);
+
+    private final String modelUrl;
+    private final String revision;
+    private final String modelFile;
+    private final String modelSha256;
+    private final Map&lt;String, String&gt; fileSha256;
+    private final String pooling;
+    private final int maxTokens;
+    private final String queryPrefix;
+    private final String documentPrefix;
+
+    EmbeddingModelProfile(String modelUrl, String revision, String modelFile, String modelSha256,
+                          String tokenizerSha256, String tokenizerConfigSha256,
+                          String specialTokensMapSha256, String configSha256,
+<span class="fc" id="L39">                          String pooling, int maxTokens, String queryPrefix, String documentPrefix) {</span>
+<span class="fc" id="L40">        this.modelUrl = modelUrl;</span>
+<span class="fc" id="L41">        this.revision = revision;</span>
+<span class="fc" id="L42">        this.modelFile = modelFile;</span>
+<span class="fc" id="L43">        this.modelSha256 = modelSha256;</span>
+<span class="fc" id="L44">        this.fileSha256 = Map.of(&quot;model.onnx&quot;, modelSha256, &quot;tokenizer.json&quot;, tokenizerSha256,</span>
+                &quot;tokenizer_config.json&quot;, tokenizerConfigSha256, &quot;special_tokens_map.json&quot;, specialTokensMapSha256,
+                &quot;config.json&quot;, configSha256);
+<span class="fc" id="L47">        this.pooling = pooling;</span>
+<span class="fc" id="L48">        this.maxTokens = maxTokens;</span>
+<span class="fc" id="L49">        this.queryPrefix = queryPrefix;</span>
+<span class="fc" id="L50">        this.documentPrefix = documentPrefix;</span>
+<span class="fc" id="L51">    }</span>
+
+<span class="fc" id="L53">    public String modelUrl() { return modelUrl; }</span>
+<span class="fc" id="L54">    public String revision() { return revision; }</span>
+<span class="fc" id="L55">    public String modelFile() { return modelFile; }</span>
+<span class="fc" id="L56">    public String modelSha256() { return modelSha256; }</span>
+<span class="fc" id="L57">    public Map&lt;String, String&gt; fileSha256() { return fileSha256; }</span>
+<span class="fc" id="L58">    public String pooling() { return pooling; }</span>
+<span class="fc" id="L59">    public int maxTokens() { return maxTokens; }</span>
+<span class="fc" id="L60">    public String queryPrefix() { return queryPrefix; }</span>
+<span class="fc" id="L61">    public String documentPrefix() { return documentPrefix; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

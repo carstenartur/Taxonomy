@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InheritedDecisionContext.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">InheritedDecisionContext.java</span></div><h1>InheritedDecisionContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.reformulation.NodeSynthesisInput;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.util.*;
+
+/** Per-call view of immutable historical decisions; the archive itself is never rewritten. */
+final class InheritedDecisionContext {
+    private InheritedDecisionContext() {}
+
+    static ArrayNode forNode(NodeSynthesisInput input, ObjectMapper json) {
+<span class="fc" id="L16">        var nodes = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L17">        nodes.add(input.nodeId());</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        if (input.parentId() != null) nodes.add(input.parentId());</span>
+<span class="fc" id="L19">        input.children().forEach(child -&gt; nodes.add(child.nodeId()));</span>
+<span class="fc" id="L20">        input.directContributions().forEach(s -&gt; nodes.addAll(s.architectureLinks()));</span>
+<span class="fc" id="L21">        input.children().forEach(child -&gt; child.statementProposals().forEach(s -&gt; nodes.addAll(s.architectureLinks())));</span>
+<span class="fc" id="L22">        var edges = new TreeSet&lt;&gt;(input.boundaryEdges().keySet());</span>
+<span class="fc" id="L23">        input.boundaryEdges().values().forEach(value -&gt; {</span>
+<span class="fc" id="L24">            var edge = json.readTree(value);</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            for (String field : List.of(&quot;sourceCode&quot;, &quot;targetCode&quot;))</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                if (edge.path(field).isString()) nodes.add(edge.path(field).asText());</span>
+<span class="fc" id="L27">        });</span>
+<span class="fc" id="L28">        var known = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L29">        collectNodes(json.readTree(input.baseline().frozenContext().getOrDefault(&quot;catalogue&quot;, &quot;[]&quot;)), known);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (var relation : json.readTree(input.baseline().frozenContext().getOrDefault(&quot;relationMappings&quot;, &quot;[]&quot;))) {</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">            if (!relation.path(&quot;id&quot;).isMissingNode()) known.add(&quot;edge-&quot; + relation.path(&quot;id&quot;).asText());</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (relation.path(&quot;sourceCode&quot;).isString()) known.add(relation.path(&quot;sourceCode&quot;).asText());</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">            if (relation.path(&quot;targetCode&quot;).isString()) known.add(relation.path(&quot;targetCode&quot;).asText());</span>
+<span class="fc" id="L34">        }</span>
+<span class="fc" id="L35">        return select(input.baseline().frozenContext().get(&quot;inheritedDecisionContext&quot;), json, nodes, edges, known,</span>
+<span class="fc" id="L36">                input.directContributions().stream().map(s -&gt; s.id()).toList(),</span>
+<span class="fc" id="L37">                input.openDecisions().stream().flatMap(q -&gt; q.referenceIds().stream()).toList());</span>
+    }
+
+    static Set&lt;String&gt; rejected(NodeSynthesisInput input, ObjectMapper json) {
+<span class="fc" id="L41">        var rejected = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (var history : forNode(input, json))</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            for (var statement : history.path(&quot;statements&quot;))</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                if (&quot;REJECTED&quot;.equals(statement.path(&quot;reviewState&quot;).asText())) {</span>
+<span class="fc" id="L45">                    String wording = statement.path(&quot;wording&quot;).asText().strip();</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                    if (!wording.isEmpty()) rejected.add(wording);</span>
+                }
+<span class="fc" id="L48">        return rejected;</span>
+    }
+
+    static Set&lt;String&gt; allRejected(String frozen, ObjectMapper json) {
+<span class="fc" id="L52">        var rejected = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (frozen == null) return rejected;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (var history : json.readTree(frozen))</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            for (var statement : history.path(&quot;statements&quot;))</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (&quot;REJECTED&quot;.equals(statement.path(&quot;reviewState&quot;).asText())) {</span>
+<span class="fc" id="L57">                    String wording = statement.path(&quot;wording&quot;).asText().strip();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                    if (!wording.isEmpty()) rejected.add(wording);</span>
+                }
+<span class="fc" id="L60">        return rejected;</span>
+    }
+
+    static ArrayNode select(String frozen, ObjectMapper json, Set&lt;String&gt; nodes, Set&lt;String&gt; edges, Set&lt;String&gt; knownNodes,
+            Collection&lt;String&gt; currentStatements, Collection&lt;String&gt; currentQuestions) {
+<span class="fc" id="L65">        var result = json.createArrayNode();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (frozen == null) return result;</span>
+<span class="fc" id="L67">        var histories = json.readTree(frozen);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (!histories.isArray()) throw new IllegalArgumentException(&quot;Malformed inherited decision context&quot;);</span>
+<span class="fc" id="L69">        var statementIds = new TreeSet&lt;String&gt;(currentStatements);</span>
+<span class="fc" id="L70">        var questionIds = new TreeSet&lt;String&gt;(currentQuestions);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (var history : histories)</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">            if (!history.isObject() || !history.path(&quot;statements&quot;).isArray()</span>
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">                    || !history.path(&quot;questions&quot;).isArray() || !history.path(&quot;humanAnswers&quot;).isArray())</span>
+<span class="nc" id="L74">                throw new IllegalArgumentException(&quot;Malformed inherited decision entry&quot;);</span>
+        // Close across all historical evidence entries, not just inside one
+        // ancestor. Receipt roots may reference decisions in another ancestor.
+        boolean changed;
+        do {
+<span class="fc" id="L79">            int size = statementIds.size() + questionIds.size();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            for (var history : histories) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                for (var statement : history.path(&quot;statements&quot;))</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                    if (statementApplies(statement, nodes, edges, knownNodes, questionIds)) {</span>
+<span class="fc" id="L83">                        id(statement, statementIds);</span>
+<span class="fc" id="L84">                        add(statement.path(&quot;questionDependencies&quot;), questionIds);</span>
+                    }
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                for (var question : history.path(&quot;questions&quot;))</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    if (questionApplies(question, nodes, edges, knownNodes, statementIds, questionIds)) {</span>
+<span class="fc" id="L88">                        id(question, questionIds);</span>
+<span class="fc" id="L89">                        add(question.path(&quot;aliases&quot;), questionIds);</span>
+<span class="fc" id="L90">                        add(question.path(&quot;prerequisites&quot;), questionIds);</span>
+<span class="fc" id="L91">                        add(question.path(&quot;dependentQuestionIds&quot;), questionIds);</span>
+<span class="fc" id="L92">                        add(question.path(&quot;affectedStatementIds&quot;), statementIds);</span>
+                    }
+<span class="fc" id="L94">            }</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            changed = size != statementIds.size() + questionIds.size();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        } while (changed);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (var history : histories) {</span>
+<span class="fc" id="L98">            var copy = (ObjectNode) history.deepCopy();</span>
+<span class="fc" id="L99">            var selectedStatements = json.createArrayNode();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            for (var statement : history.path(&quot;statements&quot;))</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                if (statementIds.contains(statement.path(&quot;id&quot;).asText())</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                        || (!statement.path(&quot;id&quot;).isString()</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                            &amp;&amp; statementApplies(statement, nodes, edges, knownNodes, questionIds))) selectedStatements.add(statement);</span>
+<span class="fc" id="L104">            copy.set(&quot;statements&quot;, selectedStatements);</span>
+<span class="fc" id="L105">            var selectedQuestions = json.createArrayNode();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (var question : history.path(&quot;questions&quot;))</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                if (questionIds.contains(question.path(&quot;id&quot;).asText())</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                        || (!question.path(&quot;id&quot;).isString()</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                            &amp;&amp; questionApplies(question, nodes, edges, knownNodes, statementIds, questionIds))) selectedQuestions.add(question);</span>
+<span class="fc" id="L110">            copy.set(&quot;questions&quot;, selectedQuestions);</span>
+<span class="fc" id="L111">            var answers = json.createArrayNode();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            for (var answer : history.path(&quot;humanAnswers&quot;))</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                if (questionIds.contains(answer.path(&quot;questionId&quot;).asText())</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                        || !answer.path(&quot;questionId&quot;).isString()) answers.add(answer);</span>
+<span class="fc" id="L115">            copy.set(&quot;humanAnswers&quot;, answers);</span>
+            // Review without a resolvable statement reference remains historical,
+            // while a scoped finding follows its referenced statements.
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">            if (copy.path(&quot;historicalReview&quot;).isObject() &amp;&amp; copy.path(&quot;historicalReview&quot;).path(&quot;findings&quot;).isArray()) {</span>
+<span class="fc" id="L119">                var review = (ObjectNode) copy.path(&quot;historicalReview&quot;);</span>
+<span class="fc" id="L120">                var findings = json.createArrayNode();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                for (var finding : review.path(&quot;findings&quot;))</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                    if (finding.path(&quot;statementIds&quot;).isEmpty()</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                            || intersects(finding.path(&quot;statementIds&quot;), statementIds)) findings.add(finding);</span>
+<span class="fc" id="L124">                review.set(&quot;findings&quot;, findings);</span>
+            }
+<span class="fc bfc" id="L126" title="All 4 branches covered.">            if (!copy.path(&quot;statements&quot;).isEmpty() || !copy.path(&quot;questions&quot;).isEmpty()</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">                    || !answers.isEmpty() || !copy.path(&quot;historicalReview&quot;).path(&quot;findings&quot;).isEmpty()) result.add(copy);</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        return result;</span>
+    }
+
+    private static boolean statementApplies(JsonNode statement, Set&lt;String&gt; nodes, Set&lt;String&gt; edges,
+            Set&lt;String&gt; knownNodes, Set&lt;String&gt; questions) {
+<span class="fc" id="L134">        var links = statement.path(&quot;architectureLinks&quot;);</span>
+<span class="fc" id="L135">        var dependencies = statement.path(&quot;questionDependencies&quot;);</span>
+<span class="pc bpc" id="L136" title="1 of 6 branches missed.">        return intersects(links, nodes) || intersects(links, edges) || intersects(dependencies, questions)</span>
+<span class="fc bfc" id="L137" title="All 6 branches covered.">                || (links.isEmpty() &amp;&amp; dependencies.isEmpty()) || unknown(links, knownNodes, edges);</span>
+    }
+
+    private static boolean questionApplies(JsonNode question, Set&lt;String&gt; nodes, Set&lt;String&gt; edges,
+            Set&lt;String&gt; knownNodes,
+            Set&lt;String&gt; statements, Set&lt;String&gt; questions) {
+<span class="fc" id="L143">        String scope = question.path(&quot;key&quot;).path(&quot;scope&quot;).asText();</span>
+        // Statement edits carry the generic scope &quot;local&quot; and are located by
+        // affectedStatementIds, not by a taxonomy node named &quot;local&quot;.
+<span class="fc" id="L146">        boolean local = &quot;local&quot;.equalsIgnoreCase(scope);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (Set.of(&quot;global&quot;, &quot;@document&quot;, &quot;*&quot;).contains(scope.toLowerCase(Locale.ROOT))</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">                || nodes.contains(scope) || edges.contains(scope)</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                || intersects(question.path(&quot;affectedStatementIds&quot;), statements)</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                || intersects(question.path(&quot;prerequisites&quot;), questions)</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                || intersects(question.path(&quot;dependentQuestionIds&quot;), questions)</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                || questions.contains(question.path(&quot;id&quot;).asText())) return true;</span>
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        boolean unmappable = !scope.isBlank() &amp;&amp; !local</span>
+<span class="pc bpc" id="L154" title="3 of 4 branches missed.">                &amp;&amp; !knownNodes.contains(scope) &amp;&amp; !edges.contains(scope);</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        for (var discovery : question.path(&quot;discoveries&quot;)) {</span>
+<span class="nc bnc" id="L156" title="All 4 branches missed.">            if (intersects(discovery.path(&quot;nodeIds&quot;), nodes) || intersects(discovery.path(&quot;edgeIds&quot;), edges)) return true;</span>
+<span class="nc" id="L157">            unmappable |= unknown(discovery.path(&quot;nodeIds&quot;), knownNodes, edges);</span>
+<span class="nc" id="L158">        }</span>
+<span class="pc bpc" id="L159" title="1 of 6 branches missed.">        return unmappable || ((scope.isBlank() || local)</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                &amp;&amp; question.path(&quot;affectedStatementIds&quot;).isEmpty()</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                &amp;&amp; question.path(&quot;discoveries&quot;).isEmpty());</span>
+    }
+
+    private static boolean unknown(JsonNode ids, Set&lt;String&gt; knownNodes, Set&lt;String&gt; knownEdges) {
+<span class="pc bpc" id="L165" title="1 of 6 branches missed.">        for (var id : ids) if (id.isString() &amp;&amp; !knownNodes.contains(id.asText())</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                &amp;&amp; !knownEdges.contains(id.asText())) return true;</span>
+<span class="fc" id="L167">        return false;</span>
+    }
+
+    private static void collectNodes(JsonNode tree, Set&lt;String&gt; known) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        for (var node : tree) {</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">            if (node.path(&quot;code&quot;).isString()) known.add(node.path(&quot;code&quot;).asText());</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (node.path(&quot;children&quot;).isArray()) collectNodes(node.path(&quot;children&quot;), known);</span>
+<span class="fc" id="L174">        }</span>
+<span class="fc" id="L175">    }</span>
+
+    private static void id(JsonNode item, Set&lt;String&gt; ids) {
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (item.path(&quot;id&quot;).isString()) ids.add(item.path(&quot;id&quot;).asText());</span>
+<span class="fc" id="L179">    }</span>
+    private static void add(JsonNode values, Set&lt;String&gt; ids) {
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        for (var item : values) if (item.isString()) ids.add(item.asText());</span>
+<span class="fc" id="L182">    }</span>
+    private static boolean intersects(JsonNode values, Set&lt;String&gt; ids) {
+<span class="pc bpc" id="L184" title="1 of 6 branches missed.">        for (var item : values) if (item.isString() &amp;&amp; ids.contains(item.asText())) return true;</span>
+<span class="fc" id="L185">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

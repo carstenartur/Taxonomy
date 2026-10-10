@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RootEmbeddingSnapshot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">RootEmbeddingSnapshot.java</span></div><h1>RootEmbeddingSnapshot.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.service.EmbeddingModelIdentity;
+
+import java.util.Map;
+import java.util.Objects;
+
+/** Frozen, authorized scalar text only. Workers never reconstruct it from mutable relation projections. */
+public record RootEmbeddingSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode,
+                                     String relationCommit, String textVersion, EmbeddingModelIdentity model,
+                                     Map&lt;String, String&gt; nodeTexts) {
+    public static final int SCHEMA_VERSION = 1;
+    public static final String TEXT_VERSION = &quot;node-binder:relations-source-type-target:v1&quot;;
+
+<span class="fc" id="L15">    public RootEmbeddingSnapshot {</span>
+<span class="pc bpc" id="L16" title="1 of 2 branches missed.">        if (schemaVersion != SCHEMA_VERSION) throw new IllegalArgumentException(&quot;Unsupported embedding snapshot schema&quot;);</span>
+<span class="fc" id="L17">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc" id="L18">        CatalogueRoot.require(rootCode);</span>
+<span class="pc bpc" id="L19" title="2 of 4 branches missed.">        if (relationCommit == null || !relationCommit.equals(source.sourceCommit())) {</span>
+<span class="nc" id="L20">            throw new IllegalArgumentException(&quot;Embedding relations do not match the exact source commit&quot;);</span>
+        }
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">        if (!TEXT_VERSION.equals(textVersion)) throw new IllegalArgumentException(&quot;Unsupported embedding text version&quot;);</span>
+<span class="fc" id="L23">        Objects.requireNonNull(model, &quot;model&quot;);</span>
+<span class="fc" id="L24">        nodeTexts = Map.copyOf(nodeTexts);</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        if (nodeTexts.isEmpty() || nodeTexts.entrySet().stream()</span>
+<span class="pc bpc" id="L26" title="3 of 6 branches missed.">                .anyMatch(entry -&gt; entry.getKey().isBlank() || entry.getValue().isBlank())) {</span>
+<span class="nc" id="L27">            throw new IllegalArgumentException(&quot;Complete frozen embedding texts are required&quot;);</span>
+        }
+<span class="fc" id="L29">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

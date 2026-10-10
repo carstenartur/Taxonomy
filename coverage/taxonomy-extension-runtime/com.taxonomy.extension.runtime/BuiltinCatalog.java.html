@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BuiltinCatalog.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-runtime</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.runtime</a> &gt; <span class="el_source">BuiltinCatalog.java</span></div><h1>BuiltinCatalog.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.runtime;
+
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.*;
+
+/** Registers Spring-owned built-ins in the same catalog as external contributions. */
+public final class BuiltinCatalog {
+    private BuiltinCatalog() { }
+
+    /** Also used by small constructor-based integrations without a Spring composition root. */
+    public static PluginCatalog create(List&lt;? extends TaxonomyExtension&gt; extensions) {
+<span class="fc" id="L21">        var catalog = new PluginCatalog();</span>
+<span class="fc" id="L22">        publishInto(catalog, extensions);</span>
+<span class="fc" id="L23">        return catalog;</span>
+    }
+
+    public static void publishInto(PluginCatalog catalog, List&lt;? extends TaxonomyExtension&gt; extensions) {
+<span class="fc" id="L27">        Map&lt;String, List&lt;TaxonomyExtension&gt;&gt; groups = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L28">        Map&lt;String, URL&gt; sources = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (TaxonomyExtension extension : extensions) {</span>
+<span class="fc" id="L30">            Objects.requireNonNull(extension, &quot;TaxonomyExtension must not be null&quot;);</span>
+<span class="fc" id="L31">            URL source = extension.getClass().getProtectionDomain().getCodeSource().getLocation();</span>
+<span class="fc" id="L32">            String module = moduleId(source);</span>
+<span class="fc" id="L33">            URL previous = sources.putIfAbsent(module, source);</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(source))</span>
+<span class="nc" id="L35">                throw new IllegalStateException(&quot;Duplicate built-in module artifact: &quot; + module);</span>
+<span class="fc" id="L36">            groups.computeIfAbsent(module, ignored -&gt; new ArrayList&lt;&gt;()).add(extension);</span>
+<span class="fc" id="L37">        }</span>
+<span class="fc" id="L38">        List&lt;PluginCatalog.Contribution&gt; contributions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L39">        groups.forEach((module, values) -&gt; {</span>
+<span class="fc" id="L40">            String version = values.getFirst().getClass().getPackage().getImplementationVersion();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (version == null) version = PluginDescriptor.HOST_API_VERSION;</span>
+<span class="fc" id="L42">            var identity = new PluginIdentity(&quot;taxonomy.builtin.&quot; + module, version, fingerprint(sources.get(module)));</span>
+<span class="fc" id="L43">            contributions.add(new PluginCatalog.Contribution(new PluginDescriptor(identity,</span>
+<span class="fc" id="L44">                    &quot;&gt;=1.0.0 &amp; &lt;2.0.0&quot;, List.of(), Set.of(), PluginMode.STARTUP), values));</span>
+<span class="fc" id="L45">        });</span>
+<span class="fc" id="L46">        catalog.publishAll(contributions);</span>
+<span class="fc" id="L47">    }</span>
+
+    private static String moduleId(URL source) {
+        try {
+<span class="fc" id="L51">            String artifact = null;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (source.getProtocol().equals(&quot;file&quot;)) {</span>
+<span class="fc" id="L53">                Path path = Path.of(source.toURI());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (Files.isDirectory(path)) {</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                    if (path.getParent().getFileName().toString().equals(&quot;target&quot;))</span>
+<span class="fc" id="L56">                        return path.getParent().getParent().getFileName().toString()</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                                + (path.getFileName().toString().equals(&quot;test-classes&quot;) ? &quot;-tests&quot; : &quot;&quot;);</span>
+<span class="nc" id="L58">                    return &quot;classpath&quot;;</span>
+                }
+<span class="fc" id="L60">                artifact = path.getFileName().toString();</span>
+            }
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">            if (artifact == null &amp;&amp; source.toExternalForm().contains(&quot;BOOT-INF/classes&quot;)) return &quot;taxonomy-app&quot;;</span>
+            // A launcher CodeSource names the innermost archive and may end in
+            // the JAR-root delimiter !/. Preserve literal ! characters in its name;
+            // splitting on them lets an unrelated artifact impersonate a module.
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (artifact == null) {</span>
+<span class="fc" id="L67">                String location = source.toExternalForm();</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (location.endsWith(&quot;!/&quot;)) location = location.substring(0, location.length() - 2);</span>
+<span class="fc" id="L69">                artifact = location.substring(location.lastIndexOf('/') + 1);</span>
+            }
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">            if (artifact != null &amp;&amp; artifact.length() &lt;= 255</span>
+<span class="fc bfc" id="L72" title="All 4 branches covered.">                    &amp;&amp; artifact.startsWith(&quot;taxonomy-&quot;) &amp;&amp; artifact.endsWith(&quot;.jar&quot;)) {</span>
+<span class="fc" id="L73">                int firstModuleCharacter = &quot;taxonomy-&quot;.length();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                for (int i = firstModuleCharacter; i &lt; artifact.length() - 4; i++) {</span>
+<span class="fc" id="L75">                    char current = artifact.charAt(i);</span>
+<span class="pc bpc" id="L76" title="2 of 6 branches missed.">                    if (current == '-' &amp;&amp; i &gt; firstModuleCharacter &amp;&amp; i + 1 &lt; artifact.length() - 4</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                            &amp;&amp; artifact.charAt(i + 1) &gt;= '0' &amp;&amp; artifact.charAt(i + 1) &lt;= '9') {</span>
+<span class="fc" id="L78">                        return artifact.substring(0, i);</span>
+                    }
+<span class="pc bpc" id="L80" title="2 of 6 branches missed.">                    if (current != '-' &amp;&amp; (current &lt; 'a' || current &gt; 'z')) break;</span>
+                }
+            }
+<span class="fc" id="L83">            throw new IllegalArgumentException(&quot;Unrecognized built-in artifact location&quot;);</span>
+<span class="nc" id="L84">        } catch (java.net.URISyntaxException failure) {</span>
+<span class="nc" id="L85">            throw new IllegalArgumentException(&quot;Invalid built-in artifact location&quot;, failure);</span>
+        }
+    }
+
+    /** Raw JAR bytes in distributions; a deterministic content digest for exploded dev classes. */
+    static String fingerprint(URL source) {
+        try {
+<span class="fc" id="L92">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">            if (source.getProtocol().equals(&quot;file&quot;) &amp;&amp; Files.isDirectory(Path.of(source.toURI()))) {</span>
+<span class="fc" id="L94">                Path root = Path.of(source.toURI());</span>
+<span class="fc" id="L95">                try (var files = Files.walk(root)) {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {</span>
+<span class="fc" id="L97">                        String relative = root.relativize(file).toString().replace('\\', '/');</span>
+<span class="fc" id="L98">                        digest.update(relative.getBytes(StandardCharsets.UTF_8)); digest.update((byte) 0);</span>
+<span class="fc" id="L99">                        digest.update(java.nio.ByteBuffer.allocate(8).putLong(Files.size(file)).array());</span>
+<span class="fc" id="L100">                        try (InputStream input = Files.newInputStream(file)) { update(digest, input); }</span>
+<span class="fc" id="L101">                    }</span>
+                }
+<span class="fc" id="L103">            } else {</span>
+<span class="fc" id="L104">                String url = source.toExternalForm();</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                if (url.contains(&quot;BOOT-INF/classes&quot;)) {</span>
+<span class="nc" id="L106">                    int boundary = url.indexOf(&quot;/!BOOT-INF/classes&quot;);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                    if (boundary &lt; 0) boundary = url.indexOf(&quot;!/BOOT-INF/classes&quot;);</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                    if (boundary &lt; 0) throw new IllegalArgumentException(&quot;Unrecognized host artifact location&quot;);</span>
+<span class="nc" id="L109">                    url = url.substring(0, boundary).replaceFirst(&quot;^jar:nested:&quot;, &quot;file:&quot;).replaceFirst(&quot;^jar:&quot;, &quot;&quot;);</span>
+<span class="pc bfc" id="L110" title="All 2 branches covered.">                } else if (url.startsWith(&quot;jar:&quot;)) {</span>
+<span class="fc" id="L111">                    url = url.substring(4);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                    if (url.endsWith(&quot;!/&quot;)) url = url.substring(0, url.length() - 2);</span>
+                }
+<span class="fc" id="L114">                try (InputStream input = URI.create(url).toURL().openStream()) { update(digest, input); }</span>
+            }
+<span class="fc" id="L116">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L117">        } catch (Exception failure) {</span>
+<span class="nc" id="L118">            throw new IllegalStateException(&quot;Cannot fingerprint built-in plugin artifact&quot;, failure);</span>
+        }
+    }
+
+    private static void update(MessageDigest digest, InputStream input) throws java.io.IOException {
+<span class="fc" id="L123">        byte[] buffer = new byte[65536]; int count;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);</span>
+<span class="fc" id="L125">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

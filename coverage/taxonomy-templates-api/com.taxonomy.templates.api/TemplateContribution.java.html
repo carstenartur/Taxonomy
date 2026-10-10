@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TemplateContribution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates.api</a> &gt; <span class="el_source">TemplateContribution.java</span></div><h1>TemplateContribution.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates.api;
+
+import java.util.Objects;
+
+/** A feature owns its seed, semantic validation and optional preview. */
+public record TemplateContribution(String templateId, String displayName,
+        TemplateContent content, DocumentTemplateContract contract, boolean required,
+        DocumentTemplateReportPreview preview, String previewFileName) {
+
+    public TemplateContribution(String templateId, String displayName, TemplateContent content,
+            DocumentTemplateContract contract, boolean required) {
+<span class="fc" id="L12">        this(templateId, displayName, content, contract, required, null, null);</span>
+<span class="fc" id="L13">    }</span>
+
+<span class="fc" id="L15">    public TemplateContribution {</span>
+<span class="pc bpc" id="L16" title="2 of 4 branches missed.">        if (templateId == null || !templateId.matches(&quot;[a-z0-9][a-z0-9._-]{0,79}&quot;)) {</span>
+<span class="nc" id="L17">            throw new IllegalArgumentException(&quot;Template ID must match [a-z0-9][a-z0-9._-]{0,79}&quot;);</span>
+        }
+<span class="fc" id="L19">        Objects.requireNonNull(displayName, &quot;displayName&quot;);</span>
+<span class="fc" id="L20">        Objects.requireNonNull(content, &quot;content&quot;);</span>
+<span class="fc" id="L21">        Objects.requireNonNull(contract, &quot;contract&quot;);</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">        if (!templateId.equals(contract.templateId())) {</span>
+<span class="nc" id="L23">            throw new IllegalArgumentException(&quot;Template contribution and contract IDs must match&quot;);</span>
+        }
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">        if (preview != null &amp;&amp; (previewFileName == null</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                || !previewFileName.matches(&quot;[A-Za-z0-9][A-Za-z0-9._-]*\\.docx&quot;))) {</span>
+<span class="nc" id="L27">            throw new IllegalArgumentException(&quot;A preview requires a safe DOCX download filename&quot;);</span>
+        }
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">        if (preview == null &amp;&amp; previewFileName != null) {</span>
+<span class="nc" id="L30">            throw new IllegalArgumentException(&quot;A preview filename requires a preview&quot;);</span>
+        }
+<span class="fc" id="L32">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

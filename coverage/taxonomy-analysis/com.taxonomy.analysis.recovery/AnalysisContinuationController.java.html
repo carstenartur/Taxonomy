@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContinuationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisContinuationController.java</span></div><h1>AnalysisContinuationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+/** Read and cancel only. A decision that executes questions uses the existing POST /api/analyze path. */
+@RestController
+@Tag(name = &quot;Analysis continuations&quot;, description = &quot;Owner- and workspace-scoped resumable analysis checkpoints&quot;)
+@RequestMapping(&quot;/api/analysis-continuations&quot;)
+@ApiResponse(responseCode = &quot;403&quot;, description = &quot;An authenticated owned workspace is required&quot;, content = @Content)
+public class AnalysisContinuationController {
+    private final AnalysisContinuationService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L24">    public AnalysisContinuationController(AnalysisContinuationService service, WorkspaceResolver resolver) {</span>
+<span class="fc" id="L25">        this.service = service; this.resolver = resolver;</span>
+<span class="fc" id="L26">    }</span>
+    @Operation(summary = &quot;Read a saved analysis continuation&quot;,
+            description = &quot;Returns the existing continuation for the authenticated owner and exact workspace context. Reading never executes questions or starts a provider call. Resume and retry decisions use POST /api/analyze; private results are returned with Cache-Control: no-store.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Authorized retained state&quot;,
+            content = @Content(schema = @Schema(implementation = AnalysisContinuationStore.Snapshot.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Continuation or question absent or outside the authorized scope&quot;, content = @Content)
+    @GetMapping(&quot;/{id}&quot;)
+    public ResponseEntity&lt;AnalysisContinuationStore.Snapshot&gt; read(@Parameter(description = &quot;Existing saved continuation identifier&quot;) @PathVariable String id) {
+<span class="nc" id="L35">        return privateResponse(service.read(id, resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+    @Operation(summary = &quot;Cancel a saved analysis continuation&quot;,
+            description = &quot;Persists cancellation of the existing continuation in the authenticated owner and workspace scope. Does not delete retained question evidence and does not start another analysis. Results are private and not cacheable.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Authorized retained state&quot;,
+            content = @Content(schema = @Schema(implementation = AnalysisContinuationStore.Snapshot.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Continuation or question absent or outside the authorized scope&quot;, content = @Content)
+    @PostMapping(&quot;/{id}/cancel&quot;)
+    public ResponseEntity&lt;AnalysisContinuationStore.Snapshot&gt; cancel(@Parameter(description = &quot;Existing saved continuation identifier&quot;) @PathVariable String id) {
+<span class="nc" id="L45">        return privateResponse(service.cancel(id, resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+    @Operation(summary = &quot;Read retained continuation question evidence&quot;,
+            description = &quot;Returns the retained question and response evidence for the exact question key in an authorized continuation. Does not repeat the question or call a provider. A missing or foreign continuation or question is not disclosed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Authorized retained state&quot;,
+            content = @Content(schema = @Schema(implementation = LlmCallDetail.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Continuation or question absent or outside the authorized scope&quot;, content = @Content)
+    @GetMapping(&quot;/{id}/questions/{key}&quot;)
+    public ResponseEntity&lt;LlmCallDetail&gt; detail(@Parameter(description = &quot;Existing saved continuation identifier&quot;) @PathVariable String id, @Parameter(description = &quot;Exact question key returned by the continuation, not a list index&quot;) @PathVariable String key) {
+<span class="nc" id="L55">        return privateResponse(service.detail(id, key, resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; privateResponse(T body) {
+<span class="nc" id="L58">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

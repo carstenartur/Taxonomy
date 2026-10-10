@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionReportPresentation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionReportPresentation.java</span></div><h1>DecisionReportPresentation.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Small mandatory source notice, independent of optional presentation sections. */
+public final class DecisionReportPresentation {
+    private DecisionReportPresentation() {}
+    /** One representative outcome per root, using the complete tree rather than the top-20 ranking. */
+    public static List&lt;String&gt; compactReasons(DecisionRationaleReport report) {
+<span class="fc" id="L15">        var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L16">        var groups = new ArrayList&lt;List&lt;com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow&gt;&gt;();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (var row : report.scope().decisionTree().rows()) {</span>
+<span class="pc bpc" id="L18" title="1 of 4 branches missed.">            if (row.depth() == 0 || groups.isEmpty()) groups.add(new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L19">            groups.getLast().add(row);</span>
+<span class="fc" id="L20">        }</span>
+<span class="fc" id="L21">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        for (var group : groups) {</span>
+<span class="fc" id="L23">            var root = group.getFirst();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            var outcome = group.stream().filter(row -&gt; row.disposition() == DecisionRationaleReport.Disposition.LEAF_CANDIDATE)</span>
+<span class="pc bnc" id="L25" title="All 2 branches missed.">                    .sorted(java.util.Comparator.comparingInt((com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow row) -&gt; row.score() == null ? -1 : row.score()).reversed()</span>
+<span class="pc" id="L26">                            .thenComparing(row -&gt; row.code())).findFirst().orElse(root);</span>
+            // Legacy callers may only carry ranked-leaf evidence. Prefer its saved reason when available.
+<span class="fc" id="L28">            var legacyLeaf = report.leadingLeaves().stream().filter(leaf -&gt; root.code().equals(leaf.taxonomyRoot())).findFirst().orElse(null);</span>
+<span class="fc" id="L29">            String code = outcome.code(), title = outcome.title(), reason = report.scope().recordedReasons().get(code);</span>
+<span class="fc bfc" id="L30" title="All 4 branches covered.">            if (reason == null &amp;&amp; legacyLeaf != null) { code = legacyLeaf.code(); title = legacyLeaf.title(); reason = legacyLeaf.reason(); }</span>
+<span class="fc" id="L31">            lines.add(root.code() + &quot; · &quot; + code + &quot; · &quot; + title);</span>
+<span class="fc" id="L32">            String rootReason = report.scope().recordedReasons().get(root.code());</span>
+<span class="pc bpc" id="L33" title="3 of 6 branches missed.">            if (!root.code().equals(code) &amp;&amp; rootReason != null &amp;&amp; !rootReason.equals(reason))</span>
+<span class="nc" id="L34">                lines.add(labels.aiReason() + &quot; (&quot; + root.code() + &quot;): &quot; + rootReason);</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">            String provenance = legacyLeaf != null &amp;&amp; report.scope().recordedReasons().get(code) == null</span>
+<span class="pc bpc" id="L36" title="1 of 3 branches missed.">                    ? switch (legacyLeaf.reasonSource()) {</span>
+<span class="fc" id="L37">                        case AI_SCORING -&gt; labels.aiReason();</span>
+<span class="fc" id="L38">                        case DETERMINISTIC_TRACE -&gt; labels.deterministicReason();</span>
+<span class="nc" id="L39">                        case MISSING -&gt; labels.missingReason();</span>
+<span class="fc" id="L40">                    } : labels.aiReason();</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            lines.add(reason == null || reason.isBlank() ? labels.missingReason() : provenance + &quot;: &quot; + reason);</span>
+<span class="fc" id="L42">        }</span>
+<span class="fc" id="L43">        return List.copyOf(lines);</span>
+    }
+
+    public static List&lt;String&gt; sourceNotice(DecisionRationaleReport report) {
+<span class="fc" id="L47">        boolean de = new DecisionReportLabels(report.languageTag()).german();</span>
+<span class="fc" id="L48">        var scope = report.scope();</span>
+<span class="fc" id="L49">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L50">        var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">        String status = switch (report.status()) {</span>
+<span class="fc" id="L52">            case FINAL -&gt; labels.finalStatus(); case FINAL_WITH_WARNINGS -&gt; labels.finalWarnings();</span>
+<span class="pc" id="L53">            case DRAFT_INCOMPLETE -&gt; labels.draft(); case NO_RESULT -&gt; labels.noResult();</span>
+        };
+<span class="fc" id="L55">        lines.add(&quot;Status: &quot; + status);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        lines.add((de ? &quot;Berichtsauswahl: &quot; : &quot;Report selection: &quot;) + String.join(&quot;, &quot;, scope.reportRoots()));</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        lines.add((de ? &quot;Analyseumfang: &quot; : &quot;Analysis scope: &quot;) + (scope.analysisScope() == null</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                ? (de ? &quot;historisch nicht aufgezeichnet&quot; : &quot;not recorded in this source&quot;)</span>
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">                : (scope.analysisScope().taxonomyRoots().isEmpty() ? (de ? &quot;alle Taxonomien&quot; : &quot;all taxonomies&quot;)</span>
+<span class="pc" id="L60">                    : String.join(&quot;, &quot;, scope.analysisScope().taxonomyRoots())) + &quot; · &quot; + scope.analysisScope().mode()));</span>
+<span class="fc" id="L61">        lines.add(&quot;Snapshot: &quot; + report.metadata().analysisSnapshotId() + &quot; · &quot;</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                + (de ? &quot;Anforderungsversion: &quot; : &quot;Requirement version: &quot;) + report.metadata().requirementVersionNumber());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        lines.add((de ? &quot;Quellfingerabdruck: &quot; : &quot;Source fingerprint: &quot;) + report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; report.architecture() == null)</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            lines.add(de ? &quot;Keine gespeicherte Architektur für diese Berichtsauswahl.&quot; : &quot;No saved architecture for this report selection.&quot;);</span>
+<span class="fc" id="L66">        lines.addAll(report.warnings());</span>
+<span class="fc" id="L67">        return List.copyOf(lines);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

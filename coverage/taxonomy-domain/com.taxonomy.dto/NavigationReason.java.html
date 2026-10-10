@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NavigationReason.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">NavigationReason.java</span></div><h1>NavigationReason.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * Reason for a context navigation event.
+ *
+ * &lt;p&gt;Tracks why the user moved from one context to another,
+ * enabling meaningful breadcrumb trails in the UI.
+ */
+<span class="fc" id="L9">public enum NavigationReason {</span>
+    /** User opened a search result from commit history. */
+<span class="fc" id="L11">    SEARCH_OPEN,</span>
+    /** User opened a compare/diff view between two contexts. */
+<span class="fc" id="L13">    COMPARE,</span>
+    /** User created a new branch variant from the current context. */
+<span class="fc" id="L15">    VARIANT_CREATED,</span>
+    /** User returned to the origin context. */
+<span class="fc" id="L17">    RETURN,</span>
+    /** User manually switched branch or commit. */
+<span class="fc" id="L19">    MANUAL_SWITCH</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

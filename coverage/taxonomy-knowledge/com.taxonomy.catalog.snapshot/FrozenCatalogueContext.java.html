@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenCatalogueContext.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">FrozenCatalogueContext.java</span></div><h1>FrozenCatalogueContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+/**
+ * Explicit synchronous read binding. It is intentionally not inherited by executor threads:
+ * each worker delivery must independently validate and bind its durable input.
+ */
+public final class FrozenCatalogueContext {
+<span class="fc" id="L8">    private static final ThreadLocal&lt;FrozenCatalogueView&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+
+    private FrozenCatalogueContext() {}
+
+<span class="fc" id="L12">    public static FrozenCatalogueView current() { return CURRENT.get(); }</span>
+
+    static Scope bind(FrozenCatalogueView view) {
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (CURRENT.get() != null) throw new IllegalStateException(&quot;A catalogue snapshot is already bound&quot;);</span>
+<span class="fc" id="L16">        CURRENT.set(view);</span>
+<span class="fc" id="L17">        return new Scope(view);</span>
+    }
+
+    public static final class Scope implements AutoCloseable {
+<span class="fc" id="L21">        private final Thread owner = Thread.currentThread();</span>
+        private final FrozenCatalogueView view;
+        private boolean closed;
+
+<span class="fc" id="L25">        private Scope(FrozenCatalogueView view) { this.view = view; }</span>
+
+        @Override
+        public void close() {
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">            if (closed) return;</span>
+<span class="pc bpc" id="L30" title="2 of 4 branches missed.">            if (Thread.currentThread() != owner || CURRENT.get() != view) {</span>
+<span class="nc" id="L31">                throw new IllegalStateException(&quot;Catalogue snapshot scope must close on its owning thread&quot;);</span>
+            }
+<span class="fc" id="L33">            CURRENT.remove();</span>
+<span class="fc" id="L34">            closed = true;</span>
+<span class="fc" id="L35">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

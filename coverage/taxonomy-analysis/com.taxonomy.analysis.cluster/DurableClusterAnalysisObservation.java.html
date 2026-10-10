@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DurableClusterAnalysisObservation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">DurableClusterAnalysisObservation.java</span></div><h1>DurableClusterAnalysisObservation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.AnalysisEventPublisher;
+import com.taxonomy.analysis.dag.AnalysisMessageFactory;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisTaskType;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.time.Clock;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * Durable authority behind web-pod observation. Live hints coalesce into reads of
+ * the latest persisted snapshot; reconnect never invents historical full views
+ * from the smaller durable progress events. No timer polls operation state.
+ */
+public final class DurableClusterAnalysisObservation implements ClusterAnalysisObservation, AutoCloseable {
+<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(DurableClusterAnalysisObservation.class);</span>
+    private final ClusterAnalysisStore store;
+    private final ClusterAnalysisSignals signals;
+    private final AnalysisEventPublisher publisher;
+    private final Executor executor;
+    private final ExecutorService ownedExecutor;
+<span class="fc" id="L42">    private final Set&lt;Observation&gt; observations = ConcurrentHashMap.newKeySet();</span>
+    private boolean closed;
+
+    public DurableClusterAnalysisObservation(ClusterAnalysisStore store, ClusterAnalysisSignals signals,
+                                            AnalysisEventPublisher publisher) {
+<span class="fc" id="L47">        this(store, signals, publisher, Executors.newVirtualThreadPerTaskExecutor(), true);</span>
+<span class="fc" id="L48">    }</span>
+
+    /** Supports a deployment-provided executor with an independently managed lifecycle. */
+    public DurableClusterAnalysisObservation(ClusterAnalysisStore store, ClusterAnalysisSignals signals,
+                                            AnalysisEventPublisher publisher, Executor executor) {
+<span class="fc" id="L53">        this(store, signals, publisher, executor, false);</span>
+<span class="fc" id="L54">    }</span>
+
+    private DurableClusterAnalysisObservation(ClusterAnalysisStore store, ClusterAnalysisSignals signals,
+<span class="fc" id="L57">                                             AnalysisEventPublisher publisher, Executor executor, boolean owned) {</span>
+<span class="fc" id="L58">        this.store = Objects.requireNonNull(store);</span>
+<span class="fc" id="L59">        this.signals = Objects.requireNonNull(signals);</span>
+<span class="fc" id="L60">        this.publisher = Objects.requireNonNull(publisher);</span>
+<span class="fc" id="L61">        this.executor = Objects.requireNonNull(executor);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        this.ownedExecutor = owned ? (ExecutorService) executor : null;</span>
+<span class="fc" id="L63">    }</span>
+
+    @Override public Optional&lt;ClusterAnalysisView&gt; snapshot(String operationId, String owner, WorkspaceContext scope) {
+<span class="fc" id="L66">        return find(operationId, owner, scope).map(context -&gt; view(context, store.snapshot(context)));</span>
+    }
+
+    @Override public Optional&lt;ClusterAnalysisView&gt; cancel(String operationId, String owner, WorkspaceContext scope) {
+<span class="fc" id="L70">        return find(operationId, owner, scope).map(context -&gt; {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (store.cancel(context)) {</span>
+<span class="fc" id="L72">                var event = new AnalysisMessageFactory(context, Clock.systemUTC()).cancellation(&quot;CANCELLED&quot;);</span>
+<span class="fc" id="L73">                signals.cancellation(event);</span>
+<span class="nc" id="L74">                try { publisher.cancellation(event); }</span>
+<span class="fc" id="L75">                catch (RuntimeException unavailable) {</span>
+                    // Durable cancellation remains authoritative before queued/redelivered work
+                    // and before late results. A broker outage must not undo accepted cancellation.
+<span class="fc" id="L78">                    log.warn(&quot;Cluster cancellation committed; live control delivery unavailable for operation {}&quot;, operationId);</span>
+<span class="nc" id="L79">                }</span>
+            }
+<span class="fc" id="L81">            return view(context, store.snapshot(context));</span>
+        });
+    }
+
+    @Override public List&lt;ClusterAnalysisView&gt; recent(String owner, WorkspaceContext scope,
+                                                     Long projectId, Long requirementId) {
+<span class="fc" id="L87">        return store.recentSnapshots(owner, scope, projectId, requirementId).stream()</span>
+<span class="fc" id="L88">                .map(recent -&gt; view(recent.context(), recent.snapshot(), recent.scorePreview())).toList();</span>
+    }
+
+    @Override public AnalysisResult result(String operationId, String owner, WorkspaceContext scope) {
+<span class="fc" id="L92">        var context = find(operationId, owner, scope).orElseThrow(DurableClusterAnalysisObservation::notFound);</span>
+<span class="fc" id="L93">        var durable = store.snapshot(context);</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">        if (!durable.state().terminal() || durable.result() == null) {</span>
+<span class="fc" id="L95">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis result is not ready&quot;);</span>
+        }
+<span class="fc" id="L97">        return durable.result();</span>
+    }
+
+    @Override public RecoveryInput request(String operationId, String owner, WorkspaceContext scope) {
+<span class="fc" id="L101">        var context = find(operationId, owner, scope).orElseThrow(DurableClusterAnalysisObservation::notFound);</span>
+<span class="fc" id="L102">        var command = store.command(context);</span>
+<span class="fc" id="L103">        var authority = context.authority();</span>
+<span class="fc" id="L104">        return new RecoveryInput(operationId, command.businessText(), command.provider(), command.analysisScope(),</span>
+<span class="fc" id="L105">                new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),</span>
+<span class="fc" id="L106">                        authority.branch(), authority.sourceCommit()));</span>
+    }
+
+    @Override public synchronized SseEmitter events(String operationId, String owner, WorkspaceContext scope,
+                                                   long afterSequence) {
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (afterSequence &lt; 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid replay cursor&quot;);</span>
+<span class="fc" id="L112">        var context = find(operationId, owner, scope).orElseThrow(DurableClusterAnalysisObservation::notFound);</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (closed) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Observation is stopping&quot;);</span>
+<span class="fc" id="L114">        var observation = new Observation(context, owner, scope, afterSequence);</span>
+<span class="fc" id="L115">        observations.add(observation);</span>
+<span class="fc" id="L116">        observation.attach();</span>
+<span class="fc" id="L117">        return observation.emitter;</span>
+    }
+
+    private Optional&lt;AnalysisOperationContext&gt; find(String operationId, String owner, WorkspaceContext scope) {
+<span class="fc" id="L121">        try { return store.findAuthorized(operationId, owner, scope); }</span>
+<span class="fc" id="L122">        catch (SecurityException hidden) { throw notFound(); }</span>
+    }
+
+    private static ResponseStatusException notFound() {
+<span class="fc" id="L126">        return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis not found&quot;);</span>
+    }
+
+    @Override public synchronized void close() {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (closed) return;</span>
+<span class="fc" id="L131">        closed = true;</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (var observation : List.copyOf(observations)) observation.finish(null);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (ownedExecutor != null) ownedExecutor.shutdownNow();</span>
+<span class="fc" id="L134">    }</span>
+
+    private final class Observation {
+        private final AnalysisOperationContext context;
+        private final String owner;
+        private final WorkspaceContext scope;
+<span class="fc" id="L140">        private final SseEmitter emitter = new SseEmitter(0L);</span>
+        private ClusterAnalysisSignals.Subscription subscription;
+        private long sequence;
+        private boolean reading, requested, complete, sent;
+
+<span class="fc" id="L145">        private Observation(AnalysisOperationContext context, String owner, WorkspaceContext scope, long sequence) {</span>
+<span class="fc" id="L146">            this.context = context; this.owner = owner; this.scope = scope; this.sequence = sequence;</span>
+<span class="fc" id="L147">        }</span>
+
+        private synchronized void attach() {
+<span class="pc" id="L150">            emitter.onCompletion(() -&gt; finish(null));</span>
+<span class="pc" id="L151">            emitter.onTimeout(() -&gt; finish(null));</span>
+<span class="fc" id="L152">            emitter.onError(this::finish);</span>
+            // Subscription precedes the first read. Concurrent wakeups coalesce and cannot
+            // fall between snapshot retrieval and listener registration.
+<span class="fc" id="L155">            subscription = signals.listen(context, event -&gt; requestRead());</span>
+<span class="fc" id="L156">            subscription.onReconnect(this::requestRead);</span>
+<span class="fc" id="L157">            requestRead();</span>
+<span class="fc" id="L158">        }</span>
+
+        private synchronized void requestRead() {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (complete) return;</span>
+<span class="fc" id="L162">            requested = true;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (reading) return;</span>
+<span class="fc" id="L164">            reading = true;</span>
+<span class="fc" id="L165">            try { executor.execute(this::drain); }</span>
+<span class="pc" id="L166">            catch (RuntimeException stopped) { finish(stopped); }</span>
+<span class="fc" id="L167">        }</span>
+
+        private void drain() {
+            while (true) {
+<span class="fc" id="L171">                synchronized (this) {</span>
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">                    if (complete || !requested) { reading = false; return; }</span>
+<span class="fc" id="L173">                    requested = false;</span>
+<span class="fc" id="L174">                }</span>
+                try {
+                    // Runs outside a producer's after-commit callback/transaction context.
+<span class="fc" id="L177">                    var authorized = find(context.operationId(), owner, scope)</span>
+<span class="fc" id="L178">                            .orElseThrow(DurableClusterAnalysisObservation::notFound);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                    if (!context.equals(authorized)) throw notFound();</span>
+<span class="fc" id="L180">                    var durable = store.snapshot(context);</span>
+<span class="fc" id="L181">                    synchronized (this) {</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">                        if (complete) return;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                        if (durable.revision() &gt; sequence) {</span>
+<span class="fc" id="L184">                            emitter.send(SseEmitter.event().id(Long.toString(durable.revision()))</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                                    .name(sent ? &quot;progress&quot; : &quot;snapshot&quot;).data(view(context, durable)));</span>
+<span class="fc" id="L186">                            sequence = durable.revision();</span>
+<span class="fc" id="L187">                            sent = true;</span>
+                        }
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                        if (durable.state().terminal()) { finish(null); return; }</span>
+<span class="fc" id="L190">                    }</span>
+<span class="nc" id="L191">                } catch (IOException | RuntimeException failure) {</span>
+<span class="nc" id="L192">                    finish(failure);</span>
+<span class="nc" id="L193">                    return;</span>
+<span class="fc" id="L194">                }</span>
+            }
+        }
+
+        private synchronized void finish(Throwable failure) {
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (complete) return;</span>
+<span class="fc" id="L200">            complete = true;</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">            if (subscription != null) subscription.close();</span>
+<span class="fc" id="L202">            observations.remove(this);</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">            if (failure == null) emitter.complete();</span>
+<span class="nc" id="L204">            else emitter.completeWithError(failure);</span>
+<span class="fc" id="L205">        }</span>
+    }
+
+<span class="fc" id="L208">    private enum TaskState { QUEUED, RUNNING, COMPLETED, PARTIAL, FAILED, STOPPED }</span>
+<span class="fc" id="L209">    private record TaskKey(AnalysisTaskType type, TaxonomyShardRoot root) { }</span>
+    private static final class TaskCounts {
+        private int queued, running, completed, failed;
+        private void include(TaskState state) {
+<span class="fc bfc" id="L213" title="All 5 branches covered.">            switch (state) {</span>
+<span class="fc" id="L214">                case QUEUED -&gt; queued++;</span>
+<span class="fc" id="L215">                case RUNNING -&gt; running++;</span>
+<span class="fc" id="L216">                case COMPLETED -&gt; completed++;</span>
+<span class="fc" id="L217">                case PARTIAL, FAILED -&gt; failed++;</span>
+                case STOPPED -&gt; { /* Cancellation is explicit in the operation status. */ }
+            }
+<span class="fc" id="L220">        }</span>
+    }
+
+    private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable) {
+<span class="fc" id="L224">        return view(context, durable, ClusterAnalysisStore.ScorePreview.from(durable.result()));</span>
+    }
+
+    private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable,
+                                            ClusterAnalysisStore.ScorePreview scores) {
+<span class="fc" id="L229">        var counts = new LinkedHashMap&lt;TaskKey, TaskCounts&gt;();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (var task : durable.tasks()) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            var key = new TaskKey(AnalysisTaskType.valueOf(task.type()), task.root() == null ? null : TaxonomyShardRoot.of(task.root()));</span>
+<span class="fc" id="L232">            counts.computeIfAbsent(key, ignored -&gt; new TaskCounts()).include(TaskState.valueOf(task.state()));</span>
+<span class="fc" id="L233">        }</span>
+<span class="fc" id="L234">        var tasks = counts.entrySet().stream().map(entry -&gt; new ClusterAnalysisView.TaskCounts(entry.getKey().type(),</span>
+<span class="fc" id="L235">                entry.getKey().root(), entry.getValue().queued, entry.getValue().running,</span>
+<span class="fc" id="L236">                entry.getValue().completed, entry.getValue().failed)).toList();</span>
+<span class="fc" id="L237">        var authority = context.authority();</span>
+<span class="fc" id="L238">        boolean terminal = durable.state().terminal();</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        long now = System.currentTimeMillis(), end = terminal ? durable.updatedAt() : now;</span>
+<span class="fc" id="L240">        Long executionStart = durable.tasks().stream().map(ClusterAnalysisStore.TaskView::startedAt)</span>
+<span class="fc" id="L241">                .filter(Objects::nonNull).min(Long::compare).orElse(null);</span>
+<span class="fc bfc" id="L242" title="All 4 branches covered.">        String status = durable.state() == ClusterAnalysisState.RELATIONS || durable.state() == ClusterAnalysisState.FINALIZING</span>
+<span class="fc" id="L243">                ? &quot;RUNNING&quot; : durable.state().name();</span>
+<span class="fc bfc" id="L244" title="All 5 branches covered.">        String phase = switch (durable.state()) {</span>
+<span class="fc" id="L245">            case QUEUED -&gt; &quot;QUEUED&quot;;</span>
+<span class="fc" id="L246">            case RUNNING -&gt; &quot;SCORING&quot;;</span>
+<span class="fc" id="L247">            case RELATIONS -&gt; &quot;RELATIONS&quot;;</span>
+<span class="fc" id="L248">            case FINALIZING -&gt; &quot;FINALIZING&quot;;</span>
+<span class="fc" id="L249">            case COMPLETED, PARTIAL, CANCELLED -&gt; &quot;FINISHED&quot;;</span>
+        };
+<span class="fc" id="L251">        var requirement = context.requirement();</span>
+<span class="pc bpc" id="L252" title="2 of 6 branches missed.">        var provenance = requirement.projectId() == null &amp;&amp; requirement.requirementId() == null &amp;&amp; requirement.snapshotId() == null</span>
+<span class="fc" id="L253">                ? null : new AnalysisProvenance(requirement.projectId(), requirement.requirementId(), requirement.snapshotId(), null);</span>
+<span class="fc" id="L254">        var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, null,</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                durable.state() == ClusterAnalysisState.CANCELLED ? &quot;CANCELLED&quot; : null,</span>
+<span class="fc" id="L256">                durable.revision(), durable.createdAt(), durable.updatedAt(), now, scores.evaluatedNodes(), scores.scoresTruncated(),</span>
+<span class="fc" id="L257">                scores.rawScores(), List.of(), 0, null, &quot;EXTERNAL_OR_UNKNOWN&quot;, &quot;EXTERNAL_OR_UNKNOWN&quot;, provenance,</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                terminal ? durable.updatedAt() : null, Math.max(0, end - durable.createdAt()), executionStart,</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                Math.max(0, (executionStart == null ? end : executionStart) - durable.createdAt()),</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                executionStart == null ? 0 : Math.max(0, end - executionStart), null, null);</span>
+<span class="fc" id="L261">        return new ClusterAnalysisView(snapshot, ClusterAnalysisView.Transport.ARTEMIS,</span>
+<span class="fc" id="L262">                new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),</span>
+<span class="fc" id="L263">                        authority.branch(), authority.sourceCommit()),</span>
+<span class="fc" id="L264">                new ClusterAnalysisView.TaskSummary(durable.completedRoots(), durable.totalRoots(), tasks));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

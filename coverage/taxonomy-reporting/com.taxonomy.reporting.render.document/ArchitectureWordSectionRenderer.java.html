@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWordSectionRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">ArchitectureWordSectionRenderer.java</span></div><h1>ArchitectureWordSectionRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
+import java.util.*;
+
+/** The same architecture evidence is embedded in both snapshot Word reports. */
+<span class="fc" id="L12">public final class ArchitectureWordSectionRenderer {</span>
+    public void write(XWPFDocument document, ArchitectureReportDocument report) throws Exception {
+<span class="fc" id="L14">        var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L15">        var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L16">        writer.properties(report);</span>
+<span class="fc" id="L17">        writer.heading(labels.requirement(), 1, &quot;architecture_requirement&quot;);</span>
+<span class="fc" id="L18">        writer.paragraph(report.requirement());</span>
+<span class="fc" id="L19">        writer.heading(labels.scope(), 2, null);</span>
+<span class="fc" id="L20">        writer.paragraph(report.scope());</span>
+<span class="fc" id="L21">        writer.heading(labels.recommendation(), 2, null);</span>
+<span class="fc" id="L22">        writer.paragraph(report.recommendation());</span>
+<span class="fc" id="L23">        writer.heading(labels.gaps(), 2, null);</span>
+<span class="fc" id="L24">        writer.table(</span>
+<span class="fc" id="L25">                List.of(labels.gaps()),</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                (report.unresolvedGaps().isEmpty()</span>
+<span class="fc" id="L27">                                ? List.of(labels.noneRecorded())</span>
+<span class="fc" id="L28">                                : report.unresolvedGaps())</span>
+<span class="fc" id="L29">                        .stream().map(List::of).toList());</span>
+<span class="fc" id="L30">        writer.heading(labels.architectureOverview(), 1, &quot;architecture_figures&quot;);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (!report.diagram().title().equals(report.title()))</span>
+<span class="fc" id="L32">            writer.paragraph(report.diagram().title());</span>
+<span class="fc" id="L33">        var plan = new ArchitectureFigurePlanner().plan(report.diagram(), report.scene());</span>
+<span class="fc" id="L34">        var renderer = new ArchitectureFigureRenderer();</span>
+<span class="fc" id="L35">        var panels = new ArrayList&lt;ArchitectureFigurePlanner.Panel&gt;();</span>
+<span class="fc" id="L36">        panels.add(plan.overview());</span>
+<span class="fc" id="L37">        panels.addAll(plan.details());</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (var panel : panels) {</span>
+<span class="fc" id="L39">            var figure = renderer.render(panel, report.languageTag());</span>
+<span class="fc" id="L40">            writer.picture(</span>
+<span class="fc" id="L41">                    figure.png(),</span>
+<span class="fc" id="L42">                    figure.id(),</span>
+<span class="fc" id="L43">                    figure.caption(),</span>
+<span class="fc" id="L44">                    figure.altDescription(),</span>
+<span class="fc" id="L45">                    figure.width(),</span>
+<span class="fc" id="L46">                    figure.height(),</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                    !panel.overview());</span>
+<span class="fc" id="L48">            writer.caption(figure.caption(), true);</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">            if (!panel.overview() &amp;&amp; !panel.diagram().edges().isEmpty()) {</span>
+<span class="fc" id="L50">                var key =</span>
+<span class="fc" id="L51">                        writer.table(</span>
+<span class="fc" id="L52">                                List.of(</span>
+<span class="fc" id="L53">                                        labels.identifier(),</span>
+<span class="fc" id="L54">                                        labels.source() + &quot; → &quot; + labels.target(),</span>
+<span class="fc" id="L55">                                        labels.type(),</span>
+<span class="fc" id="L56">                                        labels.category()),</span>
+<span class="fc" id="L57">                                panel.diagram().edges().stream()</span>
+<span class="fc" id="L58">                                        .map(</span>
+                                                edge -&gt;
+<span class="fc" id="L60">                                                        List.of(</span>
+<span class="fc" id="L61">                                                                edge.id(),</span>
+<span class="fc" id="L62">                                                                edge.sourceId()</span>
+                                                                        + &quot; → &quot;
+<span class="fc" id="L64">                                                                        + edge.targetId(),</span>
+<span class="fc" id="L65">                                                                value(edge.relationType(), labels),</span>
+<span class="fc" id="L66">                                                                value(</span>
+<span class="fc" id="L67">                                                                        edge.relationCategory(),</span>
+                                                                        labels)))
+<span class="fc" id="L69">                                        .toList());</span>
+<span class="fc" id="L70">                writer.columnWidths(key, 12, 32, 32, 24);</span>
+            }
+<span class="fc" id="L72">        }</span>
+<span class="fc" id="L73">        writer.heading(labels.legend(), 2, null);</span>
+<span class="fc" id="L74">        writer.paragraph(labels.relationKeyNotice());</span>
+<span class="fc" id="L75">        writer.caption(labels.legend(), false);</span>
+<span class="fc" id="L76">        writer.table(</span>
+<span class="fc" id="L77">                List.of(labels.identifier(), labels.titleLabel()),</span>
+<span class="fc" id="L78">                report.legend().stream().map(e -&gt; List.of(e.symbol(), e.meaning())).toList());</span>
+<span class="fc" id="L79">        writer.heading(labels.elements(), 1, &quot;architecture_elements&quot;);</span>
+<span class="fc" id="L80">        writer.caption(labels.elements(), false);</span>
+<span class="fc" id="L81">        writer.table(</span>
+<span class="fc" id="L82">                List.of(</span>
+<span class="fc" id="L83">                        labels.identifier(),</span>
+<span class="fc" id="L84">                        labels.titleLabel(),</span>
+<span class="fc" id="L85">                        labels.type(),</span>
+<span class="fc" id="L86">                        labels.score(),</span>
+<span class="fc" id="L87">                        labels.parentNode()),</span>
+<span class="fc" id="L88">                report.elements().stream()</span>
+<span class="fc" id="L89">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L91">                                        List.of(</span>
+<span class="fc" id="L92">                                                e.id(),</span>
+<span class="fc" id="L93">                                                value(e.title(), labels),</span>
+<span class="fc" id="L94">                                                value(e.type(), labels)</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                                                        + (e.container()</span>
+<span class="nc" id="L96">                                                                ? &quot; · &quot; + labels.container()</span>
+<span class="fc" id="L97">                                                                : &quot;&quot;)</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                                                        + (e.anchor()</span>
+<span class="fc" id="L99">                                                                ? &quot; · &quot; + labels.anchor()</span>
+<span class="fc" id="L100">                                                                : &quot;&quot;),</span>
+<span class="fc" id="L101">                                                percentage(e.relevance()),</span>
+<span class="fc" id="L102">                                                value(e.parentId(), labels)))</span>
+<span class="fc" id="L103">                        .toList());</span>
+<span class="fc" id="L104">        writer.heading(labels.relations(), 1, &quot;architecture_relations&quot;);</span>
+<span class="fc" id="L105">        writer.caption(labels.relations(), false);</span>
+<span class="fc" id="L106">        writer.table(</span>
+<span class="fc" id="L107">                List.of(</span>
+<span class="fc" id="L108">                        labels.identifier(),</span>
+<span class="fc" id="L109">                        labels.source(),</span>
+<span class="fc" id="L110">                        labels.target(),</span>
+<span class="fc" id="L111">                        labels.type(),</span>
+<span class="fc" id="L112">                        labels.category(),</span>
+<span class="fc" id="L113">                        labels.score()),</span>
+<span class="fc" id="L114">                report.relations().stream()</span>
+<span class="fc" id="L115">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L117">                                        List.of(</span>
+<span class="fc" id="L118">                                                e.id(),</span>
+<span class="fc" id="L119">                                                e.sourceId(),</span>
+<span class="fc" id="L120">                                                e.targetId(),</span>
+<span class="fc" id="L121">                                                value(e.type(), labels),</span>
+<span class="fc" id="L122">                                                value(e.category(), labels),</span>
+<span class="fc" id="L123">                                                percentage(e.relevance())))</span>
+<span class="fc" id="L124">                        .toList());</span>
+<span class="fc" id="L125">        writer.heading(labels.provenance(), 1, &quot;architecture_evidence&quot;);</span>
+<span class="fc" id="L126">        var e = report.evidence();</span>
+<span class="fc" id="L127">        writer.table(</span>
+<span class="fc" id="L128">                List.of(labels.titleLabel(), labels.identifier()),</span>
+<span class="fc" id="L129">                List.of(</span>
+<span class="fc" id="L130">                        row(labels.project(), e.projectId()),</span>
+<span class="fc" id="L131">                        row(labels.requirementId(), e.requirementId()),</span>
+<span class="fc" id="L132">                        row(</span>
+<span class="fc" id="L133">                                labels.requirementVersion(),</span>
+<span class="fc" id="L134">                                e.requirementVersionId() + &quot; / v&quot; + e.requirementVersionNumber()),</span>
+<span class="fc" id="L135">                        row(labels.analysisSnapshot(), e.snapshotId()),</span>
+<span class="fc" id="L136">                        row(labels.graphDigest(), e.graphSha256()),</span>
+<span class="fc" id="L137">                        row(labels.repository(), value(e.repositoryId(), labels)),</span>
+<span class="fc" id="L138">                        row(labels.workspace(), value(e.workspaceId(), labels)),</span>
+<span class="fc" id="L139">                        row(labels.branch(), value(e.branch(), labels)),</span>
+<span class="fc" id="L140">                        row(labels.basedOnCommit(), value(e.commit(), labels)),</span>
+<span class="fc" id="L141">                        row(labels.analysisProvider(), value(e.provider(), labels)),</span>
+<span class="fc" id="L142">                        row(labels.analysisModel(), value(e.model(), labels)),</span>
+<span class="fc" id="L143">                        row(</span>
+<span class="fc" id="L144">                                labels.recordedTaxonomyDigest(),</span>
+<span class="fc" id="L145">                                value(e.taxonomyFingerprint(), labels))));</span>
+<span class="fc" id="L146">    }</span>
+
+    private List&lt;String&gt; row(String name, Object value) {
+<span class="fc" id="L149">        return List.of(name, String.valueOf(value));</span>
+    }
+
+    private String value(String text, DecisionReportLabels labels) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        return text == null ? labels.unknown() : text;</span>
+    }
+
+    private String percentage(double score) {
+<span class="fc" id="L157">        return String.format(Locale.ROOT, &quot;%.0f%%&quot;, score * 100);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

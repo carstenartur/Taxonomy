@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 146.6 s -- in com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest

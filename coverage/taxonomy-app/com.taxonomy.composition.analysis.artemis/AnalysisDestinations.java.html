@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisDestinations.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">AnalysisDestinations.java</span></div><h1>AnalysisDestinations.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskType;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/**
+ * Broker destination names of the analysis task topology.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.subtaxonomy.&lt;ROOT&gt;} – anycast queue per root shard;&lt;/li&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.relation.&lt;ROOT&gt;} – relation work routed by its single target shard;&lt;/li&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.relation.general} – relation work over several or all roots
+ *       (the current whole-evidence relation phase);&lt;/li&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.completion} – durable anycast coordinator queue;&lt;/li&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.progress} / {@code &lt;prefix&gt;.control} – multicast live events;&lt;/li&gt;
+ *   &lt;li&gt;{@code &lt;prefix&gt;.rejected} – malformed, unknown-schema or misrouted messages.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * Messages are never grouped per requirement, so independent roots run in parallel.
+ */
+public record AnalysisDestinations(String prefix) {
+
+    public static final String DEFAULT_PREFIX = &quot;taxonomy.analysis&quot;;
+<span class="fc" id="L28">    private static final Pattern PREFIX = Pattern.compile(&quot;[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*){0,7}&quot;);</span>
+
+<span class="fc" id="L30">    public AnalysisDestinations {</span>
+<span class="fc" id="L31">        Objects.requireNonNull(prefix, &quot;prefix&quot;);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (!PREFIX.matcher(prefix).matches()) {</span>
+<span class="fc" id="L33">            throw new IllegalArgumentException(&quot;Invalid analysis destination prefix&quot;);</span>
+        }
+<span class="fc" id="L35">    }</span>
+
+    public String subtaxonomy(TaxonomyShardRoot root) {
+<span class="fc" id="L38">        return prefix + &quot;.subtaxonomy.&quot; + Objects.requireNonNull(root, &quot;root&quot;).code();</span>
+    }
+
+    public String relation(TaxonomyShardRoot root) {
+<span class="fc" id="L42">        return prefix + &quot;.relation.&quot; + Objects.requireNonNull(root, &quot;root&quot;).code();</span>
+    }
+
+    public String generalRelation() {
+<span class="fc" id="L46">        return prefix + &quot;.relation.general&quot;;</span>
+    }
+
+    public String completion() {
+<span class="fc" id="L50">        return prefix + &quot;.completion&quot;;</span>
+    }
+
+    public String progress() {
+<span class="fc" id="L54">        return prefix + &quot;.progress&quot;;</span>
+    }
+
+    public String control() {
+<span class="fc" id="L58">        return prefix + &quot;.control&quot;;</span>
+    }
+
+    public String rejected() {
+<span class="fc" id="L62">        return prefix + &quot;.rejected&quot;;</span>
+    }
+<span class="fc" id="L64">    public String deadLetter() { return prefix + &quot;.dlq&quot;; }</span>
+<span class="fc" id="L65">    public String expiry() { return prefix + &quot;.expiry&quot;; }</span>
+<span class="fc" id="L66">    public String failed() { return prefix + &quot;.failed&quot;; }</span>
+
+    /** Queue that owns {@code task}: its family plus its single routing root. */
+    public String queueFor(AnalysisTaskMessage task) {
+<span class="fc" id="L70">        TaxonomyShardRoot root = task.routingRoot();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) return subtaxonomy(root);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        return root == null ? generalRelation() : relation(root);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

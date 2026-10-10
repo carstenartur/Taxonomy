@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisClusterCoordinator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisClusterCoordinator.java</span></div><h1>ArtemisClusterCoordinator.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.cluster.ClusterAnalysisSignals;
+import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import jakarta.jms.Session;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
+/** Durable completion consumers and ephemeral per-pod observation. Never polls the database. */
+public final class ArtemisClusterCoordinator implements AutoCloseable {
+<span class="fc" id="L22">    private static final Logger log = LoggerFactory.getLogger(ArtemisClusterCoordinator.class);</span>
+<span class="fc" id="L23">    private record Subscription(Session session, MessageConsumer consumer, MessageProducer producer) { }</span>
+    private final ArtemisAnalysisConnection connection;
+    private final AnalysisDestinations destinations;
+    private final AnalysisMessageCodec codec;
+    private final ClusterAnalysisStore store;
+    private final AnalysisTaskCompletionStore ledger;
+    private final ClusterAnalysisSignals signals;
+    private final boolean coordinator;
+<span class="fc" id="L31">    private final List&lt;Subscription&gt; subscriptions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">    private final AtomicLong accepted = new AtomicLong(), failures = new AtomicLong(), redeliveries = new AtomicLong();</span>
+    private boolean started, closed;
+<span class="fc" id="L34">    private volatile java.util.function.Consumer&lt;AnalysisOperationContext&gt; finalizer = context -&gt; { };</span>
+    private volatile ArtemisAnalysisMetrics metrics;
+<span class="fc" id="L36">    public void metrics(ArtemisAnalysisMetrics metrics) { this.metrics = metrics; }</span>
+
+    public ArtemisClusterCoordinator(ArtemisAnalysisConnection connection, AnalysisDestinations destinations,
+            AnalysisMessageCodec codec, ClusterAnalysisStore store, AnalysisTaskCompletionStore ledger,
+<span class="fc" id="L40">            ClusterAnalysisSignals signals, boolean coordinator) {</span>
+<span class="fc" id="L41">        this.connection = connection; this.destinations = destinations; this.codec = codec;</span>
+<span class="fc" id="L42">        this.store = store; this.ledger = ledger; this.signals = signals; this.coordinator = coordinator;</span>
+<span class="fc" id="L43">        signals.workerReconciliation(store::terminal);</span>
+<span class="fc" id="L44">    }</span>
+
+    public void attach() {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        connection.addListener(reconnect -&gt; { start(); if (reconnect) signals.reconnected(); });</span>
+<span class="fc" id="L48">    }</span>
+    public void finalizer(java.util.function.Consumer&lt;AnalysisOperationContext&gt; finalizer) {
+<span class="fc" id="L50">        this.finalizer = java.util.Objects.requireNonNull(finalizer);</span>
+<span class="fc" id="L51">    }</span>
+
+    public synchronized void start() {
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">        if (closed || started) return;</span>
+        try {
+<span class="fc" id="L56">            live(destinations.progress()); live(destinations.control());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (coordinator) {</span>
+<span class="fc" id="L58">                durable(destinations.completion(), null);</span>
+<span class="fc" id="L59">                durable(destinations.deadLetter(), &quot;BROKER_DEAD_LETTER&quot;);</span>
+<span class="fc" id="L60">                durable(destinations.expiry(), &quot;BROKER_EXPIRED&quot;);</span>
+            }
+<span class="fc" id="L62">            started = true;</span>
+<span class="fc" id="L63">            signals.reconnected();</span>
+<span class="nc" id="L64">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="nc" id="L65">            closeSubscriptions();</span>
+<span class="nc" id="L66">            throw new IllegalStateException(&quot;Could not subscribe clustered analysis coordinator&quot;, failure);</span>
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">    }</span>
+
+    private void live(String name) throws JMSException {
+<span class="fc" id="L71">        Session session = connection.createSession(false);</span>
+<span class="fc" id="L72">        MessageConsumer consumer = session.createConsumer(session.createTopic(name));</span>
+<span class="fc" id="L73">        subscriptions.add(new Subscription(session, consumer, null));</span>
+<span class="fc" id="L74">        consumer.setMessageListener(message -&gt; {</span>
+            try {
+<span class="fc" id="L76">                var decoded = codec.decode(ArtemisAnalysisMessages.body(message));</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                if (name.equals(destinations.progress()) &amp;&amp; decoded instanceof AnalysisProgressEvent event) signals.progress(event);</span>
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">                else if (name.equals(destinations.control()) &amp;&amp; decoded instanceof AnalysisCancellationEvent event) signals.cancellation(event);</span>
+<span class="nc" id="L79">            } catch (JMSException | RuntimeException invalid) {</span>
+<span class="nc" id="L80">                log.debug(&quot;Discarded invalid live analysis event ({})&quot;, invalid.getClass().getSimpleName());</span>
+<span class="fc" id="L81">            }</span>
+<span class="fc" id="L82">        });</span>
+<span class="fc" id="L83">    }</span>
+
+    private void durable(String queue, String failureReason) throws JMSException {
+<span class="fc" id="L86">        Session session = connection.createSession(true);</span>
+<span class="fc" id="L87">        MessageConsumer consumer = session.createConsumer(session.createQueue(queue));</span>
+<span class="fc" id="L88">        MessageProducer producer = session.createProducer(null); producer.setDeliveryMode(DeliveryMode.PERSISTENT);</span>
+<span class="fc" id="L89">        var subscription = new Subscription(session, consumer, producer); subscriptions.add(subscription);</span>
+<span class="fc" id="L90">        consumer.setMessageListener(message -&gt; receive(subscription, queue, failureReason, message));</span>
+<span class="fc" id="L91">    }</span>
+
+    private void receive(Subscription subscription, String queue, String failureReason, Message message) {
+        try {
+<span class="fc" id="L95">            AnalysisMessage decoded = null;</span>
+<span class="fc" id="L96">            AnalysisOperationContext finalizeContext = null;</span>
+            try {
+<span class="fc" id="L98">                decoded = codec.decode(ArtemisAnalysisMessages.body(message));</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (decoded instanceof AnalysisCompletionMessage completion) {</span>
+<span class="fc" id="L100">                    accept(completion);</span>
+<span class="fc" id="L101">                    finalizeContext = ClusterAnalysisStore.context(completion.envelope());</span>
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">                } else if (failureReason != null &amp;&amp; decoded instanceof AnalysisTaskMessage task) {</span>
+<span class="fc" id="L103">                    var completion = ledger.find(task).orElseGet(() -&gt; {</span>
+<span class="fc" id="L104">                        var factory = new AnalysisMessageFactory(ClusterAnalysisStore.context(task.envelope()), Clock.systemUTC());</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                        AnalysisCompletionMessage failed = task instanceof SubtaxonomyAnalysisTask root</span>
+<span class="fc" id="L106">                                ? factory.completed(root, AnalysisTaskOutcome.FAILED, null, 0, null)</span>
+<span class="pc" id="L107">                                : factory.completed((RelationAnalysisTask) task, AnalysisTaskOutcome.FAILED, 0, null);</span>
+<span class="fc" id="L108">                        return ledger.commit(new PreparedAnalysisCompletion&lt;&gt;(failed, () -&gt; store.persistFailure(task, failureReason)));</span>
+                    });
+<span class="fc" id="L110">                    accept(completion);</span>
+<span class="fc" id="L111">                    finalizeContext = ClusterAnalysisStore.context(completion.envelope());</span>
+<span class="fc" id="L112">                    diagnostic(subscription, queue, decoded, failureReason);</span>
+<span class="pc" id="L113">                } else diagnostic(subscription, queue, decoded, &quot;INVALID_CONTRACT&quot;);</span>
+<span class="fc" id="L114">            } catch (IllegalArgumentException | IllegalStateException invalid) {</span>
+                // Unknown/foreign references can never establish operation authority. Database
+                // availability/transaction exceptions escape to rollback and broker redelivery.
+<span class="fc" id="L117">                diagnostic(subscription, queue, decoded, &quot;INVALID_REFERENCE&quot;);</span>
+<span class="fc" id="L118">            }</span>
+            // Database acceptance has committed. Slow rendering runs outside its transaction;
+            // if this pod dies, the unacknowledged completion repeats this idempotent step.
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (finalizeContext != null) {</span>
+<span class="fc" id="L122">                finalizer.accept(finalizeContext);</span>
+                // Repeat the persisted revision even when acceptance/finalization was already
+                // committed by a failed coordinator. Fan-out and completion acknowledgement
+                // share this JMS transaction, so a lost notification cannot strand observers
+                // on another still-connected pod. Send failures must remain retryable.
+<span class="fc" id="L127">                var event = store.latestEvent(finalizeContext);</span>
+<span class="fc" id="L128">                var session = subscription.session();</span>
+<span class="fc" id="L129">                subscription.producer().send(session.createTopic(destinations.progress()),</span>
+<span class="fc" id="L130">                        ArtemisAnalysisMessages.encode(session, codec, event));</span>
+            }
+<span class="fc" id="L132">            subscription.session().commit();</span>
+<span class="fc" id="L133">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="fc" id="L134">            redeliveries.incrementAndGet();</span>
+<span class="fc" id="L135">            log.warn(&quot;Analysis coordination rolled back ({})&quot;, failure.getClass().getSimpleName());</span>
+<span class="pc" id="L136">            try { subscription.session().rollback(); } catch (JMSException | RuntimeException ignored) { }</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">    }</span>
+
+    private void accept(AnalysisCompletionMessage completion) {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        Runnable action = () -&gt; { if (store.accept(completion)) accepted.incrementAndGet(); };</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (metrics == null) action.run(); else metrics.coordination(completion, action);</span>
+<span class="fc" id="L143">    }</span>
+
+    /** Deliberately contains only validated identifiers, never the original message body. */
+    private void diagnostic(Subscription subscription, String queue, AnalysisMessage original, String reason) throws JMSException {
+<span class="fc" id="L147">        var session = subscription.session(); Message message = session.createMessage();</span>
+<span class="fc" id="L148">        message.setStringProperty(ArtemisAnalysisMessages.ORIGIN, queue);</span>
+<span class="fc" id="L149">        message.setStringProperty(ArtemisAnalysisMessages.REJECTION, reason);</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (original != null) {</span>
+<span class="fc" id="L151">            message.setStringProperty(&quot;operationId&quot;, original.envelope().operationId());</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (original.envelope().taskId() != null) message.setStringProperty(&quot;taskId&quot;, original.envelope().taskId().value());</span>
+        }
+<span class="fc" id="L154">        subscription.producer().send(session.createQueue(destinations.failed()), message); failures.incrementAndGet();</span>
+<span class="fc" id="L155">    }</span>
+
+<span class="fc" id="L157">    public long accepted() { return accepted.get(); }</span>
+<span class="fc" id="L158">    public long failures() { return failures.get(); }</span>
+<span class="fc" id="L159">    public long redeliveries() { return redeliveries.get(); }</span>
+    private void closeSubscriptions() {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (var subscription : subscriptions) try { subscription.session().close(); }</span>
+<span class="pc" id="L162">        catch (JMSException | RuntimeException ignored) { }</span>
+<span class="fc" id="L163">        subscriptions.clear();</span>
+<span class="fc" id="L164">    }</span>
+<span class="fc" id="L165">    @Override public synchronized void close() { closed = true; closeSubscriptions(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

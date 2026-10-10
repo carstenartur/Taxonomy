@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisOperationContexts.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AnalysisOperationContexts.java</span></div><h1>AnalysisOperationContexts.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
+import com.taxonomy.analysis.dag.RequirementReference;
+import com.taxonomy.dto.ViewContext;
+
+/** Captures one request's already-authorized workspace and requirement identity. */
+public final class AnalysisOperationContexts {
+    private AnalysisOperationContexts() { }
+
+    public static AnalysisOperationContext create(String operationId, AnalyzeRequirementCommand command, ViewContext view) {
+<span class="fc" id="L13">        var workspace = command.workspaceContext();</span>
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">        String branch = view != null &amp;&amp; view.basedOnBranch() != null ? view.basedOnBranch() : workspace.currentBranch();</span>
+<span class="fc" id="L15">        var authority = new AnalysisSourceAuthority(workspace.repositoryId(), workspace.workspaceId(), branch,</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">                view == null ? null : view.basedOnCommit());</span>
+<span class="fc" id="L17">        var provenance = command.provenance();</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        var requirement = provenance == null ? RequirementReference.adHoc(command.businessText())</span>
+<span class="fc" id="L19">                : RequirementReference.of(provenance.projectId(), provenance.requirementId(),</span>
+<span class="fc" id="L20">                        provenance.snapshotId(), command.businessText());</span>
+<span class="fc" id="L21">        return new AnalysisOperationContext(operationId, authority, requirement, operationId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

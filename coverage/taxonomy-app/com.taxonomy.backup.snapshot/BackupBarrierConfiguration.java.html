@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupBarrierConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.snapshot</a> &gt; <span class="el_source">BackupBarrierConfiguration.java</span></div><h1>BackupBarrierConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.snapshot;
+
+import com.taxonomy.backup.BackupWriteBarrier;
+import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
+import javax.sql.DataSource;
+import java.time.Duration;
+
+/** One guarded application datasource; ORM, JDBC and the shared JGit SessionFactory use it. */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L19">public class BackupBarrierConfiguration {</span>
+    @Bean
+    @ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;false&quot;, matchIfMissing = true)
+<span class="fc" id="L22">    BackupWriteBarrier disabledBackupWriteBarrier() { return BackupWriteBarrier.disabled(); }</span>
+
+    @Bean
+    @ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+    BackupMaintenanceLease backupMaintenanceLease(DataSource database) {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (!(database instanceof GuardedBackupDataSource guarded))</span>
+<span class="nc" id="L28">            throw new IllegalStateException(&quot;Backup requires the guarded application datasource&quot;);</span>
+<span class="fc" id="L29">        return guarded.coordinator();</span>
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+    org.springframework.boot.jdbc.metadata.DataSourcePoolMetadataProvider backupPoolMetadataProvider() {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        return database -&gt; database instanceof GuardedBackupDataSource guarded ? guarded.poolMetadata() : null;</span>
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = &quot;taxonomy.backup.enabled&quot;, havingValue = &quot;true&quot;)
+    static DataSourceFence backupDataSourceFence(Environment environment) {
+<span class="fc" id="L41">        return new DataSourceFence(Duration.ofSeconds(environment.getProperty(&quot;taxonomy.backup.writer-lease-seconds&quot;, Long.class, 300L)),</span>
+<span class="fc" id="L42">                Duration.ofSeconds(environment.getProperty(&quot;taxonomy.backup.startup-wait-seconds&quot;, Long.class, 30L)));</span>
+    }
+
+    static final class DataSourceFence implements BeanPostProcessor, ApplicationListener&lt;ApplicationReadyEvent&gt;, DisposableBean, Ordered {
+        private final Duration lifetime;
+        private final Duration startupWait;
+        private HikariDataSource coordination;
+        private GuardedBackupDataSource guarded;
+<span class="fc" id="L50">        DataSourceFence(Duration lifetime, Duration startupWait) { this.lifetime = lifetime; this.startupWait = startupWait; }</span>
+
+        @Override public Object postProcessAfterInitialization(Object bean, String name) {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (!(bean instanceof DataSource)) return bean;</span>
+<span class="pc bpc" id="L54" title="3 of 6 branches missed.">            if (!&quot;dataSource&quot;.equals(name) || !(bean instanceof HikariDataSource application) || guarded != null)</span>
+<span class="nc" id="L55">                throw new IllegalStateException(&quot;Backup requires one application-managed Hikari datasource; unguarded sources are unsupported&quot;);</span>
+<span class="fc" id="L56">            coordination = BackupCoordinationPool.open(application);</span>
+<span class="fc" id="L57">            BackupMaintenanceLease.initialize(coordination);</span>
+<span class="fc" id="L58">            var leases = new BackupMaintenanceLease(coordination, lifetime);</span>
+<span class="fc" id="L59">            var startup = leases.beginStartup(startupWait);</span>
+<span class="fc" id="L60">            guarded = new GuardedBackupDataSource(application, leases, startup);</span>
+<span class="fc" id="L61">            return guarded;</span>
+        }
+
+        @Override public void onApplicationEvent(ApplicationReadyEvent event) {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (guarded == null) throw new IllegalStateException(&quot;Backup writer boundary was not installed&quot;);</span>
+<span class="fc" id="L66">            guarded.finishStartup();</span>
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">        @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE - 100; }</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        @Override public void destroy() { if (coordination != null) coordination.close(); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

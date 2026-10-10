@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.ArchitectureSelectorSynchronizationTest
+-------------------------------------------------------------------------------
+Tests run: 77, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 28.52 s -- in com.taxonomy.ArchitectureSelectorSynchronizationTest

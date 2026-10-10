@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmRequestAdmission.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmRequestAdmission.java</span></div><h1>LlmRequestAdmission.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+import java.time.Duration;
+
+import java.time.Instant;
+import java.util.Locale;
+import java.util.function.Supplier;
+import java.util.concurrent.TimeUnit;
+import org.springframework.web.client.HttpClientErrorException;
+import tools.jackson.databind.ObjectMapper;
+
+/** Connects the shared provider policy to existing cancellation, settings and telemetry. */
+final class LlmRequestAdmission {
+    private final ProviderId provider;
+    private final int defaultRpm;
+    private final AnalysisRuntimeSettings settings;
+<span class="fc" id="L18">    private ProviderRequestLimiter.Limits limits = new ProviderRequestLimiter.Limits(4, 64);</span>
+<span class="fc" id="L19">    private ProviderRequestLimiter limiter = new ProviderRequestLimiter(limits);</span>
+<span class="fc" id="L20">    private ProviderConcurrencyPermits clusterPermits = ProviderConcurrencyPermits.NONE;</span>
+    private boolean used;
+
+    LlmRequestAdmission(LlmProvider provider, int defaultRpm, AnalysisRuntimeSettings settings) {
+<span class="fc" id="L24">        this(provider.id(), defaultRpm, settings);</span>
+<span class="fc" id="L25">    }</span>
+
+<span class="fc" id="L27">    LlmRequestAdmission(ProviderId provider, int defaultRpm, AnalysisRuntimeSettings settings) {</span>
+<span class="fc" id="L28">        this.provider = provider;</span>
+<span class="fc" id="L29">        this.defaultRpm = defaultRpm;</span>
+<span class="fc" id="L30">        this.settings = settings;</span>
+<span class="fc" id="L31">    }</span>
+
+    /** Application-startup configuration only; an active queue is never replaced. */
+    synchronized void configure(ProviderRequestLimiter.Limits limits) {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (used) throw new IllegalStateException(&quot;Cannot replace an active provider admission policy&quot;);</span>
+<span class="fc" id="L36">        this.limits = limits;</span>
+<span class="fc" id="L37">        limiter = new ProviderRequestLimiter(limits);</span>
+<span class="fc" id="L38">    }</span>
+
+    synchronized void configure(ProviderConcurrencyPermits permits) {
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (used) throw new IllegalStateException(&quot;Cannot replace an active provider permit policy&quot;);</span>
+<span class="fc" id="L42">        clusterPermits = java.util.Objects.requireNonNull(permits, &quot;permits&quot;);</span>
+<span class="fc" id="L43">    }</span>
+
+    &lt;T&gt; T execute(Supplier&lt;T&gt; request) {
+        ProviderRequestLimiter current;
+        ProviderConcurrencyPermits distributed;
+        long maximumWait;
+<span class="fc" id="L49">        synchronized (this) {</span>
+<span class="fc" id="L50">            used = true;</span>
+<span class="fc" id="L51">            current = limiter;</span>
+<span class="fc" id="L52">            distributed = clusterPermits;</span>
+<span class="fc" id="L53">            maximumWait = limits.maximumWaitMillis();</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        String key = provider.equals(LlmProvider.GEMINI.id()) ? &quot;llm.rpm&quot;</span>
+<span class="fc" id="L56">                : &quot;llm.rpm.&quot; + provider.value().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        int rpm = settings == null ? 0 : Math.max(0, settings.getInt(key, defaultRpm));</span>
+<span class="fc" id="L58">        long queuedAt = System.nanoTime();</span>
+<span class="fc" id="L59">        Runnable checkpoint = () -&gt; {</span>
+<span class="fc" id="L60">            AnalysisRunControl.checkpoint();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (distributed != ProviderConcurrencyPermits.NONE</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    &amp;&amp; TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt) &gt;= maximumWait) {</span>
+<span class="fc" id="L63">                throw new LlmRateLimitException(provider + &quot;: Provider admission wait expired&quot;);</span>
+            }
+<span class="fc" id="L65">        };</span>
+        while (true) {
+            ProviderRequestLimiter.Permit permit;
+            try {
+<span class="fc" id="L69">                permit = current.acquire(rpm, checkpoint, (reason, millis) -&gt;</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                        AnalysisRunControl.pause(reason == ProviderRequestLimiter.WaitReason.CAPACITY</span>
+<span class="fc" id="L71">                                ? &quot;WAITING_PROVIDER_CAPACITY&quot; : &quot;WAITING_RATE_LIMIT&quot;, millis));</span>
+<span class="nc" id="L72">            } catch (ProviderRequestLimiter.CapacityException | ProviderRequestLimiter.WaitTimeoutException full) {</span>
+<span class="nc" id="L73">                throw new LlmRateLimitException(provider + &quot;: &quot; + full.getMessage(), full);</span>
+<span class="fc" id="L74">            }</span>
+<span class="fc" id="L75">            boolean requestStarted = false;</span>
+            try {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                if (distributed == ProviderConcurrencyPermits.NONE) return request.get();</span>
+<span class="fc" id="L78">                AnalysisRunControl.phase(&quot;WAITING_PROVIDER_CAPACITY&quot;, null);</span>
+<span class="fc" id="L79">                try (var clusterPermit = distributed.acquire(provider, checkpoint)) {</span>
+<span class="fc" id="L80">                    checkpoint.run();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                    if (!permit.refreshRateAdmission(rpm)) continue;</span>
+<span class="fc" id="L82">                    requestStarted = true;</span>
+<span class="fc" id="L83">                    return request.get();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                }</span>
+            } finally {
+<span class="fc bfc" id="L86" title="All 4 branches covered.">                if (distributed != ProviderConcurrencyPermits.NONE &amp;&amp; !requestStarted) permit.cancelRateReservation();</span>
+<span class="fc" id="L87">                permit.close();</span>
+            }
+        }
+    }
+
+    boolean retryRateLimit(Duration retryAfter, int attempt, int maxRetries) {
+<span class="nc" id="L93">        var decision = ProviderRetryPolicy.rateLimit(attempt, maxRetries, retryAfter);</span>
+<span class="nc" id="L94">        synchronized (this) { limiter.deferFor(decision.delayMillis()); }</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (decision.retry()) AnalysisRunControl.phase(&quot;WAITING_RATE_LIMIT&quot;, null);</span>
+<span class="nc" id="L96">        return decision.retry();</span>
+    }
+
+    boolean retryRateLimit(HttpClientErrorException failure, ObjectMapper mapper, int attempt, int maxRetries) {
+<span class="fc" id="L100">        String code = &quot;&quot;;</span>
+        try {
+<span class="fc" id="L102">            var error = mapper.readTree(failure.getResponseBodyAsString()).path(&quot;error&quot;).path(&quot;code&quot;);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if (error.isString()) code = error.stringValue();</span>
+<span class="fc" id="L104">        } catch (RuntimeException invalidEnvelope) {</span>
+            // Unknown envelopes still have a bounded retry budget; never log their body.
+<span class="fc" id="L106">        }</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        String retryAfter = failure.getResponseHeaders() == null ? null</span>
+<span class="fc" id="L108">                : failure.getResponseHeaders().getFirst(&quot;Retry-After&quot;);</span>
+<span class="fc" id="L109">        var decision = ProviderRetryPolicy.rateLimit(attempt, maxRetries, retryAfter, code, Instant.now());</span>
+<span class="fc" id="L110">        synchronized (this) { limiter.deferFor(decision.delayMillis()); }</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (decision.retry()) AnalysisRunControl.phase(&quot;WAITING_RATE_LIMIT&quot;, null);</span>
+<span class="fc" id="L112">        return decision.retry();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

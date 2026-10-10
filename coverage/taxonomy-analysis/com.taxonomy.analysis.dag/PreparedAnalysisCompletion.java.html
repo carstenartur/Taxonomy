@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreparedAnalysisCompletion.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">PreparedAnalysisCompletion.java</span></div><h1>PreparedAnalysisCompletion.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.Objects;
+
+/**
+ * A computed result and its short, transactional durable mutation.
+ *
+ * &lt;p&gt;Preparation (including provider calls) must have no durable effects. The
+ * completion store invokes persistEffect only for the winning task, in the SAME
+ * database transaction as its completion record. The callback must join that
+ * transaction, revalidate current operation authority/cancellation, and must not
+ * use REQUIRES_NEW or perform external I/O. Failure rolls back both writes.&lt;/p&gt;
+ */
+public record PreparedAnalysisCompletion&lt;C extends AnalysisCompletionMessage&gt;(C completion, Runnable persistEffect) {
+<span class="fc" id="L15">    public PreparedAnalysisCompletion {</span>
+<span class="fc" id="L16">        Objects.requireNonNull(completion, &quot;completion&quot;);</span>
+<span class="fc" id="L17">        Objects.requireNonNull(persistEffect, &quot;persistEffect&quot;);</span>
+<span class="fc" id="L18">    }</span>
+
+    public static &lt;C extends AnalysisCompletionMessage&gt; PreparedAnalysisCompletion&lt;C&gt; withoutEffects(C completion) {
+<span class="fc" id="L21">        return new PreparedAnalysisCompletion&lt;&gt;(completion, () -&gt; { });</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

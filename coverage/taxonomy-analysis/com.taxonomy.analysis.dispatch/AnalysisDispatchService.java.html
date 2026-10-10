@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisDispatchService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dispatch</a> &gt; <span class="el_source">AnalysisDispatchService.java</span></div><h1>AnalysisDispatchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dispatch;
+
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskPublisher;
+import com.taxonomy.analysis.dag.AnalysisTransportUnavailableException;
+import com.taxonomy.analysis.dag.json.AnalysisMessageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Closes the database-commit → broker-send gap without making polling the scheduler.
+ *
+ * &lt;ol&gt;
+ *   &lt;li&gt;{@link #dispatch} persists a {@code DISPATCH_PENDING} intent in the
+ *       caller's transaction.&lt;/li&gt;
+ *   &lt;li&gt;After that transaction commits, each task is published immediately and
+ *       the intent is acknowledged with a compare-and-set.&lt;/li&gt;
+ *   &lt;li&gt;A crash between commit, send and acknowledgement leaves a recoverable
+ *       intent that only {@link #recover} re-publishes — on startup, explicit
+ *       repair or broker reconnection. Duplicate sends are harmless because the
+ *       task identity is stable and worker effects are idempotent.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;This class has no timer, scheduler or background thread.&lt;/p&gt;
+ */
+public final class AnalysisDispatchService {
+
+<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(AnalysisDispatchService.class);</span>
+
+    /** Result of one publish attempt. */
+<span class="fc" id="L38">    public enum PublishOutcome { DISPATCHED, ALREADY_SETTLED, WAITING_FOR_BROKER, DISPATCH_FAILED }</span>
+
+    /** Bounded, content-free summary of one recovery run. */
+<span class="fc" id="L41">    public record RecoveryReport(AnalysisDispatchRecoveryTrigger trigger, int scanned, int dispatched,</span>
+                                 int waiting, int failed, boolean truncated, boolean brokerUnavailable) { }
+
+    private final AnalysisDispatchStore store;
+    private final AnalysisTaskPublisher publisher;
+    private final int recoveryBatch;
+    private final int recoveryLimit;
+    // Only ownership and event handoff use this monitor; never database or broker I/O.
+<span class="fc" id="L49">    private final Object recoveryMonitor = new Object();</span>
+    private boolean recovering;
+    private AnalysisDispatchRecoveryTrigger requestedAgain;
+
+    public AnalysisDispatchService(AnalysisDispatchStore store, AnalysisTaskPublisher publisher,
+<span class="fc" id="L54">                                   int recoveryBatch, int recoveryLimit) {</span>
+<span class="fc" id="L55">        this.store = Objects.requireNonNull(store, &quot;store&quot;);</span>
+<span class="fc" id="L56">        this.publisher = Objects.requireNonNull(publisher, &quot;publisher&quot;);</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">        if (recoveryBatch &lt; 1 || recoveryLimit &lt; recoveryBatch) {</span>
+<span class="nc" id="L58">            throw new IllegalArgumentException(&quot;Require 1 &lt;= recoveryBatch &lt;= recoveryLimit&quot;);</span>
+        }
+<span class="fc" id="L60">        this.recoveryBatch = recoveryBatch;</span>
+<span class="fc" id="L61">        this.recoveryLimit = recoveryLimit;</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Record dispatch intents and publish them once the surrounding transaction
+     * commits. Without an active transaction the intents are committed in their own
+     * transaction and published immediately.
+     */
+    public void dispatch(Collection&lt;? extends AnalysisTaskMessage&gt; tasks) {
+<span class="fc" id="L70">        Objects.requireNonNull(tasks, &quot;tasks&quot;);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (tasks.isEmpty()) return;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (TransactionSynchronizationManager.isActualTransactionActive()</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                &amp;&amp; TransactionSynchronizationManager.isSynchronizationActive()) {</span>
+<span class="fc" id="L74">            List&lt;String&gt; ids = store.recordIntents(tasks);</span>
+<span class="fc" id="L75">            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {</span>
+                @Override
+                public void afterCommit() {
+<span class="fc" id="L78">                    publishAll(ids);</span>
+<span class="fc" id="L79">                }</span>
+            });
+<span class="fc" id="L81">        } else {</span>
+<span class="fc" id="L82">            publishAll(store.recordIntentsInNewTransaction(tasks));</span>
+        }
+<span class="fc" id="L84">    }</span>
+
+    private void publishAll(List&lt;String&gt; ids) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (String id : ids) {</span>
+            try {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                if (publish(id) == PublishOutcome.WAITING_FOR_BROKER) return;</span>
+<span class="nc" id="L90">            } catch (RuntimeException unexpected) {</span>
+                // Never fail the already committed caller; the intent stays recoverable.
+<span class="nc" id="L92">                log.warn(&quot;Analysis task dispatch left pending ({}); recovery will retry&quot;,</span>
+<span class="nc" id="L93">                        unexpected.getClass().getSimpleName());</span>
+<span class="nc" id="L94">                return;</span>
+<span class="fc" id="L95">            }</span>
+<span class="fc" id="L96">        }</span>
+<span class="fc" id="L97">    }</span>
+
+    /** Publish one recorded intent and acknowledge it. */
+    public PublishOutcome publish(String id) {
+<span class="fc" id="L101">        var intent = store.find(id).orElse(null);</span>
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">        if (intent == null || !intent.status().recoverable()) return PublishOutcome.ALREADY_SETTLED;</span>
+        AnalysisMessage message;
+        try {
+<span class="fc" id="L105">            message = store.decode(intent);</span>
+<span class="fc" id="L106">        } catch (AnalysisMessageFormatException invalid) {</span>
+<span class="fc" id="L107">            store.markFailed(id, invalid.kind().name());</span>
+<span class="fc" id="L108">            return PublishOutcome.DISPATCH_FAILED;</span>
+<span class="fc" id="L109">        }</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">        if (!(message instanceof AnalysisTaskMessage task) || !task.taskId().equals(intent.taskId())) {</span>
+<span class="nc" id="L111">            store.markFailed(id, &quot;INVALID_CONTRACT&quot;);</span>
+<span class="nc" id="L112">            return PublishOutcome.DISPATCH_FAILED;</span>
+        }
+        try {
+<span class="fc" id="L115">            publisher.publish(task);</span>
+<span class="fc" id="L116">        } catch (AnalysisTransportUnavailableException unavailable) {</span>
+<span class="fc" id="L117">            store.markWaiting(id, &quot;BROKER_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L118">            return PublishOutcome.WAITING_FOR_BROKER;</span>
+<span class="nc" id="L119">        } catch (AnalysisMessageFormatException invalid) {</span>
+<span class="nc" id="L120">            store.markFailed(id, invalid.kind().name());</span>
+<span class="nc" id="L121">            return PublishOutcome.DISPATCH_FAILED;</span>
+<span class="fc" id="L122">        }</span>
+        // The broker accepted the task. A crash before this CAS only causes a harmless re-send.
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        return store.acknowledge(id) ? PublishOutcome.DISPATCHED : PublishOutcome.ALREADY_SETTLED;</span>
+    }
+
+    /**
+     * Bounded scan for intents that were committed but not acknowledged. Concurrent
+     * triggers coalesce into one additional pass instead of parallel scans.
+     */
+    public RecoveryReport recover(AnalysisDispatchRecoveryTrigger trigger) {
+<span class="fc" id="L132">        Objects.requireNonNull(trigger, &quot;trigger&quot;);</span>
+<span class="fc" id="L133">        synchronized (recoveryMonitor) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (recovering) {</span>
+<span class="fc" id="L135">                requestedAgain = trigger;</span>
+<span class="fc" id="L136">                return new RecoveryReport(trigger, 0, 0, 0, 0, false, false);</span>
+            }
+<span class="fc" id="L138">            recovering = true;</span>
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">        RecoveryReport report = null;</span>
+<span class="fc" id="L141">        RuntimeException failure = null;</span>
+        for (;;) {
+            try {
+<span class="fc" id="L144">                report = scan(trigger);</span>
+<span class="fc" id="L145">            } catch (RuntimeException scanFailure) {</span>
+                // Preserve the failure for this caller, but do not strand an event
+                // already accepted from another caller while this scan was active.
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                if (failure == null) failure = scanFailure;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                else if (scanFailure != failure) failure.addSuppressed(scanFailure);</span>
+<span class="fc" id="L150">            } catch (Error fatal) {</span>
+<span class="fc" id="L151">                synchronized (recoveryMonitor) {</span>
+<span class="fc" id="L152">                    recovering = false;</span>
+<span class="fc" id="L153">                }</span>
+<span class="fc" id="L154">                throw fatal;</span>
+<span class="fc" id="L155">            }</span>
+<span class="fc" id="L156">            synchronized (recoveryMonitor) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                if (requestedAgain == null) {</span>
+                    // Checking the queue and releasing ownership are one operation.
+                    // A later caller either queues its event or becomes the new owner.
+<span class="fc" id="L160">                    recovering = false;</span>
+<span class="fc" id="L161">                    break;</span>
+                }
+<span class="fc" id="L163">                trigger = requestedAgain;</span>
+<span class="fc" id="L164">                requestedAgain = null;</span>
+<span class="fc" id="L165">            }</span>
+            // An explicitly queued reconnect may supersede a failed exchange.
+            // Without another event there is no retry, even when the broker is down.
+        }
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (failure != null) throw failure;</span>
+<span class="fc" id="L170">        Objects.requireNonNull(report, &quot;recovery report&quot;);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (report.scanned() &gt; 0) {</span>
+<span class="fc" id="L172">            log.info(&quot;Analysis dispatch recovery ({}): scanned={}, dispatched={}, waiting={}, failed={}, truncated={}&quot;,</span>
+<span class="fc" id="L173">                    report.trigger(), report.scanned(), report.dispatched(), report.waiting(), report.failed(),</span>
+<span class="fc" id="L174">                    report.truncated());</span>
+        }
+<span class="fc" id="L176">        return report;</span>
+    }
+
+    private RecoveryReport scan(AnalysisDispatchRecoveryTrigger trigger) {
+<span class="fc" id="L180">        int scanned = 0;</span>
+<span class="fc" id="L181">        int dispatched = 0;</span>
+<span class="fc" id="L182">        int failed = 0;</span>
+<span class="fc" id="L183">        var cursor = AnalysisDispatchStore.Cursor.START;</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        while (scanned &lt; recoveryLimit) {</span>
+<span class="fc" id="L185">            var page = store.recoverable(cursor, Math.min(recoveryBatch, recoveryLimit - scanned));</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            if (page.isEmpty()) return new RecoveryReport(trigger, scanned, dispatched, 0, failed, false, false);</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            for (var intent : page) {</span>
+<span class="fc" id="L188">                scanned++;</span>
+<span class="fc" id="L189">                cursor = new AnalysisDispatchStore.Cursor(intent.createdAt(), intent.id());</span>
+<span class="pc bpc" id="L190" title="1 of 4 branches missed.">                switch (publish(intent.id())) {</span>
+<span class="fc" id="L191">                    case DISPATCHED -&gt; dispatched++;</span>
+<span class="fc" id="L192">                    case DISPATCH_FAILED -&gt; failed++;</span>
+                    case WAITING_FOR_BROKER -&gt; {
+                        // Stop early: the next reconnect is the trigger, not a retry loop.
+<span class="fc" id="L195">                        return new RecoveryReport(trigger, scanned, dispatched,</span>
+<span class="fc" id="L196">                                (int) Math.min(Integer.MAX_VALUE,</span>
+<span class="fc" id="L197">                                        store.count(AnalysisDispatchStatus.WAITING_FOR_BROKER)),</span>
+                                failed, false, true);
+                    }
+                    case ALREADY_SETTLED -&gt; { }
+                }
+<span class="fc" id="L202">            }</span>
+<span class="fc" id="L203">        }</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        boolean more = !store.recoverable(cursor, 1).isEmpty();</span>
+<span class="fc" id="L205">        return new RecoveryReport(trigger, scanned, dispatched, 0, failed, more, false);</span>
+    }
+
+    /** Explicit operator/user repair entry point. */
+    public RecoveryReport repair() {
+<span class="fc" id="L210">        return recover(AnalysisDispatchRecoveryTrigger.EXPLICIT_REPAIR);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

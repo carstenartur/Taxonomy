@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MermaidLabels.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">MermaidLabels.java</span></div><h1>MermaidLabels.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import java.util.Map;
+
+/**
+ * Locale-dependent labels for Mermaid diagram rendering.
+ *
+ * &lt;p&gt;Provides human-readable, localized display text for layer titles,
+ * relation types, anchor/hotspot markers, and legend text.
+ * The Mermaid graph itself uses stable internal identifiers (node IDs,
+ * classDef names); only rendered labels are localized.&lt;/p&gt;
+ *
+ * @param layerLabels          maps internal layer type (e.g. &quot;Capabilities&quot;) → localized display label
+ * @param showcaseLayerLabels  abbreviated layer labels with emoji for showcase/README mode
+ * @param relationLabels       maps internal relation type (e.g. &quot;REALIZES&quot;) → localized display label
+ * @param anchorMarker         marker symbol for anchor nodes (e.g. &quot;★&quot;)
+ * @param hotspotMarker        marker symbol for hotspot nodes (e.g. &quot;⚠&quot;)
+ */
+<span class="fc" id="L19">public record MermaidLabels(</span>
+        Map&lt;String, String&gt; layerLabels,
+        Map&lt;String, String&gt; showcaseLayerLabels,
+        Map&lt;String, String&gt; relationLabels,
+        String anchorMarker,
+        String hotspotMarker
+) {
+
+    /** Hotspot threshold: nodes with relevance ≥ this value are marked as hotspots. */
+    public static final double HOTSPOT_THRESHOLD = 0.80;
+
+    /** Maximum number of edges in showcase mode to keep the diagram readable. */
+    public static final int SHOWCASE_MAX_EDGES = 12;
+
+    /** Maximum label length before truncation in showcase mode. */
+    public static final int SHOWCASE_MAX_LABEL_LENGTH = 40;
+
+    /**
+     * Returns the default English labels.
+     */
+    public static MermaidLabels english() {
+<span class="fc" id="L40">        return new MermaidLabels(</span>
+<span class="fc" id="L41">                Map.ofEntries(</span>
+<span class="fc" id="L42">                        Map.entry(&quot;Capabilities&quot;, &quot;Capabilities&quot;),</span>
+<span class="fc" id="L43">                        Map.entry(&quot;Business Processes&quot;, &quot;Business Processes&quot;),</span>
+<span class="fc" id="L44">                        Map.entry(&quot;Business Roles&quot;, &quot;Business Roles&quot;),</span>
+<span class="fc" id="L45">                        Map.entry(&quot;Services&quot;, &quot;Services&quot;),</span>
+<span class="fc" id="L46">                        Map.entry(&quot;COI Services&quot;, &quot;COI Services&quot;),</span>
+<span class="fc" id="L47">                        Map.entry(&quot;Core Services&quot;, &quot;Core Services&quot;),</span>
+<span class="fc" id="L48">                        Map.entry(&quot;Applications&quot;, &quot;Applications&quot;),</span>
+<span class="fc" id="L49">                        Map.entry(&quot;User Applications&quot;, &quot;User Applications&quot;),</span>
+<span class="fc" id="L50">                        Map.entry(&quot;Information Products&quot;, &quot;Information Products&quot;),</span>
+<span class="fc" id="L51">                        Map.entry(&quot;Communications Services&quot;, &quot;Communications Services&quot;)</span>
+                ),
+<span class="fc" id="L53">                Map.ofEntries(</span>
+<span class="fc" id="L54">                        Map.entry(&quot;Capabilities&quot;, &quot;\uD83D\uDD35 Capabilities&quot;),</span>
+<span class="fc" id="L55">                        Map.entry(&quot;Business Processes&quot;, &quot;\uD83D\uDFE2 Processes&quot;),</span>
+<span class="fc" id="L56">                        Map.entry(&quot;Business Roles&quot;, &quot;\uD83D\uDFE2 Roles&quot;),</span>
+<span class="fc" id="L57">                        Map.entry(&quot;Services&quot;, &quot;\uD83D\uDFE0 Services&quot;),</span>
+<span class="fc" id="L58">                        Map.entry(&quot;COI Services&quot;, &quot;\uD83D\uDFE0 COI Services&quot;),</span>
+<span class="fc" id="L59">                        Map.entry(&quot;Core Services&quot;, &quot;\uD83D\uDFE0 Core Services&quot;),</span>
+<span class="fc" id="L60">                        Map.entry(&quot;Applications&quot;, &quot;\uD83D\uDFE3 Applications&quot;),</span>
+<span class="fc" id="L61">                        Map.entry(&quot;User Applications&quot;, &quot;\uD83D\uDFE3 Applications&quot;),</span>
+<span class="fc" id="L62">                        Map.entry(&quot;Information Products&quot;, &quot;\uD83D\uDD37 Info Products&quot;),</span>
+<span class="fc" id="L63">                        Map.entry(&quot;Communications Services&quot;, &quot;\uD83D\uDD34 Communications&quot;)</span>
+                ),
+<span class="fc" id="L65">                Map.ofEntries(</span>
+<span class="fc" id="L66">                        Map.entry(&quot;REALIZES&quot;, &quot;realizes&quot;),</span>
+<span class="fc" id="L67">                        Map.entry(&quot;SUPPORTS&quot;, &quot;supports&quot;),</span>
+<span class="fc" id="L68">                        Map.entry(&quot;USES&quot;, &quot;uses&quot;),</span>
+<span class="fc" id="L69">                        Map.entry(&quot;FULFILLS&quot;, &quot;fulfills&quot;),</span>
+<span class="fc" id="L70">                        Map.entry(&quot;DEPENDS_ON&quot;, &quot;depends on&quot;),</span>
+<span class="fc" id="L71">                        Map.entry(&quot;PRODUCES&quot;, &quot;produces&quot;),</span>
+<span class="fc" id="L72">                        Map.entry(&quot;CONSUMES&quot;, &quot;consumes&quot;),</span>
+<span class="fc" id="L73">                        Map.entry(&quot;ASSIGNED_TO&quot;, &quot;assigned to&quot;),</span>
+<span class="fc" id="L74">                        Map.entry(&quot;RELATED_TO&quot;, &quot;related to&quot;),</span>
+<span class="fc" id="L75">                        Map.entry(&quot;COMMUNICATES_WITH&quot;, &quot;communicates with&quot;)</span>
+                ),
+                &quot;★&quot;,
+                &quot;\u26A0&quot;
+        );
+    }
+
+    /**
+     * Returns German labels.
+     */
+    public static MermaidLabels german() {
+<span class="fc" id="L86">        return new MermaidLabels(</span>
+<span class="fc" id="L87">                Map.ofEntries(</span>
+<span class="fc" id="L88">                        Map.entry(&quot;Capabilities&quot;, &quot;F\u00e4higkeiten&quot;),</span>
+<span class="fc" id="L89">                        Map.entry(&quot;Business Processes&quot;, &quot;Gesch\u00e4ftsprozesse&quot;),</span>
+<span class="fc" id="L90">                        Map.entry(&quot;Business Roles&quot;, &quot;Gesch\u00e4ftsrollen&quot;),</span>
+<span class="fc" id="L91">                        Map.entry(&quot;Services&quot;, &quot;Dienste&quot;),</span>
+<span class="fc" id="L92">                        Map.entry(&quot;COI Services&quot;, &quot;COI-Dienste&quot;),</span>
+<span class="fc" id="L93">                        Map.entry(&quot;Core Services&quot;, &quot;Kerndienste&quot;),</span>
+<span class="fc" id="L94">                        Map.entry(&quot;Applications&quot;, &quot;Anwendungen&quot;),</span>
+<span class="fc" id="L95">                        Map.entry(&quot;User Applications&quot;, &quot;Benutzeranwendungen&quot;),</span>
+<span class="fc" id="L96">                        Map.entry(&quot;Information Products&quot;, &quot;Informationsprodukte&quot;),</span>
+<span class="fc" id="L97">                        Map.entry(&quot;Communications Services&quot;, &quot;Kommunikationsdienste&quot;)</span>
+                ),
+<span class="fc" id="L99">                Map.ofEntries(</span>
+<span class="fc" id="L100">                        Map.entry(&quot;Capabilities&quot;, &quot;\uD83D\uDD35 F\u00e4higkeiten&quot;),</span>
+<span class="fc" id="L101">                        Map.entry(&quot;Business Processes&quot;, &quot;\uD83D\uDFE2 Prozesse&quot;),</span>
+<span class="fc" id="L102">                        Map.entry(&quot;Business Roles&quot;, &quot;\uD83D\uDFE2 Rollen&quot;),</span>
+<span class="fc" id="L103">                        Map.entry(&quot;Services&quot;, &quot;\uD83D\uDFE0 Dienste&quot;),</span>
+<span class="fc" id="L104">                        Map.entry(&quot;COI Services&quot;, &quot;\uD83D\uDFE0 COI-Dienste&quot;),</span>
+<span class="fc" id="L105">                        Map.entry(&quot;Core Services&quot;, &quot;\uD83D\uDFE0 Kerndienste&quot;),</span>
+<span class="fc" id="L106">                        Map.entry(&quot;Applications&quot;, &quot;\uD83D\uDFE3 Anwendungen&quot;),</span>
+<span class="fc" id="L107">                        Map.entry(&quot;User Applications&quot;, &quot;\uD83D\uDFE3 Anwendungen&quot;),</span>
+<span class="fc" id="L108">                        Map.entry(&quot;Information Products&quot;, &quot;\uD83D\uDD37 Infoprodukte&quot;),</span>
+<span class="fc" id="L109">                        Map.entry(&quot;Communications Services&quot;, &quot;\uD83D\uDD34 Kommunikation&quot;)</span>
+                ),
+<span class="fc" id="L111">                Map.ofEntries(</span>
+<span class="fc" id="L112">                        Map.entry(&quot;REALIZES&quot;, &quot;realisiert&quot;),</span>
+<span class="fc" id="L113">                        Map.entry(&quot;SUPPORTS&quot;, &quot;unterst\u00fctzt&quot;),</span>
+<span class="fc" id="L114">                        Map.entry(&quot;USES&quot;, &quot;nutzt&quot;),</span>
+<span class="fc" id="L115">                        Map.entry(&quot;FULFILLS&quot;, &quot;erf\u00fcllt&quot;),</span>
+<span class="fc" id="L116">                        Map.entry(&quot;DEPENDS_ON&quot;, &quot;h\u00e4ngt ab von&quot;),</span>
+<span class="fc" id="L117">                        Map.entry(&quot;PRODUCES&quot;, &quot;erzeugt&quot;),</span>
+<span class="fc" id="L118">                        Map.entry(&quot;CONSUMES&quot;, &quot;konsumiert&quot;),</span>
+<span class="fc" id="L119">                        Map.entry(&quot;ASSIGNED_TO&quot;, &quot;zugeordnet zu&quot;),</span>
+<span class="fc" id="L120">                        Map.entry(&quot;RELATED_TO&quot;, &quot;bezieht sich auf&quot;),</span>
+<span class="fc" id="L121">                        Map.entry(&quot;COMMUNICATES_WITH&quot;, &quot;kommuniziert mit&quot;)</span>
+                ),
+                &quot;★&quot;,
+                &quot;\u26A0&quot;
+        );
+    }
+
+    /**
+     * Returns the localized display label for a layer type, falling back to the
+     * internal name if no mapping exists.
+     */
+    public String layerLabel(String internalType) {
+<span class="fc" id="L133">        return layerLabels.getOrDefault(internalType, internalType);</span>
+    }
+
+    /**
+     * Returns the abbreviated showcase layer label (with emoji prefix),
+     * falling back to the full layer label if no showcase mapping exists.
+     */
+    public String showcaseLayerLabel(String internalType) {
+<span class="fc" id="L141">        return showcaseLayerLabels.getOrDefault(internalType, layerLabel(internalType));</span>
+    }
+
+    /**
+     * Returns the localized display label for a relation type, falling back to
+     * a lowercase version of the internal key if no mapping exists.
+     */
+    public String relationLabel(String internalType) {
+<span class="fc" id="L149">        return relationLabels.getOrDefault(internalType, internalType.toLowerCase().replace('_', ' '));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupEntry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupEntry.java</span></div><h1>BackupEntry.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.Objects;
+
+/** Length and digest cover the uncompressed UTF-8 or binary entry bytes. */
+public record BackupEntry(String path, long length, String sha256) {
+<span class="fc" id="L7">    public BackupEntry {</span>
+<span class="fc" id="L8">        BackupChecks.text(path, &quot;entry path&quot;);</span>
+<span class="fc bfc" id="L9" title="All 8 branches covered.">        if (path.startsWith(&quot;/&quot;) || path.contains(&quot;\\&quot;) || path.contains(&quot;:&quot;) || path.endsWith(&quot;/&quot;)</span>
+<span class="fc bfc" id="L10" title="All 8 branches covered.">                || java.util.Arrays.stream(path.split(&quot;/&quot;, -1)).anyMatch(s -&gt; s.isEmpty() || s.equals(&quot;.&quot;) || s.equals(&quot;..&quot;))) {</span>
+<span class="fc" id="L11">            throw new IllegalArgumentException(&quot;Unsafe archive path&quot;);</span>
+        }
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        if (length &lt; 0) throw new IllegalArgumentException(&quot;Negative entry length&quot;);</span>
+<span class="fc" id="L14">        BackupChecks.hash(sha256, 64, &quot;sha256&quot;);</span>
+<span class="fc" id="L15">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotWordReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.report</a> &gt; <span class="el_source">SnapshotWordReportService.java</span></div><h1>SnapshotWordReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.report;
+
+import com.taxonomy.architecture.report.ArchitectureReportSelection;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import com.taxonomy.reporting.render.document.ArchitectureFigurePlanner;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+import com.taxonomy.reporting.render.document.ArchitectureReportDocuments;
+
+import com.taxonomy.architecture.decision.*;
+import com.taxonomy.reporting.render.document.*;
+import com.taxonomy.diagram.*;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+
+/** Composes only saved decision and persisted graph evidence at identical source coordinates. */
+@Service
+public class SnapshotWordReportService {
+<span class="fc" id="L29">    public record Source(</span>
+            DecisionRationaleReport decision, ArchitectureReportDocument architecture) {}
+
+    private final DecisionRationaleSnapshotReportService decisions;
+    private final ArchitectureWorkbenchService workbench;
+
+    public SnapshotWordReportService(
+            DecisionRationaleSnapshotReportService decisions,
+<span class="fc" id="L37">            ArchitectureWorkbenchService workbench) {</span>
+<span class="fc" id="L38">        this.decisions = decisions;</span>
+<span class="fc" id="L39">        this.workbench = workbench;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Transactional(readOnly = true)
+    public Source load(
+            Long projectId,
+            String snapshotId,
+            String username,
+            WorkspaceContext context,
+            Locale locale) {
+<span class="fc" id="L49">        return load(projectId, snapshotId, username, context, locale, null);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Source load(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options) {
+<span class="fc" id="L55">        return loadSource(projectId, snapshotId, username, context, locale, options, true);</span>
+    }
+
+    /** HTML/JSON share frozen graph evidence without Word's page/rendering ceilings. */
+    @Transactional(readOnly = true)
+    public Source loadEvidence(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options) {
+<span class="fc" id="L62">        return loadSource(projectId, snapshotId, username, context, locale, options, false);</span>
+    }
+
+    private Source loadSource(Long projectId, String snapshotId, String username, WorkspaceContext context,
+            Locale locale, DecisionReportOptions options, boolean wordLayout) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (projectId == null) throw PortfolioException.validation(&quot;projectId is required&quot;);</span>
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank())</span>
+<span class="nc" id="L69">            throw PortfolioException.validation(&quot;snapshotId is required&quot;);</span>
+<span class="fc" id="L70">        String id = snapshotId.strip();</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        Locale language = locale == null ? Locale.ENGLISH : locale;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        var decision = options == null ? decisions.generate(projectId, id, username, context, language)</span>
+<span class="fc" id="L73">                : decisions.generate(projectId, id, username, context, language, options);</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">        if (options != null &amp;&amp; !options.includes(DecisionReportOptions.Section.ARCHITECTURE)) return new Source(decision, null);</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">        if (decision.scope().analysisScope() != null &amp;&amp; !decision.scope().analysisScope().includesRelations())</span>
+<span class="nc" id="L76">            return new Source(decision, null);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        var projection = options == null ? workbench.load(projectId, id, username, context)</span>
+<span class="fc" id="L78">                : workbench.loadIfPresent(projectId, id, username, context).orElse(null);</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">        if (projection == null &amp;&amp; options != null) return new Source(decision, null);</span>
+        try {
+<span class="fc" id="L81">            var architecture = frozenDocument(projectId, id, decision, projection, language, wordLayout);</span>
+<span class="fc" id="L82">            return new Source(decision.withArchitecture(architecture), architecture);</span>
+<span class="fc" id="L83">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L84">            throw PortfolioException.conflict(exception.getMessage());</span>
+        }
+    }
+
+    private ArchitectureReportDocument frozenDocument(
+            Long projectId,
+            String snapshotId,
+            DecisionRationaleReport decision,
+            Projection p,
+            Locale locale, boolean wordLayout) {
+<span class="fc" id="L94">        var m = decision.metadata();</span>
+<span class="pc bpc" id="L95" title="3 of 6 branches missed.">        if (m == null || p == null || p.exportProvenance() == null)</span>
+<span class="nc" id="L96">            throw new IllegalArgumentException(&quot;Missing frozen snapshot provenance&quot;);</span>
+<span class="fc" id="L97">        same(&quot;project&quot;, projectId, m.projectId());</span>
+<span class="fc" id="L98">        same(&quot;project&quot;, m.projectId(), p.projectId());</span>
+<span class="fc" id="L99">        same(&quot;snapshot&quot;, snapshotId, m.analysisSnapshotId());</span>
+<span class="fc" id="L100">        same(&quot;snapshot&quot;, m.analysisSnapshotId(), p.snapshotId());</span>
+<span class="fc" id="L101">        same(&quot;requirement&quot;, m.requirementId(), p.requirementId());</span>
+<span class="fc" id="L102">        same(</span>
+                &quot;requirement version&quot;,
+<span class="fc" id="L104">                m.requirementVersionId(),</span>
+<span class="fc" id="L105">                p.exportProvenance().requirementVersionId());</span>
+<span class="fc" id="L106">        same(</span>
+                &quot;requirement text&quot;,
+<span class="fc" id="L108">                decision.requirement(),</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                p.requirementText() == null ? null : p.requirementText().strip());</span>
+<span class="fc" id="L110">        same(&quot;workspace&quot;, workspace(m.workspaceId()), workspace(p.workspaceId()));</span>
+<span class="fc" id="L111">        same(&quot;branch&quot;, normalized(m.branch()), normalized(p.branchName()));</span>
+<span class="fc" id="L112">        same(&quot;commit&quot;, normalized(m.basedOnCommit()), normalized(p.commitSha()));</span>
+<span class="fc" id="L113">        same(</span>
+                &quot;repository&quot;,
+<span class="fc" id="L115">                normalized(m.repositoryId()),</span>
+<span class="fc" id="L116">                normalized(p.exportProvenance().repositoryId()));</span>
+<span class="fc" id="L117">        same(&quot;provider&quot;, normalized(m.analysisProvider()), normalized(p.provider()));</span>
+<span class="fc" id="L118">        same(&quot;model&quot;, normalized(m.analysisModel()), normalized(p.modelName()));</span>
+<span class="fc" id="L119">        same(</span>
+                &quot;taxonomy fingerprint&quot;,
+<span class="fc" id="L121">                normalized(m.recordedTaxonomyFingerprintSha256()),</span>
+<span class="fc" id="L122">                normalized(p.exportProvenance().taxonomyFingerprint()));</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (!m.hierarchyFromImmutableSnapshot())</span>
+<span class="nc" id="L124">            throw new IllegalArgumentException(</span>
+                    &quot;Decision hierarchy is not frozen snapshot evidence&quot;);
+<span class="fc" id="L126">        ArchitectureFigurePlanner.validateEvidence(p.diagram(), p.scene());</span>
+<span class="fc" id="L127">        var labels = new DecisionReportLabels(locale.toLanguageTag());</span>
+        // Explicit saved titles are evidence, including values that collide with a live fallback.
+        // Policy keys and missing titles use a stable localized snapshot title.
+<span class="fc" id="L130">        String title = labels.architectureTitle();</span>
+        String graphTitle =
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                p.persistedViewTitle() != null</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                                &amp;&amp; !p.persistedViewTitle().isBlank()</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                                &amp;&amp; p.policyTitleKey() == null</span>
+<span class="fc" id="L135">                        ? p.persistedViewTitle()</span>
+<span class="fc" id="L136">                        : title;</span>
+<span class="fc" id="L137">        var graph =</span>
+                new DiagramModel(
+<span class="fc" id="L139">                        graphTitle, p.diagram().nodes(), p.diagram().edges(), p.diagram().layout());</span>
+<span class="fc" id="L140">        var scene =</span>
+                new DiagramScene(
+                        graphTitle,
+<span class="fc" id="L143">                        p.scene().width(),</span>
+<span class="fc" id="L144">                        p.scene().height(),</span>
+<span class="fc" id="L145">                        p.scene().direction(),</span>
+<span class="fc" id="L146">                        p.scene().nodes(),</span>
+<span class="fc" id="L147">                        p.scene().edges());</span>
+<span class="fc" id="L148">        String reportScope = labels.frozenScope();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (!decision.scope().options().taxonomyRoots().isEmpty()</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                || (decision.scope().analysisScope() != null</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                    &amp;&amp; !decision.scope().analysisScope().taxonomyRoots().isEmpty())) {</span>
+<span class="fc" id="L152">            var selection = ArchitectureReportSelection.select(graph, scene, decision.scope().selectedNodeCodes());</span>
+<span class="fc" id="L153">            graph = selection.graph(); scene = selection.scene();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (graph.nodes().isEmpty()) return null;</span>
+<span class="fc" id="L155">            boolean german = &quot;de&quot;.equals(locale.getLanguage());</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            reportScope += &quot; · &quot; + (german ? &quot;Berichtsauswahl: &quot; : &quot;Report selection: &quot;)</span>
+<span class="fc" id="L157">                    + String.join(&quot;, &quot;, decision.scope().reportRoots())</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                    + &quot; · &quot; + (german ? &quot;Kontext außerhalb der Auswahl: &quot; : &quot;Boundary context: &quot;)</span>
+<span class="fc" id="L159">                    + String.join(&quot;, &quot;, selection.boundaryCodes())</span>
+<span class="fc" id="L160">                    + &quot; · Source graph SHA-256: &quot; + selection.sourceGraphSha256();</span>
+        }
+<span class="fc" id="L162">        var gaps = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L163">        gaps.addAll(decision.warnings());</span>
+<span class="fc" id="L164">        gaps.addAll(p.warnings());</span>
+<span class="fc" id="L165">        decision.productCoverageGaps()</span>
+<span class="fc" id="L166">                .forEach(g -&gt; gaps.add(g.productFamilyCode() + &quot; · &quot; + g.reason()));</span>
+<span class="fc" id="L167">        var evidence =</span>
+                new ArchitectureReportDocument.SnapshotEvidence(
+<span class="fc" id="L169">                        m.projectId(),</span>
+<span class="fc" id="L170">                        m.requirementId(),</span>
+<span class="fc" id="L171">                        m.requirementVersionId(),</span>
+<span class="fc" id="L172">                        m.requirementVersionNumber(),</span>
+<span class="fc" id="L173">                        m.analysisSnapshotId(),</span>
+<span class="fc" id="L174">                        m.repositoryId(),</span>
+<span class="fc" id="L175">                        m.workspaceId(),</span>
+<span class="fc" id="L176">                        m.branch(),</span>
+<span class="fc" id="L177">                        m.basedOnCommit(),</span>
+<span class="fc" id="L178">                        m.analysisProvider(),</span>
+<span class="fc" id="L179">                        m.analysisModel(),</span>
+<span class="fc" id="L180">                        m.recordedTaxonomyFingerprintSha256(),</span>
+<span class="fc" id="L181">                        ArchitectureReportDocument.graphSha256(graph));</span>
+<span class="fc" id="L182">        var document =</span>
+<span class="fc" id="L183">                ArchitectureReportDocuments.from(</span>
+                        title,
+<span class="fc" id="L185">                        locale.toLanguageTag(),</span>
+<span class="fc" id="L186">                        decision.requirement(),</span>
+                        reportScope,
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                        decision.executiveSummary() == null</span>
+<span class="fc" id="L189">                                ? labels.noneRecorded()</span>
+<span class="fc" id="L190">                                : decision.executiveSummary().conciseConclusion(),</span>
+<span class="fc" id="L191">                        List.copyOf(gaps),</span>
+                        graph,
+                        scene,
+<span class="fc" id="L194">                        decision.scope().decisionTree(),</span>
+                        evidence);
+        // Enforce the complete document ceiling before allocating any PNG or DOCX buffers.
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (wordLayout) new ArchitectureFigurePlanner().plan(graph, scene);</span>
+<span class="fc" id="L198">        return document;</span>
+    }
+
+    private static void same(String field, Object a, Object b) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (!Objects.equals(a, b))</span>
+<span class="fc" id="L203">            throw new IllegalArgumentException(&quot;Frozen snapshot &quot; + field + &quot; disagreement&quot;);</span>
+<span class="fc" id="L204">    }</span>
+
+    private static String normalized(String value) {
+<span class="pc bpc" id="L207" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;unknown&quot; : value.strip();</span>
+    }
+
+    private static String workspace(String value) {
+<span class="fc" id="L211">        return value == null</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                        || value.isBlank()</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                        || &quot;Central&quot;.equals(value)</span>
+<span class="pc bpc" id="L214" title="2 of 4 branches missed.">                        || &quot;Zentral&quot;.equals(value)</span>
+<span class="nc" id="L215">                ? &quot;central&quot;</span>
+<span class="fc" id="L216">                : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

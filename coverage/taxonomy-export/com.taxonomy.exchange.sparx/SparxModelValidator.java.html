@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxModelValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxModelValidator.java</span></div><h1>SparxModelValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import java.util.*;
+import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
+
+/** Shared semantic validation for reviewed Sparx selections, independent of transport/profile. */
+public final class SparxModelValidator {
+    private SparxModelValidator() {}
+<span class="fc" id="L11">    public static void validate(ExchangeDocument source) { model(source); }</span>
+<span class="fc" id="L12">    record Validated(Map&lt;String, Artifact&gt; objects, String modelId, Map&lt;String, Placement&gt; byId,</span>
+                     Map&lt;String, Placement&gt; byObject) {}
+    static Validated model(ExchangeDocument source) {
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (source.artifacts().size() + source.relations().size() &gt; ExchangeXml.MAX_ARTIFACTS)</span>
+<span class="nc" id="L16">            throw ExchangeXml.invalid(&quot;ITEM_LIMIT&quot;, &quot;Sparx scope exceeds the supported item limit&quot;);</span>
+<span class="fc" id="L17">        Map&lt;String, Artifact&gt; objects = new TreeMap&lt;&gt;(); Set&lt;String&gt; taxonomyIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        for (Artifact artifact : source.artifacts()) {</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">            if (objects.putIfAbsent(guid(artifact.id()), artifact) != null) throw duplicate();</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">            if (!Set.of(ArtifactKind.SPECIFICATION, ArtifactKind.ELEMENT, ArtifactKind.REQUIREMENT, ArtifactKind.FEATURE).contains(artifact.kind()))</span>
+<span class="nc" id="L21">                throw ExchangeXml.invalid(&quot;SPARX_KIND_UNMAPPED&quot;, &quot;Artifact kind is outside the semantic XMI subset&quot;);</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">            if (artifact.kind() == ArtifactKind.ELEMENT &amp;&amp; (elementType(artifact.type(), null, null) == null</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">                    || !CANONICAL_TYPES.contains(artifact.extensions().getOrDefault(&quot;canonicalType&quot;, &quot;&quot;))</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">                    || !artifact.extensions().get(&quot;canonicalType&quot;).equals(elementType(artifact.type(),</span>
+<span class="fc" id="L25">                            artifact.extensions().get(&quot;stereotype&quot;), artifact.attributes().get(&quot;tag:taxonomy.elementType&quot;)))))</span>
+<span class="fc" id="L26">                throw ExchangeXml.invalid(&quot;SPARX_ELEMENT_UNMAPPED&quot;, &quot;Reject or explicitly remap unsupported element types before export&quot;);</span>
+<span class="fc" id="L27">            checkTags(artifact.attributes(), taxonomyIds, source.profile() + &quot;@&quot; + source.profileVersion());</span>
+<span class="fc" id="L28">        }</span>
+<span class="pc bpc" id="L29" title="1 of 6 branches missed.">        if (source.artifacts().stream().anyMatch(a -&gt; a.kind() == ArtifactKind.FEATURE) &amp;&amp; !&quot;2&quot;.equals(source.profileVersion()))</span>
+<span class="nc" id="L30">            throw ExchangeXml.invalid(&quot;PROFILE_VERSION_CHANGED&quot;, &quot;Features require Sparx version 2&quot;);</span>
+<span class="fc" id="L31">        features(objects);</span>
+<span class="fc" id="L32">        String modelId = guid(source.metadata().get(&quot;identifier&quot;));</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (objects.containsKey(modelId)) throw duplicate();</span>
+<span class="fc" id="L34">        Set&lt;String&gt; allIds = new HashSet&lt;&gt;(objects.keySet()); allIds.add(modelId);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (Relation relation : source.relations()) {</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (!allIds.add(guid(relation.id()))) throw duplicate();</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">            if (!objects.containsKey(relation.source()) || !objects.containsKey(relation.target()))</span>
+<span class="fc" id="L38">                throw ExchangeXml.invalid(&quot;SPARX_ENDPOINT_REQUIRED&quot;, &quot;A reviewed connector endpoint is missing&quot;);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            if (relationType(relation.type()) == null</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                    || !relationType(relation.type()).equals(relation.extensions().get(&quot;canonicalType&quot;)))</span>
+<span class="fc" id="L41">                throw ExchangeXml.invalid(&quot;SPARX_RELATION_UNMAPPED&quot;, &quot;Reject or remap unsupported connectors before export&quot;);</span>
+<span class="fc" id="L42">            checkTags(relation.attributes(), taxonomyIds, source.profile() + &quot;@&quot; + source.profileVersion());</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        Map&lt;String, Placement&gt; byId = new HashMap&lt;&gt;(), byObject = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (Placement p : source.placements()) {</span>
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">            if (byId.putIfAbsent(p.id(), p) != null || byObject.putIfAbsent(p.artifactId(), p) != null) throw duplicate();</span>
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">            if (!modelId.equals(p.containerId()) || !objects.containsKey(p.artifactId()))</span>
+<span class="nc" id="L48">                throw ExchangeXml.invalid(&quot;HIERARCHY_REFERENCE&quot;, &quot;A reviewed occurrence has a missing model or artifact&quot;);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (Placement p : source.placements()) {</span>
+<span class="fc" id="L51">            Set&lt;String&gt; visited = new HashSet&lt;&gt;(); Placement next = p;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            while (next.parentId() != null) {</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">                if (!visited.add(next.id()) || visited.size() &gt; 80)</span>
+<span class="nc" id="L54">                    throw ExchangeXml.invalid(&quot;HIERARCHY_CYCLE&quot;, &quot;Package hierarchy is cyclic or too deep&quot;);</span>
+<span class="fc" id="L55">                next = byId.get(next.parentId());</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">                if (next == null || objects.get(next.artifactId()).kind() != ArtifactKind.SPECIFICATION)</span>
+<span class="fc" id="L57">                    throw ExchangeXml.invalid(&quot;HIERARCHY_REFERENCE&quot;, &quot;A reviewed parent package is missing&quot;);</span>
+            }
+<span class="fc" id="L59">        }</span>
+<span class="fc" id="L60">        return new Validated(objects, modelId, byId, byObject);</span>
+    }
+    static void features(Map&lt;String, Artifact&gt; objects) {
+<span class="fc" id="L63">        Set&lt;String&gt; positions = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        for (Artifact a : objects.values()) if (a.kind() == ArtifactKind.FEATURE) {</span>
+<span class="fc" id="L65">            String ownerId = a.extensions().get(&quot;owner&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            Artifact owner = ownerId == null ? null : objects.get(ownerId);</span>
+<span class="pc bpc" id="L67" title="1 of 6 branches missed.">            boolean element = owner != null &amp;&amp; (owner.kind() == ArtifactKind.ELEMENT || owner.kind() == ArtifactKind.REQUIREMENT);</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">            boolean feature = owner != null &amp;&amp; owner.kind() == ArtifactKind.FEATURE;</span>
+<span class="pc bpc" id="L69" title="1 of 7 branches missed.">            boolean valid = owner != null &amp;&amp; switch (a.type()) {</span>
+<span class="pc bpc" id="L70" title="7 of 8 branches missed.">                case &quot;tagged-value&quot; -&gt; element || owner.kind() == ArtifactKind.SPECIFICATION || feature &amp;&amp; Set.of(&quot;attribute&quot;, &quot;operation&quot;).contains(owner.type());</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                case &quot;attribute&quot;, &quot;operation&quot; -&gt; element;</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">                case &quot;parameter&quot; -&gt; feature &amp;&amp; owner.type().equals(&quot;operation&quot;);</span>
+<span class="pc bpc" id="L73" title="3 of 4 branches missed.">                case &quot;external-connector&quot; -&gt; element || owner.kind() == ArtifactKind.SPECIFICATION;</span>
+<span class="pc" id="L74">                default -&gt; false;</span>
+            };
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">            if (!valid || a.id().equals(a.extensions().get(&quot;owner&quot;)))</span>
+<span class="fc" id="L77">                throw ExchangeXml.invalid(&quot;SPARX_FEATURE_OWNER&quot;, &quot;Feature type or owner is outside the bounded profile&quot;);</span>
+<span class="fc" id="L78">            String external = a.extensions().get(&quot;externalIdentifier&quot;);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (external != null) {</span>
+<span class="fc bfc" id="L80" title="All 5 branches covered.">                Set&lt;String&gt; prefixes = switch (a.type()) {</span>
+<span class="fc" id="L81">                    case &quot;attribute&quot; -&gt; Set.of(&quot;at_&quot;); case &quot;operation&quot; -&gt; Set.of(&quot;op_&quot;); case &quot;parameter&quot; -&gt; Set.of(&quot;pr_&quot;);</span>
+<span class="fc" id="L82">                    case &quot;external-connector&quot; -&gt; Set.of(&quot;lt_&quot;);</span>
+<span class="pc bpc" id="L83" title="6 of 8 branches missed.">                    default -&gt; feature &amp;&amp; owner.type().equals(&quot;attribute&quot;) ? Set.of(&quot;attv_&quot;) : feature &amp;&amp; owner.type().equals(&quot;operation&quot;) ? Set.of(&quot;optv_&quot;) : Set.of(&quot;tv_&quot;);</span>
+                };
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                if (!a.id().equals(prefixedGuid(external, prefixes))) throw ExchangeXml.invalid(&quot;SPARX_GUID_REQUIRED&quot;, &quot;Feature evidence identity differs from its GUID&quot;);</span>
+            }
+<span class="fc" id="L87">            String position = a.extensions().get(&quot;position&quot;);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (position != null) {</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">                if (!position.matches(&quot;0|[1-9][0-9]{0,3}&quot;) || Integer.parseInt(position) &gt;= ExchangeXml.MAX_ARTIFACTS</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                        || !positions.add(owner.id() + &quot;\u0000&quot; + a.type() + &quot;\u0000&quot; + position))</span>
+<span class="fc" id="L91">                    throw ExchangeXml.invalid(&quot;SPARX_FEATURE_POSITION&quot;, &quot;Feature positions must be bounded and unique within owner and kind&quot;);</span>
+            }
+<span class="fc" id="L93">            String classifier = a.extensions().get(&quot;classifier&quot;);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">            if (classifier != null) guid(classifier);</span>
+        }
+<span class="fc" id="L96">    }</span>
+    static void checkTags(Map&lt;String, String&gt; attributes, Set&lt;String&gt; identities, String selectedProfile) {
+<span class="fc" id="L98">        String id = attributes.get(&quot;tag:taxonomy.id&quot;);</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">        if (id != null &amp;&amp; !identities.add(guid(id))) throw duplicate();</span>
+<span class="fc" id="L100">        String profile = attributes.get(&quot;tag:taxonomy.mappingProfile&quot;);</span>
+<span class="fc bfc" id="L101" title="All 4 branches covered.">        if (profile != null &amp;&amp; !selectedProfile.equals(profile))</span>
+<span class="fc" id="L102">            throw ExchangeXml.invalid(&quot;PROFILE_VERSION_CHANGED&quot;, &quot;Tagged profile differs from the selected mapping profile&quot;);</span>
+<span class="fc" id="L103">    }</span>
+<span class="fc" id="L104">    private static RuntimeException duplicate() { return ExchangeXml.invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;Duplicated EA GUID or Taxonomy identity in reviewed output&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

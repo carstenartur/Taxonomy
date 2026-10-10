@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StandardReferenceProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.planning</a> &gt; <span class="el_source">StandardReferenceProfile.java</span></div><h1>StandardReferenceProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.planning;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/** Reference only: canonical sources remain authoritative; no compliance/obligation assertion. */
+<span class="fc" id="L14">public final class StandardReferenceProfile implements PlanningProfile {</span>
+    @Override public Descriptor descriptor() {
+<span class="fc" id="L16">        return new Descriptor(&quot;standard-reference&quot;, &quot;1&quot;, List.of(new Field(&quot;identifier&quot;, true, List.of()),</span>
+<span class="fc" id="L17">                new Field(&quot;edition&quot;, false, List.of()), new Field(&quot;section&quot;, false, List.of())));</span>
+    }
+    @Override public void validate(Map&lt;String, String&gt; values) {
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        if (!Set.of(&quot;identifier&quot;, &quot;edition&quot;, &quot;section&quot;).containsAll(values.keySet())</span>
+<span class="pc bpc" id="L21" title="1 of 4 branches missed.">                || values.get(&quot;identifier&quot;) == null || values.get(&quot;identifier&quot;).isBlank()</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">                || values.values().stream().anyMatch(Objects::isNull))</span>
+<span class="fc" id="L23">            throw new IllegalArgumentException(&quot;A standard/directive identifier is required; only edition and section are optional&quot;);</span>
+<span class="fc" id="L24">    }</span>
+    @Override public Stored store(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L26">        validate(values);</span>
+<span class="fc" id="L27">        CanonicalArchitectureModel model = new ArchitectureDslCommands().model(dsl);</span>
+<span class="fc" id="L28">        String identifier = values.get(&quot;identifier&quot;), edition = values.getOrDefault(&quot;edition&quot;, &quot;&quot;), section = values.getOrDefault(&quot;section&quot;, &quot;&quot;);</span>
+<span class="fc" id="L29">        var matches = model.getSources().stream().filter(s -&gt; identifier.equals(s.getCanonicalIdentifier())).toList();</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if (matches.size() &gt; 1) throw new IllegalArgumentException(&quot;Ambiguous source identifier; resolve existing sources first&quot;);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        String source = matches.isEmpty() ? PlanningBlocks.identity(&quot;plan-source-&quot;, identifier) : matches.getFirst().getId();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (matches.isEmpty()) dsl = PlanningBlocks.add(dsl, PlanningBlocks.block(&quot;source&quot;, source,</span>
+<span class="fc" id="L33">                Map.of(&quot;type&quot;, &quot;reference&quot;, &quot;title&quot;, identifier, &quot;canonicalIdentifier&quot;, identifier, &quot;x-planning-owned&quot;, &quot;true&quot;)));</span>
+<span class="fc" id="L34">        Map&lt;String, String&gt; link = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L35">        link.put(&quot;requirement&quot;, requirement); link.put(&quot;source&quot;, source); link.put(&quot;linkType&quot;, &quot;references&quot;);</span>
+<span class="fc" id="L36">        link.put(&quot;x-planning-entry&quot;, entry);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (!edition.isEmpty()) {</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">            var versions = model.getSourceVersions().stream().filter(v -&gt; source.equals(v.getSourceId()) &amp;&amp; edition.equals(v.getVersionLabel())).toList();</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            if (versions.size() &gt; 1) throw new IllegalArgumentException(&quot;Ambiguous source edition&quot;);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            String version = versions.isEmpty() ? PlanningBlocks.identity(&quot;plan-version-&quot;, source + &quot;\n&quot; + edition) : versions.getFirst().getId();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (versions.isEmpty()) dsl = PlanningBlocks.add(dsl, PlanningBlocks.block(&quot;sourceVersion&quot;, version, Map.of(&quot;source&quot;, source, &quot;versionLabel&quot;, edition, &quot;x-planning-owned&quot;, &quot;true&quot;)));</span>
+<span class="fc" id="L42">            link.put(&quot;sourceVersion&quot;, version);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if (!section.isEmpty()) {</span>
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">                var fragments = model.getSourceFragments().stream().filter(f -&gt; version.equals(f.getSourceVersionId()) &amp;&amp; section.equals(f.getSectionPath())).toList();</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                if (fragments.size() &gt; 1) throw new IllegalArgumentException(&quot;Ambiguous source section&quot;);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                String fragment = fragments.isEmpty() ? PlanningBlocks.identity(&quot;plan-fragment-&quot;, version + &quot;\n&quot; + section) : fragments.getFirst().getId();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                if (fragments.isEmpty()) dsl = PlanningBlocks.add(dsl, PlanningBlocks.block(&quot;sourceFragment&quot;, fragment, Map.of(&quot;sourceVersion&quot;, version, &quot;sectionPath&quot;, section, &quot;x-planning-owned&quot;, &quot;true&quot;)));</span>
+<span class="fc" id="L48">                link.put(&quot;sourceFragment&quot;, fragment);</span>
+            }
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        } else if (!section.isEmpty()) {</span>
+            // Keep an unresolved locator on the reference itself; never fabricate a source edition.
+<span class="fc" id="L52">            link.put(&quot;x-unversioned-section&quot;, section);</span>
+        }
+<span class="fc" id="L54">        String linkId = PlanningBlocks.identity(&quot;plan-link-&quot;, requirement + &quot;\n&quot; + entry);</span>
+<span class="fc" id="L55">        BlockAst before = ArchitectureSemanticPatch.index(dsl).get(&quot;requirementSourceLink:&quot; + linkId);</span>
+<span class="pc bpc" id="L56" title="2 of 6 branches missed.">        if (before != null &amp;&amp; (!requirement.equals(before.property(&quot;requirement&quot;)) || !entry.equals(before.property(&quot;x-planning-entry&quot;))</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                || !&quot;references&quot;.equals(before.property(&quot;linkType&quot;))))</span>
+<span class="fc" id="L58">            throw new IllegalArgumentException(&quot;Planning reference identity belongs to another scope&quot;);</span>
+<span class="fc" id="L59">        BlockAst replacement = PlanningBlocks.block(&quot;requirementSourceLink&quot;, linkId, link);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (before != null) {</span>
+<span class="fc" id="L61">            Map&lt;String, String&gt; retained = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L62">            Set&lt;String&gt; managed = Set.of(&quot;requirement&quot;, &quot;source&quot;, &quot;sourceVersion&quot;, &quot;sourceFragment&quot;, &quot;linkType&quot;, &quot;x-planning-entry&quot;, &quot;x-unversioned-section&quot;);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            before.getProperties().forEach(property -&gt; { if (!managed.contains(property.key())) retained.put(property.key(), property.value()); });</span>
+<span class="fc" id="L64">            retained.putAll(link);</span>
+<span class="fc" id="L65">            Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(before.getExtensions());</span>
+<span class="fc" id="L66">            managed.forEach(extensions::remove);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            retained.forEach((key, value) -&gt; { if (key.startsWith(&quot;x-&quot;)) extensions.put(key, value); });</span>
+<span class="fc" id="L68">            replacement = new BlockAst(before.getKind(), before.getHeaderTokens(), retained.entrySet().stream()</span>
+<span class="fc" id="L69">                    .map(property -&gt; new com.taxonomy.dsl.ast.PropertyAst(property.getKey(), property.getValue(), null)).toList(),</span>
+<span class="fc" id="L70">                    before.getChildren(), extensions, null);</span>
+        }
+<span class="fc" id="L72">        dsl = ArchitectureSemanticPatch.replace(dsl, before, replacement);</span>
+<span class="fc" id="L73">        return new Stored(dsl, Map.of(&quot;linkId&quot;, linkId));</span>
+    }
+    @Override public String remove(String dsl, String requirement, String entry, Map&lt;String, String&gt; stored) {
+<span class="fc" id="L76">        BlockAst link = ArchitectureSemanticPatch.index(dsl).get(&quot;requirementSourceLink:&quot; + stored.get(&quot;linkId&quot;));</span>
+<span class="pc bpc" id="L77" title="3 of 6 branches missed.">        if (link == null || !requirement.equals(link.property(&quot;requirement&quot;)) || !entry.equals(link.property(&quot;x-planning-entry&quot;)))</span>
+<span class="nc" id="L78">            throw new IllegalArgumentException(&quot;Missing or foreign planning reference&quot;);</span>
+<span class="fc" id="L79">        return ArchitectureSemanticPatch.replace(dsl, link, null);</span>
+    }
+    @Override public Map&lt;String, String&gt; read(CanonicalArchitectureModel model, String requirement, Map&lt;String, String&gt; stored) {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (!stored.keySet().equals(Set.of(&quot;linkId&quot;))) throw new IllegalArgumentException(&quot;Invalid canonical standard reference&quot;);</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">        var link = model.getRequirementSourceLinks().stream().filter(l -&gt; stored.get(&quot;linkId&quot;).equals(l.getId()) &amp;&amp; requirement.equals(l.getRequirementId())).findFirst()</span>
+<span class="pc" id="L84">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing or foreign canonical standard reference&quot;));</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (!&quot;references&quot;.equals(link.getLinkType())) throw new IllegalArgumentException(&quot;A standard reference may not be interpreted as compliance&quot;);</span>
+<span class="fc" id="L86">        var source = model.getSources().stream().filter(s -&gt; Objects.equals(link.getSourceId(), s.getId())).findFirst()</span>
+<span class="pc" id="L87">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing canonical source&quot;));</span>
+<span class="fc" id="L88">        Map&lt;String, String&gt; result = new LinkedHashMap&lt;&gt;(); result.put(&quot;identifier&quot;, source.getCanonicalIdentifier());</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (link.getSourceVersionId() != null) {</span>
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">            var version = model.getSourceVersions().stream().filter(v -&gt; link.getSourceVersionId().equals(v.getId()) &amp;&amp; source.getId().equals(v.getSourceId())).findFirst()</span>
+<span class="pc" id="L91">                    .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing or foreign canonical source edition&quot;));</span>
+<span class="fc" id="L92">            result.put(&quot;edition&quot;, version.getVersionLabel());</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">            if (link.getSourceFragmentId() != null) {</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">                var fragment = model.getSourceFragments().stream().filter(f -&gt; link.getSourceFragmentId().equals(f.getId()) &amp;&amp; version.getId().equals(f.getSourceVersionId())).findFirst()</span>
+<span class="pc" id="L95">                        .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing or foreign source section&quot;));</span>
+<span class="fc" id="L96">                result.put(&quot;section&quot;, fragment.getSectionPath());</span>
+            }
+<span class="fc" id="L98">        } else {</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (link.getSourceFragmentId() != null) throw new IllegalArgumentException(&quot;A source fragment requires its exact edition&quot;);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (link.getExtensions().containsKey(&quot;x-unversioned-section&quot;)) result.put(&quot;section&quot;, link.getExtensions().get(&quot;x-unversioned-section&quot;));</span>
+        }
+<span class="fc" id="L102">        validate(result); return Map.copyOf(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

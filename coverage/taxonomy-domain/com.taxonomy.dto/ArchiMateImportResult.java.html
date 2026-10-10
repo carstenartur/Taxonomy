@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateImportResult.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ArchiMateImportResult.java</span></div><h1>ArchiMateImportResult.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Result of an ArchiMate XML preview or import operation.
+ *
+ * &lt;p&gt;The counters deliberately distinguish parsing/matching from mutation so
+ * clients can tell whether a model was understood, skipped as a duplicate, or
+ * materialized into the active workspace.&lt;/p&gt;
+ */
+public class ArchiMateImportResult {
+
+    private int elementsImported;
+    private int elementsMatched;
+    private int elementsUnmatched;
+    private int relationsParsed;
+    private int relationsImported;
+    private int relationsSkipped;
+    private int relationsRejected;
+    private boolean preview;
+    private String mappingProfile;
+<span class="fc" id="L24">    private List&lt;ImportLoss&gt; losses = List.of();</span>
+<span class="fc" id="L25">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L27">    public record ImportLoss(String scope, String id, String field, String kind, String rationale) { }</span>
+
+<span class="fc" id="L29">    public String getMappingProfile() { return mappingProfile; }</span>
+<span class="fc" id="L30">    public void setMappingProfile(String mappingProfile) { this.mappingProfile = mappingProfile; }</span>
+<span class="fc" id="L31">    public List&lt;ImportLoss&gt; getLosses() { return losses; }</span>
+<span class="fc" id="L32">    public void setLosses(List&lt;ImportLoss&gt; losses) { this.losses = List.copyOf(losses); }</span>
+
+<span class="fc" id="L34">    public ArchiMateImportResult() {</span>
+<span class="fc" id="L35">    }</span>
+
+<span class="fc" id="L37">    public int getElementsImported() { return elementsImported; }</span>
+<span class="fc" id="L38">    public void setElementsImported(int elementsImported) { this.elementsImported = elementsImported; }</span>
+
+<span class="fc" id="L40">    public int getElementsMatched() { return elementsMatched; }</span>
+<span class="fc" id="L41">    public void setElementsMatched(int elementsMatched) { this.elementsMatched = elementsMatched; }</span>
+
+<span class="fc" id="L43">    public int getElementsUnmatched() { return elementsUnmatched; }</span>
+<span class="fc" id="L44">    public void setElementsUnmatched(int elementsUnmatched) { this.elementsUnmatched = elementsUnmatched; }</span>
+
+<span class="fc" id="L46">    public int getRelationsParsed() { return relationsParsed; }</span>
+<span class="fc" id="L47">    public void setRelationsParsed(int relationsParsed) { this.relationsParsed = relationsParsed; }</span>
+
+<span class="fc" id="L49">    public int getRelationsImported() { return relationsImported; }</span>
+<span class="fc" id="L50">    public void setRelationsImported(int relationsImported) { this.relationsImported = relationsImported; }</span>
+
+<span class="fc" id="L52">    public int getRelationsSkipped() { return relationsSkipped; }</span>
+<span class="fc" id="L53">    public void setRelationsSkipped(int relationsSkipped) { this.relationsSkipped = relationsSkipped; }</span>
+
+<span class="fc" id="L55">    public int getRelationsRejected() { return relationsRejected; }</span>
+<span class="fc" id="L56">    public void setRelationsRejected(int relationsRejected) { this.relationsRejected = relationsRejected; }</span>
+
+<span class="fc" id="L58">    public boolean isPreview() { return preview; }</span>
+<span class="fc" id="L59">    public void setPreview(boolean preview) { this.preview = preview; }</span>
+
+<span class="fc" id="L61">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="fc" id="L62">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

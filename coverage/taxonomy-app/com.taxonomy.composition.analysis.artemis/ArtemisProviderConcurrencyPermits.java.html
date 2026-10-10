@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderConcurrencyPermits.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderConcurrencyPermits.java</span></div><h1>ArtemisProviderConcurrencyPermits.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.jms.client.ActiveMQSession;
+import org.apache.activemq.artemis.jms.client.ActiveMQMessage;
+
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * An uncommitted durable token delivery is one cluster-wide HTTP slot. Returning
+ * the token and acknowledging its delivery share one local JMS transaction.
+ * Closing a lost holder's connection rolls back its delivery at the broker.
+ * Runtime code never initializes or replenishes a queue.
+ */
+public final class ArtemisProviderConcurrencyPermits implements ProviderConcurrencyPermits {
+    private static final long RECEIVE_SLICE_MILLIS = 100;
+    private final ArtemisAnalysisConnection connection;
+    private final ArtemisProviderPermitSettings settings;
+
+    public ArtemisProviderConcurrencyPermits(ArtemisAnalysisConnection connection,
+<span class="fc" id="L31">                                            ArtemisProviderPermitSettings settings) {</span>
+<span class="fc" id="L32">        this.connection = Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L33">        this.settings = Objects.requireNonNull(settings, &quot;settings&quot;);</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override
+    public Permit acquire(ProviderId provider, Runnable checkpoint) {
+<span class="fc" id="L38">        Objects.requireNonNull(checkpoint, &quot;checkpoint&quot;).run();</span>
+<span class="fc" id="L39">        String group = settings.providerGroups().get(Objects.requireNonNull(provider, &quot;provider&quot;));</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (group == null) throw unavailable(&quot;No explicit cluster quota group configured for &quot; + provider, null);</span>
+<span class="fc" id="L41">        Session session = null;</span>
+<span class="fc" id="L42">        boolean handedOff = false;</span>
+        try {
+<span class="fc" id="L44">            session = connection.createSession(true);</span>
+<span class="fc" id="L45">            String queue = settings.queueName(group);</span>
+<span class="fc" id="L46">            var query = ((ActiveMQSession) session).getCoreSession().queueQuery(SimpleString.of(queue));</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">            if (!query.isExists() || !query.isDurable()) {</span>
+<span class="fc" id="L48">                throw unavailable(&quot;Cluster provider permit queue is not provisioned and durable&quot;, null);</span>
+            }
+<span class="fc" id="L50">            Destination destination = session.createQueue(queue + &quot;::&quot; + queue);</span>
+<span class="fc" id="L51">            var consumer = session.createConsumer(destination);</span>
+<span class="fc" id="L52">            long started = System.nanoTime();</span>
+            while (true) {
+<span class="fc" id="L54">                checkpoint.run();</span>
+<span class="fc" id="L55">                long remaining = settings.maximumWaitMillis()</span>
+<span class="fc" id="L56">                        - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (remaining &lt;= 0) throw unavailable(&quot;Cluster provider permit wait expired&quot;, null);</span>
+<span class="fc" id="L58">                Message token = consumer.receive(Math.min(RECEIVE_SLICE_MILLIS, remaining));</span>
+<span class="fc" id="L59">                checkpoint.run();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                if (token == null) continue;</span>
+<span class="fc" id="L61">                String id = validate(token, group);</span>
+<span class="fc" id="L62">                var permit = new TransactionalPermit(session, destination, group, id);</span>
+<span class="fc" id="L63">                handedOff = true;</span>
+<span class="fc" id="L64">                return permit;</span>
+            }
+<span class="fc" id="L66">        } catch (ProviderConcurrencyPermits.UnavailableException failure) {</span>
+<span class="fc" id="L67">            throw failure;</span>
+<span class="fc" id="L68">        } catch (com.taxonomy.analysis.service.AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L69">            throw stopped;</span>
+<span class="fc" id="L70">        } catch (Exception failure) {</span>
+<span class="fc" id="L71">            restoreInterrupt(failure);</span>
+<span class="fc" id="L72">            checkpoint.run();</span>
+<span class="fc" id="L73">            throw unavailable(&quot;Cluster provider permit acquisition unavailable&quot;, failure);</span>
+        } finally {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (!handedOff) closeSession(session);</span>
+        }
+    }
+
+    private static String validate(Message token, String group) throws JMSException {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (token.getIntProperty(&quot;schemaVersion&quot;) != 1</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                || !group.equals(token.getStringProperty(&quot;quotaGroup&quot;))</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                || token.getJMSDeliveryMode() != DeliveryMode.PERSISTENT</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                || token.getJMSExpiration() != 0</span>
+<span class="fc" id="L84">                || !(token instanceof ActiveMQMessage artemis)</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                || artemis.getCoreMessage().getType() != ActiveMQMessage.TYPE</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                || artemis.getCoreMessage().getBodySize() != 0) {</span>
+<span class="nc" id="L87">            throw unavailable(&quot;Invalid cluster provider permit token&quot;, null);</span>
+        }
+<span class="fc" id="L89">        String id = token.getStringProperty(&quot;permitId&quot;);</span>
+<span class="fc" id="L90">        try { UUID.fromString(id); }</span>
+<span class="nc" id="L91">        catch (IllegalArgumentException | NullPointerException invalid) {</span>
+<span class="nc" id="L92">            throw unavailable(&quot;Invalid cluster provider permit identity&quot;, null);</span>
+<span class="fc" id="L93">        }</span>
+<span class="fc" id="L94">        return id;</span>
+    }
+
+    static Message token(Session session, String group, String id) throws JMSException {
+<span class="fc" id="L98">        Message token = session.createMessage();</span>
+<span class="fc" id="L99">        token.setIntProperty(&quot;schemaVersion&quot;, 1);</span>
+<span class="fc" id="L100">        token.setStringProperty(&quot;quotaGroup&quot;, group);</span>
+<span class="fc" id="L101">        token.setStringProperty(&quot;permitId&quot;, id);</span>
+<span class="fc" id="L102">        return token;</span>
+    }
+
+    private static final class TransactionalPermit implements Permit {
+        private final Session session;
+        private final Destination destination;
+        private final String group;
+        private final String id;
+        private boolean closed;
+
+<span class="fc" id="L112">        private TransactionalPermit(Session session, Destination destination, String group, String id) {</span>
+<span class="fc" id="L113">            this.session = session;</span>
+<span class="fc" id="L114">            this.destination = destination;</span>
+<span class="fc" id="L115">            this.group = group;</span>
+<span class="fc" id="L116">            this.id = id;</span>
+<span class="fc" id="L117">        }</span>
+
+        @Override
+        public synchronized void close() {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (closed) return;</span>
+<span class="fc" id="L122">            closed = true;</span>
+<span class="fc" id="L123">            try (MessageProducer producer = session.createProducer(destination)) {</span>
+<span class="fc" id="L124">                producer.send(token(session, group, id), DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);</span>
+<span class="fc" id="L125">                session.commit();</span>
+<span class="fc" id="L126">            } catch (JMSException failure) {</span>
+<span class="fc" id="L127">                restoreInterrupt(failure);</span>
+                // Never compensate by sending another token: commit may have reached the broker.
+<span class="fc" id="L129">                throw unavailable(&quot;Cluster provider permit return was not confirmed&quot;, failure);</span>
+            } finally {
+                // An uncommitted return rolls back both consumption and replacement together.
+<span class="fc" id="L132">                closeSession(session);</span>
+            }
+<span class="fc" id="L134">        }</span>
+    }
+
+    private static UnavailableException unavailable(String message, Throwable cause) {
+<span class="fc" id="L138">        return new UnavailableException(message, cause);</span>
+    }
+
+    private static void closeSession(Session session) {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (session == null) return;</span>
+<span class="fc" id="L143">        boolean interrupted = Thread.currentThread().isInterrupted();</span>
+<span class="fc" id="L144">        try { session.close(); }</span>
+<span class="nc" id="L145">        catch (JMSException failure) {</span>
+<span class="nc" id="L146">            restoreInterrupt(failure);</span>
+            // Broker recovery returns unacknowledged tokens.
+        } finally {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (interrupted) Thread.currentThread().interrupt();</span>
+        }
+<span class="fc" id="L151">    }</span>
+
+    private static void restoreInterrupt(Throwable failure) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">            if (cause instanceof InterruptedException</span>
+                    || cause instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException) {
+<span class="fc" id="L157">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L158">                return;</span>
+            }
+        }
+<span class="fc" id="L161">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

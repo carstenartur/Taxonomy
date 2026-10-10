@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginRuntimeConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.plugins</a> &gt; <span class="el_source">PluginRuntimeConfiguration.java</span></div><h1>PluginRuntimeConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.plugins;
+
+import com.taxonomy.extension.api.plugin.PluginDescriptor;
+import com.taxonomy.extension.runtime.*;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.util.*;
+
+/** Explicit local artifact admission before any shared catalog facade becomes available. */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L17">public class PluginRuntimeConfiguration {</span>
+    @Bean(destroyMethod = &quot;close&quot;) Installation pluginInstallation(ObjectProvider&lt;TaxonomyExtension&gt; builtins,
+                                                                  Environment environment) throws IOException {
+<span class="fc" id="L20">        var catalog = BuiltinCatalog.create(builtins.orderedStream().toList());</span>
+<span class="fc" id="L21">        Path directory = Path.of(environment.getProperty(&quot;taxonomy.plugins.directory&quot;, &quot;plugins&quot;));</span>
+<span class="fc" id="L22">        Path cache = Path.of(environment.getProperty(&quot;taxonomy.plugins.cache-directory&quot;,</span>
+<span class="fc" id="L23">                Path.of(System.getProperty(&quot;java.io.tmpdir&quot;), &quot;taxonomy-plugin-cache&quot;).toString()));</span>
+<span class="fc" id="L24">        var runtime = new Pf4jPluginRuntime(directory, cache, catalog);</span>
+        try {
+<span class="fc" id="L26">            var validator = new PluginArtifactValidator();</span>
+<span class="fc" id="L27">            Map&lt;String, Path&gt; artifacts = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L28">            Map&lt;String, PluginDescriptor&gt; descriptors = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L29">            try (var paths = Files.list(directory)) {</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                for (Path artifact : paths.filter(p -&gt; p.getFileName().toString().endsWith(&quot;.jar&quot;)).sorted().toList()) {</span>
+                    // This read is only for ordering. install() copies and validates authoritative bytes again.
+<span class="fc" id="L32">                    var descriptor = validator.validate(artifact);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">                    if (artifacts.putIfAbsent(descriptor.identity().id(), artifact) != null)</span>
+<span class="nc" id="L34">                        throw new IllegalArgumentException(&quot;Duplicate local plugin ID: &quot; + descriptor.identity().id());</span>
+<span class="fc" id="L35">                    descriptors.put(descriptor.identity().id(), descriptor);</span>
+<span class="fc" id="L36">                }</span>
+            }
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            while (!artifacts.isEmpty()) {</span>
+<span class="fc" id="L39">                Set&lt;String&gt; available = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L40">                catalog.snapshot().plugins().forEach(p -&gt; available.add(p.identity().id()));</span>
+<span class="fc" id="L41">                String next = artifacts.keySet().stream().filter(id -&gt; descriptors.get(id).requires().stream()</span>
+<span class="pc" id="L42">                                .allMatch(r -&gt; available.contains(r.id()))).findFirst()</span>
+<span class="pc" id="L43">                        .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing or cyclic local plugin dependencies: &quot; + artifacts.keySet()));</span>
+<span class="fc" id="L44">                var identity = runtime.install(artifacts.remove(next), descriptors.get(next).identity());</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                if (!identity.equals(descriptors.get(next).identity()))</span>
+<span class="nc" id="L46">                    throw new IllegalStateException(&quot;Operator plugin changed during startup: &quot; + next);</span>
+<span class="fc" id="L47">                runtime.start(identity.id());</span>
+<span class="fc" id="L48">            }</span>
+<span class="fc" id="L49">            return new Installation(catalog, runtime);</span>
+<span class="nc" id="L50">        } catch (IOException | RuntimeException | Error failure) {</span>
+<span class="nc" id="L51">            try { runtime.close(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="nc" id="L52">            throw failure;</span>
+        }
+    }
+<span class="fc" id="L55">    @Bean(destroyMethod = &quot;&quot;) Pf4jPluginRuntime pluginRuntime(Installation installation) { return installation.runtime(); }</span>
+    @Bean PluginLifecycleCoordinator pluginLifecycleCoordinator(Pf4jPluginRuntime runtime, Environment environment) {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        boolean clustered = environment.getProperty(&quot;taxonomy.plugins.dynamic.clustered&quot;, Boolean.class, false)</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                || !&quot;local&quot;.equals(environment.getProperty(&quot;taxonomy.analysis.transport.mode&quot;, &quot;local&quot;))</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                || !&quot;all&quot;.equals(environment.getProperty(&quot;taxonomy.analysis.runtime-role&quot;, &quot;all&quot;));</span>
+<span class="fc" id="L60">        return new PluginLifecycleCoordinator(runtime, Path.of(environment.getProperty(&quot;taxonomy.plugins.directory&quot;, &quot;plugins&quot;)),</span>
+<span class="fc" id="L61">                environment.getProperty(&quot;taxonomy.plugins.dynamic.enabled&quot;, Boolean.class, false), clustered);</span>
+    }
+<span class="fc" id="L63">    record Installation(PluginCatalog catalog, Pf4jPluginRuntime runtime) implements AutoCloseable {</span>
+<span class="fc" id="L64">        @Override public void close() { runtime.close(); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

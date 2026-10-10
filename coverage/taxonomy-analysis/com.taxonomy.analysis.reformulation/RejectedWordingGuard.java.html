@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RejectedWordingGuard.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">RejectedWordingGuard.java</span></div><h1>RejectedWordingGuard.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.reformulation.*;
+import java.util.*;
+
+/** Exact rejected wording is retained as evidence, never promoted by a later model result. */
+final class RejectedWordingGuard {
+    private RejectedWordingGuard() {}
+
+    static Set&lt;String&gt; from(Collection&lt;Statement&gt; statements) {
+<span class="fc" id="L11">        var rejected = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L12">        statements.stream().filter(s -&gt; &quot;REJECTED&quot;.equals(s.reviewState()))</span>
+<span class="fc" id="L13">                .forEach(s -&gt; rejected.add(s.wording().strip()));</span>
+<span class="fc" id="L14">        return rejected;</span>
+    }
+
+    static boolean repeats(String candidate, Set&lt;String&gt; rejected) {
+<span class="pc bpc" id="L18" title="2 of 8 branches missed.">        return candidate != null &amp;&amp; rejected.stream().anyMatch(wording -&gt; !wording.isEmpty() &amp;&amp; candidate.contains(wording));</span>
+    }
+
+    static String safeSummary(String summary, Set&lt;String&gt; rejected, List&lt;ValidationReport.Finding&gt; findings) {
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (!repeats(summary, rejected)) return summary;</span>
+<span class="fc" id="L23">        findings.add(conflict(List.of()));</span>
+<span class="fc" id="L24">        return &quot;&quot;;</span>
+    }
+
+    static NodeSynthesisResult review(NodeSynthesisResult result, Collection&lt;Statement&gt; retained) {
+<span class="nc" id="L28">        return review(result, retained, Set.of());</span>
+    }
+
+    static NodeSynthesisResult review(NodeSynthesisResult result, Collection&lt;Statement&gt; retained, Set&lt;String&gt; historical) {
+<span class="fc" id="L32">        var rejected = new LinkedHashSet&lt;&gt;(from(retained));</span>
+<span class="fc" id="L33">        rejected.addAll(historical);</span>
+<span class="fc" id="L34">        var findings = new ArrayList&lt;&gt;(result.conflictCandidates());</span>
+<span class="fc" id="L35">        var additions = new ArrayList&lt;Statement&gt;();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (var statement : result.statementProposals()) {</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (repeats(statement.wording(), rejected)) {</span>
+<span class="fc" id="L38">                statement = new Statement(statement.id(), statement.wording(), statement.sourceSpans(), statement.provenance(),</span>
+<span class="fc" id="L39">                        statement.architectureLinks(), statement.questionDependencies(), statement.conditionalValidity(),</span>
+<span class="fc" id="L40">                        statement.editingOrigin(), &quot;REJECTED&quot;);</span>
+<span class="fc" id="L41">                findings.add(conflict(List.of(statement.id())));</span>
+            }
+<span class="fc" id="L43">            additions.add(statement);</span>
+<span class="fc" id="L44">        }</span>
+<span class="fc" id="L45">        String summary = safeSummary(result.summary(), rejected, findings);</span>
+<span class="fc" id="L46">        return new NodeSynthesisResult(result.nodeId(), summary, additions, result.preservedStatementIds(),</span>
+<span class="fc" id="L47">                result.questionProposals(), result.preservedQuestionIds(), result.uncoveredSourceRefs(), findings);</span>
+    }
+
+    private static ValidationReport.Finding conflict(List&lt;String&gt; ids) {
+<span class="fc" id="L51">        return new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, &quot;REJECTED_ADDITION_REINTRODUCED&quot;,</span>
+<span class="fc" id="L52">                &quot;Rejected wording was repeated; candidate withheld from active text for review&quot;, ids, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

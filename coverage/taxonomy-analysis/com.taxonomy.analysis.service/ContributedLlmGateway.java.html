@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContributedLlmGateway.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ContributedLlmGateway.java</span></div><h1>ContributedLlmGateway.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.LlmTransport;
+import com.taxonomy.extension.api.llm.LlmTransportException;
+import com.taxonomy.extension.api.llm.ProviderId;
+import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.Objects;
+
+/** Host policy around an independently supplied single-attempt transport. */
+final class ContributedLlmGateway implements LlmGateway {
+    private final ProviderId provider;
+    private final LlmTransport transport;
+    private final AnalysisRuntimeSettings settings;
+    private final LlmRecordReplayService recordings;
+    private final ObjectMapper mapper;
+    private final LlmRequestAdmission admission;
+
+    ContributedLlmGateway(ProviderId provider, LlmTransport transport,
+                          AnalysisRuntimeSettings settings, LlmRecordReplayService recordings,
+<span class="fc" id="L22">                          ObjectMapper mapper) {</span>
+<span class="fc" id="L23">        this.provider = Objects.requireNonNull(provider);</span>
+<span class="fc" id="L24">        this.transport = Objects.requireNonNull(transport);</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        if (!provider.equals(new ProviderId(transport.providerName()))) {</span>
+<span class="nc" id="L26">            throw new IllegalArgumentException(&quot;Provider transport identity mismatch: &quot; + provider);</span>
+        }
+<span class="fc" id="L28">        this.settings = settings;</span>
+<span class="fc" id="L29">        this.recordings = recordings;</span>
+<span class="fc" id="L30">        this.mapper = Objects.requireNonNull(mapper);</span>
+<span class="fc" id="L31">        admission = new LlmRequestAdmission(provider, 0, settings);</span>
+<span class="fc" id="L32">    }</span>
+
+<span class="fc" id="L34">    void configureRequestLimits(ProviderRequestLimiter.Limits limits) { admission.configure(limits); }</span>
+<span class="fc" id="L35">    void configureProviderPermits(ProviderConcurrencyPermits permits) { admission.configure(permits); }</span>
+
+<span class="fc" id="L37">    @Override public String providerName() { return provider.value(); }</span>
+
+    @Override public String sendHttpRequest(String prompt, String apiKey) {
+<span class="fc" id="L40">        AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L41">        String invocation = LlmTransportMeter.newInvocation();</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">        if (recordings != null &amp;&amp; recordings.isReplayMode()) {</span>
+<span class="fc" id="L43">            var recorded = recordings.replay(prompt);</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (recorded.isPresent()) {</span>
+<span class="fc" id="L45">                LlmTransportMeter.replay(invocation, provider.value());</span>
+<span class="fc" id="L46">                return recorded.get();</span>
+            }
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if (!recordings.isFallbackLive()) return null;</span>
+        }
+<span class="fc" id="L50">        int maximumRetries = Math.max(0, Math.min(6,</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                settings == null ? 2 : settings.getInt(&quot;llm.retry.max&quot;, 2)));</span>
+<span class="pc" id="L52">        for (int attempt = 0; ; attempt++) {</span>
+<span class="fc" id="L53">            int retry = attempt;</span>
+            try {
+<span class="fc" id="L55">                String response = admission.execute(() -&gt; {</span>
+<span class="fc" id="L56">                    AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L57">                    AnalysisRunControl.phase(&quot;LLM_REQUEST&quot;, null);</span>
+<span class="fc" id="L58">                    return LlmTransportMeter.exchange(invocation, provider.value(), retry, mapper, () -&gt; {</span>
+                        String raw;
+<span class="fc" id="L60">                        try { raw = transport.sendHttpRequest(prompt, apiKey); }</span>
+<span class="fc" id="L61">                        catch (LlmTransportException typed) { throw typed; }</span>
+<span class="nc" id="L62">                        catch (RuntimeException unsafeFailure) {</span>
+<span class="nc" id="L63">                            AnalysisRunControl.checkpoint();</span>
+<span class="nc" id="L64">                            throw new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED,</span>
+                                    provider + &quot;: transport failed without a typed failure&quot;);
+<span class="fc" id="L66">                        }</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                        if (raw == null) throw new LlmTransportException(</span>
+                                LlmTransportException.FailureKind.INVALID_RESPONSE, &quot;Empty provider response&quot;);
+<span class="fc" id="L69">                        return ResponseEntity.ok(raw);</span>
+<span class="fc" id="L70">                    }).getBody();</span>
+                });
+<span class="fc" id="L72">                AnalysisRunControl.checkpoint();</span>
+<span class="pc bpc" id="L73" title="3 of 4 branches missed.">                if (recordings != null &amp;&amp; recordings.isRecordMode()) {</span>
+<span class="nc" id="L74">                    recordings.record(prompt, response, provider.value(), null);</span>
+                }
+<span class="fc" id="L76">                return response;</span>
+<span class="fc" id="L77">            } catch (LlmTransportException failure) {</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                if (failure.kind() == LlmTransportException.FailureKind.RATE_LIMIT) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                    if (admission.retryRateLimit(failure.retryAfter().orElse(null), attempt, maximumRetries)) continue;</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                } else if (failure.kind() != LlmTransportException.FailureKind.INVALID_RESPONSE</span>
+                        &amp;&amp; attempt &lt; maximumRetries) {
+<span class="nc" id="L82">                    AnalysisRunControl.pause(&quot;RETRY_WAIT&quot;, ProviderRetryPolicy.backoffMillis(attempt));</span>
+<span class="nc" id="L83">                    continue;</span>
+                }
+<span class="fc" id="L85">                throw hostFailure(failure);</span>
+            }
+        }
+    }
+
+    @Override public String extractResponseText(String rawResponseBody) {
+<span class="fc" id="L91">        try { return transport.extractResponseText(rawResponseBody); }</span>
+<span class="nc" id="L92">        catch (LlmTransportException failure) { throw hostFailure(failure); }</span>
+<span class="nc" id="L93">        catch (RuntimeException unsafeFailure) {</span>
+<span class="nc" id="L94">            throw new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED,</span>
+                    provider + &quot;: invalid response&quot;);
+        }
+    }
+
+    private RuntimeException hostFailure(LlmTransportException failure) {
+        // Never propagate a third-party message/body/cause into diagnostics or job state.
+<span class="fc" id="L101">        String message = provider + &quot;: &quot; + failure.kind();</span>
+<span class="pc bpc" id="L102" title="3 of 4 branches missed.">        return switch (failure.kind()) {</span>
+<span class="nc" id="L103">            case RATE_LIMIT -&gt; new LlmRateLimitException(message);</span>
+<span class="nc" id="L104">            case TIMEOUT -&gt; new LlmTimeoutException(message);</span>
+<span class="fc" id="L105">            case UNAVAILABLE -&gt; new LlmProviderException(</span>
+                    LlmProviderException.Reason.ENDPOINT_UNREACHABLE, message);
+<span class="nc" id="L107">            case INVALID_RESPONSE -&gt; new LlmProviderException(</span>
+                    LlmProviderException.Reason.REQUEST_REJECTED, message);
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

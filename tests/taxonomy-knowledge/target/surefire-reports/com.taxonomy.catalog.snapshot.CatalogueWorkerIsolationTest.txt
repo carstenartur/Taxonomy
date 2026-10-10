@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.catalog.snapshot.CatalogueWorkerIsolationTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.221 s -- in com.taxonomy.catalog.snapshot.CatalogueWorkerIsolationTest

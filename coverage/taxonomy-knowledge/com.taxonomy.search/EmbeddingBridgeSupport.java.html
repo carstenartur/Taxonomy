@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EmbeddingBridgeSupport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">EmbeddingBridgeSupport.java</span></div><h1>EmbeddingBridgeSupport.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.search.config.SpringContextHolder;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import org.hibernate.search.engine.backend.document.DocumentElement;
+import org.hibernate.search.engine.backend.document.IndexFieldReference;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
+
+import java.util.function.Function;
+
+/**
+ * Shared utilities for embedding binders ({@link NodeEmbeddingBinder} and
+ * {@link RelationEmbeddingBinder}).
+ *
+ * &lt;p&gt;Eliminates duplication of the common embedding-field creation and the
+ * graceful-degradation write pattern that both binders share.
+ */
+public final class EmbeddingBridgeSupport {
+
+    /** The vector dimension used by the ONNX embedding model (both supported profiles). */
+    static final int VECTOR_DIMENSION = 384;
+
+    private EmbeddingBridgeSupport() { /* utility class */ }
+
+    /**
+     * Creates the {@code &quot;embedding&quot;} float-vector index field on the given binding context.
+     *
+     * @param context the Hibernate Search type-binding context
+     * @return reference to the created embedding field
+     */
+    public static IndexFieldReference&lt;float[]&gt; createEmbeddingField(TypeBindingContext context) {
+<span class="fc" id="L33">        return context.indexSchemaElement()</span>
+<span class="fc" id="L34">                .field(&quot;embedding&quot;,</span>
+<span class="fc" id="L35">                        f -&gt; f.asFloatVector().dimension(VECTOR_DIMENSION)</span>
+<span class="fc" id="L36">                                .vectorSimilarity(VectorSimilarity.COSINE))</span>
+<span class="fc" id="L37">                .toReference();</span>
+    }
+
+    /** Keyword identifying the exact model bytes and inference contract of this vector. */
+    public static IndexFieldReference&lt;String&gt; createEmbeddingModelField(TypeBindingContext context) {
+<span class="fc" id="L42">        return context.indexSchemaElement().field(&quot;embeddingModel&quot;, f -&gt; f.asString()).toReference();</span>
+    }
+
+    /**
+     * Writes an embedding vector to the Lucene document only when semantic embeddings were
+     * explicitly enabled and the local service is available. Otherwise the document is indexed
+     * without a vector and no model initialisation or runtime download is attempted.
+     *
+     * @param target         the Lucene document being written
+     * @param embeddingField reference to the {@code &quot;embedding&quot;} index field
+     * @param entity         the JPA entity being indexed
+     * @param textBuilder    function that converts the entity to the enriched text used for
+     *                       vector computation
+     * @param &lt;T&gt;            entity type
+     */
+    public static &lt;T&gt; void writeEmbedding(DocumentElement target,
+                                           IndexFieldReference&lt;float[]&gt; embeddingField,
+                                           IndexFieldReference&lt;String&gt; modelField,
+                                           T entity,
+                                           Function&lt;T, String&gt; textBuilder) {
+        try {
+<span class="fc" id="L63">            LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);</span>
+<span class="pc bpc" id="L64" title="1 of 6 branches missed.">            if (svc == null || !svc.isEnabled() || !svc.isAvailable()) return;</span>
+<span class="fc" id="L65">            String text = textBuilder.apply(entity);</span>
+<span class="fc" id="L66">            float[] vector = svc.embedDocument(text);</span>
+<span class="fc" id="L67">            String identity = svc.embeddingIndexKey();</span>
+<span class="fc" id="L68">            target.addValue(embeddingField, vector);</span>
+<span class="fc" id="L69">            target.addValue(modelField, identity);</span>
+<span class="fc" id="L70">        } catch (Exception | LinkageError failure) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();</span>
+            // Keep full-text indexing usable, but invalidate semantic readiness.
+<span class="fc" id="L73">            var health = SpringContextHolder.getBean(EmbeddingIndexHealth.class);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (health != null) health.recordFailure(entity);</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

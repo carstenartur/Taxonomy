@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportRenderResult.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.report</a> &gt; <span class="el_source">ReportRenderResult.java</span></div><h1>ReportRenderResult.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.report;
+
+import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Rendered report payload plus immutable, format-neutral artifact metadata.
+ *
+ * &lt;p&gt;Metadata describes the exact artifact produced by the renderer. It is not an
+ * unrestricted HTTP-header map; protocol adapters must explicitly allow-list any
+ * values they expose.&lt;/p&gt;
+ */
+public record ReportRenderResult(
+        byte[] content,
+        Map&lt;String, String&gt; artifactMetadata) implements Serializable {
+
+    /** Source- and binary-compatible constructor for renderers without metadata. */
+    public ReportRenderResult(byte[] content) {
+<span class="fc" id="L22">        this(content, Map.of());</span>
+<span class="fc" id="L23">    }</span>
+
+<span class="fc" id="L25">    public ReportRenderResult {</span>
+<span class="fc" id="L26">        Objects.requireNonNull(content, &quot;content must not be null&quot;);</span>
+<span class="fc" id="L27">        Objects.requireNonNull(</span>
+                artifactMetadata, &quot;artifactMetadata must not be null&quot;);
+<span class="fc" id="L29">        content = Arrays.copyOf(content, content.length);</span>
+<span class="fc" id="L30">        artifactMetadata = Map.copyOf(artifactMetadata);</span>
+<span class="fc" id="L31">    }</span>
+
+    /** Record accessor with the same defensive-copy contract as {@link #bytes()}. */
+    public byte[] content() {
+<span class="fc" id="L35">        return bytes();</span>
+    }
+
+    public byte[] bytes() {
+<span class="fc" id="L39">        return Arrays.copyOf(content, content.length);</span>
+    }
+
+    public String utf8() {
+<span class="fc" id="L43">        return new String(content, StandardCharsets.UTF_8);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

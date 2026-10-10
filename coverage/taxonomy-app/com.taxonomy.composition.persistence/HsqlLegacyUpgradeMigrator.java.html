@@ -1,0 +1,664 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HsqlLegacyUpgradeMigrator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.persistence</a> &gt; <span class="el_source">HsqlLegacyUpgradeMigrator.java</span></div><h1>HsqlLegacyUpgradeMigrator.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.persistence;
+
+import com.taxonomy.shared.config.SchemaContractMigration;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * Pre-Hibernate upgrade of the released 1.3 HSQLDB application schema.
+ *
+ * &lt;p&gt;Hibernate cannot add a new NOT NULL column to a populated HSQLDB table.
+ * The portable relation/commit-index migration used to run as an application
+ * runner, after both Hibernate and the repository catalogue initializer. Run
+ * that existing provenance-aware migration at Flyway's earlier boundary, and
+ * bind portfolio rows through their exact parents before enforcing new required
+ * columns. This code never guesses a tenant from a username or row ID.&lt;/p&gt;
+ */
+final class HsqlLegacyUpgradeMigrator {
+
+<span class="fc" id="L32">    private static final List&lt;String&gt; ROOTS = List.of(</span>
+            &quot;arch_project&quot;, &quot;solution_definition&quot;, &quot;product_catalog&quot;);
+    private final DataSource dataSource;
+
+<span class="fc" id="L36">    private HsqlLegacyUpgradeMigrator(DataSource dataSource) {</span>
+<span class="fc" id="L37">        this.dataSource = dataSource;</span>
+<span class="fc" id="L38">    }</span>
+
+    static void migrate(DataSource dataSource) {
+<span class="fc" id="L41">        new HsqlLegacyUpgradeMigrator(dataSource).migrate();</span>
+<span class="fc" id="L42">    }</span>
+
+    private void migrate() {
+<span class="fc" id="L45">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L46">            if (!connection.getMetaData().getDatabaseProductName()</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                    .toLowerCase(Locale.ROOT).contains(&quot;hsql&quot;)) {</span>
+<span class="fc" id="L48">                return;</span>
+            }
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (!tableExists(connection, &quot;system_repository&quot;)) {</span>
+<span class="fc" id="L51">                return; // A fresh schema is created by Hibernate after this hook.</span>
+            }
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            boolean legacy = !columnExists(connection, &quot;system_repository&quot;, &quot;version&quot;)</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                    || (tableExists(connection, &quot;taxonomy_relation&quot;)</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                        &amp;&amp; !columnExists(connection, &quot;taxonomy_relation&quot;, &quot;repository_id&quot;))</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                    || (tableExists(connection, &quot;arch_project&quot;)</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                        &amp;&amp; !columnExists(connection, &quot;arch_project&quot;, &quot;repository_id&quot;));</span>
+<span class="fc" id="L58">            ensureColumn(connection, &quot;system_repository&quot;, &quot;version&quot;,</span>
+                    &quot;BIGINT DEFAULT 0 NOT NULL&quot;);
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if (legacy) bindLegacyWorkspaceProvenance(connection);</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">        } catch (SQLException error) {</span>
+<span class="nc" id="L62">            throw new IllegalStateException(&quot;Unable to prepare HSQLDB 1.3 schema&quot;, error);</span>
+<span class="fc" id="L63">        }</span>
+
+        // Includes the existing exact workspace/primary-repository relation
+        // binder and the rebuildable commit-index reset. The application runner
+        // repeats these checks after Hibernate has created any new tables.
+<span class="fc" id="L68">        new SchemaContractMigration(dataSource).migrate();</span>
+
+<span class="fc" id="L70">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L71">            enforceRelationColumns(connection);</span>
+<span class="fc" id="L72">            bindPortfolio(connection);</span>
+<span class="nc" id="L73">        } catch (SQLException error) {</span>
+<span class="nc" id="L74">            throw new IllegalStateException(&quot;Unable to upgrade HSQLDB 1.3 tenants safely&quot;, error);</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+
+    private static void bindLegacyWorkspaceProvenance(Connection connection)
+            throws SQLException {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (!tableExists(connection, &quot;user_workspace&quot;)</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                || !columnExists(connection, &quot;user_workspace&quot;, &quot;source_repository_id&quot;)) {</span>
+<span class="nc" id="L82">            return;</span>
+        }
+<span class="nc" id="L84">        long missing = count(connection, &quot;SELECT COUNT(*) FROM user_workspace &quot;</span>
+                + &quot;WHERE source_repository_id IS NULL OR TRIM(source_repository_id) = ''&quot;);
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (missing == 0) return;</span>
+<span class="nc" id="L87">        String primary = primaryRepository(connection, true);</span>
+<span class="nc" id="L88">        try (PreparedStatement statement = connection.prepareStatement(</span>
+                &quot;UPDATE user_workspace SET source_repository_id = ? &quot;
+                        + &quot;WHERE source_repository_id IS NULL OR TRIM(source_repository_id) = ''&quot;)) {
+<span class="nc" id="L91">            statement.setString(1, primary);</span>
+<span class="nc" id="L92">            statement.executeUpdate();</span>
+        }
+<span class="nc" id="L94">    }</span>
+
+    private static void enforceRelationColumns(Connection connection) throws SQLException {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (String table : List.of(</span>
+                &quot;taxonomy_relation&quot;, &quot;relation_proposal&quot;, &quot;relation_hypothesis&quot;)) {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (!tableExists(connection, table)) continue;</span>
+<span class="fc" id="L100">            setNotNull(connection, table, &quot;repository_id&quot;);</span>
+<span class="fc" id="L101">            setNotNull(connection, table, &quot;workspace_scope_key&quot;);</span>
+<span class="fc" id="L102">        }</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (tableExists(connection, &quot;relation_hypothesis&quot;)) {</span>
+<span class="fc" id="L104">            setNotNull(connection, &quot;relation_hypothesis&quot;, &quot;analysis_session_scope_key&quot;);</span>
+        }
+<span class="fc" id="L106">    }</span>
+
+    static void bindPortfolio(Connection connection) throws SQLException {
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (!tableExists(connection, &quot;arch_project&quot;)) return;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (String table : ROOTS) {</span>
+<span class="fc" id="L111">            requireTable(connection, table);</span>
+<span class="fc" id="L112">            widenScopeKey(connection, table);</span>
+<span class="fc" id="L113">            ensureColumn(connection, table, &quot;repository_id&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L114">            ensureColumn(connection, table, &quot;workspace_scope&quot;, &quot;VARCHAR(320)&quot;);</span>
+<span class="fc" id="L115">            ensureColumn(connection, table, &quot;branch_name&quot;, &quot;VARCHAR(255)&quot;);</span>
+<span class="fc" id="L116">        }</span>
+<span class="fc" id="L117">        String primary = primaryRepository(connection, false);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        String defaultBranch = primary == null ? null : primaryBranch(connection, primary);</span>
+<span class="fc" id="L119">        Map&lt;String, Tenant&gt; workspaces = workspaceTenants(connection);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        for (String table : ROOTS) {</span>
+<span class="fc" id="L121">            rejectTargetBusinessKeyCollisions(connection, table, primary, defaultBranch, workspaces);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            for (Row row : rows(connection, table)) {</span>
+<span class="fc" id="L123">                String workspaceId = row.text(&quot;workspace_id&quot;);</span>
+                Tenant tenant;
+<span class="fc" id="L125">                String previous = row.text(&quot;scope_key&quot;);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (RepositoryTenantIdentity.isEncoded(previous)) {</span>
+                    // A completed tenant is immutable. Workspace's current branch
+                    // can advance independently after this row was created.
+<span class="fc" id="L129">                    var identity = RepositoryTenantIdentity.parse(previous);</span>
+<span class="fc" id="L130">                    tenant = new Tenant(identity.repositoryId(), identity.workspaceScope(),</span>
+<span class="fc" id="L131">                            identity.branch());</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                    String expectedScope = workspaceId == null</span>
+<span class="fc" id="L133">                            ? RepositoryTenantIdentity.CENTRAL_SCOPE</span>
+<span class="fc" id="L134">                            : RepositoryTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId;</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                    if (!expectedScope.equals(tenant.workspaceScope())) {</span>
+<span class="nc" id="L136">                        throw unsafe(table + &quot; row &quot; + row.id() + &quot; conflicts with workspace_id&quot;);</span>
+                    }
+<span class="fc" id="L138">                } else {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                    tenant = workspaceId == null</span>
+<span class="fc" id="L140">                            ? centralTenant(primary, defaultBranch, table, row.id())</span>
+<span class="fc" id="L141">                            : workspaces.get(workspaceId);</span>
+                }
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                if (tenant == null) {</span>
+<span class="nc" id="L144">                    throw unsafe(table + &quot; row &quot; + row.id()</span>
+                            + &quot; has an unknown or unbound workspace &quot; + workspaceId);
+                }
+<span class="fc" id="L147">                requireMatch(row, &quot;repository_id&quot;, tenant.repositoryId(), table);</span>
+<span class="fc" id="L148">                requireMatch(row, &quot;workspace_scope&quot;, tenant.workspaceScope(), table);</span>
+<span class="fc" id="L149">                requireMatch(row, &quot;branch_name&quot;, tenant.branch(), table);</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (RepositoryTenantIdentity.isEncoded(previous)</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                        &amp;&amp; !previous.equals(tenant.scopeKey())) {</span>
+<span class="nc" id="L152">                    throw unsafe(table + &quot; row &quot; + row.id() + &quot; has a conflicting tenant scope&quot;);</span>
+                }
+<span class="fc" id="L154">                update(connection, &quot;UPDATE &quot; + table</span>
+                                + &quot; SET repository_id=?, workspace_scope=?, branch_name=?, scope_key=? WHERE id=?&quot;,
+<span class="fc" id="L156">                        tenant.repositoryId(), tenant.workspaceScope(), tenant.branch(),</span>
+<span class="fc" id="L157">                        tenant.scopeKey(), row.id());</span>
+<span class="fc" id="L158">            }</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            for (String column : List.of(&quot;repository_id&quot;, &quot;workspace_scope&quot;, &quot;branch_name&quot;)) {</span>
+<span class="fc" id="L160">                setNotNull(connection, table, column);</span>
+<span class="fc" id="L161">            }</span>
+<span class="fc" id="L162">            ensureForeignKey(connection, table, &quot;repository_id&quot;, &quot;system_repository&quot;,</span>
+                    &quot;repository_id&quot;, &quot;fk_hsql_&quot; + table + &quot;_repository&quot;);
+<span class="fc" id="L164">        }</span>
+
+<span class="fc" id="L166">        Map&lt;String, Row&gt; projects = indexedRows(connection, &quot;arch_project&quot;);</span>
+<span class="fc" id="L167">        bindChild(connection, &quot;project_requirement&quot;, &quot;project_id&quot;, projects);</span>
+<span class="fc" id="L168">        Map&lt;String, Row&gt; requirements = indexedRows(connection, &quot;project_requirement&quot;);</span>
+<span class="fc" id="L169">        bindChild(connection, &quot;project_req_version&quot;, &quot;requirement_id&quot;, requirements);</span>
+<span class="fc" id="L170">        Map&lt;String, Row&gt; versions = indexedRows(connection, &quot;project_req_version&quot;);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (columnExists(connection, &quot;project_requirement&quot;, &quot;current_version_id&quot;)) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            for (Row requirement : rows(connection, &quot;project_requirement&quot;)) {</span>
+<span class="fc" id="L173">                String pointer = requirement.text(&quot;current_version_id&quot;);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (pointer == null) continue;</span>
+<span class="fc" id="L175">                Row version = versions.get(pointer);</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                if (version == null</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                        || !requirement.id().toString().equals(version.text(&quot;requirement_id&quot;))</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                        || !requirement.text(&quot;scope_key&quot;).equals(version.text(&quot;scope_key&quot;))) {</span>
+<span class="nc" id="L179">                    throw unsafe(&quot;requirement &quot; + requirement.id()</span>
+                            + &quot; points to a version outside its exact tenant&quot;);
+                }
+<span class="fc" id="L182">            }</span>
+        }
+<span class="fc" id="L184">        bindChild(connection, &quot;req_analysis_job&quot;, &quot;project_id&quot;, projects);</span>
+<span class="fc" id="L185">        Map&lt;String, Row&gt; jobs = indexedRows(connection, &quot;req_analysis_job&quot;);</span>
+
+<span class="fc" id="L187">        ensureColumn(connection, &quot;req_analysis_item&quot;, &quot;project_id&quot;, &quot;BIGINT&quot;);</span>
+<span class="fc" id="L188">        ensureScopeKey(connection, &quot;req_analysis_item&quot;);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        for (Row item : rows(connection, &quot;req_analysis_item&quot;)) {</span>
+<span class="fc" id="L190">            Row job = requireParent(jobs, item, &quot;job_id&quot;, &quot;req_analysis_item&quot;);</span>
+<span class="fc" id="L191">            Row requirement = requireParent(requirements, item, &quot;requirement_id&quot;, &quot;req_analysis_item&quot;);</span>
+<span class="fc" id="L192">            Row version = requireParent(versions, item, &quot;requirement_version_id&quot;, &quot;req_analysis_item&quot;);</span>
+<span class="fc" id="L193">            String projectId = job.text(&quot;project_id&quot;);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (!projectId.equals(requirement.text(&quot;project_id&quot;))</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                    || !requirement.id().toString().equals(version.text(&quot;requirement_id&quot;))) {</span>
+<span class="fc" id="L196">                throw unsafe(&quot;analysis item &quot; + item.id() + &quot; has inconsistent job/requirement/version parents&quot;);</span>
+            }
+<span class="fc" id="L198">            requireScope(item, job.text(&quot;scope_key&quot;), &quot;req_analysis_item&quot;);</span>
+<span class="fc" id="L199">            requireScope(requirement, job.text(&quot;scope_key&quot;), &quot;project_requirement&quot;);</span>
+<span class="fc" id="L200">            requireScope(version, job.text(&quot;scope_key&quot;), &quot;project_req_version&quot;);</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">            if (item.get(&quot;project_id&quot;) != null &amp;&amp; !projectId.equals(item.text(&quot;project_id&quot;))) {</span>
+<span class="nc" id="L202">                throw unsafe(&quot;analysis item &quot; + item.id() + &quot; has a conflicting project&quot;);</span>
+            }
+<span class="fc" id="L204">            update(connection, &quot;UPDATE req_analysis_item SET project_id=?, scope_key=? WHERE id=?&quot;,</span>
+<span class="fc" id="L205">                    job.get(&quot;project_id&quot;), job.get(&quot;scope_key&quot;), item.id());</span>
+<span class="fc" id="L206">        }</span>
+<span class="fc" id="L207">        setNotNull(connection, &quot;req_analysis_item&quot;, &quot;scope_key&quot;);</span>
+<span class="fc" id="L208">        setNotNull(connection, &quot;req_analysis_item&quot;, &quot;project_id&quot;);</span>
+
+<span class="fc" id="L210">        ensureScopeKey(connection, &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        for (Row snapshot : rows(connection, &quot;req_analysis_snapshot&quot;)) {</span>
+<span class="fc" id="L212">            Row project = requireParent(projects, snapshot, &quot;project_id&quot;, &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc" id="L213">            Row requirement = requireParent(requirements, snapshot, &quot;requirement_id&quot;, &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc" id="L214">            Row version = requireParent(versions, snapshot, &quot;requirement_version_id&quot;, &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc" id="L215">            Row job = requireParent(jobs, snapshot, &quot;job_id&quot;, &quot;req_analysis_snapshot&quot;);</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (!project.id().toString().equals(requirement.text(&quot;project_id&quot;))</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                    || !project.id().toString().equals(job.text(&quot;project_id&quot;))</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                    || !requirement.id().toString().equals(version.text(&quot;requirement_id&quot;))) {</span>
+<span class="nc" id="L219">                throw unsafe(&quot;analysis snapshot &quot; + snapshot.id() + &quot; has inconsistent parents&quot;);</span>
+            }
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            for (Row parent : List.of(requirement, version, job)) {</span>
+<span class="fc" id="L222">                requireScope(parent, project.text(&quot;scope_key&quot;), &quot;req_analysis_snapshot parent&quot;);</span>
+<span class="fc" id="L223">            }</span>
+<span class="fc" id="L224">            requireScope(snapshot, project.text(&quot;scope_key&quot;), &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc" id="L225">            update(connection, &quot;UPDATE req_analysis_snapshot SET scope_key=? WHERE id=?&quot;,</span>
+<span class="fc" id="L226">                    project.get(&quot;scope_key&quot;), snapshot.id());</span>
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        setNotNull(connection, &quot;req_analysis_snapshot&quot;, &quot;scope_key&quot;);</span>
+<span class="fc" id="L229">        Map&lt;String, Row&gt; snapshots = indexedRows(connection, &quot;req_analysis_snapshot&quot;);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (columnExists(connection, &quot;project_requirement&quot;, &quot;current_snapshot_id&quot;)) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            for (Row requirement : rows(connection, &quot;project_requirement&quot;)) {</span>
+<span class="fc" id="L232">                String pointer = requirement.text(&quot;current_snapshot_id&quot;);</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                if (pointer == null) continue;</span>
+<span class="fc" id="L234">                Row snapshot = snapshots.get(pointer);</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                if (snapshot == null</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                        || !requirement.id().toString().equals(snapshot.text(&quot;requirement_id&quot;))</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                        || !requirement.text(&quot;project_id&quot;).equals(snapshot.text(&quot;project_id&quot;))</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">                        || !requirement.text(&quot;scope_key&quot;).equals(snapshot.text(&quot;scope_key&quot;))) {</span>
+<span class="nc" id="L239">                    throw unsafe(&quot;requirement &quot; + requirement.id()</span>
+                            + &quot; points to a snapshot outside its exact tenant&quot;);
+                }
+<span class="fc" id="L242">            }</span>
+        }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (columnExists(connection, &quot;req_analysis_item&quot;, &quot;snapshot_id&quot;)) {</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">            for (Row item : rows(connection, &quot;req_analysis_item&quot;)) {</span>
+<span class="fc" id="L246">                String pointer = item.text(&quot;snapshot_id&quot;);</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                if (pointer == null) continue;</span>
+<span class="fc" id="L248">                Row snapshot = snapshots.get(pointer);</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">                if (snapshot == null</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">                        || !item.text(&quot;job_id&quot;).equals(snapshot.text(&quot;job_id&quot;))</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                        || !item.text(&quot;requirement_id&quot;).equals(snapshot.text(&quot;requirement_id&quot;))</span>
+<span class="fc" id="L252">                        || !item.text(&quot;requirement_version_id&quot;)</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">                                .equals(snapshot.text(&quot;requirement_version_id&quot;))</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">                        || !item.text(&quot;project_id&quot;).equals(snapshot.text(&quot;project_id&quot;))</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">                        || !item.text(&quot;scope_key&quot;).equals(snapshot.text(&quot;scope_key&quot;))) {</span>
+<span class="nc" id="L256">                    throw unsafe(&quot;analysis item &quot; + item.id()</span>
+                            + &quot; points to a snapshot outside its exact work identity&quot;);
+                }
+<span class="fc" id="L259">            }</span>
+        }
+<span class="fc" id="L261">        bindChild(connection, &quot;req_element_mapping&quot;, &quot;snapshot_id&quot;, snapshots);</span>
+<span class="fc" id="L262">        bindChild(connection, &quot;req_relation_mapping&quot;, &quot;snapshot_id&quot;, snapshots);</span>
+<span class="fc" id="L263">        enforcePortfolioParentKeys(connection);</span>
+<span class="fc" id="L264">    }</span>
+
+    /** Non-cyclic tenant keys; current-version/snapshot pointers remain nullable. */
+    private static void enforcePortfolioParentKeys(Connection connection) throws SQLException {
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (String table : ROOTS) {</span>
+<span class="fc" id="L269">            ensureUnique(connection, table, &quot;uq_hsql_&quot; + table + &quot;_id_scope&quot;,</span>
+                    &quot;id, scope_key&quot;);
+<span class="fc" id="L271">        }</span>
+<span class="fc" id="L272">        ensureUnique(connection, &quot;project_requirement&quot;, &quot;uq_hsql_req_id_scope&quot;,</span>
+                &quot;id, scope_key&quot;);
+<span class="fc" id="L274">        ensureUnique(connection, &quot;project_requirement&quot;, &quot;uq_hsql_req_id_project_scope&quot;,</span>
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc" id="L276">        ensureUnique(connection, &quot;project_req_version&quot;, &quot;uq_hsql_version_id_scope&quot;,</span>
+                &quot;id, scope_key&quot;);
+<span class="fc" id="L278">        ensureUnique(connection, &quot;project_req_version&quot;, &quot;uq_hsql_version_id_req_scope&quot;,</span>
+                &quot;id, requirement_id, scope_key&quot;);
+<span class="fc" id="L280">        ensureUnique(connection, &quot;req_analysis_job&quot;, &quot;uq_hsql_job_id_scope&quot;,</span>
+                &quot;id, scope_key&quot;);
+<span class="fc" id="L282">        ensureUnique(connection, &quot;req_analysis_job&quot;, &quot;uq_hsql_job_id_project_scope&quot;,</span>
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc" id="L284">        ensureUnique(connection, &quot;req_analysis_snapshot&quot;, &quot;uq_hsql_snapshot_id_scope&quot;,</span>
+                &quot;id, scope_key&quot;);
+
+<span class="fc" id="L287">        ensureCompositeForeignKey(connection, &quot;project_requirement&quot;, &quot;fk_hsql_req_project_scope&quot;,</span>
+                &quot;project_id, scope_key&quot;, &quot;arch_project&quot;, &quot;id, scope_key&quot;);
+<span class="fc" id="L289">        ensureCompositeForeignKey(connection, &quot;project_req_version&quot;, &quot;fk_hsql_version_req_scope&quot;,</span>
+                &quot;requirement_id, scope_key&quot;, &quot;project_requirement&quot;, &quot;id, scope_key&quot;);
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        if (columnExists(connection, &quot;project_requirement&quot;, &quot;current_version_id&quot;)) {</span>
+<span class="fc" id="L292">            ensureCompositeForeignKey(connection, &quot;project_requirement&quot;,</span>
+                    &quot;fk_hsql_req_current_version_scope&quot;,
+                    &quot;current_version_id, id, scope_key&quot;, &quot;project_req_version&quot;,
+                    &quot;id, requirement_id, scope_key&quot;);
+        }
+<span class="fc" id="L297">        ensureCompositeForeignKey(connection, &quot;req_analysis_job&quot;, &quot;fk_hsql_job_project_scope&quot;,</span>
+                &quot;project_id, scope_key&quot;, &quot;arch_project&quot;, &quot;id, scope_key&quot;);
+<span class="fc" id="L299">        ensureCompositeForeignKey(connection, &quot;req_analysis_item&quot;, &quot;fk_hsql_item_job_scope&quot;,</span>
+                &quot;job_id, project_id, scope_key&quot;, &quot;req_analysis_job&quot;,
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc" id="L302">        ensureCompositeForeignKey(connection, &quot;req_analysis_item&quot;, &quot;fk_hsql_item_req_scope&quot;,</span>
+                &quot;requirement_id, project_id, scope_key&quot;, &quot;project_requirement&quot;,
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc" id="L305">        ensureCompositeForeignKey(connection, &quot;req_analysis_item&quot;, &quot;fk_hsql_item_version_scope&quot;,</span>
+                &quot;requirement_version_id, requirement_id, scope_key&quot;, &quot;project_req_version&quot;,
+                &quot;id, requirement_id, scope_key&quot;);
+<span class="fc" id="L308">        ensureCompositeForeignKey(connection, &quot;req_analysis_snapshot&quot;, &quot;fk_hsql_snapshot_project_scope&quot;,</span>
+                &quot;project_id, scope_key&quot;, &quot;arch_project&quot;, &quot;id, scope_key&quot;);
+<span class="fc" id="L310">        ensureCompositeForeignKey(connection, &quot;req_analysis_snapshot&quot;, &quot;fk_hsql_snapshot_req_scope&quot;,</span>
+                &quot;requirement_id, project_id, scope_key&quot;, &quot;project_requirement&quot;,
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc" id="L313">        ensureCompositeForeignKey(connection, &quot;req_analysis_snapshot&quot;, &quot;fk_hsql_snapshot_version_scope&quot;,</span>
+                &quot;requirement_version_id, requirement_id, scope_key&quot;, &quot;project_req_version&quot;,
+                &quot;id, requirement_id, scope_key&quot;);
+<span class="fc" id="L316">        ensureCompositeForeignKey(connection, &quot;req_analysis_snapshot&quot;, &quot;fk_hsql_snapshot_job_scope&quot;,</span>
+                &quot;job_id, project_id, scope_key&quot;, &quot;req_analysis_job&quot;,
+                &quot;id, project_id, scope_key&quot;);
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (String table : List.of(&quot;req_element_mapping&quot;, &quot;req_relation_mapping&quot;)) {</span>
+<span class="fc" id="L320">            ensureCompositeForeignKey(connection, table, &quot;fk_hsql_&quot; + table + &quot;_snapshot_scope&quot;,</span>
+                    &quot;snapshot_id, scope_key&quot;, &quot;req_analysis_snapshot&quot;, &quot;id, scope_key&quot;);
+<span class="fc" id="L322">        }</span>
+<span class="fc" id="L323">    }</span>
+
+    private static void ensureUnique(Connection connection, String table, String name,
+                                     String columns) throws SQLException {
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        if (!uniqueKeyExists(connection, table, columns)) {</span>
+<span class="fc" id="L328">            execute(connection, &quot;ALTER TABLE &quot; + table + &quot; ADD CONSTRAINT &quot; + name</span>
+                    + &quot; UNIQUE (&quot; + columns + &quot;)&quot;);
+        }
+<span class="fc" id="L331">    }</span>
+
+    private static boolean uniqueKeyExists(Connection connection, String table, String columns)
+            throws SQLException {
+<span class="fc" id="L335">        Set&lt;String&gt; expected = Set.of(columnNames(columns));</span>
+<span class="fc" id="L336">        Map&lt;String, Set&lt;String&gt;&gt; definitions = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L337">        try (ResultSet indexes = connection.getMetaData().getIndexInfo(</span>
+<span class="fc" id="L338">                null, &quot;PUBLIC&quot;, table.toUpperCase(Locale.ROOT), true, false)) {</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            while (indexes.next()) {</span>
+<span class="fc" id="L340">                String name = indexes.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="fc" id="L341">                String column = indexes.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L342" title="3 of 6 branches missed.">                if (name != null &amp;&amp; column != null &amp;&amp; !indexes.getBoolean(&quot;NON_UNIQUE&quot;)) {</span>
+<span class="fc" id="L343">                    definitions.computeIfAbsent(name, ignored -&gt; new HashSet&lt;&gt;())</span>
+<span class="fc" id="L344">                            .add(column.toUpperCase(Locale.ROOT));</span>
+                }
+<span class="fc" id="L346">            }</span>
+        }
+        // Hibernate and the upgrade may use different names for the same key.
+        // Uniqueness applies to the column set, regardless of index ordering.
+<span class="fc" id="L350">        return definitions.values().stream().anyMatch(expected::equals);</span>
+    }
+
+    private static void ensureCompositeForeignKey(Connection connection, String table,
+                                                   String name, String columns,
+                                                   String parent, String parentColumns)
+            throws SQLException {
+<span class="fc" id="L357">        String[] childColumns = columnNames(columns);</span>
+<span class="fc" id="L358">        String[] referencedColumns = columnNames(parentColumns);</span>
+<span class="fc" id="L359">        Map&lt;String, String&gt; expected = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        for (int i = 0; i &lt; childColumns.length; i++) {</span>
+<span class="fc" id="L361">            expected.put(childColumns[i], referencedColumns[i]);</span>
+        }
+<span class="fc" id="L363">        Map&lt;String, Map&lt;String, String&gt;&gt; definitions = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L364">        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, &quot;PUBLIC&quot;,</span>
+<span class="fc" id="L365">                table.toUpperCase(Locale.ROOT))) {</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            while (keys.next()) {</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">                if (parent.equalsIgnoreCase(keys.getString(&quot;PKTABLE_NAME&quot;))</span>
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">                        &amp;&amp; &quot;PUBLIC&quot;.equalsIgnoreCase(keys.getString(&quot;PKTABLE_SCHEM&quot;))) {</span>
+<span class="fc" id="L369">                    definitions.computeIfAbsent(keys.getString(&quot;FK_NAME&quot;), ignored -&gt; new HashMap&lt;&gt;())</span>
+<span class="fc" id="L370">                            .put(keys.getString(&quot;FKCOLUMN_NAME&quot;).toUpperCase(Locale.ROOT),</span>
+<span class="fc" id="L371">                                    keys.getString(&quot;PKCOLUMN_NAME&quot;).toUpperCase(Locale.ROOT));</span>
+                }
+            }
+        }
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        if (definitions.values().stream().anyMatch(expected::equals)) return;</span>
+<span class="fc" id="L376">        execute(connection, &quot;ALTER TABLE &quot; + table + &quot; ADD CONSTRAINT &quot; + name</span>
+                + &quot; FOREIGN KEY (&quot; + columns + &quot;) REFERENCES &quot; + parent
+                + &quot; (&quot; + parentColumns + &quot;)&quot;);
+<span class="fc" id="L379">    }</span>
+
+    private static String[] columnNames(String columns) {
+<span class="fc" id="L382">        return java.util.Arrays.stream(columns.split(&quot;,&quot;))</span>
+<span class="fc" id="L383">                .map(String::trim).map(column -&gt; column.toUpperCase(Locale.ROOT))</span>
+<span class="fc" id="L384">                .toArray(String[]::new);</span>
+    }
+
+    private static void bindChild(Connection connection, String table, String parentColumn,
+                                  Map&lt;String, Row&gt; parents) throws SQLException {
+<span class="fc" id="L389">        requireTable(connection, table);</span>
+<span class="fc" id="L390">        ensureScopeKey(connection, table);</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        for (Row row : rows(connection, table)) {</span>
+<span class="fc" id="L392">            Row parent = requireParent(parents, row, parentColumn, table);</span>
+<span class="fc" id="L393">            String scope = parent.text(&quot;scope_key&quot;);</span>
+<span class="fc" id="L394">            requireScope(row, scope, table);</span>
+<span class="fc" id="L395">            update(connection, &quot;UPDATE &quot; + table + &quot; SET scope_key=? WHERE id=?&quot;, scope, row.id());</span>
+<span class="fc" id="L396">        }</span>
+<span class="fc" id="L397">        setNotNull(connection, table, &quot;scope_key&quot;);</span>
+<span class="fc" id="L398">    }</span>
+
+    private static Row requireParent(Map&lt;String, Row&gt; parents, Row child,
+                                     String parentColumn, String table) {
+<span class="fc" id="L402">        Row parent = parents.get(child.text(parentColumn));</span>
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        if (parent == null) {</span>
+<span class="nc" id="L404">            throw unsafe(table + &quot; row &quot; + child.id()</span>
+                    + &quot; has no exact &quot; + parentColumn + &quot; parent&quot;);
+        }
+<span class="fc" id="L407">        return parent;</span>
+    }
+
+    private static void requireScope(Row row, String expected, String table) {
+<span class="fc" id="L411">        String current = row.text(&quot;scope_key&quot;);</span>
+<span class="fc bfc" id="L412" title="All 4 branches covered.">        if (current != null &amp;&amp; !current.equals(expected)) {</span>
+<span class="fc" id="L413">            throw unsafe(table + &quot; row &quot; + row.id() + &quot; has a conflicting tenant scope&quot;);</span>
+        }
+<span class="fc" id="L415">    }</span>
+
+    private static void rejectTargetBusinessKeyCollisions(
+            Connection connection, String table, String primary, String defaultBranch,
+            Map&lt;String, Tenant&gt; workspaces) throws SQLException {
+<span class="pc bpc" id="L420" title="1 of 4 branches missed.">        String key = switch (table) {</span>
+<span class="fc" id="L421">            case &quot;arch_project&quot; -&gt; &quot;project_key&quot;;</span>
+<span class="fc" id="L422">            case &quot;solution_definition&quot; -&gt; &quot;solution_key&quot;;</span>
+<span class="fc" id="L423">            case &quot;product_catalog&quot; -&gt; &quot;product_key&quot;;</span>
+<span class="pc" id="L424">            default -&gt; throw new IllegalArgumentException(table);</span>
+        };
+<span class="fc" id="L426">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">        for (Row row : rows(connection, table)) {</span>
+<span class="fc" id="L428">            String previous = row.text(&quot;scope_key&quot;);</span>
+<span class="fc" id="L429">            String workspaceId = row.text(&quot;workspace_id&quot;);</span>
+            Tenant tenant;
+<span class="fc bfc" id="L431" title="All 2 branches covered.">            if (RepositoryTenantIdentity.isEncoded(previous)) {</span>
+<span class="fc" id="L432">                var parsed = RepositoryTenantIdentity.parse(previous);</span>
+<span class="fc" id="L433">                tenant = new Tenant(parsed.repositoryId(), parsed.workspaceScope(), parsed.branch());</span>
+<span class="fc" id="L434">            } else {</span>
+<span class="fc bfc" id="L435" title="All 2 branches covered.">                tenant = workspaceId == null</span>
+<span class="fc" id="L436">                        ? centralTenant(primary, defaultBranch, table, row.id())</span>
+<span class="fc" id="L437">                        : workspaces.get(workspaceId);</span>
+            }
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">            if (tenant == null) {</span>
+<span class="nc" id="L440">                throw unsafe(table + &quot; row &quot; + row.id()</span>
+                        + &quot; has an unknown or unbound workspace &quot; + workspaceId);
+            }
+<span class="fc" id="L443">            String value = row.text(key);</span>
+<span class="pc bpc" id="L444" title="2 of 4 branches missed.">            if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L445">                throw unsafe(table + &quot; row &quot; + row.id() + &quot; has no &quot; + key);</span>
+            }
+<span class="fc" id="L447">            String identity = tenant.scopeKey() + &quot;\u0000&quot; + value.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">            if (!identities.add(identity)) {</span>
+<span class="fc" id="L449">                throw unsafe(table + &quot; contains ambiguous &quot; + key</span>
+<span class="fc" id="L450">                        + &quot; values in tenant &quot; + tenant.scopeKey());</span>
+            }
+<span class="fc" id="L452">        }</span>
+<span class="fc" id="L453">    }</span>
+
+    private static Tenant centralTenant(String primary, String branch,
+                                        String table, Object rowId) {
+<span class="pc bpc" id="L457" title="3 of 6 branches missed.">        if (primary == null || branch == null || branch.isBlank()) {</span>
+<span class="nc" id="L458">            throw unsafe(table + &quot; row &quot; + rowId + &quot; requires exactly one primary repository and branch&quot;);</span>
+        }
+<span class="fc" id="L460">        return new Tenant(primary, RepositoryTenantIdentity.CENTRAL_SCOPE, branch);</span>
+    }
+
+    private static Map&lt;String, Tenant&gt; workspaceTenants(Connection connection)
+            throws SQLException {
+<span class="fc" id="L465">        Map&lt;String, Tenant&gt; tenants = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        for (Row row : rows(connection, &quot;user_workspace&quot;)) {</span>
+<span class="fc" id="L467">            String repository = row.text(&quot;source_repository_id&quot;);</span>
+<span class="fc" id="L468">            String branch = row.text(&quot;current_branch&quot;);</span>
+<span class="fc" id="L469">            String workspaceId = row.text(&quot;workspace_id&quot;);</span>
+<span class="pc bpc" id="L470" title="2 of 6 branches missed.">            if (repository != null &amp;&amp; branch != null &amp;&amp; workspaceId != null) {</span>
+<span class="fc" id="L471">                tenants.put(workspaceId, new Tenant(repository,</span>
+                        RepositoryTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId, branch));
+            }
+<span class="fc" id="L474">        }</span>
+<span class="fc" id="L475">        return tenants;</span>
+    }
+
+    private static String primaryRepository(Connection connection, boolean required)
+            throws SQLException {
+<span class="fc" id="L480">        String result = null;</span>
+<span class="fc" id="L481">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L482">             ResultSet rows = statement.executeQuery(</span>
+                     &quot;SELECT repository_id FROM system_repository WHERE primary_repo = TRUE&quot;)) {
+<span class="fc bfc" id="L484" title="All 2 branches covered.">            while (rows.next()) {</span>
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">                if (result != null) throw unsafe(&quot;more than one primary repository&quot;);</span>
+<span class="fc" id="L486">                result = rows.getString(1);</span>
+            }
+        }
+<span class="pc bpc" id="L489" title="5 of 6 branches missed.">        if (required &amp;&amp; (result == null || result.isBlank())) {</span>
+<span class="nc" id="L490">            throw unsafe(&quot;unbound workspace requires exactly one primary repository&quot;);</span>
+        }
+<span class="fc" id="L492">        return result;</span>
+    }
+
+    private static String primaryBranch(Connection connection, String repository)
+            throws SQLException {
+<span class="fc" id="L497">        try (PreparedStatement statement = connection.prepareStatement(</span>
+                &quot;SELECT default_branch FROM system_repository WHERE repository_id=?&quot;)) {
+<span class="fc" id="L499">            statement.setString(1, repository);</span>
+<span class="fc" id="L500">            try (ResultSet row = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">                return row.next() ? row.getString(1) : null;</span>
+            }
+        }
+    }
+
+    private static void requireMatch(Row row, String column, String expected, String table) {
+<span class="fc" id="L507">        String actual = row.text(column);</span>
+<span class="pc bpc" id="L508" title="1 of 4 branches missed.">        if (actual != null &amp;&amp; !actual.equals(expected)) {</span>
+<span class="nc" id="L509">            throw unsafe(table + &quot; row &quot; + row.id() + &quot; has conflicting &quot; + column);</span>
+        }
+<span class="fc" id="L511">    }</span>
+
+    private static void ensureScopeKey(Connection connection, String table) throws SQLException {
+<span class="fc" id="L514">        ensureColumn(connection, table, &quot;scope_key&quot;, &quot;VARCHAR(1024)&quot;);</span>
+<span class="fc" id="L515">        widenScopeKey(connection, table);</span>
+<span class="fc" id="L516">    }</span>
+
+    private static void widenScopeKey(Connection connection, String table) throws SQLException {
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        if (columnExists(connection, table, &quot;scope_key&quot;)</span>
+<span class="fc bfc" id="L520" title="All 2 branches covered.">                &amp;&amp; columnSize(connection, table, &quot;scope_key&quot;) &lt; 1024) {</span>
+<span class="fc" id="L521">            execute(connection, &quot;ALTER TABLE &quot; + table</span>
+                    + &quot; ALTER COLUMN scope_key SET DATA TYPE VARCHAR(1024)&quot;);
+        }
+<span class="fc" id="L524">    }</span>
+
+    private static void ensureColumn(Connection connection, String table, String column,
+                                     String definition) throws SQLException {
+<span class="pc bpc" id="L528" title="1 of 4 branches missed.">        if (tableExists(connection, table) &amp;&amp; !columnExists(connection, table, column)) {</span>
+<span class="fc" id="L529">            execute(connection, &quot;ALTER TABLE &quot; + table + &quot; ADD COLUMN &quot; + column + &quot; &quot; + definition);</span>
+        }
+<span class="fc" id="L531">    }</span>
+
+    private static void setNotNull(Connection connection, String table, String column)
+            throws SQLException {
+<span class="pc bpc" id="L535" title="1 of 2 branches missed.">        if (!columnExists(connection, table, column)) {</span>
+<span class="nc" id="L536">            throw unsafe(table + &quot; missing expected column &quot; + column);</span>
+        }
+<span class="pc bpc" id="L538" title="1 of 2 branches missed.">        if (count(connection, &quot;SELECT COUNT(*) FROM &quot; + table + &quot; WHERE &quot; + column + &quot; IS NULL&quot;) &gt; 0) {</span>
+<span class="nc" id="L539">            throw unsafe(table + &quot;.&quot; + column + &quot; still has unbound rows&quot;);</span>
+        }
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        if (columnNullable(connection, table, column)) {</span>
+<span class="fc" id="L542">            execute(connection, &quot;ALTER TABLE &quot; + table + &quot; ALTER COLUMN &quot; + column + &quot; SET NOT NULL&quot;);</span>
+        }
+<span class="fc" id="L544">    }</span>
+
+    private static void ensureForeignKey(Connection connection, String table, String column,
+                                         String parentTable, String parentColumn, String name)
+            throws SQLException {
+<span class="fc" id="L549">        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, &quot;PUBLIC&quot;,</span>
+<span class="fc" id="L550">                table.toUpperCase(Locale.ROOT))) {</span>
+<span class="fc bfc" id="L551" title="All 2 branches covered.">            while (keys.next()) {</span>
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">                if (column.equalsIgnoreCase(keys.getString(&quot;FKCOLUMN_NAME&quot;))</span>
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">                        &amp;&amp; parentTable.equalsIgnoreCase(keys.getString(&quot;PKTABLE_NAME&quot;))</span>
+<span class="pc bpc" id="L554" title="1 of 2 branches missed.">                        &amp;&amp; parentColumn.equalsIgnoreCase(keys.getString(&quot;PKCOLUMN_NAME&quot;))) return;</span>
+            }
+<span class="pc bpc" id="L556" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L557">        execute(connection, &quot;ALTER TABLE &quot; + table + &quot; ADD CONSTRAINT &quot; + name</span>
+                + &quot; FOREIGN KEY (&quot; + column + &quot;) REFERENCES &quot; + parentTable
+                + &quot; (&quot; + parentColumn + &quot;)&quot;);
+<span class="fc" id="L560">    }</span>
+
+    private static void requireTable(Connection connection, String table) throws SQLException {
+<span class="pc bpc" id="L563" title="1 of 2 branches missed.">        if (!tableExists(connection, table)) throw unsafe(&quot;partial legacy portfolio: missing &quot; + table);</span>
+<span class="fc" id="L564">    }</span>
+
+    private static boolean tableExists(Connection connection, String table) throws SQLException {
+<span class="fc" id="L567">        try (ResultSet tables = connection.getMetaData().getTables(null, null,</span>
+<span class="fc" id="L568">                table.toUpperCase(Locale.ROOT), new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc" id="L569">            return tables.next();</span>
+        }
+    }
+
+    private static boolean columnExists(Connection connection, String table, String column)
+            throws SQLException {
+<span class="fc" id="L575">        DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L576">        try (ResultSet columns = metadata.getColumns(null, null,</span>
+<span class="fc" id="L577">                table.toUpperCase(Locale.ROOT), column.toUpperCase(Locale.ROOT))) {</span>
+<span class="fc" id="L578">            return columns.next();</span>
+        }
+    }
+
+    private static int columnSize(Connection connection, String table, String column)
+            throws SQLException {
+<span class="fc" id="L584">        try (ResultSet columns = connection.getMetaData().getColumns(null, null,</span>
+<span class="fc" id="L585">                table.toUpperCase(Locale.ROOT), column.toUpperCase(Locale.ROOT))) {</span>
+<span class="pc bpc" id="L586" title="1 of 2 branches missed.">            if (!columns.next()) throw unsafe(table + &quot; missing &quot; + column);</span>
+<span class="fc" id="L587">            return columns.getInt(&quot;COLUMN_SIZE&quot;);</span>
+        }
+    }
+
+    private static boolean columnNullable(Connection connection, String table, String column)
+            throws SQLException {
+<span class="fc" id="L593">        try (ResultSet columns = connection.getMetaData().getColumns(null, null,</span>
+<span class="fc" id="L594">                table.toUpperCase(Locale.ROOT), column.toUpperCase(Locale.ROOT))) {</span>
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">            if (!columns.next()) throw unsafe(table + &quot; missing &quot; + column);</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">            return columns.getInt(&quot;NULLABLE&quot;) != DatabaseMetaData.columnNoNulls;</span>
+        }
+    }
+
+    private static Map&lt;String, Row&gt; indexedRows(Connection connection, String table)
+            throws SQLException {
+<span class="fc" id="L602">        Map&lt;String, Row&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        for (Row row : rows(connection, table)) result.put(row.id().toString(), row);</span>
+<span class="fc" id="L604">        return result;</span>
+    }
+
+    private static List&lt;Row&gt; rows(Connection connection, String table) throws SQLException {
+<span class="fc" id="L608">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L609">             ResultSet result = statement.executeQuery(&quot;SELECT * FROM &quot; + table)) {</span>
+<span class="fc" id="L610">            var rows = new java.util.ArrayList&lt;Row&gt;();</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">            while (result.next()) {</span>
+<span class="fc" id="L612">                Map&lt;String, Object&gt; columns = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L613" title="All 2 branches covered.">                for (int i = 1; i &lt;= result.getMetaData().getColumnCount(); i++) {</span>
+<span class="fc" id="L614">                    columns.put(result.getMetaData().getColumnName(i).toLowerCase(Locale.ROOT),</span>
+<span class="fc" id="L615">                            result.getObject(i));</span>
+                }
+<span class="fc" id="L617">                rows.add(new Row(columns));</span>
+<span class="fc" id="L618">            }</span>
+<span class="fc" id="L619">            return rows;</span>
+        }
+    }
+
+    private static void update(Connection connection, String sql, Object... values) throws SQLException {
+<span class="fc" id="L624">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc bfc" id="L625" title="All 2 branches covered.">            for (int i = 0; i &lt; values.length; i++) statement.setObject(i + 1, values[i]);</span>
+<span class="fc" id="L626">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L628">    }</span>
+
+    private static long count(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L631">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L632">             ResultSet row = statement.executeQuery(sql)) {</span>
+<span class="fc" id="L633">            row.next();</span>
+<span class="fc" id="L634">            return row.getLong(1);</span>
+        }
+    }
+
+    private static void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L639">        try (Statement statement = connection.createStatement()) {</span>
+<span class="fc" id="L640">            statement.execute(sql);</span>
+        }
+<span class="fc" id="L642">    }</span>
+
+    private static IllegalStateException unsafe(String message) {
+<span class="fc" id="L645">        return new IllegalStateException(&quot;Unsafe HSQLDB 1.3 upgrade: &quot; + message</span>
+                + &quot;; restore the stopped-writer backup before retrying&quot;);
+    }
+
+<span class="fc" id="L649">    private record Tenant(String repositoryId, String workspaceScope, String branch) {</span>
+        String scopeKey() {
+<span class="fc" id="L651">            return new RepositoryTenantIdentity(repositoryId, workspaceScope, branch).scopeKey();</span>
+        }
+    }
+
+<span class="fc" id="L655">    private record Row(Map&lt;String, Object&gt; values) {</span>
+<span class="fc" id="L656">        Object id() { return get(&quot;id&quot;); }</span>
+<span class="fc" id="L657">        Object get(String column) { return values.get(column); }</span>
+        String text(String column) {
+<span class="fc" id="L659">            Object value = get(column);</span>
+<span class="fc bfc" id="L660" title="All 2 branches covered.">            return value == null ? null : value.toString().trim();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

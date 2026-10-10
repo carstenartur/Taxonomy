@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisClusterExecutionConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisClusterExecutionConfiguration.java</span></div><h1>ArtemisClusterExecutionConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.cluster.*;
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
+import com.taxonomy.analysis.relations.RequirementRelationSearchService;
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService;
+import com.taxonomy.workspace.service.WorkspaceViewContextReadPort;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
+import org.springframework.transaction.PlatformTransactionManager;
+import tools.jackson.databind.ObjectMapper;
+import java.util.function.Supplier;
+
+/** Complete production composition; local mode never creates distributed execution beans. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;analysis&quot;})
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = &quot;taxonomy.analysis.transport.mode&quot;, havingValue = &quot;artemis&quot;)
+<span class="fc" id="L33">public class ArtemisClusterExecutionConfiguration {</span>
+    @Bean ArtemisAnalysisMetrics artemisAnalysisMetrics(ObjectProvider&lt;MeterRegistry&gt; registries) {
+<span class="fc" id="L35">        return new ArtemisAnalysisMetrics(registries.getIfAvailable(SimpleMeterRegistry::new));</span>
+    }
+
+    @Bean ClusterAnalysisSignals clusterAnalysisSignals(ArtemisAnalysisMetrics metrics) {
+<span class="fc" id="L39">        var signals = new ClusterAnalysisSignals();</span>
+<span class="fc" id="L40">        signals.cancellationLatency(metrics::cancellationObserved);</span>
+<span class="fc" id="L41">        return signals;</span>
+    }
+
+    @Bean ClusterAnalysisStore clusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
+            ObjectMapper mapper, AnalysisDispatchService dispatch, ClusterAnalysisSignals signals,
+            ArtemisAnalysisTaskPublisher publisher, ArtemisAnalysisMetrics metrics) {
+<span class="fc" id="L47">        var store = new ClusterAnalysisStore(em, transactions, mapper, dispatch);</span>
+<span class="fc" id="L48">        store.eventPublisher(event -&gt; {</span>
+<span class="nc" id="L49">            signals.progress(event); metrics.progress(event); publisher.progress(event);</span>
+<span class="nc" id="L50">        });</span>
+<span class="fc" id="L51">        return store;</span>
+    }
+
+    @Bean Supplier&lt;AnalysisMemoryGuard&gt; clusterAnalysisGuards(Environment environment) {
+<span class="fc" id="L55">        var policy = new AnalysisMemoryGuard.Policy(</span>
+<span class="fc" id="L56">                environment.getProperty(&quot;taxonomy.analysis.runtime.warning-percent&quot;, Integer.class, 80),</span>
+<span class="fc" id="L57">                environment.getProperty(&quot;taxonomy.analysis.runtime.stop-percent&quot;, Integer.class, 92),</span>
+<span class="fc" id="L58">                Math.multiplyExact(environment.getProperty(&quot;taxonomy.analysis.runtime.minimum-headroom-mb&quot;, Long.class, 16L), 1024L * 1024),</span>
+<span class="fc" id="L59">                Math.multiplyExact(environment.getProperty(&quot;taxonomy.analysis.runtime.pressure-seconds&quot;, Long.class, 5L), 1000L),</span>
+<span class="fc" id="L60">                Math.multiplyExact(environment.getProperty(&quot;taxonomy.analysis.runtime.maximum-duration-seconds&quot;, Long.class, 1800L), 1000L));</span>
+<span class="pc" id="L61">        return () -&gt; new AnalysisMemoryGuard(policy, AnalysisMemoryGuard::heapSample, () -&gt; System.nanoTime() / 1_000_000);</span>
+    }
+
+    @Bean FrozenClusterAnalysisComputation frozenClusterAnalysisComputation(ClusterAnalysisStore store,
+            CatalogueSnapshotService catalogue, LlmService llm, LlmProviderConfig providers,
+            Supplier&lt;AnalysisMemoryGuard&gt; guards, ObjectMapper mapper, LocalEmbeddingService embeddings) {
+<span class="fc" id="L67">        return new FrozenClusterAnalysisComputation(store, catalogue, llm, providers, guards, mapper, embeddings);</span>
+    }
+
+    @Bean ClusterAnalysisService clusterAnalysisService(ClusterAnalysisStore store,
+            FrozenClusterAnalysisComputation computation, ClusterAnalysisSignals signals) {
+<span class="fc" id="L72">        return new ClusterAnalysisService(store, computation, signals);</span>
+    }
+
+    @Bean FrozenClusterRelationComputation frozenClusterRelationComputation(ClusterAnalysisStore store,
+            CatalogueSnapshotService catalogue, TaxonomyService taxonomy, RequirementRelationSearchService relations,
+            LlmProviderConfig providers, ObjectMapper mapper, Supplier&lt;AnalysisMemoryGuard&gt; guards) {
+<span class="fc" id="L78">        return new FrozenClusterRelationComputation(store, catalogue, taxonomy, relations, providers, mapper, guards);</span>
+    }
+
+    @Bean ClusterRelationService clusterRelationService(ClusterAnalysisStore store,
+            FrozenClusterRelationComputation computation, ClusterAnalysisSignals signals) {
+<span class="fc" id="L83">        return new ClusterRelationService(store, computation, signals);</span>
+    }
+
+    @Bean AnalysisTaskHandlers clusterAnalysisTaskHandlers(ClusterAnalysisService roots, ClusterRelationService relations,
+            ArtemisAnalysisMetrics metrics) {
+<span class="pc" id="L88">        return new AnalysisTaskHandlers(task -&gt; metrics.prepare(task, () -&gt; roots.prepare(task)),</span>
+<span class="nc" id="L89">                task -&gt; metrics.prepare(task, () -&gt; relations.prepare(task)));</span>
+    }
+
+    @Bean DurableClusterAnalysisExecution durableClusterAnalysisExecution(ClusterAnalysisStore store,
+            CatalogueSnapshotService catalogue, ClusterAnalysisSignals signals, LlmProviderConfig providers,
+            ObjectMapper mapper, WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddings) {
+<span class="fc" id="L95">        return new DurableClusterAnalysisExecution(store, catalogue, signals, providers, mapper, workspaceViews, embeddings);</span>
+    }
+
+    @Bean FrozenClusterAnalysisFinalizer frozenClusterAnalysisFinalizer(ClusterAnalysisStore store,
+            CatalogueSnapshotService catalogue, RequirementArchitectureViewService architecture,
+            ArchitectureReportMetadataPort metadata, ObjectMapper mapper) {
+<span class="fc" id="L101">        return new FrozenClusterAnalysisFinalizer(store, catalogue, architecture, metadata, mapper);</span>
+    }
+
+    @Bean(destroyMethod = &quot;close&quot;) DurableClusterAnalysisObservation durableClusterAnalysisObservation(
+            ClusterAnalysisStore store, ClusterAnalysisSignals signals, ArtemisAnalysisTaskPublisher publisher) {
+<span class="fc" id="L106">        return new DurableClusterAnalysisObservation(store, signals, publisher);</span>
+    }
+
+    @Lazy(false) // Completion and cancellation subscriptions cannot depend on a first HTTP request.
+    @Bean(initMethod = &quot;attach&quot;, destroyMethod = &quot;close&quot;) ArtemisClusterCoordinator artemisClusterCoordinator(
+            ArtemisAnalysisConnection connection, AnalysisDestinations destinations,
+            com.taxonomy.analysis.dag.json.AnalysisMessageCodec codec, ClusterAnalysisStore store,
+            AnalysisTaskCompletionStore ledger, ClusterAnalysisSignals signals, FrozenClusterAnalysisFinalizer finalizer,
+            ArtemisAnalysisWorker worker, ArtemisAnalysisMetrics metrics,
+            @Value(&quot;${taxonomy.analysis.runtime-role:all}&quot;) String role) {
+<span class="fc" id="L116">        var coordinator = new ArtemisClusterCoordinator(connection, destinations, codec, store, ledger, signals,</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                ArtemisAnalysisTransportConfiguration.RuntimeRole.parse(role) != ArtemisAnalysisTransportConfiguration.RuntimeRole.WORKER);</span>
+<span class="fc" id="L118">        coordinator.finalizer(finalizer); coordinator.metrics(metrics); metrics.bindTransport(worker, coordinator);</span>
+<span class="fc" id="L119">        return coordinator;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderConcurrencyPermits.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ProviderConcurrencyPermits.java</span></div><h1>ProviderConcurrencyPermits.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+/**
+ * Transport-neutral admission for one physical provider HTTP attempt. Implementations
+ * retain no prompts, credentials or operation payloads. This is concurrency capacity,
+ * not an RPM/TPM/RPD policy; callers retain their process-local rate limiter.
+ */
+@FunctionalInterface
+public interface ProviderConcurrencyPermits {
+<span class="fc" id="L12">    ProviderConcurrencyPermits NONE = (provider, checkpoint) -&gt; {</span>
+<span class="nc" id="L13">        checkpoint.run();</span>
+<span class="nc" id="L14">        return () -&gt; {};</span>
+    };
+
+    /** Wait cooperatively, invoking the supplied cancellation/deadline checkpoint. */
+    Permit acquire(ProviderId provider, Runnable checkpoint);
+
+    /** Existing built-in callers retain their aliases. */
+    default Permit acquire(LlmProvider provider, Runnable checkpoint) {
+<span class="fc" id="L22">        return acquire(provider.id(), checkpoint);</span>
+    }
+
+    /** Thread-confined, idempotent return of the capacity held by one HTTP attempt. */
+    @FunctionalInterface
+    interface Permit extends AutoCloseable {
+        @Override void close();
+    }
+
+    /** Failed-closed admission; no physical provider attempt may follow this failure. */
+    final class UnavailableException extends LlmRateLimitException {
+<span class="fc" id="L33">        public UnavailableException(String message, Throwable cause) { super(message, cause); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

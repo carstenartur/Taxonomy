@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupSnapshotCoordinator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.snapshot</a> &gt; <span class="el_source">BackupSnapshotCoordinator.java</span></div><h1>BackupSnapshotCoordinator.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.snapshot;
+
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
+import com.taxonomy.backup.runtime.BackupPaths;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.ArchiveProtectionProvider;
+import com.taxonomy.backup.archive.ArchiveProgress;
+import tools.jackson.databind.json.JsonMapper;
+import java.io.*;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.file.*;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.*;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/** Captures module-owned streams while every controlled installation writer is fenced. */
+public final class BackupSnapshotCoordinator {
+<span class="fc" id="L22">    private static final BackupComponentId PROOF = new BackupComponentId(&quot;capture-proof&quot;);</span>
+    private final BackupMaintenanceLease barrier;
+    private final BackupAuthorizationService authorization;
+    private final Inventory inventory;
+    private final Map&lt;BackupComponentId, BackupContributor&gt; contributors;
+    private final Path root;
+    private final CaptureLimits limits;
+    private final Clock clock;
+    private final ArchiveProtectionProvider protection;
+    private final com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites;
+
+    @FunctionalInterface public interface Inventory {
+        CapturePlan inspect(AuthorizedBackupRequest request) throws IOException;
+        /** Override for discovery that performs substantial I/O; keep the capture fence and budgets live. */
+        default CapturePlan inspect(AuthorizedBackupRequest request, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L37">            checkpoint.check(); var plan = inspect(request); checkpoint.check(); return plan;</span>
+        }
+    }
+    public record CaptureComponent(int version, BackupCompleteness completeness, Set&lt;BackupComponentId&gt; dependencies) {
+<span class="fc" id="L41">        public CaptureComponent { new BackupManifest.Component(PROOF, version, completeness, List.of(), dependencies); dependencies = Set.copyOf(dependencies); }</span>
+    }
+    public record CapturePlan(String applicationVersion, String build, String sourceInstallationId,
+                              List&lt;BackupManifest.Repository&gt; repositories, Map&lt;BackupComponentId, CaptureComponent&gt; components,
+                              List&lt;String&gt; dependencies, List&lt;String&gt; omissions) {
+<span class="fc" id="L46">        public CapturePlan {</span>
+<span class="fc" id="L47">            repositories = List.copyOf(repositories); components = Map.copyOf(components);</span>
+<span class="fc" id="L48">            dependencies = List.copyOf(dependencies); omissions = List.copyOf(omissions);</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">            if (components.isEmpty() || components.containsKey(PROOF)) throw new IllegalArgumentException(&quot;Invalid capture component inventory&quot;);</span>
+<span class="fc" id="L50">        }</span>
+    }
+    public record CaptureLimits(long maxTotalBytes, long maxEntryBytes, int maxEntries, Duration maxDuration, Duration waitForWriters) {
+<span class="fc" id="L53">        public CaptureLimits {</span>
+<span class="pc bpc" id="L54" title="4 of 8 branches missed.">            if (maxEntryBytes &lt; 1 || maxTotalBytes &lt; maxEntryBytes || maxEntries &lt; 1 || maxEntries &gt; BackupLimits.MAX_ITEMS</span>
+<span class="pc bpc" id="L55" title="3 of 6 branches missed.">                    || maxDuration.isZero() || maxDuration.isNegative() || maxDuration.compareTo(Duration.ofMinutes(30)) &gt; 0</span>
+<span class="pc bpc" id="L56" title="3 of 6 branches missed.">                    || waitForWriters.isZero() || waitForWriters.isNegative() || waitForWriters.compareTo(Duration.ofMinutes(30)) &gt; 0)</span>
+<span class="nc" id="L57">                throw new IllegalArgumentException(&quot;Invalid capture limits&quot;);</span>
+<span class="fc" id="L58">        }</span>
+<span class="fc" id="L59">        public static CaptureLimits defaults() { return new CaptureLimits(10L &lt;&lt; 30, 2L &lt;&lt; 30, BackupLimits.MAX_ITEMS, Duration.ofMinutes(30), Duration.ofSeconds(30)); }</span>
+    }
+
+    public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
+                                     Inventory inventory, List&lt;BackupContributor&gt; contributors, Path root, CaptureLimits limits, Clock clock,
+                                     com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+<span class="fc" id="L65">        this(barrier, authorization, inventory, contributors, root, limits, clock, ArchiveProtectionProvider.unprotected(), prerequisites);</span>
+<span class="fc" id="L66">    }</span>
+
+    public BackupSnapshotCoordinator(BackupMaintenanceLease barrier, BackupAuthorizationService authorization,
+                                     Inventory inventory, List&lt;BackupContributor&gt; contributors, Path root, CaptureLimits limits, Clock clock,
+                                     ArchiveProtectionProvider protection,
+<span class="fc" id="L71">                                     com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {</span>
+<span class="fc" id="L72">        this.prerequisites = Objects.requireNonNull(prerequisites);</span>
+<span class="fc" id="L73">        this.protection = Objects.requireNonNull(protection);</span>
+<span class="fc" id="L74">        this.barrier = Objects.requireNonNull(barrier); this.authorization = Objects.requireNonNull(authorization);</span>
+<span class="fc" id="L75">        this.inventory = Objects.requireNonNull(inventory); this.root = root.toAbsolutePath().normalize();</span>
+<span class="fc" id="L76">        this.limits = Objects.requireNonNull(limits); this.clock = Objects.requireNonNull(clock);</span>
+<span class="fc" id="L77">        this.contributors = contributors.stream().collect(Collectors.toUnmodifiableMap(BackupContributor::componentId, c -&gt; c));</span>
+<span class="fc" id="L78">    }</span>
+
+    public CapturedBackup capture(AuthorizedBackupRequest creation) throws IOException {
+<span class="fc" id="L81">        return capture(creation, ArchiveProgress.NONE);</span>
+    }
+
+    public CapturedBackup capture(AuthorizedBackupRequest creation, ArchiveProgress progress) throws IOException {
+<span class="fc" id="L85">        Objects.requireNonNull(progress).check(0);</span>
+<span class="fc" id="L86">        authorization.requireJobAccess(creation.principalId(), creation);</span>
+<span class="fc" id="L87">        prerequisites.requireCapture();</span>
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">        if (creation.request().secrets() != SecretsSelection.EXCLUDE &amp;&amp; !protection.encrypted()) throw new IllegalArgumentException(&quot;Encrypted staging is required for secrets&quot;);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup capture cancelled&quot;);</span>
+<span class="fc" id="L90">        Path staging = null;</span>
+        try {
+            CapturedBackup captured;
+<span class="fc" id="L93">            try (var maintenance = barrier.acquire(creation.request().scope(), limits.waitForWriters())) {</span>
+<span class="fc" id="L94">                authorization.requireJobAccess(creation.principalId(), creation);</span>
+<span class="fc" id="L95">                Instant started = clock.instant(); long deadline = System.nanoTime() + limits.maxDuration().toNanos();</span>
+<span class="fc" id="L96">                BackupId id = BackupId.create();</span>
+<span class="fc" id="L97">                Files.createDirectories(root);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                if (!root.toRealPath().equals(root)) throw new IOException(&quot;Capture root must not traverse symlinks&quot;);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                staging = Files.getFileStore(root).supportsFileAttributeView(&quot;posix&quot;)</span>
+<span class="fc" id="L100">                        ? Files.createTempDirectory(root, &quot;.capturing-&quot;, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(&quot;rwx------&quot;)))</span>
+<span class="pc" id="L101">                        : Files.createTempDirectory(root, &quot;.capturing-&quot;);</span>
+<span class="fc" id="L102">                var sink = new StagingSink(staging, maintenance, deadline, id, creation.request().secrets(), progress);</span>
+<span class="fc" id="L103">                sink.check(); CapturePlan plan = inventory.inspect(creation, sink::checkpoint); sink.check();</span>
+<span class="fc" id="L104">                var versions = new HashMap&lt;BackupComponentId, Integer&gt;();</span>
+<span class="fc" id="L105">                var omissions = new LinkedHashSet&lt;&gt;(plan.omissions());</span>
+<span class="fc" id="L106">                var plannedComponents = plan.components().entrySet().stream()</span>
+<span class="fc" id="L107">                        .sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupComponentId::value))).toList();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                for (var component : plannedComponents) {</span>
+<span class="fc" id="L109">                    var adapter = contributors.get(component.getKey());</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">                    if (adapter == null || adapter.schemaVersion() != component.getValue().version())</span>
+<span class="fc" id="L111">                        throw new IllegalStateException(&quot;Missing or unsupported capture component: &quot; + component.getKey().value());</span>
+<span class="fc" id="L112">                    versions.put(component.getKey(), component.getValue().version());</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    if (adapter instanceof BackupDataContributor data)</span>
+<span class="fc" id="L114">                        omissions.addAll(data.omissions(creation.request().profile()));</span>
+<span class="fc" id="L115">                }</span>
+<span class="fc" id="L116">                versions.put(PROOF, 1);</span>
+<span class="fc" id="L117">                var snapshot = new SnapshotContext(id, creation, started, clock.instant(), maintenance.generation(),</span>
+<span class="fc" id="L118">                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::captured)), versions,</span>
+<span class="fc" id="L119">                        plan.repositories().stream().collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::archiveId)),</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                        plan.repositories().stream().filter(repository -&gt; repository.exportedHead() != null)</span>
+<span class="fc" id="L121">                                .collect(Collectors.toMap(BackupManifest.Repository::id, BackupManifest.Repository::exportedHead)));</span>
+<span class="fc" id="L122">                var components = new ArrayList&lt;BackupManifest.Component&gt;();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                for (var component : plannedComponents) {</span>
+<span class="fc" id="L124">                    sink.check(); int before = sink.entries.size();</span>
+<span class="fc" id="L125">                    contributors.get(component.getKey()).write(snapshot, sink);</span>
+<span class="fc" id="L126">                    var definition = component.getValue();</span>
+<span class="fc" id="L127">                    components.add(new BackupManifest.Component(component.getKey(), definition.version(), definition.completeness(),</span>
+<span class="fc" id="L128">                            sink.entries.subList(before, sink.entries.size()).stream().map(BackupEntry::path).toList(), definition.dependencies()));</span>
+<span class="fc" id="L129">                }</span>
+<span class="fc" id="L130">                sink.check(); Instant completed = clock.instant();</span>
+<span class="fc" id="L131">                byte[] proof = JsonMapper.builder().build().writeValueAsBytes(Map.of(&quot;barrier&quot;, &quot;installation&quot;, &quot;generation&quot;, maintenance.generation(),</span>
+<span class="fc" id="L132">                        &quot;startedAt&quot;, started.toString(), &quot;completedAt&quot;, completed.toString(), &quot;repositoryCount&quot;, plan.repositories().size(),</span>
+<span class="fc" id="L133">                        &quot;payloadEntries&quot;, sink.entries.size(), &quot;revisions&quot;, plan.repositories()));</span>
+<span class="fc" id="L134">                var proofEntry = sink.write(&quot;verification/capture.json&quot;, new ByteArrayInputStream(proof));</span>
+<span class="fc" id="L135">                components.add(new BackupManifest.Component(PROOF, 1, BackupCompleteness.COMPLETE, List.of(proofEntry.path()), Set.of()));</span>
+<span class="fc" id="L136">                var dependencies = new java.util.LinkedHashSet&lt;&gt;(plan.dependencies());</span>
+<span class="fc" id="L137">                dependencies.addAll(prerequisites.dependencies());</span>
+<span class="fc" id="L138">                var manifest = new BackupManifest(BackupManifest.FORMAT_VERSION, plan.applicationVersion(), plan.build(), id, plan.sourceInstallationId(),</span>
+<span class="fc" id="L139">                        creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), BackupManifest.SUPPORTED_FEATURES,</span>
+<span class="fc" id="L140">                        components, plan.repositories(), sink.entries, List.copyOf(dependencies), List.copyOf(omissions));</span>
+<span class="fc" id="L141">                byte[] document = new BackupManifestCodec().write(manifest);</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                if (document.length &gt; limits.maxTotalBytes() - sink.total) throw new IOException(&quot;Capture byte limit exceeded&quot;);</span>
+<span class="fc" id="L143">                try (var channel = FileChannel.open(staging.resolve(&quot;manifest.json&quot;), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {</span>
+<span class="fc" id="L144">                    try (var output = SpoolStreams.output(channel, protection, id, &quot;manifest.json&quot;)) { output.write(document); }</span>
+<span class="fc" id="L145">                    channel.force(true);</span>
+                }
+<span class="fc" id="L147">                sink.check(); forceDirectory(staging);</span>
+<span class="fc" id="L148">                Path destination = root.resolve(&quot;capture-&quot; + id.value());</span>
+<span class="fc" id="L149">                Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);</span>
+<span class="fc" id="L150">                staging = destination; forceDirectory(root);</span>
+                // An expired capture is discarded even if a filesystem move already completed.
+<span class="fc" id="L152">                maintenance.checkValid();</span>
+<span class="fc" id="L153">                captured = CapturedBackup.open(destination, creation, protection);</span>
+            }
+<span class="fc" id="L155">            return captured;</span>
+<span class="fc" id="L156">        } catch (IOException | RuntimeException | Error failure) {</span>
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">            boolean interrupted = Thread.currentThread().isInterrupted() || failure instanceof InterruptedIOException;</span>
+<span class="pc" id="L158">            try { CapturedBackup.delete(staging); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            finally { if (interrupted) Thread.currentThread().interrupt(); }</span>
+<span class="fc" id="L160">            throw failure;</span>
+        }
+    }
+
+    private static void forceDirectory(Path directory) throws IOException {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if (Files.getFileStore(directory).supportsFileAttributeView(&quot;posix&quot;)) {</span>
+<span class="fc" id="L166">            try (var channel = FileChannel.open(directory, StandardOpenOption.READ)) { channel.force(true); }</span>
+        }
+<span class="fc" id="L168">    }</span>
+
+    private final class StagingSink implements ComponentSink {
+        private final Path directory;
+        private final BackupMaintenanceLease.Maintenance maintenance;
+        private final long deadline;
+        private final BackupId id;
+        private final SecretsSelection secrets;
+        private final ArchiveProgress observer;
+        private long validatedAt;
+        private long total;
+<span class="fc" id="L179">        private final Thread captureThread = Thread.currentThread();</span>
+        private volatile boolean entryFailed;
+        private boolean entryOpen;
+<span class="fc" id="L182">        private final List&lt;BackupEntry&gt; entries = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L183">        private final Set&lt;String&gt; paths = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L184">        StagingSink(Path directory, BackupMaintenanceLease.Maintenance maintenance, long deadline, BackupId id, SecretsSelection secrets, ArchiveProgress observer) {</span>
+<span class="fc" id="L185">            this.directory = directory; this.maintenance = maintenance; this.deadline = deadline; this.id = id; this.secrets = secrets; this.observer = observer;</span>
+<span class="fc" id="L186">        }</span>
+        void check() throws IOException {
+<span class="fc" id="L188">            budget();</span>
+<span class="fc" id="L189">            maintenance.renew(); validatedAt = System.nanoTime();</span>
+<span class="fc" id="L190">        }</span>
+        private void requireCaptureThread() throws IOException {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (Thread.currentThread() != captureThread) {</span>
+<span class="fc" id="L193">                entryFailed = true; throw new IOException(&quot;Capture writes require the capture thread&quot;);</span>
+            }
+<span class="fc" id="L195">        }</span>
+        private void checkBudgetState() throws IOException {
+<span class="fc" id="L197">            requireCaptureThread();</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup capture cancelled&quot;);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (entryFailed) throw new IOException(&quot;A capture entry previously failed&quot;);</span>
+<span class="fc" id="L200">            long now = System.nanoTime();</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">            if (now - deadline &gt;= 0) throw new IOException(&quot;Capture runtime limit exceeded&quot;);</span>
+<span class="fc" id="L202">        }</span>
+        private void budget() throws IOException {
+<span class="fc" id="L204">            checkBudgetState();</span>
+<span class="fc" id="L205">            observer.check(total);</span>
+<span class="fc" id="L206">            checkBudgetState();</span>
+<span class="fc" id="L207">        }</span>
+        private void progress() throws IOException {
+<span class="fc" id="L209">            budget();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (System.nanoTime() - validatedAt &gt;= Duration.ofMillis(100).toNanos()) check();</span>
+<span class="fc" id="L211">        }</span>
+        @Override public void checkpoint() throws IOException {
+<span class="fc" id="L213">            try { progress(); }</span>
+<span class="fc" id="L214">            catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc" id="L215">        }</span>
+        @Override public BackupEntry write(String path, InputStream input) throws IOException {
+<span class="fc" id="L217">            return writeGenerated(path, output -&gt; {</span>
+<span class="fc" id="L218">                byte[] buffer = new byte[64 * 1024];</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                for (int read; (read = input.read(buffer)) != -1;) {</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">                    if (read == 0) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                        int single = input.read(); if (single &lt; 0) break; output.write(single);</span>
+<span class="pc" id="L222">                    } else output.write(buffer, 0, read);</span>
+                }
+<span class="fc" id="L224">            });</span>
+        }
+        @Override public BackupEntry writeGenerated(String path, ComponentSink.EntryWriter producer) throws IOException {
+<span class="fc" id="L227">            boolean entered = false;</span>
+            try {
+<span class="fc" id="L229">                check();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                if (entryOpen) throw new IOException(&quot;Capture cannot open nested entries&quot;);</span>
+<span class="fc" id="L231">                entryOpen = true; entered = true;</span>
+<span class="fc" id="L232">                Objects.requireNonNull(producer);</span>
+<span class="fc bfc" id="L233" title="All 4 branches covered.">                if (path.startsWith(&quot;protected/&quot;) &amp;&amp; secrets != SecretsSelection.INCLUDE_ENCRYPTED)</span>
+<span class="fc" id="L234">                    throw new IOException(&quot;Protected payload is outside the authorized selection&quot;);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                if (!paths.add(BackupPaths.collisionKey(path))) throw new IllegalArgumentException(&quot;Duplicate or colliding capture path&quot;);</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                if (entries.size() &gt;= limits.maxEntries()) throw new IOException(&quot;Capture entry limit exceeded&quot;);</span>
+<span class="fc" id="L237">                Path target = directory.resolve(path); Files.createDirectories(target.getParent());</span>
+<span class="fc" id="L238">                var digest = CapturedBackup.sha256(); EntryOutput entryOutput;</span>
+<span class="fc" id="L239">                try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {</span>
+<span class="fc" id="L240">                    try (var output = SpoolStreams.output(channel, protection, id, path)) {</span>
+<span class="fc" id="L241">                        entryOutput = new EntryOutput(output, digest);</span>
+<span class="fc" id="L242">                        try { producer.write(entryOutput); }</span>
+<span class="fc" id="L243">                        finally { entryOutput.invalidate(); }</span>
+<span class="fc" id="L244">                        check();</span>
+                    }
+<span class="fc" id="L246">                    channel.force(true);</span>
+                }
+<span class="fc" id="L248">                check();</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                for (Path parent = target.getParent(); parent.startsWith(directory); parent = parent.getParent()) forceDirectory(parent);</span>
+<span class="fc" id="L250">                var entry = new BackupEntry(path, entryOutput.length, HexFormat.of().formatHex(digest.digest()));</span>
+<span class="fc" id="L251">                entries.add(entry); return entry;</span>
+<span class="fc" id="L252">            } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            finally { if (entered) entryOpen = false; }</span>
+        }
+        private void poison(Throwable failure) {
+<span class="fc" id="L256">            entryFailed = true;</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            if (failure instanceof InterruptedIOException) Thread.currentThread().interrupt();</span>
+<span class="fc" id="L258">        }</span>
+        /** Callback-scoped view; only the sink owns encryption finalization and the durable channel. */
+        private final class EntryOutput extends OutputStream {
+            private final OutputStream delegate;
+            private final java.security.MessageDigest digest;
+            private long length;
+            private volatile boolean closed;
+<span class="fc" id="L265">            EntryOutput(OutputStream delegate, java.security.MessageDigest digest) { this.delegate = delegate; this.digest = digest; }</span>
+            private void active() throws IOException {
+<span class="fc" id="L267">                requireCaptureThread();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                if (closed) throw new IOException(&quot;Generated entry stream is closed&quot;);</span>
+<span class="fc" id="L269">                progress();</span>
+<span class="fc" id="L270">            }</span>
+<span class="fc" id="L271">            @Override public void write(int value) throws IOException { write(new byte[]{(byte) value}, 0, 1); }</span>
+            @Override public void write(byte[] bytes) throws IOException {
+<span class="fc" id="L273">                try { write(bytes, 0, bytes.length); }</span>
+<span class="pc" id="L274">                catch (RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc" id="L275">            }</span>
+            @Override public void write(byte[] bytes, int offset, int count) throws IOException {
+                try {
+<span class="fc" id="L278">                    active(); Objects.checkFromIndexSize(offset, count, bytes.length);</span>
+<span class="fc bfc" id="L279" title="All 4 branches covered.">                    if (count &gt; limits.maxEntryBytes() - length || count &gt; limits.maxTotalBytes() - total)</span>
+<span class="fc" id="L280">                        throw new IOException(&quot;Capture byte limit exceeded&quot;);</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">                    for (int position = offset, remaining = count; remaining &gt; 0;) {</span>
+<span class="fc" id="L282">                        progress(); int chunk = Math.min(remaining, 64 * 1024);</span>
+<span class="fc" id="L283">                        delegate.write(bytes, position, chunk); digest.update(bytes, position, chunk);</span>
+<span class="fc" id="L284">                        length += chunk; total += chunk; position += chunk; remaining -= chunk;</span>
+<span class="fc" id="L285">                        progress();</span>
+<span class="fc" id="L286">                    }</span>
+<span class="fc" id="L287">                } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc" id="L288">            }</span>
+            @Override public void flush() throws IOException {
+<span class="fc" id="L290">                try { active(); delegate.flush(); progress(); }</span>
+<span class="fc" id="L291">                catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc" id="L292">            }</span>
+            @Override public void close() throws IOException {
+                try {
+<span class="fc" id="L295">                    requireCaptureThread();</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">                    if (!closed) { active(); delegate.flush(); progress(); }</span>
+<span class="fc" id="L297">                } catch (IOException | RuntimeException | Error failure) { poison(failure); throw failure; }</span>
+<span class="fc" id="L298">                finally { closed = true; }</span>
+<span class="fc" id="L299">            }</span>
+<span class="fc" id="L300">            void invalidate() { closed = true; }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

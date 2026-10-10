@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.plugin</a> &gt; <span class="el_source">PluginIdentity.java</span></div><h1>PluginIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.plugin;
+
+import java.io.Serializable;
+
+/** Identity of the exact installed artifact; the host computes the SHA-256. */
+public record PluginIdentity(String id, String version, String artifactSha256) implements Serializable {
+<span class="fc" id="L7">    public PluginIdentity {</span>
+<span class="fc" id="L8">        requireId(id);</span>
+<span class="pc bpc" id="L9" title="3 of 6 branches missed.">        if (version == null || version.isBlank() || version.length() &gt; 128)</span>
+<span class="nc" id="L10">            throw new IllegalArgumentException(&quot;Plugin version is required&quot;);</span>
+<span class="pc bpc" id="L11" title="2 of 4 branches missed.">        if (artifactSha256 == null || !artifactSha256.matches(&quot;[0-9a-f]{64}&quot;))</span>
+<span class="nc" id="L12">            throw new IllegalArgumentException(&quot;Plugin artifact SHA-256 must be 64 lowercase hexadecimal characters&quot;);</span>
+<span class="fc" id="L13">    }</span>
+
+    public static String requireId(String id) {
+<span class="pc bpc" id="L16" title="2 of 4 branches missed.">        if (id == null || !id.matches(&quot;[a-z][a-z0-9.-]{0,127}&quot;))</span>
+<span class="nc" id="L17">            throw new IllegalArgumentException(&quot;Invalid plugin ID&quot;);</span>
+<span class="fc" id="L18">        return id;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

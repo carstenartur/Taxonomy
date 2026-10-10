@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NodeEmbeddingText.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">NodeEmbeddingText.java</span></div><h1>NodeEmbeddingText.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+
+/**
+ * Shared document-text formatter for catalogue embeddings.
+ *
+ * &lt;p&gt;Preserves the supplied relation order and the existing indexed text exactly.
+ * Callers own the source and ordering of the node and relation data; this helper
+ * performs no lookup and does not depend on the search/index adapter.
+ */
+public final class NodeEmbeddingText {
+    private NodeEmbeddingText() {
+    }
+
+    public static String buildEnrichedText(TaxonomyNode node) {
+<span class="fc" id="L18">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (node.getNameEn() != null) sb.append(node.getNameEn()).append(&quot;.\n&quot;);</span>
+<span class="fc bfc" id="L20" title="All 4 branches covered.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
+<span class="fc" id="L21">            sb.append(node.getDescriptionEn()).append(&quot;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!node.getOutgoingRelations().isEmpty()) {</span>
+<span class="fc" id="L24">            sb.append(&quot;Outgoing: &quot;);</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            for (TaxonomyRelation r : node.getOutgoingRelations()) {</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                if (r.getRelationType() == null) continue;</span>
+<span class="fc" id="L27">                sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));</span>
+<span class="pc bpc" id="L28" title="1 of 4 branches missed.">                String targetName = (r.getTargetNode() != null &amp;&amp; r.getTargetNode().getNameEn() != null)</span>
+<span class="fc" id="L29">                        ? r.getTargetNode().getNameEn() : &quot;&quot;;</span>
+<span class="fc" id="L30">                sb.append(&quot; &quot;).append(targetName).append(&quot;, &quot;);</span>
+<span class="fc" id="L31">            }</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            if (sb.toString().endsWith(&quot;, &quot;)) {</span>
+<span class="fc" id="L33">                sb.setLength(sb.length() - 2); // remove trailing &quot;, &quot;</span>
+            }
+<span class="fc" id="L35">            sb.append(&quot;.\n&quot;);</span>
+        }
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (!node.getIncomingRelations().isEmpty()) {</span>
+<span class="fc" id="L38">            sb.append(&quot;Incoming: &quot;);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            for (TaxonomyRelation r : node.getIncomingRelations()) {</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                if (r.getRelationType() == null) continue;</span>
+<span class="fc" id="L41">                sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">                String sourceName = (r.getSourceNode() != null &amp;&amp; r.getSourceNode().getNameEn() != null)</span>
+<span class="fc" id="L43">                        ? r.getSourceNode().getNameEn() : &quot;&quot;;</span>
+<span class="fc" id="L44">                sb.append(&quot; &quot;).append(sourceName).append(&quot;, &quot;);</span>
+<span class="fc" id="L45">            }</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (sb.toString().endsWith(&quot;, &quot;)) {</span>
+<span class="fc" id="L47">                sb.setLength(sb.length() - 2);</span>
+            }
+<span class="fc" id="L49">            sb.append(&quot;.\n&quot;);</span>
+        }
+<span class="fc" id="L51">        return sb.toString().trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenClusterAnalysisFinalizer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">FrozenClusterAnalysisFinalizer.java</span></div><h1>FrozenClusterAnalysisFinalizer.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.*;
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+/** Completes the durable rendering stage before the operation becomes terminal. */
+public final class FrozenClusterAnalysisFinalizer implements Consumer&lt;AnalysisOperationContext&gt; {
+    private final ClusterAnalysisStore store;
+    private final CatalogueSnapshotService snapshots;
+    private final RequirementArchitectureViewService architecture;
+    private final ArchitectureReportMetadataPort metadata;
+    private final ObjectMapper mapper;
+
+    public FrozenClusterAnalysisFinalizer(ClusterAnalysisStore store, CatalogueSnapshotService snapshots,
+<span class="fc" id="L34">            RequirementArchitectureViewService architecture, ArchitectureReportMetadataPort metadata, ObjectMapper mapper) {</span>
+<span class="fc" id="L35">        this.store = Objects.requireNonNull(store); this.snapshots = Objects.requireNonNull(snapshots);</span>
+<span class="fc" id="L36">        this.architecture = Objects.requireNonNull(architecture); this.metadata = Objects.requireNonNull(metadata);</span>
+<span class="fc" id="L37">        this.mapper = Objects.requireNonNull(mapper);</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override public void accept(AnalysisOperationContext context) {
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (TransactionSynchronizationManager.isActualTransactionActive()) {</span>
+<span class="nc" id="L42">            throw new IllegalStateException(&quot;Architecture finalization must execute outside a database transaction&quot;);</span>
+        }
+<span class="fc" id="L44">        var state = store.snapshot(context);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (state.state() != ClusterAnalysisState.FINALIZING) return;</span>
+<span class="fc" id="L46">        var command = store.command(context);</span>
+<span class="fc" id="L47">        var result = mapper.readValue(mapper.writeValueAsString(</span>
+<span class="fc" id="L48">                Objects.requireNonNull(state.result(), &quot;Finalizing operation has no result&quot;)), AnalysisResult.class);</span>
+        // Read the admitted bytes outside the rendering-failure boundary. A database outage
+        // must redeliver this durable stage instead of becoming a successful acknowledgement.
+<span class="fc" id="L51">        List&lt;RootCatalogueSnapshot&gt; roots = TaxonomyShardRoot.DEFAULT_ROOTS.stream()</span>
+<span class="fc" id="L52">                .map(root -&gt; mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class)).toList();</span>
+<span class="fc" id="L53">        var required = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());</span>
+<span class="fc" id="L54">        try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), required, roots)) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            RequirementArchitectureView view = result.getRelationSearchReport() != null</span>
+<span class="fc" id="L56">                    ? architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(),</span>
+<span class="fc" id="L57">                        command.maxArchitectureNodes(), result.getRelationSearchReport())</span>
+<span class="fc" id="L58">                    : scoredView(command, result);</span>
+<span class="fc" id="L59">            metadata.applyTo(view);</span>
+<span class="fc" id="L60">            view.setAnalysisCoverage(result.getAnalysisCoverage());</span>
+<span class="fc" id="L61">            view.setAnalysisStatus(result.getStatus());</span>
+<span class="fc" id="L62">            result.setArchitectureView(view);</span>
+<span class="nc" id="L63">        } catch (DataAccessException databaseFailure) {</span>
+<span class="nc" id="L64">            throw databaseFailure;</span>
+<span class="fc" id="L65">        } catch (RuntimeException renderingFailure) {</span>
+<span class="fc" id="L66">            result.setArchitectureView(null);</span>
+<span class="fc" id="L67">            result.setStatus(&quot;PARTIAL&quot;);</span>
+<span class="fc" id="L68">            String warning = &quot;ARCHITECTURE_VIEW_INCOMPLETE: Frozen architecture rendering could not be completed.&quot;;</span>
+<span class="fc" id="L69">            var warnings = new ArrayList&lt;&gt;(result.getWarnings());</span>
+<span class="fc" id="L70">            warnings.add(warning); result.setWarnings(warnings);</span>
+<span class="pc bpc" id="L71" title="3 of 4 branches missed.">            if (result.getErrorMessage() == null || result.getErrorMessage().isBlank()) result.setErrorMessage(warning);</span>
+<span class="fc" id="L72">        }</span>
+        // The store rechecks authority, FINALIZING state and cancellation under its short lock.
+<span class="fc" id="L74">        store.finalizeResult(context, result);</span>
+<span class="fc" id="L75">    }</span>
+
+    /** Projects scored frozen nodes and any score-only proposals without consulting global relations. */
+    private static RequirementArchitectureView scoredView(AnalyzeRequirementCommand command, AnalysisResult result) {
+<span class="fc" id="L79">        var catalogue = Objects.requireNonNull(FrozenCatalogueContext.current());</span>
+<span class="fc" id="L80">        var view = new RequirementArchitectureView();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        var ranked = result.getScores().entrySet().stream().filter(entry -&gt; entry.getValue() &gt; 0)</span>
+<span class="fc" id="L82">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue(Comparator.reverseOrder())</span>
+<span class="fc" id="L83">                        .thenComparing(Map.Entry.comparingByKey())).toList();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        int limit = command.maxArchitectureNodes() &gt; 0 ? command.maxArchitectureNodes() : ranked.size();</span>
+<span class="fc" id="L85">        var selected = ranked.stream().limit(limit).map(Map.Entry::getKey).collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (var score : ranked.stream().limit(limit).toList()) {</span>
+<span class="fc" id="L87">            var node = catalogue.requireNode(score.getKey());</span>
+<span class="fc" id="L88">            var detail = result.getScoreDetails().get(node.code());</span>
+<span class="fc" id="L89">            var element = new RequirementElementView();</span>
+<span class="fc" id="L90">            element.setNodeCode(node.code()); element.setTitle(node.nameEn()); element.setTaxonomySheet(node.taxonomyRoot());</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            element.setScoreDetail(detail); element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());</span>
+<span class="fc" id="L92">            element.setRelevance(score.getValue() / 100.0); element.setOrigin(NodeOrigin.DIRECT_SCORED);</span>
+<span class="fc" id="L93">            element.setAnchor(true); element.setSelectedForImpact(true);</span>
+<span class="fc" id="L94">            element.setPresenceReason(&quot;Direct assessment in the admitted catalogue.&quot;);</span>
+<span class="fc" id="L95">            element.setIncludedBecause(element.getPresenceReason());</span>
+<span class="fc" id="L96">            var path = new LinkedList&lt;String&gt;();</span>
+<span class="fc" id="L97">            RootCatalogueSnapshot.Node parent = node;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            while (parent != null) {</span>
+<span class="fc" id="L99">                path.addFirst(parent.code());</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                parent = parent.parentCode() == null ? null : catalogue.requireNode(parent.parentCode());</span>
+            }
+<span class="fc" id="L102">            element.setHierarchyPath(String.join(&quot; &gt; &quot;, path)); element.setTaxonomyDepth(path.size() - 1);</span>
+<span class="pc bfc" id="L103" title="All 2 branches covered.">            for (int index = path.size() - 2; index &gt;= 0; index--) {</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (selected.contains(path.get(index))) { element.setParentNodeCode(path.get(index)); break; }</span>
+            }
+<span class="fc" id="L106">            view.getIncludedElements().add(element);</span>
+<span class="fc" id="L107">            view.getAnchors().add(new RequirementAnchor(node.code(), element.getDirectLlmScore(), element.getPresenceReason()));</span>
+<span class="fc" id="L108">        }</span>
+<span class="fc" id="L109">        view.setTotalElements(view.getIncludedElements().size()); view.setTotalAnchors(view.getAnchors().size());</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (result.getProvisionalRelations().isEmpty()) {</span>
+<span class="fc" id="L111">            view.getNotes().add(&quot;Frozen hierarchy-only projection of scored taxonomy nodes; no verified relationship evidence is available in this result.&quot;);</span>
+        } else {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            for (var hypothesis : result.getProvisionalRelations()) {</span>
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">                if (!selected.contains(hypothesis.getSourceCode()) || !selected.contains(hypothesis.getTargetCode())) continue;</span>
+<span class="fc" id="L115">                var relation = new RequirementRelationshipView();</span>
+<span class="fc" id="L116">                relation.setSourceCode(hypothesis.getSourceCode()); relation.setTargetCode(hypothesis.getTargetCode());</span>
+<span class="fc" id="L117">                relation.setRelationType(hypothesis.getRelationType()); relation.setOrigin(RelationOrigin.SUGGESTED_CANDIDATE);</span>
+<span class="fc" id="L118">                relation.setConfidence(hypothesis.getConfidence()); relation.setPropagatedRelevance(hypothesis.getConfidence());</span>
+<span class="fc" id="L119">                relation.setDerivationReason(hypothesis.getReasoning());</span>
+<span class="fc" id="L120">                relation.setPresenceReason(&quot;Provisional score-only hypothesis; not verified or adopted.&quot;);</span>
+<span class="fc" id="L121">                relation.setIncludedBecause(relation.getPresenceReason());</span>
+<span class="fc" id="L122">                view.getIncludedRelationships().add(relation);</span>
+<span class="fc" id="L123">            }</span>
+<span class="fc" id="L124">            view.setTotalRelationships(view.getIncludedRelationships().size());</span>
+<span class="fc" id="L125">            view.getNotes().add(&quot;Provisional score-only hypotheses use effective scores and compatibility rules; no relationship verification was performed.&quot;);</span>
+        }
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (ranked.size() &gt; limit) view.getNotes().add(&quot;NODE_LIMIT: Complete score and provisional evidence remains in the analysis result.&quot;);</span>
+<span class="fc" id="L128">        return view;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

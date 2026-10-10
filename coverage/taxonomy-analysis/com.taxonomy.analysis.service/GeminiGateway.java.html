@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GeminiGateway.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">GeminiGateway.java</span></div><h1>GeminiGateway.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.SocketTimeoutException;
+import java.util.*;
+
+/**
+ * Gateway for the Google Gemini LLM API. Each physical HTTP attempt uses the
+ * provider's shared concurrency/RPM admission; other providers remain independent.
+ */
+public class GeminiGateway implements LlmGateway {
+<span class="fc" id="L21">    private static final Logger log = LoggerFactory.getLogger(GeminiGateway.class);</span>
+    static final int DEFAULT_RPM = 5;
+
+    private final LlmProviderConfig providerConfig;
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final LlmResponseParser responseParser;
+    private final AnalysisRuntimeSettings preferencesService;
+    private final SimpleClientHttpRequestFactory llmRequestFactory;
+    private final LlmRecordReplayService recordReplayService;
+    private final LlmRequestAdmission requestAdmission;
+
+    public GeminiGateway(LlmProviderConfig providerConfig,
+                         RestTemplate restTemplate,
+                         ObjectMapper objectMapper,
+                         LlmResponseParser responseParser,
+                         AnalysisRuntimeSettings preferencesService,
+                         SimpleClientHttpRequestFactory llmRequestFactory,
+<span class="fc" id="L39">                         LlmRecordReplayService recordReplayService) {</span>
+<span class="fc" id="L40">        this.providerConfig = providerConfig;</span>
+<span class="fc" id="L41">        this.restTemplate = restTemplate;</span>
+<span class="fc" id="L42">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L43">        this.responseParser = responseParser;</span>
+<span class="fc" id="L44">        this.preferencesService = preferencesService;</span>
+<span class="fc" id="L45">        this.llmRequestFactory = llmRequestFactory;</span>
+<span class="fc" id="L46">        this.recordReplayService = recordReplayService;</span>
+<span class="fc" id="L47">        this.requestAdmission = new LlmRequestAdmission(LlmProvider.GEMINI, DEFAULT_RPM, preferencesService);</span>
+<span class="fc" id="L48">    }</span>
+
+<span class="fc" id="L50">    void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }</span>
+<span class="fc" id="L51">    void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }</span>
+
+<span class="fc" id="L53">    @Override public String providerName() { return &quot;GEMINI&quot;; }</span>
+
+    @Override public String extractResponseText(String rawResponseBody) {
+<span class="fc" id="L56">        return responseParser.extractGeminiText(rawResponseBody);</span>
+    }
+
+    @Override
+    public String sendHttpRequest(String prompt, String apiKey) {
+<span class="fc" id="L61">        AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L62">        String usageInvocation = LlmTransportMeter.newInvocation();</span>
+        // REPLAY never reserves network capacity or consumes a provider request budget.
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        if (recordReplayService != null &amp;&amp; recordReplayService.isReplayMode()) {</span>
+<span class="fc" id="L65">            Optional&lt;String&gt; recorded = recordReplayService.replay(prompt);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (recorded.isPresent()) {</span>
+<span class="fc" id="L67">                LlmTransportMeter.replay(usageInvocation, &quot;GEMINI&quot;);</span>
+<span class="fc" id="L68">                return recorded.get();</span>
+            }
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (!recordReplayService.isFallbackLive()) {</span>
+<span class="fc" id="L71">                log.warn(&quot;No LLM recording found for prompt hash — no fallback configured&quot;);</span>
+<span class="fc" id="L72">                return null;</span>
+            }
+<span class="nc" id="L74">            log.warn(&quot;No LLM recording found for prompt hash — falling back to live API&quot;);</span>
+        }
+
+<span class="fc" id="L77">        applyCurrentTimeout();</span>
+<span class="fc" id="L78">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L79">        Map&lt;String, Object&gt; content = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L80">        Map&lt;String, Object&gt; part = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L81">        part.put(&quot;text&quot;, prompt);</span>
+<span class="fc" id="L82">        content.put(&quot;parts&quot;, List.of(part));</span>
+<span class="fc" id="L83">        body.put(&quot;contents&quot;, List.of(content));</span>
+
+<span class="fc" id="L85">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L86">        headers.setContentType(MediaType.APPLICATION_JSON);</span>
+        try {
+<span class="fc" id="L88">            HttpEntity&lt;String&gt; entity = new HttpEntity&lt;&gt;(objectMapper.writeValueAsString(body), headers);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            int maxRetries = Math.max(0, Math.min(6, preferencesService != null</span>
+<span class="fc" id="L90">                    ? preferencesService.getInt(&quot;llm.retry.max&quot;, 2) : 2));</span>
+<span class="fc" id="L91">            int attempt = 0;</span>
+            while (true) {
+                ResponseEntity&lt;String&gt; response;
+                try {
+<span class="fc" id="L95">                    response = sendAttempt(usageInvocation, attempt, entity, apiKey);</span>
+<span class="fc" id="L96">                } catch (HttpClientErrorException e) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                    if (e.getStatusCode().value() == 429) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                        if (requestAdmission.retryRateLimit(e, objectMapper, attempt, maxRetries)) {</span>
+<span class="fc" id="L99">                            attempt++;</span>
+<span class="fc" id="L100">                            continue;</span>
+                        }
+<span class="fc" id="L102">                        throw new LlmRateLimitException(&quot;Gemini rate limit (HTTP 429)&quot;, e);</span>
+                    }
+<span class="fc" id="L104">                    throw new RuntimeException(&quot;Gemini API error &quot; + e.getStatusCode(), e);</span>
+<span class="fc" id="L105">                } catch (HttpServerErrorException e) {</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                    if (attempt &lt; maxRetries) {</span>
+<span class="fc" id="L107">                        long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);</span>
+<span class="fc" id="L108">                        log.warn(&quot;Gemini API server error {} — retry {}/{} after {}ms&quot;,</span>
+<span class="fc" id="L109">                                e.getStatusCode(), attempt, maxRetries, backoffMs);</span>
+<span class="fc" id="L110">                        AnalysisRunControl.pause(&quot;RETRY_WAIT&quot;, backoffMs);</span>
+<span class="fc" id="L111">                        continue;</span>
+                    }
+<span class="fc" id="L113">                    throw new RuntimeException(&quot;Gemini API server error &quot; + e.getStatusCode(), e);</span>
+<span class="fc" id="L114">                } catch (ResourceAccessException e) {</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                    if (e.getCause() instanceof SocketTimeoutException) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                        int timeoutSeconds = preferencesService != null</span>
+<span class="pc" id="L117">                                ? preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60) : 60;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                        if (attempt &lt; maxRetries) {</span>
+<span class="fc" id="L119">                            long backoffMs = ProviderRetryPolicy.backoffMillis(attempt++);</span>
+<span class="fc" id="L120">                            log.warn(&quot;Gemini API read timeout after {}s — retry {}/{} after {}ms&quot;,</span>
+<span class="fc" id="L121">                                    timeoutSeconds, attempt, maxRetries, backoffMs);</span>
+<span class="fc" id="L122">                            AnalysisRunControl.pause(&quot;RETRY_WAIT&quot;, backoffMs);</span>
+<span class="fc" id="L123">                            continue;</span>
+                        }
+<span class="fc" id="L125">                        throw new LlmTimeoutException(</span>
+                                &quot;Gemini API call timed out after &quot; + timeoutSeconds + &quot;s. &quot;
+                                        + &quot;You can increase the timeout in Preferences → llm.timeout.seconds.&quot;, e);
+                    }
+<span class="nc" id="L129">                    throw e;</span>
+<span class="fc" id="L130">                }</span>
+
+<span class="fc" id="L132">                String responseBody = response.getBody();</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">                if (responseBody != null &amp;&amp; responseBody.contains(&quot;RESOURCE_EXHAUSTED&quot;)) {</span>
+<span class="fc" id="L134">                    throw new LlmRateLimitException(&quot;Gemini quota exhausted (RESOURCE_EXHAUSTED)&quot;);</span>
+                }
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">                if (responseBody != null &amp;&amp; responseBody.contains(&quot;\&quot;error\&quot;&quot;)) {</span>
+<span class="fc" id="L137">                    log.error(&quot;Gemini API returned an error envelope ({} characters)&quot;, responseBody.length());</span>
+<span class="fc" id="L138">                    return null;</span>
+                }
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">                if (response.getStatusCode().is2xxSuccessful() &amp;&amp; responseBody != null) {</span>
+<span class="fc" id="L141">                    log.info(&quot;LLM Response [GEMINI] received ({} characters)&quot;, responseBody.length());</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">                    if (recordReplayService != null &amp;&amp; recordReplayService.isRecordMode()) {</span>
+<span class="fc" id="L143">                        recordReplayService.record(prompt, responseBody, &quot;GEMINI&quot;, null);</span>
+                    }
+<span class="fc" id="L145">                    return responseBody;</span>
+                }
+<span class="nc" id="L147">                log.error(&quot;Gemini API returned status {}&quot;, response.getStatusCode());</span>
+<span class="nc" id="L148">                return null;</span>
+            }
+<span class="fc" id="L150">        } catch (LlmRateLimitException | LlmTimeoutException e) {</span>
+<span class="fc" id="L151">            throw e;</span>
+<span class="nc" id="L152">        } catch (LlmTransportMeter.JournalStartException unavailable) {</span>
+<span class="nc" id="L153">            throw unavailable;</span>
+<span class="fc" id="L154">        } catch (AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L155">            throw stopped;</span>
+<span class="fc" id="L156">        } catch (Exception e) {</span>
+<span class="fc" id="L157">            log.error(&quot;Error calling Gemini API (exception type {})&quot;, e.getClass().getSimpleName());</span>
+<span class="fc" id="L158">            return null;</span>
+        }
+    }
+
+    private ResponseEntity&lt;String&gt; sendAttempt(String invocation, int attempt, HttpEntity&lt;String&gt; entity, String apiKey) {
+<span class="fc" id="L163">        return requestAdmission.execute(() -&gt; {</span>
+<span class="fc" id="L164">            AnalysisRunControl.phase(&quot;LLM_REQUEST&quot;, null);</span>
+<span class="fc" id="L165">            return LlmTransportMeter.exchange(invocation, &quot;GEMINI&quot;, attempt, objectMapper,</span>
+<span class="fc" id="L166">                    () -&gt; restTemplate.exchange(providerConfig.getGeminiUrl() + apiKey,</span>
+                            HttpMethod.POST, entity, String.class));
+        });
+    }
+
+    /** Kept for direct throttle contracts; production admission surrounds every HTTP attempt. */
+<span class="fc" id="L172">    void throttle() { requestAdmission.execute(() -&gt; null); }</span>
+
+    private void applyCurrentTimeout() {
+<span class="fc bfc" id="L175" title="All 4 branches covered.">        if (preferencesService == null || llmRequestFactory == null) return;</span>
+<span class="fc" id="L176">        int timeoutSeconds = preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60);</span>
+<span class="fc" id="L177">        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);</span>
+<span class="fc" id="L178">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

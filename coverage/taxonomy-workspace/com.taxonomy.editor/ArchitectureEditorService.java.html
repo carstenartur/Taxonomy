@@ -1,0 +1,524 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureEditorService.java</span></div><h1>ArchitectureEditorService.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.backup.BackupScope;
+import com.taxonomy.backup.BackupWriteBarrier;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.editor.persistence.EditorJournal;
+import com.taxonomy.editor.persistence.EditorJournal.*;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.OutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.DigestOutputStream;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+/** Accepted editing revisions belong to the durable workspace journal. Git contains explicit versions only. */
+@Service
+public class ArchitectureEditorService implements ArchitectureCommandPort, WorkspaceArchitectureVersionPort {
+    private final DslGitRepositoryFactory repositories;
+    private final EditorJournal journal;
+    private final ArchitectureCheckpointWriter checkpointWriter;
+<span class="fc" id="L42">    private BackupWriteBarrier writeBarrier = BackupWriteBarrier.disabled();</span>
+
+    @Autowired
+    public void setBackupWriteBarrier(BackupWriteBarrier writeBarrier) {
+<span class="fc" id="L46">        this.writeBarrier = Objects.requireNonNull(writeBarrier);</span>
+<span class="fc" id="L47">    }</span>
+
+    private static BackupScope backupScope(RepositoryContext context) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        return context.workspaceId() == null</span>
+<span class="fc" id="L51">                ? new BackupScope.Repositories(Map.of(context.repositoryId(), Set.of()))</span>
+<span class="fc" id="L52">                : new BackupScope.Workspace(context.repositoryId(), context.workspaceId());</span>
+    }
+
+<span class="fc" id="L55">    private final ArchitectureDslCommands transformer = new ArchitectureDslCommands();</span>
+
+    public ArchitectureEditorService(DslGitRepositoryFactory repositories, EditorJournal journal,
+<span class="fc" id="L58">                                     ArchitectureCheckpointWriter checkpointWriter) {</span>
+<span class="fc" id="L59">        this.repositories = repositories; this.journal = journal; this.checkpointWriter = checkpointWriter;</span>
+<span class="fc" id="L60">    }</span>
+
+<span class="fc" id="L62">    public record HistoryEntry(String operationId, String commandId, String kind, String targetOperationId,</span>
+                               String actor, String occurredAt, String rationale, List&lt;String&gt; changedIds,
+                               long previousRevision, long revision) {}
+<span class="fc" id="L65">    public record Document(Context context, String dsl, String projectionState, List&lt;HistoryEntry&gt; history,</span>
+                           List&lt;DslCommit&gt; versions, long checkpointRevision, String pendingCheckpointId, String source) {}
+
+<span class="fc" id="L68">    public Document read(RepositoryContext context, String commit) throws IOException { return read(context, commit, null); }</span>
+
+    public Document read(RepositoryContext context, String commit, Long revision) throws IOException {
+<span class="pc bpc" id="L71" title="1 of 4 branches missed.">        if (commit != null &amp;&amp; revision != null) throw new IllegalArgumentException(&quot;Select a version or a semantic revision&quot;);</span>
+<span class="fc" id="L72">        DslGitRepository repository = repositories.resolveRepository(context);</span>
+<span class="fc" id="L73">        String head = head(repository, context.branch());</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        List&lt;DslCommit&gt; versions = head == null ? List.of() : repository.getDslHistory(context.branch());</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (commit != null) {</span>
+<span class="fc" id="L76">            String selected = ObjectId.fromString(commit).name();</span>
+<span class="fc" id="L77">            requireReachable(repository, head, selected);</span>
+<span class="fc" id="L78">            return new Document(Context.version(context, selected), source(repository, selected), &quot;HISTORICAL&quot;,</span>
+<span class="fc" id="L79">                    List.of(), versions, 0, null, &quot;GIT_CHECKPOINT&quot;);</span>
+        }
+<span class="fc" id="L81">        Snapshot snapshot = snapshot(context);</span>
+<span class="fc" id="L82">        State state = snapshot.state();</span>
+<span class="fc" id="L83">        String dsl = state.dsl();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        long selected = revision == null ? state.revision() : revision;</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if (selected &lt; 0 || selected &gt; state.revision()) throw problem(&quot;NOT_FOUND&quot;, &quot;revision&quot;, &quot;Unknown workspace revision&quot;, List.of());</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (selected != state.revision()) {</span>
+<span class="fc" id="L87">            dsl = journal.sourceAtRevision(context, selected);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (dsl == null) throw problem(&quot;NOT_FOUND&quot;, &quot;revision&quot;, &quot;Unknown workspace revision&quot;, List.of());</span>
+        }
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        String status = selected != state.revision() ? &quot;HISTORICAL&quot;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                : state.pendingCheckpoint() != null ? &quot;CHECKPOINT_PENDING&quot;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                : !Objects.equals(head, state.checkpointCommit()) ? &quot;VERSION_CHANGED&quot; : &quot;READY&quot;;</span>
+<span class="fc" id="L93">        return new Document(Context.of(context, state.checkpointCommit(), selected), dsl, status,</span>
+<span class="fc bfc" id="L94" title="All 4 branches covered.">                snapshot.operations().stream().filter(e -&gt; e.revision() &lt;= selected &amp;&amp; e.actor().equals(context.username()))</span>
+<span class="fc" id="L95">                        .limit(50).map(ArchitectureEditorService::history).toList(), versions,</span>
+<span class="fc" id="L96">                state.checkpointRevision(), state.pendingCheckpoint(), &quot;WORKSPACE_REVISION&quot;);</span>
+    }
+
+    @Override
+    public Preview preview(RepositoryContext context, Command command) throws IOException {
+<span class="fc" id="L101">        requireContext(context, command.context()); requireWritable(context);</span>
+<span class="fc" id="L102">        Snapshot snapshot = snapshot(context);</span>
+<span class="fc" id="L103">        expect(snapshot.state(), command.context().revision());</span>
+<span class="fc" id="L104">        requireInitialVersion(snapshot.state(), command.context());</span>
+<span class="fc" id="L105">        verifyVersion(context, snapshot.state());</span>
+<span class="fc" id="L106">        return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),</span>
+<span class="fc" id="L107">                transform(context, command, snapshot.state().dsl(), snapshot.operations(), id -&gt; journal.operation(context, id)),</span>
+<span class="fc" id="L108">                kind(command.operation()), target(command.operation()));</span>
+    }
+
+    @Override
+    public Accepted execute(RepositoryContext context, Command command) throws IOException {
+<span class="fc" id="L113">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L114">            requireContext(context, command.context()); requireWritable(context);</span>
+<span class="fc" id="L115">            Snapshot initial = snapshot(context);</span>
+<span class="fc" id="L116">            String fingerprint = fingerprint(command);</span>
+            try {
+<span class="fc" id="L118">                return journal.locked(context, initial.state(), session -&gt; {</span>
+<span class="fc" id="L119">                Entry prior = session.find(command.metadata().commandId());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (prior != null) {</span>
+<span class="fc" id="L121">                    requireFingerprint(fingerprint, prior.fingerprint());</span>
+<span class="fc" id="L122">                    return accepted(context, session.state(), prior, true);</span>
+                }
+<span class="fc" id="L124">                session.expect(command.context().revision());</span>
+<span class="fc" id="L125">                requireInitialVersion(session.state(), command.context());</span>
+<span class="fc" id="L126">                try { verifyVersion(context, session.state()); }</span>
+<span class="pc" id="L127">                catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }</span>
+<span class="fc" id="L128">                Change change = transform(context, command, session.state().dsl(), session.operations(), session::find);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                if (change.changes().isEmpty()) throw problem(&quot;NO_CHANGE&quot;, &quot;command&quot;, &quot;No semantic change to accept&quot;, List.of());</span>
+<span class="fc" id="L130">                Entry entry = session.append(command.metadata(), context.username(), kind(command.operation()), target(command.operation()),</span>
+<span class="fc" id="L131">                        fingerprint, change.dsl(), List.copyOf(affected(change.changes())));</span>
+<span class="fc" id="L132">                return accepted(context, session.state(), entry, false);</span>
+                });
+<span class="nc" id="L134">            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }</span>
+        }
+    }
+
+    /**
+     * A reviewed integration is one explicit application boundary. Its typed architecture commands,
+     * optional server-owned portfolio contribution and journal entry join the integration transaction.
+     * The caller checkpoints separately after that transaction commits. No Git write happens here.
+     */
+    public Context acceptIntegration(RepositoryContext context, Context expected, Metadata metadata,
+                                     String fingerprint, List&lt;com.taxonomy.dsl.command.ArchitectureCommand&gt; commands,
+                                     java.util.function.UnaryOperator&lt;String&gt; portfolioContribution,
+                                     Metadata checkpointMetadata) throws IOException {
+<span class="fc" id="L147">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L148">            requireContext(context, expected); requireWritable(context);</span>
+<span class="fc" id="L149">            State initial = seed(context);</span>
+<span class="fc" id="L150">            return journal.joinedLocked(context, initial, session -&gt; {</span>
+<span class="fc" id="L151">                Entry prior = session.find(metadata.commandId());</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                if (prior != null) {</span>
+<span class="nc" id="L153">                    requireFingerprint(prior.fingerprint(), fingerprint);</span>
+<span class="nc" id="L154">                    return Context.of(context, session.state().checkpointCommit(), prior.revision());</span>
+                }
+<span class="fc" id="L156">                session.expect(expected.revision()); requireInitialVersion(session.state(), expected);</span>
+<span class="fc" id="L157">                try { verifyVersion(context, session.state()); }</span>
+<span class="pc" id="L158">                catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }</span>
+<span class="fc" id="L159">                String before = session.state().dsl(), next = before;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (portfolioContribution != null) next = portfolioContribution.apply(next);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                for (var command : commands) next = transformer.apply(next, command).dsl();</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                if (!next.equals(before)) session.append(metadata, context.username(), &quot;VERSION_IMPORT&quot;, null, fingerprint, next,</span>
+<span class="fc" id="L163">                        new ArrayList&lt;&gt;(affected(ArchitectureSemanticPatch.between(before, next))));</span>
+<span class="fc" id="L164">                Context result = Context.of(context, session.state().checkpointCommit(), session.state().revision());</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                if (checkpointMetadata != null) session.prepare(checkpointMetadata, context.username(),</span>
+<span class="fc" id="L166">                        checkpointFingerprint(context, new CreateCheckpointCommand(result, checkpointMetadata)));</span>
+<span class="fc" id="L167">                return result;</span>
+            });
+        }
+    }
+
+    /** Workspace is the first model lock for cross-aggregate integrations, before any project lock. */
+    public &lt;T&gt; T integrationBoundary(RepositoryContext context, java.util.function.Function&lt;Document, T&gt; action) throws IOException {
+<span class="fc" id="L174">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L175">            requireWritable(context);</span>
+<span class="fc" id="L176">            return journal.joinedLocked(context, seed(context), session -&gt; {</span>
+<span class="fc" id="L177">                State state = session.state();</span>
+<span class="fc" id="L178">                return action.apply(new Document(Context.of(context, state.checkpointCommit(), state.revision()), state.dsl(),</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                        state.pendingCheckpoint() == null ? &quot;READY&quot; : &quot;CHECKPOINT_PENDING&quot;, List.of(), List.of(), state.checkpointRevision(), state.pendingCheckpoint(), &quot;WORKSPACE_REVISION&quot;));</span>
+            });
+        }
+    }
+
+    /** Read checkpoint evidence from the caller's locked integration transaction; no Git writes. */
+    public boolean integrationCheckpointMatches(RepositoryContext context, Context expected) throws IOException {
+<span class="fc" id="L186">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L187">            requireContext(context, expected);</span>
+<span class="fc" id="L188">            requireWritable(context);</span>
+            try {
+<span class="fc" id="L190">                return journal.joinedLocked(context, seed(context), session -&gt; {</span>
+<span class="fc" id="L191">                    State persisted = session.state();</span>
+<span class="fc" id="L192">                    Context actual = Context.of(context, persisted.checkpointCommit(), persisted.revision());</span>
+                    try {
+                        // The seed is initialization only; observe authoritative HEAD after the row lock.
+<span class="fc" id="L195">                        String actualHead = head(repositories.resolveRepository(context), context.branch());</span>
+<span class="pc bpc" id="L196" title="2 of 4 branches missed.">                        return actual.equals(expected) &amp;&amp; persisted.pendingCheckpoint() == null</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                                &amp;&amp; persisted.checkpointRevision() == persisted.revision()</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                                &amp;&amp; persisted.checkpointCommit() != null</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                                &amp;&amp; Objects.equals(actualHead, persisted.checkpointCommit());</span>
+<span class="nc" id="L200">                    } catch (IOException failure) {</span>
+<span class="nc" id="L201">                        throw new java.io.UncheckedIOException(failure);</span>
+                    }
+                });
+<span class="nc" id="L204">            } catch (java.io.UncheckedIOException failure) {</span>
+<span class="nc" id="L205">                throw failure.getCause();</span>
+            }
+        }
+    }
+
+    private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {
+<span class="fc" id="L211">        return new Accepted(Context.of(context, state.checkpointCommit(), entry.revision()), entry.commandId(), entry.commandId(), replayed,</span>
+<span class="fc" id="L212">                &quot;READY&quot;, new Change(entry.afterDsl(), ArchitectureSemanticPatch.between(entry.beforeDsl(), entry.afterDsl())));</span>
+    }
+
+    /** Explicit checkpoint command: durable prepare, retryable Git write, durable completion. No semantic append. */
+    public CheckpointAccepted checkpoint(RepositoryContext context, CreateCheckpointCommand command) throws IOException {
+<span class="fc" id="L217">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L218">            requireContext(context, command.context()); requireWritable(context);</span>
+            // A pending intent must be recoverable even when its Git phase has already advanced HEAD.
+<span class="fc" id="L220">            Snapshot current = journal.read(context);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            State initial = current == null ? seed(context) : current.state();</span>
+<span class="fc" id="L222">            String fingerprint = checkpointFingerprint(context, command);</span>
+            Checkpoint prepared;
+            try {
+<span class="fc" id="L225">                prepared = journal.locked(context, initial, session -&gt; {</span>
+<span class="fc" id="L226">                Checkpoint prior = session.checkpoint(command.metadata().commandId());</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                if (prior != null) {</span>
+<span class="fc" id="L228">                    requireFingerprint(fingerprint, prior.fingerprint());</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                    if (prior.failureCode() != null) throw problem(prior.failureCode(), &quot;checkpoint&quot;, &quot;The checkpoint was rejected because Git moved; reconcile and create a new checkpoint&quot;, List.of(prior.commandId()));</span>
+<span class="fc" id="L230">                    return prior;</span>
+                }
+<span class="fc" id="L232">                session.expect(command.context().revision());</span>
+<span class="fc" id="L233">                try { verifyVersion(context, session.state()); }</span>
+<span class="pc" id="L234">                catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }</span>
+<span class="fc" id="L235">                requireInitialVersion(session.state(), command.context());</span>
+<span class="fc" id="L236">                return session.prepare(command.metadata(), context.username(), fingerprint);</span>
+                });
+<span class="pc" id="L238">            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }</span>
+<span class="fc" id="L239">            boolean replayed = prepared.completed();</span>
+<span class="fc" id="L240">            Checkpoint completed = prepared;</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (!prepared.completed()) {</span>
+<span class="fc" id="L242">                completed = finishCheckpoint(context, initial, prepared);</span>
+            }
+<span class="fc" id="L244">            return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),</span>
+<span class="fc" id="L245">                    completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), replayed);</span>
+        }
+    }
+
+    /** Resume the exact durable intent after restart; the authenticated actor must own it. */
+    public CheckpointAccepted resumeCheckpoint(RepositoryContext context) throws IOException {
+<span class="fc" id="L251">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L252">            requireWritable(context);</span>
+<span class="fc" id="L253">            Snapshot snapshot = journal.read(context);</span>
+<span class="pc bpc" id="L254" title="2 of 4 branches missed.">            if (snapshot == null || snapshot.state().pendingCheckpoint() == null) throw problem(&quot;NOT_FOUND&quot;, &quot;checkpoint&quot;, &quot;No pending checkpoint&quot;, List.of());</span>
+<span class="fc" id="L255">            Checkpoint intent = journal.locked(context, snapshot.state(), session -&gt; session.checkpoint(snapshot.state().pendingCheckpoint()));</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">            if (!context.username().equals(intent.actor())) throw problem(&quot;NOT_FOUND&quot;, &quot;checkpoint&quot;, &quot;No personal checkpoint&quot;, List.of());</span>
+<span class="fc" id="L257">            Checkpoint completed = finishCheckpoint(context, snapshot.state(), intent);</span>
+<span class="fc" id="L258">            return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),</span>
+<span class="fc" id="L259">                    completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), true);</span>
+        }
+    }
+
+    private Checkpoint finishCheckpoint(RepositoryContext context, State initial, Checkpoint intent) throws IOException {
+        try {
+<span class="fc" id="L265">            var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), intent);</span>
+<span class="fc" id="L266">            return journal.locked(context, initial, session -&gt; session.complete(intent.commandId(), written.commitId(), written.created()));</span>
+<span class="fc" id="L267">        } catch (BranchHeadConflictException conflict) {</span>
+            // Deterministic commit recovery ran first: this exception proves the intent did not advance the ref.
+<span class="fc" id="L269">            journal.locked(context, initial, session -&gt; { session.rejectCheckpoint(intent.commandId()); return null; });</span>
+<span class="fc" id="L270">            throw problem(&quot;CHECKPOINT_CONFLICT&quot;, &quot;checkpoint&quot;, &quot;Git changed before this checkpoint could be applied; reconcile the versions&quot;, List.of(intent.commandId()));</span>
+        }
+    }
+
+    /** Editor projections are rebuilt from exact canonical DSL on every read, including before the first checkpoint. */
+    public String rebuild(RepositoryContext context, Context expected) throws IOException {
+<span class="fc" id="L276">        requireContext(context, expected); requireWritable(context);</span>
+<span class="fc" id="L277">        Snapshot snapshot = snapshot(context);</span>
+<span class="fc" id="L278">        expect(snapshot.state(), expected.revision());</span>
+<span class="fc" id="L279">        transformer.model(snapshot.state().dsl());</span>
+<span class="fc" id="L280">        return &quot;READY&quot;;</span>
+    }
+
+    @Override
+    public &lt;T&gt; T version(RepositoryContext context, String rationale, GitAction&lt;T&gt; action) throws IOException {
+<span class="fc" id="L285">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L286">            Snapshot snapshot = journal.read(context);</span>
+<span class="pc bpc" id="L287" title="1 of 4 branches missed.">            if (context.scope() != RepositoryScope.WORKSPACE || snapshot == null) return action.run();</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">            if (snapshot.state().pendingCheckpoint() != null) resumeCheckpoint(context);</span>
+<span class="fc" id="L289">            reconcileVersion(context);</span>
+<span class="fc" id="L290">            snapshot = journal.read(context);</span>
+<span class="fc" id="L291">            String id = UUID.nameUUIDFromBytes((EditorJournal.scope(context) + &quot;:&quot; + snapshot.state().revision()</span>
+<span class="fc" id="L292">                    + &quot;:&quot; + context.username() + &quot;:&quot; + rationale).getBytes(StandardCharsets.UTF_8)).toString();</span>
+<span class="fc" id="L293">            var prepared = checkpoint(context, new CreateCheckpointCommand(</span>
+<span class="fc" id="L294">                    Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()), new Metadata(id, id, id, rationale)));</span>
+            try {
+<span class="fc" id="L296">                return journal.locked(context, snapshot.state(), session -&gt; {</span>
+<span class="fc" id="L297">                    session.expect(prepared.context().revision());</span>
+                    try {
+<span class="fc" id="L299">                        T result = action.run();</span>
+<span class="fc" id="L300">                        importVersion(context, session, rationale);</span>
+<span class="fc" id="L301">                        return result;</span>
+<span class="fc" id="L302">                    } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }</span>
+                });
+<span class="fc" id="L304">            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        }</span>
+    }
+
+    /** Recovery for a version write that reached Git before the journal transaction could finish. */
+    public void reconcileVersion(RepositoryContext context) throws IOException {
+<span class="fc" id="L310">        try (var write = writeBarrier.enter(backupScope(context))) {</span>
+<span class="fc" id="L311">            requireWritable(context);</span>
+<span class="fc" id="L312">            Snapshot snapshot = journal.read(context);</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            if (snapshot == null) return;</span>
+            try {
+<span class="fc" id="L315">                journal.locked(context, snapshot.state(), session -&gt; {</span>
+<span class="fc" id="L316">                    session.expect(session.state().revision());</span>
+                    try {
+<span class="fc" id="L318">                        String head = head(repositories.resolveRepository(context), context.branch());</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                        if (Objects.equals(head, session.state().checkpointCommit())) return null;</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">                        if (session.state().revision() != session.state().checkpointRevision()) {</span>
+<span class="fc" id="L321">                            throw problem(&quot;VERSION_CHANGED&quot;, &quot;checkpoint&quot;, &quot;Uncheckpointed edits and a moved Git version require explicit reconciliation&quot;, List.of());</span>
+                        }
+<span class="fc" id="L323">                        importVersion(context, session, &quot;Recover completed architecture version&quot;);</span>
+<span class="fc" id="L324">                        return null;</span>
+<span class="nc" id="L325">                    } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }</span>
+                });
+<span class="pc" id="L327">            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        }</span>
+<span class="fc" id="L329">    }</span>
+
+    private void importVersion(RepositoryContext context, EditorJournal.Session session, String rationale) throws IOException {
+<span class="fc" id="L332">        var repository = repositories.resolveRepository(context);</span>
+<span class="fc" id="L333">        String head = head(repository, context.branch());</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        if (Objects.equals(head, session.state().checkpointCommit())) return;</span>
+<span class="fc" id="L335">        String dsl = source(repository, head);</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        if (!dsl.equals(session.state().dsl())) {</span>
+<span class="fc" id="L337">            var changes = ArchitectureSemanticPatch.between(session.state().dsl(), dsl);</span>
+<span class="fc" id="L338">            String id = UUID.randomUUID().toString();</span>
+<span class="fc" id="L339">            session.append(new Metadata(id, id, id, rationale), context.username(), &quot;VERSION_IMPORT&quot;, null,</span>
+<span class="fc" id="L340">                    EditorJournal.hash(&quot;version:&quot; + head), dsl, List.copyOf(affected(changes)));</span>
+        }
+<span class="fc" id="L342">        session.adoptVersion(head, context.username(), rationale);</span>
+<span class="fc" id="L343">    }</span>
+
+    private Change transform(RepositoryContext context, Command command, String current, List&lt;OperationSummary&gt; operations,
+                             java.util.function.Function&lt;String, Entry&gt; loadOperation) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (command.operation() instanceof SemanticCommand semantic) return transformer.apply(current, semantic.command());</span>
+<span class="fc" id="L348">        String target = target(command.operation());</span>
+<span class="fc bfc" id="L349" title="All 4 branches covered.">        OperationSummary selected = operations.stream().filter(e -&gt; e.commandId().equals(target) &amp;&amp; e.actor().equals(context.username()))</span>
+<span class="fc" id="L350">                .findFirst().orElseThrow(() -&gt; problem(&quot;NOT_FOUND&quot;, &quot;targetOperationId&quot;, &quot;No personal operation in this workspace&quot;, List.of()));</span>
+<span class="fc" id="L351">        boolean redo = command.operation() instanceof RedoArchitectureCommand;</span>
+<span class="pc bpc" id="L352" title="3 of 10 branches missed.">        if (selected.bodyVersion() != 1 || (redo &amp;&amp; !&quot;UNDO&quot;.equals(selected.kind())) || (!redo &amp;&amp; &quot;UNDO&quot;.equals(selected.kind()))</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">                || selected.kind().startsWith(&quot;VERSION_&quot;)) {</span>
+<span class="nc" id="L354">            throw problem(&quot;NOT_UNDOABLE&quot;, &quot;targetOperationId&quot;, &quot;Choose an accepted edit for undo or an undo operation for redo&quot;, List.of());</span>
+        }
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (OperationSummary newer : operations) {</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">            if (newer.revision() &lt;= selected.revision()) continue;</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">            if (target.equals(newer.targetOperationId())) throw problem(&quot;ALREADY_INVERTED&quot;, &quot;targetOperationId&quot;, &quot;This operation already has an inverse&quot;, List.of(newer.commandId()));</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            if (newer.affectedIds().stream().anyMatch(selected.affectedIds()::contains)) {</span>
+<span class="fc" id="L360">                throw problem(&quot;UNDO_CONFLICT&quot;, &quot;targetOperationId&quot;, &quot;A later operation depends on the affected objects&quot;, List.of(newer.commandId()));</span>
+            }
+<span class="fc" id="L362">        }</span>
+<span class="fc" id="L363">        Entry body = loadOperation.apply(selected.commandId());</span>
+<span class="fc" id="L364">        return transformer.inverse(current, body.beforeDsl(), body.afterDsl());</span>
+    }
+
+    private void verifyVersion(RepositoryContext context, State state) throws IOException {
+<span class="fc" id="L368">        String actual = head(repositories.resolveRepository(context), context.branch());</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        if (!Objects.equals(actual, state.checkpointCommit())) {</span>
+<span class="fc" id="L370">            throw problem(&quot;VERSION_CHANGED&quot;, &quot;checkpoint&quot;, &quot;A version action must be reconciled before accepting further edits&quot;, List.of());</span>
+        }
+<span class="fc" id="L372">    }</span>
+
+    private Snapshot snapshot(RepositoryContext context) throws IOException {
+<span class="fc" id="L375">        Snapshot snapshot = journal.read(context);</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">        return snapshot == null ? new Snapshot(seed(context), List.of()) : snapshot;</span>
+    }
+    private State seed(RepositoryContext context) throws IOException {
+<span class="fc" id="L379">        DslGitRepository repository = repositories.resolveRepository(context);</span>
+<span class="fc" id="L380">        String head = head(repository, context.branch());</span>
+<span class="fc" id="L381">        return new State(source(repository, head), 0, head, 0, null);</span>
+    }
+    private static HistoryEntry history(OperationSummary entry) {
+<span class="fc" id="L384">        return new HistoryEntry(entry.commandId(), entry.commandId(), entry.kind(), entry.targetOperationId(),</span>
+<span class="fc" id="L385">                entry.actor(), entry.occurredAt(), entry.rationale(), entry.affectedIds(), entry.previousRevision(), entry.revision());</span>
+    }
+    private static void expect(State state, long expected) {
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">        if (state.revision() != expected) throw new RevisionConflict(expected, state.revision());</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">        if (state.pendingCheckpoint() != null) throw problem(&quot;CHECKPOINT_PENDING&quot;, &quot;checkpoint&quot;, &quot;Retry the pending checkpoint&quot;, List.of(state.pendingCheckpoint()));</span>
+<span class="fc" id="L390">    }</span>
+    private static void requireInitialVersion(State state, Context expected) {
+        // Before the first accepted edit there is no durable semantic revision to distinguish Git baselines.
+        // After revision zero, checkpoints may advance Git without invalidating a semantic preview.
+<span class="fc bfc" id="L394" title="All 4 branches covered.">        if (state.revision() == 0 &amp;&amp; !Objects.equals(state.checkpointCommit(), expected.commit())) {</span>
+<span class="fc" id="L395">            throw problem(&quot;CONTEXT_CHANGED&quot;, &quot;commit&quot;, &quot;The initial architecture version changed; reload and preview again&quot;, List.of());</span>
+        }
+<span class="fc" id="L397">    }</span>
+    private static void requireFingerprint(String expected, String actual) {
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        if (!expected.equals(actual)) throw problem(&quot;COMMAND_ID_REUSED&quot;, &quot;commandId&quot;, &quot;Command identity was already used with another payload&quot;, List.of());</span>
+<span class="fc" id="L400">    }</span>
+    static void requireContext(RepositoryContext context, Context requested) {
+<span class="fc bfc" id="L402" title="All 2 branches covered.">        if (!Context.of(context, requested.commit(), requested.revision()).equals(requested)) {</span>
+<span class="fc" id="L403">            throw problem(&quot;CONTEXT_CHANGED&quot;, &quot;context&quot;, &quot;The repository, workspace, branch, actor or mode changed; reopen the editor&quot;, List.of());</span>
+        }
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">        if (requested.revision() &lt; 0) throw new IllegalArgumentException(&quot;Revision must be nonnegative&quot;);</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        if (requested.commit() != null) ObjectId.fromString(requested.commit());</span>
+<span class="fc" id="L407">    }</span>
+    private static void requireWritable(RepositoryContext context) {
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (context.scope() != RepositoryScope.WORKSPACE) throw problem(&quot;READ_ONLY&quot;, &quot;context&quot;, &quot;Open a private writable workspace&quot;, List.of());</span>
+<span class="fc" id="L410">    }</span>
+    private static String source(DslGitRepository repository, String commit) throws IOException {
+<span class="fc bfc" id="L412" title="All 2 branches covered.">        if (commit == null) return &quot;&quot;;</span>
+<span class="fc" id="L413">        String source = repository.getDslAtCommit(commit);</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">        if (source == null) throw problem(&quot;NOT_FOUND&quot;, &quot;commit&quot;, &quot;Commit has no architecture document&quot;, List.of());</span>
+<span class="fc" id="L415">        return source;</span>
+    }
+    private static String head(DslGitRepository repository, String branch) throws IOException {
+<span class="fc" id="L418">        var ref = repository.getGitRepository().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        return ref == null ? null : ref.getObjectId().name();</span>
+    }
+    private static void requireReachable(DslGitRepository repository, String head, String selected) throws IOException {
+<span class="fc" id="L422">        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {</span>
+<span class="pc bpc" id="L423" title="2 of 4 branches missed.">            if (head != null &amp;&amp; walk.isMergedInto(walk.parseCommit(ObjectId.fromString(selected)), walk.parseCommit(ObjectId.fromString(head)))) return;</span>
+<span class="pc" id="L424">        } catch (org.eclipse.jgit.errors.MissingObjectException | org.eclipse.jgit.errors.IncorrectObjectTypeException ignored) {</span>
+            // Guessed object IDs cannot expose another repository or branch.
+<span class="nc" id="L426">        }</span>
+<span class="nc" id="L427">        throw problem(&quot;NOT_FOUND&quot;, &quot;commit&quot;, &quot;Commit is not reachable in the selected context&quot;, List.of());</span>
+    }
+    private static Set&lt;String&gt; affected(List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes) {
+<span class="fc" id="L430">        Set&lt;String&gt; ids = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        for (var change : changes) {</span>
+<span class="fc" id="L432">            ids.add(change.id());</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">            if (change.id().startsWith(&quot;relation:&quot;)) {</span>
+<span class="fc" id="L434">                String[] tokens = change.id().substring(&quot;relation:&quot;.length()).split(&quot; &quot;);</span>
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">                if (tokens.length == 3) { ids.add(&quot;element:&quot; + tokens[0]); ids.add(&quot;element:&quot; + tokens[2]); }</span>
+            }
+<span class="fc" id="L437">        }</span>
+<span class="fc" id="L438">        return ids;</span>
+    }
+    private static String kind(Operation operation) {
+<span class="fc bfc" id="L441" title="All 3 branches covered.">        return switch (operation) {</span>
+<span class="fc" id="L442">            case SemanticCommand semantic -&gt; semantic.command().getClass().getSimpleName();</span>
+<span class="fc" id="L443">            case UndoArchitectureCommand ignored -&gt; &quot;UNDO&quot;;</span>
+<span class="fc" id="L444">            case RedoArchitectureCommand ignored -&gt; &quot;REDO&quot;;</span>
+        };
+    }
+    private static String target(Operation operation) {
+<span class="fc bfc" id="L448" title="All 3 branches covered.">        return switch (operation) {</span>
+<span class="fc" id="L449">            case UndoArchitectureCommand undo -&gt; undo.targetOperationId().toString();</span>
+<span class="fc" id="L450">            case RedoArchitectureCommand redo -&gt; redo.targetOperationId().toString();</span>
+<span class="fc" id="L451">            default -&gt; null;</span>
+        };
+    }
+    private static String fingerprint(Command command) {
+<span class="fc" id="L455">        List&lt;String&gt; parts = new ArrayList&lt;&gt;(List.of(kind(command.operation()), command.context().repositoryId(),</span>
+<span class="fc" id="L456">                command.context().workspaceScopeKey(), command.context().branch(), command.context().actor(), command.context().writeMode(),</span>
+<span class="fc" id="L457">                command.metadata().correlationId(), command.metadata().causationId(), command.metadata().rationale()));</span>
+<span class="fc" id="L458">        parts.add(Long.toString(command.context().revision()));</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        if (command.operation() instanceof SemanticCommand semantic) {</span>
+<span class="pc bpc" id="L460" title="12 of 21 branches missed.">            switch (semantic.command()) {</span>
+<span class="nc" id="L461">                case SetRequirementPlanning p -&gt; planningFingerprint(parts, p.requirementId(), p.entry());</span>
+<span class="nc" id="L462">                case ImportRequirementPlanning p -&gt; planningFingerprint(parts, p.requirementId(), p.entry());</span>
+<span class="nc" id="L463">                case DeleteRequirementPlanning p -&gt; { parts.add(p.requirementId()); parts.add(p.entryId()); }</span>
+<span class="fc" id="L464">                case CreateArchitecturePackage p -&gt; { parts.add(p.id()); properties(parts, p.properties()); }</span>
+<span class="fc" id="L465">                case UpdateArchitecturePackage p -&gt; { parts.add(p.id()); properties(parts, p.properties()); }</span>
+<span class="nc" id="L466">                case DeleteArchitecturePackage p -&gt; parts.add(p.id());</span>
+<span class="fc" id="L467">                case SetArchitecturePackagePlacements p -&gt; {</span>
+<span class="fc" id="L468">                    p.placements().forEach(v -&gt; { parts.add(v.kind().name()); parts.add(v.memberId()); parts.add(v.parentPackageId()); parts.add(Integer.toString(v.position())); });</span>
+<span class="fc" id="L469">                    parts.addAll(p.completeParentScopes().stream().sorted().toList());</span>
+<span class="fc" id="L470">                }</span>
+<span class="fc" id="L471">                case UpsertRequirementMapping m -&gt; { parts.add(m.requirementIdentity()); parts.add(m.elementId()); parts.add(m.rationale()); properties(parts, m.exchangeProperties()); }</span>
+<span class="nc" id="L472">                case DeleteRequirementMapping m -&gt; { parts.add(m.requirementIdentity()); parts.add(m.elementId()); }</span>
+<span class="fc" id="L473">                case CreateArchitectureElement e -&gt; { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }</span>
+<span class="fc" id="L474">                case UpdateArchitectureElement e -&gt; { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }</span>
+<span class="nc" id="L475">                case DeleteArchitectureElement e -&gt; parts.add(e.id());</span>
+<span class="fc" id="L476">                case CreateArchitectureRelation r -&gt; { parts.add(r.relation().id()); parts.add(r.status()); }</span>
+<span class="nc" id="L477">                case UpdateArchitectureRelation r -&gt; { parts.add(r.relation().id()); parts.add(r.status()); }</span>
+<span class="fc" id="L478">                case DeleteArchitectureRelation r -&gt; parts.add(r.relation().id());</span>
+<span class="nc" id="L479">                case MoveOrGroupElement e -&gt; { parts.add(e.id()); parts.add(e.parentId()); }</span>
+<span class="nc" id="L480">                case SetExchangeProperties e -&gt; { parts.add(e.objectKind()); parts.add(e.id()); properties(parts, e.properties()); }</span>
+<span class="nc" id="L481">                case ClearArchitectureElementProperties e -&gt; { parts.add(e.id()); parts.addAll(e.properties().stream().sorted().toList()); }</span>
+<span class="nc" id="L482">                case UpsertArchitectureView e -&gt; { parts.add(e.id()); parts.add(e.title()); parts.add(e.description()); parts.addAll(e.members()); properties(parts, e.properties()); }</span>
+<span class="nc" id="L483">                case DeleteArchitectureView e -&gt; parts.add(e.id());</span>
+<span class="fc" id="L484">                case StoreExchangeEvidence e -&gt; { parts.add(e.id()); parts.add(e.profile()); parts.add(e.profileVersion()); parts.add(e.fingerprint()); parts.add(e.source()); }</span>
+            }
+<span class="fc" id="L486">        } else parts.add(target(command.operation()));</span>
+<span class="fc" id="L487">        return digest(parts);</span>
+    }
+
+    private static String checkpointFingerprint(RepositoryContext context, CreateCheckpointCommand command) {
+<span class="fc" id="L491">        return digest(Arrays.asList(&quot;CHECKPOINT&quot;, EditorJournal.scope(context), context.username(),</span>
+<span class="fc" id="L492">                Long.toString(command.context().revision()), command.metadata().rationale(),</span>
+<span class="fc" id="L493">                command.metadata().correlationId(), command.metadata().causationId()));</span>
+    }
+
+    private static void planningFingerprint(List&lt;String&gt; parts, String requirement, com.taxonomy.dsl.planning.PlanningEntry entry) {
+<span class="nc" id="L497">        parts.add(requirement); parts.add(entry.id()); parts.add(entry.profile()); parts.add(entry.version());</span>
+<span class="nc" id="L498">        parts.add(entry.origin()); properties(parts, entry.values());</span>
+<span class="nc" id="L499">    }</span>
+
+    private static void properties(List&lt;String&gt; parts, Map&lt;String, String&gt; properties) {
+<span class="fc" id="L502">        new TreeMap&lt;&gt;(properties).forEach((key, value) -&gt; { parts.add(key); parts.add(value); });</span>
+<span class="fc" id="L503">    }</span>
+
+    private static String digest(List&lt;String&gt; parts) {
+        try {
+<span class="fc" id="L507">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L508">            try (DataOutputStream stream = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), digest))) {</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">                for (String part : parts) {</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">                    if (part == null) { stream.writeInt(-1); continue; }</span>
+<span class="fc" id="L511">                    byte[] encoded = part.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L512">                    stream.writeInt(encoded.length);</span>
+<span class="fc" id="L513">                    stream.write(encoded);</span>
+<span class="fc" id="L514">                }</span>
+            }
+<span class="fc" id="L516">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L517">        } catch (IOException | NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private static CommandProblem problem(String code, String field, String message, List&lt;String&gt; dependencies) {
+<span class="fc" id="L521">        return new CommandProblem(code, field, message, dependencies);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

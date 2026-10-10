@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationBackupPublicationChecks.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.backup</a> &gt; <span class="el_source">IntegrationBackupPublicationChecks.java</span></div><h1>IntegrationBackupPublicationChecks.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import com.taxonomy.backup.BackupIntegrationScope;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.publication.PublicationEvidence.CommonBaseline;
+import java.io.IOException;
+import java.util.*;
+import static com.taxonomy.exchange.backup.PortableRows.text;
+import static com.taxonomy.extension.api.integration.PublicationBounds.MAX_MUTATIONS;
+
+/** Structural source-evidence closure, never proof of provider effects or target authorization. */
+final class IntegrationBackupPublicationChecks {
+    private final PortableRows rows;
+    private final BackupCheckpoint checkpoint;
+<span class="fc" id="L17">    IntegrationBackupPublicationChecks(PortableRows rows, BackupCheckpoint checkpoint) {</span>
+<span class="fc" id="L18">        this.rows = rows; this.checkpoint = checkpoint;</span>
+<span class="fc" id="L19">    }</span>
+
+    void items(BackupIntegrationScope scope, String connection, String operation, PublicationPlan plan,
+               PublicationCompletion completion) throws IOException {
+<span class="fc" id="L23">        checkpoint.check();</span>
+<span class="fc" id="L24">        var receipts = new HashMap&lt;String, PublicationReceipt&gt;();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (completion != null) {</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">            if (plan == null || !plan.planFingerprint().equals(completion.planFingerprint())</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                    || !plan.capabilities().provider().equals(completion.remoteAfter().provider())</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">                    || !plan.capabilities().scope().equals(completion.remoteAfter().scope())) throw invalid();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            for (var receipt : completion.receipts()) {</span>
+<span class="fc" id="L30">                checkpoint.check();</span>
+<span class="pc bpc" id="L31" title="2 of 4 branches missed.">                if (!receipt.operationId().toString().equals(operation) || !receipt.planFingerprint().equals(plan.planFingerprint())</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                        || receipts.putIfAbsent(receipt.itemId(), receipt) != null) throw invalid();</span>
+<span class="fc" id="L33">            }</span>
+        }
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        var expected = plan == null ? List.&lt;PublicationItemIntent&gt;of() : plan.items();</span>
+<span class="fc" id="L36">        var seen = new HashSet&lt;String&gt;(); var keys = new HashSet&lt;String&gt;(); int[] count = { 0 };</span>
+<span class="fc" id="L37">        rows.visit(new PortableRows.Query(&quot;select item_key,item_ordinal,idempotency_key,intent_json,receipt_json from interop_publish_item&quot;</span>
+                + &quot; where scope_id=? and connection_id=? and operation_id=? order by item_ordinal,id&quot;,
+<span class="fc" id="L39">                List.of(scope.scopeId(), connection, operation)), r -&gt; {</span>
+<span class="fc" id="L40">            checkpoint.check();</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            if (count[0] &gt;= MAX_MUTATIONS || count[0] &gt;= expected.size()) throw invalid();</span>
+<span class="fc" id="L42">            return new Item(text(r, &quot;item_key&quot;), r.getInt(&quot;item_ordinal&quot;), text(r, &quot;idempotency_key&quot;),</span>
+<span class="fc" id="L43">                    IntegrationBackupJson.read(text(r, &quot;intent_json&quot;), PublicationItemIntent.class),</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                    completion == null ? null : IntegrationBackupJson.read(text(r, &quot;receipt_json&quot;), PublicationReceipt.class));</span>
+        }, item -&gt; {
+<span class="fc" id="L46">            var intent = expected.get(count[0]);</span>
+<span class="pc bpc" id="L47" title="1 of 6 branches missed.">            if (item.ordinal() != count[0]++ || !intent.equals(item.intent()) || !intent.itemId().equals(item.key())</span>
+<span class="pc bpc" id="L48" title="3 of 6 branches missed.">                    || !intent.idempotencyKey().equals(item.idempotency()) || !seen.add(item.key()) || !keys.add(item.idempotency())) throw invalid();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (completion != null) {</span>
+<span class="fc" id="L50">                var receipt = receipts.remove(item.key());</span>
+<span class="pc bpc" id="L51" title="1 of 6 branches missed.">                if (receipt == null || !receipt.idempotencyKey().equals(item.idempotency()) || !receipt.equals(item.receipt())) throw invalid();</span>
+            }
+<span class="fc" id="L53">        });</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (count[0] != expected.size() || !receipts.isEmpty()) throw invalid();</span>
+<span class="fc" id="L55">    }</span>
+
+    void checkpoint(BackupIntegrationScope scope, String connection, String operation, String kind,
+                    CommonBaseline baseline, PublicationCompletion completion) throws IOException {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (&quot;OBSERVATION&quot;.equals(kind)) {</span>
+<span class="pc bpc" id="L60" title="2 of 4 branches missed.">            if (baseline != null || completion != null) throw invalid();</span>
+<span class="fc" id="L61">            return;</span>
+        }
+<span class="pc bpc" id="L63" title="3 of 6 branches missed.">        if (!&quot;COMMON&quot;.equals(kind) || baseline == null || completion == null</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                || !baseline.provider().equals(completion.remoteAfter().provider())</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                || !baseline.scope().equals(completion.remoteAfter().scope())</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                || !baseline.semanticFingerprint().equals(completion.commonSemanticFingerprint())) throw invalid();</span>
+<span class="fc" id="L67">        checkpoint.check(); int[] count = { 0 };</span>
+<span class="fc" id="L68">        rows.visit(new PortableRows.Query(&quot;select phase,completion_json from interop_publication where id=? and scope_id=? and connection_id=?&quot;,</span>
+<span class="fc" id="L69">                List.of(operation, scope.scopeId(), connection)), r -&gt; {</span>
+<span class="fc" id="L70">            checkpoint.check();</span>
+<span class="fc" id="L71">            return new Completed(text(r, &quot;phase&quot;), IntegrationBackupJson.read(text(r, &quot;completion_json&quot;), PublicationCompletion.class));</span>
+        }, parent -&gt; {
+<span class="pc bpc" id="L73" title="2 of 6 branches missed.">            if (++count[0] != 1 || !&quot;COMPLETED&quot;.equals(parent.phase()) || !completion.equals(parent.completion())) throw invalid();</span>
+<span class="fc" id="L74">        });</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (count[0] != 1) throw invalid();</span>
+<span class="fc" id="L76">    }</span>
+
+<span class="fc" id="L78">    private static IOException invalid() { return new IOException(&quot;Integration publication evidence has inconsistent source references&quot;); }</span>
+<span class="fc" id="L79">    private record Item(String key, int ordinal, String idempotency, PublicationItemIntent intent, PublicationReceipt receipt) { }</span>
+<span class="fc" id="L80">    private record Completed(String phase, PublicationCompletion completion) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

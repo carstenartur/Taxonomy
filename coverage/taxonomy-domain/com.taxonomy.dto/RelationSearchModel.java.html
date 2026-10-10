@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchModel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationSearchModel.java</span></div><h1>RelationSearchModel.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Objects;
+
+/** Immutable, request-local contracts. Scores rank work; they never prove an edge. */
+public final class RelationSearchModel {
+    private RelationSearchModel() { }
+
+<span class="fc" id="L10">    public enum Direction { OUTGOING, INCOMING }</span>
+<span class="fc" id="L11">    public enum Phase { NAVIGATE, VERIFY }</span>
+<span class="fc" id="L12">    public enum Outcome { DESCEND, MATCH, REJECT, UNRESOLVED, VERIFIED }</span>
+<span class="fc" id="L13">    public enum Necessity { REQUIRED, OPTIONAL, ALTERNATIVE }</span>
+
+    public record Node(String id, String root, String name, String description, boolean container) {
+<span class="fc" id="L16">        public Node {</span>
+<span class="fc" id="L17">            required(id, &quot;node id&quot;); required(root, &quot;root&quot;); required(name, &quot;name&quot;);</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">            description = description == null ? &quot;&quot; : description;</span>
+<span class="fc" id="L19">        }</span>
+    }
+
+    /** The exact original quote is distinct from the model's scoped interpretation. */
+    public record Contribution(Node source, String text, String quote, String condition) {
+<span class="fc" id="L24">        public Contribution {</span>
+<span class="fc" id="L25">            Objects.requireNonNull(source); required(text, &quot;contribution&quot;); required(quote, &quot;quote&quot;);</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">            condition = condition == null ? &quot;&quot; : condition;</span>
+<span class="fc" id="L27">        }</span>
+    }
+
+    public record SourceAssessment(Node node, List&lt;Contribution&gt; contributions, String rationale, String question) {
+<span class="fc" id="L31">        public SourceAssessment { contributions = List.copyOf(contributions); }</span>
+    }
+
+    public record Intent(Contribution contribution, String type, Direction direction, List&lt;Node&gt; roots) {
+<span class="fc" id="L35">        public Intent {</span>
+<span class="fc" id="L36">            Objects.requireNonNull(contribution); required(type, &quot;type&quot;); Objects.requireNonNull(direction);</span>
+<span class="fc" id="L37">            roots = List.copyOf(roots);</span>
+<span class="fc" id="L38">        }</span>
+    }
+
+    /** Zero calls is a supported dry budget; no remote request is made. */
+    public record Limits(int maxCalls, int maxDepth, int batchSize, int maxWorkItems) {
+<span class="fc" id="L43">        public Limits {</span>
+<span class="pc bpc" id="L44" title="8 of 16 branches missed.">            if (maxCalls &lt; 0 || maxCalls &gt; 10_000 || maxDepth &lt; 0 || maxDepth &gt; 100</span>
+                    || batchSize &lt; 1 || batchSize &gt; 100 || maxWorkItems &lt; 1 || maxWorkItems &gt; 100_000) {
+<span class="nc" id="L46">                throw new IllegalArgumentException(&quot;Invalid relation-search limits&quot;);</span>
+            }
+<span class="fc" id="L48">        }</span>
+    }
+
+    public record Query(String original, Contribution contribution, String type, Direction direction,
+                        Phase phase, List&lt;Node&gt; candidates, Decision proposal) {
+<span class="fc" id="L53">        public Query {</span>
+<span class="fc" id="L54">            required(original, &quot;original&quot;); Objects.requireNonNull(contribution); required(type, &quot;type&quot;);</span>
+<span class="fc" id="L55">            Objects.requireNonNull(direction); Objects.requireNonNull(phase);</span>
+<span class="fc" id="L56">            candidates = List.copyOf(candidates);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (candidates.isEmpty()) throw new IllegalArgumentException(&quot;Empty candidate batch&quot;);</span>
+<span class="pc bpc" id="L58" title="2 of 6 branches missed.">            if (phase == Phase.VERIFY &amp;&amp; (candidates.size() != 1 || proposal == null)) {</span>
+<span class="nc" id="L59">                throw new IllegalArgumentException(&quot;Verification requires one concrete proposal&quot;);</span>
+            }
+<span class="fc" id="L61">        }</span>
+    }
+
+    /** Positive decisions retain required/optional/alternative semantics, never percentage shares. */
+<span class="fc" id="L65">    public record Decision(String targetId, Outcome outcome, String contribution, String quote,</span>
+                           Necessity necessity, String condition, String alternativeGroup,
+                           String rationale, String question) { }
+
+<span class="fc" id="L69">    public record Edge(Contribution contribution, Node target, String type, Direction direction,</span>
+                       Decision evidence) {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        public String sourceId() { return direction == Direction.OUTGOING ? contribution.source().id() : target.id(); }</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        public String targetId() { return direction == Direction.OUTGOING ? target.id() : contribution.source().id(); }</span>
+    }
+
+    public record Unfinished(String sourceId, String type, Direction direction, List&lt;String&gt; targets,
+                             String reason, String question) {
+<span class="fc" id="L77">        public Unfinished { targets = List.copyOf(targets); }</span>
+    }
+
+<span class="fc" id="L80">    public record Trace(String sourceId, String type, Direction direction, Phase phase,</span>
+                        String targetId, Outcome outcome, String rationale) { }
+
+    public record Result(List&lt;Edge&gt; edges, List&lt;Unfinished&gt; unfinished, List&lt;Trace&gt; trace,
+                         int calls, int visitedBatches, long durationMillis) {
+<span class="fc" id="L85">        public Result {</span>
+<span class="fc" id="L86">            edges = List.copyOf(edges); unfinished = List.copyOf(unfinished); trace = List.copyOf(trace);</span>
+<span class="fc" id="L87">        }</span>
+        /** Exhausted under this pruning policy; not a proof of semantic completeness. */
+<span class="fc" id="L89">        public boolean searchExhausted() { return unfinished.isEmpty(); }</span>
+    }
+
+    @FunctionalInterface
+    public interface Catalogue { List&lt;Node&gt; children(Node node); }
+
+    @FunctionalInterface
+    public interface Evaluator { List&lt;Decision&gt; evaluate(Query query); }
+
+    private static void required(String value, String field) {
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) throw new IllegalArgumentException(&quot;Missing &quot; + field);</span>
+<span class="fc" id="L100">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

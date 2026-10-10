@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationDiff.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationDiff.java</span></div><h1>IntegrationDiff.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.persistence.IntegrationStore.Identity;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+/** Three-way field comparison. No timestamps, transport outcomes or list omissions choose an automatic winner. */
+@Component
+public class IntegrationDiff {
+    private final IntegrationJson json;
+<span class="fc" id="L19">    public IntegrationDiff(IntegrationJson json) { this.json = json; }</span>
+    public List&lt;IntegrationChange&gt; compare(ExchangeDocument incoming, AuthorityMode mode, List&lt;Identity&gt; mappings, Map&lt;String, Artifact&gt; current) {
+<span class="fc" id="L21">        Map&lt;String, Identity&gt; baselines = new TreeMap&lt;&gt;(); mappings.forEach(m -&gt; baselines.put(m.externalId(), m));</span>
+<span class="fc" id="L22">        Map&lt;String, Set&lt;String&gt;&gt; identityOwners = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (Identity mapping : mappings) {</span>
+            // Removed and delivered-but-unacknowledged identities still reserve their UUID.
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            for (Artifact artifact : new Artifact[]{mapping.external(), mapping.internal()}) {</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                String identity = artifact == null ? null : artifact.extensions().get(&quot;internalIdentity&quot;);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                if (identity != null) identityOwners.computeIfAbsent(identity, key -&gt; new TreeSet&lt;&gt;()).add(mapping.externalId());</span>
+            }
+<span class="fc" id="L29">        }</span>
+<span class="fc" id="L30">        Map&lt;String, Artifact&gt; external = ExchangeItems.flatten(incoming);</span>
+<span class="fc" id="L31">        TreeSet&lt;String&gt; ids = new TreeSet&lt;&gt;(external.keySet()); ids.addAll(baselines.keySet());</span>
+<span class="fc" id="L32">        List&lt;IntegrationChange&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (String id : ids) {</span>
+<span class="fc" id="L34">            Identity baseline = baselines.get(id); Artifact next = external.get(id), local = current.get(id);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (next == null) {</span>
+<span class="pc bpc" id="L36" title="1 of 12 branches missed.">                if (baseline == null || baseline.external() == null || baseline.removed() || !incoming.completeScope()</span>
+<span class="fc" id="L37">                        || (mode != AuthorityMode.MIRROR_READ &amp;&amp; mode != AuthorityMode.BIDIRECTIONAL)) continue;</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">                List&lt;String&gt; conflict = changed(baseline.internal(), local).isEmpty() ? List.of() : List.of(&quot;DELETE_VERSUS_LOCAL_CHANGE&quot;);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                changes.add(change(id, conflict.isEmpty() ? ChangeKind.REMOVE_CANDIDATE : ChangeKind.CONFLICT, Set.of(&quot;removed&quot;), local, baseline.external(), null, conflict));</span>
+<span class="fc" id="L40">                continue;</span>
+            }
+<span class="fc" id="L42">            String identity = next.extensions().get(&quot;internalIdentity&quot;);</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">            Artifact observed = baseline == null ? null : baseline.external() == null ? baseline.internal() : baseline.external();</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">            boolean identityChanged = observed != null &amp;&amp; !Objects.equals(observed.extensions().get(&quot;internalIdentity&quot;), identity);</span>
+<span class="fc bfc" id="L45" title="All 8 branches covered.">            if (identityChanged || identity != null &amp;&amp; identityOwners.getOrDefault(identity, Set.of()).stream().anyMatch(owner -&gt; !owner.equals(id))) {</span>
+<span class="fc" id="L46">                changes.add(change(id, ChangeKind.CONFLICT, ExchangeItems.fields(next).keySet(), local,</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                        baseline == null ? null : baseline.external(), next, List.of(&quot;INTERNAL_IDENTITY_REUSED&quot;)));</span>
+<span class="fc" id="L48">                continue;</span>
+            }
+<span class="fc bfc" id="L50" title="All 4 branches covered.">            if (baseline == null || baseline.removed()) {</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">                List&lt;String&gt; conflicts = baseline != null ? List.of(&quot;EXTERNAL_IDENTITY_REUSED&quot;) : local != null ? List.of(&quot;DUPLICATE_MAPPING&quot;) : List.of();</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">                changes.add(change(id, conflicts.isEmpty() ? ChangeKind.ADD : ChangeKind.CONFLICT, ExchangeItems.fields(next).keySet(), local, baseline == null ? null : baseline.external(), next, conflicts));</span>
+<span class="fc" id="L53">                continue;</span>
+            }
+            // A delivered identity is bound, but has no confirmed external baseline yet.
+            // Compare its return against the frozen export without inferring deletion from omissions.
+<span class="fc" id="L57">            Set&lt;String&gt; remoteFields = changed(observed, next);</span>
+<span class="fc" id="L58">            Set&lt;String&gt; localFields = changed(baseline.internal(), local);</span>
+<span class="fc" id="L59">            List&lt;String&gt; conflicts = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">            for (String field : remoteFields) if (localFields.contains(field)</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                    &amp;&amp; !Objects.equals(ExchangeItems.fields(local).get(field), ExchangeItems.fields(next).get(field))) conflicts.add(field);</span>
+<span class="pc bpc" id="L62" title="3 of 4 branches missed.">            if (local == null &amp;&amp; !remoteFields.isEmpty()) conflicts.add(&quot;LOCAL_DELETE_VERSUS_EXTERNAL_CHANGE&quot;);</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">            ChangeKind kind = !conflicts.isEmpty() ? ChangeKind.CONFLICT : remoteFields.isEmpty() ? ChangeKind.UNCHANGED</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">                    : next.kind() == ArtifactKind.PLACEMENT ? ChangeKind.MOVE : next.kind() == ArtifactKind.RELATION ? ChangeKind.RELATION : ChangeKind.UPDATE;</span>
+<span class="fc" id="L65">            changes.add(change(id, kind, remoteFields, local, baseline.external(), next, conflicts));</span>
+<span class="fc" id="L66">        }</span>
+<span class="fc" id="L67">        return List.copyOf(changes);</span>
+    }
+    private IntegrationChange change(String id, ChangeKind kind, Set&lt;String&gt; fields, Artifact local, Artifact external, Artifact next, List&lt;String&gt; conflicts) {
+<span class="fc" id="L70">        return new IntegrationChange(id, id, kind, fields, json.fingerprint(ExchangeItems.fields(local)), json.fingerprint(ExchangeItems.fields(external)), local, next, conflicts);</span>
+    }
+    public static Set&lt;String&gt; changed(Artifact before, Artifact after) {
+<span class="fc" id="L73">        Map&lt;String, String&gt; left = ExchangeItems.fields(before), right = ExchangeItems.fields(after);</span>
+<span class="fc" id="L74">        Set&lt;String&gt; keys = new TreeSet&lt;&gt;(left.keySet()); keys.addAll(right.keySet()); keys.removeIf(key -&gt; Objects.equals(left.get(key), right.get(key))); return keys;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

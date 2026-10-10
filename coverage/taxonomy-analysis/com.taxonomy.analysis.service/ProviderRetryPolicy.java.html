@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderRetryPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ProviderRetryPolicy.java</span></div><h1>ProviderRetryPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import java.math.BigInteger;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.OptionalLong;
+import java.util.Set;
+
+/** Bounded 429 handling; a long Retry-After is retained as cooldown, never shortened. */
+public final class ProviderRetryPolicy {
+    private static final long MAX_AUTOMATIC_WAIT_MILLIS = 60_000L;
+<span class="fc" id="L15">    private static final Set&lt;String&gt; PERMANENT_QUOTA_CODES = Set.of(</span>
+            &quot;insufficient_quota&quot;, &quot;billing_hard_limit_reached&quot;, &quot;billing_not_active&quot;);
+    private ProviderRetryPolicy() { }
+
+<span class="fc" id="L19">    public record Decision(boolean retry, long delayMillis) { }</span>
+
+    public static Decision rateLimit(int attempt, int maxRetries, String retryAfter,
+                                    String errorCode, Instant now) {
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        if (PERMANENT_QUOTA_CODES.contains(errorCode == null ? &quot;&quot; : errorCode)) {</span>
+<span class="fc" id="L24">            return new Decision(false, 0L);</span>
+        }
+<span class="fc" id="L26">        long delay = retryAfterMillis(retryAfter, now).orElseGet(() -&gt; backoffMillis(attempt));</span>
+<span class="fc bfc" id="L27" title="All 4 branches covered.">        return new Decision(attempt &lt; Math.max(0, maxRetries) &amp;&amp; delay &lt;= MAX_AUTOMATIC_WAIT_MILLIS, delay);</span>
+    }
+
+    public static Decision rateLimit(int attempt, int maxRetries, Duration retryAfter) {
+        long delay;
+<span class="nc bnc" id="L32" title="All 2 branches missed.">        if (retryAfter == null) delay = backoffMillis(attempt);</span>
+        else {
+<span class="nc bnc" id="L34" title="All 2 branches missed.">            if (retryAfter.isNegative()) throw new IllegalArgumentException(&quot;Negative retry delay&quot;);</span>
+<span class="nc" id="L35">            try { delay = retryAfter.toMillis(); }</span>
+<span class="nc" id="L36">            catch (ArithmeticException overflow) { delay = Long.MAX_VALUE; }</span>
+        }
+<span class="nc bnc" id="L38" title="All 4 branches missed.">        return new Decision(attempt &lt; Math.max(0, maxRetries) &amp;&amp; delay &lt;= MAX_AUTOMATIC_WAIT_MILLIS, delay);</span>
+    }
+
+    public static long backoffMillis(int attempt) {
+<span class="fc" id="L42">        return Math.min(MAX_AUTOMATIC_WAIT_MILLIS, 1000L &lt;&lt; Math.max(0, Math.min(6, attempt)));</span>
+    }
+
+    private static OptionalLong retryAfterMillis(String header, Instant now) {
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">        if (header == null || header.isBlank()) return OptionalLong.empty();</span>
+<span class="fc" id="L47">        String value = header.strip();</span>
+<span class="fc bfc" id="L48" title="All 6 branches covered.">        if (value.chars().allMatch(ch -&gt; ch &gt;= '0' &amp;&amp; ch &lt;= '9')) {</span>
+            // Avoid both integer overflow and parsing an unbounded integer from an HTTP peer.
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (value.length() &gt; 19) return OptionalLong.of(Long.MAX_VALUE);</span>
+<span class="fc" id="L51">            BigInteger millis = new BigInteger(value).multiply(BigInteger.valueOf(1000));</span>
+<span class="fc" id="L52">            return OptionalLong.of(millis.min(BigInteger.valueOf(Long.MAX_VALUE)).longValue());</span>
+        }
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (value.length() &gt; 128) return OptionalLong.empty();</span>
+        try {
+<span class="fc" id="L56">            Instant retryAt = ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (!retryAt.isAfter(now)) return OptionalLong.of(0L);</span>
+<span class="fc" id="L58">            try { return OptionalLong.of(Duration.between(now, retryAt).toMillis()); }</span>
+<span class="nc" id="L59">            catch (ArithmeticException overflow) { return OptionalLong.of(Long.MAX_VALUE); }</span>
+<span class="fc" id="L60">        } catch (DateTimeParseException invalid) {</span>
+<span class="fc" id="L61">            return OptionalLong.empty();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

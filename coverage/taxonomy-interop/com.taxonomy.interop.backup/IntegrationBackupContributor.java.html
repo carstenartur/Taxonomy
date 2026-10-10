@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.backup</a> &gt; <span class="el_source">IntegrationBackupContributor.java</span></div><h1>IntegrationBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.publication.PublicationEvidence.*;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.DateTimeException;
+import java.util.*;
+import javax.sql.DataSource;
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Module-owned typed journal capture. No source mutation, worker claims, target authority or automatic dispatch. */
+public final class IntegrationBackupContributor implements BackupDataContributor {
+<span class="fc" id="L20">    private static final List&lt;String&gt; DATASETS = List.of(&quot;connections&quot;, &quot;identities&quot;, &quot;checkpoints&quot;, &quot;operations&quot;, &quot;events&quot;,</span>
+            &quot;publications&quot;, &quot;publish-items&quot;, &quot;publish-attempts&quot;);
+    private static final String PENDING = &quot;e.status not in ('COMPLETED','CANCELLED')&quot;;
+    private static final String PENDING_PARENT = &quot;exists (select 1 from interop_operation o where o.id=e.operation_id and o.status not in ('COMPLETED','CANCELLED'))&quot;;
+    private final PortableRows rows;
+    private final BackupIntegrationScope.Selector scopes;
+<span class="fc" id="L26">    public IntegrationBackupContributor(DataSource database, BackupIntegrationScope.Selector scopes) {</span>
+<span class="fc" id="L27">        rows = new PortableRows(database); this.scopes = Objects.requireNonNull(scopes);</span>
+<span class="fc" id="L28">    }</span>
+<span class="fc" id="L29">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;interop&quot;); }</span>
+<span class="fc" id="L30">    @Override public int schemaVersion() { return 1; }</span>
+    @Override public Set&lt;String&gt; categories() {
+<span class="fc" id="L32">        var result = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (String name : List.of(&quot;IntegrationConnectionEntity&quot;, &quot;ExternalIdentityMappingEntity&quot;, &quot;IntegrationCheckpointEntity&quot;,</span>
+                &quot;IntegrationOperationEntity&quot;, &quot;IntegrationEventEntity&quot;, &quot;IntegrationPublicationEntity&quot;, &quot;IntegrationPublishItemEntity&quot;, &quot;IntegrationPublishAttemptEntity&quot;))
+<span class="fc" id="L35">            result.add(&quot;com.taxonomy.interop.persistence.&quot; + name);</span>
+<span class="fc" id="L36">        return Set.copyOf(result);</span>
+    }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (profile == BackupProfile.SELECTED_VERSION)</span>
+<span class="fc" id="L40">            return List.of(&quot;interop: present-day unversioned journals are outside the selected Git version; no live integration records captured&quot;);</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (profile.includesHistory())</span>
+<span class="nc" id="L42">            return List.of(&quot;interop: runtime leases and worker claims are excluded; source identities and dispatch evidence require target mapping and manual review&quot;);</span>
+<span class="nc" id="L43">        return List.of(&quot;interop: completed/cancelled operations, removed mappings, checkpoints, events and attempts require history&quot;,</span>
+                &quot;interop: original transport input, before/baseline payloads, frozen dispatch requests, receipts and free-text mapping diagnostics require history; saved pending candidates remain&quot;,
+                &quot;interop: source journal references and fingerprints are provenance, not target keys or projected-payload digests; recompute baselines and review all outgoing work after restore&quot;);
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L48">        sink.checkpoint(); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (profile == BackupProfile.SELECTED_VERSION) {</span>
+<span class="fc" id="L50">            empty(sink, profile); policy(sink, profile, &quot;OUTSIDE_SCOPE&quot;); return;</span>
+        }
+        try {
+<span class="fc" id="L53">            var selection = new IntegrationBackupSelection(snapshot, scopes, rows, sink);</span>
+<span class="fc" id="L54">            selection.verify();</span>
+<span class="fc" id="L55">            var datasets = new Capture(selection, sink, profile);</span>
+<span class="fc" id="L56">            var publications = new IntegrationBackupPublicationChecks(rows, sink::checkpoint);</span>
+<span class="fc" id="L57">            boolean history = profile.includesHistory();</span>
+<span class="fc" id="L58">            datasets.add(&quot;connections&quot;, &quot;interop_connection&quot;, &quot;id,scope_id,organization_id,display_name,connector_id,profile_version,authority_mode,remote_profile,project_id,external_scope,created_by,created_at,connection_revision,checkpoint_id,common_checkpoint_id,active_operation_id&quot;, &quot;1=1&quot;,</span>
+<span class="fc" id="L59">                    r -&gt; new ConnectionData(id(r, &quot;connection&quot;, &quot;id&quot;), selection.scope(r), text(r, &quot;organization_id&quot;), text(r, &quot;display_name&quot;),</span>
+<span class="fc" id="L60">                            text(r, &quot;connector_id&quot;), text(r, &quot;profile_version&quot;), AuthorityMode.valueOf(text(r, &quot;authority_mode&quot;)), text(r, &quot;remote_profile&quot;),</span>
+<span class="fc" id="L61">                            reference(r, &quot;portfolio.project&quot;, &quot;project_id&quot;), json(r, &quot;external_scope&quot;, ExternalScope.class, true), text(r, &quot;created_by&quot;), date(r, &quot;created_at&quot;),</span>
+<span class="fc" id="L62">                            r.getLong(&quot;connection_revision&quot;), id(r, &quot;checkpoint&quot;, &quot;checkpoint_id&quot;), id(r, &quot;checkpoint&quot;, &quot;common_checkpoint_id&quot;), id(r, &quot;operation&quot;, &quot;active_operation_id&quot;)));</span>
+<span class="fc" id="L63">            datasets.add(&quot;identities&quot;, &quot;interop_identity&quot;, &quot;id,scope_id,connection_id,external_id,business_identity,requirement_id,external_version,fingerprint,external_json,internal_json,operation_id,removed&quot;,</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">                    history ? &quot;1=1&quot; : &quot;e.removed=?&quot;, history ? List.of() : List.of(false), r -&gt; new IdentityData(id(r, &quot;identity&quot;, &quot;id&quot;), selection.scope(r), id(r, &quot;connection&quot;, &quot;connection_id&quot;),</span>
+<span class="fc" id="L65">                            text(r, &quot;external_id&quot;), text(r, &quot;business_identity&quot;), reference(r, &quot;portfolio.requirement&quot;, &quot;requirement_id&quot;), text(r, &quot;external_version&quot;), text(r, &quot;fingerprint&quot;),</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">                            history ? json(r, &quot;external_json&quot;, Artifact.class, false) : null, history ? json(r, &quot;internal_json&quot;, Artifact.class, false) : null,</span>
+<span class="fc" id="L67">                            id(r, &quot;operation&quot;, &quot;operation_id&quot;), r.getBoolean(&quot;removed&quot;)));</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (history) datasets.add(&quot;checkpoints&quot;, &quot;interop_checkpoint&quot;, &quot;id,scope_id,connection_id,operation_id,git_commit,external_version,fingerprint,context_json,created_at,kind,baseline_json,publication_completion_json&quot;, &quot;1=1&quot;, r -&gt; {</span>
+<span class="fc" id="L69">                var scope = selection.scope(r); String op = text(r, &quot;operation_id&quot;);</span>
+<span class="fc" id="L70">                var state = json(r, &quot;context_json&quot;, InternalState.class, true); state(state, scope);</span>
+<span class="fc" id="L71">                var completion = json(r, &quot;publication_completion_json&quot;, PublicationCompletion.class, false); completion(completion, op, scope);</span>
+<span class="fc" id="L72">                var baseline = json(r, &quot;baseline_json&quot;, CommonBaseline.class, false);</span>
+<span class="fc" id="L73">                publications.checkpoint(scope, text(r, &quot;connection_id&quot;), op, text(r, &quot;kind&quot;), baseline, completion);</span>
+<span class="fc" id="L74">                return new CheckpointData(id(r, &quot;checkpoint&quot;, &quot;id&quot;), scope, id(r, &quot;connection&quot;, &quot;connection_id&quot;), id(r, &quot;operation&quot;, &quot;operation_id&quot;),</span>
+<span class="fc" id="L75">                        text(r, &quot;git_commit&quot;), text(r, &quot;external_version&quot;), text(r, &quot;fingerprint&quot;), state, date(r, &quot;created_at&quot;), text(r, &quot;kind&quot;),</span>
+                        baseline, completion);
+<span class="fc" id="L77">            }); else datasets.header(&quot;checkpoints&quot;);</span>
+<span class="fc" id="L78">            datasets.add(&quot;operations&quot;, &quot;interop_operation&quot;, &quot;id,scope_id,connection_id,actor,status,direction,fingerprint,review_fingerprint,connection_revision,context_json,document_json,changes_json,review_json,result_json,result_state_json,result_file_json,result_commit,result_revision,failure_code,created_at,updated_at&quot;,</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                    history ? &quot;1=1&quot; : PENDING, r -&gt; {</span>
+<span class="fc" id="L80">                var scope = selection.scope(r); String op = text(r, &quot;id&quot;); var context = json(r, &quot;context_json&quot;, IntegrationContext.class, true);</span>
+<span class="fc" id="L81">                context(context, scope, text(r, &quot;connection_id&quot;));</span>
+<span class="fc" id="L82">                var review = json(r, &quot;review_json&quot;, ReviewedChangeSet.class, false); review(review, op);</span>
+<span class="fc" id="L83">                var state = json(r, &quot;result_state_json&quot;, InternalState.class, false); state(state, scope);</span>
+<span class="fc" id="L84">                var status = OperationStatus.valueOf(text(r, &quot;status&quot;));</span>
+<span class="fc" id="L85">                String direction = text(r, &quot;direction&quot;);</span>
+                // publicationPreview duplicates its remote-before snapshot into operation.document_json.
+                // Saved publication work is captured from its preview/plan/items; the operation is only provenance here.
+<span class="fc bfc" id="L88" title="All 4 branches covered.">                boolean payload = history || !Set.of(&quot;PUSH&quot;, &quot;SYNCHRONIZE&quot;).contains(direction);</span>
+<span class="fc" id="L89">                return new OperationData(id(r, &quot;operation&quot;, &quot;id&quot;), scope, id(r, &quot;connection&quot;, &quot;connection_id&quot;), text(r, &quot;actor&quot;), status,</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                        terminal(status) ? &quot;RECORDED_ONLY&quot; : &quot;MANUAL_REVIEW_REQUIRED&quot;, direction, text(r, &quot;fingerprint&quot;), text(r, &quot;review_fingerprint&quot;),</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                        r.getLong(&quot;connection_revision&quot;), context, payload ? IntegrationBackupPayloads.document(json(r, &quot;document_json&quot;, ExchangeDocument.class, true), history) : null,</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                        payload ? Arrays.stream(json(r, &quot;changes_json&quot;, IntegrationChange[].class, true)).map(c -&gt; IntegrationBackupPayloads.change(c, history)).toList() : List.of(), review,</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                        payload ? IntegrationBackupPayloads.document(json(r, &quot;result_json&quot;, ExchangeDocument.class, false), history) : null, state,</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                        history ? json(r, &quot;result_file_json&quot;, ExchangeFile.class, false) : null, text(r, &quot;result_commit&quot;), number(r, &quot;result_revision&quot;),</span>
+<span class="fc" id="L95">                        text(r, &quot;failure_code&quot;), date(r, &quot;created_at&quot;), date(r, &quot;updated_at&quot;));</span>
+            });
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (history) datasets.add(&quot;events&quot;, &quot;interop_event&quot;, &quot;id,scope_id,connection_id,operation_id,event_type,actor,occurred_at,rationale,failure_code&quot;, &quot;1=1&quot;,</span>
+<span class="fc" id="L98">                    r -&gt; new EventData(id(r, &quot;event&quot;, &quot;id&quot;), selection.scope(r), id(r, &quot;connection&quot;, &quot;connection_id&quot;), id(r, &quot;operation&quot;, &quot;operation_id&quot;), text(r, &quot;event_type&quot;),</span>
+<span class="fc" id="L99">                            text(r, &quot;actor&quot;), date(r, &quot;occurred_at&quot;), text(r, &quot;rationale&quot;), text(r, &quot;failure_code&quot;)));</span>
+<span class="fc" id="L100">            else datasets.header(&quot;events&quot;);</span>
+<span class="fc" id="L101">            publications(selection, sink, profile, datasets, publications);</span>
+<span class="fc" id="L102">            datasets.write();</span>
+<span class="fc" id="L103">            policy(sink, profile, &quot;CAPTURED&quot;);</span>
+<span class="fc" id="L104">        } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) {</span>
+<span class="fc" id="L105">            throw new IOException(&quot;Invalid or unsupported integration backup evidence&quot;);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">    }</span>
+
+    private void publications(IntegrationBackupSelection selection, ComponentSink sink, BackupProfile profile, Capture datasets,
+                              IntegrationBackupPublicationChecks checks) throws IOException {
+<span class="fc" id="L111">        boolean history = profile.includesHistory();</span>
+<span class="fc" id="L112">        datasets.add(&quot;publications&quot;, &quot;interop_publication&quot;, &quot;id,scope_id,connection_id,schema_version,request_json,config_fingerprint,preview_json,plan_json,review_json,phase,predecessor_id,common_checkpoint_id,local_state_json,bindings_json,completion_json,failure_code,reserved_revision,created_at,updated_at&quot;,</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                history ? &quot;1=1&quot; : &quot;exists (select 1 from interop_operation o where o.id=e.id and o.status not in ('COMPLETED','CANCELLED'))&quot;, r -&gt; {</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (r.getInt(&quot;schema_version&quot;) != 1) throw new IOException(&quot;Unsupported integration publication schema&quot;);</span>
+<span class="fc" id="L115">            var scope = selection.scope(r); String op = text(r, &quot;id&quot;), connection = text(r, &quot;connection_id&quot;), common = text(r, &quot;common_checkpoint_id&quot;);</span>
+<span class="fc" id="L116">            var request = json(r, &quot;request_json&quot;, PublicationPreviewRequest.class, true); same(request.operationId(), op); state(request.expected(), scope);</span>
+<span class="fc" id="L117">            var preview = json(r, &quot;preview_json&quot;, PublicationPreviewEnvelope.class, false);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (preview != null) {</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                if (!preview.request().equals(request)) throw new IOException(&quot;Integration publication request differs&quot;);</span>
+<span class="fc" id="L120">                context(preview.context(), scope, connection); same(preview.commonCheckpointId(), common);</span>
+            }
+<span class="fc" id="L122">            var plan = json(r, &quot;plan_json&quot;, PublicationPlan.class, false);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (plan != null) { same(plan.operationId(), op); context(plan.context(), scope, connection); same(plan.commonCheckpointId(), common); }</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            var review = json(r, &quot;review_json&quot;, PublicationReview.class, false); if (review != null) review(review.review(), op);</span>
+<span class="fc" id="L125">            var state = json(r, &quot;local_state_json&quot;, InternalState.class, false); state(state, scope);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            var completion = history ? json(r, &quot;completion_json&quot;, PublicationCompletion.class, false) : null; completion(completion, op, scope);</span>
+<span class="fc" id="L127">            checks.items(scope, connection, op, plan, completion);</span>
+<span class="fc" id="L128">            var bindings = json(r, &quot;bindings_json&quot;, StagedBinding[].class, false);</span>
+<span class="fc" id="L129">            return new PublicationData(id(r, &quot;publication&quot;, &quot;id&quot;), scope, id(r, &quot;connection&quot;, &quot;connection_id&quot;), request, text(r, &quot;config_fingerprint&quot;),</span>
+<span class="fc" id="L130">                    IntegrationBackupPayloads.preview(preview, history), IntegrationBackupPayloads.plan(plan, history), review,</span>
+<span class="fc" id="L131">                    PublicationPhase.valueOf(text(r, &quot;phase&quot;)), id(r, &quot;publication&quot;, &quot;predecessor_id&quot;), id(r, &quot;checkpoint&quot;, &quot;common_checkpoint_id&quot;), state,</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                    bindings == null ? null : Arrays.stream(bindings).map(b -&gt; IntegrationBackupPayloads.binding(b, history)).toList(), completion,</span>
+<span class="fc" id="L133">                    text(r, &quot;failure_code&quot;), r.getLong(&quot;reserved_revision&quot;), date(r, &quot;created_at&quot;), date(r, &quot;updated_at&quot;));</span>
+        });
+<span class="fc" id="L135">        datasets.add(&quot;publish-items&quot;, &quot;interop_publish_item&quot;, &quot;id,scope_id,connection_id,operation_id,item_key,item_ordinal,idempotency_key,intent_json,request_json,request_fingerprint,state,receipt_json,attempt_count,resubmit_allowed,failure_code&quot;,</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                history ? &quot;1=1&quot; : PENDING_PARENT, r -&gt; {</span>
+<span class="fc" id="L137">            String op = text(r, &quot;operation_id&quot;), key = text(r, &quot;item_key&quot;), idempotency = text(r, &quot;idempotency_key&quot;);</span>
+<span class="fc" id="L138">            var intent = json(r, &quot;intent_json&quot;, PublicationItemIntent.class, true);</span>
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">            if (!intent.itemId().equals(key) || !intent.idempotencyKey().equals(idempotency)) throw new IOException(&quot;Integration publication item differs&quot;);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            var request = history ? json(r, &quot;request_json&quot;, PublicationItemRequest.class, false) : null;</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">            if (request != null) { same(request.operationId(), op); if (!request.item().equals(intent)) throw new IOException(&quot;Integration dispatch item differs&quot;); }</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            var receipt = history ? json(r, &quot;receipt_json&quot;, PublicationReceipt.class, false) : null; receipt(receipt, op, key, idempotency);</span>
+<span class="fc" id="L143">            return new PublishItemData(id(r, &quot;publish-item&quot;, &quot;id&quot;), selection.scope(r), id(r, &quot;connection&quot;, &quot;connection_id&quot;), id(r, &quot;publication&quot;, &quot;operation_id&quot;),</span>
+<span class="fc" id="L144">                    r.getInt(&quot;item_ordinal&quot;), intent, request, text(r, &quot;request_fingerprint&quot;), ItemState.valueOf(text(r, &quot;state&quot;)), receipt,</span>
+<span class="fc" id="L145">                    r.getInt(&quot;attempt_count&quot;), r.getBoolean(&quot;resubmit_allowed&quot;), text(r, &quot;failure_code&quot;));</span>
+        });
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (history) {</span>
+<span class="fc" id="L148">            var queries = selection.queries(&quot;e.id,e.scope_id,e.connection_id,e.operation_id,e.item_id,e.kind,e.started_at,e.ended_at,e.outcome,e.receipt_json,i.item_key,i.idempotency_key&quot;,</span>
+                    &quot;interop_publish_attempt e join interop_publish_item i on i.id=e.item_id&quot;, &quot;1=1&quot;);
+<span class="fc" id="L150">            datasets.add(&quot;publish-attempts&quot;, queries, r -&gt; {</span>
+<span class="fc" id="L151">                sink.checkpoint(); var receipt = json(r, &quot;receipt_json&quot;, PublicationReceipt.class, false);</span>
+<span class="fc" id="L152">                receipt(receipt, text(r, &quot;operation_id&quot;), text(r, &quot;item_key&quot;), text(r, &quot;idempotency_key&quot;));</span>
+<span class="fc" id="L153">                return new PublishAttemptData(id(r, &quot;publish-attempt&quot;, &quot;id&quot;), selection.scope(r), id(r, &quot;connection&quot;, &quot;connection_id&quot;), id(r, &quot;publication&quot;, &quot;operation_id&quot;),</span>
+<span class="fc" id="L154">                        id(r, &quot;publish-item&quot;, &quot;item_id&quot;), AttemptKind.valueOf(text(r, &quot;kind&quot;)), date(r, &quot;started_at&quot;), date(r, &quot;ended_at&quot;), text(r, &quot;outcome&quot;), receipt);</span>
+            });
+<span class="fc" id="L156">        } else datasets.header(&quot;publish-attempts&quot;);</span>
+<span class="fc" id="L157">    }</span>
+
+    /** Query plans retain no payloads. The caller's capture lease keeps both read passes on one fenced source state. */
+    private final class Capture {
+        private final IntegrationBackupSelection selection;
+        private final ComponentSink sink;
+        private final BackupProfile profile;
+<span class="fc" id="L164">        private final List&lt;Dataset&lt;?&gt;&gt; datasets = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L165">        Capture(IntegrationBackupSelection selection, ComponentSink sink, BackupProfile profile) {</span>
+<span class="fc" id="L166">            this.selection = selection; this.sink = sink; this.profile = profile;</span>
+<span class="fc" id="L167">        }</span>
+        &lt;T extends Record&gt; void add(String kind, String table, String columns, String predicate, Mapper&lt;T&gt; mapper) throws IOException {
+<span class="fc" id="L169">            add(kind, table, columns, predicate, List.of(), mapper);</span>
+<span class="fc" id="L170">        }</span>
+        &lt;T extends Record&gt; void add(String kind, String table, String columns, String predicate, List&lt;?&gt; parameters, Mapper&lt;T&gt; mapper) throws IOException {
+<span class="fc" id="L172">            sink.checkpoint();</span>
+<span class="fc" id="L173">            var queries = selection.queries(&quot;e.&quot; + columns.replace(&quot;,&quot;, &quot;,e.&quot;), table + &quot; e&quot;, predicate).stream().map(q -&gt; {</span>
+<span class="fc" id="L174">                var values = new ArrayList&lt;Object&gt;(q.parameters()); values.addAll(parameters); return new Query(q.sql(), values);</span>
+<span class="fc" id="L175">            }).toList();</span>
+<span class="fc" id="L176">            add(kind, queries, mapper);</span>
+<span class="fc" id="L177">        }</span>
+        &lt;T extends Record&gt; void add(String kind, List&lt;Query&gt; queries, Mapper&lt;T&gt; mapper) {
+<span class="fc" id="L179">            datasets.add(new Dataset&lt;&gt;(kind, queries, r -&gt; { sink.checkpoint(); return mapper.read(r); }));</span>
+<span class="fc" id="L180">        }</span>
+<span class="pc" id="L181">        void header(String kind) { add(kind, List.of(), ignored -&gt; null); }</span>
+        void write() throws IOException {
+            // Check typed embedded ownership and evidence before even a dataset header reaches the sink.
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            for (var dataset : datasets) {</span>
+<span class="fc" id="L185">                sink.checkpoint(); dataset.verify(rows);</span>
+<span class="fc" id="L186">            }</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            for (var dataset : datasets) {</span>
+<span class="fc" id="L188">                sink.checkpoint(); dataset.write(rows, sink, profile);</span>
+<span class="fc" id="L189">            }</span>
+<span class="fc" id="L190">        }</span>
+    }
+<span class="fc" id="L192">    private record Dataset&lt;T extends Record&gt;(String kind, List&lt;Query&gt; queries, Mapper&lt;T&gt; mapper) {</span>
+        void verify(PortableRows rows) throws IOException {
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            for (var query : queries) rows.visit(query, mapper, ignored -&gt; { });</span>
+<span class="fc" id="L195">        }</span>
+        void write(PortableRows rows, ComponentSink sink, BackupProfile profile) throws IOException {
+<span class="fc" id="L197">            rows.writeBatches(sink, &quot;interop&quot;, kind, profile, queries, mapper);</span>
+<span class="fc" id="L198">        }</span>
+    }
+<span class="fc bfc" id="L200" title="All 2 branches covered.">    private void empty(ComponentSink sink, BackupProfile profile) throws IOException { for (String dataset : DATASETS) header(sink, profile, dataset); }</span>
+<span class="pc" id="L201">    private void header(ComponentSink sink, BackupProfile profile, String kind) throws IOException { sink.checkpoint(); rows.write(sink, &quot;interop&quot;, kind, profile, null, ignored -&gt; null); }</span>
+    private static void policy(ComponentSink sink, BackupProfile profile, String status) throws IOException {
+<span class="fc" id="L203">        sink.checkpoint(); PortableRows.document(sink, &quot;data/interop/policy.json&quot;, new CapturePolicy(1, profile, status, &quot;MANUAL_REVIEW_REQUIRED&quot;, false,</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                &quot;SOURCE_EVIDENCE_REQUIRES_TARGET_MAPPING&quot;, profile.includesHistory() ? &quot;HISTORY_CAPTURED&quot; : &quot;BASELINES_EXCLUDED_RECOMPUTE&quot;));</span>
+<span class="fc" id="L205">    }</span>
+    private static &lt;T&gt; T json(ResultSet row, String column, Class&lt;T&gt; type, boolean required) throws SQLException, IOException {
+<span class="fc" id="L207">        T result = IntegrationBackupJson.read(text(row, column), type);</span>
+<span class="pc bpc" id="L208" title="1 of 4 branches missed.">        if (required &amp;&amp; result == null) throw new IOException(&quot;Required integration evidence is missing&quot;);</span>
+<span class="fc" id="L209">        return result;</span>
+    }
+    private static SourceRecordId id(ResultSet row, String kind, String column) throws SQLException, IOException {
+<span class="fc" id="L212">        var result = reference(row, &quot;interop.&quot; + kind, column);</span>
+<span class="fc bfc" id="L213" title="All 4 branches covered.">        if (result != null &amp;&amp; !Set.of(&quot;identity&quot;, &quot;publish-item&quot;).contains(kind)</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">                &amp;&amp; !UUID.fromString(result.value()).toString().equals(result.value())) throw new IOException(&quot;Invalid integration source identity&quot;);</span>
+<span class="fc" id="L215">        return result;</span>
+    }
+    private static String date(ResultSet row, String column) throws SQLException, IOException {
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        String value = text(row, column); return value == null ? null : Instant.parse(value).toString();</span>
+    }
+    private static void state(InternalState value, BackupIntegrationScope scope) throws IOException {
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        if (value != null &amp;&amp; (!scope.repository().repositoryId().equals(value.repositoryId())</span>
+<span class="fc bfc" id="L222" title="All 4 branches covered.">                || !WorkspaceOverlayScope.keyFor(scope.repository().workspaceId()).equals(value.workspaceScopeKey()) || !scope.branch().equals(value.branch())))</span>
+<span class="fc" id="L223">            throw new IOException(&quot;Integration evidence differs from its captured workspace&quot;);</span>
+<span class="fc" id="L224">    }</span>
+    private static void context(IntegrationContext value, BackupIntegrationScope scope, String connection) throws IOException {
+<span class="fc" id="L226">        same(value.connectionId(), connection); state(value.internalState(), scope);</span>
+<span class="fc" id="L227">    }</span>
+    private static void same(UUID actual, String expected) throws IOException {
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">        if (!Objects.equals(actual == null ? null : actual.toString(), expected)) throw new IOException(&quot;Integration evidence has a different source parent&quot;);</span>
+<span class="fc" id="L230">    }</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">    private static void review(ReviewedChangeSet review, String operation) throws IOException { if (review != null) same(review.operationId(), operation); }</span>
+    private static void receipt(PublicationReceipt receipt, String operation, String item, String idempotency) throws IOException {
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (receipt == null) return;</span>
+<span class="fc" id="L234">        same(receipt.operationId(), operation);</span>
+<span class="pc bpc" id="L235" title="2 of 4 branches missed.">        if (!receipt.itemId().equals(item) || !receipt.idempotencyKey().equals(idempotency)) throw new IOException(&quot;Integration receipt has a different source item&quot;);</span>
+<span class="fc" id="L236">    }</span>
+    private static void completion(PublicationCompletion value, String operation, BackupIntegrationScope scope) throws IOException {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (value == null) return;</span>
+<span class="fc" id="L239">        same(value.operationId(), operation); state(value.localAfter(), scope);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        for (var receipt : value.receipts()) same(receipt.operationId(), operation);</span>
+<span class="fc" id="L241">    }</span>
+<span class="fc bfc" id="L242" title="All 4 branches covered.">    private static boolean terminal(OperationStatus status) { return status == OperationStatus.COMPLETED || status == OperationStatus.CANCELLED; }</span>
+
+<span class="fc" id="L244">    public record CapturePolicy(int schemaVersion, BackupProfile profile, String status, String targetExecutionPolicy, boolean automaticExecutionEnabled,</span>
+                                String sourceIdentityPolicy, String baselinePolicy) { }
+<span class="fc" id="L246">    public record ConnectionData(SourceRecordId sourceId, BackupIntegrationScope scope, String sourceOrganizationId, String displayName, String connectorId,</span>
+                                 String profileVersion, AuthorityMode sourceAuthority, String sourceRemoteProfile, SourceRecordId project, ExternalScope externalScope,
+                                 String sourceCreatedBy, String createdAt, long sourceRevision, SourceRecordId sourceCheckpointId, SourceRecordId sourceCommonCheckpointId,
+                                 SourceRecordId sourceActiveOperationId) { }
+<span class="fc" id="L250">    public record IdentityData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, String externalId, String businessIdentity,</span>
+                               SourceRecordId requirement, String sourceExternalVersion, String sourceFingerprint, Artifact historicalExternal,
+                               Artifact historicalInternal, SourceRecordId sourceOperationId, boolean removed) { }
+<span class="fc" id="L253">    public record CheckpointData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId operation,</span>
+                                 String sourceGitCommit, String sourceExternalVersion, String sourceFingerprint, InternalState sourceState,
+                                 String createdAt, String kind, CommonBaseline baseline, PublicationCompletion completion) { }
+<span class="fc" id="L256">    public record OperationData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, String sourceActor, OperationStatus sourceStatus,</span>
+                                String targetExecutionPolicy, String direction, String sourceFingerprint, String sourceReviewFingerprint, long sourceConnectionRevision,
+                                IntegrationContext sourceContext, Record document, List&lt;Record&gt; changes, ReviewedChangeSet sourceReview, Record resultDocument,
+                                InternalState sourceResultState, ExchangeFile historicalResultFile, String sourceResultCommit, Long sourceResultRevision,
+                                String failureCode, String createdAt, String updatedAt) { }
+<span class="fc" id="L261">    public record EventData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId operation, String eventType,</span>
+                            String sourceActor, String occurredAt, String rationale, String failureCode) { }
+<span class="fc" id="L263">    public record PublicationData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, PublicationPreviewRequest sourceRequest,</span>
+                                  String sourceConfigFingerprint, Record preview, Record plan, PublicationReview sourceReview, PublicationPhase sourcePhase,
+                                  SourceRecordId sourcePredecessorId, SourceRecordId sourceCommonCheckpointId, InternalState sourceLocalState, List&lt;Record&gt; stagedBindings,
+                                  PublicationCompletion historicalCompletion, String failureCode, long sourceReservedRevision, String createdAt, String updatedAt) { }
+<span class="fc" id="L267">    public record PublishItemData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId publication, int ordinal,</span>
+                                  PublicationItemIntent sourceIntent, PublicationItemRequest historicalRequest, String sourceRequestFingerprint, ItemState sourceState,
+                                  PublicationReceipt historicalReceipt, int sourceAttemptCount, boolean sourceResubmitAllowed, String failureCode) { }
+<span class="fc" id="L270">    public record PublishAttemptData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId publication, SourceRecordId item,</span>
+                                     AttemptKind kind, String startedAt, String endedAt, String outcome, PublicationReceipt receipt) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

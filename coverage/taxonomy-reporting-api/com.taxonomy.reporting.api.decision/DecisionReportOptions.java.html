@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionReportOptions.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.api.decision</a> &gt; <span class="el_source">DecisionReportOptions.java</span></div><h1>DecisionReportOptions.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.api.decision;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import java.util.*;
+
+/**
+ * Presentation choices; these never change the recorded analysis scope.
+ * An empty normalized root set means all analysis roots. Serialize that sentinel
+ * as an omitted property so it is not confused with an invalid explicit empty selection.
+ */
+public record DecisionReportOptions(Profile profile,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) Set&lt;String&gt; taxonomyRoots,
+        Contents contents, TreeLayout treeLayout, Set&lt;Section&gt; sections) {
+<span class="fc" id="L15">    public enum Profile { FULL, STANDARD, COMPACT }</span>
+<span class="fc" id="L16">    public enum Contents { NONE, SHORT, FULL }</span>
+<span class="fc" id="L17">    public enum TreeLayout { TABLE, AUTO, A4_LANDSCAPE, A3_LANDSCAPE }</span>
+<span class="fc" id="L18">    public enum Section { TITLE_PAGE, SUMMARY, TREE, CHAPTERS, ARCHITECTURE, EVIDENCE }</span>
+
+<span class="fc" id="L20">    public DecisionReportOptions {</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        profile = profile == null ? Profile.FULL : profile;</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        if (taxonomyRoots != null &amp;&amp; taxonomyRoots.isEmpty())</span>
+<span class="fc" id="L23">            throw new IllegalArgumentException(&quot;An explicit export selection must contain a taxonomy; omit taxonomyRoots for all analysis roots&quot;);</span>
+<span class="fc" id="L24">        var roots = new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L25" title="All 4 branches covered.">        if (taxonomyRoots != null) for (String root : taxonomyRoots) {</span>
+<span class="pc bpc" id="L26" title="1 of 8 branches missed.">            if (root == null || root.isBlank() || !root.equals(root.strip()) || root.length() &gt; 256)</span>
+<span class="fc" id="L27">                throw new IllegalArgumentException(&quot;Invalid export taxonomy root&quot;);</span>
+<span class="fc" id="L28">            roots.add(root);</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (roots.size() &gt; 100) throw new IllegalArgumentException(&quot;Too many export taxonomy roots&quot;);</span>
+<span class="fc" id="L31">        taxonomyRoots = Collections.unmodifiableSet(roots);</span>
+<span class="fc bfc" id="L32" title="All 4 branches covered.">        contents = contents == null ? (profile == Profile.FULL ? Contents.FULL : Contents.SHORT) : contents;</span>
+<span class="fc bfc" id="L33" title="All 4 branches covered.">        treeLayout = treeLayout == null ? (profile == Profile.FULL ? TreeLayout.TABLE : TreeLayout.AUTO) : treeLayout;</span>
+<span class="fc bfc" id="L34" title="All 5 branches covered.">        if (sections == null) sections = switch (profile) {</span>
+<span class="fc" id="L35">            case FULL -&gt; EnumSet.allOf(Section.class);</span>
+<span class="fc" id="L36">            case STANDARD -&gt; EnumSet.of(Section.SUMMARY, Section.TREE, Section.CHAPTERS, Section.ARCHITECTURE);</span>
+<span class="fc" id="L37">            case COMPACT -&gt; EnumSet.of(Section.SUMMARY, Section.TREE);</span>
+        };
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        sections = sections.isEmpty() ? Set.of() : Collections.unmodifiableSet(EnumSet.copyOf(sections));</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="fc" id="L42">    public static DecisionReportOptions full() { return new DecisionReportOptions(null, null, null, null, null); }</span>
+<span class="fc" id="L43">    public boolean includes(Section section) { return sections.contains(section); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

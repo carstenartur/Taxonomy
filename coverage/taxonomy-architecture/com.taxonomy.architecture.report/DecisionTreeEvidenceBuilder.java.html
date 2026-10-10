@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionTreeEvidenceBuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">DecisionTreeEvidenceBuilder.java</span></div><h1>DecisionTreeEvidenceBuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.*;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import java.util.*;
+import static com.taxonomy.reporting.api.document.DecisionTreeOverview.bookmark;
+
+/** Derives navigation evidence from the captured taxonomy, before any renderer sees it. */
+public final class DecisionTreeEvidenceBuilder {
+    private DecisionTreeEvidenceBuilder() {}
+
+    /** Include rejected roots and missing alternatives even when they do not create a positive chapter. */
+    public static DecisionTreeOverview fromEvidence(List&lt;TaxonomyNodeDto&gt; tree, Map&lt;String, Integer&gt; scores,
+            List&lt;DecisionChapter&gt; chapters, Set&lt;String&gt; roots, boolean german) {
+<span class="fc" id="L19">        var chapterByCode = new HashMap&lt;String, DecisionChapter&gt;();</span>
+<span class="fc" id="L20">        chapters.forEach(chapter -&gt; chapterByCode.put(chapter.parentCode(), chapter));</span>
+<span class="fc" id="L21">        var included = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        for (var root : tree) if (roots.contains(root.getCode())) includeEvidence(root, scores, included, true);</span>
+<span class="fc" id="L23">        var rows = new ArrayList&lt;DecisionTreeRow&gt;();</span>
+<span class="fc bfc" id="L24" title="All 4 branches covered.">        for (var root : tree) if (roots.contains(root.getCode()))</span>
+<span class="fc" id="L25">            appendEvidence(root, 0, included, scores, chapterByCode, rows, german);</span>
+<span class="fc" id="L26">        return new DecisionTreeOverview(rows, List.of());</span>
+    }
+
+    private static boolean includeEvidence(TaxonomyNodeDto node, Map&lt;String, Integer&gt; scores,
+            Set&lt;String&gt; included, boolean required) {
+<span class="pc bpc" id="L31" title="1 of 4 branches missed.">        boolean keep = required || scores.containsKey(node.getCode());</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        for (var child : node.getChildren() == null ? List.&lt;TaxonomyNodeDto&gt;of() : node.getChildren())</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            keep |= includeEvidence(child, scores, included, scores.getOrDefault(node.getCode(), 0) &gt; 0);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (keep) included.add(node.getCode());</span>
+<span class="fc" id="L35">        return keep;</span>
+    }
+
+    private static void appendEvidence(TaxonomyNodeDto node, int depth, Set&lt;String&gt; included,
+            Map&lt;String, Integer&gt; scores, Map&lt;String, DecisionChapter&gt; chapters, List&lt;DecisionTreeRow&gt; rows,
+            boolean german) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (!included.contains(node.getCode())) return;</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        var children = node.getChildren() == null ? List.&lt;TaxonomyNodeDto&gt;of() : node.getChildren();</span>
+<span class="fc" id="L43">        var chapter = chapters.get(node.getCode());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        String title = german ? node.getNameDe() : node.getNameEn();</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">        if (title == null || title.isBlank()) title = node.getNameEn();</span>
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">        if (title == null || title.isBlank()) title = node.getCode();</span>
+<span class="fc" id="L47">        rows.add(new DecisionTreeRow(depth, node.getCode(), title, scores.get(node.getCode()),</span>
+<span class="fc" id="L48">                disposition(scores.get(node.getCode()), children.isEmpty()),</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">                chapter == null ? null : chapter.number(), chapter == null ? null : bookmark(chapter)));</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (var child : children) appendEvidence(child, depth + 1, included, scores, chapters, rows, german);</span>
+<span class="fc" id="L51">    }</span>
+
+    private static Disposition disposition(Integer score, boolean leaf) {
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        return score == null ? Disposition.NOT_EVALUATED : score == 0 ? Disposition.REJECTED</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                : leaf ? Disposition.LEAF_CANDIDATE : Disposition.CONTINUED;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

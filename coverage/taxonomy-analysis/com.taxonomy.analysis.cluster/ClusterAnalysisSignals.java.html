@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisSignals.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisSignals.java</span></div><h1>ClusterAnalysisSignals.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+
+/** Per-pod live observers. Durable store state remains authoritative after any delivery gap. */
+public final class ClusterAnalysisSignals {
+<span class="fc" id="L15">    private final CopyOnWriteArrayList&lt;Subscription&gt; listeners = new CopyOnWriteArrayList&lt;&gt;();</span>
+<span class="fc" id="L16">    private final CopyOnWriteArrayList&lt;Worker&gt; workers = new CopyOnWriteArrayList&lt;&gt;();</span>
+    private final Clock clock;
+<span class="pc" id="L18">    private volatile java.util.function.Predicate&lt;AnalysisOperationContext&gt; terminal = context -&gt; false;</span>
+<span class="fc" id="L19">    private volatile Consumer&lt;Duration&gt; cancellationLatency = latency -&gt; { };</span>
+
+<span class="fc" id="L21">    public ClusterAnalysisSignals() { this(Clock.systemUTC()); }</span>
+<span class="fc" id="L22">    ClusterAnalysisSignals(Clock clock) { this.clock = Objects.requireNonNull(clock); }</span>
+
+    public void cancellationLatency(Consumer&lt;Duration&gt; observer) {
+<span class="fc" id="L25">        cancellationLatency = Objects.requireNonNull(observer);</span>
+<span class="fc" id="L26">    }</span>
+
+    public void workerReconciliation(java.util.function.Predicate&lt;AnalysisOperationContext&gt; terminal) {
+<span class="fc" id="L29">        this.terminal = Objects.requireNonNull(terminal);</span>
+<span class="fc" id="L30">    }</span>
+
+    public Subscription listen(AnalysisOperationContext context, Consumer&lt;AnalysisProgressEvent&gt; consumer) {
+<span class="fc" id="L33">        var subscription = new Subscription(context, consumer); listeners.add(subscription); return subscription;</span>
+    }
+    public Worker worker(AnalysisOperationContext context) {
+<span class="fc" id="L36">        var worker = new Worker(context); workers.add(worker); return worker;</span>
+    }
+    public void progress(AnalysisProgressEvent event) {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (event.phase() == AnalysisProgressPhase.OPERATION_STOPPED) {</span>
+<span class="fc" id="L40">            var context = ClusterAnalysisStore.context(event.envelope());</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            for (var worker : workers) if (worker.context.equals(context)) worker.stop(event.envelope().createdAt());</span>
+        }
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (var listener : listeners) listener.deliver(event);</span>
+<span class="fc" id="L44">    }</span>
+    public void cancellation(AnalysisCancellationEvent event) {
+<span class="fc" id="L46">        var context = ClusterAnalysisStore.context(event.envelope());</span>
+<span class="fc bfc" id="L47" title="All 4 branches covered.">        for (var worker : workers) if (worker.context.equals(context)) worker.stop(event.envelope().createdAt());</span>
+<span class="fc" id="L48">    }</span>
+    /** Connection events wake observers to reconcile once with the durable snapshot. */
+    public void reconnected() {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        for (var worker : workers) worker.reconcile();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (var listener : listeners) listener.reconnected();</span>
+<span class="fc" id="L53">    }</span>
+<span class="fc" id="L54">    public int listenerCount() { return listeners.size(); }</span>
+<span class="fc" id="L55">    public int workerCount() { return workers.size(); }</span>
+
+    public final class Subscription implements AutoCloseable {
+        private final AnalysisOperationContext context;
+        private final Consumer&lt;AnalysisProgressEvent&gt; consumer;
+<span class="fc" id="L60">        private final AtomicLong sequence = new AtomicLong();</span>
+<span class="fc" id="L61">        private volatile Runnable reconnect = () -&gt; { };</span>
+<span class="fc" id="L62">        private Subscription(AnalysisOperationContext context, Consumer&lt;AnalysisProgressEvent&gt; consumer) {</span>
+<span class="fc" id="L63">            this.context = Objects.requireNonNull(context); this.consumer = Objects.requireNonNull(consumer);</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">        public void onReconnect(Runnable action) { reconnect = Objects.requireNonNull(action); }</span>
+        private synchronized void deliver(AnalysisProgressEvent event) {
+<span class="fc bfc" id="L67" title="All 4 branches covered.">            if (!context.equals(ClusterAnalysisStore.context(event.envelope())) || event.sequence() &lt;= sequence.get()) return;</span>
+<span class="fc" id="L68">            sequence.set(event.sequence());</span>
+<span class="pc" id="L69">            try { consumer.accept(event); } catch (RuntimeException ignored) { /* One disconnected observer cannot block others. */ }</span>
+<span class="fc" id="L70">        }</span>
+<span class="pc" id="L71">        private void reconnected() { try { reconnect.run(); } catch (RuntimeException ignored) { } }</span>
+<span class="fc" id="L72">        @Override public void close() { listeners.remove(this); }</span>
+    }
+    public final class Worker implements AutoCloseable {
+        private final AnalysisOperationContext context;
+<span class="fc" id="L76">        private final AtomicBoolean cancelled = new AtomicBoolean();</span>
+<span class="fc" id="L77">        private final AtomicBoolean observationRecorded = new AtomicBoolean();</span>
+        private volatile Instant requestedAt;
+<span class="fc" id="L79">        private Worker(AnalysisOperationContext context) { this.context = Objects.requireNonNull(context); }</span>
+        public boolean cancelled() {
+<span class="fc" id="L81">            boolean stopped = cancelled.get();</span>
+<span class="fc" id="L82">            Instant requested = requestedAt;</span>
+<span class="fc bfc" id="L83" title="All 6 branches covered.">            if (stopped &amp;&amp; requested != null &amp;&amp; observationRecorded.compareAndSet(false, true)) {</span>
+<span class="fc" id="L84">                try { cancellationLatency.accept(Duration.between(requested, clock.instant())); }</span>
+<span class="pc" id="L85">                catch (RuntimeException ignored) { /* Metrics cannot prevent cooperative stopping. */ }</span>
+            }
+<span class="fc" id="L87">            return stopped;</span>
+        }
+        private synchronized void stop(Instant requested) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (cancelled.get()) return;</span>
+<span class="fc" id="L91">            requestedAt = requested;</span>
+<span class="fc" id="L92">            cancelled.set(true);</span>
+<span class="fc" id="L93">        }</span>
+        private void reconcile() {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            try { if (terminal.test(context)) stop(null); }</span>
+<span class="nc" id="L96">            catch (RuntimeException unavailable) {</span>
+                // If authority cannot be revalidated after a gap, stop further external work.
+                // A terminal result still joins the ledger and is fenced by current durable state.
+<span class="nc" id="L99">                stop(null);</span>
+<span class="fc" id="L100">            }</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc" id="L102">        @Override public void close() { workers.remove(this); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

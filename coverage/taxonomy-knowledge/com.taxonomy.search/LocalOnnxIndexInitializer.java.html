@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalOnnxIndexInitializer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">LocalOnnxIndexInitializer.java</span></div><h1>LocalOnnxIndexInitializer.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Builds local embedding indexes after the Spring context and taxonomy catalogue
+ * are ready when the configured analysis provider is {@code LOCAL_ONNX}.
+ *
+ * &lt;p&gt;Node vectors form the user-facing semantic-search readiness boundary and are
+ * therefore rebuilt before relation vectors. The former {@code Object.class}
+ * mass-index scope could process unrelated or relation-heavy indexes first while
+ * the semantic-search endpoint kept returning an unexplained empty array.&lt;/p&gt;
+ *
+ * &lt;p&gt;The application remains globally ready while this optional index is built:
+ * catalogue browsing, full-text search, DSL editing and other deterministic
+ * functions are already usable. Semantic readiness is exposed independently by
+ * {@link #getState()}, {@link #getDetail()} and {@link #isNodeSearchReady()}.&lt;/p&gt;
+ */
+@Service
+@Lazy(false)
+@DependsOn(&quot;springContextHolder&quot;)
+public class LocalOnnxIndexInitializer {
+
+<span class="fc" id="L40">    public enum State {</span>
+<span class="fc" id="L41">        DISABLED,</span>
+<span class="fc" id="L42">        WAITING_FOR_TAXONOMY,</span>
+<span class="fc" id="L43">        LOADING_MODEL,</span>
+<span class="fc" id="L44">        INDEXING_NODES,</span>
+<span class="fc" id="L45">        INDEXING_RELATIONS,</span>
+<span class="fc" id="L46">        READY,</span>
+<span class="fc" id="L47">        PARTIAL,</span>
+<span class="fc" id="L48">        FAILED</span>
+    }
+
+<span class="fc" id="L51">    private static final Logger log =</span>
+<span class="fc" id="L52">            LoggerFactory.getLogger(LocalOnnxIndexInitializer.class);</span>
+<span class="fc" id="L53">    private static final Duration TAXONOMY_READY_TIMEOUT = Duration.ofMinutes(10);</span>
+<span class="fc" id="L54">    private static final Duration READY_POLL_INTERVAL = Duration.ofMillis(250);</span>
+    private static final String READINESS_PROBE = &quot;taxonomy architecture&quot;;
+
+    private final LocalEmbeddingService embeddingService;
+    private final AppInitializationStateService initializationState;
+    private final LocalEmbeddingIndexRebuilder indexRebuilder;
+    private final EmbeddingIndexHealth indexHealth;
+    private final String provider;
+
+<span class="fc" id="L63">    @Autowired</span>
+<span class="fc" id="L64">    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();</span>
+<span class="fc" id="L65">    private final AtomicBoolean started = new AtomicBoolean();</span>
+<span class="fc" id="L66">    private final AtomicReference&lt;State&gt; state =</span>
+            new AtomicReference&lt;&gt;(State.DISABLED);
+
+<span class="fc" id="L69">    private volatile String detail = &quot;Local embedding indexing has not started&quot;;</span>
+    private volatile int indexedNodesAtReadiness;
+
+    public LocalOnnxIndexInitializer(
+            LocalEmbeddingService embeddingService,
+            AppInitializationStateService initializationState,
+            LocalEmbeddingIndexRebuilder indexRebuilder,
+            EmbeddingIndexHealth indexHealth,
+<span class="fc" id="L77">            @Value(&quot;${llm.provider:}&quot;) String provider) {</span>
+<span class="fc" id="L78">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L79">        this.initializationState = initializationState;</span>
+<span class="fc" id="L80">        this.indexRebuilder = indexRebuilder;</span>
+<span class="fc" id="L81">        this.indexHealth = indexHealth;</span>
+<span class="fc" id="L82">        this.provider = provider;</span>
+<span class="fc" id="L83">    }</span>
+
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
+    public void initializeLocalOnnxIndex() {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (catalogueRuntimePolicy.workerOnly()) {</span>
+<span class="fc" id="L89">            update(State.DISABLED, &quot;Catalogue worker does not build a global embedding index&quot;);</span>
+<span class="fc" id="L90">            return;</span>
+        }
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!embeddingService.isEnabled()) {</span>
+<span class="fc" id="L93">            update(State.DISABLED, &quot;Local embeddings are disabled&quot;);</span>
+<span class="fc" id="L94">            return;</span>
+        }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (!&quot;LOCAL_ONNX&quot;.equalsIgnoreCase(provider)) {</span>
+<span class="fc" id="L97">            update(State.DISABLED,</span>
+                    &quot;Automatic local embedding indexing requires LLM_PROVIDER=LOCAL_ONNX&quot;);
+<span class="fc" id="L99">            return;</span>
+        }
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (!started.compareAndSet(false, true)) {</span>
+<span class="fc" id="L102">            return;</span>
+        }
+
+<span class="fc" id="L105">        update(State.WAITING_FOR_TAXONOMY,</span>
+                &quot;Waiting for the taxonomy catalogue to become ready&quot;);
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!awaitTaxonomyReady()) {</span>
+<span class="fc" id="L108">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L112">            update(State.LOADING_MODEL, &quot;Loading and warming the local embedding model&quot;);</span>
+<span class="fc" id="L113">            embeddingService.embed(&quot;Taxonomy embedding index warm-up&quot;);</span>
+<span class="fc" id="L114">            String modelKey = embeddingService.embeddingIndexKey();</span>
+
+<span class="fc" id="L116">            update(State.INDEXING_NODES,</span>
+                    &quot;Building taxonomy-node vectors required by semantic search&quot;);
+<span class="fc" id="L118">            indexRebuilder.rebuildNodeIndex();</span>
+<span class="fc" id="L119">            indexRebuilder.verifyNodeEmbeddingCoverage(modelKey);</span>
+<span class="fc" id="L120">            verifyNodeSearchReadiness();</span>
+
+<span class="fc" id="L122">            update(State.INDEXING_RELATIONS,</span>
+                    &quot;Node semantic search is ready; building relation vectors&quot;);
+            try {
+<span class="fc" id="L125">                indexRebuilder.rebuildRelationIndex();</span>
+<span class="fc" id="L126">                indexRebuilder.verifyRelationEmbeddingCoverage(modelKey);</span>
+<span class="fc" id="L127">                update(State.READY,</span>
+                        &quot;Local node and relation embedding indexes are ready&quot;);
+<span class="fc" id="L129">                log.info(&quot;Local embedding indexing finished in state {} with {} indexed taxonomy nodes&quot;,</span>
+<span class="fc" id="L130">                        getState(), indexedNodesAtReadiness);</span>
+<span class="nc" id="L131">            } catch (InterruptedException exception) {</span>
+<span class="nc" id="L132">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L133">                update(State.PARTIAL,</span>
+                        &quot;Node semantic search is ready; relation indexing was interrupted&quot;);
+<span class="nc" id="L135">                log.warn(&quot;Relation vector indexing was interrupted after node search became ready&quot;);</span>
+<span class="fc" id="L136">            } catch (Exception | LinkageError exception) {</span>
+<span class="fc" id="L137">                update(State.PARTIAL,</span>
+                        &quot;Node semantic search is ready; relation indexing failed (code=RELATION_INDEX_FAILED)&quot;);
+<span class="fc" id="L139">                log.error(&quot;Relation vector indexing failed (code=RELATION_INDEX_FAILED)&quot;);</span>
+<span class="pc" id="L140">            }</span>
+<span class="nc" id="L141">        } catch (InterruptedException exception) {</span>
+<span class="nc" id="L142">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L143">            update(State.FAILED, &quot;Local embedding indexing was interrupted&quot;);</span>
+<span class="nc" id="L144">            log.warn(&quot;Local embedding indexing was interrupted&quot;);</span>
+<span class="fc" id="L145">        } catch (Exception | LinkageError exception) {</span>
+<span class="fc" id="L146">            State failedStage = state.get();</span>
+<span class="fc" id="L147">            update(State.FAILED,</span>
+                    &quot;Local embedding indexing failed during &quot; + failedStage + &quot; (code=EMBEDDING_INDEX_FAILED)&quot;);
+<span class="fc" id="L149">            log.error(&quot;Local embedding indexing failed (code=EMBEDDING_INDEX_FAILED, stage={})&quot;, failedStage);</span>
+<span class="pc" id="L150">        }</span>
+<span class="fc" id="L151">    }</span>
+
+    public State getState() {
+<span class="fc" id="L154">        State current = state.get();</span>
+<span class="fc bfc" id="L155" title="All 6 branches covered.">        if (current == State.INDEXING_RELATIONS || current == State.READY || current == State.PARTIAL) {</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (indexHealth.hasNodeFailure()) return State.FAILED;</span>
+<span class="fc bfc" id="L157" title="All 4 branches covered.">            if (current == State.READY &amp;&amp; indexHealth.hasRelationFailure()) {</span>
+<span class="fc" id="L158">                return State.PARTIAL;</span>
+            }
+        }
+<span class="fc" id="L161">        return current;</span>
+    }
+
+    public String getDetail() {
+<span class="fc" id="L165">        State current = state.get();</span>
+<span class="fc" id="L166">        boolean nodeFailure = indexHealth.hasNodeFailure();</span>
+<span class="fc" id="L167">        boolean relationFailure = indexHealth.hasRelationFailure();</span>
+<span class="pc bpc" id="L168" title="4 of 10 branches missed.">        if (nodeFailure &amp;&amp; (current == State.FAILED</span>
+                || current == State.INDEXING_RELATIONS
+                || current == State.READY
+                || current == State.PARTIAL)) {
+<span class="fc" id="L172">            return &quot;Node vector writes failed; resolve the cause and restart to rebuild (code=NODE_VECTOR_WRITE_FAILED)&quot;;</span>
+        }
+<span class="pc bpc" id="L174" title="1 of 8 branches missed.">        if (!nodeFailure &amp;&amp; relationFailure</span>
+                &amp;&amp; (current == State.READY || current == State.PARTIAL)) {
+<span class="fc" id="L176">            return &quot;Relation vector writes failed; resolve the cause and restart to rebuild (code=RELATION_VECTOR_WRITE_FAILED)&quot;;</span>
+        }
+<span class="fc" id="L178">        return detail;</span>
+    }
+
+    public boolean hasStarted() {
+<span class="fc" id="L182">        return started.get();</span>
+    }
+
+    public int getIndexedNodesAtReadiness() {
+<span class="fc" id="L186">        return indexedNodesAtReadiness;</span>
+    }
+
+    public boolean isNodeSearchReady() {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        return switch (getState()) {</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            case INDEXING_RELATIONS, READY, PARTIAL -&gt; indexedNodesAtReadiness &gt; 0;</span>
+<span class="fc" id="L192">            default -&gt; false;</span>
+        };
+    }
+
+    private void verifyNodeSearchReadiness() {
+<span class="fc" id="L197">        int indexedNodes = embeddingService.indexedNodeCount();</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (indexedNodes &lt;= 0) {</span>
+<span class="fc" id="L199">            throw new IllegalStateException(</span>
+                    &quot;Node mass indexing completed without searchable taxonomy documents&quot;);
+        }
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (embeddingService.semanticSearch(READINESS_PROBE, 1).isEmpty()) {</span>
+<span class="fc" id="L203">            throw new IllegalStateException(</span>
+                    &quot;Node mass indexing completed without a searchable embedding vector&quot;);
+        }
+<span class="fc" id="L206">        indexedNodesAtReadiness = indexedNodes;</span>
+<span class="fc" id="L207">    }</span>
+
+    private boolean awaitTaxonomyReady() {
+<span class="fc" id="L210">        long deadline = System.nanoTime() + TAXONOMY_READY_TIMEOUT.toNanos();</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        while (System.nanoTime() &lt; deadline) {</span>
+<span class="fc" id="L212">            AppInitializationStateService.State current = initializationState.getState();</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            if (current == AppInitializationStateService.State.READY) {</span>
+<span class="fc" id="L214">                return true;</span>
+            }
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (current == AppInitializationStateService.State.FAILED) {</span>
+<span class="fc" id="L217">                update(State.FAILED,</span>
+                        &quot;Taxonomy initialization failed before local embedding indexing&quot;);
+<span class="fc" id="L219">                log.warn(&quot;Skipping local embedding indexing because taxonomy initialization failed&quot;);</span>
+<span class="fc" id="L220">                return false;</span>
+            }
+            try {
+<span class="nc" id="L223">                Thread.sleep(READY_POLL_INTERVAL.toMillis());</span>
+<span class="nc" id="L224">            } catch (InterruptedException exception) {</span>
+<span class="nc" id="L225">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L226">                update(State.FAILED,</span>
+                        &quot;Interrupted while waiting for taxonomy initialization&quot;);
+<span class="nc" id="L228">                log.warn(&quot;Interrupted while waiting for taxonomy initialization&quot;);</span>
+<span class="nc" id="L229">                return false;</span>
+<span class="nc" id="L230">            }</span>
+<span class="nc" id="L231">        }</span>
+<span class="nc" id="L232">        update(State.FAILED,</span>
+                &quot;Taxonomy was not ready within &quot; + TAXONOMY_READY_TIMEOUT);
+<span class="nc" id="L234">        log.error(&quot;Skipping local embedding indexing because taxonomy was not ready within {}&quot;,</span>
+                TAXONOMY_READY_TIMEOUT);
+<span class="nc" id="L236">        return false;</span>
+    }
+
+    private void update(State nextState, String nextDetail) {
+<span class="fc" id="L240">        state.set(nextState);</span>
+<span class="fc" id="L241">        detail = nextDetail;</span>
+<span class="fc" id="L242">        log.info(&quot;Local embedding index state {}: {}&quot;, getState(), getDetail());</span>
+<span class="fc" id="L243">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

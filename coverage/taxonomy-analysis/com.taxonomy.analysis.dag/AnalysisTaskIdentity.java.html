@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisTaskIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisTaskIdentity.java</span></div><h1>AnalysisTaskIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.Objects;
+
+/** Immutable task source identity, independent of attempts and completion timestamps. */
+public final class AnalysisTaskIdentity {
+    private AnalysisTaskIdentity() { }
+
+    public static void requireSameSource(AnalysisEnvelope expected, AnalysisEnvelope actual) {
+<span class="pc bpc" id="L10" title="3 of 6 branches missed.">        if (expected == null || actual == null || expected.taskId() == null</span>
+<span class="pc bpc" id="L11" title="1 of 2 branches missed.">                || expected.schemaVersion() != actual.schemaVersion()</span>
+<span class="pc bpc" id="L12" title="1 of 2 branches missed.">                || !Objects.equals(expected.operationId(), actual.operationId())</span>
+<span class="pc bpc" id="L13" title="1 of 2 branches missed.">                || !Objects.equals(expected.taskId(), actual.taskId())</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">                || expected.taskType() != actual.taskType()</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">                || !Objects.equals(expected.authority(), actual.authority())</span>
+<span class="pc bpc" id="L16" title="1 of 2 branches missed.">                || !Objects.equals(expected.requirement(), actual.requirement())</span>
+<span class="pc bpc" id="L17" title="1 of 2 branches missed.">                || !Objects.equals(expected.roots(), actual.roots())</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">                || !Objects.equals(expected.deadline(), actual.deadline())) {</span>
+<span class="fc" id="L19">            throw new IllegalStateException(&quot;Analysis task source identity mismatch&quot;);</span>
+        }
+<span class="fc" id="L21">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

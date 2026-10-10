@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderRequestLimiter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ProviderRequestLimiter.java</span></div><h1>ProviderRequestLimiter.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import java.util.ArrayDeque;
+import java.util.Objects;
+import java.util.function.LongSupplier;
+
+/**
+ * One process-local limiter per configured HTTP provider. Admission counts physical
+ * attempts, including retries. Waiting holds neither an HTTP permit nor a lock
+ * across callbacks, and retains no request body or credentials.
+ */
+public final class ProviderRequestLimiter {
+<span class="fc" id="L13">    public enum WaitReason { CAPACITY, RATE_LIMIT, PROVIDER_BACKOFF }</span>
+    @FunctionalInterface public interface Waiter { void pause(WaitReason reason, long millis); }
+    public record Limits(int maxConcurrent, int maxQueued, long maximumWaitMillis) {
+<span class="fc" id="L16">        public Limits(int maxConcurrent, int maxQueued) { this(maxConcurrent, maxQueued, 120_000L); }</span>
+<span class="fc" id="L17">        public Limits {</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">            if (maximumWaitMillis &lt; 1 || maximumWaitMillis &gt; 86_400_000L) {</span>
+<span class="nc" id="L19">                throw new IllegalArgumentException(&quot;maximumWaitMillis must be between 1 and 86400000&quot;);</span>
+            }
+<span class="fc bfc" id="L21" title="All 4 branches covered.">            if (maxConcurrent &lt; 1 || maxConcurrent &gt; 64) {</span>
+<span class="fc" id="L22">                throw new IllegalArgumentException(&quot;maxConcurrent must be between 1 and 64&quot;);</span>
+            }
+<span class="fc bfc" id="L24" title="All 4 branches covered.">            if (maxQueued &lt; 1 || maxQueued &gt; 10_000) {</span>
+<span class="fc" id="L25">                throw new IllegalArgumentException(&quot;maxQueued must be between 1 and 10000&quot;);</span>
+            }
+<span class="fc" id="L27">        }</span>
+    }
+    public static final class CapacityException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+<span class="fc" id="L31">        private CapacityException() { super(&quot;Local provider waiting queue is full&quot;); }</span>
+    }
+
+    public static final class WaitTimeoutException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+<span class="fc" id="L36">        private WaitTimeoutException() { super(&quot;Local provider admission wait expired&quot;); }</span>
+    }
+
+    private static final long WINDOW_MILLIS = 60_000L;
+    private final Limits limits;
+    private final LongSupplier monotonicMillis;
+<span class="fc" id="L42">    private final ArrayDeque&lt;Object&gt; waiting = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L43">    private final ArrayDeque&lt;RateReservation&gt; starts = new ArrayDeque&lt;&gt;();</span>
+    private int inFlight;
+<span class="fc" id="L45">    private long notBefore = Long.MIN_VALUE;</span>
+
+    public ProviderRequestLimiter(Limits limits) {
+<span class="fc" id="L48">        this(limits, () -&gt; System.nanoTime() / 1_000_000L);</span>
+<span class="fc" id="L49">    }</span>
+<span class="fc" id="L50">    ProviderRequestLimiter(Limits limits, LongSupplier monotonicMillis) {</span>
+<span class="fc" id="L51">        this.limits = Objects.requireNonNull(limits, &quot;limits&quot;);</span>
+<span class="fc" id="L52">        this.monotonicMillis = Objects.requireNonNull(monotonicMillis, &quot;monotonicMillis&quot;);</span>
+<span class="fc" id="L53">    }</span>
+
+    public Permit acquire(int requestsPerMinute, Runnable checkpoint, Waiter waiter) {
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">        if (requestsPerMinute &lt; 0 || requestsPerMinute &gt; 100_000) {</span>
+<span class="nc" id="L57">            throw new IllegalArgumentException(&quot;requestsPerMinute must be between 0 and 100000&quot;);</span>
+        }
+<span class="fc" id="L59">        Objects.requireNonNull(checkpoint, &quot;checkpoint&quot;);</span>
+<span class="fc" id="L60">        Objects.requireNonNull(waiter, &quot;waiter&quot;);</span>
+<span class="fc" id="L61">        checkpoint.run();</span>
+<span class="fc" id="L62">        long queuedAt = monotonicMillis.getAsLong();</span>
+<span class="fc" id="L63">        Object ticket = new Object();</span>
+<span class="fc" id="L64">        synchronized (this) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (waiting.size() &gt;= limits.maxQueued()) throw new CapacityException();</span>
+<span class="fc" id="L66">            waiting.addLast(ticket);</span>
+<span class="fc" id="L67">        }</span>
+        try {
+            while (true) {
+<span class="fc" id="L70">                checkpoint.run();</span>
+                WaitReason reason;
+<span class="fc" id="L72">                long pauseMillis = 250L;</span>
+<span class="fc" id="L73">                synchronized (this) {</span>
+<span class="fc" id="L74">                    long now = monotonicMillis.getAsLong();</span>
+<span class="fc" id="L75">                    expireStarts(now);</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">                    boolean rateAvailable = requestsPerMinute == 0 || starts.size() &lt; requestsPerMinute;</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                    boolean capacityAvailable = inFlight &lt; limits.maxConcurrent() &amp;&amp; waiting.peekFirst() == ticket;</span>
+<span class="fc bfc" id="L78" title="All 6 branches covered.">                    if (capacityAvailable &amp;&amp; rateAvailable &amp;&amp; now &gt;= notBefore) {</span>
+<span class="fc" id="L79">                        waiting.removeFirst();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                        RateReservation reservation = requestsPerMinute &gt; 0 ? new RateReservation(now) : null;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                        if (reservation != null) starts.addLast(reservation);</span>
+<span class="fc" id="L82">                        inFlight++;</span>
+<span class="fc" id="L83">                        return new Permit(reservation);</span>
+                    }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    if (now - queuedAt &gt;= limits.maximumWaitMillis()) throw new WaitTimeoutException();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    if (now &lt; notBefore) {</span>
+<span class="fc" id="L87">                        reason = WaitReason.PROVIDER_BACKOFF;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                    } else if (!capacityAvailable) {</span>
+<span class="fc" id="L89">                        reason = WaitReason.CAPACITY;</span>
+                    } else {
+<span class="fc" id="L91">                        reason = WaitReason.RATE_LIMIT;</span>
+<span class="fc" id="L92">                        pauseMillis = Math.max(1L, Math.min(pauseMillis, WINDOW_MILLIS - (now - starts.peekFirst().at)));</span>
+                    }
+<span class="fc" id="L94">                }</span>
+                // The application supplies cooperative cancellation/deadline checks.
+<span class="fc" id="L96">                waiter.pause(reason, pauseMillis);</span>
+<span class="fc" id="L97">            }</span>
+        } finally {
+<span class="fc" id="L99">            synchronized (this) { waiting.remove(ticket); }</span>
+        }
+    }
+
+    /** Share Retry-After across jobs without retaining a permit during the cooldown. */
+    public synchronized void deferFor(long millis) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (millis &lt;= 0) return;</span>
+<span class="fc" id="L106">        long now = monotonicMillis.getAsLong();</span>
+        long deadline;
+<span class="fc" id="L108">        try { deadline = Math.addExact(now, millis); }</span>
+<span class="pc" id="L109">        catch (ArithmeticException overflow) { deadline = Long.MAX_VALUE; }</span>
+<span class="fc" id="L110">        notBefore = Math.max(notBefore, deadline);</span>
+<span class="fc" id="L111">    }</span>
+
+<span class="fc" id="L113">    synchronized int inFlight() { return inFlight; }</span>
+<span class="fc" id="L114">    synchronized int waiting() { return waiting.size(); }</span>
+
+    private void expireStarts(long now) {
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        while (!starts.isEmpty() &amp;&amp; now - starts.peekFirst().at &gt;= WINDOW_MILLIS) starts.removeFirst();</span>
+<span class="fc" id="L118">    }</span>
+
+    private static final class RateReservation {
+        private final long at;
+<span class="fc" id="L122">        private RateReservation(long at) { this.at = at; }</span>
+    }
+
+    public final class Permit implements AutoCloseable {
+        private boolean closed;
+        private RateReservation reservation;
+<span class="fc" id="L128">        private Permit(RateReservation reservation) { this.reservation = reservation; }</span>
+
+        /**
+         * Revalidate after waiting for external capacity. A stale admission must not
+         * shift physical calls outside the RPM window, or bypass a concurrent 429.
+         * On false, return external capacity before waiting for local admission again.
+         */
+        boolean refreshRateAdmission(int requestsPerMinute) {
+<span class="fc" id="L136">            synchronized (ProviderRequestLimiter.this) {</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                if (closed) throw new IllegalStateException(&quot;Provider permit already closed&quot;);</span>
+<span class="fc" id="L138">                long now = monotonicMillis.getAsLong();</span>
+<span class="fc" id="L139">                expireStarts(now);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (reservation != null) starts.remove(reservation);</span>
+<span class="fc" id="L141">                reservation = null;</span>
+<span class="fc bfc" id="L142" title="All 6 branches covered.">                if (now &lt; notBefore || (requestsPerMinute &gt; 0 &amp;&amp; starts.size() &gt;= requestsPerMinute)) return false;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (requestsPerMinute &gt; 0) {</span>
+<span class="fc" id="L144">                    reservation = new RateReservation(now);</span>
+<span class="fc" id="L145">                    starts.addLast(reservation);</span>
+                }
+<span class="fc" id="L147">                return true;</span>
+            }
+        }
+
+        /** A denied/cancelled external admission never started a physical request. */
+        void cancelRateReservation() {
+<span class="fc" id="L153">            synchronized (ProviderRequestLimiter.this) {</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                if (reservation != null) starts.remove(reservation);</span>
+<span class="fc" id="L155">                reservation = null;</span>
+<span class="fc" id="L156">            }</span>
+<span class="fc" id="L157">        }</span>
+        @Override public void close() {
+<span class="fc" id="L159">            synchronized (ProviderRequestLimiter.this) {</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (closed) return;</span>
+<span class="fc" id="L161">                closed = true;</span>
+<span class="fc" id="L162">                inFlight--;</span>
+<span class="fc" id="L163">            }</span>
+<span class="fc" id="L164">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

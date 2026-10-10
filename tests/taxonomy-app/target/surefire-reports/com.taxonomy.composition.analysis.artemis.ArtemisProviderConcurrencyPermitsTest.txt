@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.composition.analysis.artemis.ArtemisProviderConcurrencyPermitsTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.240 s -- in com.taxonomy.composition.analysis.artemis.ArtemisProviderConcurrencyPermitsTest

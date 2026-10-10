@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmGatewayRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmGatewayRegistry.java</span></div><h1>LlmGatewayRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import com.taxonomy.extension.api.llm.*;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Registry with one independent HTTP admission policy per configured provider.
+ * Production gateways retain the final-prompt budget boundary. Local embeddings
+ * do not use HTTP gateways and are handled by {@link LlmService} directly.
+ */
+@Component
+public class LlmGatewayRegistry {
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(LlmGatewayRegistry.class);</span>
+    private final Map&lt;ProviderId, LlmGateway&gt; gateways;
+<span class="fc" id="L29">    private final List&lt;LlmGateway&gt; transports = new ArrayList&lt;&gt;();</span>
+
+    @Autowired
+    public LlmGatewayRegistry(LlmProviderConfig providerConfig,
+                               RestTemplate restTemplate,
+                               ObjectMapper objectMapper,
+                               @Autowired(required = false) @Lazy AnalysisRuntimeSettings preferencesService,
+                               @Autowired(required = false) SimpleClientHttpRequestFactory llmRequestFactory,
+                               @Autowired(required = false) LlmRecordReplayService recordReplayService,
+                               AiPromptBudgetPolicy promptBudgetPolicy,
+<span class="fc" id="L39">                               List&lt;LlmTransportExtension&gt; extensions) {</span>
+<span class="fc" id="L40">        LlmResponseParser responseParser = new LlmResponseParser(objectMapper);</span>
+<span class="fc" id="L41">        gateways = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L42">        register(LlmProvider.GEMINI, new GeminiGateway(</span>
+                providerConfig, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L45">        register(LlmProvider.OPENAI, new OpenAiCompatibleGateway(</span>
+                LlmProvider.OPENAI, LlmProviderConfig.OPENAI_URL, LlmProviderConfig.OPENAI_MODEL,
+                60, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L49">        register(LlmProvider.DEEPSEEK, new OpenAiCompatibleGateway(</span>
+                LlmProvider.DEEPSEEK, LlmProviderConfig.DEEPSEEK_URL, LlmProviderConfig.DEEPSEEK_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L53">        register(LlmProvider.QWEN, new OpenAiCompatibleGateway(</span>
+                LlmProvider.QWEN, LlmProviderConfig.QWEN_URL, LlmProviderConfig.QWEN_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L57">        register(LlmProvider.LLAMA, new OpenAiCompatibleGateway(</span>
+                LlmProvider.LLAMA, LlmProviderConfig.LLAMA_URL, LlmProviderConfig.LLAMA_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L61">        register(LlmProvider.MISTRAL, new OpenAiCompatibleGateway(</span>
+                LlmProvider.MISTRAL, LlmProviderConfig.MISTRAL_URL, LlmProviderConfig.MISTRAL_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L65">        register(LlmProvider.CUSTOM_OPENAI, new OpenAiCompatibleGateway(</span>
+                LlmProvider.CUSTOM_OPENAI,
+<span class="fc" id="L67">                providerConfig.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI),</span>
+<span class="fc" id="L68">                providerConfig.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI),</span>
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+<span class="fc" id="L71">        Map&lt;ProviderId, LlmTransportExtension&gt; external = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (var extension : providerConfig.externalTransports())</span>
+<span class="fc" id="L73">            external.put(new ProviderId(extension.descriptor().providerId()), extension);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (var extension : extensions) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (extension instanceof BuiltinLlmTransportExtension) continue;</span>
+<span class="fc" id="L76">            var id = new ProviderId(extension.descriptor().providerId());</span>
+<span class="fc" id="L77">            var previous = external.putIfAbsent(id, extension);</span>
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">            if (previous != null &amp;&amp; previous != extension)</span>
+<span class="nc" id="L79">                throw new IllegalStateException(&quot;Duplicate LLM provider ID: &quot; + id);</span>
+<span class="fc" id="L80">        }</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (var extension : external.values()) {</span>
+<span class="fc" id="L82">            ProviderId id = new ProviderId(extension.descriptor().providerId());</span>
+<span class="fc" id="L83">            register(id, new ContributedLlmGateway(id, extension.transport(), preferencesService,</span>
+                    recordReplayService, objectMapper), promptBudgetPolicy);
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">        log.info(&quot;LlmGatewayRegistry initialised with {} gateways&quot;, gateways.size());</span>
+<span class="fc" id="L87">    }</span>
+
+    public LlmGatewayRegistry(LlmProviderConfig providerConfig, RestTemplate restTemplate,
+                              ObjectMapper objectMapper, AnalysisRuntimeSettings settings,
+                              SimpleClientHttpRequestFactory requestFactory,
+                              LlmRecordReplayService recordings, AiPromptBudgetPolicy budget) {
+<span class="fc" id="L93">        this(providerConfig, restTemplate, objectMapper, settings, requestFactory, recordings, budget, List.of());</span>
+<span class="fc" id="L94">    }</span>
+
+    /** Test-only compatibility constructor preserving direct gateway type assertions. */
+    LlmGatewayRegistry(LlmProviderConfig providerConfig,
+                       RestTemplate restTemplate,
+                       ObjectMapper objectMapper,
+                       AnalysisRuntimeSettings preferencesService,
+                       SimpleClientHttpRequestFactory llmRequestFactory,
+                       LlmRecordReplayService recordReplayService) {
+<span class="fc" id="L103">        this(providerConfig, restTemplate, objectMapper, preferencesService,</span>
+                llmRequestFactory, recordReplayService, null);
+<span class="fc" id="L105">    }</span>
+
+    /** Configure before publication; do not replace limiters while requests are executing. */
+    @Autowired
+    void configureRequestAdmission(Environment environment) {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (LlmGateway gateway : transports) {</span>
+<span class="fc" id="L111">            String prefix = &quot;taxonomy.llm.providers.&quot; + gateway.providerName().toLowerCase(Locale.ROOT) + &quot;.&quot;;</span>
+<span class="fc" id="L112">            int concurrent = setting(environment, prefix, &quot;max-concurrent-requests&quot;, 4);</span>
+<span class="fc" id="L113">            int queued = setting(environment, prefix, &quot;request-queue-capacity&quot;, 64);</span>
+<span class="fc" id="L114">            int seconds = setting(environment, prefix, &quot;maximum-queue-wait-seconds&quot;, 120);</span>
+<span class="fc" id="L115">            var limits = new ProviderRequestLimiter.Limits(concurrent, queued, seconds * 1000L);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureRequestLimits(limits);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            else if (gateway instanceof GeminiGateway gemini) gemini.configureRequestLimits(limits);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            else if (gateway instanceof ContributedLlmGateway contributed) contributed.configureRequestLimits(limits);</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">    }</span>
+
+    private static int setting(Environment environment, String providerPrefix, String key, int fallback) {
+<span class="fc" id="L123">        return environment.getProperty(providerPrefix + key, Integer.class,</span>
+<span class="fc" id="L124">                environment.getProperty(&quot;taxonomy.llm.&quot; + key, Integer.class, fallback));</span>
+    }
+
+    /** Optional cluster capacity; configured once before any gateway is used. */
+    @Autowired(required = false)
+    public void configureProviderPermits(ProviderConcurrencyPermits permits) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (LlmGateway gateway : transports) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureProviderPermits(permits);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            else if (gateway instanceof GeminiGateway gemini) gemini.configureProviderPermits(permits);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            else if (gateway instanceof ContributedLlmGateway contributed) contributed.configureProviderPermits(permits);</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">    }</span>
+
+    private void register(LlmProvider provider, LlmGateway gateway, AiPromptBudgetPolicy promptBudgetPolicy) {
+<span class="fc" id="L138">        register(provider.id(), gateway, promptBudgetPolicy);</span>
+<span class="fc" id="L139">    }</span>
+
+    private void register(ProviderId provider, LlmGateway gateway, AiPromptBudgetPolicy budget) {
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">        if (provider.equals(LlmProvider.LOCAL_ONNX.id()) || gateways.containsKey(provider)) {</span>
+<span class="nc" id="L143">            throw new IllegalStateException(&quot;Duplicate or non-generative provider ID: &quot; + provider);</span>
+        }
+<span class="fc" id="L145">        transports.add(gateway);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        gateways.put(provider, budget == null ? gateway : new PromptBudgetEnforcingLlmGateway(gateway, budget));</span>
+<span class="fc" id="L147">    }</span>
+
+    /** Built-ins and contributed providers expose the same executable contract to composition. */
+    public List&lt;LlmTransportExtension&gt; executableExtensions(LlmProviderExtensionRegistry metadata) {
+<span class="fc" id="L151">        return gateways.entrySet().stream().sorted(Map.Entry.comparingByKey(</span>
+<span class="fc" id="L152">                java.util.Comparator.comparing(ProviderId::value))).map(entry -&gt; (LlmTransportExtension) new LlmTransportExtension() {</span>
+                    @Override public LlmProviderDescriptor descriptor() {
+<span class="fc" id="L154">                        return metadata.findById(entry.getKey().value()).orElseThrow().descriptor();</span>
+                    }
+<span class="fc" id="L156">                    @Override public LlmTransport transport() { return new ProviderTransportView(entry.getValue()); }</span>
+<span class="fc" id="L157">                }).toList();</span>
+    }
+
+    public LlmGateway getGateway(LlmProvider provider) {
+<span class="fc" id="L161">        return getGatewayById(provider.id());</span>
+    }
+
+    public LlmGateway getGatewayById(ProviderId provider) {
+<span class="fc" id="L165">        LlmGateway gateway = gateways.get(provider);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (gateway == null) {</span>
+<span class="fc" id="L167">            throw new IllegalArgumentException(&quot;No HTTP gateway registered for provider &quot; + provider</span>
+                    + &quot;. LOCAL_ONNX uses local embeddings, not an HTTP gateway.&quot;);
+        }
+<span class="fc" id="L170">        return gateway;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

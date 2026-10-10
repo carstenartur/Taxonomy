@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.workspace.backup.GitStandBackupSourceTest
+-------------------------------------------------------------------------------
+Tests run: 29, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.891 s -- in com.taxonomy.workspace.backup.GitStandBackupSourceTest

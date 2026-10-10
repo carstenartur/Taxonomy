@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisTaskPublisher.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisTaskPublisher.java</span></div><h1>ArtemisAnalysisTaskPublisher.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dag.AnalysisCancellationEvent;
+import com.taxonomy.analysis.dag.AnalysisEventPublisher;
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisProgressEvent;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskPublisher;
+import com.taxonomy.analysis.dag.AnalysisTransportUnavailableException;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+
+import java.util.Objects;
+
+/**
+ * Publishes tasks to their persistent anycast shard queues and live events to
+ * non-persistent multicast addresses. A durable send returns only after the
+ * broker accepted the message; failures surface as
+ * {@link AnalysisTransportUnavailableException} so the dispatch intent stays
+ * recoverable.
+ */
+public final class ArtemisAnalysisTaskPublisher implements AnalysisTaskPublisher, AnalysisEventPublisher {
+
+    private final ArtemisAnalysisConnection connection;
+    private final AnalysisDestinations destinations;
+    private final AnalysisMessageCodec codec;
+    private Session session;
+    private MessageProducer producer;
+
+    public ArtemisAnalysisTaskPublisher(ArtemisAnalysisConnection connection, AnalysisDestinations destinations,
+<span class="fc" id="L35">                                        AnalysisMessageCodec codec) {</span>
+<span class="fc" id="L36">        this.connection = Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L37">        this.destinations = Objects.requireNonNull(destinations, &quot;destinations&quot;);</span>
+<span class="fc" id="L38">        this.codec = Objects.requireNonNull(codec, &quot;codec&quot;);</span>
+<span class="fc" id="L39">    }</span>
+
+    @Override
+    public void publish(AnalysisTaskMessage task) {
+<span class="fc" id="L43">        Objects.requireNonNull(task, &quot;task&quot;);</span>
+<span class="fc" id="L44">        send(task, destinations.queueFor(task), false, DeliveryMode.PERSISTENT);</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public void progress(AnalysisProgressEvent event) {
+<span class="fc" id="L49">        sendLive(event, destinations.progress());</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    public void cancellation(AnalysisCancellationEvent event) {
+<span class="fc" id="L54">        sendLive(event, destinations.control());</span>
+<span class="fc" id="L55">    }</span>
+
+    private void sendLive(AnalysisMessage event, String address) {
+        try {
+<span class="fc" id="L59">            send(event, address, true, DeliveryMode.NON_PERSISTENT);</span>
+<span class="nc" id="L60">        } catch (AnalysisTransportUnavailableException unavailable) {</span>
+            // Live fan-out only accelerates; durable operation state remains the replay authority.
+<span class="fc" id="L62">        }</span>
+<span class="fc" id="L63">    }</span>
+
+    private synchronized void send(AnalysisMessage message, String address, boolean multicast, int deliveryMode) {
+        try {
+<span class="fc" id="L67">            Session current = session();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            Destination destination = multicast ? current.createTopic(address) : current.createQueue(address);</span>
+<span class="fc" id="L69">            producer.send(destination, ArtemisAnalysisMessages.encode(current, codec, message), deliveryMode,</span>
+                    jakarta.jms.Message.DEFAULT_PRIORITY, jakarta.jms.Message.DEFAULT_TIME_TO_LIVE);
+<span class="fc" id="L71">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (failure instanceof com.taxonomy.analysis.dag.json.AnalysisMessageFormatException format) throw format;</span>
+<span class="fc" id="L73">            reset();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (failure instanceof AnalysisTransportUnavailableException unavailable) throw unavailable;</span>
+<span class="fc" id="L75">            throw new AnalysisTransportUnavailableException(&quot;Analysis broker did not accept the message&quot;, failure);</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc" id="L77">    }</span>
+
+    private Session session() throws JMSException {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (session == null) {</span>
+<span class="fc" id="L81">            session = connection.createSession(false);</span>
+<span class="fc" id="L82">            producer = session.createProducer(null);</span>
+        }
+<span class="fc" id="L84">        return session;</span>
+    }
+
+    private void reset() {
+        try {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (session != null) session.close();</span>
+<span class="nc" id="L90">        } catch (JMSException | RuntimeException ignored) {</span>
+            // A failed session is replaced on the next send.
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">        session = null;</span>
+<span class="fc" id="L94">        producer = null;</span>
+<span class="fc" id="L95">    }</span>
+
+    public synchronized void close() {
+<span class="fc" id="L98">        reset();</span>
+<span class="fc" id="L99">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

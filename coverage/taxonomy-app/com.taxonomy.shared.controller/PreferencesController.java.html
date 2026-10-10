@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreferencesController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">PreferencesController.java</span></div><h1>PreferencesController.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.preferences.storage.PreferencesCommit;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST API for managing application preferences.
+ *
+ * &lt;p&gt;Preferences are persisted in a dedicated JGit repository ({@code &quot;taxonomy-preferences&quot;})
+ * separate from the Architecture DSL history. Every {@code PUT} creates a new Git commit,
+ * giving a full audit trail of all preference changes.
+ *
+ * &lt;p&gt;All endpoints require the {@code ADMIN} role.
+ */
+@RestController
+@RequestMapping(&quot;/api/preferences&quot;)
+@Tag(name = &quot;Preferences&quot;)
+public class PreferencesController {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(PreferencesController.class);</span>
+
+    private final PreferencesService preferencesService;
+
+<span class="fc" id="L35">    public PreferencesController(PreferencesService preferencesService) {</span>
+<span class="fc" id="L36">        this.preferencesService = preferencesService;</span>
+<span class="fc" id="L37">    }</span>
+
+    /**
+     * Returns all current preferences. The {@code dsl.remote.token} value is masked.
+     */
+    @GetMapping
+    @Operation(summary = &quot;Get all preferences (token is masked)&quot;,
+            description = &quot;Reads the effective preference map, combining persisted overrides and application defaults. This read does not create a configuration commit.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getAll() {
+<span class="nc" id="L46">        return ResponseEntity.ok(preferencesService.getAll());</span>
+    }
+
+    /**
+     * Updates one or more preference values. Creates a new Git commit with the full
+     * preferences JSON so the change is auditable.
+     *
+     * @param changes       partial map of settings to update
+     * @param authentication the current authenticated user (used as commit author)
+     */
+    @PutMapping
+    @Operation(summary = &quot;Update preferences (creates a new Git commit)&quot;,
+            description = &quot;Applies a partial map of preference changes and commits the complete resulting configuration to JGit for audit. Returns effective preferences; it does not silently treat a persistence failure as a successful update.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; update(
+            @RequestBody Map&lt;String, Object&gt; changes,
+            Authentication authentication) {
+        try {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            String author = authentication != null ? authentication.getName() : &quot;unknown&quot;;</span>
+<span class="nc" id="L64">            preferencesService.update(changes, author);</span>
+<span class="nc" id="L65">            return ResponseEntity.ok(preferencesService.getAll());</span>
+<span class="nc" id="L66">        } catch (IOException e) {</span>
+<span class="nc" id="L67">            log.error(&quot;Failed to persist preferences update&quot;, e);</span>
+<span class="nc" id="L68">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    /**
+     * Resets all preferences to their application.properties defaults and commits to JGit.
+     */
+    @PostMapping(&quot;/reset&quot;)
+    @Operation(summary = &quot;Reset preferences to defaults&quot;,
+            description = &quot;Resets preferences to the application.properties defaults and commits the resulting configuration with the authenticated actor. Returns the effective preference map; persistence failures return 500.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; reset(Authentication authentication) {
+        try {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            String author = authentication != null ? authentication.getName() : &quot;unknown&quot;;</span>
+<span class="nc" id="L81">            preferencesService.resetToDefaults(author);</span>
+<span class="nc" id="L82">            return ResponseEntity.ok(preferencesService.getAll());</span>
+<span class="nc" id="L83">        } catch (IOException e) {</span>
+<span class="nc" id="L84">            log.error(&quot;Failed to reset preferences&quot;, e);</span>
+<span class="nc" id="L85">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    /**
+     * Returns the commit history of the preferences repository, newest first.
+     */
+    @GetMapping(&quot;/history&quot;)
+    @Operation(summary = &quot;Get preferences change history&quot;,
+            description = &quot;Returns the preferences repository's commit history, newest first, for auditing configuration changes. This read does not reset or apply any previous configuration.&quot;)
+    public ResponseEntity&lt;List&lt;PreferencesCommit&gt;&gt; getHistory() {
+        try {
+<span class="nc" id="L97">            return ResponseEntity.ok(preferencesService.getHistory());</span>
+<span class="nc" id="L98">        } catch (IOException e) {</span>
+<span class="nc" id="L99">            log.error(&quot;Failed to retrieve preferences history&quot;, e);</span>
+<span class="nc" id="L100">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
