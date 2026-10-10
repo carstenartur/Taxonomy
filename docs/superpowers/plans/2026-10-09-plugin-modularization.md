@@ -151,7 +151,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 - [x] RED: verpackten Host starten, dessen unveränderter SHA-256 festgehalten ist; extern separat gebautes Plugin hinzufügen und über vorhandenen Exportweg ausführen. `assertArrayEquals(existingExpectedOutput, pluginOutput)` für DE/EN. Ohne Plugin ist nur das Format nicht verfügbar, nicht der ganze Server.
 - [ ] Run: `./mvnw -B verify -Pplugin-packaging-tests` nach Aufnahme dieses Maven-eigenen Profils in den bestehenden Katalog. Expected: das bisherige Paket besteht den externen Installationsnachweis noch nicht.
 - [x] Implementieren: vorhandenen Adapter verschieben, Tests mitnehmen, unabhängigen Plugin-POM gegen installierte exakte SDK-Artefakte bauen. Der Maven-Integrationstest installiert diese in ein leeres temporäres Repository, kopiert nur das Pluginprojekt dorthin und baut ohne Host-Quellbaum. Standarddistribution liefert das Plugin mit; keine zweite eingebaute Registrierung. Legacy- und generischen Exportweg auf dieselbe Registry führen.
-- [ ] GREEN: gleicher Profilbefehl; Host-Hash vor/nach Installation gleich, externe JAR nicht in `BOOT-INF/lib`, gültiger realer HTTP-Download und bestehende Mermaid-Regressionsfälle grün.
+- [x] GREEN: gleicher Profilbefehl; Host-Hash vor/nach Installation gleich, externe JAR nicht in `BOOT-INF/lib`, gültiger realer HTTP-Download und bestehende Mermaid-Regressionsfälle grün. Vollständiger CI-Nachweis auf `dd3448d2` am 10. Oktober, siehe Abschlussnachtrag unten.
 - [x] Commit: `feat(export): package existing Mermaid extension as external plugin`.
 
 **Zwischennachweis 9. Oktober 2026:** Der fokussierte Failsafe-Lauf `test-compile failsafe:integration-test failsafe:verify -Pplugin-packaging-tests -Dit.test=ExternalPluginPackagedIT` ist grün (1 realer Paket-/HTTP-Test und 5 separat ausgeführte Plugin-Tests). 46 Node-Vertragstests sowie der vollständige Architektur-Selektor einschließlich ergänzter Regressionen sind grün. Der vollständige Profil-Lauf bleibt bis Task 9/12 ausdrücklich offen.
@@ -193,7 +193,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 - [x] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
 - [x] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
 - [x] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
-- [ ] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups.
+- [x] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups. Plugin-Vollprofil, sechs Browser-Shards und Kubernetes-/Artemis-Abnahme auf `dd3448d2` erfolgreich; die verbleibende Gesamtprüfung ist in Task 12 ausgewiesen.
 - [x] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
 
 **Stand 9. Oktober:** Implementierung vorhanden. 111 Backup-/Restore-/SQL-Vertragstests, 19 Provider-/Report-/Reformulierungsprüfungen (einschließlich separatem Checkpoint-JVM) und 1.011 JavaScript-Vertragstests bestehen ohne Fehler oder Skips. Der unabhängige Review ist durchgeführt; seine wichtigen Befunde sind korrigiert. Vollständige Paket-, Browser-, Prozessabbruch- und CI-Nachweise bleiben vor Abschluss erforderlich.
@@ -300,6 +300,41 @@ Skips (`./mvnw -s target/continuation-evidence/toolchain/maven-settings.xml -B
 -Dmaven.build.cache.enabled=false -pl taxonomy-tooling -am test`, 16,430 Sekunden).
 Der unabhängige Nachreview bestätigt die unverändert strengen Voraussetzungen.
 Der neue Commit muss weiterhin die vollständigen CI-Läufe bestehen.
+
+## Vollprofilnachweis und asynchrone Exportbereitschaft
+
+Der vollständige Befehl `./mvnw -B verify -Pplugin-packaging-tests` besteht auf
+`dd3448d2a82a100418590a85baa780f9b1109375` in Job `114083112760` des Laufs
+`38008568604`. Das per SHA-256 geprüfte CI-Artefakt enthält 1.089 JUnit-Berichte
+mit 7.907 Tests, null Fehlern, Fehlschlägen oder Skips. Darin liegen exakt zwölf
+Paketfälle (zehn `OptionalFeaturePackagedIT`, zwei `ExternalPluginPackagedIT`);
+weitere fünf Tests bestehen im unabhängig gebauten Mermaid-Projekt. Diese
+aktuelle Zählung ersetzt für die Abschlussabnahme die früheren Angaben von
+14 Paket-ITs. Acht physische Installationen, HTTP/WebDAV, Voll→Kern→Voll mit
+erhaltenen Daten und drei dynamische Aktivierungszyklen sind nachgewiesen.
+
+Auch PostgreSQL, SQL Server, Oracle, ONNX, alle sechs UI-Shards, Szenario,
+Dokument-E2E, Interoperabilität, OpenTelemetry, JGit, Kubernetes/Artemis,
+Reformulierung, Security und der tatsächliche CodeQL-Push-Lauf sind erfolgreich.
+Diese Ergebnisse werden nicht zu einer Summe überlappender Tests addiert.
+
+Die kanonische Kernverifikation `114083112516` scheitert an genau einem
+JUnit-Fehler: `CompleteCopilotSessionIT` wählt DOCX aus dem bereits sichtbaren
+Dialog, bevor dessen asynchron geladene Rendereroptionen vorhanden sind
+(`Cannot locate option with value: docx`). Die Ursache ist im tatsächlichen
+JUnit-Bericht und Maven-Log des Artefakts `11654884856` zugänglich; der direkte
+Joblogabruf scheitert weiter mit `Transport closed`.
+
+Der Test wartet jetzt vor der Formatauswahl auf den vorhandenen freigegebenen
+Download-Button. Dieser wird erst nach Capabilities und gespeichertem Scope
+aktiviert. Alle drei Formate, Export-/Inhaltsassertions und das bestehende
+Zeitlimit bleiben unverändert. Der unabhängige Review bestätigt den Fix ohne
+weitere Befunde. Der korrigierte Selenium-Test kompiliert mit Java 21; alle
+sieben Fälle von `CompleteCopilotResultUiContractTest` bestehen ohne Fehler oder
+Skips (lokal, 1:02 Minuten, Maven Exit 0). Dieser fokussierte Testlauf ist kein
+echter Selenium-Nachweis. Der erneute echte Browserlauf und die vollständige
+kanonische Abnahme bleiben erforderlich; der erfolgreiche Plugin-Profillauf
+ersetzt sie nicht.
 
 ## Abnahmekriterien des Gesamtauftrags
 

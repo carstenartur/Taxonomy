@@ -350,8 +350,9 @@ class CompleteCopilotSessionIT {
         for (String format : List.of("docx", "html", "json")) {
             click(By.cssSelector("[data-decision-report-format='docx']"));
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".decision-export-dialog")));
-            new Select(driver.findElement(By.cssSelector(".decision-export-dialog [name='format']"))).selectByValue(format);
+            // The visible dialog loads renderer capabilities and the saved scope asynchronously.
             wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".decision-export-dialog [type='submit']")));
+            new Select(driver.findElement(By.cssSelector(".decision-export-dialog [name='format']"))).selectByValue(format);
             click(By.cssSelector(".decision-export-dialog [type='submit']"));
             wait.until(browser -> {
                 List<WebElement> surfaces = browser.findElements(By.id("requirementExportOperation"));
