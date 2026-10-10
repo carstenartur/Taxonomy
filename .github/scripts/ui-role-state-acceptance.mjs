@@ -105,7 +105,10 @@ function reconcileSystemInformationConsoleErrors(systemInformation) {
   const candidates = navigationConsoleCandidates
     .filter(candidate => systemInformation.some(item => item.locale === candidate.locale
       && (candidate.read === 'ai-status'
-        ? item.aiStatusSettled === true : item.operationalStatusSettled === true)))
+        ? item.aiStatusSettled === true
+        : item.operationalStatusSettled === true
+          && (candidate.read !== 'git-state'
+            || candidate.requestedBranch === item.operationalBranch))))
     .sort((left, right) => right.index - left.index);
   for (const candidate of candidates) {
     if (consoleErrors[candidate.index] !== candidate.message) continue;
@@ -116,7 +119,8 @@ function reconcileSystemInformationConsoleErrors(systemInformation) {
       reason: candidate.read === 'ai-status'
         ? 'webkit-locale-navigation-ai-status-cancelled'
         : 'webkit-locale-navigation-operational-status-cancelled',
-      read: candidate.read
+      read: candidate.read,
+      requestedBranch: candidate.requestedBranch
     });
   }
 }
@@ -140,7 +144,9 @@ function recordConsoleError(text) {
   else if (target.startsWith(`${api}git/state`)
       && /^\?branch=[^&#]+$/.test(target.slice(`${api}git/state`.length))) read = 'git-state';
   if (read) navigationConsoleCandidates.push({
-    index, locale: systemInformationNavigationLocale, message: text, read
+    index, locale: systemInformationNavigationLocale, message: text, read,
+    requestedBranch: read === 'git-state'
+      ? new URL(target, base).searchParams.get('branch') : undefined
   });
 }
 

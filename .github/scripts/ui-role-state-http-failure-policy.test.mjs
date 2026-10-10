@@ -139,7 +139,8 @@ function consoleAudit(browserName = 'webkit') {
   `)(browserName);
 }
 
-const settledLocale = { locale: 'de', aiStatusSettled: true, operationalStatusSettled: true };
+const settledLocale = { locale: 'de', aiStatusSettled: true, operationalStatusSettled: true,
+  operationalBranch: 'draft' };
 const contextCancellation = '/127.0.0.1:8080/api/context/current due to access control checks.';
 const gitCancellation = '/127.0.0.1:8080/api/git/state?branch=draft due to access control checks.';
 
@@ -170,6 +171,26 @@ test('a different successful locale cannot reconcile the failed navigation', () 
   audit.begin('en'); audit.emit(contextCancellation); audit.end();
   audit.settle([settledLocale]);
   assert.deepEqual(audit.errors, [contextCancellation]);
+});
+
+for (const operationalBranch of ['other', undefined]) {
+  test(`Git cancellation requires the same verified destination branch: ${operationalBranch}`, () => {
+    const audit = consoleAudit();
+    audit.begin('de'); audit.emit(gitCancellation); audit.end();
+    audit.settle([{ ...settledLocale, operationalBranch }]);
+    assert.deepEqual(audit.errors, [gitCancellation]);
+    assert.equal(audit.reconciled.length, 0);
+  });
+}
+
+test('an encoded Git branch is compared with the decoded verified destination branch', () => {
+  const audit = consoleAudit();
+  audit.begin('de');
+  audit.emit('/127.0.0.1:8080/api/git/state?branch=feature%2Fone%2Btwo due to access control checks.');
+  audit.end();
+  audit.settle([{ ...settledLocale, operationalBranch: 'feature/one+two' }]);
+  assert.deepEqual(audit.errors, []);
+  assert.equal(audit.reconciled[0].requestedBranch, 'feature/one+two');
 });
 
 test('navigation reconciliation never admits other origins, endpoints or ordinary failures', () => {
