@@ -102,11 +102,13 @@ function recordDraftReconciliation(detail) {
 
 function reconcileSystemInformationConsoleErrors(systemInformation) {
   if (browserName !== 'webkit') return;
-  const settledLocales = new Set(systemInformation
-    .filter(item => item.aiStatusSettled === true)
-    .map(item => item.locale));
   const candidates = navigationConsoleCandidates
-    .filter(candidate => settledLocales.has(candidate.locale))
+    .filter(candidate => systemInformation.some(item => item.locale === candidate.locale
+      && (candidate.read === 'ai-status'
+        ? item.aiStatusSettled === true
+        : item.operationalStatusSettled === true
+          && (candidate.read !== 'git-state'
+            || candidate.requestedBranch === item.operationalBranch))))
     .sort((left, right) => right.index - left.index);
   for (const candidate of candidates) {
     if (consoleErrors[candidate.index] !== candidate.message) continue;
@@ -114,9 +116,38 @@ function reconcileSystemInformationConsoleErrors(systemInformation) {
     reconciledConsoleErrors.unshift({
       message: candidate.message,
       locale: candidate.locale,
-      reason: 'webkit-locale-navigation-ai-status-cancelled'
+      reason: candidate.read === 'ai-status'
+        ? 'webkit-locale-navigation-ai-status-cancelled'
+        : 'webkit-locale-navigation-operational-status-cancelled',
+      read: candidate.read,
+      requestedBranch: candidate.requestedBranch
     });
   }
+}
+
+function recordConsoleError(text) {
+  const index = consoleErrors.push(text) - 1;
+  if (browserName !== 'webkit' || !systemInformationNavigationLocale) return;
+  const suffix = ' due to access control checks.';
+  if (!text.endsWith(suffix)) return;
+  const base = new URL(baseUrl);
+  // WebKit can emit this navigation cancellation through console OR pageerror,
+  // with either the Fetch API prefix or its abbreviated /host/path form.
+  const prefixes = [`Fetch API cannot load ${base.origin}`, base.origin, `/${base.host}`];
+  const prefix = prefixes.find(value => text.startsWith(value));
+  if (!prefix) return;
+  const target = text.slice(prefix.length, -suffix.length);
+  const api = `${base.pathname.replace(/\/$/, '')}/api/`;
+  let read = null;
+  if (target === `${api}ai-status`) read = 'ai-status';
+  else if (target === `${api}context/current`) read = 'context-current';
+  else if (target.startsWith(`${api}git/state`)
+      && /^\?branch=[^&#]+$/.test(target.slice(`${api}git/state`.length))) read = 'git-state';
+  if (read) navigationConsoleCandidates.push({
+    index, locale: systemInformationNavigationLocale, message: text, read,
+    requestedBranch: read === 'git-state'
+      ? new URL(target, base).searchParams.get('branch') : undefined
+  });
 }
 
 try {
@@ -169,19 +200,10 @@ try {
   });
   page.on('console', message => {
     if (message.type() === 'error' && !message.text().includes('Failed to load resource')) {
-      const text = message.text();
-      const index = consoleErrors.push(text) - 1;
-      if (browserName === 'webkit' && systemInformationNavigationLocale
-          && /\/api\/ai-status due to access control checks\.$/.test(text)) {
-        navigationConsoleCandidates.push({
-          index,
-          locale: systemInformationNavigationLocale,
-          message: text
-        });
-      }
+      recordConsoleError(message.text());
     }
   });
-  page.on('pageerror', error => consoleErrors.push(error.message));
+  page.on('pageerror', error => recordConsoleError(error.message));
 
   taskMeasurements.failedStep = 'isolating resumable analysis draft';
   await isolateRoleStateScenario(page);
