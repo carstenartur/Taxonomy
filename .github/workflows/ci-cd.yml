@@ -346,6 +346,8 @@ jobs:
         run: bash .github/scripts/install-helm.sh
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh
+      - name: Verify Docker availability
+        run: docker info
       - name: Run the complete Maven-owned plugin profile
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
