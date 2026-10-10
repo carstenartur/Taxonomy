@@ -36,13 +36,7 @@ class AdminApiControllerDiagnosticsTest {
 
     @BeforeEach
     void setUp() {
-        controller = new AdminApiController(
-                llmService,
-                llmProviderConfig,
-                promptTemplateService,
-                taxonomyService,
-                logRingBufferService,
-                healthSummaryService);
+        controller = new AdminApiController(llmService, llmProviderConfig, promptTemplateService);
         when(request.isUserInRole("ADMIN")).thenReturn(true);
     }
 

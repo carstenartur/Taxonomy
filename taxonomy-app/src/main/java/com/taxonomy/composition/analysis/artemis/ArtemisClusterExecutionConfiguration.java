@@ -27,6 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.function.Supplier;
 
 /** Complete production composition; local mode never creates distributed execution beans. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "taxonomy.analysis.transport.mode", havingValue = "artemis")
 public class ArtemisClusterExecutionConfiguration {

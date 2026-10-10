@@ -1,5 +1,7 @@
 package com.taxonomy.backup.jobs;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+
 import com.taxonomy.backup.*;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;

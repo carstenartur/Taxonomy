@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy</artifactId><version>1.4.1-SNAPSHOT</version></parent>
+  <artifactId>taxonomy-templates-api</artifactId><name>Taxonomy Templates API</name>
+  <description>Framework-free generic template contracts for separately installed features</description>
+  <build><plugins><plugin>
+    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId>
+    <executions><execution><id>enforce-templates-api-boundary</id><goals><goal>enforce</goal></goals><configuration><rules>
+      <bannedDependencies><searchTransitive>true</searchTransitive><excludes>
+        <exclude>com.taxonomy:*</exclude><exclude>org.springframework:*</exclude><exclude>org.springframework.boot:*</exclude>
+        <exclude>org.springframework.data:*</exclude><exclude>jakarta.persistence:*</exclude><exclude>org.eclipse.jgit:*</exclude>
+      </excludes></bannedDependencies>
+    </rules></configuration></execution></executions>
+  </plugin></plugins></build>
+</project>

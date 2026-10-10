@@ -12,13 +12,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import com.taxonomy.analysis.service.LlmService;
+
 
 @Configuration
 public class AppConfig {
 
     /**
-     * Exposes the HTTP request factory as a bean so that {@code LlmService} can update
+     * Exposes the HTTP request factory as a bean so that the optional analysis service can update
      * the read timeout at runtime when the {@code llm.timeout.seconds} preference changes.
      *
      * <p>The initial value is taken from the {@code taxonomy.llm.timeout-seconds} property

@@ -1,5 +1,7 @@
 package com.taxonomy.backup.web;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.SchemaProperty;
 import io.swagger.v3.oas.annotations.headers.Header;

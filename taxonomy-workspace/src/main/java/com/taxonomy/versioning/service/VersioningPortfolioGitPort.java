@@ -11,6 +11,9 @@ import java.io.IOException;
  */
 public interface VersioningPortfolioGitPort {
 
+    /** Check before accepting a merge whose projection needs this feature. */
+    default void requireAvailable() { }
+
     void materializePortfolioHead(String branch,
                                   String username,
                                   WorkspaceContext context) throws IOException;

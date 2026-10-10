@@ -281,7 +281,7 @@ public class ProjectRequirementAnalysisService {
             String snapshotId = UUID.randomUUID().toString();
             String analysisSessionId = "portfolio:" + snapshotId;
             long startedAt = System.nanoTime();
-            try {
+            try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding())) {
                 AnalysisResult analysis = analyzeRequirementUseCase.analyze(
                         new AnalyzeRequirementCommand(
                                 workItem.requirementText(),
@@ -294,7 +294,7 @@ public class ProjectRequirementAnalysisService {
                                         projectId,
                                         workItem.requirementId(),
                                         snapshotId,
-                                        analysisSessionId)))
+                                        analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding()))
                         .analysisResult();
                 if (analysis == null || analysis.getScores() == null
                         || "ERROR".equalsIgnoreCase(analysis.getStatus())) {

@@ -17,7 +17,24 @@ com.taxonomy.export.spi.ExportResult
 
 Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `taxonomy-extension-api`. Spring discovery and HTTP routing remain in `taxonomy-app`.
 
-## Implementation steps
+## Independent plugin packaging
+
+For a separately installable format, follow
+[`plugins/taxonomy-mermaid-plugin`](../../../plugins/taxonomy-mermaid-plugin/pom.xml):
+use Java 21, provided SDK dependencies and a `TaxonomyPlugin` ServiceLoader entry
+returning the `ExportFormatExtension`. Keep all implementation packages unique to
+that plugin. Do not package copies of host SDK classes or depend on app registries.
+Declare the stable plugin identity/version and SDK range in the manifest. DYNAMIC
+mode is supported only for stateless exports/renderers that can release resources
+after all call leases finish; other contributions are STARTUP-only.
+
+Install the operator-owned JAR in `plugins/`. The host uses the same generic route
+and capabilities for built-ins and plugins. Follow the
+[lifecycle and installation contract](../extension-module-boundaries.md#optional-startup-installation-and-runtime-lifecycle).
+Prove an independent build, real HTTP bytes, missing-format behavior and safe drain
+against the packaged host, whose own JAR must remain unchanged.
+
+## Built-in implementation steps
 
 1. Implement framework-free conversion logic in `taxonomy-export`, normally under:
 
@@ -76,7 +93,7 @@ Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `ta
    }
    ```
 
-8. Expose the format in the UI only when it benefits users. Add the button through `taxonomy-export.js`, i18n bundles and the export panel. Do not add a button only to demonstrate technical completeness.
+8. Verify that `/api/capabilities` exposes the installed descriptor in the existing contextual format selector. Preserve cancellation, snapshot provenance, locale and keyboard behavior. Do not add a format-specific button or executable plugin UI.
 
 ## Files normally touched
 
@@ -114,8 +131,9 @@ Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `ta
 
 ```bash
 ./mvnw test -pl taxonomy-export -am
-./mvnw test -pl taxonomy-app -Dtest=ExportFormatExtensionRegistryTest,ExportFormatExtensionAdapterTest
-./mvnw verify -DexcludedGroups="real-llm"
+./mvnw test -pl taxonomy-app -am -Dtest=ExportFormatExtensionRegistryTest,ExportFormatExtensionAdapterTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -B verify -Pplugin-packaging-tests
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
 For user-visible changes also run the screenshot generator and authenticated accessibility workflow.

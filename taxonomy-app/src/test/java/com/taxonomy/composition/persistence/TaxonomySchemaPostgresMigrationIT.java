@@ -150,11 +150,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
         assertClusterAnalysisSchema(dataSource);
+        assertProviderBindingSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
     }
 
     @Test
@@ -229,12 +230,36 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
         assertClusterAnalysisSchema(dataSource);
+        assertProviderBindingSchema(dataSource);
+    }
+
+    private static void assertProviderBindingSchema(DataSource dataSource) throws SQLException {
+        var expected = java.util.Map.of(
+                "provider_plugin_id", 128, "provider_plugin_version", 128,
+                "provider_plugin_sha256", 64, "provider_config_revision", 64);
+        try (var connection = dataSource.getConnection()) {
+            for (var column : expected.entrySet()) {
+                try (var metadata = connection.getMetaData().getColumns(null, connection.getSchema(),
+                        "req_analysis_job", column.getKey())) {
+                    assertThat(metadata.next()).as("durable binding " + column.getKey()).isTrue();
+                    assertThat(metadata.getInt("COLUMN_SIZE")).isEqualTo(column.getValue());
+                    assertThat(metadata.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
+                }
+            }
+            for (String table : List.of("req_analysis_job", "req_analysis_snapshot",
+                    "reformulation_usage_attempt", "analysis_question_checkpoint")) {
+                try (var metadata = connection.getMetaData().getColumns(null, connection.getSchema(), table, "provider")) {
+                    assertThat(metadata.next()).as(table + " provider identity").isTrue();
+                    assertThat(metadata.getInt("COLUMN_SIZE")).isEqualTo(128);
+                }
+            }
+        }
     }
 
     private static void assertAnalysisRecoverySchema(DataSource dataSource) throws SQLException {

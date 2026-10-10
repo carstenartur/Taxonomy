@@ -69,7 +69,7 @@ class DocumentTemplateWordLinkContractTest {
                 .contains("anchor.setAttribute('target', '_blank');")
                 .contains("anchor.setAttribute('rel', 'noopener noreferrer');")
                 .contains("anchor.setAttribute('type', DOTX_MEDIA_TYPE);")
-                .contains(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+                .contains(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
     }
 
     @Test
@@ -137,7 +137,7 @@ class DocumentTemplateWordLinkContractTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getContentType())
-                .isEqualTo(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+                .isEqualTo(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
         assertThat(response.getHeader("Content-Disposition"))
                 .isEqualTo("inline; filename=\"decision-report.dotx\"");
         assertThat(response.getHeader("ETag"))
@@ -157,7 +157,7 @@ class DocumentTemplateWordLinkContractTest {
         assertThat(response.getHeaders().getFirst("ETag"))
                 .isEqualTo("\"" + COMMIT_ID + "\"");
         assertThat(response.getHeaders().getContentType())
-                .hasToString(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+                .hasToString(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
         assertThat(response.getBody()).containsExactly(file.content());
     }
 
@@ -233,7 +233,7 @@ class DocumentTemplateWordLinkContractTest {
                 "decision-report",
                 "Decision report",
                 "decision-report.dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 "2026-08-22T12:00:00Z",
                 "alice",
                 4,

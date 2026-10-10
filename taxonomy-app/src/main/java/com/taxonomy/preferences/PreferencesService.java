@@ -27,7 +27,7 @@ import java.util.*;
  * is completely separate from the Architecture DSL repository ({@code "taxonomy-dsl"}).
  */
 @Service
-public class PreferencesService implements com.taxonomy.analysis.service.AnalysisRuntimeSettings {
+public class PreferencesService {
 
     private static final Logger log = LoggerFactory.getLogger(PreferencesService.class);
 

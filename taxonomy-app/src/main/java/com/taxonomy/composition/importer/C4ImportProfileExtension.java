@@ -9,6 +9,7 @@ import com.taxonomy.dsl.mapping.profiles.C4MappingProfile;
 import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
 import org.springframework.stereotype.Component;
 
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @Component
 public class C4ImportProfileExtension extends AbstractFrameworkImportProfileExtension {
 

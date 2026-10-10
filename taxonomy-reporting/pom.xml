@@ -12,6 +12,7 @@
     <name>Taxonomy Reporting</name>
     <description>Report rendering, figures, template contributions and report adapters</description>
     <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates-api</artifactId><version>${project.version}</version></dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-extension-runtime</artifactId>
@@ -45,7 +46,7 @@
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-templates</artifactId>
-            <version>${project.version}</version>
+            <version>${project.version}</version><scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

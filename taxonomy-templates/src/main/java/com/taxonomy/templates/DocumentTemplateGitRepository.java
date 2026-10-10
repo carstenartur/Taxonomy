@@ -622,7 +622,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             throw new IOException("Stored template filename does not match its ID");
         }
         if (!Objects.equals(
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, manifest.mediaType())) {
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, manifest.mediaType())) {
             throw new IOException("Stored template media type is invalid");
         }
         try {

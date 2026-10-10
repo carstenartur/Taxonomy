@@ -1,5 +1,7 @@
 package com.taxonomy.templates;
 
+import static com.taxonomy.templates.api.OoxmlTemplateMediaTypes.*;
+
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -38,11 +40,6 @@ import java.util.zip.ZipOutputStream;
  */
 @Component
 public final class OoxmlTemplatePackageCodec {
-
-    public static final String DOTX_MEDIA_TYPE =
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.template";
-    public static final String DOTX_MAIN_CONTENT_TYPE =
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml";
 
     static final int MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
     static final int MAX_PART_BYTES = 25 * 1024 * 1024;

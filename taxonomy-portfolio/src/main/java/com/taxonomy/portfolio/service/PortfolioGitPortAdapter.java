@@ -21,6 +21,8 @@ public class PortfolioGitPortAdapter
         this.portfolioGitService = portfolioGitService;
     }
 
+    @Override public void requireAvailable() { /* This adapter exists only with the feature installed. */ }
+
     @Override
     public String commitPortfolio(String branch,
                                   String message,

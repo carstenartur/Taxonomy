@@ -130,7 +130,7 @@ class DocumentTemplateComparisonPreviewLimitTest {
         parts.put(PATH, content);
         long size = parts.values().stream().mapToLong(bytes -> bytes.length).sum();
         var manifest = new TemplateManifest(1, ID, "Preview limit", ID + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",
                 size, parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
         return new TemplateSnapshot(manifest, REVISION, parts);
     }

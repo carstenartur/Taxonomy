@@ -105,7 +105,7 @@ class DecisionCompactReportTest {
         try (var in = getClass().getResourceAsStream("/" + com.taxonomy.reporting.templates.DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) { dotx = in.readAllBytes(); }
         var manifest = new com.taxonomy.templates.api.TemplateManifest(1,
                 com.taxonomy.reporting.templates.DecisionRationaleTemplateContract.TEMPLATE_ID, "Default", "default.dotx",
-                com.taxonomy.templates.OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-10-03T00:00:00Z", "author", dotx.length, 10, "a".repeat(64));
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, "2026-10-03T00:00:00Z", "author", dotx.length, 10, "a".repeat(64));
         org.mockito.Mockito.when(templates.downloadCurrentValidated(com.taxonomy.reporting.templates.DecisionRationaleTemplateContract.TEMPLATE_ID))
                 .thenReturn(new com.taxonomy.templates.api.TemplateFile(manifest, "b".repeat(40), dotx, java.time.Instant.EPOCH));
         byte[] bytes = new DecisionRationaleTemplateRenderer(templates, contract).render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()), report(DecisionReportOptions.TreeLayout.AUTO, 4));

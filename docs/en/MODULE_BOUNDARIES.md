@@ -17,6 +17,7 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 | `taxonomy-extension-runtime` | Runtime | Atomic plugin catalog, artifact validation and private classloader |
 | `taxonomy-mermaid-plugin` | Plugin | Independently built external Mermaid adapter |
 | `taxonomy-reporting-api` | Foundation | Framework-free complete snapshot-bound report models |
+| `taxonomy-templates-api` | Foundation | Generic template ports, values and contribution contracts |
 | `taxonomy-workspace` | Feature | Workspace/repository identity, editor journal, undo/redo, Git checkpoints and storage |
 | `taxonomy-knowledge` | Feature | Catalogue/seeds, relations/hypotheses, search, indexes and local embeddings |
 | `taxonomy-templates` | Feature | Template versions, OOXML validation, materialization, WebDAV and administration |
@@ -30,9 +31,8 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 | `taxonomy-coverage` | Build/tooling | Reactor-wide coverage aggregation; not a runtime feature library |
 | `taxonomy-build` | Build/tooling | Whole-reactor quality gates and browser/verification contracts |
 
-The root aggregator is not an additional child module. The nineteen children comprise
-five foundations, eight features, the plugin runtime, one external plugin, the composition root,
-and three build/tooling modules.
+The root aggregator is not an additional child module. The twenty children comprise
+six foundations, eight features, the plugin runtime, an external plugin, the composition root, and three build/tooling modules.
 Only `taxonomy-app` is an executable application. The build/tooling group is not a
 set of runtime services. See [the verified feature dependency graph](ARCHITECTURE.md#module-architecture)
 and [runtime/persistence views](ARCHITECTURE.md).

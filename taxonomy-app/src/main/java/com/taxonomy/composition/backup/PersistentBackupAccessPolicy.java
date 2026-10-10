@@ -1,6 +1,6 @@
 package com.taxonomy.composition.backup;
 
-import com.taxonomy.backup.BackupAccessPolicy;
+import com.taxonomy.backup.runtime.BackupAccessPolicy;
 import com.taxonomy.backup.BackupCapability;
 import com.taxonomy.backup.BackupRepositoryKey;
 import com.taxonomy.backup.BackupScope;

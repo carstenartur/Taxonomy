@@ -1,5 +1,8 @@
 package com.taxonomy.backup.archive;
 
+import com.taxonomy.backup.runtime.BackupManifestCodec;
+import com.taxonomy.backup.runtime.BackupPaths;
+
 import com.taxonomy.backup.*;
 import org.apache.commons.compress.archivers.zip.*;
 import java.io.*;
@@ -13,8 +16,11 @@ public final class BackupArchiveReader {
     private final ArchiveLimits limits;
     private final String applicationVersion;
     private final Map<BackupComponentId, Integer> components;
+    private final com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites;
     public BackupArchiveReader(ArchiveProtectionProvider protection, ArchiveLimits limits, String applicationVersion,
-                               Map<BackupComponentId, Integer> components) {
+                               Map<BackupComponentId, Integer> components,
+                               com.taxonomy.backup.runtime.BackupFeaturePrerequisites prerequisites) {
+        this.prerequisites = Objects.requireNonNull(prerequisites);
         this.protection = Objects.requireNonNull(protection); this.limits = Objects.requireNonNull(limits);
         this.applicationVersion = Objects.requireNonNull(applicationVersion); this.components = Map.copyOf(components);
     }
@@ -41,6 +47,7 @@ public final class BackupArchiveReader {
                 manifest = new BackupManifestCodec().read(document.toByteArray());
             }
             manifest.requireCompatible(applicationVersion, components);
+            prerequisites.requireRestore(manifest);
             if (manifest.request().secrets() == SecretsSelection.INCLUDE_ENCRYPTED && !protection.encrypted())
                 throw new IOException("Secret-bearing archives require authenticated encryption");
             if ((!protection.encrypted() || manifest.request().secrets() != SecretsSelection.INCLUDE_ENCRYPTED)

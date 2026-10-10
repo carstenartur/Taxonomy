@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /** Maps the interoperability port to the unchanged portfolio authorities. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"interop", "portfolio"})
 @Service
 public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
     private final ProjectPortfolioService projects;

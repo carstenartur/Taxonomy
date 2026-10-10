@@ -2,6 +2,18 @@
 {{- define "taxonomy.environment" -}}
 {{- $config := deepCopy .Values.config -}}
 {{- $secrets := deepCopy .Values.secretEnv -}}
+{{/* A multi-replica installation never permits locally effective dynamic code changes. */}}
+{{- if or (gt (int .Values.replicaCount) 1) .Values.scaling.allowMultipleReplicas -}}
+{{- if hasKey $secrets "TAXONOMY_PLUGINS_DYNAMIC_CLUSTERED" -}}
+{{- fail "Dynamic plugin cluster policy cannot be overridden through secretEnv" -}}
+{{- end -}}
+{{- $_ := set $config "TAXONOMY_PLUGINS_DYNAMIC_CLUSTERED" "true" -}}
+{{- range .Values.extraEnv -}}
+{{- if eq (.name | default "") "TAXONOMY_PLUGINS_DYNAMIC_CLUSTERED" -}}
+{{- fail "Dynamic plugin cluster policy cannot be overridden through extraEnv" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- include "taxonomy.validateAnalysisEnvironment" . -}}
 {{/* Defense in depth: retain this check when a caller skips JSON Schema validation. */}}
 {{- $credentialKey := "(?i)(password|passwd|pwd|secret|token|api[._-]*key|private[._-]*key|credentials?)$" -}}

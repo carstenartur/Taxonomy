@@ -44,6 +44,7 @@ class ArchitectureSelectorSynchronizationTest {
             "ArchitectureWorkspaceStorageOwnershipTest",
             "ArchitectureModuleGraphTest",
             "ArchitectureModuleExtractionTest",
+            "PluginModuleBoundaryTest",
             "ArchitectureSelectorSynchronizationTest",
             "ArchitectureWorkspaceModuleTest",
             "ArchitectureTemplatesModuleTest",
@@ -326,7 +327,7 @@ class ArchitectureSelectorSynchronizationTest {
 
     private static Path sourcePath(Path root, String guard) {
         String module = switch (guard) {
-            case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
+            case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest", "PluginModuleBoundaryTest",
                     "ArchitectureSelectorSynchronizationTest" -> "taxonomy-build";
             case "ReportingIsolationTest" -> "taxonomy-reporting";
             case "ReportModelContractTest" -> "taxonomy-reporting-api";

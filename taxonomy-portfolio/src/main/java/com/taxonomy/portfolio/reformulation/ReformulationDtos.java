@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.reformulation.*;
 import java.time.Instant;
+import com.taxonomy.extension.api.plugin.PluginInvocation;
 import java.util.List;
 public final class ReformulationDtos {
     private ReformulationDtos(){}
@@ -24,7 +25,14 @@ public final class ReformulationDtos {
     }
     public record Run(String id,String proposalId,long sourceRevision,String status,String provider,String model,
             String promptVersion,String schemaVersion,String promptContent,String failureCode,Long resultRevision,ReformulationDocument candidate,
-            String actor,Instant createdAt,java.util.Map<String,String> reconcileContext) {
+            String actor,Instant createdAt,java.util.Map<String,String> reconcileContext,PluginInvocation providerBinding) {
+        /** Legacy persisted built-in runs have no artifact binding. */
+        public Run(String id,String proposalId,long sourceRevision,String status,String provider,String model,
+                String promptVersion,String schemaVersion,String promptContent,String failureCode,Long resultRevision,ReformulationDocument candidate,
+                String actor,Instant createdAt,java.util.Map<String,String> reconcileContext) {
+            this(id,proposalId,sourceRevision,status,provider,model,promptVersion,schemaVersion,promptContent,
+                    failureCode,resultRevision,candidate,actor,createdAt,reconcileContext,null);
+        }
         public Run {reconcileContext=reconcileContext==null?java.util.Map.of():java.util.Map.copyOf(reconcileContext);}
     }
     public record Proposal(String id,ReformulationBaseline baseline,String creator,Instant createdAt,String status,Revision currentRevision) {}

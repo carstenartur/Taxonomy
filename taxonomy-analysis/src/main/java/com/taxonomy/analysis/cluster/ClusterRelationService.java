@@ -67,6 +67,10 @@ public final class ClusterRelationService {
                             () -> store.persistRelationResult(task, evidence));
                 }
                 throw new IllegalArgumentException("Relation computation returned the wrong phase");
+            } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {
+                String reason = unavailable.reason();
+                return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),
+                        () -> store.persistRelationFailure(task, reason));
             } catch (AnalysisStoppedException stopped) {
                 String reason = stopped.reason().name();
                 return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),

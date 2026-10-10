@@ -7,6 +7,7 @@ import com.taxonomy.shared.config.ExportConfig;
 import org.springframework.stereotype.Component;
 
 /** Application-owned bridge from live preferences to architecture report metadata. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @Component
 public class PreferenceArchitectureReportMetadata implements ArchitectureReportMetadataPort {
     private final PreferencesService preferencesService;

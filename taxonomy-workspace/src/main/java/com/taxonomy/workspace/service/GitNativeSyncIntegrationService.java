@@ -62,6 +62,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     @Override
     public String syncFromShared(String username, String userBranch) throws IOException {
+        portfolioGitPort.requireAvailable();
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
             return mergeWithinRepository(
@@ -72,6 +73,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     @Override
     public String publishToShared(String username, String userBranch) throws IOException {
+        portfolioGitPort.requireAvailable();
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
             return mergeWithinRepository(
@@ -83,6 +85,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     @Override
     public String syncFromSharedToWorkspace(String username, String workspaceId)
             throws IOException {
+        portfolioGitPort.requireAvailable();
         WorkspaceContext context = resolveExplicitWorkspaceContext(
                 username, workspaceId, WORKSPACE_BRANCH);
         return pullAcrossRepositories(username, context, WORKSPACE_BRANCH);
@@ -91,6 +94,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     @Override
     public String publishFromWorkspaceToShared(String username, String workspaceId)
             throws IOException {
+        portfolioGitPort.requireAvailable();
         WorkspaceContext context = resolveExplicitWorkspaceContext(
                 username, workspaceId, WORKSPACE_BRANCH);
         return publishAcrossRepositories(username, context, WORKSPACE_BRANCH);
@@ -100,6 +104,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     public String resolveDiverged(String username,
                                   String userBranch,
                                   DivergedStrategy strategy) throws IOException {
+        portfolioGitPort.requireAvailable();
         if (strategy == DivergedStrategy.MERGE) {
             String commit = syncFromShared(username, userBranch);
             return "Semantically merged source into your branch: " + abbreviate(commit);

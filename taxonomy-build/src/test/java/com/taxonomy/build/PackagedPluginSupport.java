@@ -27,12 +27,16 @@ final class PackagedPluginSupport {
             assertThat(jars).as("One built artifact in %s", directory).hasSize(1); return jars.getFirst();
         }
     }
-    static String sha256(Path file) throws Exception {
-        var digest = MessageDigest.getInstance("SHA-256");
-        try (var stream = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
-            stream.transferTo(java.io.OutputStream.nullOutputStream());
+    static String sha256(Path file) throws IOException {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            try (var stream = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
+                stream.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
         }
-        return HexFormat.of().formatHex(digest.digest());
     }
     static Path buildIndependentPlugin(Path root, Path temporary) throws Exception {
         Path localRepository = Files.createDirectory(temporary.resolve("empty-maven-repository"));
@@ -85,16 +89,28 @@ final class PackagedPluginSupport {
         return artifact(project.resolve("target"), "taxonomy-mermaid-plugin-");
     }
     static Application start(Path host, Path plugins, Path state) throws Exception {
+        return start(host, plugins, host.getParent().resolve("features"), state);
+    }
+    static Application start(Path host, Path plugins, Path features, Path state) throws Exception {
+        return start(host, plugins, features, state, List.of());
+    }
+    static Application start(Path host, Path plugins, Path features, Path state, List<String> extraArguments) throws Exception {
         Files.createDirectories(state);
         int port;
         try (var socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) { port = socket.getLocalPort(); }
         var command = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin/java").toString(),
-                "-Xmx700m", "-jar", host.toString(), "--server.address=127.0.0.1", "--server.port=" + port,
+                "-Xmx700m", "-Dloader.path=" + features, "-jar", host.toString(), "--server.address=127.0.0.1", "--server.port=" + port,
                 "--taxonomy.plugins.directory=" + plugins, "--taxonomy.plugins.cache-directory=" + state.resolve("cache"),
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false",
                 "--llm.mock=true", "--embedding.enabled=false", "--embedding.allow-download=false",
                 "--taxonomy.init.async=false", "--spring.datasource.url=jdbc:hsqldb:mem:pluginpack;shutdown=true",
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap"));
+        for (String override : extraArguments) {
+            if (!override.startsWith("--") || !override.contains("=")) throw new IllegalArgumentException("Expected named application argument");
+            String key = override.substring(0, override.indexOf('=') + 1);
+            command.removeIf(argument -> argument.startsWith(key));
+            command.add(override);
+        }
         Path log = state.resolve("application.log");
         var builder = new ProcessBuilder(command).directory(state.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().put("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false");
@@ -113,9 +129,13 @@ final class PackagedPluginSupport {
     }
     record Application(Process process, URI origin, Path log) implements AutoCloseable {
         HttpResponse<String> request(String method, String route, String body) throws IOException, InterruptedException {
+            return request(method, route, body, Map.of());
+        }
+        HttpResponse<String> request(String method, String route, String body, Map<String, String> headers) throws IOException, InterruptedException {
             var builder = HttpRequest.newBuilder(origin.resolve(route)).timeout(Duration.ofSeconds(60))
                     .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)))
                     .header("Content-Type", "application/json");
+            headers.forEach(builder::header);
             builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
             return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
                     .send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

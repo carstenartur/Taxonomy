@@ -28,6 +28,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ArchitectureModuleGraphTest extends ArchitectureModuleGraphTestSupport {
 
+    @Test void exactPackageOwnershipDoesNotClaimAnIndependentSdkSubpackage() {
+        var policy=new ArchitectureModuleGraph.Policy("taxonomy-app",java.util.Set.of("AppConfig.java"),java.util.List.of(
+                new ArchitectureModuleGraph.Context("templates","taxonomy-templates",java.util.List.of("com.taxonomy.templates","com.taxonomy.templates.config..","com.taxonomy.templates.backup..")),
+                new ArchitectureModuleGraph.Context("composition","taxonomy-app",java.util.List.of("com.taxonomy.composition.."))));
+        var result=ArchitectureModuleGraph.evaluate(policy,java.util.Set.of("taxonomy-templates-api"),
+                java.util.Set.of("taxonomy-app","taxonomy-templates","taxonomy-templates-api"),java.util.List.of(
+                    new ArchitectureModuleGraph.ClassOwner("com.taxonomy.templates.Service","taxonomy-templates","Service.java"),
+                    new ArchitectureModuleGraph.ClassOwner("com.taxonomy.templates.api.DocumentTemplates","taxonomy-templates-api","DocumentTemplates.java")),java.util.List.of());
+        org.assertj.core.api.Assertions.assertThat(result.violations()).isEmpty();
+    }
+
     @Test
     void anOrdinaryExternalSourceLinkRemainsRejectedDuringRepositoryDiscovery() throws Exception {
         bytecodeRepository();

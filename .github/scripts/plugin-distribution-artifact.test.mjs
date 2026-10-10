@@ -14,6 +14,9 @@ function fixture(t) {
   mkdirSync(path.join(target, 'plugins'), { recursive: true });
   writeFileSync(path.join(target, 'taxonomy-app-1.0.jar'), 'host fixture');
   writeFileSync(path.join(target, 'plugins/taxonomy-mermaid-plugin-1.0.jar'), 'plugin fixture');
+  mkdirSync(path.join(target, 'features'), { recursive: true });
+  for (const id of ['templates', 'architecture', 'reporting', 'analysis', 'portfolio', 'interop'])
+    writeFileSync(path.join(target, `features/taxonomy-${id}-1.0.jar`), `feature ${id}`);
   execFileSync('git', ['init', '-q'], { cwd: root });
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=Artifact Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], { cwd: root });
@@ -48,4 +51,32 @@ test('duplicated manifest names cannot conceal an unlisted external JAR', t => {
 test('unlisted symbolic link is rejected before copying plugin artifacts', t => {
   const f = fixture(t); symlinkSync(f.plugin, path.join(path.dirname(f.plugin), 'taxonomy-unlisted-1.0.jar'));
   assert.notEqual(f.run('verify-ui-application.sh').status, 0);
+});
+
+test('full distribution includes all startup features with independent digests', t => {
+  const f = fixture(t), manifest = JSON.parse(readFileSync(f.manifest));
+  assert.deepEqual(manifest.features?.map(x => x.id).sort(), ['analysis', 'architecture', 'interop', 'portfolio', 'reporting', 'templates']);
+  for (const feature of manifest.features) assert.match(feature.sha256, /^[a-f0-9]{64}$/);
+});
+test('substituted startup feature bytes are rejected', t => {
+  const f = fixture(t);
+  appendFileSync(path.join(f.root, 'target/ui-application/features/taxonomy-analysis-1.0.jar'), 'substituted');
+  assert.notEqual(f.run('verify-ui-application.sh').status, 0);
+});
+test('missing startup feature is not a complete default installation', t => {
+  const f = fixture(t);
+  rmSync(path.join(f.root, 'target/ui-application/features/taxonomy-reporting-1.0.jar'), { force: true });
+  assert.notEqual(f.run('verify-ui-application.sh').status, 0);
+});
+
+test('unlisted installed code cannot survive verification of a new distribution', t => {
+  const f=fixture(t);
+  writeFileSync(path.join(f.root,'taxonomy-app/target/plugins/taxonomy-stale-0.1.jar'),'old executable code');
+  assert.notEqual(f.run('verify-ui-application.sh').status,0);
+});
+test('installed feature symlinks cannot redirect verified bytes', t => {
+  const f=fixture(t), directory=path.join(f.root,'taxonomy-app/target/features');
+  rmSync(path.join(directory,'taxonomy-analysis-1.0.jar'));
+  symlinkSync(path.join(f.root,'taxonomy-app/target/taxonomy-app-1.0.jar'),path.join(directory,'taxonomy-analysis-1.0.jar'));
+  assert.notEqual(f.run('verify-ui-application.sh').status,0);
 });

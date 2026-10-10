@@ -14,6 +14,7 @@ import org.springframework.core.env.Environment;
 import java.util.Map;
 
 /** Independent opt-in; the existing gateway registry injects its neutral permit port. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "taxonomy.analysis.provider-permits.enabled", havingValue = "true")
 public class ArtemisProviderPermitsConfiguration {

@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /** Rejects unknown {@code taxonomy.analysis.transport.mode} values at startup in every mode. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Component
 class AnalysisTransportModeValidator {
 

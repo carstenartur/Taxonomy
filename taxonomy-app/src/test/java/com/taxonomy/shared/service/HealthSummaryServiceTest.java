@@ -3,7 +3,7 @@ package com.taxonomy.shared.service;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 
-import com.taxonomy.analysis.service.LlmService;
+
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.catalog.service.AppInitializationStateService.State;
@@ -30,7 +30,7 @@ class HealthSummaryServiceTest {
     private TaxonomyService taxonomyService;
 
     @Mock
-    private LlmService llmService;
+    private AiStatusSource llmService;
 
     @Mock
     private LocalEmbeddingService embeddingService;

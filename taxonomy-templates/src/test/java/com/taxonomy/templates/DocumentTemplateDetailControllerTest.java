@@ -220,7 +220,7 @@ class DocumentTemplateDetailControllerTest {
 
     private static TemplateFile file(String revision) {
         TemplateManifest manifest = new TemplateManifest(1, ID, "Decision report", ID + ".dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-08-23T00:00:00Z", "admin", 10, 3,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, "2026-08-23T00:00:00Z", "admin", 10, 3,
                 "f".repeat(64));
         return new TemplateFile(manifest, revision, new byte[]{1}, Instant.EPOCH);
     }

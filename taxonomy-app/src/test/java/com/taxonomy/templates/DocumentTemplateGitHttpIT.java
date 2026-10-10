@@ -80,7 +80,7 @@ class DocumentTemplateGitHttpIT {
         // Upload via the ordinary application API, not a parallel Git writer or mirror.
         String id = "git-read-" + UUID.randomUUID();
         var upload = request("PUT", "/api/admin/document-templates/" + id + "?displayName=Git-read-QA",
-                original, basic("admin", PASSWORD), OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+                original, basic("admin", PASSWORD), com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE);
         assertEquals(201, upload.statusCode());
         String uploadedCommit = templates.headCommit();
         git("-C", "checkout", "fetch", "origin");

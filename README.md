@@ -263,9 +263,8 @@ The build generates:
 ## Architecture
 
 Taxonomy is a **modular monolith with one deployable Spring Boot application**.
-The Maven reactor contains nineteen child modules: five framework-free foundations,
-eight runtime feature libraries, the plugin runtime, one external plugin, the application
-composition root, and three build/tooling modules.
+The Maven reactor contains twenty child modules: six framework-free foundations, a plugin runtime, an external plugin,
+eight runtime feature libraries, the application composition root, and three build/tooling modules.
 
 ### How the application fits together
 
@@ -302,6 +301,7 @@ revisions, the durable semantic journal, and explicit Git checkpoints.
 | `taxonomy-extension-runtime` | Atomic plugin catalog, artifact validation and private classloader |
 | `taxonomy-mermaid-plugin` | Independently built external Mermaid adapter |
 | `taxonomy-reporting-api` | Framework-free complete snapshot-bound report models |
+| `taxonomy-templates-api` | Framework-free generic template management and contribution ports |
 | `taxonomy-workspace` | Repository/workspace identity, versioning, editor operation journal, undo/redo, Git checkpoints, and JGit storage |
 | `taxonomy-knowledge` | Catalogue and seeds, relations and hypotheses, search, indexes, and local embeddings |
 | `taxonomy-templates` | Versioned document templates, OOXML validation, materialization, WebDAV, and template administration |

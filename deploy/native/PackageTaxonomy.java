@@ -22,7 +22,7 @@ public final class PackageTaxonomy {
         command(Path.of("workspace", "input"), output, args[1], args[2], windows);
         try (JarFile archive = new JarFile(jar.toFile())) {
             var manifest = archive.getManifest();
-            if (manifest == null || !"org.springframework.boot.loader.launch.JarLauncher".equals(manifest.getMainAttributes().getValue("Main-Class"))
+            if (manifest == null || !"org.springframework.boot.loader.launch.PropertiesLauncher".equals(manifest.getMainAttributes().getValue("Main-Class"))
                     || !"com.taxonomy.TaxonomyApplication".equals(manifest.getMainAttributes().getValue("Start-Class"))) {
                 throw new IllegalArgumentException("Use the repackaged Taxonomy application JAR, not an original or library JAR.");
             }
@@ -31,6 +31,7 @@ public final class PackageTaxonomy {
         try {
             Path input = Files.createDirectory(workspace.resolve("input"));
             Files.copy(jar, input.resolve("taxonomy.jar"));
+            stageExtensions(jar.getParent(), input);
             Files.writeString(workspace.resolve("configure.properties"), "arguments=--configure\nwin-console=true\n");
             Files.writeString(workspace.resolve("check.properties"), "arguments=--check-configuration=static\nwin-console=true\n");
             Files.createDirectories(output);
@@ -40,18 +41,65 @@ public final class PackageTaxonomy {
                 Path launcher = windows ? output.resolve("Taxonomy/Taxonomy.exe") : output.resolve("Taxonomy/bin/Taxonomy");
                 run(List.of(launcher.toString(), "--setup-help"));
             }
-            // Bind evidence to the exact application input, not merely its filename.
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (var in = Files.newInputStream(jar)) {
-                byte[] buffer = new byte[65536];
-                int count;
-                while ((count = in.read(buffer)) != -1) { digest.update(buffer, 0, count); }
+            // Every executable input participates in the installation evidence.
+            var evidence = new StringBuilder();
+            try (var files = Files.walk(input)) {
+                for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+                    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                    try (var in = new java.security.DigestInputStream(Files.newInputStream(file), digest)) { in.transferTo(java.io.OutputStream.nullOutputStream()); }
+                    evidence.append(HexFormat.of().formatHex(digest.digest())).append("  ")
+                            .append(input.relativize(file).toString().replace('\\','/')).append('\n');
+                }
             }
-            Files.writeString(output.resolve("application-input.sha256"), HexFormat.of().formatHex(digest.digest()) + "  taxonomy.jar\n");
+            Files.writeString(output.resolve("application-input.sha256"), evidence);
         } finally {
             try (var paths = Files.walk(workspace)) {
                 for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) { Files.deleteIfExists(path); }
             }
+        }
+    }
+
+    static void stageExtensions(Path distribution, Path input) throws IOException {
+        for (String kind : List.of("features", "plugins")) {
+            Path source = distribution.resolve(kind);
+            if (Files.isSymbolicLink(source) || !Files.isDirectory(source)) throw new IOException("Missing distribution directory: " + kind);
+            Path target = Files.createDirectory(input.resolve(kind));
+            var features = new java.util.HashSet<String>();
+            int count = 0;
+            try (var files = Files.list(source)) {
+                for (Path file : files.sorted().toList()) {
+                    if (!Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                        throw new IOException("Unexpected distribution entry: " + kind);
+                    String name = file.getFileName().toString();
+                    if (name.endsWith(".jar.sha256")) {
+                        Path owner = file.resolveSibling(name.substring(0, name.length() - ".sha256".length()));
+                        if (!Files.isRegularFile(owner, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                                || !Files.readString(file).strip().equals(sha256(owner) + " *" + owner.getFileName()))
+                            throw new IOException("Invalid distribution checksum: " + kind);
+                        Files.copy(file, target.resolve(file.getFileName()));
+                        continue;
+                    }
+                    if (!name.endsWith(".jar")) throw new IOException("Unexpected distribution entry: " + kind);
+                    if (kind.equals("features")) {
+                        var match = java.util.regex.Pattern.compile("taxonomy-(templates|architecture|reporting|analysis|portfolio|interop)-[0-9].*\\.jar").matcher(file.getFileName().toString());
+                        if (!match.matches() || !features.add(match.group(1))) throw new IOException("Unknown or duplicated startup feature");
+                    }
+                    Files.copy(file, target.resolve(file.getFileName())); count++;
+                }
+            }
+            if (count == 0 || (kind.equals("features") && features.size() != 6)) throw new IOException("Incomplete standard distribution: " + kind);
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (var input = new java.security.DigestInputStream(Files.newInputStream(file), digest)) {
+                input.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
         }
     }
 
@@ -68,8 +116,11 @@ public final class PackageTaxonomy {
         List<String> result = new ArrayList<>(List.of(jpackage.toString(), "--type", type, "--name", "Taxonomy",
                 "--app-version", version, "--vendor", "Carsten Hammer", "--description", "Taxonomy Architecture Analyzer",
                 "--input", input.toString(), "--dest", output.toString(), "--main-jar", "taxonomy.jar",
-                "--main-class", "org.springframework.boot.loader.launch.JarLauncher", "--add-modules", "ALL-MODULE-PATH",
+                "--main-class", "org.springframework.boot.loader.launch.PropertiesLauncher", "--add-modules", "ALL-MODULE-PATH",
                 "--java-options", "-Dtaxonomy.native=true",
+                "--java-options", "-Dloader.path=$APPDIR/features",
+                "--java-options", "-Dtaxonomy.plugins.directory=$APPDIR/plugins",
+                "--java-options", "-cp", "--java-options", "$APPDIR/taxonomy.jar",
                 "--add-launcher", "Taxonomy-Configure=" + input.getParent().resolve("configure.properties"),
                 "--add-launcher", "Taxonomy-Check=" + input.getParent().resolve("check.properties")));
         if (windows) {

@@ -151,7 +151,7 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 - [x] RED: verpackten Host starten, dessen unveränderter SHA-256 festgehalten ist; extern separat gebautes Plugin hinzufügen und über vorhandenen Exportweg ausführen. `assertArrayEquals(existingExpectedOutput, pluginOutput)` für DE/EN. Ohne Plugin ist nur das Format nicht verfügbar, nicht der ganze Server.
 - [ ] Run: `./mvnw -B verify -Pplugin-packaging-tests` nach Aufnahme dieses Maven-eigenen Profils in den bestehenden Katalog. Expected: das bisherige Paket besteht den externen Installationsnachweis noch nicht.
 - [x] Implementieren: vorhandenen Adapter verschieben, Tests mitnehmen, unabhängigen Plugin-POM gegen installierte exakte SDK-Artefakte bauen. Der Maven-Integrationstest installiert diese in ein leeres temporäres Repository, kopiert nur das Pluginprojekt dorthin und baut ohne Host-Quellbaum. Standarddistribution liefert das Plugin mit; keine zweite eingebaute Registrierung. Legacy- und generischen Exportweg auf dieselbe Registry führen.
-- [ ] GREEN: gleicher Profilbefehl; Host-Hash vor/nach Installation gleich, externe JAR nicht in `BOOT-INF/lib`, gültiger realer HTTP-Download und bestehende Mermaid-Regressionsfälle grün.
+- [x] GREEN: gleicher Profilbefehl; Host-Hash vor/nach Installation gleich, externe JAR nicht in `BOOT-INF/lib`, gültiger realer HTTP-Download und bestehende Mermaid-Regressionsfälle grün. Vollständiger CI-Nachweis auf `dd3448d2` am 10. Oktober, siehe Abschlussnachtrag unten.
 - [x] Commit: `feat(export): package existing Mermaid extension as external plugin`.
 
 **Zwischennachweis 9. Oktober 2026:** Der fokussierte Failsafe-Lauf `test-compile failsafe:integration-test failsafe:verify -Pplugin-packaging-tests -Dit.test=ExternalPluginPackagedIT` ist grün (1 realer Paket-/HTTP-Test und 5 separat ausgeführte Plugin-Tests). 46 Node-Vertragstests sowie der vollständige Architektur-Selektor einschließlich ergänzter Regressionen sind grün. Der vollständige Profil-Lauf bleibt bis Task 9/12 ausdrücklich offen.
@@ -162,11 +162,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `FeatureAssembly.validate(Set<String> installed): FeatureSet`; `FeatureSet.has(String id): boolean`. IDs: `templates`, `architecture`, `reporting`, `analysis`, `portfolio`, `interop`. Mindestabhängigkeiten: `reporting -> templates`; `analysis -> architecture`; `portfolio -> analysis,architecture`. Interop konsumiert weiterhin seine Workspace-Ports; konkrete appseitige Portfolio-Brücken sind nur bei Portfolio aktiv. Zusätzliche echte Abhängigkeiten werden durch den gemessenen Graphen aufgedeckt und vor Umsetzung ausdrücklich bereinigt oder deklariert, nicht versteckt.
 
-- [ ] RED: denselben Host starten mit Kern allein; Kern+Templates; Kern+Architecture; Kern+Templates+Architecture+Reporting; zusätzlich Analysis+Portfolio; Vollausstattung. Die abgewählten Implementierungs-JARs müssen physisch fehlen. Eine invalide Kombination scheitert vor Serving mit konkreter fehlender Fähigkeit, nicht mit `NoClassDefFoundError`.
+- [x] RED: denselben Host starten mit Kern allein; Kern+Templates; Kern+Architecture; Kern+Templates+Architecture+Reporting; zusätzlich Analysis+Portfolio; Vollausstattung. Die abgewählten Implementierungs-JARs müssen physisch fehlen. Eine invalide Kombination scheitert vor Serving mit konkreter fehlender Fähigkeit, nicht mit `NoClassDefFoundError`.
 - [ ] Run: `./mvnw -B verify -Pplugin-packaging-tests`. Expected: aktuelle unbedingte Verdrahtung verhindert mindestens die Kernkombination.
-- [ ] Implementieren: explizite, vor Bean-Erzeugung validierte Startzeit-Zusammensetzung; Boot `PropertiesLauncher`/dokumentierter externer Classpath für Feature-JARs. Kein globaler Scan, der optionale Klassen trotzdem erzwingt. Entities und Migrationen nur beim Start registrieren; keine schema-droppende Abwahl. HTTP-Adapter und Ressourcen gehen mit ihrem Feature. API-Pakete besitzen nach Extraktion genau einen Maven-Eigentümer.
-- [ ] GREEN: alle sechs Kombinationen gegen unveränderten Host; Readiness, ausgewählte echte HTTP-/WebDAV-/Reportaufrufe und fehlende Feature-Routen prüfen. Vollausstattung bleibt mit bisherigen URLs funktionsgleich.
-- [ ] Commit: `feat(modules): support dependency-checked startup feature packages`.
+- [x] Implementieren: explizite, vor Bean-Erzeugung validierte Startzeit-Zusammensetzung; Boot `PropertiesLauncher`/dokumentierter externer Classpath für Feature-JARs. Kein globaler Scan, der optionale Klassen trotzdem erzwingt. Entities und Migrationen nur beim Start registrieren; keine schema-droppende Abwahl. HTTP-Adapter und Ressourcen gehen mit ihrem Feature. API-Pakete besitzen nach Extraktion genau einen Maven-Eigentümer.
+- [x] GREEN: alle sechs Kombinationen gegen unveränderten Host; Readiness, ausgewählte echte HTTP-/WebDAV-/Reportaufrufe und fehlende Feature-Routen prüfen. Vollausstattung bleibt mit bisherigen URLs funktionsgleich.
+- [x] Commit: `feat(modules): support dependency-checked startup feature packages`.
+
+**Zwischennachweis 9. Oktober:** Acht physische Installationen, ein früher Abhängigkeitsfehler und zwei Archiv-/Ressourcentests bestehen (11 Failsafe-Tests, keine Auslassungen). Die kleineren Installationen benötigen einen expliziten Abwesenheitsadapter für den Portfolio-Git-Port; Schreibzugriffe werden vor Provisionierung und Git-Änderungen abgewiesen. Die vollständigen Profile folgen in Task 12.
 
 ## Task 10: Begrenztes dynamisches Laden, Drain und Wiederaufnahme
 
@@ -174,11 +176,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** `activate(String id): PluginIdentity`; `deactivate(String id,Duration timeout): PluginOperationResult`, Status `STOPPED`, `DRAINING` oder `REJECTED`. Neue Leases werden nach Deaktivierungsbeginn abgewiesen; bereits erworbene Leases behalten Version und Objekte. Bei Timeout bleibt das Plugin DRAINING und geladen; kein erzwungenes Schließen laufender Ressourcen. Update erfolgt erst nach erfolgreichem Drain.
 
-- [ ] RED: ein mit Latches blockierter echter Renderer hält seine Lease; Deaktivieren blockiert neue Aufrufe, bestehender Aufruf liefert alte Version; erst dessen Abschluss erlaubt Jar-Freigabe. Defekter Start veröffentlicht nichts; 50 Lade-/Stopzyklen lassen keine registrierten Listener/Threads/Dateihandles zurück. Kein blindes GC-Timing als einziger Leak-Nachweis.
-- [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginLifecycleConcurrencyTest,PluginAdministrationSecurityTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: dynamische Operationen fehlen.
-- [ ] Implementieren: Management nur bei `taxonomy.plugins.dynamic.enabled=true`, nur für ADMIN unter bestehenden Auth-/CSRF-Regeln und nur per installierter Plugin-ID. Keine beliebigen Klassen-/Dateipfade. Im Cluster und für STARTUP-Pakete: aussagekräftige Ablehnung. Aktive abhängige Plugins verhindern Entfernung. Endpunkte mit vollständigem OpenAPI-Vertrag und redigierten Fehlern.
-- [ ] GREEN: gleicher Befehl und verpackter Laufzeittest aus dem Packaging-Profil. Expected: Hot-Load/Export/Drain/Unload ohne Neustart, Security-Negativfälle und Fehler-Recovery belegt.
-- [ ] Commit: `feat(plugins): coordinate bounded runtime activation and draining`.
+- [x] RED: ein mit Latches blockierter echter Renderer hält seine Lease; Deaktivieren blockiert neue Aufrufe, bestehender Aufruf liefert alte Version; erst dessen Abschluss erlaubt Jar-Freigabe. Defekter Start veröffentlicht nichts; 50 Lade-/Stopzyklen lassen keine registrierten Listener/Threads/Dateihandles zurück. Kein blindes GC-Timing als einziger Leak-Nachweis.
+- [x] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginLifecycleConcurrencyTest,PluginAdministrationSecurityTest -Dsurefire.failIfNoSpecifiedTests=false`. Expected: dynamische Operationen fehlen.
+- [x] Implementieren: Management nur bei `taxonomy.plugins.dynamic.enabled=true`, nur für ADMIN unter bestehenden Auth-/CSRF-Regeln und nur per installierter Plugin-ID. Keine beliebigen Klassen-/Dateipfade. Im Cluster und für STARTUP-Pakete: aussagekräftige Ablehnung. Aktive abhängige Plugins verhindern Entfernung. Endpunkte mit vollständigem OpenAPI-Vertrag und redigierten Fehlern.
+- [x] GREEN: gleicher Befehl und verpackter Laufzeittest aus dem Packaging-Profil. Expected: Hot-Load/Export/Drain/Unload ohne Neustart, Security-Negativfälle und Fehler-Recovery belegt.
+- [x] Commit: `feat(plugins): coordinate bounded runtime activation and draining`.
+
+**Nachweis 9. Oktober:** 19 Runtime-Tests einschließlich 50 echter Ladezyklen, drei ADMIN/USER/CSRF-Sicherheitsfälle und 12 Pakettests sind grün. Der reale Host durchläuft drei HTTP-Deaktivierungs-/Aktivierungszyklen mit unverändertem Artefakt. Die vollständigen Profile und der Abschlussreview bleiben Task 12.
 
 ## Task 11: UI, Aufträge, Backup und Betrieb zusammenführen
 
@@ -186,11 +190,13 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** Ein Aufruf/Job erhält `PluginIdentity` und eine nicht geheime Konfigurationsrevision, nicht serialisierte Implementierungen oder Classloader. Alte Builtin-Aufträge bleiben lesbar. UI liest verfügbare Deskriptoren, kein statischer Sonderfall pro externem Format; keine beliebigen Plugin-Skripte ausführen.
 
-- [ ] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
-- [ ] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
-- [ ] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
-- [ ] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups.
-- [ ] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
+- [x] RED: fehlendes Format verschwindet aus Auswahl, laufender Export behält seine Identität; Neustart ohne benötigte Provider-Version hält Auftrag mit verständlichem Grund an, statt anderes Modell zu wählen. Backup mit fehlendem datenhaltenden Feature darf nicht als vollständig markiert werden; Restore verändert keine Daten, bevor Plugin-/Versionsvoraussetzungen erfüllt sind.
+- [x] Run: `./mvnw -B -pl taxonomy-app -am test -Dtest=PluginRecoveryContractTest,BackupCoverageInventoryTest,LlmProviderFrozenScopeTest -Dsurefire.failIfNoSpecifiedTests=false`; Browserfälle über vorhandenen Maven-UI-Eigentümer. Expected: fehlende Versions-/Capabilities-Behandlung wird sichtbar.
+- [x] Implementieren: zustandsgebundene Identität im bestehenden Auftragsvertrag; Worker prüft Verfügbarkeit vor Quota-Verbrauch. Bestehende JMS-Signale für Status nutzen, kein neues zentrales Polling. Fehlende Features/Versionen erhalten Nutzerdaten und werden im Betrieb klar angezeigt. UI-Zustände in DE/EN, Tastaturbedienung, Dark Mode und Rechteprüfung mitführen.
+- [x] GREEN: gleiche Regressionen, reale HSQLDB-Neustart-/Restore-Abnahme und vorhandene Maven-Browser-/Artemis-Lanes. Expected: keine Kontextvermischung, keine vergessenen Daten und keine falsely-complete Backups. Plugin-Vollprofil, sechs Browser-Shards und Kubernetes-/Artemis-Abnahme auf `dd3448d2` erfolgreich; die verbleibende Gesamtprüfung ist in Task 12 ausgewiesen.
+- [x] Commit: `feat(plugins): bind capabilities and recovery to plugin identity`.
+
+**Stand 9. Oktober:** Implementierung vorhanden. 111 Backup-/Restore-/SQL-Vertragstests, 19 Provider-/Report-/Reformulierungsprüfungen (einschließlich separatem Checkpoint-JVM) und 1.011 JavaScript-Vertragstests bestehen ohne Fehler oder Skips. Der unabhängige Review ist durchgeführt; seine wichtigen Befunde sind korrigiert. Vollständige Paket-, Browser-, Prozessabbruch- und CI-Nachweise bleiben vor Abschluss erforderlich.
 
 ## Task 12: Architekturregeln, bestehende Gates und präziser PR-Abschluss
 
@@ -198,12 +204,192 @@ Die folgenden `Files` nennen Besitzer und exakte neue Dateien. Bei Umzügen werd
 
 **Interfaces:** Architekturtests verbieten neue Rückabhängigkeiten, Split Packages und fremde Repositoryzugriffe. Das vorhandene Backup-Split-Package wird aufgelöst, indem app-interne Klassen aus `com.taxonomy.backup` nach `com.taxonomy.backup.runtime` umziehen; frameworkfreie Domainverträge bleiben bei ihrem Besitzer. Keine Paketgrenzen bloß durch zusätzliche Ausnahmen grün machen.
 
-- [ ] RED: um eine gezielte negative Fixture ergänzte Modulprüfung erkennt ein Split Package und eine SDK->Host-Abhängigkeit. Expected: zwei bewusst schlechte Fixtures werden abgewiesen; der reale Vorher-Stand zeigt das vorhandene Backup-Split-Package.
-- [ ] Implementieren und GREEN: Paketumzug samt Verbrauchern, gemessene Modulgraph-/Ressourcenprüfungen und Dokumentation. `./mvnw -B test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` muss ohne abgeschwächte Baselines bestehen.
+- [x] RED: um eine gezielte negative Fixture ergänzte Modulprüfung erkennt ein Split Package und eine SDK->Host-Abhängigkeit. Expected: zwei bewusst schlechte Fixtures werden abgewiesen; der reale Vorher-Stand zeigt das vorhandene Backup-Split-Package.
+- [x] Implementieren und GREEN: Paketumzug samt Verbrauchern, gemessene Modulgraph-/Ressourcenprüfungen und Dokumentation. `./mvnw -B test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` muss ohne abgeschwächte Baselines bestehen.
 - [ ] Run vollständig: `./mvnw -B verify -Pci -DrunOnnxTests=true`; zusätzlich `./mvnw -B verify -Pplugin-packaging-tests`, `./mvnw -B verify -Pdatabase-mssql`, `./mvnw -B verify -Pdatabase-oracle` und die laut aktuellem CI-Katalog separat erforderlichen Security-/Artemis-/Produkt-/Browser-/Recovery-Lanes. Expected: echte positive Testanzahlen, keine erforderliche Lane übersprungen; lokale Runtime-Lücken konkret ausweisen.
-- [ ] Ein unabhängiger Abschlussreview des gesamten Diffs; wichtige Befunde mit RED→GREEN beheben. Dokumentationslinks, tatsächliche Boot-JAR-/Plugin-Inhalte, vollständige Standarddistribution und externe SDK-Builds kontrollieren.
-- [ ] Fokussierte PR-Folge auf dem vorhandenen Architekturauftrag referenzieren: (1) API/Reporting, (2) ausführbare SPIs und Startup-Plugins, (3) Optionalität/Lifecycle/Betrieb. Keine Duplikat-Issues, kein ungeprüfter Merge. Ergebnisse in #628 als Folgearbeit mit konkreten SHAs/PRs/Nachweisen verdichten; die alte abgeschlossene Extraktion nicht rückwirkend als unerledigt bezeichnen.
-- [ ] Commit: `test(architecture): enforce plugin boundaries and distribution contracts`.
+- [x] Ein unabhängiger Abschlussreview des gesamten Diffs; wichtige Befunde mit RED→GREEN beheben. Dokumentationslinks, tatsächliche Boot-JAR-/Plugin-Inhalte, vollständige Standarddistribution und externe SDK-Builds kontrollieren.
+- [x] Fokussierte PR-Folge auf dem vorhandenen Architekturauftrag referenzieren: (1) API/Reporting, (2) ausführbare SPIs und Startup-Plugins, (3) Optionalität/Lifecycle/Betrieb. Keine Duplikat-Issues, kein ungeprüfter Merge. Ergebnisse in #628 als Folgearbeit mit konkreten SHAs/PRs/Nachweisen verdichten; die alte abgeschlossene Extraktion nicht rückwirkend als unerledigt bezeichnen.
+- [x] Commit: `test(architecture): enforce plugin boundaries and distribution contracts`.
+
+**Zusätzliche Verifikation 9. Oktober:** 49 gezielte OpenAPI-/Report-/Interop-/Publikations-/Recovery-Tests sind grün, darunter echte Anwendungsneustarts, erzwungener Prozessabbruch mit gespeicherter Providerbindung und Lease-Fencing. Feature-Scans übernehmen die Boot-Testfilter. V33 lief im PostgreSQL-Job erfolgreich; die Versionsliste und konkrete neuen Spaltenprüfungen sind für den nächsten CI-Lauf aktualisiert. Die vollständigen Profile bleiben offen. PR-Folge: #1189, #1190, #1191; alle Änderungen referenzieren die vorhandene Architekturarbeit #628.
+
+**Paket-/Betriebsnachweise:** Der erweiterte fokussierte Paketlauf ist grün: 13 reale Paket-/HTTP-Tests und 5 Tests im unabhängig gebauten Mermaid-Projekt. Acht physische Installationen, ungültige Kombination und Voll→Kern→Voll mit unveränderten Vorlagen/Git-Historie sind belegt. Native Linux-App-Image gebaut, alle acht JAR-Hashes geprüft und installierter Launcher mit neuer persistenter HSQLDB gestartet (sechs Features, Mermaid, Readiness/Vorlagen/Taxonomie HTTP 200). Ein fehlender Pakettest führt im wirklichen Besitzer taxonomy-build weiterhin zu Build Failure (Negative-Control MissingPluginPackagingCanary); die Profilzuordnung toleriert ausschließlich Nichtbesitzer. Der Szenariofall besteht mit 1,4-GiB-Test-JVMs. Ungekürzte Profilwiederholung und abschließende aktuelle CI bleiben offen; die beiden vollständigen lokalen Versuche wurden zuvor durch das 8-GiB-Umgebungslimit beendet.
+
+**Verifikation und Security-Nacharbeit:** Der komplette lokale Lauf auf `d22de558` hat 7.432 Tests ausgeführt: 7.427 erfolgreich, fünf Browserfälle konnten wegen `socket() failed: Operation not permitted` beim Chrome-Start nicht ausgeführt werden (Surefire: ein Fehlschlag, vier Fehler; keine Skips). Alle übrigen Fälle einschließlich Backup-Download und Wiederaufnahme sind erfolgreich; kein weiterer OOM-Abbruch. Coverage und die nachgelagerte Paketprüfung wurden wegen dieses Fehlers nicht erreicht. Die identischen fünf Browserfälle bestehen auf demselben Commit in der bestehenden CI-Szenario-Lane (26 Tests insgesamt); außerdem alle sechs CI-UI-Shards. Dies ist kein lokaler Gesamt-PASS.
+
+Die separate CodeQL-Push-Lane meldete eine Regex-Laufzeitgefahr und drei nicht gemeinsam synchronisierte Plugin-Zustandszugriffe. Der gemeinsame Runtime-Monitor beseitigt die drei Race-Befunde; die nächste CodeQL-Auswertung bestätigte deren Wegfall. Die Regex-Warnung blieb zunächst bestehen. Ein neuer Regressionstest reproduzierte anschließend 50,7 Sekunden für die Modellidentität eines langen Proxy-Pfads ohne `/models/`; diese Suche verwendet jetzt lineare Stringoperationen unter Erhalt der bisherigen Ergebnisse. Vier Modelltests sind danach erfolgreich, zusammen mit Binding-/Setup-Prüfungen zehn Fälle ohne Fehler oder Skips.
+
+Die Prüfung des vollständigen innersten JAR-Namens verhindert fremde Dateinamen, Suffixe und `!` innerhalb echter Dateinamen, auch für `jar:file:` und beide Boot-URL-Formen. Zwölf reale Artefaktidentitätsfälle, insgesamt 35 Runtime-Tests, sind grün; der entsprechende zweite PR-Schnitt besteht mit 28 Runtime- und vier Modelltests. Der unabhängige Nachreview bestätigt die geschlossene Namenslücke.
+
+Die unveränderte vollständige PR-1-CI ist inzwischen erfolgreich: 8.388 ausgeführte Tests bestanden, 79 vorhandene bedingte Skips separat ausgewiesen; 18 UI-Szenarien genau einmal in sechs artefaktgebundenen Shards. Zeilencoverage 92,68 %, Branchcoverage 76,22 %. Der PR-Merge-Commit `060929e31c800881bbe23290f8bcb558531d0ff8` besitzt denselben Baum `3e07ee6ce162d2b28dfdbc359dfe84e2df2eef5c` wie Head `5ac87ffb`. Datenbankmatrix, ONNX, CodeQL-Push-Lanes und weitere vorhandene Gates sind grün.
+
+Die erneute fokussierte Paketprüfung auf `9972e594` führte 14 ITs aus: zwölf reale Optionalitäts-/HTTP-/Reaktivierungsfälle bestanden; beide Archivprüfungen scheiterten an den neu mitgelieferten Prüfsummen-Sidecars. Die Inspektion und die native Paketierung prüfen diese Dateien nun gegen den regulären JAR-Eigentümer, SHA-256 und Dateinamen und erhalten ihre Bytes. 22 native Vertragsprüfungen einschließlich beschädigter, falsch benannter und verwaister Sidecars bestehen. Eine im Nachreview gefundene checked-Exception-Signatur wurde eingeengt. Aktuelle Paketprüfung, tatsächlicher nativer Start sowie vollständige CodeQL-/Gesamt-CI für die korrigierten Plugin-PRs bleiben offen. Keine Security-Baseline, Gate oder Testauswahl abgeschwächt.
+
+**Aktueller Distributionsnachweis:** Der fokussierte Lauf auf `05c68aa6` besteht mit 283 eindeutigen JUnit-Fällen (davon 14 reale Paket-ITs) sowie fünf Tests im unabhängigen SDK-Build. Native Linux-Distribution dieses Heads gebaut und gegen neue persistente HSQLDB gestartet: sechs Features, Mermaid und HTTP 200 für Readiness/Vorlagen/Taxonomie; alle acht JARs und das SHA-256-Sidecar stimmen bytegenau mit den Installationseingaben überein.
+
+CodeQL meldete danach weiterhin genau eine Regex-Laufzeitgefahr. Der Detailartefaktabruf liefert HTTP 403; die vorhandene Gate-Ausgabe nennt deshalb künftig zusätzlich die bereits geparste Quelldatei, ohne Schwelle, Baseline oder Entscheidung zu ändern. Im Provider-Katalog ist außerdem die zweite langsame Identitätsnormalisierung reproduziert (200.000 interne Bindestriche, Timeout nach zwei Sekunden) und linear korrigiert. Die fünf üblichen Target-Identitäten bleiben erhalten. Die aktuellen Gate-/Baseline-/Schwellen- und Target-Regressionen sind erfolgreich. Der jüngste Nachreview findet keine konkreten Fehler. Die abschließende CodeQL-/kanonische CI muss diesen letzten Nachtrag noch prüfen; aktueller verbindlicher Status und genaue Heads stehen in #628 und der bestehenden Architekturdatei.
+
+## Fortsetzung am 10. Oktober 2026
+
+#1189 und #1190 sind inzwischen gemergt; #1191 wurde ohne Änderung des
+Implementierungsbaums mit main `56428217` abgeglichen. Der gezielte Task-11-Befehl
+besteht auf `1c441a53` mit neun Tests (drei Provider-, zwei Backup- und vier
+Recovery-Verträge), ohne Fehler oder Skips. JGit/PostgreSQL, OpenTelemetry,
+Kubernetes mit Artemis-/Worker-Wiederherstellung, Dokument-Download, Datenbankmatrix
+und die sechs vorhandenen Browser-Shards sind auf diesem Head erfolgreich.
+Der vollständige kanonische Lauf und sein Aggregat waren beim folgenden Nachtrag
+noch offen; der separate vollständige Plugin-Profil-PASS bleibt ausdrücklich offen.
+
+Die Abschlussprüfung der CI-Eingaben fand eine konkrete Lücke: reine Änderungen
+an `taxonomy-templates-api` aktivierten Kubernetes, Dokument-E2E und JGit nicht;
+der Performance-Filter erfasste außerdem die neuen Plugin-APIs, den Loader und
+externe Plugins nicht. Die bestehenden Filter enthalten diese Eingaben nun.
+`PluginWorkflowTriggerTest` prüft alle betroffenen PR-/Push-Filter und führt den
+wirklichen Performance-Scope-Befehl in isolierten Git-Repositories aus, einschließlich
+unveränderter Negativkontrollen für Dokumentation und Frontend-Ressourcen.
+
+RED: 28 Fälle, davon 19 erwartete Assertion-Fehlschläge, keine Ausführungsfehler
+oder Skips. GREEN nach unabhängiger Reviewkorrektur der Git-/Shell-Umgebungsisolation:
+259 Fälle ohne Fehler oder Skips (28 neue Verträge, sieben bestehende Workflow-
+Authority-Tests und 224 verpflichtende Architekturguards). Tatsächlicher Maven-Aufruf
+mit Java 21, explizitem Mockito-Startagenten und dem bereitgestellten Proxy/Zertifikatsspeicher:
+
+```bash
+./mvnw -s target/continuation-evidence/toolchain/maven-settings.xml -B \
+  -Dmaven.build.cache.enabled=false -pl taxonomy-build -am test \
+  -Dtest=PluginWorkflowTriggerTest,WorkflowTestAuthorityPolicyTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Kein neuer Workflow, keine zusätzliche Testauswahl in einem Workflow und keine
+abgeschwächte Prüfung. Der unabhängige Nachreview findet keine weiteren Probleme.
+Der neue Commit benötigt weiterhin die vollständige CI; frühere Ergebnisse werden
+nicht als Ausführungen auf seinem Head bezeichnet. Die konkreten Heads, Läufe und
+noch offenen Voraussetzungen stehen weiterhin in #628 und der bestehenden
+Architekturdatei.
+
+## Vollständiger Plugin-Profillauf in der vorhandenen CI
+
+Die im Plan ausdrücklich verlangte vollständige Profilabnahme hat jetzt einen
+Ausführungsort mit den nötigen Docker-/Helm-Voraussetzungen. Der zusätzliche Job
+`plugin-profile` im vorhandenen `ci-cd.yml` führt unverändert
+`./mvnw -B verify -Pplugin-packaging-tests` aus. Das bestehende Abschluss-Gate
+verlangt seinen Erfolg; Fehler, Abbruch, Skip und fehlendes Ergebnis verhindern
+den Gesamt-PASS. Keine neue Workflowdatei, kein zusätzlicher Testselektor und
+keine geänderte Maven-Testauswahl. Das Profil bleibt zusätzlich im kanonischen
+Build enthalten; überlappende Testanzahlen werden nicht addiert.
+
+Der Maven-Vertragstest reproduziert zuvor fünf Assertion-Fehlschläge in 34 Fällen
+(fehlender Job sowie vier unzulässig akzeptierte Ergebniszustände), ohne Fehler
+oder Skips. Nach der Korrektur besteht derselbe oben dokumentierte Befehl mit
+265 Fällen: 34 Workflowverträge, sieben Authority-Tests und 224 verpflichtende
+Architekturguards; keine Fehler oder Skips, 21 Reaktoreinträge, 2:06 Minuten.
+Der tatsächliche Shellbefehl des Abschluss-Gates wird für alle fünf Zustände
+ausgeführt. Unabhängiger Review: keine Befunde. Der erste vollständige Lauf des
+neuen Jobs und die endgültige CI-Abnahme sind weiterhin abzuwarten; die lokalen
+Vertragstests sind kein vollständiger Plugin-Profil-PASS.
+
+Die erste CI-Ausführung dieses Nachtrags fand einen zusätzlich zu pflegenden
+bestehenden Vertrag: `ParallelCiEvidenceContractTest` erwartete wortwörtlich die
+bisherigen sechs Abschluss-Jobs. Oracle und SQL Server scheiterten deshalb bereits
+in `taxonomy-tooling` (200 Fälle, ein Fehlschlag), vor ihren Datenbanktests. Der
+Fehler wurde lokal mit zwei Fällen und einem Fehlschlag reproduziert. Der Vertrag
+verlangt jetzt alle bisherigen Voraussetzungen plus Plugin-Profil, dessen Jobnamen
+und Ergebnisbindung. Alle **200 Tooling-Tests** bestehen danach ohne Fehler oder
+Skips (`./mvnw -s target/continuation-evidence/toolchain/maven-settings.xml -B
+-Dmaven.build.cache.enabled=false -pl taxonomy-tooling -am test`, 16,430 Sekunden).
+Der unabhängige Nachreview bestätigt die unverändert strengen Voraussetzungen.
+Der neue Commit muss weiterhin die vollständigen CI-Läufe bestehen.
+
+## Vollprofilnachweis und asynchrone Exportbereitschaft
+
+Der vollständige Befehl `./mvnw -B verify -Pplugin-packaging-tests` besteht auf
+`dd3448d2a82a100418590a85baa780f9b1109375` in Job `114083112760` des Laufs
+`38008568604`. Das per SHA-256 geprüfte CI-Artefakt enthält 1.089 JUnit-Berichte
+mit 7.907 Tests, null Fehlern, Fehlschlägen oder Skips. Darin liegen exakt zwölf
+Paketfälle (zehn `OptionalFeaturePackagedIT`, zwei `ExternalPluginPackagedIT`);
+weitere fünf Tests bestehen im unabhängig gebauten Mermaid-Projekt. Diese
+aktuelle Zählung ersetzt für die Abschlussabnahme die früheren Angaben von
+14 Paket-ITs. Acht physische Installationen, HTTP/WebDAV, Voll→Kern→Voll mit
+erhaltenen Daten und drei dynamische Aktivierungszyklen sind nachgewiesen.
+
+Auch PostgreSQL, SQL Server, Oracle, ONNX, alle sechs UI-Shards, Szenario,
+Dokument-E2E, Interoperabilität, OpenTelemetry, JGit, Kubernetes/Artemis,
+Reformulierung, Security und der tatsächliche CodeQL-Push-Lauf sind erfolgreich.
+Diese Ergebnisse werden nicht zu einer Summe überlappender Tests addiert.
+
+Die kanonische Kernverifikation `114083112516` scheitert an genau einem
+JUnit-Fehler: `CompleteCopilotSessionIT` wählt DOCX aus dem bereits sichtbaren
+Dialog, bevor dessen asynchron geladene Rendereroptionen vorhanden sind
+(`Cannot locate option with value: docx`). Die Ursache ist im tatsächlichen
+JUnit-Bericht und Maven-Log des Artefakts `11654884856` zugänglich; der direkte
+Joblogabruf scheitert weiter mit `Transport closed`.
+
+Der Test wartet jetzt vor der Formatauswahl auf den vorhandenen freigegebenen
+Download-Button. Dieser wird erst nach Capabilities und gespeichertem Scope
+aktiviert. Alle drei Formate, Export-/Inhaltsassertions und das bestehende
+Zeitlimit bleiben unverändert. Der unabhängige Review bestätigt den Fix ohne
+weitere Befunde. Der korrigierte Selenium-Test kompiliert mit Java 21; alle
+sieben Fälle von `CompleteCopilotResultUiContractTest` bestehen ohne Fehler oder
+Skips (lokal, 1:02 Minuten, Maven Exit 0). Dieser fokussierte Testlauf ist kein
+echter Selenium-Nachweis. Der erneute echte Browserlauf und die vollständige
+kanonische Abnahme bleiben erforderlich; der erfolgreiche Plugin-Profillauf
+ersetzt sie nicht.
+
+## Nachlauf: ausgelieferte Pakete, UI-Transport und kritische Coverage
+
+Auf `104117d79f372b5626ade54112be628f871ae1ac` besteht der zuvor fehlerhafte
+`CompleteCopilotSessionIT` mit einem echten Browserfall ohne Fehler oder Skip.
+Der kanonische Lauf `38015962345` erreicht anschließend die abschließenden
+Build-Policies und findet vier Fehler: `ArchitectureModulePackagingIT`,
+`InteropModulePackagingIT`, `FrontendApiBoundaryPolicyIT` und
+`ReactorCoveragePolicyIT`. Das geprüfte Artefakt `11657999403` hat SHA-256
+`9881c9dd6f38fe6767b2df80be5a2f1bc494f6a402389627ca872d4464442fd2`.
+Seine 8.629 JUnit-Fälle enthalten vier Fehlschläge und 80 bedingte Skips;
+dieser fehlgeschlagene Kernlauf ist kein Gesamt-PASS. Die globale Coverage
+besteht mit 92,57 % Zeilen / 76,07 % Branches; verletzt wird die unveränderte
+Changed-Source-Regel in drei Dateien.
+
+Die Paketverträge prüfen jetzt die tatsächliche Distribution über den vorhandenen
+Archivscanner: je ein externes Architecture-/Interop-Feature-JAR, keine Kopien in
+Host, anderen Features, Plugins oder verschachtelten Bibliotheken, weiterhin
+Host-Komposition und gemeinsame Migrationen. Das ist eine Anpassung an die
+beschlossene optionale Distribution, keine Rückverlagerung in den Host.
+
+Capabilities verwenden einen benannten `api/plugin-capabilities-api.js`-Client
+über den bestehenden gemeinsamen HTTP-Transport. Der Shared-Code behält die
+Datenvalidierung. Alle drei Verbraucher laden i18n, Transport und API vor dem
+Verbraucher; Request-ID, Authentifizierungsfehler, `no-store` und Redirect-Ablehnung
+bleiben geprüft. Acht Capability-Vertragstests zeigen zuerst fünf Fehler,
+anschließend bestehen 41 relevante Verträge. Der vollständige Maven-Aufruf
+`./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts` besteht in
+29,377 Sekunden. Ein unabhängiger Review findet den noch alten Fetch-Mock im
+nativen Dialog-Harness; dessen vier Fixtures mocken nun die benannte API-Grenze.
+Der Nachreview ist ohne weitere Befunde; Syntaxprüfung ist kein Browsernachweis.
+
+Der Report-Handler verliert nur einen unbenutzten kopierten Helper und Logger;
+die vorhandene HTTP-409-Antwort bleibt unverändert. Neue Consumer-Tests prüfen
+HTTP 409/400/503, die Abweisung vor Schreibzugriffen sowie reale Git-Merges mit
+Portfolio-Projektion bei Pull und Publish. Alle sieben neuen Java-Fälle bestehen
+lokal mit Java 21 über `-pl taxonomy-app -am test` und den vier benannten
+Testklassen (1:08 Minuten, null Fehler/Skips). Der anschließende JaCoCo-Report
+weist für Handler und beide Ports 100 % Zeilenabdeckung aus. Das ist ein
+fokussierter Nachweis, keine neue Gesamtquote. Der unabhängige Review meldet
+keine Befunde. Coverage-Grenzen, Ausnahmen, Testauswahlen und Zeitlimits werden
+nicht gelockert. Die neue vollständige
+Abnahme bleibt Pflicht; ihren endgültigen commitgebundenen Stand führen #628,
+der PR und die bestehende Architekturdatei.
+
+Die beiden alten Paket-Assertions wurden auch lokal mit zwei Fehlschlägen
+reproduziert. Der anschließende Reaktor-Paketlauf besteht in den 224 dedizierten
+Architekturprüfungen sowie 34 Workflow-Verträgen. Ein dabei entdeckter alter
+Interop-Test-Bytecode wird separat aufbewahrt; nur die generierten Testklassen
+und der Compilerstatus von `taxonomy-build` werden entfernt. Der frische
+Maven-`test-compile`-/Failsafe-Lauf gegen die neu gebaute Distribution besteht
+mit vier Fällen ohne Fehler/Skips: Architecture, Interop, FinalRuntimeModules
+und FrontendApiBoundary (1:16 Minuten). Die Frontend-Schulden liegen wieder
+bei 104 Aufrufen in 23 Dateien, genau wie die unveränderte main-Basis. Der
+unabhängige Review der Paketprüfungen meldet keine abgeschwächten Gates.
 
 ## Abnahmekriterien des Gesamtauftrags
 

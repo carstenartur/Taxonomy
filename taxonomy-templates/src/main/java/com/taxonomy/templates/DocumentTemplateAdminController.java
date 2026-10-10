@@ -73,7 +73,7 @@ public class DocumentTemplateAdminController {
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
                     description = "Non-empty raw DOTX ZIP archive",
                     content = {
-                            @Content(mediaType = OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                            @Content(mediaType = com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                                     schema = @Schema(type = "string", format = "binary")),
                             @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
                                     schema = @Schema(type = "string", format = "binary"))
@@ -94,7 +94,7 @@ public class DocumentTemplateAdminController {
     @PutMapping(
             value = "/{templateId}",
             consumes = {
-                    OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                    com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                     MediaType.APPLICATION_OCTET_STREAM_VALUE
             })
     public ResponseEntity<TemplateDescriptor> upload(
@@ -135,7 +135,7 @@ public class DocumentTemplateAdminController {
                     schemaProperties = @SchemaProperty(name = "error",
                             schema = @Schema(type = "string", description = "Reason the template operation was rejected"))))
     @ApiResponse(responseCode = "200", description = "DOTX binary attachment",
-            content = @Content(mediaType = OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+            content = @Content(mediaType = com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                     schema = @Schema(type = "string", format = "binary")),
             headers = {
                     @Header(name = "ETag", description = "Quoted revision identifier", schema = @Schema(type = "string")),

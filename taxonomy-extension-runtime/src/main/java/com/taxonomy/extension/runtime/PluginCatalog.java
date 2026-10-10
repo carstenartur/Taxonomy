@@ -86,7 +86,7 @@ public final class PluginCatalog implements ExtensionCatalog {
         Generation generation = generation(identity);
         if (generation.draining) return;
         for (Generation dependent : generations.values()) {
-            if (!dependent.draining && dependent.descriptor.requires().stream()
+            if (dependent.descriptor.requires().stream()
                     .anyMatch(r -> r.id().equals(identity.id()))) {
                 throw new IllegalStateException("Plugin is required by " + dependent.descriptor.identity().id());
             }
@@ -120,6 +120,8 @@ public final class PluginCatalog implements ExtensionCatalog {
     }
 
     public synchronized int activeLeases(PluginIdentity identity) { return generation(identity).references; }
+
+    public synchronized boolean isDraining(PluginIdentity identity) { return generation(identity).draining; }
 
     private Generation generation(PluginIdentity identity) {
         Generation generation = generations.get(identity.id());

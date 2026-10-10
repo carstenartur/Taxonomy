@@ -1,56 +1,40 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
-import java.util.zip.ZipFile;
-import java.util.zip.ZipInputStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class InteropModulePackagingIT {
     @Test
-    void bootApplicationContainsOneInteropLibraryAndNoDuplicateInteropClasses() throws Exception {
-        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-        while (root != null && !Files.isRegularFile(root.resolve(".mvn/verification-suites.json"))) {
-            root = root.getParent();
-        }
-        assertThat(root).isNotNull();
-        List<Path> applications;
-        try (var files = Files.list(root.resolve("taxonomy-app/target"))) {
-            applications = files.filter(p -> p.getFileName().toString().startsWith("taxonomy-app-")
-                    && p.getFileName().toString().endsWith(".jar")).toList();
-        }
-        assertThat(applications).hasSize(1);
-        try (var jar = new ZipFile(applications.getFirst().toFile())) {
-            var names = jar.stream().map(entry -> entry.getName()).toList();
-            var libraries = names.stream().filter(n -> n.startsWith("BOOT-INF/lib/taxonomy-interop-")
-                    && n.endsWith(".jar")).toList();
-            assertThat(libraries).hasSize(1);
-            var ownedClasses = new HashSet<String>();
-            for (String name : names) {
-                if (!name.startsWith("BOOT-INF/lib/") || !name.endsWith(".jar")) {
-                    continue;
-                }
-                try (var library = new ZipInputStream(jar.getInputStream(jar.getEntry(name)))) {
-                    for (var entry = library.getNextEntry(); entry != null; entry = library.getNextEntry()) {
-                        String path = entry.getName();
-                        if (path.endsWith(".class") && List.of("interop").stream()
-                                .anyMatch(part -> path.startsWith("com/taxonomy/" + part + "/"))) {
-                            assertThat(name).as("library owning %s", path).isEqualTo(libraries.getFirst());
-                            assertThat(ownedClasses.add(path)).as("single occurrence of %s", path).isTrue();
-                        }
-                    }
+    void distributionShipsInteropOnlyInItsExternalFeature() throws Exception {
+        var ownedClasses = new HashSet<String>();
+        var registrations = new HashSet<String>();
+        var libraries = DistributionArchives.inspect(PackagedPluginSupport.repository(), (archive, path, bytes) -> {
+            if (path.startsWith("com/taxonomy/interop/") && path.endsWith(".class")) {
+                DistributionArchives.assertOwner(archive, "taxonomy-interop", true);
+                assertThat(ownedClasses.add(path)).as("single occurrence of %s", path).isTrue();
+            }
+            if (path.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")) {
+                for (String registration : new String(bytes.readAllBytes(), StandardCharsets.UTF_8)
+                        .lines().map(String::strip).filter(line -> line.startsWith("com.taxonomy.interop.")).toList()) {
+                    DistributionArchives.assertOwner(archive, "taxonomy-interop", true);
+                    assertThat(registrations.add(registration)).as("unique registration %s", registration).isTrue();
                 }
             }
-            assertThat(ownedClasses).contains("com/taxonomy/interop/IntegrationService.class",
-                    "com/taxonomy/interop/persistence/IntegrationStore.class",
-                    "com/taxonomy/interop/oslc/OslcProviderService.class");
-            for (String part : List.of("interop")) {
-                assertThat(names.stream().anyMatch(n -> n.startsWith("BOOT-INF/classes/com/taxonomy/" + part + "/"))).isFalse();
-            }
-            assertThat(names.stream().anyMatch(n -> n.startsWith("BOOT-INF/classes/db/migration/"))).isTrue();
+        });
+        DistributionArchives.assertSingleLibrary(libraries, "taxonomy-interop", true);
+        assertThat(ownedClasses).contains("com/taxonomy/interop/IntegrationService.class",
+                "com/taxonomy/interop/persistence/IntegrationStore.class",
+                "com/taxonomy/interop/oslc/OslcProviderService.class",
+                "com/taxonomy/interop/config/InteropFeatureAutoConfiguration.class");
+        assertThat(registrations).containsExactly("com.taxonomy.interop.config.InteropFeatureAutoConfiguration");
+        // The external feature still uses the shared host libraries, including the OSLC HTTP transport.
+        for (String dependency : List.of("taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api",
+                "taxonomy-workspace", "spring-context", "spring-tx", "springdoc-openapi-starter-common",
+                "httpclient5", "httpcore5", "httpcore5-h2")) {
+            DistributionArchives.assertSingleLibrary(libraries, dependency, false);
         }
     }
 }

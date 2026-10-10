@@ -353,12 +353,15 @@ class ClusterAnalysisStoreTest {
             this(sql -> sql);
         }
         Database(org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
-            bean.setDataSource(new DriverManagerDataSource("jdbc:hsqldb:mem:cluster-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
+            this("jdbc:hsqldb:mem:cluster-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "create-drop", inspector);
+        }
+        Database(String url, String schema, org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
+            bean.setDataSource(new DriverManagerDataSource(url, "sa", ""));
             bean.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
                     ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(),
                     AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
             bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false",
+            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", schema, "hibernate.search.enabled", "false",
                     "hibernate.session_factory.statement_inspector", inspector));
             bean.afterPropertiesSet();
             em = SharedEntityManagerCreator.createSharedEntityManager(bean.getObject());

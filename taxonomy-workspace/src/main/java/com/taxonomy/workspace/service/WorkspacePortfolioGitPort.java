@@ -12,6 +12,9 @@ import java.io.IOException;
  */
 public interface WorkspacePortfolioGitPort {
 
+    /** Check before any Git or database mutation, including merge-base initialization. */
+    default void requireAvailable() { }
+
     String commitPortfolio(String branch,
                            String message,
                            String username,

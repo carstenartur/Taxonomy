@@ -59,11 +59,13 @@ class DocumentTemplateReportDownloadIT {
                 "taxonomy-document-template-report-e2e", false)
                 .withFileFromPath("app.jar", applicationJar)
                 .withFileFromPath("plugins", applicationJar.getParent().resolve("plugins"))
+                .withFileFromPath("features", applicationJar.getParent().resolve("features"))
                 .withDockerfileFromBuilder(builder -> builder
                         .from(APP_RUNTIME_IMAGE)
                         .workDir("/app")
                         .copy("app.jar", "app.jar")
                         .copy("plugins", "plugins")
+                        .copy("features", "features")
                         .expose(8080)
                         .entryPoint("java", "-jar", "app.jar")
                         .build());

@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 /** Composes knowledge documents, archive compatibility, and workspace response context. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @RestController
 @RequestMapping("/api/dsl")
 @Tag(name = "Architecture DSL")

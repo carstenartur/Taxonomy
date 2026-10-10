@@ -233,7 +233,7 @@ class DocumentTemplateWebDavServletTest {
                 "decision-report",
                 "Decision report",
                 "decision-report.dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 "2026-08-22T12:00:00Z",
                 "alice",
                 content.length,

@@ -49,8 +49,17 @@ public class ReformulationRecoveryService {
     public Dispatch enqueue(Long projectId, Long requirementId, String proposalId, long revision,
             String provider, String model, String promptVersion, String schemaVersion, String prompt,
             Map<String,String> reconciliation, String endpointHash, String actor, WorkspaceContext context) {
+        return enqueue(projectId, requirementId, proposalId, revision, provider, model, promptVersion, schemaVersion,
+                prompt, reconciliation, endpointHash, actor, context, null);
+    }
+
+    @Transactional
+    public Dispatch enqueue(Long projectId, Long requirementId, String proposalId, long revision,
+            String provider, String model, String promptVersion, String schemaVersion, String prompt,
+            Map<String,String> reconciliation, String endpointHash, String actor, WorkspaceContext context,
+            com.taxonomy.extension.api.plugin.PluginInvocation providerBinding) {
         var run = proposals.beginRun(projectId, requirementId, proposalId, revision, provider, model,
-                promptVersion, schemaVersion, prompt, reconciliation, actor, context);
+                promptVersion, schemaVersion, prompt, reconciliation, actor, context, providerBinding);
         var dispatch = new Dispatch(projectId, requirementId, proposalId, run.actor(), context, run, endpointHash);
         em.persist(new ReformulationRecoveryLease(run.id(), json.write(dispatch)));
         return dispatch;

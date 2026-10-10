@@ -92,7 +92,7 @@ class DocumentTemplateRepositoryConcurrencyTest {
                 parts = new OoxmlTemplatePackageCodec().unpack(input).parts();
             }
             var manifest = new com.taxonomy.templates.api.TemplateManifest(
-                    1, "alpha", "Alpha", "alpha.dotx", OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                    1, "alpha", "Alpha", "alpha.dotx", com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                     Instant.EPOCH.toString(), "writer", parts.values().stream().mapToLong(value -> value.length).sum(),
                     parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
             var commit = new FutureTask<>(() -> writer.commit(manifest, parts, null, "writer", "Create alpha"));

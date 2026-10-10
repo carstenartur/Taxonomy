@@ -25,10 +25,18 @@ class GlobalExceptionHandlerTest {
     private static final String DEFAULT_INTERNAL_MESSAGE =
             "An internal error occurred. Please try again or check the server logs.";
 
+    @Test void unavailableContributionIsRetryableWithoutExposingItsIdentity() {
+        var failure=new com.taxonomy.extension.api.plugin.ExtensionUnavailableException(
+                new com.taxonomy.extension.api.plugin.ExtensionKey(com.taxonomy.shared.extension.ExtensionKind.EXPORT_FORMAT,"private-format"));
+        var response=handler(SAFE_INTERNAL_MESSAGE).handleExtensionUnavailable(failure,request("/api/diagram/current/format"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().toString()).doesNotContain("private-format");
+    }
+
     @Test
     void wordTemplateReadingScaleFailureIsClearConflict() {
         var failure=new com.taxonomy.reporting.render.document.WordReportLayoutException("Word template cannot fit detail at minimum 8pt reading scale");
-        var response=handler(SAFE_INTERNAL_MESSAGE).handleWordLayoutConflict(failure,request("/api/projects/1/snapshots/s/decision-report/docx"));
+        var response=new com.taxonomy.composition.report.ReportLayoutExceptionHandler().handleWordLayoutConflict(failure,request("/api/projects/1/snapshots/s/decision-report/docx"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).containsEntry("message",failure.getMessage());
     }

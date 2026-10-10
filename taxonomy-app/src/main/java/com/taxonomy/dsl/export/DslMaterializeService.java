@@ -40,6 +40,7 @@ import java.util.List;
  * projections in the exact selected repository/workspace, stores the source
  * document and updates projection-state diagnostics.</p>
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @Service
 public class DslMaterializeService {
 

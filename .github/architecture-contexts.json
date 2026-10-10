@@ -66,7 +66,9 @@
       "id": "templates",
       "targetModule": "taxonomy-templates",
       "packages": [
-        "com.taxonomy.templates.."
+        "com.taxonomy.templates",
+        "com.taxonomy.templates.config..",
+        "com.taxonomy.templates.backup.."
       ]
     },
     {

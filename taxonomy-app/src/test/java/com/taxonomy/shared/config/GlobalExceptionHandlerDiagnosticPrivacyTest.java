@@ -48,6 +48,9 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
     private static final String LOCALIZED_FORBIDDEN = "Localized access denied.";
 
     private final Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final Logger analysisLogger = (Logger) LoggerFactory.getLogger(com.taxonomy.composition.analysis.AnalysisDraftExceptionHandler.class);
+    private Level previousAnalysisLevel;
+    private boolean previousAnalysisAdditive;
     private final Logger pageNotFoundLogger = (Logger) LoggerFactory.getLogger("org.springframework.web.servlet.PageNotFound");
     private final ListAppender<ILoggingEvent> events = new ListAppender<>();
     private StaticMessageSource messages;
@@ -63,7 +66,12 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
         previousAdditive = logger.isAdditive();
         previousPageNotFoundLevel = pageNotFoundLogger.getLevel();
         previousPageNotFoundAdditive = pageNotFoundLogger.isAdditive();
+        previousAnalysisLevel = analysisLogger.getLevel();
+        previousAnalysisAdditive = analysisLogger.isAdditive();
         events.start();
+        analysisLogger.addAppender(events);
+        analysisLogger.setLevel(Level.TRACE);
+        analysisLogger.setAdditive(false);
         logger.addAppender(events);
         logger.setLevel(Level.TRACE);
         logger.setAdditive(false);
@@ -85,6 +93,9 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
         pageNotFoundLogger.detachAppender(events);
         pageNotFoundLogger.setLevel(previousPageNotFoundLevel);
         pageNotFoundLogger.setAdditive(previousPageNotFoundAdditive);
+        analysisLogger.detachAppender(events);
+        analysisLogger.setLevel(previousAnalysisLevel);
+        analysisLogger.setAdditive(previousAnalysisAdditive);
         events.stop();
         LocaleContextHolder.resetLocaleContext();
     }
@@ -221,9 +232,9 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
         return switch (kind) {
             case BAD_REQUEST -> handler.handleBadRequest(
                     new IllegalArgumentException(PRIVATE_MESSAGE, cause), request);
-            case DRAFT_VALIDATION -> handler.handleAnalysisDraftValidation(
+            case DRAFT_VALIDATION -> new com.taxonomy.composition.analysis.AnalysisDraftExceptionHandler().handleAnalysisDraftValidation(
                     new AnalysisDraftValidationException(PRIVATE_MESSAGE, cause), request);
-            case DRAFT_CONFLICT -> handler.handleAnalysisDraftConflict(
+            case DRAFT_CONFLICT -> new com.taxonomy.composition.analysis.AnalysisDraftExceptionHandler().handleAnalysisDraftConflict(
                     new AnalysisDraftConflictException(PRIVATE_MESSAGE, cause), request);
             case ACCESS_DENIED -> handler.handleAccessDenied(
                     new AccessDeniedException(PRIVATE_MESSAGE, cause), request);

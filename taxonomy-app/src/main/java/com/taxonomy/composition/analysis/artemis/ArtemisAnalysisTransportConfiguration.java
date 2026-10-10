@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
  * recovery is triggered by the first broker connection (startup), by a broker
  * reconnect and by the explicit admin repair — never by a timer.</p>
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "taxonomy.analysis.transport.mode", havingValue = ArtemisAnalysisSettings.MODE_ARTEMIS)
 public class ArtemisAnalysisTransportConfiguration {

@@ -82,12 +82,14 @@ public class LlmProviderConfig {
     private final LocalEmbeddingService localEmbeddingService;
     private Map<ProviderId, LlmTransportExtension> externalProviders = Map.of();
     private Environment environment;
+    private com.taxonomy.extension.api.plugin.ExtensionCatalog catalog;
 
     @Autowired
     void initializeExtensions(org.springframework.beans.factory.ObjectProvider<LlmTransportExtension> extensions,
                               Environment environment,
                               org.springframework.beans.factory.ObjectProvider<com.taxonomy.extension.api.plugin.ExtensionCatalog> catalogs) {
         var catalog = catalogs.getIfAvailable();
+        this.catalog = catalog;
         if (catalog == null) {
             configureExtensions(extensions.orderedStream().filter(e -> !(e instanceof BuiltinLlmTransportExtension)).toList(), environment);
         } else {
@@ -219,13 +221,81 @@ public class LlmProviderConfig {
         if (frozenProvider == null || frozenProvider.isBlank()) {
             throw new IllegalArgumentException("Frozen provider is required");
         }
-        boolean mock = "MOCK".equalsIgnoreCase(frozenProvider);
+        boolean mock = "MOCK".equalsIgnoreCase(frozenProvider.trim());
         ProviderId provider = mock ? null : requireRegisteredProvider(frozenProvider);
-        var scope = new RequestProviderScope();
+        com.taxonomy.extension.api.plugin.ExtensionLease<com.taxonomy.extension.api.llm.LlmProviderExtension> lease = null;
+        if (catalog != null) {
+            lease = catalog.acquire(new com.taxonomy.extension.api.plugin.ExtensionKey(
+                    com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, mock ? "LOCAL_ONNX" : provider.value()),
+                    com.taxonomy.extension.api.llm.LlmProviderExtension.class);
+        }
+        var scope = new RequestProviderScope(lease);
         if (provider == null) requestProviderOverride.remove(); else requestProviderOverride.set(provider);
         requestMockOverride.set(mock);
         providerScopes.set(scope);
         return scope;
+    }
+
+    /** Freeze the exact admitted artifact and public configuration before any quota reservation. */
+    public com.taxonomy.extension.api.plugin.PluginInvocation captureProviderBinding(String provider) {
+        boolean mock = "MOCK".equalsIgnoreCase(provider == null ? null : provider.trim());
+        ProviderId id = mock ? new ProviderId("LOCAL_ONNX") : requireRegisteredProvider(provider);
+        if (catalog == null) {
+            if (mock || LlmProvider.builtin(id).isPresent()) return null; // isolated/legacy built-in integrations
+            throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE");
+        }
+        try (var lease = catalog.acquire(new com.taxonomy.extension.api.plugin.ExtensionKey(
+                com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, id.value()),
+                com.taxonomy.extension.api.llm.LlmProviderExtension.class)) {
+            String revision = mock ? "mock-v1" : id.value().equals("LOCAL_ONNX")
+                    ? "onnx:" + getLocalModelId() : publicConfiguration(id);
+            var hash = java.security.MessageDigest.getInstance("SHA-256").digest(
+                    ((mock ? "MOCK" : id.value()) + "\0" + revision).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return new com.taxonomy.extension.api.plugin.PluginInvocation(lease.plugin(), java.util.HexFormat.of().formatHex(hash));
+        } catch (ProviderPluginUnavailableException unavailable) { throw unavailable; }
+        catch (Exception unavailable) { throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE"); }
+    }
+
+    private String publicConfiguration(ProviderId id) {
+        String operatorRevision = "builtin-v1";
+        if (LlmProvider.builtin(id).isEmpty()) {
+            operatorRevision = externalSetting(id, "configuration-revision", "");
+            if (!operatorRevision.matches("[A-Za-z0-9._-]{1,128}"))
+                throw new ProviderPluginUnavailableException("PROVIDER_CONFIGURATION_REVISION_REQUIRED");
+        }
+        String endpoint = id.value().equals("GEMINI") ? GEMINI_URL : getOpenAiCompatibleUrl(id);
+        try {
+            URI uri = URI.create(endpoint == null ? "" : endpoint);
+            // Credentials, query and fragment are never included, even if an old endpoint allowed them.
+            endpoint = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getPath(), null, null).toString();
+        } catch (Exception invalid) { endpoint = "plugin:" + id.value(); }
+        String model = id.value().equals("GEMINI") ? endpoint : getOpenAiCompatibleModel(id);
+        return operatorRevision + "\0" + endpoint + "\0" + model;
+    }
+
+    public RequestProviderScope withRequestProvider(String provider,
+            com.taxonomy.extension.api.plugin.PluginInvocation frozen) {
+        if (frozen == null) {
+            if (!"MOCK".equalsIgnoreCase(provider) && LlmProvider.builtin(new ProviderId(provider)).isEmpty())
+                throw new ProviderPluginUnavailableException("PROVIDER_BINDING_REQUIRED");
+        } else {
+            com.taxonomy.extension.api.plugin.PluginInvocation available;
+            try { available = captureProviderBinding(provider); }
+            catch (IllegalArgumentException unavailable) { throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE"); }
+            if (available == null || !frozen.plugin().equals(available.plugin()))
+                throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE");
+            if (!frozen.configurationRevision().equals(available.configurationRevision()))
+                throw new ProviderPluginUnavailableException("PROVIDER_CONFIGURATION_CHANGED");
+        }
+        try {
+            var scope = withRequestProvider(provider);
+            if (frozen != null && (scope.lease == null || !frozen.plugin().equals(scope.lease.plugin()))) {
+                scope.close(); throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE");
+            }
+            return scope;
+        } catch (com.taxonomy.extension.api.plugin.ExtensionUnavailableException unavailable) {
+            throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE");
+        }
     }
 
     public static final class RequestProviderScope implements AutoCloseable {
@@ -235,7 +305,10 @@ public class LlmProviderConfig {
         private final RequestProviderScope previousScope = providerScopes.get();
         private boolean closed;
 
-        private RequestProviderScope() { }
+        private final com.taxonomy.extension.api.plugin.ExtensionLease<com.taxonomy.extension.api.llm.LlmProviderExtension> lease;
+        private RequestProviderScope(com.taxonomy.extension.api.plugin.ExtensionLease<com.taxonomy.extension.api.llm.LlmProviderExtension> lease) {
+            this.lease = lease;
+        }
 
         @Override public void close() {
             if (closed) return;
@@ -246,6 +319,7 @@ public class LlmProviderConfig {
             if (previousMock == null) requestMockOverride.remove(); else requestMockOverride.set(previousMock);
             if (previousScope == null) providerScopes.remove(); else providerScopes.set(previousScope);
             closed = true;
+            if (lease != null) lease.close();
         }
     }
 

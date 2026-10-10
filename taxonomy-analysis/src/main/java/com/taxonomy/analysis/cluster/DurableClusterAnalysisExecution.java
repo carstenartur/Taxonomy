@@ -65,9 +65,12 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         if (localOnnx && embeddingSnapshots == null) {
             throw new IllegalArgumentException("LOCAL_ONNX requires frozen embedding admission support");
         }
+        var binding = command.providerBinding();
+        if (binding == null) binding = providers.captureProviderBinding(provider);
+        else try (var ignored = providers.withRequestProvider(provider, binding)) { /* Validate the job's original admission. */ }
         var admitted = new AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),
                 command.maxArchitectureNodes(), provider, command.username(), command.workspaceContext(),
-                command.provenance(), command.analysisScope());
+                command.provenance(), command.analysisScope(), binding);
         var available = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
         command.analysisScope().validateRoots(available);
         Map<TaxonomyShardRoot, String> scoring = new LinkedHashMap<>();

@@ -35,3 +35,19 @@ for plugin in "${plugins[@]}"; do
 done
 jq --argjson plugins "$plugin_manifest" '. + {plugins:$plugins}' target/ui-application/manifest.json > target/ui-application/manifest.next.json
 mv target/ui-application/manifest.next.json target/ui-application/manifest.json
+
+# The default UI acceptance always receives the complete startup distribution.
+mkdir -p target/ui-application/features
+feature_manifest='[]'
+for feature_id in analysis architecture interop portfolio reporting templates; do
+  mapfile -t feature_jars < <(find taxonomy-app/target/features -maxdepth 1 -type f -name "taxonomy-${feature_id}-[0-9]*.jar" | sort)
+  [[ ${#feature_jars[@]} -eq 1 ]] || { echo "::error::Expected one startup feature: $feature_id"; exit 1; }
+  feature_name=$(basename "${feature_jars[0]}")
+  [[ "$feature_name" =~ ^taxonomy-[A-Za-z0-9._+-]+\.jar$ ]] || exit 1
+  cp "${feature_jars[0]}" "target/ui-application/features/$feature_name"
+  feature_sha=$(sha256sum "${feature_jars[0]}" | awk '{print $1}')
+  feature_manifest=$(jq --arg id "$feature_id" --arg name "$feature_name" --arg sha256 "$feature_sha" '. + [{id:$id,name:$name,sha256:$sha256}]' <<< "$feature_manifest")
+  printf '%s  features/%s\n' "$feature_sha" "$feature_name" >> target/ui-application/SHA256SUMS
+done
+jq --argjson features "$feature_manifest" '. + {features:$features}' target/ui-application/manifest.json > target/ui-application/manifest.next.json
+mv target/ui-application/manifest.next.json target/ui-application/manifest.json

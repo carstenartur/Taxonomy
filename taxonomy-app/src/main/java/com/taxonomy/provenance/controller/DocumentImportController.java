@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /** REST API for bounded document import and source-provenance management. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Document Import & Provenance")

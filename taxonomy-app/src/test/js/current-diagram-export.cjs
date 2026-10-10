@@ -27,7 +27,7 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
         querySelector:()=>null,addEventListener(){},dispatchEvent(){}};
     const state={currentArchView:view,lastAnalyzedText:'original',currentScores:{A:90}};
     const window={TaxonomyState:state,setTimeout() {},confirm:()=>true};
-    const context={window,document,TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
+    const context={window,document,MutationObserver:class {observe(){} disconnect(){}},TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
         fetch:(url,options)=>{requests.push({url,options});return pending;},alert(message){alerts.push(message);},Element:class {}};
     vm.runInNewContext(source,context);
     return {elements,requests,alerts,state,resolve,reject,downloads,window,document,element,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
@@ -401,4 +401,30 @@ test('JSON export carries frozen evidence scope independently of next-run contro
     await new Promise(resolve=>setImmediate(resolve));
     assert.equal(f.downloads.length,1);
     assert.deepEqual(f.state.lastAnalysisScope,evidence);
+});
+
+test('a contributed ZIP uses its own file structure and the existing source-bound download route',async()=>{
+    const f=fixture();
+    f.document.querySelectorAll=()=>[];
+    f.elements.get('exportVisio').parentNode=f.element('div');
+    f.window.TaxonomyCapabilities={load:async()=>({features:['analysis'],exports:[{id:'example-bundle',displayName:'Bundle',fileExtension:'zip',contentType:'application/zip',binary:true,plugin:{artifactSha256:'a'.repeat(64)}}]})};
+    await f.api.refreshCapabilities();
+    const group=f.elements.get('pluginFormatChoice');assert.ok(group);
+    const selector=group.children[0].children[0];selector.value='example-bundle';
+    const download=group.children[1];const work=download.listeners.click();await Promise.resolve();
+    assert.equal(f.requests[0].url,'/api/diagram/current/example-bundle');
+    f.resolve(binaryResponse({headers:{get:name=>name.toLowerCase()==='content-type'?'application/zip':'attachment; filename="requirement-architecture.zip"'},blob:async()=>new Blob([packageBytes(['result.json'])])}));
+    await work;
+    assert.equal(f.downloads.length,1,'A generic ZIP must not require Sparx-specific entries');
+});
+
+for (const attachment of [true, false]) test(`contributed HTML requires an explicit download attachment (${attachment})`,async()=>{
+    const f=fixture();f.document.querySelectorAll=()=>[];
+    f.elements.get('exportVisio').parentNode=f.element('div');
+    f.window.TaxonomyCapabilities={load:async()=>({features:['analysis'],exports:[{id:'example-html',displayName:'HTML',fileExtension:'html',contentType:'text/html',binary:false,plugin:{artifactSha256:'a'.repeat(64)}}]})};
+    await f.api.refreshCapabilities();
+    const group=f.elements.get('pluginFormatChoice');group.children[0].children[0].value='example-html';
+    const work=group.children[1].listeners.click();await Promise.resolve();
+    f.resolve(binaryResponse({headers:{get:name=>name.toLowerCase()==='content-type'?'text/html':attachment?'attachment; filename="architecture.html"':null},blob:async()=>new Blob(['<!doctype html><html><body>Architecture</body></html>'])}));
+    await work;assert.equal(f.downloads.length,attachment?1:0);
 });

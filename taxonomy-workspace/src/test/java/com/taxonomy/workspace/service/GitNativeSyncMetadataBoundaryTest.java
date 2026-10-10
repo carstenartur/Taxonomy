@@ -79,7 +79,9 @@ class GitNativeSyncMetadataBoundaryTest {
 
         assertTrue(pull.getMessage().contains(message), pull.getMessage());
         assertTrue(push.getMessage().contains(message), push.getMessage());
-        verifyNoInteractions(factory, syncStates, merger, portfolio, contexts, versions);
+        verify(portfolio, times(2)).requireAvailable();
+        verifyNoMoreInteractions(portfolio);
+        verifyNoInteractions(factory, syncStates, merger, contexts, versions);
         verify(rows, never()).save(any(UserWorkspace.class));
         verify(catalog, never()).save(any(SystemRepository.class));
         assertNull(workspace.getCurrentCommit());

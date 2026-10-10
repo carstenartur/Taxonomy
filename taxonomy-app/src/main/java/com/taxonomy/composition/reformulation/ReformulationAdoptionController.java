@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 /** Dedicated two-stage command boundary, separate from proposal editing and generation. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @RestController
 @Tag(name = "Reformulation adoption", description = "Explicit preview and confirmed adoption; never automatic acceptance")
 @RequestMapping("/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}")

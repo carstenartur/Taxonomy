@@ -15,7 +15,7 @@ Contains only common, Spring-free extension metadata and feature contracts that 
 - import profile contracts
 - LLM provider contracts
 
-It may depend on `taxonomy-domain`, but it must not depend on:
+It may depend on `taxonomy-domain` and the framework-free `taxonomy-reporting-api`, but it must not depend on:
 
 - `taxonomy-app`
 - `taxonomy-export`
@@ -39,7 +39,8 @@ This SPI uses the format-neutral `DiagramModel`, whose complete `com.taxonomy.di
 ### Template and report ownership
 
 `taxonomy-templates` owns generic OOXML validation, materialization, Git storage,
-HTTP, WebDAV and Smart-HTTP adapters. Consumers use `com.taxonomy.templates.api`:
+HTTP, WebDAV and Smart-HTTP adapters. Its framework-free sibling
+`taxonomy-templates-api` owns `com.taxonomy.templates.api`, used by consumers:
 `DocumentTemplates`, its immutable data records and errors, and contributed
 `DocumentTemplateContract` / `DocumentTemplateReportPreview` ports. A template
 family contributes its seed, validation and optional preview through
@@ -104,16 +105,14 @@ Application adapters depend on their SPI/port; the SPI never references Spring a
 
 The stable lower-level direction remains:
 
-```text
-taxonomy-domain
-      ↑
-taxonomy-extension-api
-      ↑
-taxonomy-export ───────→ taxonomy-domain
-      ↑
-Spring feature adapters / taxonomy-app composition
-      └────────────────→ taxonomy-dsl where required
-```
+| Consumer | Allowed lower-level contracts |
+|---|---|
+| `taxonomy-reporting-api` | `taxonomy-domain` |
+| `taxonomy-extension-api` | Domain and reporting API |
+| `taxonomy-export` | Domain and extension API |
+| Spring features / host composition | Owned feature APIs and framework-free contracts |
+
+No contract module may depend on a feature implementation or the executable host.
 
 The Maven reactor and Enforcer/ArchUnit rules protect this direction:
 
@@ -132,7 +131,8 @@ Current examples:
 ```text
 com.taxonomy.export.spi            taxonomy-export contracts
 com.taxonomy.export.service        transitional Spring export adapters in taxonomy-app
-com.taxonomy.shared.extension      common extension metadata / current app discovery
+com.taxonomy.shared.extension      common extension metadata in taxonomy-extension-api
+com.taxonomy.shared.extension.runtime  app catalog/discovery adapter
 ```
 
 A new SPI must use a package that identifies its owning contract module. During bounded-context extraction, adapter packages may be renamed/moved so their owner is equally clear. This prevents split packages, ambiguous IDE navigation and future JPMS conflicts.
@@ -183,3 +183,56 @@ For every new extension family or extracted implementation context:
 5. add duplicate-ID/contract tests where extension discovery is involved;
 6. update the maintainability/module-boundary documentation;
 7. add or tighten Maven Enforcer and ArchUnit rules, including the cross-context dependency ratchet.
+
+
+### Optional startup installation and runtime lifecycle
+
+The executable host uses Boot `PropertiesLauncher`. The complete distribution contains
+`taxonomy-app-<version>.jar`, `features/` (six implementation JARs) and `plugins/`
+(the independently built Mermaid JAR). `taxonomy-templates-api` remains in the host;
+reporting has only a test dependency on the template implementation. Use
+`java -jar taxonomy-app-<version>.jar` from the distribution directory, or explicitly
+set `-Dloader.path=/operator/features`. Copy the complete distribution when building
+containers, native packages or UI acceptance artifacts; a host JAR alone is the core.
+
+Startup IDs are `templates`, `architecture`, `reporting`, `analysis`, `portfolio`,
+`interop`. Reporting requires templates; analysis requires architecture; portfolio
+requires analysis, architecture and reporting. Validation runs before beans, database
+access and HTTP listeners. Every packaged feature must match the host product version.
+Removing a feature means stopping the host, changing `features/` and restarting.
+Existing data, semantic history, Git checkpoints and snapshot authority remain with
+their owners. Retained databases require `update` (HSQLDB) or released migrations plus
+`validate` (PostgreSQL), never `create`/`create-drop`. Feature removal does not perform
+schema or data deletion. Restore the exact feature artifacts before accessing their data.
+
+`taxonomy.plugins.dynamic.enabled` defaults to false. An ADMIN may activate an
+operator-installed ID with `POST /api/admin/plugins/{id}/activate` and drain it with
+`POST /api/admin/plugins/{id}/deactivate?timeoutMillis=30000`; GET lists lifecycle state.
+Only DYNAMIC export/renderer contributions qualify. Existing authentication and CSRF
+policies apply. There is no remote upload, URL fetch, path input or plugin script UI.
+Cluster/Artemis/worker deployments and STARTUP contributions reject dynamic changes.
+A drain timeout returns 202 and retains the loader/resources until calls release their
+exact-version leases. Repeating deactivation completes cleanup; updates require a
+successful stop before replacing the operator JAR. Host-owned `/api/capabilities`
+returns a catalog revision, installed features and exact format artifact identities.
+
+New durable provider jobs retain plugin ID, version, SHA-256 and a non-secret
+configuration fingerprint. External providers require the operator setting
+`taxonomy.llm.providers.<lowercase-id>.configuration-revision`; advance it when
+configuration outside the host's model/endpoint identity changes. Credentials are
+excluded from the fingerprint. Legacy built-in commands remain readable; external
+commands without a binding fail closed. Workers stop before provider calls when
+identity/configuration differs; a retry does not silently rebind existing work.
+Cluster deployments must use compatible message readers on all workers before
+admitting plugin-bound work. PostgreSQL migration V33 adds nullable binding columns
+without manufacturing identity for existing portfolio jobs.
+
+Backup capture conservatively requires every data-owning startup feature. A reduced
+installation cannot prove an omitted owner's database is empty. New archives declare
+`plugin-prerequisites-v1` and exact packaged feature identities; readers reject missing
+or changed artifacts before exposing a verified archive to any writer. This does not
+make plugin JARs backup payloads. Keep the verified distribution alongside your backup.
+
+Domain backup contracts remain in `com.taxonomy.backup`; host-only archive policy,
+codec, inventory and authorization live in `com.taxonomy.backup.runtime`. Physical
+package ownership and framework-free SDK dependencies are checked in the normal reactor.

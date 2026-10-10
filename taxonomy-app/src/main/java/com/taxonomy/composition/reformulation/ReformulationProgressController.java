@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /** Inspection is GET-only, authenticated and scoped; it cannot change the original or proposal. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @RestController
 @Tag(name = "Reformulation progress")
 @RequestMapping("/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/synthesis-runs/{runId}")

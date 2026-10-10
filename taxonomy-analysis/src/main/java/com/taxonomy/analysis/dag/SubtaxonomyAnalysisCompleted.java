@@ -19,7 +19,7 @@ public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomySh
     // The shared wire vocabulary is finite; a syntactically valid unknown reason
     // must not reach a worker that can only handle these cooperative-stop outcomes.
     static final Pattern REASON = Pattern.compile(
-            "CANCELLED|MEMORY_PRESSURE|TIME_LIMIT|AWAITING_DECISION");
+            "CANCELLED|MEMORY_PRESSURE|TIME_LIMIT|AWAITING_DECISION|PROVIDER_PLUGIN_UNAVAILABLE|PROVIDER_CONFIGURATION_CHANGED|PROVIDER_BINDING_REQUIRED|PROVIDER_CONFIGURATION_REVISION_REQUIRED");
 
     public SubtaxonomyAnalysisCompleted {
         Objects.requireNonNull(envelope, "envelope");

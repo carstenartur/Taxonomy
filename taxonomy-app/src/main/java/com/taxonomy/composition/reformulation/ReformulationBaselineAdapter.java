@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.*;
 
 /** Read-only composition: snapshot catalogue/edges plus separately labelled current workspace/prompt content. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @Component
 public class ReformulationBaselineAdapter implements ReformulationBaselineContextPort {
     private final WorkspaceArchitectureReadPort architecture;

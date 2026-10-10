@@ -144,6 +144,12 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
 
     synchronized int openClassLoaders() { return manager.getPlugins().size(); }
 
+    public synchronized boolean isStarted(String id) { return requireInstalled(id).started; }
+    public synchronized boolean isDraining(String id) {
+        Installed plugin = requireInstalled(id);
+        return plugin.started && catalog.isDraining(plugin.descriptor.identity());
+    }
+
     @Override public synchronized void close() {
         if (closed) return;
         RuntimeException cleanupFailures = new IllegalStateException("Plugin shutdown cleanup failed");

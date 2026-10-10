@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /** High-level application facade for analysis-driven exports and score exchange. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Service
 public class ExportFacade {
 

@@ -12,7 +12,7 @@ public class AnalysisQuestionCheckpoint {
     @JoinColumn(name = "run_id", nullable = false, foreignKey = @ForeignKey(name = "fk_analysis_question_run")) AnalysisContinuationRun run;
     @Column(name = "question_key", nullable = false, length = 64) String questionKey;
     @Column(name = "input_hash", nullable = false, length = 64) String inputHash;
-    @Column(nullable = false, length = 64) String provider;
+    @Column(nullable = false, length = 128) String provider;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "node_codes", nullable = false) String nodeCodes;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "detail_json") String detailJson;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "prompt_text") String prompt;

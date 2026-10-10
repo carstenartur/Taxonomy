@@ -1,7 +1,7 @@
 package com.taxonomy.composition.backup;
 
-import com.taxonomy.backup.BackupAccessPolicy;
-import com.taxonomy.backup.BackupAuthorizationService;
+import com.taxonomy.backup.runtime.BackupAccessPolicy;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
 
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;

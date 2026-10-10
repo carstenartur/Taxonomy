@@ -11,6 +11,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /** Application-lifetime timers only; work and retry state belong to the database. */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio"})
 @Component
 public class ReformulationRecoveryCoordinator {
     private final ReformulationExecutionService execution;
