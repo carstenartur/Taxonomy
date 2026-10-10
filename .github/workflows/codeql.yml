@@ -11,6 +11,7 @@ on:
       - '.github/scripts/**'
       - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
+      - '.github/workflows/ci-cd.yml'
   push:
     branches: ['**']
     paths:
@@ -21,6 +22,7 @@ on:
       - '.github/scripts/**'
       - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
+      - '.github/workflows/ci-cd.yml'
   schedule:
     - cron: '19 3 * * 1'
   workflow_dispatch:

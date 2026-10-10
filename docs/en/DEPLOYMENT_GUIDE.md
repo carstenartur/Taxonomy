@@ -276,16 +276,29 @@ Complete [Deployment Checklist](DEPLOYMENT_CHECKLIST.md), including:
 
 ## Optional features and external plugins
 
-The standard distribution contains the executable `taxonomy-app` JAR, `features/`
+The release archive `taxonomy-<version>-distribution.tar.gz` contains `app.jar`, `features/`
 (six feature JARs) and `plugins/` (the independently built Mermaid adapter). Copy
 all three together. A lone host JAR intentionally provides only the fixed core.
 Docker and native packages include the complete distribution; native launchers
 resolve the two directories against the installation, independently of the working directory.
-After `./mvnw package`, run from the generated distribution:
+For a downloaded 1.5.0 release, verify the archive and start from its extracted directory:
 
 ```sh
+sha256sum --check taxonomy-1.5.0-distribution.tar.gz.sha256
+tar -xzf taxonomy-1.5.0-distribution.tar.gz
+cd taxonomy-1.5.0
+sha256sum --check SHA256SUMS
+java -jar app.jar
+```
+
+For a source build, run these commands from the repository root after `./mvnw package`.
+The version is read from the checkout so both release and development builds use the
+actual Maven artifact name:
+
+```sh
+taxonomy_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 cd taxonomy-app/target
-java -Dloader.path=features -Dtaxonomy.plugins.directory=plugins -jar taxonomy-app-1.4.1-SNAPSHOT.jar
+java -Dloader.path=features -Dtaxonomy.plugins.directory=plugins -jar "taxonomy-app-${taxonomy_version}.jar"
 ```
 
 Startup features are `templates`, `architecture`, `reporting`, `analysis`, `portfolio`
