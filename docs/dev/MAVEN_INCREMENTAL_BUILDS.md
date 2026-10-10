@@ -18,6 +18,29 @@ modules and modules whose dependency inputs changed execute normally. This keeps
 the dependency semantics of a full reactor build without paying the full work on
 every PR update.
 
+## Version identity
+
+`.mvn/maven-build-cache-config.xml` enables
+`projectVersioning.calculateProjectVersionChecksum`. Each module's project
+version therefore participates in its cache key. A transition from a development
+snapshot to a release, or to the next development snapshot, rebuilds that module
+even when its sources are unchanged. Repeated builds of the same version still
+reuse cached outputs.
+
+This preserves the exact host/feature version agreement checked during startup,
+as well as the versions embedded in `MANIFEST.MF`, `pom.properties` and filtered
+resources. Maven's default version normalization can otherwise restore an older
+artifact under new coordinates. Manifest rewriting alone does not protect all
+embedded metadata; keep the version in the cache key instead. See the Apache
+[project versioning parameters](https://maven.apache.org/extensions/maven-build-cache-extension/parameters.html).
+
+The Maven-owned `MavenBuildCacheVersioningIT` uses the repository's actual pinned
+extension and cache configuration in a small standalone project. It warms an
+isolated cache at the old version, checks the snapshot/release/next-snapshot
+transitions and verifies a cache hit at the unchanged final version. It removes
+build outputs between invocations while retaining the cache, and checks both JAR
+metadata and the restored physical classes directory.
+
 ## CI policy
 
 Pull requests run the normal `verify -Pci` command with cache reads enabled.

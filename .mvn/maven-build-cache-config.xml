@@ -6,6 +6,10 @@
         <enabled>true</enabled>
         <hashAlgorithm>XX</hashAlgorithm>
         <mandatoryClean>false</mandatoryClean>
+        <!-- Feature startup validates exact host/module versions. Rebuild on a
+             version change so manifests, Maven metadata and filtered resources
+             cannot come from an otherwise identical earlier release. -->
+        <projectVersioning calculateProjectVersionChecksum="true"/>
         <local>
             <maxBuildsCached>4</maxBuildsCached>
         </local>
