@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <!-- Deliberately independent: no host source tree or inherited host build is required. -->
-    <groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>1.5.0-SNAPSHOT</version>
+    <groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>1.5.0</version>
     <name>Taxonomy Mermaid Plugin</name>
     <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
     <properties>
