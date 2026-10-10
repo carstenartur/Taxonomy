@@ -328,9 +328,48 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  plugin-profile:
+    name: Complete plugin packaging profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Install verified Helm 3.21.0
+        run: bash .github/scripts/install-helm.sh
+      - name: Verify Docker availability
+        run: docker info
+      - name: Run the complete Maven-owned plugin profile
+        env:
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          VERSION_STATE_MODE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'development' }}
+          VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          mkdir -p target
+          set -o pipefail
+          ./mvnw -B verify -Pplugin-packaging-tests 2>&1 | tee target/plugin-profile-verification.log
+      - name: Upload complete plugin profile evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: plugin-profile-verification
+          path: |
+            target/plugin-profile-verification.log
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+            taxonomy-build/target/plugin-packaging-evidence.txt
+            taxonomy-build/target/plugin-sdk-verification.txt
+            taxonomy-build/target/architecture-module-graph.txt
+          if-no-files-found: error
+          retention-days: 90
+
   verify:
     name: Maven verification
-    needs: [application, core, observability, ui-contracts, ui-shards, interoperability-products]
+    needs: [application, core, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -350,8 +389,9 @@ jobs:
           UI_CONTRACTS_RESULT: ${{ needs.ui-contracts.result }}
           UI_SHARDS_RESULT: ${{ needs.ui-shards.result }}
           INTEROPERABILITY_RESULT: ${{ needs.interoperability-products.result }}
+          PLUGIN_PROFILE_RESULT: ${{ needs.plugin-profile.result }}
         run: |
-          for lane in APPLICATION_RESULT CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT INTEROPERABILITY_RESULT; do
+          for lane in APPLICATION_RESULT CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT INTEROPERABILITY_RESULT PLUGIN_PROFILE_RESULT; do
             [[ "${!lane}" == success ]] || { echo "::error::$lane ended with ${!lane}"; exit 1; }
           done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

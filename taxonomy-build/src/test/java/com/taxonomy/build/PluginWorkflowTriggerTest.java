@@ -1,6 +1,7 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -13,6 +14,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -124,12 +126,62 @@ class PluginWorkflowTriggerTest {
         assertThat(Files.readAllLines(output)).containsExactly("run=" + expected);
     }
 
+    @Test
+    void fullPluginProfileIsAnUnconditionalMavenOwnedPrerequisite() throws Exception {
+        Map<?, ?> jobs = map(workflow("ci-cd.yml").get("jobs"));
+        assertThat(jobs.containsKey("plugin-profile"))
+                .as("the full plugin-packaging-tests lifecycle needs a Docker-capable CI owner").isTrue();
+        Map<?, ?> profile = map(jobs.get("plugin-profile"));
+        assertThat(profile.get("if")).isNull();
+        assertThat(profile.get("continue-on-error")).isNull();
+        List<?> steps = (List<?>) profile.get("steps");
+        assertThat(steps.stream().map(PluginWorkflowTriggerTest::map)
+                .anyMatch(step -> "docker info".equals(step.get("run"))))
+                .as("the complete developer profile also runs container-backed browser tests").isTrue();
+        Map<?, ?> invocation = steps.stream().map(PluginWorkflowTriggerTest::map)
+                .filter(step -> String.valueOf(step.get("run")).contains("-Pplugin-packaging-tests"))
+                .findFirst().orElseThrow();
+        assertThat(invocation.get("if")).isNull();
+        assertThat(invocation.get("continue-on-error")).isNull();
+        assertThat((String) invocation.get("run"))
+                .contains("./mvnw -B verify -Pplugin-packaging-tests")
+                .doesNotContain("-Dtest=", "-Dit.test=", "-Dskip", "-DexcludedGroups=", "-Dtaxonomy.quality.skip=");
+        Map<?, ?> verification = map(jobs.get("verify"));
+        assertThat(((List<?>) verification.get("needs")).contains("plugin-profile")).isTrue();
+        assertThat(map(authoritativeLaneGate().get("env")).get("PLUGIN_PROFILE_RESULT"))
+                .isEqualTo("${{ needs.plugin-profile.result }}");
+    }
+
+    @ParameterizedTest(name = "full plugin profile result {0} -> aggregate exit {1}")
+    @CsvSource({"success, 0", "failure, 1", "cancelled, 1", "skipped, 1", "'', 1"})
+    void actualAggregateGateRejectsEveryIncompletePluginProfile(String result, int expectedExit)
+            throws Exception {
+        Map<?, ?> gate = authoritativeLaneGate();
+        Map<String, String> environment = new HashMap<>();
+        map(gate.get("env")).keySet().forEach(key -> environment.put(key.toString(), "success"));
+        environment.put("PLUGIN_PROFILE_RESULT", result);
+        runExpectingExit(temporary, environment, expectedExit,
+                "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", (String) gate.get("run"));
+    }
+
+    private Map<?, ?> authoritativeLaneGate() throws Exception {
+        Map<?, ?> verification = map(map(workflow("ci-cd.yml").get("jobs")).get("verify"));
+        return ((List<?>) verification.get("steps")).stream().map(PluginWorkflowTriggerTest::map)
+                .filter(step -> "Require every authoritative lane".equals(step.get("name")))
+                .findFirst().orElseThrow();
+    }
+
     private void commit(Path repository, String file) throws Exception {
         run(repository, Map.of(), "git", "add", "--", file);
         run(repository, Map.of(), "git", "-c", "commit.gpgSign=false", "commit", "--quiet", "-m", "fixture");
     }
 
     private String run(Path directory, Map<String, String> environment, String... command) throws Exception {
+        return runExpectingExit(directory, environment, 0, command);
+    }
+
+    private String runExpectingExit(Path directory, Map<String, String> environment,
+                                   int expectedExit, String... command) throws Exception {
         Path log = temporary.resolve("command-output.txt");
         ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile())
                 .redirectErrorStream(true).redirectOutput(log.toFile());
@@ -144,7 +196,7 @@ class PluginWorkflowTriggerTest {
         try {
             assertThat(process.waitFor(30, TimeUnit.SECONDS)).as("process completed: %s", List.of(command)).isTrue();
             String output = Files.readString(log);
-            assertThat(process.exitValue()).as("process %s: %s", List.of(command), output).isZero();
+            assertThat(process.exitValue()).as("process %s: %s", List.of(command), output).isEqualTo(expectedExit);
             return output;
         } finally {
             if (process.isAlive()) process.destroyForcibly();

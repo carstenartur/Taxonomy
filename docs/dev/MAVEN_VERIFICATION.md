@@ -157,6 +157,27 @@ Valid suite names, profiles and focused commands are defined by
 evidence is written below `target/ui-verification/`; Java integration results are
 written to the normal Failsafe report directory.
 
+## Complete plugin profile
+
+```bash
+./mvnw -B verify -Pplugin-packaging-tests
+```
+
+This command runs the full reactor lifecycle, including ordinary unit tests,
+before the independent SDK build and packaged plugin/optional-feature integration
+tests. It therefore also needs Docker for the existing container-backed browser
+tests and Helm for the build contracts. A focused Failsafe invocation proves the
+selected packaging cases but does not prove this standalone lifecycle.
+
+The existing `ci-cd.yml` workflow runs this command in its `plugin-profile` job.
+The final Maven verification gate requires that job to succeed; failure,
+cancellation, a skipped job or a missing result blocks completion. The job uses
+the checked-in Maven profile without a separate workflow-owned test selector.
+Its `plugin-profile-verification` artifact retains the Maven log, Surefire and
+Failsafe reports, independent SDK result and host/plugin identity evidence.
+These results supplement the canonical `ci` profile and digest-bound UI shards;
+overlapping test executions must not be added to the canonical test count.
+
 ## UI process isolation and timings
 
 The Maven-owned launcher executes every selected browser scenario but does not
@@ -216,7 +237,7 @@ must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
-| `ci-cd.yml` | Build one commit-bound application, run the core Maven `-Pci` lane, parallel UI shards and other required lanes, then gate all digest-bound evidence |
+| `ci-cd.yml` | Build one commit-bound application, run the core Maven `-Pci` lane, full `plugin-packaging-tests` lifecycle, parallel UI shards and other required lanes, then gate all results and digest-bound evidence |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
 | `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |

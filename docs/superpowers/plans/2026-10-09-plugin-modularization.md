@@ -268,6 +268,27 @@ nicht als Ausführungen auf seinem Head bezeichnet. Die konkreten Heads, Läufe 
 noch offenen Voraussetzungen stehen weiterhin in #628 und der bestehenden
 Architekturdatei.
 
+## Vollständiger Plugin-Profillauf in der vorhandenen CI
+
+Die im Plan ausdrücklich verlangte vollständige Profilabnahme hat jetzt einen
+Ausführungsort mit den nötigen Docker-/Helm-Voraussetzungen. Der zusätzliche Job
+`plugin-profile` im vorhandenen `ci-cd.yml` führt unverändert
+`./mvnw -B verify -Pplugin-packaging-tests` aus. Das bestehende Abschluss-Gate
+verlangt seinen Erfolg; Fehler, Abbruch, Skip und fehlendes Ergebnis verhindern
+den Gesamt-PASS. Keine neue Workflowdatei, kein zusätzlicher Testselektor und
+keine geänderte Maven-Testauswahl. Das Profil bleibt zusätzlich im kanonischen
+Build enthalten; überlappende Testanzahlen werden nicht addiert.
+
+Der Maven-Vertragstest reproduziert zuvor fünf Assertion-Fehlschläge in 34 Fällen
+(fehlender Job sowie vier unzulässig akzeptierte Ergebniszustände), ohne Fehler
+oder Skips. Nach der Korrektur besteht derselbe oben dokumentierte Befehl mit
+265 Fällen: 34 Workflowverträge, sieben Authority-Tests und 224 verpflichtende
+Architekturguards; keine Fehler oder Skips, 21 Reaktoreinträge, 2:06 Minuten.
+Der tatsächliche Shellbefehl des Abschluss-Gates wird für alle fünf Zustände
+ausgeführt. Unabhängiger Review: keine Befunde. Der erste vollständige Lauf des
+neuen Jobs und die endgültige CI-Abnahme sind weiterhin abzuwarten; die lokalen
+Vertragstests sind kein vollständiger Plugin-Profil-PASS.
+
 ## Abnahmekriterien des Gesamtauftrags
 
 Erledigt erst, wenn alle zwölf Tasks samt Nachweisen abgeschlossen sind: bestehende Funktionalität der Vollausstattung; keine Repository-Typen in Template-API; vollständige Reportmodelle; neuer deterministischer Provider ohne Enumänderung; unabhängig gebautes Mermaid-JAR im unveränderten Host; echte Abwesenheit optionaler Fach-JARs; sicheres dynamisches Laden/Drain nur im zugesagten Umfang; UI-/Security-/Backup-/Restart-/Cluster-Negativfälle; aktueller vollständiger Build und präziser PR-Nachweis.
