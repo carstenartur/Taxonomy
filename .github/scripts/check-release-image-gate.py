@@ -13,6 +13,11 @@ def require(text: str, needle: str, failures: list[str]) -> None:
         failures.append(f"deploy-release.yml is missing {needle!r}")
 
 
+def step_block(workflow: str, start: int) -> str:
+    end = workflow.find("\n      - name:", start)
+    return workflow[start:] if end < 0 else workflow[start:end]
+
+
 def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
@@ -46,6 +51,7 @@ def main() -> int:
         require(workflow, needle, failures)
 
     try:
+        builder = workflow.index("- name: Set up release image builder")
         build = workflow.index("- name: Build and publish immutable release image")
         scan = workflow.index("- name: Scan immutable release image digest")
         bind = workflow.index(
@@ -58,11 +64,29 @@ def main() -> int:
         publish = workflow.index(
             "- name: Publish complete release and trigger deployment"
         )
-        if not final_gates < build < scan < bind < archive < publish:
+        if not final_gates < builder < build < scan < bind < archive < publish:
             failures.append(
-                "the exact final main gate matrix must pass before the release image is "
-                "built, digest-scanned, evidence-bound, archived and published"
+                "the exact final main gate matrix must pass before the release builder "
+                "is configured and the image is built, digest-scanned, evidence-bound, "
+                "archived and published"
             )
+
+        builder_block = step_block(workflow, builder)
+        for needle in (
+            "id: release_builder",
+            "if: steps.release_parameters.outputs.dry_run != 'true'",
+            "uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069",
+            "driver: docker-container",
+            "buildkitd-config-inline: |",
+            '[registry."docker.io"]',
+            'mirrors = ["mirror.gcr.io"]',
+        ):
+            require(builder_block, needle, failures)
+        require(
+            step_block(workflow, build),
+            "builder: ${{ steps.release_builder.outputs.name }}",
+            failures,
+        )
 
         scan_block = workflow[scan:bind]
         if "exit-code: '1'" not in scan_block:
@@ -95,7 +119,8 @@ def main() -> int:
         return 1
 
     print(
-        "Immutable release image gate passed: provenance/SBOM attestations are enabled, "
+        "Immutable release image gate passed: a container Buildx builder is selected, "
+        "provenance/SBOM attestations are enabled, "
         "the pushed digest is vulnerability-scanned, release evidence is digest-bound, "
         "and publication occurs only after those checks."
     )
