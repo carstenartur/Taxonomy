@@ -9,6 +9,7 @@ import com.tngtech.archunit.library.dependencies.SliceAssignment;
 import com.tngtech.archunit.library.dependencies.SliceIdentifier;
 
 import java.util.Set;
+import java.nio.file.Path;
 
 import static com.tngtech.archunit.base.DescribedPredicate.alwaysTrue;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
@@ -48,32 +49,7 @@ class ArchitectureCycleBoundaryTest {
 
     @ArchTest
     static final ArchRule coreDomainSlicesShouldBeFreeOfUndocumentedCycles = slices()
-            .assignedFrom(new SliceAssignment() {
-                @Override
-                public SliceIdentifier getIdentifierOf(JavaClass javaClass) {
-                    String packageName = javaClass.getPackageName();
-                    if (packageName.equals("com.taxonomy.extension.api") || packageName.startsWith("com.taxonomy.extension.api."))
-                        return SliceIdentifier.of("extension-api");
-                    if (packageName.equals("com.taxonomy.extension.runtime") || packageName.startsWith("com.taxonomy.extension.runtime."))
-                        return SliceIdentifier.of("extension-runtime");
-                    if (packageName.equals("com.taxonomy.export.spi") || packageName.startsWith("com.taxonomy.export.spi.")
-                            || ArchitectureSourceOwnership.belongsTo(ArchitectureSourceOwnership.repository(), javaClass, "taxonomy-export"))
-                        return SliceIdentifier.of("export-core");
-                    if (packageName.equals("com.taxonomy.reporting.api")
-                            || packageName.startsWith("com.taxonomy.reporting.api.")) {
-                        return SliceIdentifier.of("reporting-api");
-                    }
-                    if (!packageName.startsWith("com.taxonomy.")) {
-                        return SliceIdentifier.ignore();
-                    }
-                    return SliceIdentifier.of(packageName.substring("com.taxonomy.".length()).split("\\.")[0]);
-                }
-
-                @Override
-                public String getDescription() {
-                    return "Taxonomy contexts with separate SDK, loader and export implementation owners";
-                }
-            })
+            .assignedFrom(sliceAssignment(ArchitectureSourceOwnership.repository()))
             .should().beFreeOfCycles()
             // Structural contracts are intentionally shared and are not bounded contexts.
             .ignoreDependency(resideInAnyPackage(STRUCTURAL_SHARED_PACKAGES), alwaysTrue())
@@ -114,4 +90,34 @@ class ArchitectureCycleBoundaryTest {
             .ignoreDependency(resideInAnyPackage(DSL_ADAPTER_PACKAGES), alwaysTrue())
             .ignoreDependency(alwaysTrue(), resideInAnyPackage(DSL_ADAPTER_PACKAGES))
             .because("new core-domain cycles require a reviewed, expiring ledger entry");
+    static SliceAssignment sliceAssignment(Path repository) {
+        return new SliceAssignment() {
+                @Override
+                public SliceIdentifier getIdentifierOf(JavaClass javaClass) {
+                    String packageName = javaClass.getPackageName();
+                    if (packageName.equals("com.taxonomy.extension.api") || packageName.startsWith("com.taxonomy.extension.api."))
+                        return SliceIdentifier.of("extension-api");
+                    if (packageName.equals("com.taxonomy.extension.runtime") || packageName.startsWith("com.taxonomy.extension.runtime."))
+                        return SliceIdentifier.of("extension-runtime");
+                    if (packageName.equals("com.taxonomy.export.spi") || packageName.startsWith("com.taxonomy.export.spi.")
+                            || ArchitectureSourceOwnership.belongsTo(repository, javaClass, "taxonomy-export"))
+                        return SliceIdentifier.of("export-core");
+                    if (packageName.equals("com.taxonomy.reporting.api")
+                            || packageName.startsWith("com.taxonomy.reporting.api.")) {
+                        return SliceIdentifier.of("reporting-api");
+                    }
+                    if (!packageName.startsWith("com.taxonomy.")) {
+                        return SliceIdentifier.ignore();
+                    }
+                    String backupSlice = ArchitectureSourceOwnership.backupSlice(repository, javaClass);
+                    if (backupSlice != null) return SliceIdentifier.of(backupSlice);
+                    return SliceIdentifier.of(packageName.substring("com.taxonomy.".length()).split("\\.")[0]);
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Taxonomy contexts with separate SDK, loader and export implementation owners";
+                }
+        };
+    }
 }
