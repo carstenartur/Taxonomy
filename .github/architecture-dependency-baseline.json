@@ -213,6 +213,48 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "provenance",
+      "toPackage": "com.taxonomy.provenance.backup",
+      "classDependencyCount": 9
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.versioning.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
+      "classDependencyCount": 56
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.backup.restore",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.storage",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
@@ -391,7 +433,7 @@
       "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.backup",
-      "classDependencyCount": 13
+      "classDependencyCount": 20
     },
     {
       "fromContext": "app-composition",

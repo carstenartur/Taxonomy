@@ -2,9 +2,11 @@
 
 This document describes the P05 adapters. The optional production current-export
 composition now closes their selected references and captures existing Git stands
-through the shared coordinator. The preview remains disabled by default; history
-and portable restore acceptance have their own remaining delivery steps. See
-`backup-jobs.md` for the supported current-export selections and retained-content
+through the shared coordinator. Repository-history composition additionally closes
+retained Git/editor versions and their historical source dependencies. The preview
+remains disabled by default; full-installation and portable restore acceptance
+have their own remaining delivery steps. See
+`backup-jobs.md` for supported export selections and retained-content
 configuration. The knowledge adapter is described in `backup-data-ownership.md`.
 
 `CompositeBackupDataContributor` checks the declared adapter coverage against

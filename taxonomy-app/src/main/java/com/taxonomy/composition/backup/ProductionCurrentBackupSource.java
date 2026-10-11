@@ -30,7 +30,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.*;
 
-/** Complete production portable stand assembly. Every read runs under the shared installation capture fence. */
+/** Production portable capture assembly. Every read runs under the shared installation capture fence. */
 public final class ProductionCurrentBackupSource implements BackupCaptureSource {
     private final DataSource database;private final EntityManagerFactory entities;
     private final BackupMaintenanceLease fence;private final BackupAuthorizationService authorization;private final BackupAccessPolicy access;
@@ -47,8 +47,11 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         this.additional=List.copyOf(additional);this.buildCommit=Objects.requireNonNull(buildCommit);jdbc=new JdbcTemplate(database);metadata=new BoundedBackupMetadata(database);
     }
     @Override public void validateRequest(BackupRequest request) {
-        if(!Set.of(BackupProfile.CURRENT_STATE,BackupProfile.SELECTED_VERSION,BackupProfile.INSTALLATION_CURRENT).contains(request.profile())
-                || !Set.of(GitRepresentation.NONE,GitRepresentation.BUNDLE).contains(request.gitRepresentation())
+        boolean current=Set.of(BackupProfile.CURRENT_STATE,BackupProfile.SELECTED_VERSION,BackupProfile.INSTALLATION_CURRENT).contains(request.profile());
+        boolean history=request.profile()==BackupProfile.REPOSITORY_HISTORY;
+        if((!current && !history)
+                || current && !Set.of(GitRepresentation.NONE,GitRepresentation.BUNDLE).contains(request.gitRepresentation())
+                || history && !Set.of(GitRepresentation.BUNDLE,GitRepresentation.BARE,GitRepresentation.WORKTREE).contains(request.gitRepresentation())
                 || request.secrets()!=SecretsSelection.EXCLUDE || request.scope().selectedRepositories().size()>200)
             throw new IllegalArgumentException("This portable export selection is unsupported");
         prerequisites.requireCapture();
@@ -60,20 +63,23 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         try {
             var repositories = metadata.read("select repository_id,display_name from system_repository order by repository_id",
                     List.of(), BackupLimits.MAX_ITEMS, () -> {}, r -> new Choice(new BackupRepositoryKey(r.getString(1), null), r.getString(2)));
-            for (var row : repositories) if (access.canRead(actor, row.key())) choices.add(choice(row));
+            for (var row : repositories) if (access.canRead(actor, row.key())) choices.add(choice(row,actor));
             var workspaces = metadata.read("select source_repository_id,workspace_id,display_name from user_workspace order by source_repository_id,workspace_id",
                     List.of(), BackupLimits.MAX_ITEMS - repositories.size(), () -> {}, r -> new Choice(new BackupRepositoryKey(r.getString(1), r.getString(2)), r.getString(3)));
-            for (var row : workspaces) if (access.canRead(actor, row.key())) choices.add(choice(row));
+            for (var row : workspaces) if (access.canRead(actor, row.key())) choices.add(choice(row,actor));
         } catch (IOException unavailable) { throw new IllegalStateException("Backup selection inventory is unavailable"); }
         if(access.hasCapability(actor,BackupCapability.EXPORT_INSTALLATION,new BackupScope.Installation()))
-            choices.add(new BackupExportOptions.Selection("installation",null,null,true,""));
+            choices.add(new BackupExportOptions.Selection("installation",null,null,true,"",false));
         if(choices.size()>BackupLimits.MAX_ITEMS)throw new IllegalStateException("Backup selection inventory is too large");
         return new BackupExportOptions(choices);
     }
-    private static BackupExportOptions.Selection choice(Choice choice) {
+    private BackupExportOptions.Selection choice(Choice choice,PrincipalId actor) {
         var key=choice.key();String stable=com.taxonomy.identity.StableIdentityHash.sha256(key.repositoryId()+"\u0000"+Objects.toString(key.workspaceId(),""));
+        BackupScope scope=key.workspaceId()==null?new BackupScope.Repositories(Map.of(key.repositoryId(),Set.of()))
+                :new BackupScope.Workspace(key.repositoryId(),key.workspaceId());
         return new BackupExportOptions.Selection(stable,key.repositoryId(),key.workspaceId(),false,
-                choice.label()+" · "+key.repositoryId()+(key.workspaceId()==null?"":" / "+key.workspaceId()));
+                choice.label()+" · "+key.repositoryId()+(key.workspaceId()==null?"":" / "+key.workspaceId()),
+                access.hasCapability(actor,BackupCapability.EXPORT_HISTORY,scope));
     }
     private record Choice(BackupRepositoryKey key,String label) { }
     @Override public CapturedBackup capture(AuthorizedBackupRequest request,Path spool,ArchiveProgress progress)throws IOException {
@@ -84,13 +90,17 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         var gitRepositories=new ExistingGitBackupRepositories(database,entities.unwrap(org.hibernate.SessionFactory.class));
         var stand=new GitStandBackupSource(database,gitRepositories,projector);
         var limits=new GitStandBackupSource.Limits(new GitTreeCapture.Limits(BackupLimits.MAX_ITEMS,2L<<30,10L<<30),PortableRows.MAX_RECORD_BYTES);
-        var git=new GitStandBackupContributor(stand,limits);var workspace=new WorkspaceBackupContributor(database,projector);
+        boolean historical=request.request().profile().includesHistory();
+        var currentGit=new GitStandBackupContributor(stand,limits);
+        var historyGit=new GitHistoryBackupContributor(gitRepositories,stand,new WorkspaceGitHistoryReferences(database,gitRepositories),GitHistoryCapture.Limits.defaults(),limits);
+        BackupDataContributor git=historical?historyGit:currentGit;
+        var workspace=new WorkspaceBackupContributor(database,projector);
         var portfolio=new PortfolioBackupContributor(database);var analysis=new AnalysisBackupContributor(database,actor.scopeKey());
-        var closure=new ReferenceClosure(stand,limits,portfolio,analysis,gitRepositories);
+        var closure=new ReferenceClosure(stand,limits,portfolio,analysis,gitRepositories,workspace,historical?historyGit:null);
         var delegates=new ArrayList<BackupDataContributor>();
         delegates.add(workspace);delegates.add(git);delegates.add(new StandOwnership("workspace","external.git-servers","external-git",true));
         delegates.add(portfolio);delegates.add(new StandOwnership("portfolio","storage.git.portfolio","git-ownership",false));
-        delegates.add(analysis);delegates.add(new ArchitectureBackupContributor(database,projector,git::documents));
+        delegates.add(analysis);delegates.add(new ArchitectureBackupContributor(database,projector,historical?historyGit::documents:currentGit::documents));
         delegates.add(new KnowledgeBackupContributor(database,portfolio::analysisReferences,closure::knowledge));
         delegates.add(new CatalogueSourceBackupContributor(database,snapshot->Set.of()));
         delegates.add(new TemplateBackupContributor(templates));
@@ -118,12 +128,13 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
                 for(var entity:entities.getMetamodel().getEntities())if(entity.getJavaType().getName().startsWith("com.taxonomy."))categories.add(entity.getJavaType().getName());
                 inventory.requireClassified(categories);
                 var keys=authorized.request().scope() instanceof BackupScope.Installation?installationKeys(checkpoint):authorized.request().scope().selectedRepositories();
-                var repositories=git.inspect(authorized,keys,checkpoint);
+                var repositories=historical?historyGit.inspect(authorized,keys,checkpoint):currentGit.inspect(authorized,keys,checkpoint);
                 if(authorized.request().profile()==BackupProfile.SELECTED_VERSION)closure.selectedDocuments(authorized,repositories,checkpoint);
                 String installation=jdbc.queryForObject("select installation_id from principal_installation where registry_key='local'",String.class);
                 return new BackupSnapshotCoordinator.CapturePlan(environment.getRequiredProperty("info.app.version"),
                         buildCommit,installation,repositories,components,
-                        List.of("external Git services and deployment credentials remain operator-owned; captured local stands do not back up remote servers"),List.of());
+                        List.of("external Git services and deployment credentials remain operator-owned; captured local stands do not back up remote servers"),List.of(),
+                        SourceDatabaseWitness.capture(database, checkpoint));
             }
         };
         return new BackupSnapshotCoordinator(fence,authorization,discovery,contributors,spool,
@@ -142,7 +153,8 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
     }
     private final class ReferenceClosure {
         private final GitStandBackupSource source;private final GitStandBackupSource.Limits limits;private final PortfolioBackupContributor portfolio;private final AnalysisBackupContributor analysis;private final ExistingGitBackupRepositories repositories;private BackupCheckpoint checkpoint;
-        ReferenceClosure(GitStandBackupSource source,GitStandBackupSource.Limits limits,PortfolioBackupContributor portfolio,AnalysisBackupContributor analysis,ExistingGitBackupRepositories repositories){this.source=source;this.limits=limits;this.portfolio=portfolio;this.analysis=analysis;this.repositories=repositories;}
+        private final WorkspaceBackupContributor workspace;private final GitHistoryBackupContributor history;
+        ReferenceClosure(GitStandBackupSource source,GitStandBackupSource.Limits limits,PortfolioBackupContributor portfolio,AnalysisBackupContributor analysis,ExistingGitBackupRepositories repositories,WorkspaceBackupContributor workspace,GitHistoryBackupContributor history){this.source=source;this.limits=limits;this.portfolio=portfolio;this.analysis=analysis;this.repositories=repositories;this.workspace=workspace;this.history=history;}
         KnowledgeBackupContributor.Selection knowledge(SnapshotContext snapshot)throws IOException {
             var references=new PortableKnowledgeReferences();var checkpoint=Objects.requireNonNull(this.checkpoint,"Capture reference fence");
             ProjectedBackupRecords.inspect(portfolio,snapshot,checkpoint,(dataset,record)->{
@@ -157,11 +169,33 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
                     default->{ /* Frozen inputs own their complete snapshot; diagnostics contain display labels. */ }
                 }
             });
-            for(var key:snapshot.repositories().keySet())try(var stand=source.open(snapshot.authorization(),key,limits,checkpoint)) {
-                if(!stand.state().equals(snapshot.repositories().get(key)))throw new IOException("Git reference evidence changed during capture");
-                for(var file:stand.files())if(file.path().toLowerCase(Locale.ROOT).endsWith(".taxdsl")) {
-                    var bytes=new ByteArrayOutputStream();stand.copy(file,bytes,checkpoint);
-                    document(new TaxDslParser().parse(bytes.toString(StandardCharsets.UTF_8),file.path()),references,false);
+            if(history!=null) {
+                history.visitDocuments(snapshot,GitHistoryCapture.DocumentLimits.defaults(),checkpoint,(reference,body)->{
+                    String original=StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(body)).toString();
+                    document(new TaxDslParser().parse(original,reference.path()),references,false);
+                });
+                // These are original database bodies, not fabricated commit/path document proofs.
+                ProjectedBackupRecords.inspect(workspace,snapshot,checkpoint,(dataset,record)->{
+                    List<String> fields=switch(dataset) {
+                        case "working-states","checkpoints"->List.of("dsl");
+                        case "operations"->List.of("beforeDsl","afterDsl");
+                        default->List.of();
+                    };
+                    for(String field:fields) {
+                        checkpoint.check();var body=record.get(field);
+                        if(body==null || body.isNull())continue;
+                        if(!body.isTextual())throw new IOException("Historical editor document has an invalid body");
+                        document(new TaxDslParser().parse(body.asText(),"workspace-"+dataset+"-"+field+".taxdsl"),references,false);
+                    }
+                });
+            } else {
+                for(var key:snapshot.repositories().keySet())try(var stand=source.open(snapshot.authorization(),key,limits,checkpoint)) {
+                    if(!stand.state().equals(snapshot.repositories().get(key)))throw new IOException("Git reference evidence changed during capture");
+                    for(var file:stand.files())if(file.path().toLowerCase(Locale.ROOT).endsWith(".taxdsl")) {
+                        var bytes=new ByteArrayOutputStream();stand.copy(file,bytes,checkpoint);
+                        document(new TaxDslParser().parse(bytes.toString(StandardCharsets.UTF_8),file.path()),references,false);
+                    }
                 }
             }
             return new KnowledgeBackupContributor.Selection(references.codes,references.hypotheses);
@@ -189,7 +223,7 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
                 }
                 for(String property:List.of("nodeCode","sourceCode","targetCode","taxonomyRoot"))references.code(block.property(property));
                 String hypothesis=block.getExtensions().get("x-hypothesis-id");
-                if(hypothesis!=null){if(!hypothesis.matches("[1-9][0-9]*"))throw new IOException("Invalid document hypothesis identity");references.hypotheses.add(new SourceRecordId("knowledge.hypothesis",hypothesis));}
+                if(hypothesis!=null)references.hypothesis(hypothesis);
             }
             var requirements = new HashSet<String>();
             for (var block : document.getBlocks()) if (block.getKind().equals("requirement") && block.getHeaderTokens().size() == 1)

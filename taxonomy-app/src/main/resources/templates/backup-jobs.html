@@ -22,18 +22,20 @@
     <section class="card mb-3" th:if="${backupExportOptions != null}" aria-labelledby="backupExportHeading">
         <div class="card-body">
             <h2 id="backupExportHeading" class="h4" th:text="#{backup.export.title}">Create a portable export</h2>
-            <p class="small" th:text="#{backup.export.limits}">Current content and saved drafts, without history. Restore is a separate capability.</p>
+            <p id="backupExportCurrentHelp" class="small" th:text="#{backup.export.limits}">Current content and saved drafts, without history. Restore is a separate capability.</p>
+            <p id="backupExportHistoryHelp" class="small" hidden th:if="${backupExportOptions.hasHistory()}" th:text="#{backup.export.history.limits}">Original commits, branches and saved workspace history for the selected content.</p>
             <form id="backupExportForm" class="row g-3">
                 <div class="col-12 col-md-6"><label for="backupExportScope" class="form-label" th:text="#{backup.export.scope}">Content</label>
                     <select id="backupExportScope" class="form-select" required>
                         <option th:each="choice : ${backupExportOptions.selections}" th:value="${choice.key}"
-                                th:attr="data-repository-id=${choice.repositoryId},data-workspace-id=${choice.workspaceId},data-installation=${choice.installation}"
+                                th:attr="data-repository-id=${choice.repositoryId},data-workspace-id=${choice.workspaceId},data-installation=${choice.installation},data-history-available=${choice.historyAvailable}"
                                 th:text="${choice.installation} ? #{backup.export.installation} : ${choice.label}"></option>
                     </select>
                 </div>
                 <div class="col-12 col-md-6"><label for="backupExportProfile" class="form-label" th:text="#{backup.export.profile}">Version</label>
                     <select id="backupExportProfile" class="form-select"><option value="CURRENT_STATE" th:text="#{backup.profile.CURRENT_STATE}">Current state</option>
-                        <option value="SELECTED_VERSION" th:text="#{backup.profile.SELECTED_VERSION}">Selected version</option></select>
+                        <option value="SELECTED_VERSION" th:text="#{backup.profile.SELECTED_VERSION}">Selected version</option>
+                        <option id="backupExportHistoryOption" value="REPOSITORY_HISTORY" hidden disabled th:if="${backupExportOptions.hasHistory()}" th:text="#{backup.profile.REPOSITORY_HISTORY}">Repository history</option></select>
                 </div>
                 <div id="backupCommitGroup" class="col-12" hidden><label for="backupExportCommit" class="form-label" th:text="#{backup.export.commit}">Approved commit</label>
                     <input id="backupExportCommit" class="form-control" autocomplete="off" maxlength="40" pattern="[0-9a-f]{40}" aria-describedby="backupCommitHelp"/>
@@ -41,7 +43,9 @@
                 </div>
                 <div class="col-12 col-md-6"><label for="backupExportGit" class="form-label" th:text="#{backup.export.git}">Portable representation</label>
                     <select id="backupExportGit" class="form-select"><option value="NONE" th:text="#{backup.export.files}">Files and records</option>
-                        <option value="BUNDLE" th:text="#{backup.export.bundle}">Files and a standalone current Git repository</option></select>
+                        <option value="BUNDLE" th:text="#{backup.export.bundle}">Git bundle and records</option>
+                        <option value="BARE" hidden disabled th:if="${backupExportOptions.hasHistory()}" th:text="#{backup.export.bare}">Bare Git repository and records</option>
+                        <option value="WORKTREE" hidden disabled th:if="${backupExportOptions.hasHistory()}" th:text="#{backup.export.worktree}">Git working copy with saved drafts and records</option></select>
                 </div>
                 <div class="col-12"><button id="backupExportSubmit" class="btn btn-primary" type="submit" th:text="#{backup.export.submit}">Create export</button>
                     <p id="backupExportFeedback" class="mt-2 mb-0" role="status" aria-live="polite"></p></div>

@@ -86,6 +86,14 @@ class ProductionCurrentBackupIT {
                 context.getBean(BackupAuthorizationService.class).authorize(alice.id(), request),
                 root.resolve("direct-capture-" + suffix), ArchiveProgress.NONE)) {
             assertThat(captured.manifest().entries()).isNotEmpty();
+            assertThat(captured.manifest().requiredFeatures()).contains("source-database-family-v1");
+            try (var proof = captured.openEntry("verification/capture.json")) {
+                var sourceDatabase = com.taxonomy.exchange.backup.PortableRows.json().readTree(proof).get("sourceDatabase");
+                assertThat(sourceDatabase).isNotNull();
+                assertThat(sourceDatabase.get("schemaVersion").asInt()).isEqualTo(1);
+                assertThat(sourceDatabase.get("family").asText()).isEqualTo("HSQLDB");
+                assertThat(sourceDatabase.size()).isEqualTo(2);
+            }
         }
         var id = jobs.submit(request,alice.id()); assertThat(worker.runNext()).isTrue();
         assertThat(jobs.status(id,alice.id()).state()).isEqualTo(com.taxonomy.backup.jobs.BackupJobState.READY);
@@ -141,7 +149,7 @@ class ProductionCurrentBackupIT {
         assertThat(jobs.status(broken,alice.id()).state()).isEqualTo(com.taxonomy.backup.jobs.BackupJobState.FAILED);
         assertThat(jobs.status(broken,alice.id()).downloadAvailable()).isFalse();
     }
-    @Test void unsupportedHistoryAndGitLayoutsAreRejectedBeforeQueueAdmission() {
+    @Test void unsupportedCurrentLayoutsAndUnauthorizedHistoryAreRejectedBeforeQueueAdmission() {
         assertThat(context.getBeansOfType(BackupCaptureSource.class)).hasSize(1);
         var actor=identities.oidc("https://backup-test.example","admission-"+UUID.randomUUID());
         var jobs=context.getBean(BackupJobService.class);var jdbc=new JdbcTemplate(database);
@@ -151,7 +159,7 @@ class ProductionCurrentBackupIT {
             assertThatThrownBy(()->jobs.submit(request,actor.id())).isInstanceOf(IllegalArgumentException.class);
         }
         var history=new BackupRequest(BackupProfile.REPOSITORY_HISTORY,new BackupScope.Workspace("fixture-admission","fixture-private"),new BackupTime.History(),GitRepresentation.BUNDLE,SecretsSelection.EXCLUDE);
-        assertThatThrownBy(()->jobs.submit(history,actor.id())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->jobs.submit(history,actor.id())).isInstanceOf(AccessDeniedException.class);
         assertThat(jdbc.queryForObject("select count(*) from backup_job",Long.class)).isEqualTo(before);
     }
     private void route(String repository,String workspace,String owner) {

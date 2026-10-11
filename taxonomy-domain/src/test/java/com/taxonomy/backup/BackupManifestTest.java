@@ -48,6 +48,19 @@ class BackupManifestTest {
         assertThrows(IllegalArgumentException.class, () -> new BackupEntry("data/ok", -1, "a".repeat(64)));
         assertThrows(IllegalArgumentException.class, () -> new BackupEntry("data/ok", 1, "short"));
     }
+
+    @Test void emptyDirectoriesAreExplicitPayloadsWithARequiredFormatFeature() {
+        String emptyDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        var directory = new BackupEntry("repositories/opaque-a/refs/", 0, emptyDigest);
+        var component = new BackupManifest.Component(id, 1, BackupCompleteness.COMPLETE,
+                List.of(directory.path()), Set.of());
+        assertThrows(IllegalArgumentException.class, () -> manifest(1, Set.of(), List.of(component), List.of(directory)));
+        assertDoesNotThrow(() -> manifest(1, Set.of("directory-entries-v1"), List.of(component), List.of(directory)));
+        assertThrows(IllegalArgumentException.class, () -> new BackupEntry(directory.path(), 1, emptyDigest));
+        assertThrows(IllegalArgumentException.class, () -> new BackupEntry(directory.path(), 0, "a".repeat(64)));
+        for (String path : List.of("/", "data//", "data/../", "data/./", "data\\\\outside/"))
+            assertThrows(IllegalArgumentException.class, () -> new BackupEntry(path, 0, emptyDigest));
+    }
     @Test void metadataMustObeyWireStringAndCollectionLimits() {
         var m = manifest(1, BackupManifest.SUPPORTED_FEATURES, List.of(component(Set.of())), List.of(payload));
         for (var bad : List.of(List.of(""), List.of("x".repeat(513)), Collections.nCopies(10001, "omission"))) {

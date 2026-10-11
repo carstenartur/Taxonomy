@@ -55,6 +55,18 @@ class ExistingGitBackupRepositoriesTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void caseInsensitiveCatalogueCannotRouteAnotherExactRepositoryIdentity(boolean workspace) throws Exception {
+        try (var f = new Fixture()) {
+            f.repository("a", "central-a", "draft"); f.workspace("a", "private-a", "draft");
+            f.commit("central-a", "CENTRAL-A"); f.commit("ws-private-a", "PRIVATE-A");
+            f.sql("alter table system_repository alter column repository_id varchar_ignorecase(255)");
+            f.sql("alter table user_workspace alter column source_repository_id varchar_ignorecase(255)");
+            var wrong = new BackupRepositoryKey("A", workspace ? "private-a" : null);
+            assertThatThrownBy(() -> f.sources.open(current(wrong), wrong, CHECK)).isInstanceOf(IOException.class);
+        }
+    }
+
     @Test void missingWorkspaceCannotBeSeededFromThePrimaryRepository() throws Exception {
         try (var f = new Fixture()) {
             f.repository("a", "taxonomy-dsl", "draft"); f.commit("taxonomy-dsl", "PRIMARY-SECRET");
@@ -114,6 +126,48 @@ class ExistingGitBackupRepositoriesTest {
             try (var source = open(f, authorized(request), key)) {
                 assertThatThrownBy(() -> source.captureStand(LIMITS, CHECK)).isInstanceOf(IOException.class);
             }
+        }
+    }
+
+    @Test void authorizedHistoryReadsRetainedDatabaseReflogsWithoutProvisioningOrCrossingRepositories() throws Exception {
+        try (var f = new Fixture()) {
+            f.repository("a", "central-a", "draft"); f.repository("b", "central-b", "draft");
+            String first = f.commit("central-a", "FIRST"), current = f.commit("central-a", "CURRENT");
+            String privateCommit = f.commit("central-b", "PRIVATE"); String orphan;
+            try (var git = new DslGitRepository(new DefaultHibernateRepositoryFactory(f.persistence.factory), "central-a")) {
+                orphan = git.commitDsl("removed", "RETAINED-ORPHAN", "original-author", "removed branch");
+                assertThat(git.deleteBranch("removed")).isTrue();
+            }
+            f.reflog("central-a", "refs/heads/retained-deleted", first, orphan);
+            f.reflog("central-b", "refs/heads/retained-private", privateCommit, privateCommit);
+            var before = f.counts(); var key = new BackupRepositoryKey("a", null);
+            var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, scope(key), new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);
+            try (var source = open(f, authorized(request), key)) {
+                var history = source.captureHistory(Set.of(), Map.of(), GitHistoryCapture.Limits.defaults(), CHECK);
+                assertThat(history.state().refs()).containsEntry("refs/heads/draft", current);
+                assertThat(history.state().requiredCommits()).contains(orphan).doesNotContain(privateCommit);
+                assertThat(history.reflogs()).anySatisfy(log -> {
+                    assertThat(log.ref()).isEqualTo("refs/heads/retained-deleted"); assertThat(log.newId()).isEqualTo(orphan);
+                }).noneSatisfy(log -> assertThat(log.ref()).isEqualTo("refs/heads/retained-private"));
+                var contents = new GitHistoryCaptureTest.Contents(); history.write("repository-a", GitRepresentation.BUNDLE, contents);
+                assertThat(contents.entries.get("repositories/repository-a/history.bundle")).isNotEmpty();
+            }
+            assertThat(f.counts()).isEqualTo(before); assertThat(f.persistence.factory.isOpen()).isTrue();
+        }
+    }
+
+    @Test void aCurrentScopeCannotInvokeHistoryAndAHistoryHandleExpiresWithItsOwningSession() throws Exception {
+        try (var f = new Fixture()) {
+            f.repository("a", "central-a", "draft"); f.commit("central-a", "CURRENT"); var key = new BackupRepositoryKey("a", null);
+            try (var source = open(f, current(key), key)) {
+                assertThatThrownBy(() -> source.captureHistory(Set.of(), Map.of(), GitHistoryCapture.Limits.defaults(), CHECK)).isInstanceOf(IOException.class);
+            }
+            var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, scope(key), new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);
+            var source = open(f, authorized(request), key);
+            var history = source.captureHistory(Set.of(), Map.of(), GitHistoryCapture.Limits.defaults(), CHECK); source.close();
+            var contents = new GitHistoryCaptureTest.Contents();
+            assertThatThrownBy(() -> history.write("repository-a", GitRepresentation.BUNDLE, contents)).isInstanceOf(IOException.class);
+            assertThat(contents.entries).isEmpty(); assertThat(f.persistence.factory.isOpen()).isTrue();
         }
     }
 
@@ -229,7 +283,7 @@ class ExistingGitBackupRepositoriesTest {
         final ExistingGitBackupRepositories sources;
         Fixture() throws Exception {
             String url = "jdbc:hsqldb:mem:git-capture-" + UUID.randomUUID() + ";hsqldb.tx=mvcc";
-            database.setUrl(url); database.setUser("SA"); database.setPassword(""); persistence = new EditorPersistenceFixture(url);
+            database.setUrl(url); database.setUser("SA"); database.setPassword(""); persistence = new EditorPersistenceFixture(url, com.taxonomy.workspace.model.GitReflogProvenanceRecord.class);
             sql("create table system_repository(repository_id varchar(255) primary key,storage_repository_name varchar(255) unique,default_branch varchar(255))");
             sql("create table user_workspace(workspace_id varchar(255) primary key,source_repository_id varchar(255),current_branch varchar(255))");
             sources = new ExistingGitBackupRepositories(database, persistence.factory);
@@ -241,6 +295,14 @@ class ExistingGitBackupRepositoriesTest {
                 return repository.commitDsl("draft", content, "original-author", "source commit");
             }
         }
+        void reflog(String storage, String ref, String oldId, String newId) {
+            // Fixture for a retained log after deletion; no production writer bypass is exposed.
+            var row = new io.github.carstenartur.jgit.storage.hibernate.entity.GitReflogEntity();
+            row.setRepositoryName(storage); row.setRefName(ref); row.setOldId(oldId); row.setNewId(newId);
+            row.setWhoName("Original Author"); row.setWhoEmail("original@example.invalid"); row.setWhen(Instant.now()); row.setMessage("Retained history fixture");
+            try (var session = fSession()) { var tx = session.beginTransaction(); session.persist(row); tx.commit(); }
+        }
+        private org.hibernate.Session fSession() { return persistence.factory.openSession(); }
         void sql(String sql, Object... parameters) throws Exception {
             try (var connection = database.getConnection(); var statement = connection.prepareStatement(sql)) {
                 for (int i = 0; i < parameters.length; i++) statement.setObject(i + 1, parameters[i]); statement.executeUpdate();

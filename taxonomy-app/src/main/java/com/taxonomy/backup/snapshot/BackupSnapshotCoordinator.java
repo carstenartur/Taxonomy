@@ -42,7 +42,12 @@ public final class BackupSnapshotCoordinator {
     }
     public record CapturePlan(String applicationVersion, String build, String sourceInstallationId,
                               List<BackupManifest.Repository> repositories, Map<BackupComponentId, CaptureComponent> components,
-                              List<String> dependencies, List<String> omissions) {
+                              List<String> dependencies, List<String> omissions, SourceDatabaseMetadata sourceDatabase) {
+        public CapturePlan(String applicationVersion, String build, String sourceInstallationId,
+                           List<BackupManifest.Repository> repositories, Map<BackupComponentId, CaptureComponent> components,
+                           List<String> dependencies, List<String> omissions) {
+            this(applicationVersion, build, sourceInstallationId, repositories, components, dependencies, omissions, null);
+        }
         public CapturePlan {
             repositories = List.copyOf(repositories); components = Map.copyOf(components);
             dependencies = List.copyOf(dependencies); omissions = List.copyOf(omissions);
@@ -128,15 +133,20 @@ public final class BackupSnapshotCoordinator {
                             sink.entries.subList(before, sink.entries.size()).stream().map(BackupEntry::path).toList(), definition.dependencies()));
                 }
                 sink.check(); Instant completed = clock.instant();
-                byte[] proof = JsonMapper.builder().build().writeValueAsBytes(Map.of("barrier", "installation", "generation", maintenance.generation(),
+                var proofFields = new LinkedHashMap<String, Object>(Map.of("barrier", "installation", "generation", maintenance.generation(),
                         "startedAt", started.toString(), "completedAt", completed.toString(), "repositoryCount", plan.repositories().size(),
                         "payloadEntries", sink.entries.size(), "revisions", plan.repositories()));
+                if (plan.sourceDatabase() != null) proofFields.put("sourceDatabase", plan.sourceDatabase());
+                byte[] proof = JsonMapper.builder().build().writeValueAsBytes(proofFields);
                 var proofEntry = sink.write("verification/capture.json", new ByteArrayInputStream(proof));
                 components.add(new BackupManifest.Component(PROOF, 1, BackupCompleteness.COMPLETE, List.of(proofEntry.path()), Set.of()));
                 var dependencies = new java.util.LinkedHashSet<>(plan.dependencies());
                 dependencies.addAll(prerequisites.dependencies());
+                var features = new HashSet<>(BackupManifest.SUPPORTED_FEATURES);
+                if (sink.entries.stream().noneMatch(entry -> entry.path().endsWith("/"))) features.remove("directory-entries-v1");
+                if (plan.sourceDatabase() == null) features.remove(SourceDatabaseMetadata.REQUIRED_FEATURE);
                 var manifest = new BackupManifest(BackupManifest.FORMAT_VERSION, plan.applicationVersion(), plan.build(), id, plan.sourceInstallationId(),
-                        creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), BackupManifest.SUPPORTED_FEATURES,
+                        creation.request(), started, completed, CapturedBackup.EVIDENCE_PREFIX + maintenance.generation(), features,
                         components, plan.repositories(), sink.entries, List.copyOf(dependencies), List.copyOf(omissions));
                 byte[] document = new BackupManifestCodec().write(manifest);
                 if (document.length > limits.maxTotalBytes() - sink.total) throw new IOException("Capture byte limit exceeded");
@@ -236,7 +246,14 @@ public final class BackupSnapshotCoordinator {
                 if (entries.size() >= limits.maxEntries()) throw new IOException("Capture entry limit exceeded");
                 Path target = directory.resolve(path); Files.createDirectories(target.getParent());
                 var digest = CapturedBackup.sha256(); EntryOutput entryOutput;
-                try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                if (path.endsWith("/")) {
+                    entryOutput = new EntryOutput(new OutputStream() {
+                        @Override public void write(int value) throws IOException { throw new IOException("Directory entry has content"); }
+                    }, digest);
+                    try { producer.write(entryOutput); }
+                    finally { entryOutput.invalidate(); }
+                    check(); Files.createDirectories(target); forceDirectory(target);
+                } else try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                     try (var output = SpoolStreams.output(channel, protection, id, path)) {
                         entryOutput = new EntryOutput(output, digest);
                         try { producer.write(entryOutput); }

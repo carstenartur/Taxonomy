@@ -14,6 +14,16 @@ final class PortableKnowledgeReferences {
         if(code.isBlank() || !code.equals(code.strip()) || code.length()>256 || code.chars().anyMatch(Character::isISOControl))throw new IOException("Invalid catalogue reference");
         codes.add(code);if(codes.size()>100_000)throw new IOException("Catalogue reference limit exceeded");
     }
+    void hypothesis(String id)throws IOException {
+        if(id==null || id.isEmpty() || id.length()>19 || id.charAt(0)=='0'
+                || id.chars().anyMatch(c->c<'0' || c>'9'))throw new IOException("Invalid hypothesis reference");
+        try {Long.parseLong(id);}catch(NumberFormatException invalid){throw new IOException("Invalid hypothesis reference",invalid);}
+        var identity=new SourceRecordId("knowledge.hypothesis",id);
+        if(!hypotheses.contains(identity)) {
+            if(hypotheses.size()>=100_000)throw new IOException("Hypothesis reference limit exceeded");
+            hypotheses.add(identity);
+        }
+    }
     void value(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isTextual())throw new IOException("Invalid catalogue reference field");code(value.textValue());}
     void array(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException("Invalid catalogue reference list");for(var item:value)value(item);}
     void payload(JsonNode value)throws IOException {
@@ -45,7 +55,7 @@ final class PortableKnowledgeReferences {
             for(var item:provisional) {
                 var id=item.get("hypothesisId");if(id!=null && !id.isNull()) {
                     if(!id.isIntegralNumber() || !id.canConvertToLong() || id.longValue()<1)throw new IOException("Invalid hypothesis reference");
-                    hypotheses.add(new SourceRecordId("knowledge.hypothesis",id.asText()));
+                    hypothesis(id.asText());
                 }
             }
         }

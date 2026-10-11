@@ -60,7 +60,7 @@ class BackupJobControllerTest {
     }
     @Test void statusPageRendersEnglishAndGermanWithoutExposingInternalJobData() throws Exception {
         when(principals.require(any())).thenReturn(actor);
-        when(jobs.exportOptions(actor)).thenReturn(new BackupExportOptions(List.of(new BackupExportOptions.Selection("fixture-choice","fixture-repo","fixture-workspace",false,"Fixture workspace"))));
+        when(jobs.exportOptions(actor)).thenReturn(new BackupExportOptions(List.of(new BackupExportOptions.Selection("fixture-choice","fixture-repo","fixture-workspace",false,"Fixture workspace",false))));
         mvc.perform(get("/backup-jobs").with(user("reader")).locale(Locale.ENGLISH)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Backup jobs")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Create a portable export")))

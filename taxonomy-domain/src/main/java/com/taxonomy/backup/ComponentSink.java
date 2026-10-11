@@ -7,7 +7,7 @@ import java.io.OutputStream;
 /** Streams entry bytes to durable storage and computes their length and SHA-256. */
 @FunctionalInterface
 public interface ComponentSink {
-    /** The caller owns and closes input. The sink rejects duplicate or unsafe paths. */
+    /** The caller owns and closes input. The sink rejects duplicate or unsafe paths. A trailing slash requires an empty directory payload. */
     BackupEntry write(String path, InputStream input) throws IOException;
 
     /**

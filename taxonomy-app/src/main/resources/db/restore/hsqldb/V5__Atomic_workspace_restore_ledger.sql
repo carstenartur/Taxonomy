@@ -1,0 +1,4 @@
+-- Private source-owned workspace provenance and exact completed target proofs; no executable authority.
+create table restore_workspace_owner (owner_id varchar(32) primary key, generation_id varchar(36) not null, archive_sha256 varchar(64) not null, plan_sha256 varchar(64) not null);
+create table restore_workspace_mapping (record_kind varchar(96) not null, record_key varchar(4096) not null, target_table varchar(96) not null, target_key varchar(4096) not null, target_sha256 varchar(64) not null, primary key(record_kind,record_key), constraint uq_restore_workspace_target unique(target_table,target_key));
+create table restore_workspace_evidence (record_kind varchar(96) not null, record_key varchar(4096) not null, record_json clob not null, sha256 varchar(64) not null, classification varchar(32) not null, primary key(record_kind,record_key));

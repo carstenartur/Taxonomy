@@ -62,9 +62,9 @@ public final class GitStandBackupContributor implements BackupDataContributor {
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("workspace"); }
     @Override public int schemaVersion() { return 1; }
-    @Override public Set<String> categories() { return Set.of("storage.jgit.objects-refs-reflogs"); }
+    @Override public Set<String> categories() { return Set.of("storage.jgit.objects-refs-reflogs", "com.taxonomy.workspace.model.GitReflogProvenanceRecord"); }
     @Override public List<String> omissions(BackupProfile profile) {
-        return List.of("workspace: stand payloads exclude source Git ancestry, reflogs and other branches; captured refs and checkpoint IDs are source evidence",
+        return List.of("workspace: stand payloads exclude source Git ancestry, live and imported original reflogs, and other branches; captured refs and checkpoint IDs are source evidence",
                 "workspace: saved states on other branches remain separate workspace records; no source commit is created");
     }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {

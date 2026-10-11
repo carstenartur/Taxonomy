@@ -102,7 +102,11 @@ public final class BackupArchiveReader {
                     || size / (double) Math.max(1, compressed) > limits.maxCompressionRatio()) throw new IOException("Archive expansion or compression limit exceeded");
             expanded += size;
             int kind = entry.getUnixMode() & 0170000;
-            if (entry.isDirectory() || entry.isUnixSymlink() || kind != 0 && kind != 0100000 || entry.getDiskNumberStart() != 0
+            boolean isDirectory = path.endsWith("/");
+            if (entry.isDirectory() != isDirectory || entry.isUnixSymlink()
+                    || kind != 0 && kind != (isDirectory ? 040000 : 0100000)
+                    || isDirectory && (size != 0 || compressed != 0 || entry.getCrc() != 0 || entry.getMethod() != ZipArchiveEntry.STORED)
+                    || entry.getDiskNumberStart() != 0
                     || entry.getGeneralPurposeBit().usesEncryption() || !zip.canReadEntryData(entry)
                     || entry.getMethod() != ZipArchiveEntry.STORED && entry.getMethod() != ZipArchiveEntry.DEFLATED
                     || entry.getUnparseableExtraFieldData() != null || entry.getComment() != null && !entry.getComment().isEmpty())

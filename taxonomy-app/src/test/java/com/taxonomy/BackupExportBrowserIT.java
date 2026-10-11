@@ -59,7 +59,7 @@ class BackupExportBrowserIT {
                 new PortfolioClientTestPage.Response(200, "application/octet-stream", "native-download-fixture")
                         .withHeader("Content-Disposition", "attachment; filename=\"" + filename + "\""));
         var options = new BackupExportOptions(List.of(new BackupExportOptions.Selection("owned", "fixture-repo",
-                "fixture-private", false, "Private fixture workspace")));
+                "fixture-private", false, "Private fixture workspace",false)));
         page.openAt("backup-jobs", prefix, prefix + "/backup-jobs", locale, "", Map.of("backupExportOptions", options));
         var driver = page.driver();
         wait.until(d -> d.findElement(By.id("backupExportHeading")).getText().contains(
@@ -81,6 +81,59 @@ class BackupExportBrowserIT {
         assertThat((Boolean) driver.executeScript("return document.getElementById('backupExportCommit').validity.valid")).isFalse();
         assertThat(submissions).hasSize(1);
         assertThat(page.requests()).anyMatch(r -> r.method().equals("GET") && r.path().endsWith("/download"));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void historyFormatsFollowTheSelectedWorkspaceAndResetForCurrentAndInstallation(String locale) throws Exception {
+        page.clearRoutes();page.clearRequests();
+        String prefix="/teams/blue/taxonomy",job=UUID.randomUUID().toString();
+        page.route("GET",prefix+"/api/backups/jobs",r->PortfolioClientTestPage.json(200,List.of()));
+        page.route("POST",prefix+"/api/backups/jobs",r->{
+            submissions.add(new BackupManifestCodec().readRequest(r.body().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return PortfolioClientTestPage.json(202,Map.of("id",job));
+        });
+        var options=new BackupExportOptions(List.of(
+                new BackupExportOptions.Selection("current","fixture-repo","current-private",false,"Current-only workspace",false),
+                new BackupExportOptions.Selection("history","fixture-repo","history-private",false,"History-enabled workspace",true),
+                new BackupExportOptions.Selection("installation",null,null,true,"",false)));
+        page.openAt("backup-jobs",prefix,prefix+"/backup-jobs",locale,"",Map.of("backupExportOptions",options));
+        var driver=page.driver();
+        wait.until(d->d.findElement(By.id("backupExportHeading")).getText().contains(
+                locale.equals("de")?"Portablen Stand exportieren":"Create a portable export"));
+        var scope=new Select(driver.findElement(By.id("backupExportScope")));
+        var profile=new Select(driver.findElement(By.id("backupExportProfile")));
+        var representation=new Select(driver.findElement(By.id("backupExportGit")));
+        assertThat(driver.findElement(By.id("backupExportHistoryOption")).isEnabled()).isFalse();
+        scope.selectByValue("history");
+        assertThat(driver.findElement(By.id("backupExportHistoryOption")).isEnabled()).isTrue();
+        profile.selectByValue("REPOSITORY_HISTORY");
+        assertThat(representation.getFirstSelectedOption().getDomProperty("value")).isEqualTo("BUNDLE");
+        assertThat(representation.getOptions().stream().filter(option->option.isEnabled()).map(option->option.getDomProperty("value"))).containsExactly("BUNDLE","BARE","WORKTREE");
+        assertThat(driver.findElement(By.id("backupExportCommit")).isEnabled()).isFalse();
+        assertThat(driver.findElement(By.id("backupExportCurrentHelp")).isDisplayed()).isFalse();
+        assertThat(driver.findElement(By.id("backupExportHistoryHelp")).getText()).contains(
+                locale.equals("de")?"ursprüngliche Git-Commits":"original Git commits");
+        for(var format:List.of(GitRepresentation.BUNDLE,GitRepresentation.BARE,GitRepresentation.WORKTREE)) {
+            representation.selectByValue(format.name());int expected=submissions.size()+1;
+            clickVisible(By.id("backupExportSubmit"),locale,"history-"+format.name());
+            wait.until(d->submissions.size()==expected);
+            assertThat(submissions.getLast()).isEqualTo(new BackupRequest(BackupProfile.REPOSITORY_HISTORY,
+                    new BackupScope.Workspace("fixture-repo","history-private"),new BackupTime.History(),format,SecretsSelection.EXCLUDE));
+        }
+        scope.selectByValue("current");
+        assertThat(profile.getFirstSelectedOption().getDomProperty("value")).isEqualTo("CURRENT_STATE");
+        assertThat(representation.getFirstSelectedOption().getDomProperty("value")).isEqualTo("NONE");
+        assertThat(driver.findElement(By.id("backupExportHistoryOption")).isEnabled()).isFalse();
+        assertThat(driver.findElement(By.id("backupExportHistoryHelp")).isDisplayed()).isFalse();
+        profile.selectByValue("SELECTED_VERSION");
+        assertThat(driver.findElement(By.id("backupExportCommit")).isEnabled()).isTrue();
+        scope.selectByValue("installation");
+        assertThat(profile.getFirstSelectedOption().getDomProperty("value")).isEqualTo("CURRENT_STATE");
+        assertThat(driver.findElement(By.id("backupExportProfile")).isEnabled()).isFalse();
+        clickVisible(By.id("backupExportSubmit"),locale,"installation-after-history");
+        wait.until(d->submissions.size()==4);
+        assertThat(submissions.getLast()).isEqualTo(new BackupRequest(BackupProfile.INSTALLATION_CURRENT,
+                new BackupScope.Installation(),new BackupTime.Current(),GitRepresentation.NONE,SecretsSelection.EXCLUDE));
     }
 
     private void clickVisible(By locator, String locale, String phase) {
