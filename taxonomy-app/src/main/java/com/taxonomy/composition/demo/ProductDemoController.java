@@ -11,10 +11,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -55,7 +55,8 @@ public class ProductDemoController {
     public ResponseEntity<DemoRunView> start(@RequestBody(required = false) StartDemoRequest request) {
         var run = demos.start(request == null ? null : request.scenarioId(),
                 workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());
-        return ResponseEntity.created(URI.create("/api/product-demo/runs/" + run.id())).body(run);
+        return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequestUri()
+                .pathSegment(run.id()).build().toUri()).body(run);
     }
 
     @GetMapping("/runs")

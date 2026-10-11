@@ -63,6 +63,12 @@ public class ReformulationExecutionService {
         this.recovery=recovery; this.usage=usage; this.providerBinding=java.util.Objects.requireNonNull(providerBinding);
         this.checkpointJson=json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
     }
+    /**
+     * Admission, run recording and the recoverable lease commit together: a bound project's
+     * binding lock is held until the run is queued, so a concurrent binding change (e.g. closing
+     * a product demo) cannot interleave. Local dispatch starts only after that commit.
+     */
+    @org.springframework.transaction.annotation.Transactional
     public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
         if (stopping) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
         var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);
@@ -78,7 +84,7 @@ public class ReformulationExecutionService {
                 frozen.getOrDefault("reformulationPromptVersion",ReformulationPromptBuilder.PROMPT_VERSION),
                 frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,
                 ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context,providers.captureProviderBinding(provider.value()));
-        submit(dispatch);
+        submitAfterCommit(dispatch);
         return proposals.runs(projectId,requirementId,proposalId,actor,context).stream()
                 .filter(r->r.id().equals(dispatch.run().id())).findFirst().orElseThrow();
     }
@@ -113,6 +119,13 @@ public class ReformulationExecutionService {
     private void retire(String id, LocalExecution local) {
         local.retire();
         scheduled.remove(id, local);
+    }
+    private void submitAfterCommit(Dispatch dispatch) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) { submit(dispatch); return; }
+        // A rolled-back start leaves nothing to dispatch; the persisted lease stays recoverable otherwise.
+        TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+            @Override public void afterCommit() { submit(dispatch); }
+        });
     }
     private void submit(Dispatch dispatch) {
         if (stopping) return;

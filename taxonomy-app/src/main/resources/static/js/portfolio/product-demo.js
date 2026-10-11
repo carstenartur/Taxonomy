@@ -133,7 +133,7 @@
         target.append(table);
     }
 
-    function renderBanner(run) {
+    function renderBanner(run, account) {
         let banner = document.getElementById('productDemoBanner');
         if (!banner) {
             banner = el('section', null, 'alert alert-warning product-demo-banner');
@@ -172,12 +172,13 @@
             catch (error) { output.textContent = t('failed') + errorMessage(error); }
         });
         controls.append(compare);
-        if (!run.closedAt) {
+        // Read-only accounts can see the demo but must not be offered an action the server rejects.
+        if (!run.closedAt && account && account.architectureMutationAllowed === true) {
             const close = el('button', t('close'), 'btn btn-sm btn-outline-danger');
             close.type = 'button';
             close.dataset.demoClose = '';
             close.addEventListener('click', async () => {
-                try { renderBanner(await api().closeRun(run.id)); }
+                try { renderBanner(await api().closeRun(run.id), account); }
                 catch (error) { output.textContent = t('failed') + errorMessage(error); }
             });
             controls.append(close);
@@ -192,7 +193,13 @@
         let run;
         try { run = await api().runForProject(route.projectId); }
         catch (ignored) { return null; }
-        return run && run.projectId === route.projectId ? renderBanner(run) : null;
+        if (!run || run.projectId !== route.projectId) return null;
+        let account = null;
+        if (!run.closedAt) {
+            try { account = await api().account(); }
+            catch (ignored) { account = null; }
+        }
+        return renderBanner(run, account);
     }
 
     window.addEventListener('click', interceptAnalyze, true);

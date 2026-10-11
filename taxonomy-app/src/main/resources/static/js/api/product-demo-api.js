@@ -20,6 +20,8 @@ window.TaxonomyProductDemoApi = (function () {
         runForProject: projectId => client().getJson(base + '/runs?projectId=' + encodeURIComponent(projectId))
             .then(runs => (Array.isArray(runs) && runs.length ? runs[0] : null)),
         comparison: runId => client().getJson(runPath(runId) + '/comparison'),
-        closeRun: runId => client().sendJson(runPath(runId) + '/close', {})
+        closeRun: runId => client().sendJson(runPath(runId) + '/close', {}),
+        /** Shared account capabilities; closing a demo requires architecture mutation rights. */
+        account: () => client().getJson('/api/account/me')
     };
 }());

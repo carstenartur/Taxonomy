@@ -160,7 +160,8 @@ public class ProductDemoService {
         return snapshots.stream()
                 .filter(s -> s.requirementVersionNumber() == iteration + 1)
                 .filter(s -> provider.equalsIgnoreCase(s.provider()))
-                .filter(s -> s.status() == AnalysisStatus.SUCCESS || s.status() == AnalysisStatus.PARTIAL)
+                // An incomplete (PARTIAL) analysis is never evaluated as if it had completed.
+                .filter(s -> s.status() == AnalysisStatus.SUCCESS)
                 .max(Comparator.comparing(SnapshotSummary::createdAt));
     }
 

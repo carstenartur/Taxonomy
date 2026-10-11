@@ -130,6 +130,35 @@ test('demo requirement pages show a persistent banner under the base path', asyn
     assert.match(content, /REJECT: GPS/);
 });
 
+const findAll = (root, predicate) => [root, ...root.children.flatMap(child => child.children ? findAll(child, predicate) : [])]
+    .filter(predicate);
+
+test('only accounts with architecture mutation rights are offered to end the demo', async () => {
+    for (const [allowed, expected] of [[true, 1], [false, 0]]) {
+        const h = harness({pathname: '/projects/7/requirements/9', route: {projectId: 7, requirementId: 9},
+            responses: {'GET /api/product-demo/runs?projectId=7': [demoRun],
+                'GET /api/account/me': {architectureMutationAllowed: allowed}}});
+        await flush(); await flush(); await flush();
+        const banner = h.main.children[0];
+        assert.ok(banner, 'banner must be rendered');
+        assert.equal(findAll(banner, n => 'demoClose' in n.dataset).length, expected,
+            'close button for architectureMutationAllowed=' + allowed);
+        assert.equal(findAll(banner, n => 'demoCompare' in n.dataset).length, 1, 'comparison stays readable');
+    }
+});
+
+test('an unavailable account fails closed and a closed demo never asks for it', async () => {
+    const unknown = harness({pathname: '/projects/7/requirements/9', route: {projectId: 7, requirementId: 9},
+        responses: {'GET /api/product-demo/runs?projectId=7': [demoRun]}});
+    await flush(); await flush(); await flush();
+    assert.equal(findAll(unknown.main.children[0], n => 'demoClose' in n.dataset).length, 0);
+    const closed = harness({pathname: '/projects/7/requirements/9', route: {projectId: 7, requirementId: 9},
+        responses: {'GET /api/product-demo/runs?projectId=7': [{...demoRun, closedAt: '2026-10-11T08:00:00Z'}]}});
+    await flush(); await flush(); await flush();
+    assert.deepEqual(closed.requests.map(r => r.url), ['/api/product-demo/runs?projectId=7']);
+    assert.equal(findAll(closed.main.children[0], n => 'demoClose' in n.dataset).length, 0);
+});
+
 test('normal requirement pages remain unlabelled', async () => {
     const h = harness({pathname: '/projects/8/requirements/1', route: {projectId: 8, requirementId: 1},
         responses: {'GET /api/product-demo/runs?projectId=8': []}});

@@ -258,6 +258,18 @@ class ProductDemoEndToEndTest {
                         .value(ProductDemoProblems.RUN_NOT_FOUND));
     }
 
+    /** The created resource keeps the deployment's base path. */
+    @Test
+    void startLocationKeepsTheApplicationBasePath() throws Exception {
+        workspace();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/taxonomy/api/product-demo/runs")
+                        .contextPath("/taxonomy").contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{}")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isCreated())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location",
+                        org.hamcrest.Matchers.matchesPattern("http://localhost/taxonomy/api/product-demo/runs/[0-9a-f-]{36}")));
+    }
+
     private ReformulationDtos.Run runReformulation(ProductDemoService.DemoRunView run, ReformulationDtos.Proposal proposal,
                                                    WorkspaceContext context, String expectedStatus) {
         var started = execution.start(run.projectId(), run.requirementId(), proposal.id(),
