@@ -61,14 +61,6 @@ public class PortfolioAnalysisPersistenceService {
     private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
     @org.springframework.beans.factory.annotation.Autowired
     void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }
-    private com.taxonomy.portfolio.demo.ProductDemoRunRepository demoRuns;
-    private com.taxonomy.analysis.demo.DemoScenarioCatalog demoScenarios = com.taxonomy.analysis.demo.DemoScenarioCatalog.builtin();
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    void productDemo(com.taxonomy.portfolio.demo.ProductDemoRunRepository runs,
-                     org.springframework.beans.factory.ObjectProvider<com.taxonomy.analysis.demo.DemoScenarioCatalog> scenarios) {
-        this.demoRuns = runs;
-        this.demoScenarios = scenarios.getIfAvailable(com.taxonomy.analysis.demo.DemoScenarioCatalog::builtin);
-    }
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -80,6 +72,7 @@ public class PortfolioAnalysisPersistenceService {
     private final RequirementRelationMappingRepository relationRepository;
     private final AnalysisHypothesisLinkPort hypothesisLinks;
     private final PortfolioJsonCodec jsonCodec;
+    private final ProjectProviderBinding providerBinding;
 
     public PortfolioAnalysisPersistenceService(ArchitectureProjectRepository projectRepository,
                                                ProjectRequirementRepository requirementRepository,
@@ -90,7 +83,8 @@ public class PortfolioAnalysisPersistenceService {
                                                RequirementElementMappingRepository elementRepository,
                                                RequirementRelationMappingRepository relationRepository,
                                                AnalysisHypothesisLinkPort hypothesisLinks,
-                                               PortfolioJsonCodec jsonCodec) {
+                                               PortfolioJsonCodec jsonCodec,
+                                               org.springframework.beans.factory.ObjectProvider<ProjectProviderBinding> providerBindings) {
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
         this.versionRepository = versionRepository;
@@ -101,6 +95,7 @@ public class PortfolioAnalysisPersistenceService {
         this.relationRepository = relationRepository;
         this.hypothesisLinks = hypothesisLinks;
         this.jsonCodec = jsonCodec;
+        this.providerBinding = providerBindings.getIfAvailable(() -> ProjectProviderBinding.NONE);
     }
 
     @Transactional
@@ -155,18 +150,14 @@ public class PortfolioAnalysisPersistenceService {
                 PortfolioScope.workspaceId(context),
                 requirements.size(),
                 now);
-        var demoRun = demoRuns == null ? java.util.Optional.<com.taxonomy.portfolio.demo.ProductDemoRun>empty()
-                : demoRuns.findByProjectIdAndScopeKey(projectId, scopeKey);
-        if (demoRun.isPresent()) {
-            // A demo project is admitted only to its own scenario replay: no mock, live or fallback provider.
-            var run = demoRun.get();
-            String admitted = com.taxonomy.portfolio.demo.ProductDemoAdmission.admittedProvider(run,
-                    demoScenarios.find(run.getScenarioId()).orElse(null),
-                    requirements.stream().map(ProjectRequirement::getId).toList(),
-                    requireCurrentVersion(requirements.getFirst()).getVersionNumber(), provider);
-            job.bindProvider(admitted, null);
+        var bound = providerBinding.admittedProvider(projectId, targets(requirements), provider, username, context);
+        if (bound.isPresent()) {
+            // A bound project uses exactly its admitted provider: no mock, live or fallback provider.
+            job.bindProvider(bound.get(), null);
         } else if (providerConfiguration != null) {
-            com.taxonomy.portfolio.demo.ProductDemoAdmission.rejectDemoProviderForNormalProject(provider);
+            if (providerConfiguration.isScenarioReplay(provider))
+                throw new PortfolioException(PortfolioException.Kind.VALIDATION, "PROVIDER_REQUIRES_PROJECT_BINDING",
+                        "Provider " + provider.strip() + " is available only to a project bound to it", null);
             String admitted = providerConfiguration.isMockMode() ? "MOCK" : provider == null || provider.isBlank()
                     ? providerConfiguration.getActiveProviderId().value() : provider.strip().toUpperCase(java.util.Locale.ROOT);
             job.bindProvider(admitted, providerConfiguration.captureProviderBinding(admitted));
@@ -179,6 +170,11 @@ public class PortfolioAnalysisPersistenceService {
                 .toList();
         itemRepository.saveAll(items);
         return toJobView(job);
+    }
+
+    private List<ProjectProviderBinding.Target> targets(List<ProjectRequirement> requirements) {
+        return requirements.stream().map(requirement -> new ProjectProviderBinding.Target(
+                requirement.getId(), requireCurrentVersion(requirement).getId())).toList();
     }
 
     @Transactional
@@ -318,13 +314,15 @@ public class PortfolioAnalysisPersistenceService {
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
-        var demoBinding = com.taxonomy.analysis.demo.DemoProviderIds.parse(job.getProvider());
+        // A retry re-admits the current versions: a bound project must still admit the job's recorded provider.
+        var bound = providerBinding.admittedProvider(projectId,
+                targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), null, username, context);
+        if (bound.isPresent() && !bound.get().equalsIgnoreCase(job.getProvider())) {
+            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_BINDING_CHANGED",
+                    "Retry would use " + job.getProvider() + " but the project now admits " + bound.get()
+                            + "; start a new analysis", null);
+        }
         for (RequirementAnalysisJobItem item : failedItems) {
-            if (demoBinding.isPresent() && requireCurrentVersion(item.getRequirement()).getVersionNumber()
-                    != demoBinding.get().iterationNumber() + 1) {
-                throw PortfolioException.conflict("DEMO_ITERATION_CHANGED: retry would replay "
-                        + demoBinding.get().iteration() + " for another requirement version; start a new demo analysis");
-            }
             item.prepareRetry(requireCurrentVersion(item.getRequirement()));
         }
         job.markRunning(Instant.now());

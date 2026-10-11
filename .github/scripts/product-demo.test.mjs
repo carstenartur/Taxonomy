@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/product-demo.js', import.meta.url), 'utf8');
+const js = path => readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/' + path, import.meta.url), 'utf8');
+const source = js('portfolio/product-demo.js');
+const apiModule = js('api/product-demo-api.js');
+// The real shared API client (without its authenticated-surface bootstrap) carries CSRF and problem details.
+const clientSource = js('api/taxonomy-api-client.js');
+const clientCore = clientSource.slice(0, clientSource.indexOf('(function loadAuthenticatedUiSurfaces'));
 
 function node(tag = 'div') {
     const listeners = new Map();
@@ -29,7 +34,7 @@ const demoRun = {
     currentRequirementVersion: 1, closedAt: null
 };
 
-function harness({pathname = '/', basePath = '', input = '', responses = {}} = {}) {
+function harness({pathname = '/', basePath = '', input = '', responses = {}, route = null} = {}) {
     const nodes = new Map();
     const main = node('main');
     const businessText = Object.assign(node('textarea'), {id: 'businessText', value: input});
@@ -40,11 +45,13 @@ function harness({pathname = '/', basePath = '', input = '', responses = {}} = {
     const requests = [];
     const assigned = [];
     const fetch = async (url, init) => {
-        requests.push({url, method: init?.method || 'GET', body: init?.body, headers: init?.headers});
+        requests.push({url, method: init?.method || 'GET', body: init?.body, headers: new Headers(init?.headers)});
         const key = (init?.method || 'GET') + ' ' + url;
         const body = responses[key];
-        if (body === undefined) return {ok: false, status: 404, statusText: 'Not Found', json: async () => ({})};
-        return {ok: true, status: 200, json: async () => body};
+        const json = {'Content-Type': 'application/json'};
+        if (body === undefined) return new Response(JSON.stringify({detail: 'Not found', code: 'DEMO_RUN_NOT_FOUND'}),
+            {status: 404, headers: json});
+        return new Response(JSON.stringify(body), {status: 200, headers: json});
     };
     const document = {
         readyState: 'complete', documentElement: {lang: 'de'},
@@ -52,14 +59,25 @@ function harness({pathname = '/', basePath = '', input = '', responses = {}} = {
         createElement: node,
         querySelector: selector => selector === 'main' ? main
             : selector === 'meta[name="_csrf"]' ? {content: 'token'} : null,
-        addEventListener() {}
+        addEventListener() {},
+        dispatchEvent() { return true; }
     };
     const window = {
-        location: {pathname, search: '?lang=de', assign: url => assigned.push(url)},
+        fetch,
+        location: {pathname, search: '?lang=de', href: 'https://taxonomy.example.test' + pathname,
+            origin: 'https://taxonomy.example.test', assign: url => assigned.push(url)},
         TaxonomyI18n: {getBasePath: () => basePath, resolveUrl: path => basePath + path},
+        // Published by requirement-detail.js on requirement pages only.
+        TaxonomyRequirementDetail: route ? {route} : undefined,
         addEventListener: (name, fn, capture) => windowListeners.set(name + (capture ? ':capture' : ''), fn)
     };
-    vm.runInNewContext(source, {window, document, fetch, URLSearchParams, Event: class {}, JSON, Math, String, Number});
+    const context = vm.createContext({window, document, fetch: (...args) => window.fetch(...args), URL, URLSearchParams,
+        Request, Response, Headers, AbortController, DOMException, CustomEvent: class { constructor(type, o = {}) { this.type = type; this.detail = o.detail; } },
+        crypto: {randomUUID: () => 'request-id'}, setTimeout, clearTimeout, Date, Event: class {}, JSON, Math, String, Number,
+        Object, Promise, Array, console});
+    vm.runInContext(clientCore, context);
+    vm.runInContext(apiModule, context);
+    vm.runInContext(source, context);
     return {window, document, main, businessText, analyze, requests, assigned, windowListeners, nodes};
 }
 
@@ -75,7 +93,7 @@ test('the trimmed command starts an isolated demo instead of an AI analysis', as
     assert.equal(h.requests.length, 1);
     assert.equal(h.requests[0].url, '/api/product-demo/runs');
     assert.equal(h.requests[0].method, 'POST');
-    assert.equal(h.requests[0].headers['X-CSRF-TOKEN'], 'token');
+    assert.equal(h.requests[0].headers.get('X-CSRF-TOKEN'), 'token', 'CSRF comes from the shared API client');
     assert.equal(h.businessText.value, '  ProduktDemo \n', 'the typed draft is never rewritten');
     assert.deepEqual(h.assigned, ['/projects/7/requirements/9?lang=de&demo=run-1']);
 });
@@ -95,12 +113,12 @@ test('a failed start is reported and does not navigate', async () => {
     h.windowListeners.get('click:capture')({target: h.analyze, preventDefault() {}, stopImmediatePropagation() {}});
     await flush(); await flush();
     assert.deepEqual(h.assigned, []);
-    assert.match(h.businessText.sibling.textContent, /nicht gestartet/);
+    assert.match(h.businessText.sibling.textContent, /nicht gestartet werden: Not found/);
 });
 
 test('demo requirement pages show a persistent banner under the base path', async () => {
     const h = harness({pathname: '/taxonomy/projects/7/requirements/9', basePath: '/taxonomy',
-        responses: {'GET /api/product-demo/runs': [demoRun]}});
+        route: {projectId: 7, requirementId: 9}, responses: {'GET /api/product-demo/runs?projectId=7': [demoRun]}});
     await flush(); await flush();
     const banner = h.main.children[0];
     assert.ok(banner, 'banner must be rendered');
@@ -113,7 +131,15 @@ test('demo requirement pages show a persistent banner under the base path', asyn
 });
 
 test('normal requirement pages remain unlabelled', async () => {
-    const h = harness({pathname: '/projects/8/requirements/1', responses: {'GET /api/product-demo/runs': [demoRun]}});
+    const h = harness({pathname: '/projects/8/requirements/1', route: {projectId: 8, requirementId: 1},
+        responses: {'GET /api/product-demo/runs?projectId=8': []}});
     await flush(); await flush();
     assert.equal(h.main.children.length, 0);
+    assert.deepEqual(h.requests.map(r => r.url), ['/api/product-demo/runs?projectId=8'], 'only the project-scoped lookup is used');
+});
+
+test('pages without a requirement route never query demo runs', async () => {
+    const h = harness({pathname: '/'});
+    await flush(); await flush();
+    assert.equal(h.requests.length, 0);
 });

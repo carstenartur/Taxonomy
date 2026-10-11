@@ -143,6 +143,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "editor_workspace")).isTrue();
         assertThat(tableExists(dataSource, "editor_operation")).isTrue();
         assertThat(tableExists(dataSource, "editor_checkpoint")).isTrue();
+        assertThat(tableExists(dataSource, "product_demo_run")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertIntegrationSchema(dataSource);

@@ -1,7 +1,7 @@
-package com.taxonomy.portfolio.demo;
+package com.taxonomy.composition.demo;
 
-import com.taxonomy.portfolio.demo.ProductDemoService.DemoComparison;
-import com.taxonomy.portfolio.demo.ProductDemoService.DemoRunView;
+import com.taxonomy.composition.demo.ProductDemoService.DemoComparison;
+import com.taxonomy.composition.demo.ProductDemoService.DemoRunView;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Isolated, labelled product demo without external AI calls (issue #1184). */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio", "analysis"})
 @RestController
 @RequestMapping("/api/product-demo")
 @Tag(name = "Product Demo")
@@ -58,9 +60,9 @@ public class ProductDemoController {
 
     @GetMapping("/runs")
     @Operation(summary = "List product demos in the current workspace",
-            description = "Lists the caller's demo runs in the current workspace, including the replay provider currently bound to each demo requirement version.")
-    public List<DemoRunView> list() {
-        return demos.list(workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());
+            description = "Lists the caller's demo runs in the current workspace, including the replay provider currently bound to each demo requirement version. With projectId, returns at most the one demo run of that project (empty for ordinary projects).")
+    public List<DemoRunView> list(@RequestParam(required = false) Long projectId) {
+        return demos.list(projectId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());
     }
 
     @GetMapping("/runs/{runId}")

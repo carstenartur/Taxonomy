@@ -1,4 +1,4 @@
-package com.taxonomy.portfolio.demo;
+package com.taxonomy.composition.demo;
 
 import com.taxonomy.analysis.demo.DemoScenario;
 import com.taxonomy.analysis.demo.DemoScenarioCatalog;
@@ -66,7 +66,17 @@ class ProductDemoEndToEndTest {
     @Autowired RestTemplate transport;
     @MockitoBean WorkspaceResolver resolver;
 
-    private final DemoScenario scenario = DemoScenarioCatalog.builtin().defaultScenario();
+    @Autowired DemoScenarioCatalog catalog;
+    @Autowired ProductDemoProviderBinding binding;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
+
+    private DemoScenario scenario;
+
+    @org.junit.jupiter.api.BeforeEach
+    void scenario() {
+        scenario = catalog.defaultScenario();
+    }
 
     @Test
     void completeDemoRunsWithoutExternalAiAndPassesTheIndependentReference() {
@@ -93,9 +103,13 @@ class ProductDemoEndToEndTest {
 
         // Admission: no demo provider for normal projects, no live provider for demo projects.
         assertThatThrownBy(() -> analysis.analyzeRequirement(normal.id(), draft.id(), "DEMO.TIME-TRACKING-V1.R0", 25,
-                UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class);
+                UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo("PROVIDER_REQUIRES_PROJECT_BINDING");
         assertThatThrownBy(() -> analysis.analyzeRequirement(run.projectId(), run.requirementId(), "GEMINI", 25,
-                UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class);
+                UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.PROVIDER_REJECTED);
+        assertThat(demos.list(run.projectId(), USER, context)).extracting(ProductDemoService.DemoRunView::id).containsExactly(run.id());
+        assertThat(demos.list(normal.id(), USER, context)).isEmpty();
 
         // A0 on R0.
         var a0 = analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
@@ -185,14 +199,63 @@ class ProductDemoEndToEndTest {
         var export = reports.render(run.projectId(), run.requirementId(), PortfolioReportService.Format.MARKDOWN,
                 null, USER, context);
         assertThat(export.filename()).startsWith("DEMO-");
-        assertThat(new String(export.bytes(), java.nio.charset.StandardCharsets.UTF_8)).contains("Produktdemo · ");
+        assertThat(new String(export.bytes(), java.nio.charset.StandardCharsets.UTF_8)).contains("DEMO · " + scenario.title().get(scenario.requirement().language()));
 
         // Closing the demo stops further replay admission.
         demos.close(run.id(), USER, context);
         assertThatThrownBy(() -> analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
-                .hasMessageContaining("DEMO_RUN_CLOSED");
+                .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);
         server.verify();
+    }
+
+    /** Closing waits for an admission that holds the run lock, and no replay is admitted after the close commits. */
+    @Test
+    void closeSerializesWithProviderAdmission() throws Exception {
+        WorkspaceContext context = workspace();
+        var run = demos.start(null, USER, context);
+        var versionId = projects.getRequirement(run.projectId(), run.requirementId(), USER, context).currentVersionId();
+        var target = java.util.List.of(new com.taxonomy.portfolio.service.ProjectProviderBinding.Target(run.requirementId(), versionId));
+        var admitted = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2, task -> {
+            var thread = new Thread(task, "demo-lock");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            var admission = executor.submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactions)
+                    .execute(status -> {
+                        var provider = binding.admittedProvider(run.projectId(), target, null, USER, context);
+                        admitted.countDown();
+                        try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                        return provider.orElseThrow();
+                    }));
+            assertThat(admitted.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var close = executor.submit(() -> demos.close(run.id(), USER, context));
+            Thread.sleep(300);
+            assertThat(close.isDone()).as("close must wait for the admission holding the run lock").isFalse();
+            release.countDown();
+            assertThat(admission.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo("DEMO.TIME-TRACKING-V1.R0");
+            assertThat(close.get(30, java.util.concurrent.TimeUnit.SECONDS).closedAt()).isNotNull();
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+        assertThatThrownBy(() -> new org.springframework.transaction.support.TransactionTemplate(transactions)
+                .execute(status -> binding.admittedProvider(run.projectId(), target, null, USER, context)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);
+    }
+
+    /** REST errors carry a stable machine-readable code instead of message parsing. */
+    @Test
+    void restProblemsCarryStableCodes() throws Exception {
+        workspace();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/product-demo/runs/unknown"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code")
+                        .value(ProductDemoProblems.RUN_NOT_FOUND));
     }
 
     private ReformulationDtos.Run runReformulation(ProductDemoService.DemoRunView run, ReformulationDtos.Proposal proposal,

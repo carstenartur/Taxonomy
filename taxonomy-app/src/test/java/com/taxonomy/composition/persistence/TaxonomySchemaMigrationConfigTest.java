@@ -84,6 +84,7 @@ class TaxonomySchemaMigrationConfigTest {
             "editor_workspace",
             "editor_operation",
             "editor_checkpoint",
+            "product_demo_run",
             "taxonomy_schema_history");
 
     @Test

@@ -1,4 +1,4 @@
-package com.taxonomy.portfolio.demo;
+package com.taxonomy.composition.demo;
 
 import com.taxonomy.analysis.demo.DemoCatalogueValidator;
 import com.taxonomy.analysis.demo.DemoProviderIds;
@@ -22,7 +22,6 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +44,7 @@ import java.util.UUID;
  * the normal product paths; only the external AI reply is replaced by the
  * strict scenario replay derived from this run.</p>
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"portfolio", "analysis"})
 @Service
 public class ProductDemoService {
 
@@ -61,42 +61,43 @@ public class ProductDemoService {
     private final ProductDemoRunRepository runs;
     private final ProjectPortfolioService projects;
     private final PortfolioAnalysisPersistenceService analyses;
-    private final ObjectProvider<DemoScenarioCatalog> catalogs;
-    private final ObjectProvider<TaxonomyService> taxonomy;
+    private final DemoScenarioCatalog catalog;
+    private final TaxonomyService taxonomy;
 
     public ProductDemoService(ProductDemoRunRepository runs, ProjectPortfolioService projects,
                               PortfolioAnalysisPersistenceService analyses,
-                              ObjectProvider<DemoScenarioCatalog> catalogs,
-                              ObjectProvider<TaxonomyService> taxonomy) {
+                              DemoScenarioCatalog catalog, TaxonomyService taxonomy) {
         this.runs = runs;
         this.projects = projects;
         this.analyses = analyses;
-        this.catalogs = catalogs;
+        this.catalog = catalog;
         this.taxonomy = taxonomy;
     }
 
     public DemoScenarioCatalog catalog() {
-        return catalogs.getIfAvailable(DemoScenarioCatalog::builtin);
+        return catalog;
     }
 
     @Transactional
     public DemoRunView start(String scenarioId, String username, WorkspaceContext context) {
         DemoScenario scenario = scenarioId == null || scenarioId.isBlank()
                 ? catalog().defaultScenario()
-                : catalog().find(scenarioId.strip()).orElseThrow(() ->
-                        PortfolioException.notFound("Unknown demo scenario: " + scenarioId));
+                : catalog().find(scenarioId.strip()).orElseThrow(() -> ProductDemoProblems.notFound(
+                        ProductDemoProblems.SCENARIO_NOT_FOUND, "Unknown demo scenario: " + scenarioId));
         verifyCatalogue(scenario);
         String runId = UUID.randomUUID().toString();
-        String label = scenario.title().getOrDefault("de", scenario.id());
+        // Demo data is authored content: it uses the scenario's own language, never server-side literals.
+        String language = scenario.requirement().language();
+        String banner = scenario.banner().get(language);
+        String revision = scenario.id() + " v" + scenario.version();
         var project = projects.createProject(new CreateProjectRequest(
                 "DEMO-" + scenario.id().toUpperCase(Locale.ROOT) + "-" + runId.substring(0, 8).toUpperCase(Locale.ROOT),
-                "Produktdemo · " + label,
-                scenario.banner().getOrDefault("de", "DEMODUS") + " · Szenario " + scenario.id() + " v" + scenario.version(),
+                "DEMO · " + scenario.title().get(language), banner + " · " + revision,
                 ProjectStatus.PLANNING, null, null, null, null), username, context);
         var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest(
                 scenario.requirement().key(), scenario.requirement().title(), scenario.r0Text(),
                 RequirementStatus.DRAFT, null, null, RequirementType.FUNCTIONAL, null, null,
-                "Produktdemo " + scenario.id() + " v" + scenario.version() + ": Ausgangsanforderung R0", null),
+                banner + " · " + revision + " · R0", null),
                 username, context);
         var run = runs.save(new ProductDemoRun(runId, PortfolioScope.key(username, context), project.id(),
                 requirement.id(), scenario.id(), scenario.version(), scenario.fingerprint(),
@@ -106,55 +107,31 @@ public class ProductDemoService {
 
     @Transactional(readOnly = true)
     public DemoRunView get(String runId, String username, WorkspaceContext context) {
-        ProductDemoRun run = require(runId, username, context);
+        return view(require(runId, username, context), username, context);
+    }
+
+    private DemoRunView view(ProductDemoRun run, String username, WorkspaceContext context) {
         var requirement = projects.requireRequirement(run.getProjectId(), run.getRequirementId(), username, context);
         int version = projects.currentVersion(requirement).getVersionNumber();
         return view(run, scenarioOf(run), version, requirement.getRequirementKey());
     }
 
+    /** The caller's demo runs, optionally restricted to one project (at most one run per project). */
     @Transactional(readOnly = true)
-    public List<DemoRunView> list(String username, WorkspaceContext context) {
-        return runs.findByScopeKeyOrderByCreatedAtDesc(PortfolioScope.key(username, context)).stream()
-                .map(run -> get(run.getId(), username, context)).toList();
+    public List<DemoRunView> list(Long projectId, String username, WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
+        List<ProductDemoRun> selected = projectId == null ? runs.findByScopeKeyOrderByCreatedAtDesc(scopeKey)
+                : runs.findByProjectIdAndScopeKey(projectId, scopeKey).map(List::of).orElse(List.of());
+        return selected.stream().map(run -> view(run, username, context)).toList();
     }
 
+    /** Closing takes the same row lock as provider admission, so no replay analysis is admitted afterwards. */
     @Transactional
     public DemoRunView close(String runId, String username, WorkspaceContext context) {
-        ProductDemoRun run = require(runId, username, context);
+        ProductDemoRun run = runs.lockByIdAndScopeKey(requireRunId(runId), PortfolioScope.key(username, context))
+                .orElseThrow(() -> runNotFound(runId));
         run.close(Instant.now());
-        return get(runId, username, context);
-    }
-
-    /** Demo marker of a project in the given tenant scope, if any. */
-    @Transactional(readOnly = true)
-    public Optional<ProductDemoRun> findForProject(Long projectId, String scopeKey) {
-        return projectId == null ? Optional.empty() : runs.findByProjectIdAndScopeKey(projectId, scopeKey);
-    }
-
-    /** Scenario replay provider for analysing or reformulating the given requirement version of a demo project. */
-    @Transactional(readOnly = true)
-    public Optional<String> demoProviderFor(Long projectId, String scopeKey, Long requirementId,
-                                            int requirementVersionNumber, String requestedProvider) {
-        var run = findForProject(projectId, scopeKey);
-        if (run.isEmpty()) {
-            ProductDemoAdmission.rejectDemoProviderForNormalProject(requestedProvider);
-            return Optional.empty();
-        }
-        return Optional.of(ProductDemoAdmission.admittedProvider(run.get(), catalog().find(run.get().getScenarioId())
-                .orElse(null), List.of(requirementId), requirementVersionNumber, requestedProvider));
-    }
-
-    /** Replay provider for reformulating a demo requirement from the given source version; empty for normal projects. */
-    @Transactional(readOnly = true)
-    public Optional<String> reformulationProviderFor(Long projectId, Long requirementId, long sourceVersionId,
-                                                     String username, WorkspaceContext context) {
-        var run = findForProject(projectId, PortfolioScope.key(username, context));
-        if (run.isEmpty()) return Optional.empty();
-        int versionNumber = projects.listRequirementVersions(projectId, requirementId, username, context).stream()
-                .filter(v -> v.id() != null && v.id() == sourceVersionId).mapToInt(RequirementVersionView::versionNumber)
-                .findFirst().orElseThrow(() -> PortfolioException.notFound("Requirement version not found: " + sourceVersionId));
-        return Optional.of(ProductDemoAdmission.admittedProvider(run.get(), catalog().find(run.get().getScenarioId())
-                .orElse(null), List.of(requirementId), versionNumber, null));
+        return view(run, username, context);
     }
 
     /**
@@ -200,14 +177,22 @@ public class ProductDemoService {
     }
 
     private ProductDemoRun require(String runId, String username, WorkspaceContext context) {
+        return runs.findByIdAndScopeKey(requireRunId(runId), PortfolioScope.key(username, context))
+                .orElseThrow(() -> runNotFound(runId));
+    }
+
+    private static String requireRunId(String runId) {
         if (runId == null || runId.isBlank()) throw PortfolioException.validation("demo run id is required");
-        return runs.findByIdAndScopeKey(runId.strip(), PortfolioScope.key(username, context))
-                .orElseThrow(() -> PortfolioException.notFound("Product demo not found: " + runId));
+        return runId.strip();
+    }
+
+    private static PortfolioException runNotFound(String runId) {
+        return ProductDemoProblems.notFound(ProductDemoProblems.RUN_NOT_FOUND, "Product demo not found: " + runId);
     }
 
     private DemoScenario scenarioOf(ProductDemoRun run) {
-        return catalog().find(run.getScenarioId()).orElseThrow(() ->
-                PortfolioException.conflict("DEMO_SCENARIO_CHANGED: scenario " + run.getScenarioId() + " is no longer available"));
+        return catalog().find(run.getScenarioId()).orElseThrow(() -> ProductDemoProblems.conflict(
+                ProductDemoProblems.SCENARIO_CHANGED, "Scenario " + run.getScenarioId() + " is no longer available"));
     }
 
     private DemoRunView view(ProductDemoRun run, DemoScenario scenario, int currentVersion, String requirementKey) {
@@ -222,8 +207,7 @@ public class ProductDemoService {
 
     /** The scenario is validated against the live catalogue before any demo data is created. */
     private void verifyCatalogue(DemoScenario scenario) {
-        TaxonomyService service = taxonomy.getIfAvailable();
-        if (service == null) throw PortfolioException.unavailable("Catalogue unavailable; product demo cannot start", null);
+        TaxonomyService service = taxonomy;
         try {
             DemoCatalogueValidator.validate(scenario, new DemoCatalogueValidator.CatalogueView() {
                 @Override public Optional<String> title(String code) {
@@ -234,7 +218,7 @@ public class ProductDemoService {
                 }
             });
         } catch (IllegalStateException mismatch) {
-            throw PortfolioException.conflict(mismatch.getMessage());
+            throw ProductDemoProblems.conflict(ProductDemoProblems.CATALOGUE_MISMATCH, mismatch.getMessage());
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.taxonomy.portfolio.demo;
+package com.taxonomy.composition.demo;
 
 import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import jakarta.persistence.Column;

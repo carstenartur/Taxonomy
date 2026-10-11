@@ -9,13 +9,15 @@
  *
  * All AI replies of a demo come from the server-side scenario replay. This module
  * never calls a provider and never decides, answers or adopts anything implicitly.
+ * Server calls go through TaxonomyProductDemoApi; the requirement route comes from
+ * TaxonomyRequirementDetail.route, so neither transport nor routing is duplicated.
  */
 (function () {
     'use strict';
 
     const COMMAND = 'produktdemo';
     const resolveUrl = window.TaxonomyI18n?.resolveUrl || (path => path);
-    const basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+    const api = () => window.TaxonomyProductDemoApi;
     const locale = (new URLSearchParams(window.location.search).get('lang')
         || document.documentElement.lang || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
     const text = {
@@ -42,26 +44,8 @@
     };
     const t = key => text[locale][key] || text.en[key] || key;
 
-    function csrfHeaders() {
-        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-        if (token) headers[header] = token;
-        return headers;
-    }
-
-    async function request(path, method, body) {
-        const response = await fetch(path, method ? {
-            method: method, headers: csrfHeaders(), credentials: 'same-origin',
-            body: body === undefined ? undefined : JSON.stringify(body)
-        } : { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
-        if (!response.ok) {
-            let message = response.status + ' ' + response.statusText;
-            try { const problem = await response.json(); message = problem.detail || problem.message || problem.error || message; }
-            catch (ignored) { /* keep status text */ }
-            throw new Error(message);
-        }
-        return response.json();
+    function errorMessage(error) {
+        return (error && (error.detail || error.message)) || String(error);
     }
 
     function el(tag, content, cls) {
@@ -87,11 +71,11 @@
         starting = true;
         if (status) { status.textContent = t('starting'); status.classList.remove('d-none'); }
         try {
-            const run = await request('/api/product-demo/runs', 'POST', {});
+            const run = await api().startRun();
             window.location.assign(requirementUrl(run));
             return run;
         } catch (error) {
-            if (status) status.textContent = t('failed') + error.message;
+            if (status) status.textContent = t('failed') + errorMessage(error);
             return null;
         } finally {
             starting = false;
@@ -184,8 +168,8 @@
         compare.type = 'button';
         compare.dataset.demoCompare = '';
         compare.addEventListener('click', async () => {
-            try { renderComparison(output, await request('/api/product-demo/runs/' + encodeURIComponent(run.id) + '/comparison')); }
-            catch (error) { output.textContent = t('failed') + error.message; }
+            try { renderComparison(output, await api().comparison(run.id)); }
+            catch (error) { output.textContent = t('failed') + errorMessage(error); }
         });
         controls.append(compare);
         if (!run.closedAt) {
@@ -193,8 +177,8 @@
             close.type = 'button';
             close.dataset.demoClose = '';
             close.addEventListener('click', async () => {
-                try { renderBanner(await request('/api/product-demo/runs/' + encodeURIComponent(run.id) + '/close', 'POST')); }
-                catch (error) { output.textContent = t('failed') + error.message; }
+                try { renderBanner(await api().closeRun(run.id)); }
+                catch (error) { output.textContent = t('failed') + errorMessage(error); }
             });
             controls.append(close);
         }
@@ -203,16 +187,12 @@
     }
 
     async function showBannerForRequirementPage() {
-        const pathname = window.location.pathname;
-        if (basePath && !pathname.startsWith(basePath + '/')) return null;
-        const match = pathname.slice(basePath.length).match(/^\/projects\/(\d+)\/requirements\/(\d+)$/);
-        if (!match) return null;
-        const projectId = Number(match[1]);
-        let runs;
-        try { runs = await request('/api/product-demo/runs'); }
+        const route = window.TaxonomyRequirementDetail?.route;
+        if (!route) return null;
+        let run;
+        try { run = await api().runForProject(route.projectId); }
         catch (ignored) { return null; }
-        const run = (runs || []).find(candidate => candidate.projectId === projectId);
-        return run ? renderBanner(run) : null;
+        return run && run.projectId === route.projectId ? renderBanner(run) : null;
     }
 
     window.addEventListener('click', interceptAnalyze, true);
