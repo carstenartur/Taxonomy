@@ -101,13 +101,17 @@ class AnalysisLiveProgressUiIT {
         summary.click();
         wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
                 "return document.querySelector('#llmCommLogContent details').open")));
-        assertThat(DETAIL_REQUESTS.get()).isZero();
-        SEQUENCE.set(2);
         wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText().contains("diagnostic-prompt"));
         assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
-        SEQUENCE.incrementAndGet();
+        assertThat(driver.findElement(By.id("llmCommLogContent")).getText()).doesNotContain("diagnostic-response");
+        SEQUENCE.set(2);
+        wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText().contains("diagnostic-response"));
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(2);
+        long observations = ((Number) driver.executeScript("return window.progressObservations")).longValue();
+        // A second real observation of the same durable revision must not load details again.
+        wait.until(browser -> ((Number) driver.executeScript("return window.progressObservations")).longValue() > observations);
         wait.until(browser -> browser.findElement(By.id("partialScores")).getText().contains("80"));
-        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(2);
         assertThat(driver.findElements(By.cssSelector("#llmCommLogContent img"))).isEmpty();
         assertThat(driver.executeScript("return window.injected || false")).isEqualTo(false);
     }
@@ -124,7 +128,9 @@ class AnalysisLiveProgressUiIT {
         driver.findElement(By.cssSelector("#llmCommLogContent summary")).click();
         wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
                 "return document.querySelector('#llmCommLogContent details').open")));
-        assertThat(DETAIL_REQUESTS.get()).isZero();
+        wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText().contains("diagnostic-prompt"));
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        assertThat(driver.findElement(By.id("llmCommLogContent")).getText()).doesNotContain("diagnostic-response");
         // Freeze periodic observation: only the authoritative HTTP completion may fetch next.
         driver.executeScript("window.monitor.stop()");
         String previousScores = driver.findElement(By.id("partialScores")).getText();
@@ -137,7 +143,7 @@ class AnalysisLiveProgressUiIT {
         assertThat(driver.findElement(By.id("partialScores")).getText()).isEqualTo(previousScores);
         assertThat(driver.findElement(By.id("analysisLiveProgress")).getText())
                 .contains("Vollständiges Ergebnis empfangen.");
-        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(2);
         assertThat(CANCEL_REQUESTS.get()).isZero();
     }
 
@@ -160,6 +166,8 @@ class AnalysisLiveProgressUiIT {
                     <script src="/api-client.js"></script><script src="/analysis-session-api.js"></script>
                     <script>window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'workspace-a',analysisGeneration:1}};</script>
                     <script src="/analysis-session-routing.js"></script><script src="/progress.js"></script><script>
+                    window.progressObservations=0;
+                    document.addEventListener('taxonomy:analysis-progress',function(){window.progressObservations++;});
                     window.monitor=TaxonomyAnalysisProgress.start('%s',function(s){
                         document.getElementById('partialScores').textContent=JSON.stringify(s.rawScores);
                     });</script></body></html>
@@ -197,7 +205,8 @@ class AnalysisLiveProgressUiIT {
             CANCEL_REQUESTS.incrementAndGet(); STATUS.set("CANCELLED"); SEQUENCE.incrementAndGet();
         } else if (path.contains("/calls/") && exchange.getRequestMethod().equals("GET")) {
             DETAIL_REQUESTS.incrementAndGet();
-            send(exchange, "application/json", "{\"prompt\":\"diagnostic-prompt <img src=x onerror=window.injected=true>\",\"response\":\"diagnostic-response\",\"truncated\":true}");
+            String response = SEQUENCE.get() == 1 ? "" : "diagnostic-response";
+            send(exchange, "application/json", "{\"prompt\":\"diagnostic-prompt <img src=x onerror=window.injected=true>\",\"response\":\"" + response + "\",\"truncated\":true}");
             return;
         } else if (!path.equals("/api/analysis-runs/" + ID) || !exchange.getRequestMethod().equals("GET")) {
             UNEXPECTED_REQUESTS.incrementAndGet();
