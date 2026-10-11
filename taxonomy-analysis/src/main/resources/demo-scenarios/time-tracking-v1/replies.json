@@ -194,19 +194,19 @@
           "source": "UA-1605",
           "type": "USES",
           "path": ["CR", "CR-1000", "CR-1011", "CR-1023", "CR-1036"],
-          "contribution": "Szenario-Antwort: Arbeitszeitanwendung übernimmt Mitarbeiterstammdaten aus dem HR-System"
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
         },
         {
           "source": "UA-1605",
           "type": "USES",
           "path": ["CR", "CR-1000", "CR-1047", "CR-1039", "CR-1006"],
-          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt die zentrale Unternehmensanmeldung"
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
         },
         {
           "source": "UA-1605",
           "type": "USES",
           "path": ["CR", "CR-1000", "CR-1011", "CR-1038", "CR-1065"],
-          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt einen Freigabe-Workflow für Korrekturen"
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
         }
       ],
       "reformulation": {

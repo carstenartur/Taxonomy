@@ -104,4 +104,41 @@ class DemoScenarioCatalogueTest {
         assertThatThrownBy(() -> DemoCatalogueValidator.validate(scenario, view(NODES, moved)))
                 .hasMessageContaining("DEMO_SCENARIO_CATALOGUE_MISMATCH").hasMessageContaining("UA-1605 is not a catalogue child of UA-1253");
     }
+
+    /** Replayed relation assessments complete within the default hierarchical search budget. */
+    @Test void relationSearchCompletesWithinDefaultBudgetForEveryIteration() {
+        var catalogue = new com.taxonomy.analysis.relations.RequirementRelationSearch.InputCatalogue() {
+            @Override public com.taxonomy.dto.RelationSearchModel.Node find(String id) {
+                return Optional.ofNullable(NODES.get(id)).map(DemoScenarioCatalogueTest::scalar).orElse(null);
+            }
+            @Override public List<com.taxonomy.dto.RelationSearchModel.Node> roots() {
+                return DemoScenario.ROOTS.stream().map(this::find).toList();
+            }
+            @Override public List<com.taxonomy.dto.RelationSearchModel.Node> children(com.taxonomy.dto.RelationSearchModel.Node node) {
+                return CHILDREN.getOrDefault(node.id(), List.of()).stream().map(NODES::get)
+                        .sorted(Comparator.comparing(TaxonomyNode::getNameEn)).map(DemoScenarioCatalogueTest::scalar).toList();
+            }
+        };
+        var options = new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(
+                new com.taxonomy.dto.RelationSearchModel.Limits(24, 8, 10, 512), 32);
+        for (var iteration : scenario.iterations().values()) {
+            var book = new DemoReplyBook(scenario, iteration.name());
+            String text = iteration.name().equals("R0") ? scenario.r0Text()
+                    : scenario.r0Text() + "\n" + String.join("\n", scenario.r1RequiredPhrases());
+            var report = new com.taxonomy.analysis.relations.RequirementRelationSearch(catalogue,
+                    new com.taxonomy.relations.service.RelationCompatibilityMatrix(), book::reply, () -> { })
+                    .search(text, iteration.declaredScores(), options);
+            assertThat(report.isSearchExhausted()).as("%s: %s calls, warnings %s, stop %s, unfinished %s", iteration.name(),
+                    report.totalCalls(), report.warnings(), report.stopReason(), report.result().unfinished()).isTrue();
+            var edges = report.result().edges().stream()
+                    .map(e -> e.sourceId() + " " + e.type() + " " + e.targetId()).toList();
+            for (var relation : iteration.relations())
+                assertThat(edges).contains(relation.source() + " " + relation.type() + " " + relation.target());
+        }
+    }
+
+    private static com.taxonomy.dto.RelationSearchModel.Node scalar(TaxonomyNode node) {
+        return new com.taxonomy.dto.RelationSearchModel.Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(),
+                node.getDescriptionEn(), node.getParentCode() == null || node.getParentCode().isBlank());
+    }
 }
