@@ -112,8 +112,10 @@ class ProductDemoEndToEndTest {
         assertThat(demos.list(normal.id(), USER, context)).isEmpty();
 
         // A0 on R0.
+        heap("before-A0");
         var a0 = analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context);
+        heap("after-A0");
         assertThat(a0.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R0");
         assertThat(a0.status()).as(() -> "A0 job " + a0 + " warnings " + analyses.getSnapshot(run.projectId(),
                 a0.items().getFirst().snapshotId(), USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.SUCCESS);
@@ -174,8 +176,10 @@ class ProductDemoEndToEndTest {
         assertThat(demos.get(run.id(), USER, context).activeProvider()).isEqualTo("DEMO.TIME-TRACKING-V1.R1");
 
         // A1 on R1 and the independent reference evaluation.
+        heap("before-A1");
         var a1 = analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context);
+        heap("after-A1");
         assertThat(a1.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R1");
         assertThat(a1.status()).as(() -> "A1 job " + a1 + " warnings " + analyses.getSnapshot(run.projectId(),
                 a1.items().getFirst().snapshotId(), USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.SUCCESS);
@@ -282,6 +286,14 @@ class ProductDemoEndToEndTest {
                 .filter(r -> r.id().equals(started.id())).findFirst().orElseThrow();
         assertThat(finished.status()).as("run %s", finished).isEqualTo(expectedStatus);
         return finished;
+    }
+
+    /** Diagnostic only: observe the same heap source as the production guard; never GC or alter policy. */
+    private static void heap(String station) {
+        var sample = com.taxonomy.analysis.service.AnalysisMemoryGuard.heapSample();
+        System.out.printf("PRODUCT_DEMO_HEAP station=%s pid=%d usedBytes=%d maximumBytes=%d headroomBytes=%d%n",
+                station, ProcessHandle.current().pid(), sample.usedBytes(), sample.maximumBytes(),
+                sample.maximumBytes() - sample.usedBytes());
     }
 
     private WorkspaceContext workspace() {

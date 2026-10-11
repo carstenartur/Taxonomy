@@ -317,6 +317,10 @@ public class PortfolioAnalysisPersistenceService {
         // A retry re-admits the current versions: a bound project must still admit the job's recorded provider.
         var bound = providerBinding.admittedProvider(projectId,
                 targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), null, username, context);
+        if (bound.isEmpty() && providerConfiguration != null && providerConfiguration.isScenarioReplay(job.getProvider())) {
+            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_REQUIRES_PROJECT_BINDING",
+                    "Replay job " + jobId + " can be retried only while its project binding is present", null);
+        }
         if (bound.isPresent() && !bound.get().equalsIgnoreCase(job.getProvider())) {
             throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_BINDING_CHANGED",
                     "Retry would use " + job.getProvider() + " but the project now admits " + bound.get()

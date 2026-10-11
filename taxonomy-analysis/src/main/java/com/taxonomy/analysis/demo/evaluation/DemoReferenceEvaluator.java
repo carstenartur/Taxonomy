@@ -91,8 +91,8 @@ public final class DemoReferenceEvaluator {
                     && !a0.relations().contains(relation.key()) && a1.relations().contains(relation.key()))
                 improvements.add("relation:" + relation.key());
         }
-        Overall overall = checks.stream().anyMatch(c -> c.status() == Status.NOT_EXECUTED) ? Overall.INCOMPLETE
-                : checks.stream().anyMatch(c -> c.status() == Status.FAIL) ? Overall.FAIL : Overall.PASS;
+        Overall overall = checks.stream().anyMatch(c -> c.status() == Status.FAIL) ? Overall.FAIL
+                : checks.stream().anyMatch(c -> c.status() == Status.NOT_EXECUTED) ? Overall.INCOMPLETE : Overall.PASS;
         return new Report(reference.scenario(), reference.version(), overall, List.copyOf(checks), List.copyOf(improvements));
     }
 

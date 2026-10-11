@@ -69,4 +69,33 @@ class DemoReferenceEvaluatorTest {
                 .allSatisfy(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
         assertThat(report.improvements()).isEmpty();
     }
+
+    @Test void aKnownQualityFailureRemainsVisibleWhenTheSecondAnalysisIsMissing() {
+        var unsafeR0 = new DemoReferenceEvaluator.Observation(
+                R0 + "\nBeim Stempeln wird zusätzlich der GPS-Standort des Mitarbeiters gespeichert.",
+                a0().scores(), a0().relations());
+        var report = DemoReferenceEvaluator.evaluate(reference, unsafeR0, null);
+        assertThat(report.checks()).filteredOn(c -> "forbidden-phrase:gps".equals(c.id())
+                && "R0".equals(c.iteration()))
+                .singleElement().extracting(DemoReferenceEvaluator.Check::status)
+                .isEqualTo(DemoReferenceEvaluator.Status.FAIL);
+        assertThat(report.checks()).filteredOn(c -> "R1".equals(c.iteration()))
+                .isNotEmpty().allSatisfy(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+    }
+
+    @Test void missingRelationEvidenceDoesNotOverrideAKnownForbiddenNode() {
+        var scores = new HashMap<>(a1().scores());
+        scores.put("CI-1121", 10);
+        var unsafeR1 = new DemoReferenceEvaluator.Observation(R1, scores, null);
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(), unsafeR1);
+        assertThat(report.checks()).filteredOn(c -> "forbidden-node:CI-1121".equals(c.id())
+                && "R1".equals(c.iteration()))
+                .singleElement().extracting(DemoReferenceEvaluator.Check::status)
+                .isEqualTo(DemoReferenceEvaluator.Status.FAIL);
+        assertThat(report.checks()).filteredOn(c -> "EXPECTED_RELATION".equals(c.kind())
+                && "R1".equals(c.iteration()))
+                .isNotEmpty().allSatisfy(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+    }
 }

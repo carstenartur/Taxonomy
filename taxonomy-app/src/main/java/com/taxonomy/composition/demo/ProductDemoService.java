@@ -111,9 +111,10 @@ public class ProductDemoService {
     }
 
     private DemoRunView view(ProductDemoRun run, String username, WorkspaceContext context) {
+        DemoScenario scenario = scenarioOf(run);
         var requirement = projects.requireRequirement(run.getProjectId(), run.getRequirementId(), username, context);
         int version = projects.currentVersion(requirement).getVersionNumber();
-        return view(run, scenarioOf(run), version, requirement.getRequirementKey());
+        return view(run, scenario, version, requirement.getRequirementKey());
     }
 
     /** The caller's demo runs, optionally restricted to one project (at most one run per project). */
@@ -141,6 +142,7 @@ public class ProductDemoService {
     @Transactional(readOnly = true)
     public DemoComparison compare(String runId, String username, WorkspaceContext context) {
         ProductDemoRun run = require(runId, username, context);
+        DemoScenario scenario = scenarioOf(run);
         List<SnapshotSummary> snapshots = analyses.listRequirementSnapshots(
                 run.getProjectId(), run.getRequirementId(), username, context);
         Map<Integer, String> texts = new java.util.HashMap<>();
@@ -149,7 +151,7 @@ public class ProductDemoService {
             texts.put(version.versionNumber(), version.text());
         var a0 = latest(snapshots, run, 0);
         var a1 = latest(snapshots, run, 1);
-        var report = DemoReferenceEvaluator.evaluate(DemoReference.load(run.getScenarioId()),
+        var report = DemoReferenceEvaluator.evaluate(DemoReference.load(scenario.id()),
                 observation(a0, texts, run, username, context), observation(a1, texts, run, username, context));
         return new DemoComparison(run.getId(), a0.map(SnapshotSummary::id).orElse(null),
                 a1.map(SnapshotSummary::id).orElse(null), report);
@@ -192,8 +194,13 @@ public class ProductDemoService {
     }
 
     private DemoScenario scenarioOf(ProductDemoRun run) {
-        return catalog().find(run.getScenarioId()).orElseThrow(() -> ProductDemoProblems.conflict(
+        DemoScenario scenario = catalog().find(run.getScenarioId()).orElseThrow(() -> ProductDemoProblems.conflict(
                 ProductDemoProblems.SCENARIO_CHANGED, "Scenario " + run.getScenarioId() + " is no longer available"));
+        if (scenario.version() != run.getScenarioVersion()
+                || !scenario.fingerprint().equals(run.getScenarioFingerprint()))
+            throw ProductDemoProblems.conflict(ProductDemoProblems.SCENARIO_CHANGED,
+                    "Scenario " + run.getScenarioId() + " no longer matches the recorded version of this demo run");
+        return scenario;
     }
 
     private DemoRunView view(ProductDemoRun run, DemoScenario scenario, int currentVersion, String requirementKey) {
