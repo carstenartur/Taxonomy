@@ -47,13 +47,6 @@ public class DemoScenarioCatalog {
         this.scenarios = Collections.unmodifiableMap(loaded);
     }
 
-    private static final class Builtin {
-        private static final DemoScenarioCatalog INSTANCE = new DemoScenarioCatalog();
-    }
-
-    /** Shared immutable instance for components that cannot receive injection. */
-    public static DemoScenarioCatalog builtin() { return Builtin.INSTANCE; }
-
     public String command() { return command; }
 
     public DemoScenario defaultScenario() { return scenarios.get(defaultScenario); }

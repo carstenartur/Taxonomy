@@ -1,7 +1,5 @@
 package com.taxonomy.analysis.service;
 
-import com.taxonomy.analysis.demo.DemoProviderIds;
-import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.extension.api.llm.LlmTransportExtension;
@@ -82,6 +80,7 @@ public class LlmProviderConfig {
     private String customLlmApiKey;
 
     private final LocalEmbeddingService localEmbeddingService;
+    private final ScenarioReplayProviders replays;
     private Map<ProviderId, LlmTransportExtension> externalProviders = Map.of();
     private Environment environment;
     private com.taxonomy.extension.api.plugin.ExtensionCatalog catalog;
@@ -107,6 +106,7 @@ public class LlmProviderConfig {
         for (var extension : extensions) {
             ProviderId id = new ProviderId(extension.descriptor().providerId());
             if (LlmProvider.builtin(new ProviderId(id.value().replace('-', '_'))).isPresent()
+                    || replays.owns(id)
                     || validated.putIfAbsent(id, extension) != null) {
                 throw new IllegalStateException("Duplicate LLM provider ID: " + id);
             }
@@ -124,8 +124,8 @@ public class LlmProviderConfig {
 
     public ProviderId requireRegisteredProvider(String value) {
         ProviderId id = new ProviderId(value);
-        if (DemoProviderIds.isDemo(id)) {
-            if (!DemoScenarioCatalog.builtin().supports(id))
+        if (replays.owns(id)) {
+            if (replays.find(id).isEmpty())
                 throw new IllegalArgumentException("No executable LLM provider registered: " + id);
             return id;
         }
@@ -149,7 +149,7 @@ public class LlmProviderConfig {
     }
 
     public String getApiKey(ProviderId id) {
-        if (DemoProviderIds.isDemo(id)) return "";
+        if (replays.owns(id)) return "";
         var builtin = LlmProvider.builtin(id);
         return builtin.isPresent() ? getApiKey(builtin.get()) : externalSetting(id, "api-key", "");
     }
@@ -159,7 +159,7 @@ public class LlmProviderConfig {
         if (builtin.isPresent()) return builtin.get() != LlmProvider.CUSTOM_OPENAI
                 && builtin.get() != LlmProvider.LOCAL_ONNX;
         requireRegisteredProvider(id.value());
-        if (DemoProviderIds.isDemo(id)) return false;
+        if (replays.owns(id)) return false;
         return externalProviders.get(id).descriptor().requiresApiKey();
     }
 
@@ -169,13 +169,13 @@ public class LlmProviderConfig {
     }
 
     public String getOpenAiCompatibleUrl(ProviderId id) {
-        if (DemoProviderIds.isDemo(id)) return demoEndpoint(id);
+        if (replays.owns(id)) return requireScenarioReplay(id).endpointIdentity();
         return LlmProvider.builtin(id).map(this::getOpenAiCompatibleUrl)
                 .orElseGet(() -> externalSetting(id, "endpoint-identity", "plugin:" + id.value()));
     }
 
     public String getOpenAiCompatibleModel(ProviderId id) {
-        if (DemoProviderIds.isDemo(id)) return demoModel(id);
+        if (replays.owns(id)) return requireScenarioReplay(id).model();
         return LlmProvider.builtin(id).map(this::getOpenAiCompatibleModel)
                 .orElseGet(() -> externalSetting(id, "model", id.value()));
     }
@@ -183,7 +183,7 @@ public class LlmProviderConfig {
     public boolean isProviderConfigured(ProviderId id) {
         var builtin = LlmProvider.builtin(id);
         if (builtin.isPresent()) return isProviderConfigured(builtin.get());
-        if (DemoProviderIds.isDemo(id)) return DemoScenarioCatalog.builtin().supports(id);
+        if (replays.owns(id)) return replays.find(id).isPresent();
         var extension = externalProviders.get(id);
         return extension != null && (!extension.descriptor().requiresApiKey() || hasText(getApiKey(id)));
     }
@@ -191,13 +191,24 @@ public class LlmProviderConfig {
     public String getProviderConfigurationError(ProviderId id) {
         var builtin = LlmProvider.builtin(id);
         if (builtin.isPresent()) return getProviderConfigurationError(builtin.get());
-        if (DemoProviderIds.isDemo(id)) return DemoScenarioCatalog.builtin().supports(id)
+        if (replays.owns(id)) return replays.find(id).isPresent()
                 ? null : "No executable LLM provider registered: " + id;
         if (!externalProviders.containsKey(id)) return "No executable LLM provider registered: " + id;
         return isProviderConfigured(id) ? null : "Provider credential is required for " + id;
     }
 
     public LlmProviderConfig(LocalEmbeddingService localEmbeddingService) {
+        this(localEmbeddingService, ScenarioReplayProviders.NONE);
+    }
+
+    @Autowired
+    public LlmProviderConfig(LocalEmbeddingService localEmbeddingService,
+                             org.springframework.beans.factory.ObjectProvider<ScenarioReplayProviders> replays) {
+        this(localEmbeddingService, replays.getIfAvailable(() -> ScenarioReplayProviders.NONE));
+    }
+
+    public LlmProviderConfig(LocalEmbeddingService localEmbeddingService, ScenarioReplayProviders replays) {
+        this.replays = java.util.Objects.requireNonNull(replays, "replays");
         this.localEmbeddingService = localEmbeddingService;
     }
 
@@ -238,8 +249,8 @@ public class LlmProviderConfig {
         boolean mock = "MOCK".equalsIgnoreCase(frozenProvider.trim());
         ProviderId provider = mock ? null : requireRegisteredProvider(frozenProvider);
         com.taxonomy.extension.api.plugin.ExtensionLease<com.taxonomy.extension.api.llm.LlmProviderExtension> lease = null;
-        // A product-demo replay is classpath-owned; it has no plugin artifact to lease.
-        if (catalog != null && !DemoProviderIds.isDemo(provider)) {
+        // A scenario replay is classpath-owned; it has no plugin artifact to lease.
+        if (catalog != null && !isScenarioReplay(provider)) {
             lease = catalog.acquire(new com.taxonomy.extension.api.plugin.ExtensionKey(
                     com.taxonomy.shared.extension.ExtensionKind.LLM_PROVIDER, mock ? "LOCAL_ONNX" : provider.value()),
                     com.taxonomy.extension.api.llm.LlmProviderExtension.class);
@@ -255,7 +266,7 @@ public class LlmProviderConfig {
     public com.taxonomy.extension.api.plugin.PluginInvocation captureProviderBinding(String provider) {
         boolean mock = "MOCK".equalsIgnoreCase(provider == null ? null : provider.trim());
         ProviderId id = mock ? new ProviderId("LOCAL_ONNX") : requireRegisteredProvider(provider);
-        if (DemoProviderIds.isDemo(id)) return null;
+        if (replays.owns(id)) return null;
         if (catalog == null) {
             if (mock || LlmProvider.builtin(id).isPresent()) return null; // isolated/legacy built-in integrations
             throw new ProviderPluginUnavailableException("PROVIDER_PLUGIN_UNAVAILABLE");
@@ -292,7 +303,7 @@ public class LlmProviderConfig {
     public RequestProviderScope withRequestProvider(String provider,
             com.taxonomy.extension.api.plugin.PluginInvocation frozen) {
         if (frozen == null) {
-            if (!"MOCK".equalsIgnoreCase(provider) && !DemoProviderIds.isDemo(provider)
+            if (!"MOCK".equalsIgnoreCase(provider) && !isScenarioReplay(provider)
                     && LlmProvider.builtin(new ProviderId(provider)).isEmpty())
                 throw new ProviderPluginUnavailableException("PROVIDER_BINDING_REQUIRED");
         } else {
@@ -350,8 +361,8 @@ public class LlmProviderConfig {
         ProviderId override = requestProviderOverride.get();
         if (override != null) return requireRegisteredProvider(override.value());
         if (llmProviderConfig != null && !llmProviderConfig.isBlank()) {
-            if (DemoProviderIds.isDemo(llmProviderConfig))
-                throw new IllegalArgumentException("A product-demo replay can only be bound to a demo run, not configured globally");
+            if (isScenarioReplay(llmProviderConfig))
+                throw new IllegalArgumentException("A scenario replay can only be bound to a run, not configured globally");
             return requireRegisteredProvider(llmProviderConfig);
         }
         if (hasText(geminiApiKey)) return LlmProvider.GEMINI.id();
@@ -367,7 +378,7 @@ public class LlmProviderConfig {
     public String getActiveProviderName() {
         if (isMockMode()) return "Mock";
         ProviderId id = getActiveProviderId();
-        if (DemoProviderIds.isDemo(id)) return "Produktdemo (Szenario-Replay)";
+        if (replays.owns(id)) return requireScenarioReplay(id).displayName();
         var builtin = LlmProvider.builtin(id);
         if (builtin.isEmpty()) return externalProviders.get(id).descriptor().providerName();
         return switch (builtin.get()) {
@@ -595,13 +606,23 @@ public class LlmProviderConfig {
         return value == null ? "" : value.trim();
     }
 
-    private static String demoEndpoint(ProviderId id) {
-        return "replay:demo-scenarios/" + DemoProviderIds.parse(id).orElseThrow().scenarioId();
+    /** True for provider ids in a scenario-replay namespace; such providers are only usable when bound to a run. */
+    public boolean isScenarioReplay(ProviderId id) {
+        return id != null && replays.owns(id);
     }
 
-    private static String demoModel(ProviderId id) {
-        var binding = DemoProviderIds.parse(id).orElseThrow();
-        var scenario = DemoScenarioCatalog.builtin().require(binding);
-        return "scenario-replay-" + binding.scenarioId() + "-v" + scenario.version() + "-" + binding.iteration().toLowerCase(Locale.ROOT);
+    public boolean isScenarioReplay(String provider) {
+        if (provider == null || provider.isBlank() || "MOCK".equalsIgnoreCase(provider.strip())) return false;
+        try {
+            return isScenarioReplay(new ProviderId(provider.strip()));
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
+    }
+
+    /** Executable scenario replay for an owned provider id. */
+    public ScenarioReplayProviders.Replay requireScenarioReplay(ProviderId id) {
+        return replays.find(id).orElseThrow(() ->
+                new IllegalArgumentException("No executable LLM provider registered: " + id));
     }
 }

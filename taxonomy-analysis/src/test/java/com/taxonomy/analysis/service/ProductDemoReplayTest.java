@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.analysis.demo.DemoProviderIds;
 import com.taxonomy.analysis.demo.DemoReplyBook;
 import com.taxonomy.analysis.demo.DemoScenario;
+import com.taxonomy.analysis.demo.DemoReplayProviders;
 import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import com.taxonomy.analysis.reformulation.FrozenReformulationEngine;
 import com.taxonomy.analysis.reformulation.NodeReformulationService;
@@ -29,6 +30,7 @@ class ProductDemoReplayTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final DemoScenarioCatalog catalog = new DemoScenarioCatalog();
     private final DemoScenario scenario = catalog.defaultScenario();
+    private final DemoReplayProviders replays = new DemoReplayProviders(catalog);
 
     @Test void builtinCatalogueRegistersTheCommandAndExactlyTwoIterations() {
         assertThat(catalog.command()).isEqualTo("produktdemo");
@@ -228,7 +230,7 @@ class ProductDemoReplayTest {
     }
 
     @Test void demoProviderIsRegisteredOnlyForAuthoredIterationsAndNeverGlobally() {
-        var config = new LlmProviderConfig(mock(com.taxonomy.catalog.service.LocalEmbeddingService.class));
+        var config = new LlmProviderConfig(mock(com.taxonomy.catalog.service.LocalEmbeddingService.class), replays);
         var id = DemoProviderIds.providerId(scenario.id(), 0);
         assertThat(config.requireRegisteredProvider(id.value())).isEqualTo(id);
         assertThat(config.requiresApiKey(id)).isFalse();
@@ -240,14 +242,31 @@ class ProductDemoReplayTest {
         assertThat(config.registeredProviderIds()).noneMatch(DemoProviderIds::isDemo);
         try (var ignored = config.withRequestProvider(id.value(), null)) {
             assertThat(config.getActiveProviderId()).isEqualTo(id);
+            assertThat(config.getActiveProviderName()).isEqualTo("Scenario replay " + scenario.id() + " R0");
             assertThat(config.isMockMode()).isFalse();
         }
+    }
+
+    @Test void withoutReplayStrategyTheDemoNamespaceIsNotExecutable() {
+        var config = new LlmProviderConfig(mock(com.taxonomy.catalog.service.LocalEmbeddingService.class));
+        var id = DemoProviderIds.providerId(scenario.id(), 0);
+        assertThat(config.isScenarioReplay(id)).isFalse();
+        assertThatThrownBy(() -> config.requireRegisteredProvider(id.value())).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void replayIdentityIsTheAuthoredContentAndIteration() {
+        var r0 = replays.find(DemoProviderIds.providerId(scenario.id(), 0)).orElseThrow();
+        var r1 = replays.find(DemoProviderIds.providerId(scenario.id(), 1)).orElseThrow();
+        assertThat(r0.contentIdentity()).startsWith(scenario.fingerprint()).isNotEqualTo(r1.contentIdentity());
+        assertThat(r0.model()).isEqualTo("scenario-replay-" + scenario.id() + "-v" + scenario.version() + "-r0");
+        assertThat(replays.find(DemoProviderIds.providerId(scenario.id(), 2))).isEmpty();
+        assertThat(replays.owns(DemoProviderIds.providerId(scenario.id(), 2))).isTrue();
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────
 
     private LlmGateway gateway(int iteration) {
-        return new ScenarioReplayGateway(DemoProviderIds.parse(DemoProviderIds.providerId(scenario.id(), iteration)).orElseThrow(), catalog);
+        return new ScenarioReplayGateway(replays.find(DemoProviderIds.providerId(scenario.id(), iteration)).orElseThrow());
     }
 
     private NodeReformulationService nodeService(ObjectMapper json, int iteration) {

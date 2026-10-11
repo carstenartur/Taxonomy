@@ -192,6 +192,12 @@ public class LlmService {
 
     public void setRequestProviderId(ProviderId provider) { providerConfig.setRequestProviderId(provider); }
 
+    /** A scenario replay is admitted only for a persisted analysis whose run explicitly binds it. */
+    public void requireProviderAdmissible(String provider, boolean persistedRun) {
+        if (!persistedRun && providerConfig.isScenarioReplay(provider))
+            throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(provider);
+    }
+
     /** A durable job may execute only with its admitted artifact/configuration. */
     public LlmProviderConfig.RequestProviderScope withProviderBinding(String provider,
             com.taxonomy.extension.api.plugin.PluginInvocation binding) {
@@ -811,14 +817,13 @@ public class LlmService {
                 throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
             }
         }
-        var demo = com.taxonomy.analysis.demo.DemoProviderIds.parse(provider);
-        if (demo.isPresent()) {
-            // Replay identity is the exact scenario content and iteration, never a live provider configuration.
-            var scenario = com.taxonomy.analysis.demo.DemoScenarioCatalog.builtin().require(demo.get());
+        if (providerConfig.isScenarioReplay(provider)) {
+            // Replay identity is the exact authored reply content, never a live provider configuration.
+            var replay = providerConfig.requireScenarioReplay(provider);
             String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
                     .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
-            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), "DEMO_REPLAY",
-                    scenario.fingerprint(), demo.get().iteration(), Integer.toString(productBatchSize),
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), "SCENARIO_REPLAY",
+                    replay.contentIdentity(), replay.model(), Integer.toString(productBatchSize),
                     Integer.toString(minimumProductScore()), templates);
         }
         String endpoint = provider.equals(LlmProvider.GEMINI.id()) ? providerConfig.getGeminiUrl()

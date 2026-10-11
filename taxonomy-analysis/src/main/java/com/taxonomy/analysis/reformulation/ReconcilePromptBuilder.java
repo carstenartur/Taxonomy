@@ -5,7 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.util.*;
 public class ReconcilePromptBuilder {
-    public static final String PROMPT_VERSION="reformulation-reconcile-v1", SCHEMA_VERSION="reconcile-response-v1";
+    public static final String PROMPT_VERSION="reformulation-reconcile-v2", SCHEMA_VERSION="reconcile-response-v1";
+    /** Frozen v1 proposals keep their exact original node-context encoding (no compaction). */
+    static final String LEGACY_PROMPT_VERSION="reformulation-reconcile-v1";
     private static final String CONTEXT_DICTIONARY_INSTRUCTION =
             "\nInput encoding: each discovery contextRef refers to the exact full context string "
             + "in discoveryContextTable inside this SAME RECONCILIATION_DATA_JSON. Resolve these references "
@@ -18,7 +20,7 @@ public class ReconcilePromptBuilder {
         }catch(IOException e){throw new IllegalStateException("Cannot read reconcile prompt",e);}
     }
     public static Map<String,String> freeze(Map<String,String> archived) {
-        return Map.of("reconcilePrompt",archived.containsKey("reconcilePrompt")?archived.get("reconcilePrompt"):template(),"reconcilePromptVersion",archived.getOrDefault("reconcilePromptVersion",PROMPT_VERSION),
+        return Map.of("reconcilePrompt",archived.containsKey("reconcilePrompt")?archived.get("reconcilePrompt"):template(),"reconcilePromptVersion",archived.getOrDefault("reconcilePromptVersion",archived.containsKey("reconcilePrompt")?LEGACY_PROMPT_VERSION:PROMPT_VERSION),
             "reconcileSchemaVersion",archived.getOrDefault("reconcileSchemaVersion",SCHEMA_VERSION));
     }
     public String build(ReconciliationInput input,String errors) {
@@ -49,23 +51,28 @@ public class ReconcilePromptBuilder {
     }
     /** Only explicitly relevant frozen nodes and mappings; no live catalogue or entire archive injection. */
     Map<String,Object> scopedContext(ReformulationBaseline baseline,Set<String> selected) {
-        var descriptions=new TreeMap<String,String>();collect(json.readTree(baseline.frozenContext().getOrDefault("catalogue","[]")),selected,descriptions);
+        boolean compactNodes=compactsNodeContext(baseline);
+        var descriptions=new TreeMap<String,String>();collect(json.readTree(baseline.frozenContext().getOrDefault("catalogue","[]")),selected,descriptions,compactNodes);
         var mappings=new ArrayList<JsonNode>();for(var mapping:json.readTree(baseline.frozenContext().getOrDefault("elementMappings","[]")))if(selected.contains(mapping.path("nodeCode").asText()))mappings.add(mapping);
         var payload=json.readTree(baseline.snapshotPayload());var source=payload.has("rawScores")?payload.path("rawScores"):payload.path("scores");
         var scores=new TreeMap<String,JsonNode>();source.properties().forEach(e->{if(selected.contains(e.getKey()))scores.put(e.getKey(),e.getValue());});
         return Map.of("descriptions",descriptions,"mappings",List.copyOf(mappings),"rawScores",scores);
     }
-    /** Lossless prompt compaction: absent values and an English copy identical to the description carry no information. */
+    /** Proposals frozen before v2 (or without a recorded version) keep their exact original encoding. */
+    static boolean compactsNodeContext(ReformulationBaseline baseline) {
+        return !LEGACY_PROMPT_VERSION.equals(baseline.frozenContext().getOrDefault("reconcilePromptVersion",LEGACY_PROMPT_VERSION));
+    }
+    /** Lossless node compaction (since v2, declared in the frozen v2 template): absent values and an English copy identical to the original carry no information. */
     static void compact(tools.jackson.databind.node.ObjectNode node) {
         var absent=new ArrayList<String>();node.properties().forEach(e->{if(e.getValue().isNull())absent.add(e.getKey());});
         absent.forEach(node::remove);
         if(node.has("descriptionEn") && node.path("descriptionEn").equals(node.path("description")))node.remove("descriptionEn");
         if(node.has("nameEn") && node.path("nameEn").equals(node.path("name")))node.remove("nameEn");
     }
-    private static void collect(JsonNode tree,Set<String> selected,Map<String,String> result) {
+    private static void collect(JsonNode tree,Set<String> selected,Map<String,String> result,boolean compactNodes) {
         for(var node:tree) {
-            if(selected.contains(node.path("code").asText())){var copy=(tools.jackson.databind.node.ObjectNode)node.deepCopy();copy.remove("children");compact(copy);result.put(node.path("code").asText(),copy.toString());}
-            if(node.path("children").isArray())collect(node.path("children"),selected,result);
+            if(selected.contains(node.path("code").asText())){var copy=(tools.jackson.databind.node.ObjectNode)node.deepCopy();copy.remove("children");if(compactNodes)compact(copy);result.put(node.path("code").asText(),copy.toString());}
+            if(node.path("children").isArray())collect(node.path("children"),selected,result,compactNodes);
         }
     }
 

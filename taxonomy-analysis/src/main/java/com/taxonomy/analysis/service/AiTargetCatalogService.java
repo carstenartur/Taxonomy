@@ -123,13 +123,13 @@ public class AiTargetCatalogService {
     private AiTargetDescriptor describe(ProviderId provider) {
         var builtin = LlmProvider.builtin(provider);
         if (builtin.isPresent()) return describe(builtin.get());
-        if (com.taxonomy.analysis.demo.DemoProviderIds.isDemo(provider)) {
-            if (!com.taxonomy.analysis.demo.DemoScenarioCatalog.builtin().supports(provider)) {
+        if (providerConfig.isScenarioReplay(provider)) {
+            if (!providerConfig.isProviderConfigured(provider)) {
                 throw new IllegalArgumentException("Unknown AI provider: " + provider);
             }
-            // Product demo: the external reply is a declared scenario replay, never a live model.
-            return descriptor(provider.value(), providerConfig.getOpenAiCompatibleModel(provider),
-                    AiTargetMode.MOCK, true, null, providerConfig.getOpenAiCompatibleUrl(provider));
+            // The external reply is a declared scenario replay, never a live model.
+            var replay = providerConfig.requireScenarioReplay(provider);
+            return descriptor(provider.value(), replay.model(), AiTargetMode.MOCK, true, null, replay.endpointIdentity());
         }
         if (!providerConfig.registeredProviderIds().contains(provider)) {
             throw new IllegalArgumentException("Unknown AI provider: " + provider);

@@ -17,10 +17,6 @@ public record AnalyzeRequirementCommand(
 
     public AnalyzeRequirementCommand {
         analysisScope = AnalysisScope.orDefault(analysisScope);
-        // A product-demo replay exists only for the isolated, project-bound demo requirement.
-        if (com.taxonomy.analysis.demo.DemoProviderIds.isDemo(provider) && provenance == null) {
-            throw new UnknownAnalysisProviderException(provider);
-        }
     }
 
     /** Old persisted commands have no plugin binding and remain readable for built-in providers only. */
