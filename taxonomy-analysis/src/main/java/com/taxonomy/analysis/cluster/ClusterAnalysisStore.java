@@ -37,6 +37,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     private final TransactionTemplate tx;
     private final ObjectMapper mapper;
     private final AnalysisDispatchService dispatch;
+    private final ClusterAnalysisDiagnostics diagnostics;
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
     private volatile Consumer<AnalysisProgressEvent> events = event -> { };
 
@@ -63,12 +64,43 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                              int completedRoots, int totalRoots, long createdAt, long updatedAt,
                              ScorePreview scores) { }
     public record Input(AnalysisOperationContext context, AnalyzeRequirementCommand command,
-                        boolean executable, String taskInput) { }
+                        boolean executable, String taskInput, int deliveryAttempt) {
+        public Input(AnalysisOperationContext context, AnalyzeRequirementCommand command, boolean executable, String taskInput) {
+            this(context, command, executable, taskInput, 0);
+        }
+    }
 
     public ClusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
                                 ObjectMapper mapper, AnalysisDispatchService dispatch) {
         this.em = Objects.requireNonNull(em); this.tx = new TransactionTemplate(transactions);
         this.mapper = Objects.requireNonNull(mapper); this.dispatch = Objects.requireNonNull(dispatch);
+        this.diagnostics = new ClusterAnalysisDiagnostics(em, transactions, mapper, this);
+    }
+
+    public ClusterAnalysisDiagnostics callDiagnostics() { return diagnostics; }
+    public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task) { return diagnostics.session(task); }
+    @Override public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int deliveryAttempt) {
+        return diagnostics.session(task, deliveryAttempt);
+    }
+    // Called only inside the diagnostics service's short independent transaction.
+    ClusterAnalysisRun diagnosticAuthority(AnalysisTaskMessage task, Integer deliveryAttempt) {
+        var run = requireRun(task.envelope().operationId(), true);
+        requireAuthority(run, context(task.envelope()));
+        var work = requireWork(task);
+        if (deliveryAttempt != null && (run.state.terminal() || !"RUNNING".equals(work.state)
+                || work.resultJson != null || work.failureReason != null || work.attempts != deliveryAttempt))
+            throw new IllegalStateException("Diagnostic admission is no longer owned by this delivery");
+        return run;
+    }
+    int diagnosticDelivery(AnalysisTaskMessage task) { return requireWork(task).attempts; }
+    boolean diagnosticTask(AnalysisOperationContext context, String taskId) {
+        var work = em.find(ClusterAnalysisWork.class, key(taskId));
+        return work != null && work.taskId.equals(taskId) && work.operationId.equals(context.operationId());
+    }
+    void diagnosticChanged(ClusterAnalysisRun run) {
+        long finished = run.updatedAt;
+        appendEvent(run, AnalysisProgressPhase.DIAGNOSTICS_UPDATED);
+        if (run.state.terminal()) run.updatedAt = finished;
     }
 
     public void eventPublisher(Consumer<AnalysisProgressEvent> publisher) { events = Objects.requireNonNull(publisher); }
@@ -143,7 +175,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 appendEvent(run, AnalysisProgressPhase.TASK_DISPATCHED);
             }
             return new Input(read(run.contextJson, AnalysisOperationContext.class),
-                    read(run.commandJson, AnalyzeRequirementCommand.class), executable, work.inputJson);
+                    read(run.commandJson, AnalyzeRequirementCommand.class), executable, work.inputJson, work.attempts);
         });
     }
 

@@ -201,6 +201,9 @@ class ClusterOnnxExecutionTest {
         AnalyzeRequirementCommand admitted;
 
         Fixture() {
+            var diagnostics = mock(ClusterAnalysisDiagnostics.Session.class);
+            when(diagnostics.operationId()).thenReturn(context.operationId());
+            when(store.diagnostics(any(), anyInt())).thenReturn(diagnostics);
             ReflectionTestUtils.setField(providers, "llmProviderConfig", "OPENAI");
             ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
             ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);

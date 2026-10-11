@@ -55,8 +55,10 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
                 || !work.preparationId().equals(plan.preparationId())))
             throw new IllegalArgumentException("Relation work does not match its persisted grant identity");
         Set<String> required = task.targetRoots().stream().map(TaxonomyShardRoot::code).collect(Collectors.toUnmodifiableSet());
+        var diagnostics = store.diagnostics(task, input.deliveryAttempt());
         try (var provider = providers.withRequestProvider(input.command().provider(), input.command().providerBinding());
-             var control = AnalysisRunControl.worker(context.operationId(), cancelled, Objects.requireNonNull(guards.get()))) {
+             var control = AnalysisRunControl.worker(diagnostics, cancelled, Objects.requireNonNull(guards.get()));
+             var transport = LlmTransportMeter.openJournal(diagnostics)) {
             AnalysisRunControl.checkpoint();
             List<RootCatalogueSnapshot> roots = new ArrayList<>();
             for (TaxonomyShardRoot root : task.targetRoots()) {

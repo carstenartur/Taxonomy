@@ -15,6 +15,7 @@ public final class ClusterRelationService {
     /** The implementation authorizes reads and joins the completion ledger's transaction for writes. */
     public interface Store {
         ClusterAnalysisStore.Input start(AnalysisTaskMessage task);
+        ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int deliveryAttempt);
         String shard(AnalysisOperationContext context, TaxonomyShardRoot root);
         AnalysisResult rootResults(AnalysisOperationContext context);
         RelationSearchDistribution.Plan relationPlan(AnalysisOperationContext context);

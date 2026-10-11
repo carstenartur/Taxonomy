@@ -119,6 +119,7 @@ class ClusterRelationWorkerPersistenceTest {
     private static ClusterRelationService.Store adapter(ClusterAnalysisStore store) {
         return new ClusterRelationService.Store() {
             public ClusterAnalysisStore.Input start(AnalysisTaskMessage task) { return store.start(task); }
+            public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int delivery) { return store.diagnostics(task, delivery); }
             public String shard(AnalysisOperationContext context, TaxonomyShardRoot root) { return store.shard(context, root); }
             public AnalysisResult rootResults(AnalysisOperationContext context) { return store.rootResults(context); }
             public RelationSearchDistribution.Plan relationPlan(AnalysisOperationContext context) { return store.relationPlan(context); }

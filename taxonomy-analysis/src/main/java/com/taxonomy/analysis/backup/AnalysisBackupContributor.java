@@ -28,7 +28,8 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() { return Set.of("com.taxonomy.analysis.session.AnalysisWorkingDraft", "com.taxonomy.analysis.recovery.AnalysisContinuationRun", "com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint",
             "com.taxonomy.analysis.cluster.ClusterAnalysisRun", "com.taxonomy.analysis.cluster.ClusterAnalysisWork",
-            "com.taxonomy.analysis.cluster.ClusterAnalysisInput", "com.taxonomy.analysis.cluster.ClusterAnalysisEvent"); }
+            "com.taxonomy.analysis.cluster.ClusterAnalysisInput", "com.taxonomy.analysis.cluster.ClusterAnalysisEvent",
+            "com.taxonomy.analysis.cluster.ClusterAnalysisCall", "com.taxonomy.analysis.cluster.ClusterAnalysisAttempt"); }
     @Override public List<String> omissions(BackupProfile profile) {
         if (profile == BackupProfile.SELECTED_VERSION) return List.of("analysis: drafts, continuations and clustered runs are not versioned by Git and cannot be attributed to a selected historical commit");
         if (!profile.includesHistory()) return List.of("analysis: stale draft results, earlier continuations/clustered runs and unattached historical checkpoints are excluded", "analysis: worker claims, broker deliveries, provider permits and live execution are excluded");

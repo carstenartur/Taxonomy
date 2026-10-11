@@ -106,8 +106,8 @@ public class AnalysisProgressController {
         }
     }
 
-    @Operation(summary = "Read bounded local call diagnostics",
-            description = "Loads retained prompt/response diagnostics only after an explicit request in the original authenticated scope.")
+    @Operation(summary = "Read bounded call diagnostics",
+            description = "Loads bounded prompt/response diagnostics only after an explicit request in the original authenticated scope. Durable cluster details distinguish logical evaluations, worker deliveries and actual transport attempts; missing usage stays unknown and recording replay is not new provider usage.")
     @ApiResponse(responseCode = "200", description = "Retained call diagnostics", content = @Content(
             schema = @Schema(implementation = AnalysisProgressRegistry.CallDetail.class)))
     @ApiResponse(responseCode = "404", description = "Run or diagnostics absent, or outside the authenticated scope")
@@ -117,7 +117,8 @@ public class AnalysisProgressController {
             @Parameter(description = "Call identifier from the progress snapshot") @PathVariable long callId) {
         String owner = workspaceResolver.resolveCurrentUsername();
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
-        if (cluster != null && cluster.snapshot(operationId, owner, context).isPresent()) throw notFound();
+        if (cluster != null && cluster.snapshot(operationId, owner, context).isPresent())
+            return privateResponse(cluster.callDetail(operationId, callId, owner, context));
         return privateResponse(registry.callDetail(operationId, callId, owner, context));
     }
 

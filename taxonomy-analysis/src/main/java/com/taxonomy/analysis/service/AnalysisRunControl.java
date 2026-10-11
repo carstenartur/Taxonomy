@@ -8,7 +8,7 @@ import java.util.Objects;
 
 /** Request/worker-scoped callbacks; no global prompt, result or credential retention. */
 public final class AnalysisRunControl implements AutoCloseable {
-    interface Observer {
+    public interface Observer {
         /** Durable operation identity of the observed run, when it has one. */
         default String operationId() { return null; }
         default void planNodes(java.util.List<com.taxonomy.dto.TaxonomyNodeDto> tree) { }
@@ -57,6 +57,11 @@ public final class AnalysisRunControl implements AutoCloseable {
             @Override public void failed(long id, String failure, long duration) { }
             @Override public void stopped(AnalysisStoppedException.Reason reason) { }
         }, cancelled, guard);
+    }
+
+    /** Bind an analysis-owned durable observer without registering a process-local job. */
+    public static AnalysisRunControl worker(Observer observer, BooleanSupplier cancelled, AnalysisMemoryGuard guard) {
+        return new AnalysisRunControl(Objects.requireNonNull(observer), Objects.requireNonNull(cancelled), Objects.requireNonNull(guard));
     }
 
     /** Durable operation identity of the active run, or {@code null}. */

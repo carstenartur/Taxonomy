@@ -411,6 +411,28 @@
             body.append(node('strong', text('Fehler', 'Error')),
                 node('div', detail.error, 'llm-log-error-detail mb-2'));
         }
+        if (detail.taskId) {
+            body.append(node('div', text('Worker-Zustellung: ', 'Worker delivery: ') + detail.deliveryAttempt + ' · ' + detail.taskId, 'text-muted'));
+        }
+        if (Array.isArray(detail.attempts) && detail.attempts.length) {
+            var attempts = node('section', undefined, 'mb-2');
+            attempts.append(node('strong', text('Transportversuche', 'Transport attempts')));
+            detail.attempts.forEach(function (attempt) {
+                var usage = attempt.usage || {};
+                function tokens(value) { return Number.isSafeInteger(value) && value >= 0 ? String(value) : 'UNKNOWN'; }
+                var caption = attempt.source + ' · #' + attempt.retryIndex + ' · ' + attempt.state;
+                if (attempt.httpStatus != null) caption += ' · HTTP ' + attempt.httpStatus;
+                if (attempt.outcome) caption += ' · ' + attempt.outcome;
+                if (attempt.source === 'RECORDING_REPLAY') {
+                    caption += text(' · Replay, keine neue Provider-Nutzung', ' · Replay, no new provider usage');
+                } else {
+                    caption += ' · input=' + tokens(usage.inputTokens) + ' · output=' + tokens(usage.outputTokens) + ' · total=' + tokens(usage.totalTokens);
+                    if (usage.invalid) caption += text(' · ungültige Nutzungsangaben', ' · invalid usage report');
+                }
+                attempts.append(node('div', caption, 'small'));
+            });
+            body.append(attempts);
+        }
         // Keep the answer visible independently of a potentially much longer prompt.
         // Preserve pre-wrap formatting without creating nested scrollports.
         diagnosticField(body, text('LLM-Antwort', 'LLM response'), detail.response, 'llm-log-response',
@@ -530,18 +552,23 @@
         var operation = node('div', '', 'small p-2');
         if (log) log.append(operation, omitted);
         async function loadDetail(entry, monitor) {
-            if (!entry.details.open || entry.loaded || entry.loading || entry.call.status === 'STARTED') return;
+            if (!entry.details.open || entry.loaded || entry.loading) return;
+            var requestedSequence = entry.detailSequence;
             entry.loading = true;
             try {
                 var detail = await monitor.detail(entry.call.id);
                 if (!entry.details.isConnected) return;
                 renderDiagnostic(entry.body, detail);
-                entry.loaded = true;
+                entry.loaded = requestedSequence === entry.detailSequence;
             } catch (error) {
                 if (entry.details.isConnected) {
                     entry.body.textContent = text('Details nicht verfügbar: ', 'Details unavailable: ') + error.message;
                 }
-            } finally { entry.loading = false; }
+            } finally {
+                entry.loading = false;
+                // A newer durable hint can arrive during the explicit detail read.
+                if (entry.details.open && requestedSequence !== entry.detailSequence) loadDetail(entry, monitor);
+            }
         }
         var phases = {
             QUEUED: ['Wartet auf einen freien Analyseplatz', 'Waiting for an analysis slot'],
@@ -655,10 +682,17 @@
                         entry = { details: details, summary: summary, body: body, loaded: false, loading: false, call: call };
                         entries.set(call.id, entry);
                         log.append(details);
-                        details.addEventListener('toggle', function () { loadDetail(entry, monitor); });
+                        details.addEventListener('toggle', function () {
+                            // A deliberate reopening may inspect late durable completion after live observation ended.
+                            if (details.open) entry.loaded = false;
+                            loadDetail(entry, monitor);
+                        });
                     }
                     if (entry) {
                         var becameReady = entry.call.status === 'STARTED' && call.status !== 'STARTED';
+                        var changed = entry.detailSequence !== snapshot.sequence;
+                        entry.detailSequence = snapshot.sequence;
+                        if (changed || becameReady) entry.loaded = false;
                         entry.call = call;
                         entry.details.className = 'llm-log-entry' + (call.status === 'FAILED' ? ' llm-log-error' : '');
                         var seconds = call.status === 'STARTED'
@@ -679,12 +713,12 @@
                         entry.summary.append(node('span', ' · ' + call.status + ' · '
                             + (Number.isFinite(seconds) ? seconds + ' s' : '—')));
                         // An open pending row needs no second toggle when its response arrives.
-                        if (becameReady) loadDetail(entry, monitor);
+                        if (changed || becameReady) loadDetail(entry, monitor);
                     }
                 });
                 entries.forEach(function (entry, key) { if (!kept.has(key)) { entry.details.remove(); entries.delete(key); } });
                 omitted.textContent = (snapshot.omittedCalls
-                    ? snapshot.omittedCalls + text(' ältere Diagnoseeinträge nicht mehr im Live-Puffer.', ' older diagnostic entries no longer retained.') : '')
+                    ? snapshot.omittedCalls + text(' ältere Diagnoseeinträge in dieser Ansicht ausgeblendet.', ' older diagnostic entries omitted from this view.') : '')
                     + (snapshot.scoresTruncated ? text(' Live-Bewertungen gekürzt; das Endergebnis bleibt vollständig.',
                         ' Live score preview truncated; the final result remains complete.') : '');
             }

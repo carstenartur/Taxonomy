@@ -5,6 +5,7 @@ public enum AnalysisProgressPhase {
     PLANNED,
     TASK_DISPATCHED,
     TASK_COMPLETED,
+    DIAGNOSTICS_UPDATED,
     OPERATION_STOPPED,
     OPERATION_COMPLETED
 }

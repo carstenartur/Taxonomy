@@ -289,7 +289,7 @@ class ArtemisProductionExecutionTest {
         var factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(new DriverManagerDataSource("jdbc:hsqldb:mem:production-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
         factory.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
-                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), AnalysisDispatchIntent.class.getName(),
+                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(), AnalysisDispatchIntent.class.getName(),
                 AnalysisTaskCompletionRecord.class.getName()));
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false"));

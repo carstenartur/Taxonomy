@@ -3,6 +3,8 @@ com.taxonomy.analysis.cluster.ClusterAnalysisRun	analysis	PORTABLE_PRIMARY	Durab
 com.taxonomy.analysis.cluster.ClusterAnalysisWork	analysis	PORTABLE_PRIMARY	Expected tasks and committed effects; restore only settled evidence, never reactivate execution
 com.taxonomy.analysis.cluster.ClusterAnalysisInput	analysis	PORTABLE_PRIMARY	Exact immutable catalogue shard inputs owned by the captured run
 com.taxonomy.analysis.cluster.ClusterAnalysisEvent	analysis	PORTABLE_PRIMARY	Durable content-free monotonic progress owned by the captured run
+com.taxonomy.analysis.cluster.ClusterAnalysisCall	analysis	PORTABLE_PRIMARY	Bounded scoped logical-call evidence; restored under remapped operation and task identities, never resumed
+com.taxonomy.analysis.cluster.ClusterAnalysisAttempt	analysis	PORTABLE_PRIMARY	Physical transport admissions and reported usage; unresolved START and recording replay preserved without invented usage
 com.taxonomy.analysis.dispatch.AnalysisDispatchIntent	analysis	TRANSIENT	Broker dispatch bookkeeping only; restore never republishes tasks or reactivates broker state
 com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord	analysis	TRANSIENT	Idempotency ledger for broker redelivery; durable results live in the owning operation records
 com.taxonomy.analysis.recovery.AnalysisContinuationRun	analysis	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work

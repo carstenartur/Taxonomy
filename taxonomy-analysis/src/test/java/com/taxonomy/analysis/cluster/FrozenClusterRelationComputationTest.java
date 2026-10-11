@@ -168,6 +168,50 @@ class FrozenClusterRelationComputationTest {
         assertRestored(fixture);
     }
 
+    @Test void durablePreparationAndTargetWorkerBindPhysicalAttemptsToTheirOwnLogicalCalls() {
+        var fixture = new Fixture();
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var context = fixture.store.context; var original = fixture.store.command;
+            var command = new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand("requirement", false, 20, "CUSTOM_OPENAI", "alice", original.workspaceContext(), null,
+                    new AnalysisScope(Set.of("BP"), AnalysisMode.FULL));
+            var targets = new LinkedHashMap<TaxonomyShardRoot, String>();
+            TaxonomyShardRoot.DEFAULT_ROOTS.forEach(root -> targets.put(root, fixture.store.snapshots.get(root.code())));
+            db.store.admit(context, command, null, Map.of(TaxonomyShardRoot.of("BP"), fixture.store.snapshots.get("BP")), targets);
+            fixture.store.roots.setStatus("SUCCESS");
+            var root = db.task(TaxonomyShardRoot.of("BP")); db.store.start(root); db.store.accept(db.complete(root, fixture.store.roots));
+            var task = (RelationAnalysisTask) db.sent.stream().filter(t -> t instanceof RelationAnalysisTask).findFirst().orElseThrow();
+            String url = "https://relation.invalid/chat/completions";
+            ReflectionTestUtils.setField(fixture.providers, "customLlmUrl", url); ReflectionTestUtils.setField(fixture.providers, "customLlmModel", "fixture");
+            var http = new org.springframework.web.client.RestTemplate(); var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(http).build();
+            server.expect(org.springframework.test.web.client.ExpectedCount.manyTimes(), org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(url)).andRespond(request -> {
+                assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                var calls = db.store.callDiagnostics().summaries(context).calls(); var current = calls.getLast();
+                assertThat(db.store.callDiagnostics().detail(context, current.id()).attempts()).anySatisfy(a -> assertThat(a.state()).isEqualTo("STARTED"));
+                var body = JSON.readTree(((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString());
+                String prompt = body.path("messages").get(0).path("content").asString();
+                String response = JSON.writeValueAsString(Map.of("choices", List.of(Map.of("message", Map.of("content", Fixture.answer(prompt))))));
+                return org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(response, org.springframework.http.MediaType.APPLICATION_JSON).createResponse(request);
+            });
+            AnalysisRuntimeSettings settings = (key, fallback) -> "llm.retry.max".equals(key) ? 0 : fallback;
+            fixture.physicalGateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, JSON, new LlmResponseParser(JSON), settings, null, null);
+            var prepared = (ClusterRelationComputation.Preparation) fixture.computation(db.store, "all", "BP,BR,CP,CI,CO,CR,IP,UA").compute(db.store.start(task), task, () -> false);
+            new org.springframework.transaction.support.TransactionTemplate(db.transactions).executeWithoutResult(status -> db.store.persistRelationPlan(task, prepared.plan()));
+            db.store.accept(new AnalysisMessageFactory(context, java.time.Clock.systemUTC()).completed(task, AnalysisTaskOutcome.COMPLETED, 0, null));
+            var target = (RelationAnalysisTask) db.sent.stream().filter(t -> t instanceof RelationAnalysisTask relation && relation.taskId().relationWorkOrdinal().isPresent() && relation.targetRoots().equals(List.of(TaxonomyShardRoot.of("IP"))))
+                    .findFirst().orElseThrow();
+            fixture.computation(db.store, "worker", "IP").compute(db.store.start(target), target, () -> false);
+            server.verify();
+            var calls = db.store.callDiagnostics().summaries(context).calls(); assertThat(calls).hasSizeGreaterThan(1);
+            var details = calls.stream().map(c -> db.store.callDiagnostics().detail(context, c.id())).toList();
+            assertThat(details).anySatisfy(d -> assertThat(d.taskId()).isEqualTo(task.taskId().value()));
+            assertThat(details).anySatisfy(d -> assertThat(d.taskId()).isEqualTo(target.taskId().value()));
+            assertThat(details).allSatisfy(d -> assertThat(d.attempts()).singleElement().satisfies(a -> {
+                assertThat(a.source()).isEqualTo("HTTP"); assertThat(a.state()).isEqualTo("COMPLETED"); assertThat(a.usage().totalTokens()).isNull();
+            }));
+            assertRestored(fixture); verifyNoInteractions(fixture.repository);
+        }
+    }
+
     private static void assertRestored(Fixture fixture) {
         assertThat(FrozenCatalogueContext.current()).isNull();
         assertThat(AnalysisRunControl.active()).isFalse();
@@ -183,8 +227,14 @@ class FrozenClusterRelationComputationTest {
         final LlmProviderConfig providers = new LlmProviderConfig(null);
         final List<String> prompts = new ArrayList<>();
         Runnable afterResponse = () -> { };
+        OpenAiCompatibleGateway physicalGateway;
         final LlmService llm = new LlmService(providers, null, JSON, taxonomy, null, null, null) {
             @Override public String callLlmRaw(String prompt) {
+                if (physicalGateway != null) {
+                    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    prompts.add(prompt);
+                    return physicalGateway.extractResponseText(physicalGateway.sendHttpRequest(prompt, "fixture"));
+                }
                 assertThat(providers.isMockMode()).isTrue();
                 assertThat(AnalysisRunControl.currentOperationId()).isEqualTo(store.context.operationId());
                 assertThat(FrozenCatalogueContext.current()).isNotNull();
