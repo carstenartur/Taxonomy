@@ -45,6 +45,23 @@ class AnalysisMemoryGuardTest {
         memory.set(new AnalysisMemoryGuard.Sample(99 * MIB, 100 * MIB));
         assertThatThrownBy(guard::check).hasMessageContaining("MEMORY_PRESSURE");
     }
+    @Test void preCollectionPeakDoesNotStopImmediately() {
+        var guard=guard();
+        memory.set(new AnalysisMemoryGuard.Sample(99 * MIB, 100 * MIB, 60 * MIB));
+        assertThat(guard.check().warning()).isTrue();
+        time.set(5000);
+        assertThatThrownBy(guard::check).hasMessageContaining("MEMORY_PRESSURE");
+    }
+    @Test void retainedEmergencyAfterCollectionStopsImmediately() {
+        var guard=guard();
+        memory.set(new AnalysisMemoryGuard.Sample(99 * MIB, 100 * MIB, 98 * MIB));
+        assertThatThrownBy(guard::check).hasMessageContaining("MEMORY_PRESSURE");
+    }
+    @Test void heapSampleReportsRetainedUsageWithinTheHeap() {
+        var sample = AnalysisMemoryGuard.heapSample();
+        assertThat(sample.retainedBytes()).isNotNegative();
+        if (sample.maximumBytes() > 0) assertThat(sample.retainedBytes()).isLessThanOrEqualTo(sample.maximumBytes());
+    }
     @Test void unknownMaximumIsNotReportedAsZeroFreeMemory() {
         var guard=guard(); memory.set(new AnalysisMemoryGuard.Sample(50 * MIB, -1));
         assertThat(guard.check().percent()).isEqualTo(-1);

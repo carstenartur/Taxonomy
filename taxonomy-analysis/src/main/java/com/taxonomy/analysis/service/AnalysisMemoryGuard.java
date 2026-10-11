@@ -1,6 +1,9 @@
 package com.taxonomy.analysis.service;
 
 import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
+import java.lang.management.MemoryUsage;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -18,7 +21,16 @@ public final class AnalysisMemoryGuard {
         }
     }
 
-    public record Sample(long usedBytes, long maximumBytes) { }
+    /**
+     * Instantaneous heap usage plus the usage retained after the most recent collection. The
+     * instantaneous figure includes uncollected garbage; only the retained figure can confirm
+     * an emergency stop. Without collection data the retained figure equals the used figure.
+     */
+    public record Sample(long usedBytes, long maximumBytes, long retainedBytes) {
+        public Sample(long usedBytes, long maximumBytes) {
+            this(usedBytes, maximumBytes, usedBytes);
+        }
+    }
     public record Reading(long usedBytes, long maximumBytes, long headroomBytes,
                           int percent, boolean warning) { }
 
@@ -37,11 +49,23 @@ public final class AnalysisMemoryGuard {
 
     public static Sample heapSample() {
         var usage = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
-        return new Sample(usage.getUsed(), usage.getMax());
+        long retained = 0;
+        boolean collected = false;
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getType() != MemoryType.HEAP) continue;
+            MemoryUsage afterCollection = pool.getCollectionUsage();
+            if (afterCollection == null) continue;
+            collected = true;
+            retained += afterCollection.getUsed();
+        }
+        return new Sample(usage.getUsed(), usage.getMax(), collected ? retained : usage.getUsed());
     }
 
     public Reading reading() {
-        Sample sample = source.get();
+        return reading(source.get());
+    }
+
+    private Reading reading(Sample sample) {
         if (sample.maximumBytes() <= 0 || sample.usedBytes() < 0) {
             return new Reading(sample.usedBytes(), sample.maximumBytes(), -1, -1, false);
         }
@@ -56,13 +80,14 @@ public final class AnalysisMemoryGuard {
         if (now - started >= policy.maximumDurationMillis()) {
             throw new AnalysisStoppedException(AnalysisStoppedException.Reason.TIME_LIMIT);
         }
-        Reading reading = reading();
+        Sample sample = source.get();
+        Reading reading = reading(sample);
         if (reading.percent() < 0) {
             pressureSince = null;
             return reading;
         }
-        if (reading.percent() >= 98
-                || reading.headroomBytes() <= Math.min(4 * MIB, policy.minimumHeadroom() / 4)) {
+        if (emergency(sample.usedBytes(), sample.maximumBytes())
+                && emergency(sample.retainedBytes(), sample.maximumBytes())) {
             throw new AnalysisStoppedException(AnalysisStoppedException.Reason.MEMORY_PRESSURE);
         }
         boolean critical = reading.percent() >= policy.stopPercent()
@@ -76,5 +101,11 @@ public final class AnalysisMemoryGuard {
             }
         }
         return reading;
+    }
+
+    private boolean emergency(long usedBytes, long maximumBytes) {
+        long free = Math.max(0, maximumBytes - usedBytes);
+        return 100.0 * usedBytes / maximumBytes >= 98
+                || free <= Math.min(4 * MIB, policy.minimumHeadroom() / 4);
     }
 }
