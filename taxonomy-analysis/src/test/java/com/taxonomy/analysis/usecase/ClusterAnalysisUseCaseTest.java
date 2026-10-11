@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -53,7 +54,9 @@ class ClusterAnalysisUseCaseTest {
         });
         assertThat(usecase.analyze(command).analysisResult()).isSameAs(result);
         verify(budget).requireWithinBudget("requirement", "MOCK");
-        verifyNoInteractions(llm, architecture, generator, hypotheses, metadata, registry);
+        verifyNoInteractions(architecture, generator, hypotheses, metadata, registry);
+        verify(llm).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), anyBoolean());
+        verifyNoMoreInteractions(llm);
     }
 
     @Test
@@ -80,7 +83,9 @@ class ClusterAnalysisUseCaseTest {
         var result = new AnalysisResult();
         when(execution.execute(eq(context), eq(command), eq(view), any())).thenReturn(result);
         assertThat(usecase.analyze(command, context, view).analysisResult()).isSameAs(result);
-        verifyNoInteractions(views, llm);
+        verifyNoInteractions(views);
+        verify(llm).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), anyBoolean());
+        verifyNoMoreInteractions(llm);
     }
 
     @Test

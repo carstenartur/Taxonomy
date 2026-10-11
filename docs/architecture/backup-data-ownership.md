@@ -39,6 +39,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `com.taxonomy.security.model.AppRole` | application | PORTABLE_PRIMARY | `app_role` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.security.model.AppUser` | application | PORTABLE_PRIMARY | `app_user` | Current identity metadata is portable; password hashes only in authorized encrypted DR; no sessions |
 | `com.taxonomy.security.webdav.WebDavApplicationCredential` | application | TRANSIENT | `webdav_application_credential` | Revocable application login tokens must be issued again on target |
+| `com.taxonomy.composition.demo.ProductDemoRun` | application | TRANSIENT | `product_demo_run` | Product-demo replay binding only; restore never re-admits scenario replay, restored DEMO projects stay labelled ordinary projects and a new demo is started explicitly |
 | `com.taxonomy.architecture.model.ArchitectureDslDocument` | architecture | PORTABLE_PRIMARY | `architecture_dsl_document` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.interop.persistence.ExternalIdentityMappingEntity` | interop | PORTABLE_PRIMARY | `interop_identity` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.interop.persistence.IntegrationCheckpointEntity` | interop | PORTABLE_PRIMARY | `interop_checkpoint` | Explicit versioned records; preserve business IDs and map technical foreign keys |

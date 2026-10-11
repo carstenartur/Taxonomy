@@ -27,6 +27,9 @@ public class LlmGatewayRegistry {
     private static final Logger log = LoggerFactory.getLogger(LlmGatewayRegistry.class);
     private final Map<ProviderId, LlmGateway> gateways;
     private final List<LlmGateway> transports = new ArrayList<>();
+    private final Map<ProviderId, LlmGateway> replayGateways = new java.util.concurrent.ConcurrentHashMap<>();
+    private final LlmProviderConfig providerConfig;
+    private AiPromptBudgetPolicy replayBudget;
 
     @Autowired
     public LlmGatewayRegistry(LlmProviderConfig providerConfig,
@@ -38,6 +41,8 @@ public class LlmGatewayRegistry {
                                AiPromptBudgetPolicy promptBudgetPolicy,
                                List<LlmTransportExtension> extensions) {
         LlmResponseParser responseParser = new LlmResponseParser(objectMapper);
+        this.providerConfig = providerConfig;
+        replayBudget = promptBudgetPolicy;
         gateways = new LinkedHashMap<>();
         register(LlmProvider.GEMINI, new GeminiGateway(
                 providerConfig, restTemplate, objectMapper, responseParser,
@@ -162,11 +167,21 @@ public class LlmGatewayRegistry {
     }
 
     public LlmGateway getGatewayById(ProviderId provider) {
+        if (providerConfig.isScenarioReplay(provider)) return replayGateway(provider);
         LlmGateway gateway = gateways.get(provider);
         if (gateway == null) {
             throw new IllegalArgumentException("No HTTP gateway registered for provider " + provider
                     + ". LOCAL_ONNX uses local embeddings, not an HTTP gateway.");
         }
         return gateway;
+    }
+
+    /** Scenario replay replaces only the model reply; it never shares the live transport or recordings. */
+    private LlmGateway replayGateway(ProviderId provider) {
+        var replay = providerConfig.requireScenarioReplay(provider);
+        return replayGateways.computeIfAbsent(provider, id -> {
+            LlmGateway gateway = new ScenarioReplayGateway(replay);
+            return replayBudget == null ? gateway : new PromptBudgetEnforcingLlmGateway(gateway, replayBudget);
+        });
     }
 }

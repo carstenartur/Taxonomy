@@ -1,0 +1,31 @@
+{
+  "schema": "taxonomy-product-demo-reference-v1",
+  "scenario": "time-tracking-v1",
+  "version": 1,
+  "note": "Independent reference annotation. Used only after an analysis for comparison; never read by prompt construction or reply selection.",
+  "requiredAspects": [
+    { "id": "channels", "label": { "de": "Erfassungskanäle", "en": "Capture channels" }, "anyOf": ["im Browser und an Online-Terminals"] },
+    { "id": "offline", "label": { "de": "Offline-Erfassung", "en": "Offline capture" }, "anyOf": ["Offline-Erfassung ist nicht erforderlich"] },
+    { "id": "corrections", "label": { "de": "Korrekturen und Genehmigung", "en": "Corrections and approval" }, "anyOf": ["von ihren Vorgesetzten genehmigt"] },
+    { "id": "identity", "label": { "de": "Anmeldung und Stammdaten", "en": "Sign-in and master data" }, "anyOf": ["zentrale Unternehmensanmeldung"] },
+    { "id": "privacy", "label": { "de": "Grenzen der Erfassung", "en": "Capture limits" }, "anyOf": ["weder Standortdaten noch biometrische Merkmale"] }
+  ],
+  "forbiddenPhrases": [
+    { "id": "gps", "label": { "de": "Abgelehnte GPS-Erfassung", "en": "Rejected GPS capture" }, "phrase": "GPS-Standort" }
+  ],
+  "expectedNodes": [
+    { "code": "UA-1605", "minimumScore": 50, "iterations": ["R0", "R1"] },
+    { "code": "CR-1036", "minimumScore": 10, "iterations": ["R0", "R1"] },
+    { "code": "CR-1006", "minimumScore": 5, "iterations": ["R1"] },
+    { "code": "CR-1065", "minimumScore": 5, "iterations": ["R1"] },
+    { "code": "BR-1101", "minimumScore": 10, "iterations": ["R1"] }
+  ],
+  "forbiddenNodes": [
+    { "code": "CI-1121", "reason": { "de": "Keine Standort- oder Aufgabenverfolgung", "en": "No location or task tracking" } }
+  ],
+  "expectedRelations": [
+    { "source": "UA-1605", "type": "USES", "target": "CR-1036", "iterations": ["R0", "R1"] },
+    { "source": "UA-1605", "type": "USES", "target": "CR-1006", "iterations": ["R1"] },
+    { "source": "UA-1605", "type": "USES", "target": "CR-1065", "iterations": ["R1"] }
+  ]
+}

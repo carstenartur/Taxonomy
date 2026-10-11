@@ -237,6 +237,19 @@ Verfügbare Formate:
 
 Die Berichte enthalten Anforderungstexte, Quellenangaben, Taxonomieabdeckung, Lösungs- und Produktentscheidungen, Konflikte und die Reproduzierbarkeits-Baseline der relevanten Snapshots.
 
+## Produktdemo ohne KI (QA-Referenz)
+
+Die Eingabe `produktdemo` (Groß-/Kleinschreibung und umgebende Leerzeichen sind egal) im Analysefeld startet mit der normalen Schaltfläche **Analysieren** keine KI-Analyse, sondern legt ein isoliertes, gekennzeichnetes Demo-Projekt an (Schlüssel `DEMO-…`, Titel `DEMO · <Szenariotitel>` in der Sprache des Szenarios). Der eingegebene Entwurf, andere Projekte und Anforderungen werden nicht verändert. Szenario: „Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter.“
+
+- **Nur die KI-Antwort ist ersetzt.** Analyse, Reformulierung, Antworten, Übernahme, Referenzvergleich und Exporte laufen über die normalen Produktpfade. Die externe KI-Antwort stammt aus einer versionierten Szenario-Wiedergabe (Provider `DEMO.TIME-TRACKING-V1.R0`/`R1`). Fehlt eine passende Antwort, schlägt der Schritt mit `MISSING_REPLY` fehl; es gibt keinen Rückgriff auf einen Live-Provider.
+- **Katalogprüfung.** Beim Start werden alle im Szenario verwendeten Codes gegen den geladenen Katalog geprüft; Abweichungen verhindern den Start.
+- **Banner und Stationen.** Die Anforderungsseite zeigt dauerhaft das Demo-Banner, den aktiven Szenario-Provider, die Stationen R0 → A0 → Rückfragen F-01…F-05 → Antworten/Ablehnung der GPS-Ergänzung → Übernahme → R1 → A1 → Referenzbewertung sowie die sichtbaren Demo-Antworten.
+- **Ablauf.** Analysieren Sie R0, starten Sie die Reformulierung, beantworten Sie die Fragen mit den angezeigten Demo-Antworten und lehnen Sie die GPS-Ergänzung ab. Ergibt die Neugenerierung einen geschützten Kandidaten, laden Sie ihn mit **Kandidat in den Editor laden**, speichern den Entwurf und übernehmen ihn mit Vorschau und Bestätigung. Danach R1 analysieren und **Referenzbewertung anzeigen** wählen.
+- **Zulassung.** Demo-Provider sind nur für die Demo-Anforderung des Demo-Laufs zugelassen; normale Projekte weisen sie ab (`PROVIDER_REQUIRES_PROJECT_BINDING`), und ein Demo-Projekt weist jeden anderen Provider ab (`DEMO_PROVIDER_REJECTED`). Geänderte Szenarioversionen (`DEMO_SCENARIO_CHANGED`), nicht vorgesehene Iterationen (`DEMO_ITERATION_UNAVAILABLE`), andere Anforderungen (`DEMO_REQUIREMENT_MISMATCH`) und beendete Läufe (`DEMO_RUN_CLOSED`) werden abgewiesen; ein Wiederholungslauf, dessen zugelassener Provider sich geändert hat, scheitert mit `PROVIDER_BINDING_CHANGED`. Die Codes stehen in der Problem-Detail-Eigenschaft `code`. Zulassung und Beenden sperren dieselbe Demo-Lauf-Zeile; nach einem bestätigten Beenden wird keine Szenario-Analyse mehr zugelassen.
+- **Architektur.** Der Analysekontext bietet laufgebundene Szenario-Wiedergaben über genau eine Provider-Strategie (`ScenarioReplayProviders`) an; der Portfoliokontext kennt nur den generischen Port `ProjectProviderBinding`. Die Demo selbst (Laufdatensatz, Binding-Adapter, Service und REST-API) wird im Anwendungsmodul zusammengesetzt.
+- **Referenzbewertung.** `GET /api/product-demo/runs/{id}/comparison` bewertet A0/A1 unabhängig gegen die Szenario-Referenz; nicht ausgeführte Schritte erscheinen als `NOT_EXECUTED`, nicht als Fehlbefund.
+- **API.** `GET /api/product-demo/scenarios`, `POST /api/product-demo/runs`, `GET /api/product-demo/runs[?projectId=…]`, `GET /api/product-demo/runs/{id}`, `POST /api/product-demo/runs/{id}/close`. Lesen erfordert die Rolle `USER`, `ARCHITECT` oder `ADMIN`; Starten und Beenden erfordern `ARCHITECT` oder `ADMIN`.
+
 ## Rollen und Barrierefreiheit
 
 Benutzer mit Leserechten können Portfolioinformationen einsehen, aber keine Architekturänderungen ausführen. Deaktivierte Steuerelemente erläutern die fehlende Berechtigung. Architekten und Administratoren können die durch die Sicherheitskonfiguration zugelassenen geprüften Schreiboperationen durchführen.

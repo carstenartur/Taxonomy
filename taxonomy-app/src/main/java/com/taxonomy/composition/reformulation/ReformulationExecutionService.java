@@ -34,6 +34,7 @@ public class ReformulationExecutionService {
     private final ObjectMapper checkpointJson;
     private final ReformulationRecoveryService recovery;
     private final ReformulationUsageService usage;
+    private final com.taxonomy.portfolio.service.ProjectProviderBinding providerBinding;
     private final String owner = UUID.randomUUID().toString();
     private final Map<String,LocalExecution> scheduled = new ConcurrentHashMap<>();
     private volatile boolean stopping;
@@ -43,15 +44,39 @@ public class ReformulationExecutionService {
             CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,
             @Qualifier("portfolioAnalysisExecutor") AsyncTaskExecutor executor,ObjectMapper json,
             ReformulationRecoveryService recovery, ReformulationUsageService usage) {
+        this(proposals,engine,reconciler,providers,executor,json,recovery,usage,com.taxonomy.portfolio.service.ProjectProviderBinding.NONE);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,
+            CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,
+            @Qualifier("portfolioAnalysisExecutor") AsyncTaskExecutor executor,ObjectMapper json,
+            ReformulationRecoveryService recovery, ReformulationUsageService usage,
+            org.springframework.beans.factory.ObjectProvider<com.taxonomy.portfolio.service.ProjectProviderBinding> providerBindings) {
+        this(proposals,engine,reconciler,providers,executor,json,recovery,usage,
+                providerBindings.getIfAvailable(()->com.taxonomy.portfolio.service.ProjectProviderBinding.NONE));
+    }
+    private ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,
+            CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,AsyncTaskExecutor executor,ObjectMapper json,
+            ReformulationRecoveryService recovery, ReformulationUsageService usage,
+            com.taxonomy.portfolio.service.ProjectProviderBinding providerBinding) {
         this.proposals=proposals;this.engine=engine;this.reconciler=reconciler;this.providers=providers;this.executor=executor;
-        this.recovery=recovery; this.usage=usage;
+        this.recovery=recovery; this.usage=usage; this.providerBinding=java.util.Objects.requireNonNull(providerBinding);
         this.checkpointJson=json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
     }
+    /**
+     * Admission, run recording and the recoverable lease commit together: a bound project's
+     * binding lock is held until the run is queued, so a concurrent binding change (e.g. closing
+     * a product demo) cannot interleave. Local dispatch starts only after that commit.
+     */
+    @org.springframework.transaction.annotation.Transactional
     public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
         if (stopping) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
         var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);
         if(proposal.currentRevision().number()!=expectedRevision) throw new ReformulationPreconditionException();
-        var provider=providers.getActiveProviderId();
+        // A bound project (e.g. a product demo) uses exactly its admitted provider for the proposal's source version.
+        var provider=providerBinding.admittedProvider(projectId,
+                java.util.List.of(new com.taxonomy.portfolio.service.ProjectProviderBinding.Target(requirementId,proposal.baseline().sourceVersionId())),
+                null,actor,context).map(ProviderId::new).orElseGet(providers::getActiveProviderId);
         String model=provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":model(provider);
         var frozen=proposal.baseline().frozenContext();
         String prompt=frozen.getOrDefault("reformulationPrompt",ReformulationPromptBuilder.template());
@@ -59,7 +84,7 @@ public class ReformulationExecutionService {
                 frozen.getOrDefault("reformulationPromptVersion",ReformulationPromptBuilder.PROMPT_VERSION),
                 frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,
                 ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context,providers.captureProviderBinding(provider.value()));
-        submit(dispatch);
+        submitAfterCommit(dispatch);
         return proposals.runs(projectId,requirementId,proposalId,actor,context).stream()
                 .filter(r->r.id().equals(dispatch.run().id())).findFirst().orElseThrow();
     }
@@ -94,6 +119,13 @@ public class ReformulationExecutionService {
     private void retire(String id, LocalExecution local) {
         local.retire();
         scheduled.remove(id, local);
+    }
+    private void submitAfterCommit(Dispatch dispatch) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) { submit(dispatch); return; }
+        // A rolled-back start leaves nothing to dispatch; the persisted lease stays recoverable otherwise.
+        TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+            @Override public void afterCommit() { submit(dispatch); }
+        });
     }
     private void submit(Dispatch dispatch) {
         if (stopping) return;

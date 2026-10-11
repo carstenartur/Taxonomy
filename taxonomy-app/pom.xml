@@ -652,6 +652,40 @@
     </build>
 
     <profiles>
+        <!-- The memory-sensitive A0-to-A1 demo must not inherit the heap retained
+             by earlier Spring contexts. Explicit -Dtest selections stay unchanged. -->
+        <profile>
+            <id>product-demo-isolation</id>
+            <activation><property><name>!test</name></property></activation>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/*$*</exclude>
+                                <exclude>${taxonomy.productDemo.defaultTestExclude}</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>product-demo-isolated</id>
+                        <phase>${taxonomy.productDemo.testPhase}</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>ProductDemoEndToEndTest</test>
+                            <forkCount>1</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                            <reportNameSuffix>product-demo-isolated</reportNameSuffix>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin></plugins></build>
+        </profile>
         <!-- -Ponnx must provision both host test JVMs, not only Docker containers.
              Keep the existing local-onnx-model profile for explicit offline runs. -->
         <profile>

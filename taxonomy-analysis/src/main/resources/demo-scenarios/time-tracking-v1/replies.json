@@ -1,0 +1,220 @@
+{
+  "schema": "taxonomy-product-demo-replies-v1",
+  "scenario": "time-tracking-v1",
+  "version": 1,
+  "iterations": {
+    "R0": {
+      "zeroReason": "Szenario-Antwort: Kein erkennbarer Bezug zur Arbeitszeiterfassung im Anforderungstext.",
+      "roots": {
+        "BP": {"score": 40, "reason": "Szenario-Antwort: Arbeitszeiterfassung ist Teil der Personalverwaltung."},
+        "BR": {"score": 0, "reason": "Szenario-Antwort: Die Anforderung nennt keine Rollen oder Zuständigkeiten."},
+        "CP": {"score": 0, "reason": "Szenario-Antwort: Keine militärische oder operative Fähigkeit angesprochen."},
+        "CI": {"score": 0, "reason": "Szenario-Antwort: Keine fachspezifischen Einsatzdienste angesprochen."},
+        "CO": {"score": 0, "reason": "Szenario-Antwort: Kommunikationsdienste werden nicht beschrieben."},
+        "CR": {"score": 45, "reason": "Szenario-Antwort: Ein unternehmensweites System benötigt Personal- und Basisdienste."},
+        "IP": {"score": 0, "reason": "Szenario-Antwort: Konkrete Informationsprodukte werden nicht genannt."},
+        "UA": {"score": 70, "reason": "Szenario-Antwort: Gefordert ist eine Anwendung zur Arbeitszeiterfassung."}
+      },
+      "expansions": {
+        "UA": {"UA-1000": {"score": 70, "reason": "Szenario-Antwort: Anwenderanwendung."}},
+        "UA-1000": {"UA-1253": {"score": 70, "reason": "Szenario-Antwort: Personalbezogene Anwendung."}},
+        "UA-1253": {
+          "UA-1605": {"score": 60, "reason": "Szenario-Antwort: Arbeitszeitanwendungen entsprechen dem Kern der Anforderung."},
+          "UA-1604": {"score": 10, "reason": "Szenario-Antwort: Erfasste Zeiten könnten in die Entgeltabrechnung einfließen; nicht ausdrücklich gefordert."}
+        },
+        "CR": {"CR-1000": {"score": 45, "reason": "Szenario-Antwort: Basisdienste."}},
+        "CR-1000": {
+          "CR-1011": {"score": 30, "reason": "Szenario-Antwort: Unterstützende Fachdienste für Personalprozesse."},
+          "CR-1047": {"score": 15, "reason": "Szenario-Antwort: Unternehmensweiter Zugriff setzt Infrastrukturdienste voraus."}
+        },
+        "CR-1011": {"CR-1023": {"score": 30, "reason": "Szenario-Antwort: Ressourcenplanung inklusive Personal."}},
+        "CR-1023": {"CR-1036": {"score": 30, "reason": "Szenario-Antwort: Personaldienste liefern Mitarbeiterbezug."}},
+        "CR-1047": {"CR-1039": {"score": 15, "reason": "Szenario-Antwort: Sicherheitsdienste der Infrastruktur."}},
+        "CR-1039": {"CR-1006": {"score": 15, "reason": "Szenario-Antwort: Mitarbeiter müssen sich anmelden; Verfahren unbestimmt."}},
+        "BP": {"BP-1000": {"score": 40, "reason": "Szenario-Antwort: Geschäftsprozesse."}},
+        "BP-1000": {"BP-1327": {"score": 40, "reason": "Szenario-Antwort: Unterstützende Prozesse."}},
+        "BP-1327": {"BP-1819": {"score": 40, "reason": "Szenario-Antwort: Personalunterstützung."}},
+        "BP-1819": {"BP-1500": {"score": 40, "reason": "Szenario-Antwort: Personalmanagement."}},
+        "BP-1500": {
+          "BP-1334": {"score": 20, "reason": "Szenario-Antwort: Arbeitszeitrecht verlangt eine Erfassung."},
+          "BP-1680": {"score": 20, "reason": "Szenario-Antwort: Arbeitszeit beeinflusst Vergütung."}
+        }
+      },
+      "justifications": {
+        "UA-1605": "Szenario-Antwort: Die Anforderung verlangt ausdrücklich ein System zur Arbeitszeiterfassung. Der Pfad über Anwenderanwendungen und Personalanwendungen führt direkt zu Arbeitszeitanwendungen. Wie erfasst wird, bleibt in R0 offen.",
+        "UA-1604": "Szenario-Antwort: Erfasste Zeiten können Abrechnungen speisen, die Anforderung sagt dazu aber nichts. Deshalb bleibt der Wert niedrig.",
+        "CR-1036": "Szenario-Antwort: Arbeitszeit wird Mitarbeitern zugeordnet; dafür sind Personaldienste erforderlich. Die Herkunft der Stammdaten ist in R0 nicht festgelegt.",
+        "CR-1006": "Szenario-Antwort: Ein unternehmensweites System erfordert Anmeldung. Das Verfahren ist in R0 offen, daher nur mittlere Relevanz.",
+        "BP-1334": "Szenario-Antwort: Arbeitszeiterfassung dient der Einhaltung arbeitsrechtlicher Vorgaben. R0 nennt dies nur implizit.",
+        "BP-1680": "Szenario-Antwort: Arbeitszeiten wirken auf Vergütung; R0 nennt dies nicht ausdrücklich."
+      },
+      "relations": [
+        {
+          "source": "UA-1605",
+          "type": "USES",
+          "path": ["CR", "CR-1000", "CR-1011", "CR-1023", "CR-1036"],
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt Personaldienste für den Mitarbeiterbezug"
+        }
+      ],
+      "reformulation": {
+        "defaultSummary": "Szenario-Antwort: Ausgangsanforderung bleibt unverändert erhalten; Ergänzungen sind ungeprüfte Vorschläge.",
+        "summaries": {
+          "UA": "Szenario-Antwort: Für die Arbeitszeitanwendung sind Erfassungskanäle und Offline-Fähigkeit offen.",
+          "CR": "Szenario-Antwort: Anmeldung, Stammdatenherkunft und Grenzen der Datenerfassung sind offen.",
+          "BP": "Szenario-Antwort: Der Korrektur- und Freigabeprozess ist offen."
+        },
+        "additions": [
+          {"anchorRoot": "UA", "provenance": "MODEL_ADDITION", "wording": "Mitarbeiter erfassen Arbeitsbeginn, Arbeitsende und Pausen selbst."},
+          {"anchorRoot": "CR", "provenance": "ARCHITECTURE_HYPOTHESIS", "wording": "Beim Stempeln wird zusätzlich der GPS-Standort des Mitarbeiters gespeichert."},
+          {"anchorRoot": "BP", "provenance": "MODEL_ADDITION", "wording": "Erfasste Arbeitszeiten werden für die Entgeltabrechnung bereitgestellt."}
+        ],
+        "questions": [
+          {
+            "id": "F-01", "anchorRoot": "UA", "subject": "F-01 Erfassungskanäle", "dimension": "Zugang",
+            "wording": "Über welche Kanäle erfassen Mitarbeiter ihre Arbeitszeit?",
+            "rationale": "Szenario-Antwort: Die Anwendung kann ohne festgelegte Kanäle nicht eingegrenzt werden.",
+            "kind": "SINGLE_CHOICE",
+            "consequences": {
+              "Browser und Online-Terminals": "Mitarbeiter erfassen ihre Arbeitszeit im Browser und an Online-Terminals.",
+              "Nur Browser": "Mitarbeiter erfassen ihre Arbeitszeit ausschließlich im Browser.",
+              "Browser, Terminals und mobile App": "Mitarbeiter erfassen ihre Arbeitszeit im Browser, an Terminals und in einer mobilen App."
+            },
+            "consequenceSummary": "Bestimmt Benutzeroberflächen und Terminalanbindung."
+          },
+          {
+            "id": "F-02", "anchorRoot": "UA", "subject": "F-02 Offline-Erfassung", "dimension": "Verfügbarkeit",
+            "wording": "Muss die Arbeitszeit auch ohne Netzverbindung erfasst werden können?",
+            "rationale": "Szenario-Antwort: Offline-Fähigkeit verändert Synchronisation und Terminalaufbau.",
+            "kind": "SINGLE_CHOICE",
+            "consequences": {
+              "Nein": "Eine Offline-Erfassung ist nicht erforderlich; Buchungen erfolgen nur online.",
+              "Ja": "Buchungen müssen auch offline erfasst und später synchronisiert werden."
+            },
+            "consequenceSummary": "Bestimmt Synchronisations- und Pufferbedarf."
+          },
+          {
+            "id": "F-03", "anchorRoot": "BP", "subject": "F-03 Korrekturen", "dimension": "Freigabe",
+            "wording": "Wer darf Zeitbuchungen korrigieren und wer gibt Korrekturen frei?",
+            "rationale": "Szenario-Antwort: Korrekturen berühren Nachvollziehbarkeit und Zuständigkeiten.",
+            "kind": "SINGLE_CHOICE",
+            "consequences": {
+              "Mitarbeiter beantragen, Vorgesetzte genehmigen": "Mitarbeiter beantragen Korrekturen ihrer Zeitbuchungen, die von ihren Vorgesetzten genehmigt werden.",
+              "Nur die Personalabteilung korrigiert": "Korrekturen von Zeitbuchungen nimmt ausschließlich die Personalabteilung vor."
+            },
+            "consequenceSummary": "Bestimmt Rollen und Freigabe-Workflow."
+          },
+          {
+            "id": "F-04", "anchorRoot": "CR", "subject": "F-04 Anmeldung und Stammdaten", "dimension": "Integration",
+            "wording": "Wie melden sich Mitarbeiter an und woher stammen die Mitarbeiterstammdaten?",
+            "rationale": "Szenario-Antwort: Anmeldung und Stammdatenführung bestimmen die Integrationen.",
+            "kind": "SINGLE_CHOICE",
+            "consequences": {
+              "Zentrale Anmeldung, HR-System führend": "Die Anmeldung erfolgt über die zentrale Unternehmensanmeldung; Mitarbeiterstammdaten werden aus dem führenden HR-System übernommen.",
+              "Eigene Benutzerverwaltung": "Das System verwaltet eigene Benutzerkonten und Mitarbeiterstammdaten."
+            },
+            "consequenceSummary": "Bestimmt Identitäts- und HR-Schnittstellen."
+          },
+          {
+            "id": "F-05", "anchorRoot": "CR", "subject": "F-05 Grenzen der Erfassung", "dimension": "Datenschutz",
+            "wording": "Welche Daten dürfen über Beginn, Ende und Pausen hinaus erfasst werden?",
+            "rationale": "Szenario-Antwort: Überwachungsfunktionen müssen ausdrücklich begrenzt werden.",
+            "kind": "SINGLE_CHOICE",
+            "consequences": {
+              "Keine Standortverfolgung und keine Biometrie": "Das System erfasst weder Standortdaten noch biometrische Merkmale der Mitarbeiter.",
+              "Standort beim Stempeln erfassen": "Beim Stempeln wird der Standort der Mitarbeiter erfasst."
+            },
+            "consequenceSummary": "Begrenzt Überwachungsfunktionen."
+          }
+        ]
+      }
+    },
+    "R1": {
+      "zeroReason": "Szenario-Antwort: Kein Bezug zur präzisierten Arbeitszeiterfassung.",
+      "roots": {
+        "BP": {"score": 50, "reason": "Szenario-Antwort: Erfassung, Korrektur und Freigabe sind Personalprozesse."},
+        "BR": {"score": 25, "reason": "Szenario-Antwort: Mitarbeiter und Vorgesetzte haben getrennte Aufgaben bei Korrekturen."},
+        "CP": {"score": 0, "reason": "Szenario-Antwort: Keine militärische oder operative Fähigkeit angesprochen."},
+        "CI": {"score": 0, "reason": "Szenario-Antwort: Standort- und Lageverfolgung ist ausdrücklich ausgeschlossen."},
+        "CO": {"score": 0, "reason": "Szenario-Antwort: Online-Terminals nutzen das vorhandene Netz; kein eigener Kommunikationsdienst gefordert."},
+        "CR": {"score": 70, "reason": "Szenario-Antwort: Zentrale Anmeldung, HR-Stammdaten und Freigaben benötigen Basisdienste."},
+        "IP": {"score": 0, "reason": "Szenario-Antwort: Konkrete Informationsprodukte werden nicht genannt."},
+        "UA": {"score": 75, "reason": "Szenario-Antwort: Arbeitszeitanwendung im Browser und an Online-Terminals."}
+      },
+      "expansions": {
+        "UA": {"UA-1000": {"score": 75, "reason": "Szenario-Antwort: Anwenderanwendung."}},
+        "UA-1000": {"UA-1253": {"score": 75, "reason": "Szenario-Antwort: Personalbezogene Anwendung."}},
+        "UA-1253": {
+          "UA-1605": {"score": 70, "reason": "Szenario-Antwort: Arbeitszeitanwendung mit Browser- und Terminalbuchung."},
+          "UA-1604": {"score": 5, "reason": "Szenario-Antwort: Abrechnung bleibt Abnehmer; nicht Teil des Systems."}
+        },
+        "CR": {"CR-1000": {"score": 70, "reason": "Szenario-Antwort: Basisdienste."}},
+        "CR-1000": {
+          "CR-1011": {"score": 40, "reason": "Szenario-Antwort: Personal- und Workflowdienste."},
+          "CR-1047": {"score": 30, "reason": "Szenario-Antwort: Zentrale Anmeldung und Berechtigungen."}
+        },
+        "CR-1011": {
+          "CR-1023": {"score": 25, "reason": "Szenario-Antwort: Führendes HR-System."},
+          "CR-1038": {"score": 15, "reason": "Szenario-Antwort: Korrekturanträge werden freigegeben."}
+        },
+        "CR-1023": {"CR-1036": {"score": 25, "reason": "Szenario-Antwort: Mitarbeiterstammdaten kommen aus dem HR-System."}},
+        "CR-1038": {"CR-1065": {"score": 15, "reason": "Szenario-Antwort: Genehmigung von Korrekturen durch Vorgesetzte."}},
+        "CR-1047": {"CR-1039": {"score": 30, "reason": "Szenario-Antwort: Sicherheitsdienste der Infrastruktur."}},
+        "CR-1039": {
+          "CR-1006": {"score": 12, "reason": "Szenario-Antwort: Anmeldung über die zentrale Unternehmensanmeldung."},
+          "CR-1022": {"score": 10, "reason": "Szenario-Antwort: Zentrale digitale Identität der Mitarbeiter."},
+          "CR-1007": {"score": 8, "reason": "Szenario-Antwort: Vorgesetzte dürfen Korrekturen ihrer Mitarbeiter genehmigen."}
+        },
+        "BP": {"BP-1000": {"score": 50, "reason": "Szenario-Antwort: Geschäftsprozesse."}},
+        "BP-1000": {"BP-1327": {"score": 50, "reason": "Szenario-Antwort: Unterstützende Prozesse."}},
+        "BP-1327": {"BP-1819": {"score": 50, "reason": "Szenario-Antwort: Personalunterstützung."}},
+        "BP-1819": {"BP-1500": {"score": 50, "reason": "Szenario-Antwort: Personalmanagement."}},
+        "BP-1500": {
+          "BP-1334": {"score": 30, "reason": "Szenario-Antwort: Nachvollziehbare Erfassung und Korrektur nach Arbeitszeitrecht."},
+          "BP-1680": {"score": 20, "reason": "Szenario-Antwort: Freigegebene Zeiten wirken auf Vergütung."}
+        },
+        "BR": {"BR-1000": {"score": 25, "reason": "Szenario-Antwort: Geschäftsrollen."}},
+        "BR-1000": {"BR-1057": {"score": 25, "reason": "Szenario-Antwort: Funktionale Rollen."}},
+        "BR-1057": {"BR-1102": {"score": 25, "reason": "Szenario-Antwort: Personal- und Verwaltungsrollen."}},
+        "BR-1102": {"BR-1101": {"score": 25, "reason": "Szenario-Antwort: Personalverwaltung und Vorgesetzte bei Korrekturfreigaben."}}
+      },
+      "justifications": {
+        "UA-1605": "Szenario-Antwort: R1 verlangt eine Arbeitszeitanwendung im Browser und an Online-Terminals ohne Offline-Erfassung. Der Pfad führt über Personalanwendungen direkt zu Arbeitszeitanwendungen. Die hohe Bewertung folgt aus den nun festgelegten Erfassungskanälen.",
+        "UA-1604": "Szenario-Antwort: Die Abrechnung ist nur Abnehmer der Zeiten und nicht Teil des Systems.",
+        "CR-1036": "Szenario-Antwort: Mitarbeiterstammdaten werden laut R1 aus dem führenden HR-System übernommen.",
+        "CR-1065": "Szenario-Antwort: Korrekturen werden laut R1 beantragt und von Vorgesetzten genehmigt; das erfordert einen Freigabe-Workflow.",
+        "CR-1006": "Szenario-Antwort: R1 legt die zentrale Unternehmensanmeldung fest.",
+        "CR-1022": "Szenario-Antwort: Die zentrale Anmeldung setzt eine zentrale digitale Identität voraus.",
+        "CR-1007": "Szenario-Antwort: Vorgesetzte benötigen Berechtigungen für die Freigabe von Korrekturen.",
+        "BP-1334": "Szenario-Antwort: Nachvollziehbare Erfassung und genehmigte Korrekturen unterstützen die Einhaltung des Arbeitszeitrechts.",
+        "BP-1680": "Szenario-Antwort: Freigegebene Zeiten wirken auf die Vergütung.",
+        "BR-1101": "Szenario-Antwort: Korrekturfreigaben und Stammdatenpflege betreffen Personalverwaltungsrollen."
+      },
+      "relations": [
+        {
+          "source": "UA-1605",
+          "type": "USES",
+          "path": ["CR", "CR-1000", "CR-1011", "CR-1023", "CR-1036"],
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
+        },
+        {
+          "source": "UA-1605",
+          "type": "USES",
+          "path": ["CR", "CR-1000", "CR-1047", "CR-1039", "CR-1006"],
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
+        },
+        {
+          "source": "UA-1605",
+          "type": "USES",
+          "path": ["CR", "CR-1000", "CR-1011", "CR-1038", "CR-1065"],
+          "contribution": "Szenario-Antwort: Arbeitszeitanwendung nutzt HR-Stammdaten, die zentrale Unternehmensanmeldung und einen Freigabe-Workflow für Korrekturen"
+        }
+      ],
+      "reformulation": {
+        "defaultSummary": "Szenario-Antwort: R1 enthält die übernommenen Entscheidungen; im Szenario sind keine weiteren Fragen vorgesehen.",
+        "summaries": {},
+        "additions": [],
+        "questions": []
+      }
+    }
+  }
+}

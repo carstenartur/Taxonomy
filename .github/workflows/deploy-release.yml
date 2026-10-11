@@ -308,11 +308,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up release image builder
+        id: release_builder
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        with:
+          driver: docker-container
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+
       - name: Build and publish immutable release image
         id: release_image
         if: steps.release_parameters.outputs.dry_run != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
+          builder: ${{ steps.release_builder.outputs.name }}
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/taxonomy:v${{ steps.release_parameters.outputs.release_version }}
@@ -442,6 +453,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
           IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
+          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         shell: bash
@@ -499,6 +511,12 @@ jobs:
           fi
 
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
+          git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
+          publication_main=$(git rev-parse --verify "refs/remotes/origin/main^{commit}")
+          if [[ "$publication_main" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "::error::Main changed before release publication: expected $EXPECTED_MAIN_SHA, found $publication_main"
+            exit 1
+          fi
           if [[ "$is_draft" == "true" ]]; then
             gh release edit "$tag" \
               --notes-file release_notes.md \

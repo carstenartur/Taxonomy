@@ -87,6 +87,10 @@
         <djl.version>0.38.0</djl.version>
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
+        <!-- Give the full product demo a fresh fork after the ordinary App tests.
+             Focused selectors keep their existing test set through the overrides below. -->
+        <taxonomy.productDemo.testPhase>test</taxonomy.productDemo.testPhase>
+        <taxonomy.productDemo.defaultTestExclude>**/ProductDemoEndToEndTest.java</taxonomy.productDemo.defaultTestExclude>
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
@@ -551,21 +555,35 @@
         </profile>
         <profile>
             <id>architecture-tests</id>
-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
+            <properties>
+                <test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
+            </properties>
         </profile>
         <profile>
             <id>document-import-tests</id>
-            <properties><test>DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest</test></properties>
+            <properties>
+                <test>DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
+            </properties>
         </profile>
         <profile>
             <id>archimate-import-tests</id>
-            <properties><test>ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest</test></properties>
+            <properties>
+                <test>ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
+            </properties>
         </profile>
         <!-- Focused follow-up lane; the canonical ci profile remains authoritative. -->
         <profile>
             <id>reformulation-usage-tests</id>
             <properties>
                 <test>ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
             </properties>
             <build><plugins><plugin>
@@ -580,6 +598,8 @@
             <id>reformulation-real-llm</id>
             <properties>
                 <test>ReformulationRealModelComparisonTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
                 <groups>real-llm</groups>
                 <excludedGroups>onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
@@ -589,6 +609,8 @@
             <id>scenario-acceptance</id>
             <properties>
                 <test>ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest</test>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
                 <generateScreenshots>true</generateScreenshots>
             </properties>

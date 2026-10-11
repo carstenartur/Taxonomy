@@ -40,6 +40,7 @@ public class StreamRequirementAnalysisUseCase {
         Locale previousLocale = LocaleContextHolder.getLocale();
         try {
             applyRequestLocale(command.requestLocale());
+            llmService.requireProviderAdmissible(command.provider(), false);
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
                     command.businessText(), command.provider());
