@@ -11,6 +11,7 @@ import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
@@ -194,8 +195,9 @@ public class LlmService {
 
     /** A scenario replay is admitted only for a persisted analysis whose run explicitly binds it. */
     public void requireProviderAdmissible(String provider, boolean persistedRun) {
-        if (!persistedRun && providerConfig.isScenarioReplay(provider))
-            throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(provider);
+        if (persistedRun || provider == null || provider.isBlank()) return;
+        if (providerConfig.isScenarioReplay(provider))
+            throw new UnknownAnalysisProviderException(provider);
     }
 
     /** A durable job may execute only with its admitted artifact/configuration. */
