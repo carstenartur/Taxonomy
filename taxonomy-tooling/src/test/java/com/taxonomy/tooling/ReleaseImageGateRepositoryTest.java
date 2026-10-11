@@ -85,6 +85,36 @@ class ReleaseImageGateRepositoryTest {
                 .isNotEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-binding", "missing-fetch", "late"})
+    void finalMainPublicationGuardCannotBeRemovedOrDelayed(String mutation) throws Exception {
+        String workflow = releaseWorkflow();
+        int publish = workflow.indexOf("- name: Publish complete release and trigger deployment");
+        assertThat(publish).as("final publication fixture").isGreaterThanOrEqualTo(0);
+        String publishBlock = stepBlock(workflow, publish);
+        String fetch = "          git fetch origin \"refs/heads/main:refs/remotes/origin/main\" --force\n";
+        int guardStart = publishBlock.indexOf(fetch);
+        int draftBranch = publishBlock.indexOf("          if [[ \"$is_draft\" == \"true\" ]]; then");
+        assertThat(guardStart).as("final main guard fixture").isGreaterThanOrEqualTo(0);
+        assertThat(draftBranch).isGreaterThan(guardStart);
+        String mainGuard = publishBlock.substring(guardStart, draftBranch);
+        String publishedStateCheck = "          test \"$(gh release view";
+        assertThat(publishBlock).contains(publishedStateCheck);
+
+        String invalidPublish = switch (mutation) {
+            case "missing-binding" -> publishBlock.replace(
+                    "          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}\n", "");
+            case "missing-fetch" -> publishBlock.replace(fetch, "");
+            case "late" -> publishBlock.replace(mainGuard, "")
+                    .replace(publishedStateCheck, mainGuard + publishedStateCheck);
+            default -> throw new IllegalArgumentException(mutation);
+        };
+
+        assertThat(failures(workflow.replace(publishBlock, invalidPublish)))
+                .as("final main publication regression: %s", mutation)
+                .anyMatch(message -> message.contains("final main"));
+    }
+
     static List<String> failures(String workflow) {
         List<String> failures = new ArrayList<>();
         require(workflow, "id: release_image",
@@ -216,7 +246,7 @@ class ReleaseImageGateRepositoryTest {
                     "Helm release evidence must include a digest-bound manifest", failures);
         }
         if (publish >= 0) {
-            String publishBlock = workflow.substring(publish);
+            String publishBlock = stepBlock(workflow, publish);
             int evidenceCheck = publishBlock.indexOf("evidence_digest");
             int digestComparison = publishBlock.indexOf(
                     "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then");
@@ -230,6 +260,27 @@ class ReleaseImageGateRepositoryTest {
             }
             require(publishBlock, "image=\"${repository}@${IMAGE_DIGEST}\"",
                     "final publication must inspect an immutable digest, not only a tag", failures);
+            require(publishBlock, "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
+                    "final main publication must retain the previously verified main SHA", failures);
+            List<String> mainGuardOrder = List.of(
+                    "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then",
+                    "is_draft=$(gh release view \"$tag\" --json isDraft",
+                    "git fetch origin \"refs/heads/main:refs/remotes/origin/main\" --force",
+                    "publication_main=$(git rev-parse --verify \"refs/remotes/origin/main^{commit}\")",
+                    "if [[ \"$publication_main\" != \"$EXPECTED_MAIN_SHA\" ]]; then",
+                    "if [[ \"$is_draft\" == \"true\" ]]; then",
+                    "gh release edit",
+                    "curl -fSL --retry 3 \"$RENDER_DEPLOY_HOOK_URL\"");
+            int previous = -1;
+            for (String needle : mainGuardOrder) {
+                int position = publishBlock.indexOf(needle);
+                if (position < 0 || position <= previous) {
+                    failures.add(
+                            "final main must be freshly fetched, resolved and compared before either the draft branch or publication and deployment");
+                    break;
+                }
+                previous = position;
+            }
         }
         return List.copyOf(failures);
     }
