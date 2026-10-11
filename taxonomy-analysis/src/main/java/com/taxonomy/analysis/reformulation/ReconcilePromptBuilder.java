@@ -55,9 +55,16 @@ public class ReconcilePromptBuilder {
         var scores=new TreeMap<String,JsonNode>();source.properties().forEach(e->{if(selected.contains(e.getKey()))scores.put(e.getKey(),e.getValue());});
         return Map.of("descriptions",descriptions,"mappings",List.copyOf(mappings),"rawScores",scores);
     }
+    /** Lossless prompt compaction: absent values and an English copy identical to the description carry no information. */
+    static void compact(tools.jackson.databind.node.ObjectNode node) {
+        var absent=new ArrayList<String>();node.properties().forEach(e->{if(e.getValue().isNull())absent.add(e.getKey());});
+        absent.forEach(node::remove);
+        if(node.has("descriptionEn") && node.path("descriptionEn").equals(node.path("description")))node.remove("descriptionEn");
+        if(node.has("nameEn") && node.path("nameEn").equals(node.path("name")))node.remove("nameEn");
+    }
     private static void collect(JsonNode tree,Set<String> selected,Map<String,String> result) {
         for(var node:tree) {
-            if(selected.contains(node.path("code").asText())){var copy=(tools.jackson.databind.node.ObjectNode)node.deepCopy();copy.remove("children");result.put(node.path("code").asText(),copy.toString());}
+            if(selected.contains(node.path("code").asText())){var copy=(tools.jackson.databind.node.ObjectNode)node.deepCopy();copy.remove("children");compact(copy);result.put(node.path("code").asText(),copy.toString());}
             if(node.path("children").isArray())collect(node.path("children"),selected,result);
         }
     }

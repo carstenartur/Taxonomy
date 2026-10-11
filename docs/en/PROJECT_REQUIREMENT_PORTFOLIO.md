@@ -230,6 +230,18 @@ Available formats are:
 
 Reports include requirement texts, source information, taxonomy coverage, solution and product decisions, conflicts and the reproducibility baseline of the relevant snapshots.
 
+## Product demo without AI (QA reference)
+
+Typing `produktdemo` (case and surrounding whitespace are ignored) into the analysis field and pressing the normal **Analyze** button does not start an AI analysis. It creates an isolated, labelled demo project instead (key `DEMO-…`, title `Produktdemo · …`). The typed draft and all other projects and requirements stay unchanged. Scenario: "Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter." (company-wide working-time recording).
+
+- **Only the AI reply is replaced.** Analysis, reformulation, answers, adoption, reference comparison and exports use the normal product paths. The external AI reply comes from a versioned scenario replay (provider `DEMO.TIME-TRACKING-V1.R0`/`R1`). A missing reply fails with `MISSING_REPLY`; there is no live-provider fallback.
+- **Catalogue check.** At start, every code used by the scenario is verified against the loaded catalogue; a mismatch prevents the start.
+- **Banner and stations.** The requirement page permanently shows the demo banner, the active scenario provider, the stations R0 → A0 → questions F-01…F-05 → answers/rejection of the GPS addition → adoption → R1 → A1 → reference evaluation, and the visible demo answers.
+- **Flow.** Analyse R0, start the reformulation, answer the questions with the displayed demo answers and reject the GPS addition. If regeneration yields a protected candidate, use **Load candidate into editor**, save the draft, then adopt it with preview and confirmation. Afterwards analyse R1 and choose **Show reference evaluation**.
+- **Admission.** Demo providers are admitted only for the demo requirement of the demo run; normal projects reject them. Changed scenario versions (`DEMO_SCENARIO_CHANGED`), unplanned iterations (`DEMO_ITERATION_UNAVAILABLE`) and closed runs (`DEMO_RUN_CLOSED`) are rejected.
+- **Reference evaluation.** `GET /api/product-demo/runs/{id}/comparison` evaluates A0/A1 independently against the scenario reference; unexecuted steps appear as `NOT_EXECUTED`, never as negative findings.
+- **API.** `GET /api/product-demo/scenarios`, `POST /api/product-demo/runs`, `GET /api/product-demo/runs`, `GET /api/product-demo/runs/{id}`, `POST /api/product-demo/runs/{id}/close`.
+
 ## Roles and accessibility
 
 Read-only users can inspect portfolio information but cannot perform architecture mutations. Disabled controls explain the missing capability. Architect and administrator roles can perform the reviewed write operations allowed by the security configuration.

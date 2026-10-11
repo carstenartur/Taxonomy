@@ -15,6 +15,7 @@ import com.taxonomy.portfolio.reformulation.ReformulationDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioReportService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -60,6 +61,7 @@ class ProductDemoEndToEndTest {
     @Autowired ReformulationService reformulations;
     @Autowired ReformulationExecutionService execution;
     @Autowired ReformulationAdoptionService adoptions;
+    @Autowired PortfolioReportService reports;
     @Autowired WorkspaceManager workspaces;
     @Autowired RestTemplate transport;
     @MockitoBean WorkspaceResolver resolver;
@@ -167,6 +169,23 @@ class ProductDemoEndToEndTest {
         assertThat(comparison.a0SnapshotId()).isEqualTo(a0Snapshot);
         assertThat(comparison.report().overall()).as("reference checks %s", comparison.report().checks())
                 .isEqualTo(DemoReferenceEvaluator.Overall.PASS);
+
+        // Second generation on the adopted R1: no repeated questions, the rejected addition stays out.
+        var r1Requirement = projects.getRequirement(run.projectId(), run.requirementId(), USER, context);
+        var next = reformulations.create(run.projectId(), run.requirementId(), new ReformulationDtos.CreateRequest(
+                r1Requirement.currentVersionId(), a1.items().getFirst().snapshotId(), "de"), USER, context);
+        assertThat(next.baseline().frozenContext()).containsKeys("adoptedLineage", "inheritedDecisionContext");
+        var secondGeneration = runReformulation(run, next, context, "COMPLETED");
+        assertThat(secondGeneration.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R1");
+        var nextRevision = reformulations.get(run.projectId(), run.requirementId(), next.id(), USER, context).currentRevision();
+        assertThat(nextRevision.text()).doesNotContain(gps);
+        assertThat(nextRevision.questions()).isEmpty();
+
+        // Exports of the demo project stay labelled as demo output.
+        var export = reports.render(run.projectId(), run.requirementId(), PortfolioReportService.Format.MARKDOWN,
+                null, USER, context);
+        assertThat(export.filename()).startsWith("DEMO-");
+        assertThat(new String(export.bytes(), java.nio.charset.StandardCharsets.UTF_8)).contains("Produktdemo · ");
 
         // Closing the demo stops further replay admission.
         demos.close(run.id(), USER, context);
