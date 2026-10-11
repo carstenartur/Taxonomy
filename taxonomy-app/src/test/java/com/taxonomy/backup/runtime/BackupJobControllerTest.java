@@ -27,6 +27,8 @@ class BackupJobControllerTest {
     @Autowired MockMvc mvc;
     @MockitoBean BackupJobService jobs;
     @MockitoBean BackupPrincipalResolver principals;
+    @MockitoBean BackupAccessPolicy navigationAccess;
+    @MockitoBean com.taxonomy.security.service.PrincipalIdentityService navigationIdentities;
     final PrincipalId actor = PrincipalId.create();
     final BackupRequest request = new BackupRequest(BackupProfile.CURRENT_STATE, new BackupScope.Workspace("repo", "workspace"),
             new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
@@ -58,12 +60,15 @@ class BackupJobControllerTest {
     }
     @Test void statusPageRendersEnglishAndGermanWithoutExposingInternalJobData() throws Exception {
         when(principals.require(any())).thenReturn(actor);
+        when(jobs.exportOptions(actor)).thenReturn(new BackupExportOptions(List.of(new BackupExportOptions.Selection("fixture-choice","fixture-repo","fixture-workspace",false,"Fixture workspace"))));
         mvc.perform(get("/backup-jobs").with(user("reader")).locale(Locale.ENGLISH)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Backup jobs")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Backup jobs")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Create a portable export")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-workspace-id=\"fixture-workspace\"")));
         mvc.perform(get("/backup-jobs").with(user("reader")).locale(Locale.GERMAN)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Sicherungsaufträge")))
                 .andExpect(header().string("Cache-Control", "no-store"));
-        verifyNoInteractions(jobs);
+        verify(jobs,times(2)).exportOptions(actor);verifyNoMoreInteractions(jobs);
     }
     @Configuration(proxyBeanMethods = false) @EnableWebSecurity static class Security {
         @Bean AuthorizationRulesConfigurer rules() { return new AuthorizationRulesConfigurer(); }

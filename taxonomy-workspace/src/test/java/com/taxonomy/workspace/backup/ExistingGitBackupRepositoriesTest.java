@@ -30,6 +30,7 @@ class ExistingGitBackupRepositoriesTest {
             for (var item : Map.of(new BackupRepositoryKey("a", null), "CENTRAL-A", new BackupRepositoryKey("b", null), "CENTRAL-B", new BackupRepositoryKey("a", "private-a"), "PRIVATE-A").entrySet()) {
                 try (var source = open(f, current(item.getKey()), item.getKey())) {
                     assertThat(source.key()).isEqualTo(item.getKey()); assertThat(source.branch()).isEqualTo("draft");
+                    assertThat(source.branchNames(CHECK)).containsExactly("draft");
                     var captured = source.captureStand(LIMITS, CHECK).orElseThrow();
                     assertThat(content(captured)).isEqualTo(item.getValue());
                 }
@@ -80,6 +81,7 @@ class ExistingGitBackupRepositoriesTest {
             var request = new BackupRequest(BackupProfile.SELECTED_VERSION, scope(key), new BackupTime.SelectedVersion(Map.of(key, selected)), GitRepresentation.NONE, SecretsSelection.EXCLUDE);
             try (var source = open(f, authorized(request), key)) {
                 assertThat(source.branch()).isNull();
+                assertThatThrownBy(() -> source.branchNames(CHECK)).isInstanceOf(IOException.class);
                 assertThat(content(source.captureStand(LIMITS, CHECK).orElseThrow())).isEqualTo("SELECTED");
             }
         }
@@ -98,7 +100,10 @@ class ExistingGitBackupRepositoriesTest {
     @Test void unbornCurrentBranchIsExplicitlyEmptyEvenWhenAnotherBranchHasFiles() throws Exception {
         try (var f = new Fixture()) {
             f.repository("a", "central-a", "unborn"); f.commit("central-a", "OTHER-BRANCH"); var key = new BackupRepositoryKey("a", null);
-            try (var source = open(f, current(key), key)) { assertThat(source.captureStand(LIMITS, CHECK)).isEmpty(); }
+            try (var source = open(f, current(key), key)) {
+                assertThat(source.captureStand(LIMITS, CHECK)).isEmpty();
+                assertThat(source.branchNames(CHECK)).containsExactlyInAnyOrder("draft", "unborn");
+            }
         }
     }
 
@@ -116,6 +121,7 @@ class ExistingGitBackupRepositoriesTest {
         try (var f = new Fixture()) {
             f.repository("a", "central-a", "draft"); f.commit("central-a", "CURRENT"); var key = new BackupRepositoryKey("a", null);
             var source = open(f, current(key), key); source.close(); source.close();
+            assertThatThrownBy(() -> source.branchNames(CHECK)).isInstanceOf(IOException.class);
             assertThatThrownBy(() -> source.captureStand(LIMITS, CHECK)).isInstanceOf(IOException.class);
             assertThat(f.persistence.factory.isOpen()).isTrue();
             try (var reopened = open(f, current(key), key)) { assertThat(content(reopened.captureStand(LIMITS, CHECK).orElseThrow())).isEqualTo("CURRENT"); }

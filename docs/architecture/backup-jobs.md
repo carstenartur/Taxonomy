@@ -79,8 +79,43 @@ a filename cannot substitute another file. The browser receives a generated
 `/backup-jobs` renders English/German status, progress, retention, cancellation
 and native streamed downloads. It bounds the recent list to 50, renders ten
 jobs per page, preserves focused controls while updating fields, and pauses
-polling while the page is hidden. Product export selection and real-browser
-acceptance are completed with the module adapters and P12.
+polling while the page is hidden. The export form lists repositories and workspaces
+that the current stable principal can read; installation-wide selection additionally
+requires EXPORT_INSTALLATION. Current export preserves the saved editor state.
+Selected-version export requires an explicitly authorized, complete lowercase
+40-character commit ID and captures that version independently of live drafts.
+Both choices support NONE and current-state BUNDLE with secrets excluded.
+Unsupported history, bare-repository and working-tree selections are rejected
+before queue admission. A File-menu entry appears when the preview source and
+current-export authority are available.
+
+## Production current-export preview
+
+`taxonomy.backup.enabled` remains false by default. With it explicitly enabled,
+`ProductionCurrentBackupConfiguration` registers the production capture source
+only when every data-owning feature is installed. The source checks actual JPA
+categories against the reviewed coverage inventory and assembles every required
+owner. Unknown owners, missing categories or unresolved selected references fail
+the capture rather than produce a partial successful archive.
+
+Set `TAXONOMY_BACKUP_SOURCE_CONTENT_DIRECTORY` (property
+`taxonomy.backup.source-content-directory`, default `./data/source-content`) to
+the root containing retained source-version files. Original source content is
+read from this root using the existing source adapter's path and digest checks.
+Missing or changed retained content fails the job. The backup artifact volume
+is configured separately through `TAXONOMY_BACKUP_DIRECTORY`.
+
+Repository and workspace metadata discovery is read-only, capped at the existing
+10,000-item inventory boundary and queries one extra sentinel row to reject
+overflow explicitly. Git discovery opens existing storage only; it does not
+initialize missing repositories. The manifest includes exact source application
+version, build evidence and installed feature prerequisites. External Git servers
+and deployment credentials remain explicit operator dependencies.
+
+This preview supplies current, selected-version and installation-current export.
+Portable restore and the full P08/P12 acceptance remain required before a public
+backup release. Focused HSQLDB/native Git/browser checks do not certify the
+cross-database restore matrix or replace the canonical verification gate.
 
 See [configuration reference](../en/CONFIGURATION_REFERENCE.md) and the
 [protection ADR](backup-archive-protection.md) for key custody. Provision Tink's

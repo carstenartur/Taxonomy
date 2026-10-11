@@ -50,6 +50,7 @@
                         <button id="fileSaveDraftAction" class="dropdown-item" type="button"
                                 th:text="#{navbar.file.save_draft}">Save draft now</button>
                     </li>
+                    <li th:if="${portableBackupAvailable}"><a class="dropdown-item" th:href="@{/backup-jobs(lang=${#locale.language})}" th:text="#{backup.export.title}">Create a portable export</a></li>
                 </ul>
             </div>
             <div class="dropdown">

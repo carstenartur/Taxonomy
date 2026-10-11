@@ -1,8 +1,11 @@
 # Current records and embedded history
 
-This document describes the P05 adapters. They are not yet a complete capture
-source: complete reference closure, Git inventory and production composition are required before production jobs
-can activate. The knowledge adapter is described in `backup-data-ownership.md`.
+This document describes the P05 adapters. The optional production current-export
+composition now closes their selected references and captures existing Git stands
+through the shared coordinator. The preview remains disabled by default; history
+and portable restore acceptance have their own remaining delivery steps. See
+`backup-jobs.md` for the supported current-export selections and retained-content
+configuration. The knowledge adapter is described in `backup-data-ownership.md`.
 
 `CompositeBackupDataContributor` checks the declared adapter coverage against
 the reviewed inventory for one component before accessing a source. Every owned

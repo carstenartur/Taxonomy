@@ -101,6 +101,20 @@ public final class ExistingGitBackupRepositories {
                 return commit == null ? Optional.empty() : Optional.of(GitTreeCapture.capture(storage.repository(), commit, limits, checkpoint, this::requireOpen));
             } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
         }
+        /** Current routing metadata only; no commit/tree or ancestor payload is read. */
+        public Set<String> branchNames(BackupCheckpoint checkpoint) throws IOException {
+            try {
+                if(request.profile()==BackupProfile.SELECTED_VERSION)throw failure("Selected-version capture cannot inspect live branch routing");
+                check(checkpoint);var names=new TreeSet<String>();names.add(branch);
+                for(var ref:storage.repository().getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+                    check(checkpoint);String name=ref.getName().substring(Constants.R_HEADS.length());
+                    if(!Repository.isValidRefName(Constants.R_HEADS+name))throw failure("Invalid current branch routing");
+                    names.add(name);
+                    if(names.size()>BackupLimits.MAX_ITEMS)throw failure("Current branch routing limit exceeded");
+                }
+                check(checkpoint);return Set.copyOf(names);
+            } catch(IOException | RuntimeException problem){throw sanitized(problem);}
+        }
         private void requireOpen() throws IOException {
             if (!access.active().get()) throw failure("Git capture session is closed");
         }
