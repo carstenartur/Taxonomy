@@ -8,6 +8,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
+import org.openqa.selenium.StaleElementReferenceException;
+import org.openqa.selenium.OutputType;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import java.nio.file.*;
@@ -62,21 +65,63 @@ class BackupExportBrowserIT {
         wait.until(d -> d.findElement(By.id("backupExportHeading")).getText().contains(
                 locale.equals("de") ? "Portablen Stand exportieren" : "Create a portable export"));
         assertThat(driver.findElement(By.id("backupExportCommit")).isEnabled()).isFalse();
-        driver.findElement(By.id("backupExportSubmit")).click();
+        clickVisible(By.id("backupExportSubmit"), locale, "create-export");
         wait.until(d -> submissions.size() == 1 && !d.findElements(By.cssSelector("#backupJobList a[href$='/download']")).isEmpty());
         assertThat(submissions).containsExactly(new BackupRequest(BackupProfile.CURRENT_STATE,
                 new BackupScope.Workspace("fixture-repo", "fixture-private"), new BackupTime.Current(), GitRepresentation.NONE, SecretsSelection.EXCLUDE));
         var link = driver.findElement(By.cssSelector("#backupJobList a[href$='/download']"));
         assertThat(link.getDomAttribute("href")).isEqualTo(prefix + "/api/backups/jobs/" + job + "/download");
-        link.click();
+        clickVisible(By.cssSelector("#backupJobList a[href$='/download']"), locale, "download");
         wait.until(d -> page.browser().downloadedFiles().contains(filename));
         assertThat(Files.readString(page.browser().download(filename))).isEqualTo("native-download-fixture");
         new Select(driver.findElement(By.id("backupExportProfile"))).selectByValue("SELECTED_VERSION");
         assertThat(driver.findElement(By.id("backupExportCommit")).isEnabled()).isTrue();
         driver.findElement(By.id("backupExportCommit")).sendKeys("deadbeef");
-        driver.findElement(By.id("backupExportSubmit")).click();
+        clickVisible(By.id("backupExportSubmit"), locale, "invalid-commit");
         assertThat((Boolean) driver.executeScript("return document.getElementById('backupExportCommit').validity.valid")).isFalse();
         assertThat(submissions).hasSize(1);
         assertThat(page.requests()).anyMatch(r -> r.method().equals("GET") && r.path().endsWith("/download"));
+    }
+
+    private void clickVisible(By locator, String locale, String phase) {
+        var driver = page.driver();
+        try {
+            new WebDriverWait(driver, Duration.ofSeconds(20))
+                    .ignoring(ElementClickInterceptedException.class)
+                    .ignoring(StaleElementReferenceException.class)
+                    .until(ignored -> {
+                        var control = driver.findElement(locator);
+                        if (!control.isDisplayed() || !control.isEnabled()) return false;
+                        driver.executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});", control);
+                        boolean reachable = Boolean.TRUE.equals(driver.executeScript("""
+                                const element=arguments[0], r=element.getBoundingClientRect();
+                                const x=r.left+r.width/2, y=r.top+r.height/2;
+                                if (r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return false;
+                                const hit=document.elementFromPoint(x,y);
+                                return hit===element || element.contains(hit);
+                                """, control));
+                        if (!reachable) return false;
+                        control.click();
+                        return true;
+                    });
+        } catch (RuntimeException failure) {
+            try {
+                Path directory = Path.of("target", "failsafe-reports"); Files.createDirectories(directory);
+                String name = "BackupExportBrowserIT-" + locale + "-" + phase;
+                Files.write(directory.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES));
+                // Structural evidence only: no form values, cookies, credentials, or page text.
+                Object diagnostic = driver.executeScript("""
+                        const element=arguments[0], r=element.getBoundingClientRect();
+                        const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                        function shape(e) { if(!e) return null; const b=e.getBoundingClientRect(),s=getComputedStyle(e);
+                          return {tag:e.tagName,id:e.id,classes:e.className,x:b.x,y:b.y,width:b.width,height:b.height,
+                            position:s.position,pointerEvents:s.pointerEvents,visibility:s.visibility,zIndex:s.zIndex}; }
+                        return JSON.stringify({viewport:{width:innerWidth,height:innerHeight},scroll:{x:scrollX,y:scrollY},
+                          target:shape(element),hit:shape(hit),ancestors:Array.from((function*(e){for(let n=e;n;n=n.parentElement)yield n;})(hit)).map(shape)});
+                        """, driver.findElement(locator));
+                Files.writeString(directory.resolve(name + ".json"), String.valueOf(diagnostic));
+            } catch (Exception diagnosticFailure) { failure.addSuppressed(diagnosticFailure); }
+            throw failure;
+        }
     }
 }
