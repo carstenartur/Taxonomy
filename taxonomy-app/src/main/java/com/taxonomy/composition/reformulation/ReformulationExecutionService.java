@@ -47,11 +47,17 @@ public class ReformulationExecutionService {
         this.recovery=recovery; this.usage=usage;
         this.checkpointJson=json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
     }
+    private com.taxonomy.portfolio.demo.ProductDemoService productDemos;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void productDemos(com.taxonomy.portfolio.demo.ProductDemoService demos) { this.productDemos = demos; }
     public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
         if (stopping) throw new IllegalStateException("REFORMULATION_EXECUTOR_STOPPED");
         var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);
         if(proposal.currentRevision().number()!=expectedRevision) throw new ReformulationPreconditionException();
-        var provider=providers.getActiveProviderId();
+        // A product demo is bound to its scenario replay for the proposal's source version; never to the live provider.
+        var provider=productDemos==null?providers.getActiveProviderId():productDemos
+                .reformulationProviderFor(projectId,requirementId,proposal.baseline().sourceVersionId(),actor,context)
+                .map(ProviderId::new).orElseGet(providers::getActiveProviderId);
         String model=provider.equals(LlmProvider.LOCAL_ONNX.id())?"LOCAL_ONNX":model(provider);
         var frozen=proposal.baseline().frozenContext();
         String prompt=frozen.getOrDefault("reformulationPrompt",ReformulationPromptBuilder.template());

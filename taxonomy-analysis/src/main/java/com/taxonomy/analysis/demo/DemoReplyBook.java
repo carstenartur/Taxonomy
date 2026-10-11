@@ -51,15 +51,18 @@ public final class DemoReplyBook {
         if (reconcile >= 0) return reconcile(payload(prompt, reconcile + RECONCILE_MARKER.length()));
         int node = prompt.lastIndexOf(NODE_MARKER);
         if (node >= 0) return node(payload(prompt, node + NODE_MARKER.length()));
+        Matcher parent = PARENT_SCORE.matcher(prompt);
+        Matcher leaf = LEAF.matcher(prompt);
+        boolean parentPrompt = parent.find();
+        boolean leafPrompt = leaf.find();
+        if (!prompt.contains(ROOT_MARKER) && !prompt.contains(PRODUCT_MARKER) && !parentPrompt && !leafPrompt)
+            throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, "prompt kind is not part of the scenario");
         requireAnalysisIteration(prompt);
         if (prompt.contains(ROOT_MARKER)) return roots(keys(prompt));
         if (prompt.contains(PRODUCT_MARKER))
             throw failure(DemoReplayException.Code.MISSING_REPLY, "the scenario authors no concrete-product assessment for " + keys(prompt));
-        Matcher parent = PARENT_SCORE.matcher(prompt);
-        if (parent.find()) return children(keys(prompt), Integer.parseInt(parent.group(1)));
-        Matcher leaf = LEAF.matcher(prompt);
-        if (leaf.find()) return justification(leaf.group(1));
-        throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, "prompt kind is not part of the scenario");
+        if (parentPrompt) return children(keys(prompt), Integer.parseInt(parent.group(1)));
+        return justification(leaf.group(1));
     }
 
     // ── Iteration identity ───────────────────────────────────────────────────
@@ -272,14 +275,18 @@ public final class DemoReplyBook {
                 if (!answer.path("disposition").isMissingNode() && !answer.path("disposition").isNull()
                         && !"ANSWER".equals(answer.path("disposition").asString())) continue;
                 JsonNode question = questionsById.get(answer.path("questionId").asString());
-                if (question == null) continue;
-                var authored = authoredQuestion(question.path("key").path("subject").asString());
+                var values = new ArrayList<String>();
+                answer.path("values").forEach(value -> values.add(value.asString()));
+                var authored = question != null ? authoredQuestion(question.path("key").path("subject").asString())
+                        : authoredQuestionByValues(values);
                 if (authored == null || !authored.anchorRoot().equals(rootCode)) continue;
-                for (JsonNode value : answer.path("values")) {
-                    String consequence = authored.consequences().get(value.asString());
+                // A dependency may only reference a question visible in this exact input.
+                var dependencies = question != null ? List.of(question.path("id").asString()) : List.<String>of();
+                for (String value : values) {
+                    String consequence = authored.consequences().get(value);
                     if (consequence == null) throw failure(DemoReplayException.Code.MISSING_REPLY,
-                            "no authored consequence for " + authored.id() + " = " + value.asString());
-                    addStatement(statements, consequence, "MODEL_ADDITION", List.of(question.path("id").asString()), rejected, wordings);
+                            "no authored consequence for " + authored.id() + " = " + value);
+                    addStatement(statements, consequence, "MODEL_ADDITION", dependencies, rejected, wordings);
                 }
             }
         }
@@ -324,6 +331,14 @@ public final class DemoReplyBook {
     private DemoScenario.Question authoredQuestion(String subject) {
         return scenario.iterations().values().stream().flatMap(i -> i.reformulation().questions().stream())
                 .filter(q -> q.subject().equals(subject)).findFirst().orElse(null);
+    }
+
+    /** Only an unambiguous option value identifies an authored question without its visible record. */
+    private DemoScenario.Question authoredQuestionByValues(List<String> values) {
+        if (values.isEmpty()) return null;
+        var matches = scenario.iterations().values().stream().flatMap(i -> i.reformulation().questions().stream())
+                .filter(q -> q.consequences().keySet().containsAll(values)).toList();
+        return matches.size() == 1 ? matches.getFirst() : null;
     }
 
     private static void addStatement(List<Map<String, Object>> statements, String wording, String provenance,

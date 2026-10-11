@@ -41,7 +41,7 @@ public final class DemoReferenceEvaluator {
             if (r0 == Status.FAIL && r1 == Status.PASS) improvements.add("aspect:" + aspect.id());
         }
         for (var forbidden : reference.forbiddenPhrases()) {
-            for (var entry : List.of(Map.entry("R0", a0), Map.entry("R1", a1))) {
+            for (var entry : iterations(a0, a1)) {
                 Status status = !executed(entry.getValue()) ? Status.NOT_EXECUTED
                         : entry.getValue().requirementText().contains(forbidden.phrase()) ? Status.FAIL : Status.PASS;
                 checks.add(new Check("forbidden-phrase:" + forbidden.id(), "FORBIDDEN_PHRASE", entry.getKey(), status,
@@ -67,7 +67,7 @@ public final class DemoReferenceEvaluator {
                 improvements.add("node:" + node.code());
         }
         for (var node : reference.forbiddenNodes()) {
-            for (var entry : List.of(Map.entry("R0", a0), Map.entry("R1", a1))) {
+            for (var entry : iterations(a0, a1)) {
                 Status status;
                 String actual;
                 if (!executed(entry.getValue())) { status = Status.NOT_EXECUTED; actual = "not executed"; }
@@ -94,6 +94,12 @@ public final class DemoReferenceEvaluator {
         Overall overall = checks.stream().anyMatch(c -> c.status() == Status.NOT_EXECUTED) ? Overall.INCOMPLETE
                 : checks.stream().anyMatch(c -> c.status() == Status.FAIL) ? Overall.FAIL : Overall.PASS;
         return new Report(reference.scenario(), reference.version(), overall, List.copyOf(checks), List.copyOf(improvements));
+    }
+
+    /** Null-tolerant iteration pairs: an absent analysis is NOT_EXECUTED, never an error. */
+    private static List<Map.Entry<String, Observation>> iterations(Observation a0, Observation a1) {
+        return List.of(new java.util.AbstractMap.SimpleImmutableEntry<>("R0", a0),
+                new java.util.AbstractMap.SimpleImmutableEntry<>("R1", a1));
     }
 
     private static boolean executed(Observation observation) { return observation != null && observation.executed(); }

@@ -61,6 +61,14 @@ public class PortfolioAnalysisPersistenceService {
     private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
     @org.springframework.beans.factory.annotation.Autowired
     void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }
+    private com.taxonomy.portfolio.demo.ProductDemoRunRepository demoRuns;
+    private com.taxonomy.analysis.demo.DemoScenarioCatalog demoScenarios = com.taxonomy.analysis.demo.DemoScenarioCatalog.builtin();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void productDemo(com.taxonomy.portfolio.demo.ProductDemoRunRepository runs,
+                     org.springframework.beans.factory.ObjectProvider<com.taxonomy.analysis.demo.DemoScenarioCatalog> scenarios) {
+        this.demoRuns = runs;
+        this.demoScenarios = scenarios.getIfAvailable(com.taxonomy.analysis.demo.DemoScenarioCatalog::builtin);
+    }
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -147,7 +155,18 @@ public class PortfolioAnalysisPersistenceService {
                 PortfolioScope.workspaceId(context),
                 requirements.size(),
                 now);
-        if (providerConfiguration != null) {
+        var demoRun = demoRuns == null ? java.util.Optional.<com.taxonomy.portfolio.demo.ProductDemoRun>empty()
+                : demoRuns.findByProjectIdAndScopeKey(projectId, scopeKey);
+        if (demoRun.isPresent()) {
+            // A demo project is admitted only to its own scenario replay: no mock, live or fallback provider.
+            var run = demoRun.get();
+            String admitted = com.taxonomy.portfolio.demo.ProductDemoAdmission.admittedProvider(run,
+                    demoScenarios.find(run.getScenarioId()).orElse(null),
+                    requirements.stream().map(ProjectRequirement::getId).toList(),
+                    requireCurrentVersion(requirements.getFirst()).getVersionNumber(), provider);
+            job.bindProvider(admitted, null);
+        } else if (providerConfiguration != null) {
+            com.taxonomy.portfolio.demo.ProductDemoAdmission.rejectDemoProviderForNormalProject(provider);
             String admitted = providerConfiguration.isMockMode() ? "MOCK" : provider == null || provider.isBlank()
                     ? providerConfiguration.getActiveProviderId().value() : provider.strip().toUpperCase(java.util.Locale.ROOT);
             job.bindProvider(admitted, providerConfiguration.captureProviderBinding(admitted));
@@ -299,7 +318,13 @@ public class PortfolioAnalysisPersistenceService {
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
+        var demoBinding = com.taxonomy.analysis.demo.DemoProviderIds.parse(job.getProvider());
         for (RequirementAnalysisJobItem item : failedItems) {
+            if (demoBinding.isPresent() && requireCurrentVersion(item.getRequirement()).getVersionNumber()
+                    != demoBinding.get().iterationNumber() + 1) {
+                throw PortfolioException.conflict("DEMO_ITERATION_CHANGED: retry would replay "
+                        + demoBinding.get().iteration() + " for another requirement version; start a new demo analysis");
+            }
             item.prepareRetry(requireCurrentVersion(item.getRequirement()));
         }
         job.markRunning(Instant.now());
