@@ -29,6 +29,71 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 /** Real frozen worker and durable continuation authority; provider exchanges are deterministic fixtures. */
 class FrozenClusterContinuationTest {
+    @Test void aSavedResponsesAnswerRestartsWithoutEitherEndpointAndRejectsChangedTokenBounds() throws Exception {
+        String database = "jdbc:hsqldb:mem:responses-continuation-" + UUID.randomUUID() + ";hsqldb.tx=mvcc";
+        var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("responses-worker");
+        var original = ClusterAnalysisStoreTest.command("requirement");
+        var fixture = new Scoring(mapper, "https://unused.invalid/chat/completions");
+        var physical = new AtomicInteger();
+        var budget = new java.util.concurrent.atomic.AtomicReference<>(new ProviderRateQuotas.TokenBudget(
+                "openai.responses.gpt-4o-mini-2024-07-18.v1", 5000, 256));
+        var quotas = new ProviderRateQuotas() {
+            public TokenBudget requiredBudget(com.taxonomy.extension.api.llm.ProviderId provider) { return budget.get(); }
+            public Decision tryReserve(com.taxonomy.extension.api.llm.ProviderId provider, String id, TokenBudget supplied, Runnable checkpoint) {
+                assertThat(supplied).isEqualTo(budget.get()); checkpoint.run();
+                return new Decision(new Reservation() { public String id() { return id; } public void beforeTransport() { checkpoint.run(); }
+                    public void settle(LlmTransportMeter.Usage usage) { } }, 0);
+            }
+            public void defer(com.taxonomy.extension.api.llm.ProviderId provider, long delay) { }
+        };
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            physical.incrementAndGet(); exchange.getRequestBody().readAllBytes();
+            String response = exchange.getRequestURI().getPath().endsWith("input_tokens")
+                    ? "{\"object\":\"response.input_tokens\",\"input_tokens\":42}"
+                    : "{\"object\":\"response\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"{\\\"CP\\\":75}\"}]}],\"usage\":{\"input_tokens\":42,\"output_tokens\":15,\"total_tokens\":57}}";
+            byte[] bytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
+        }); server.start();
+        fixture.providers.configureProviderQuotas(quotas); ReflectionTestUtils.setField(fixture.providers, "openaiApiKey", "fixture-key");
+        when(fixture.gateways.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(ResponsesContinuationFixture.gateway(
+                "http://127.0.0.1:" + server.getAddress().getPort(), quotas, mapper));
+        var root = DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), "CP");
+        var scope = new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY);
+        var request = new AnalysisRequest(); request.setBusinessText("requirement"); request.setProvider("OPENAI");
+        request.setMaxArchitectureNodes(20); request.setAnalysisScope(scope); request.setResumable(true); request.setContinuationId(UUID.randomUUID().toString());
+        String signature = AnalysisCheckpointSession.digest("responses-exact-request"); SubtaxonomyAnalysisTask task;
+        try {
+            try (var db = new ClusterAnalysisStoreTest.Database(database, "create", sql -> sql)) {
+                var saved = continuation(db, mapper);
+                try (var catalogue = fixture.snapshots.bind(DurableClusterAnalysisExecutionTest.source(context), Set.of("CP"), List.of(root));
+                     var provider = fixture.providers.withRequestProvider("OPENAI")) {
+                    var claim = saved.begin(request, original.workspaceContext(), signature, fixture.taxonomy.getFullTree());
+                    var command = new AnalyzeRequirementCommand("requirement", false, 20, "OPENAI", "alice", original.workspaceContext(), null, scope, null)
+                            .withContinuationBinding(new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
+                                    fixture.llm.recoveryPolicyFingerprint("OPENAI"), AnalysisCheckpointSession.digest("")));
+                    try (var checkpoint = new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
+                        public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) { return saved.prepare(claim, q); }
+                        public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) { saved.finish(claim, q, state, detail); }
+                        public void checkActive() { assertThat(saved.state(claim)).isEqualTo("RUNNING"); }
+                    })) { assertThat(fixture.llm.analyzeWithBudget("requirement", scope).getRawScores()).containsEntry("CP", 75); }
+                    assertThat(physical).hasValue(2);
+                    var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
+                    store.admit(context, command, null, Map.of(TaxonomyShardRoot.of("CP"), mapper.writeValueAsString(root)));
+                    task = db.task(TaxonomyShardRoot.of("CP"));
+                }
+            }
+            try (var db = new ClusterAnalysisStoreTest.Database(database, "validate", sql -> sql)) {
+                var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, continuation(db, mapper));
+                assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75);
+                assertThat(physical).hasValue(2);
+                budget.set(new ProviderRateQuotas.TokenBudget(budget.get().adapterId(), 5001, 256));
+                assertThatThrownBy(() -> fixture.worker(store).score(store.start(task), task, () -> false))
+                        .isInstanceOf(IllegalStateException.class).hasMessage("Frozen continuation provider or policy changed");
+                assertThat(physical).hasValue(2);
+            }
+        } finally { server.stop(0); }
+    }
     @Test void aSavedValidatedAnswerSurvivesTheRequestScopeAndANewWorkerPersistenceFactoryWithoutNewHttp() throws Exception {
         String url = "jdbc:hsqldb:mem:cluster-continuation-" + UUID.randomUUID() + ";hsqldb.tx=mvcc";
         var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("continued-worker");
@@ -323,6 +388,7 @@ class FrozenClusterContinuationTest {
         final LlmService llm;
         final MockRestServiceServer server;
         final ObjectMapper mapper;
+        final LlmGatewayRegistry gateways;
         Scoring(ObjectMapper mapper, String url) {
             this.mapper = mapper; this.url = url;
             var nodes = mock(TaxonomyNodeRepository.class); var embedding = mock(LocalEmbeddingService.class);
@@ -335,7 +401,7 @@ class FrozenClusterContinuationTest {
             var http = new RestTemplate(); server = MockRestServiceServer.bindTo(http).build();
             AnalysisRuntimeSettings settings = (key, fallback) -> "llm.retry.max".equals(key) ? 0 : fallback;
             var gateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, mapper, new LlmResponseParser(mapper), settings, null, null);
-            var gateways = mock(LlmGatewayRegistry.class); when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
+            gateways = mock(LlmGatewayRegistry.class); when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
             var templates = mock(PromptTemplateService.class);
             when(templates.renderPrompt(anyString(), anyString(), anyString(), anyInt(), anyString())).thenReturn("FROZEN-REQUEST");
             when(templates.renderRootPrompt(anyString(), anyString(), anyString())).thenAnswer(i -> i.<String>getArgument(0) + "-FROZEN-REQUEST");

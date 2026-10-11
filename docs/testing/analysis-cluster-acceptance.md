@@ -457,3 +457,39 @@ failed as expected after adding the stacked base; its two tests pass with the
 new exact list and all existing protected-main/release assertions retained.
 The issue [implementation tracker](https://github.com/carstenartur/Taxonomy/issues/1161#issuecomment-5978670496)
 records the published PRs and outstanding exact-head acceptance.
+
+
+## 2026-10-11 supported token contract and automatic-client HA follow-up
+
+Review checkpoint on the shared-quota tree `52fbb26f87ab520f4f93a589ed414bd1743e26a3`.
+The following are actual bounded native javac/JUnit component results in unique
+classes directories (javac 256 MiB, test JVM 512 MiB). They are supplemental to the
+normal Maven/App/canonical gates, which are still pending for this follow-up.
+No live or paid provider request was made; all HTTP is actual loopback fixture HTTP.
+
+| Executed owner gate | Result | Actual behavior |
+| --- | --- | --- |
+| Token/HTTP/gateway/meter/frozen binding plus legacy cases | 68/68 | Full identical Responses input, pinned snapshot, `truncation:disabled`, actual output cap, fixed UTF-8/body/deadline limits, real header/body cancellation, Count UNKNOWN, individual retry admissions, TPM-off and MOCK identity compatibility. |
+| Additional gateway authority/replay | 9/9 | Unconfirmed diagnostic START or `beforeTransport` permits zero Count/Generation HTTP and no refund. Count usage-shaped additions remain UNKNOWN and do not authorize generation. Replay uses no HTTP/quota. |
+| Persistent broker quota integration | 53/53 | Both Count and generation handlers observe a committed SQL diagnostic START and confirmed started broker debit before real HTTP. Count retains the full UNKNOWN reservation; coherent generation usage settles once; independent client cannot bypass consumed request limits. Count cancellation never starts generation and retains UNKNOWN; exhausted Count 429 blocks an independent client through the shared cooldown. Includes existing ledger/failover/duplicate/cancellation cases. |
+| Actual saved answer/restart worker | 6/6 | Reopened real HSQL/JPA factory reconstructs frozen distributed checkpoint. Supported Responses answer replays with zero additional Count or generation HTTP; changed token input bound rejects policy before HTTP. Existing uncertain START/explicit RETRY and SKIP, scope lifetime and attach race cases remain covered. |
+| Automatic primary/backup production client | 3/3 | Same production connection automatically fails over using actual advertised topology. Durable debits/cooldown/unknown TPM survive. A live physical permit remains occupied for the same and independent client. Same restored worker redelivers a real SQL-committed completion before JMS acknowledgement without repeating preparation or SQL effect. |
+
+The initial owner tests recorded genuine behavioral REDs before implementing the
+new token/count/usage/fingerprint behavior. Initial HA wrong-transaction expectation
+and later javac fixture errors were setup/test corrections, not claimed feature REDs.
+The HA topology is a disposable persistent shared-store pair using installed Artemis
+2.53.0 and production `ArtemisAnalysisTransportConfiguration`/`ArtemisAnalysisConnection`.
+It does not prove external replication/quorum fencing, TLS/failback/disaster recovery
+or database HA. Transaction uncertainty remains fail-closed; automatic failover is
+not permission to manufacture capacity or assume a physical remote call stopped.
+
+The exact inference-token contract and upstream estimated-429 limitation are in the
+[EN](../en/OPERATIONS_GUIDE.md#supported-openai-responses-tpm-adapter) and
+[DE](../de/OPERATIONS_GUIDE.md#unterstützter-openai-responses-tpm-adapter) operator guides.
+All other current provider transports remain closed before HTTP with active TPM.
+This package does not declare issue #1161 complete. Current-head normal Maven and CI,
+canonical database vendors and browser reconnect to another web pod, actual Kubernetes
+coordinator replacement and worker loss during a physical provider request, deployment
+HA/fencing and the required repeated capacity/memory comparison remain distinct gates.
+Their historical fixtures or checked-in scripts do not close these current-head rows.

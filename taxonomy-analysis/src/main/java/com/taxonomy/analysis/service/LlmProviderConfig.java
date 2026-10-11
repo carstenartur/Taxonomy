@@ -84,6 +84,25 @@ public class LlmProviderConfig {
     private Environment environment;
     private com.taxonomy.extension.api.plugin.ExtensionCatalog catalog;
 
+    private ProviderRateQuotas providerQuotas = ProviderRateQuotas.NONE;
+
+    /** The same startup port used by gateways supplies the public token contract only. */
+    @Autowired(required = false)
+    public void configureProviderQuotas(ProviderRateQuotas quotas) { providerQuotas = java.util.Objects.requireNonNull(quotas); }
+
+    /** Null preserves every TPM-off identity byte; this never reserves quota or calls a transport. */
+    public String tokenContractRevision(ProviderId provider) {
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) return null;
+        var budget = providerQuotas.requiredBudget(provider);
+        if (budget == null) return null;
+        OpenAiResponsesTokenContract.requireContract(LlmProvider.builtin(provider).orElse(null),
+                getOpenAiCompatibleUrl(provider), getOpenAiCompatibleModel(provider), budget);
+        return OpenAiResponsesTokenContract.ADAPTER + "\0" + OpenAiResponsesTokenContract.MODEL
+                + "\0input-text-v1\0truncation-disabled\0" + OpenAiResponsesTokenContract.COUNT_URL
+                + "\0" + OpenAiResponsesTokenContract.GENERATION_URL + "\0" + budget.inputUpperBound()
+                + "\0" + budget.maximumOutputTokens();
+    }
+
     @Autowired
     void initializeExtensions(org.springframework.beans.factory.ObjectProvider<LlmTransportExtension> extensions,
                               Environment environment,
@@ -270,7 +289,9 @@ public class LlmProviderConfig {
             endpoint = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getPath(), null, null).toString();
         } catch (Exception invalid) { endpoint = "plugin:" + id.value(); }
         String model = id.value().equals("GEMINI") ? endpoint : getOpenAiCompatibleModel(id);
-        return operatorRevision + "\0" + endpoint + "\0" + model;
+        String ordinary = operatorRevision + "\0" + endpoint + "\0" + model;
+        String tokenContract = tokenContractRevision(id);
+        return tokenContract == null ? ordinary : ordinary + "\0" + tokenContract;
     }
 
     public RequestProviderScope withRequestProvider(String provider,

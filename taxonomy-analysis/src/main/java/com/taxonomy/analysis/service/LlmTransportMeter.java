@@ -77,8 +77,18 @@ public final class LlmTransportMeter {
     }
 
     /** Journal admission is OUTSIDE transport error handling and therefore never causes a retry. */
+    static ResponseEntity<String> exchangeCount(String invocationId, String provider, int retryIndex,
+            ObjectMapper json, Supplier<ResponseEntity<String>> operation) {
+        return exchange(invocationId, provider, retryIndex, json, operation, false);
+    }
+
     static ResponseEntity<String> exchange(String invocationId, String provider, int retryIndex,
             ObjectMapper json, Supplier<ResponseEntity<String>> operation) {
+        return exchange(invocationId, provider, retryIndex, json, operation, true);
+    }
+
+    private static ResponseEntity<String> exchange(String invocationId, String provider, int retryIndex,
+            ObjectMapper json, Supplier<ResponseEntity<String>> operation, boolean inferenceUsage) {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
         var reservation = quota();
@@ -99,7 +109,7 @@ public final class LlmTransportMeter {
             if (failure instanceof RestClientResponseException http) {
                 status = http.getStatusCode().value();
                 outcome = Outcome.HTTP_ERROR;
-                usage = usage(json, provider, http.getResponseBodyAsString());
+                usage = inferenceUsage ? usage(json, provider, http.getResponseBodyAsString()) : UNKNOWN;
             }
             completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                     status, outcome, elapsed(started), usage));
@@ -108,7 +118,7 @@ public final class LlmTransportMeter {
         completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                 response.getStatusCode().value(), response.getStatusCode().isError()
                         ? Outcome.HTTP_ERROR : Outcome.RESPONSE,
-                elapsed(started), usage(json, provider, response.getBody())));
+                elapsed(started), inferenceUsage ? usage(json, provider, response.getBody()) : UNKNOWN));
         return response;
     }
 
@@ -173,17 +183,18 @@ public final class LlmTransportMeter {
                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(body);
             if (root == null || !root.isObject()) return INVALID;
             boolean gemini = "GEMINI".equals(provider);
+            boolean responses = "response".equals(root.path("object").asText());
             JsonNode metadata = root.get(gemini ? "usageMetadata" : "usage");
             if (metadata == null || metadata.isNull()) return UNKNOWN;
             if (!metadata.isObject()) return INVALID;
             var fields = new TokenFields();
-            Long input = fields.read(metadata.get(gemini ? "promptTokenCount" : "prompt_tokens"));
-            Long output = fields.read(metadata.get(gemini ? "candidatesTokenCount" : "completion_tokens"));
+            Long input = fields.read(metadata.get(gemini ? "promptTokenCount" : responses ? "input_tokens" : "prompt_tokens"));
+            Long output = fields.read(metadata.get(gemini ? "candidatesTokenCount" : responses ? "output_tokens" : "completion_tokens"));
             Long total = fields.read(metadata.get(gemini ? "totalTokenCount" : "total_tokens"));
             Long cached = gemini ? fields.read(metadata.get("cachedContentTokenCount"))
-                    : fields.detail(metadata, "prompt_tokens_details", "cached_tokens");
+                    : fields.detail(metadata, responses ? "input_tokens_details" : "prompt_tokens_details", "cached_tokens");
             Long reasoning = gemini ? fields.read(metadata.get("thoughtsTokenCount"))
-                    : fields.detail(metadata, "completion_tokens_details", "reasoning_tokens");
+                    : fields.detail(metadata, responses ? "output_tokens_details" : "completion_tokens_details", "reasoning_tokens");
             return new Usage(input, output, total, cached, reasoning, fields.invalid);
         } catch (RuntimeException invalid) {
             return INVALID;

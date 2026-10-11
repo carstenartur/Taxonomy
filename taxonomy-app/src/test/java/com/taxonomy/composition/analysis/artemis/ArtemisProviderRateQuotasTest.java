@@ -72,6 +72,97 @@ class ArtemisProviderRateQuotasTest {
         assertThat(physical.get()).isOne();
     }
 
+    @Test void actualResponsesCountAndGenerationHaveOwnCommittedBrokerDebitAndDatabaseStart() throws Exception {
+        var policy = new ProviderQuotaLedger.Policy(2, 11_000, 2, 5000, 256, 1000, 16);
+        String adapter = "openai.responses.gpt-4o-mini-2024-07-18.v1";
+        provision(policy, json.writeValueAsString(ProviderQuotaLedger.empty(policy)), true, adapter);
+        var budget = new ProviderRateQuotas.TokenBudget(adapter, 5000, 256);
+        var configuration = new ArtemisProviderQuotaSettings(PREFIX, Map.of(LlmProvider.OPENAI.id(), GROUP),
+                Map.of(GROUP, policy), Map.of(GROUP, budget), 5000);
+        var port = new ArtemisProviderRateQuotas(connect(), configuration, json, clock::get);
+        var observer = connect(); var requests = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        String result = "{\"object\":\"response\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]}],\"usage\":{\"input_tokens\":42,\"output_tokens\":15,\"total_tokens\":57}}";
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        try (var database = java.sql.DriverManager.getConnection("jdbc:hsqldb:mem:responses-start-" + UUID.randomUUID(), "sa", "")) {
+            database.createStatement().execute("create table physical_start (id varchar(36) primary key)");
+            server.createContext("/", exchange -> {
+                String path = exchange.getRequestURI().getPath(); requests.add(path);
+                ProviderQuotaLedger.State saved;
+                try { saved = readState(observer); } catch (JMSException failure) { throw new AssertionError(failure); }
+                assertThat(saved.debits()).hasSize(requests.size()).allSatisfy(debit -> assertThat(debit.started()).isTrue());
+                try (var rows = database.createStatement().executeQuery("select count(*) from physical_start")) {
+                    assertThat(rows.next()).isTrue(); assertThat(rows.getInt(1)).isEqualTo(requests.size());
+                } catch (java.sql.SQLException failure) { throw new AssertionError(failure); }
+                byte[] body = (path.endsWith("input_tokens") ? "{\"object\":\"response.input_tokens\",\"input_tokens\":42}" : result)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.getRequestBody().readAllBytes(); exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body); exchange.close();
+            }); server.start();
+            var gateway = com.taxonomy.analysis.service.ResponsesGatewayFixture.gateway("http://127.0.0.1:" + server.getAddress().getPort(), port, json);
+            try (var journal = com.taxonomy.analysis.service.LlmTransportMeter.openJournal(new com.taxonomy.analysis.service.LlmTransportMeter.Journal() {
+                public void started(com.taxonomy.analysis.service.LlmTransportMeter.Attempt attempt) {
+                    try (var write = database.prepareStatement("insert into physical_start (id) values (?)")) {
+                        assertThat(readState(observer).debits()).extracting(ProviderQuotaLedger.Debit::id).contains(attempt.id());
+                        write.setString(1, attempt.id()); write.executeUpdate();
+                    } catch (Exception failure) { throw new AssertionError(failure); }
+                }
+                public void completed(com.taxonomy.analysis.service.LlmTransportMeter.Attempt attempt,
+                                      com.taxonomy.analysis.service.LlmTransportMeter.Observation observation) { }
+            })) { assertThat(gateway.sendHttpRequest("System and complete catalogue: CP-1 Äußere Kommunikation 界 🧭", "fixture-key")).isEqualTo(result); }
+            assertThat(requests).containsExactly("/v1/responses/input_tokens", "/v1/responses");
+            assertThat(readState(observer).debits()).hasSize(2).satisfies(debits -> {
+                assertThat(debits.getFirst().reservedTokens()).isEqualTo(5256); assertThat(debits.getFirst().settled()).isFalse();
+                assertThat(debits.getLast().reservedTokens()).isEqualTo(57); assertThat(debits.getLast().settled()).isTrue();
+            });
+            assertThat(new ArtemisProviderRateQuotas(connect(), configuration, json, clock::get)
+                    .tryReserve(LlmProvider.OPENAI.id(), UUID.randomUUID().toString(), budget, () -> {}).granted()).isFalse();
+        } finally { server.stop(0); }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"429", "CANCEL"})
+    void actualCountFailureNeverGeneratesAndItsUnknownDebitRemainsVisibleToIndependentWorkers(String mode) throws Exception {
+        var policy = new ProviderQuotaLedger.Policy(3, 20_000, 3, 5000, 256, 1000, 16);
+        String adapter = "openai.responses.gpt-4o-mini-2024-07-18.v1";
+        provision(policy, json.writeValueAsString(ProviderQuotaLedger.empty(policy)), true, adapter);
+        var budget = new ProviderRateQuotas.TokenBudget(adapter, 5000, 256);
+        var configuration = new ArtemisProviderQuotaSettings(PREFIX, Map.of(LlmProvider.OPENAI.id(), GROUP),
+                Map.of(GROUP, policy), Map.of(GROUP, budget), 5000);
+        var quotas = new ArtemisProviderRateQuotas(connect(), configuration, json, clock::get);
+        var observer = connect(); var requests = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        try {
+            server.createContext("/", exchange -> {
+                requests.add(exchange.getRequestURI().getPath());
+                try { assertThat(readState(observer).debits()).singleElement().satisfies(debit -> assertThat(debit.started()).isTrue()); }
+                catch (JMSException failure) { throw new AssertionError(failure); }
+                byte[] body = "{\"object\":\"response.input_tokens\",\"input_tokens\":42}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.getRequestBody().readAllBytes(); exchange.getResponseHeaders().add("Retry-After", "20");
+                exchange.sendResponseHeaders("429".equals(mode) ? 429 : 200, body.length);
+                exchange.getResponseBody().write(body); exchange.close();
+            }); server.start();
+            var gateway = com.taxonomy.analysis.service.ResponsesGatewayFixture.gateway("http://127.0.0.1:" + server.getAddress().getPort(), quotas, json);
+            var cancelled = new AtomicBoolean();
+            var guard = new com.taxonomy.analysis.service.AnalysisMemoryGuard(new com.taxonomy.analysis.service.AnalysisMemoryGuard.Policy(
+                    70, 90, 1_048_576, 1000, 10_000),
+                    () -> new com.taxonomy.analysis.service.AnalysisMemoryGuard.Sample(1_048_576, 64 * 1_048_576), System::currentTimeMillis);
+            try (var control = com.taxonomy.analysis.service.AnalysisRunControl.worker("count-" + mode, cancelled::get, guard);
+                 var meter = com.taxonomy.analysis.service.LlmTransportMeter.open(event -> { if ("CANCEL".equals(mode)) cancelled.set(true); })) {
+                assertThatThrownBy(() -> gateway.sendHttpRequest("Complete stateless prompt", "fixture-key"))
+                        .isInstanceOf("429".equals(mode) ? com.taxonomy.analysis.service.LlmRateLimitException.class
+                                : com.taxonomy.analysis.service.AnalysisStoppedException.class);
+            }
+            assertThat(requests).containsExactly("/v1/responses/input_tokens");
+            var state = readState(observer); assertThat(state.debits()).singleElement().satisfies(debit -> {
+                assertThat(debit.started()).isTrue(); assertThat(debit.settled()).isFalse(); assertThat(debit.reservedTokens()).isEqualTo(5256);
+            });
+            var independent = new ArtemisProviderRateQuotas(connect(), configuration, json, clock::get);
+            var next = independent.tryReserve(LlmProvider.OPENAI.id(), UUID.randomUUID().toString(), budget, () -> {});
+            if ("429".equals(mode)) {
+                assertThat(state.cooldownUntil()).isEqualTo(122_000); assertThat(next.granted()).isFalse(); assertThat(next.waitMillis()).isEqualTo(22_000);
+            } else assertThat(next.granted()).isTrue();
+        } finally { server.stop(0); }
+    }
+
     @Test void lostCommitAcknowledgementAdmitsZeroHttpButTheDebitRemainsCommitted() throws Exception {
         var policy = new ProviderQuotaLedger.Policy(1, 0, 1, 0, 0, 1000, 16); provision(policy);
         var connection = connect();
@@ -725,6 +816,9 @@ class ArtemisProviderRateQuotasTest {
         provision(policy,body,true);
     }
     void provision(ProviderQuotaLedger.Policy policy,String body,boolean exclusive) throws Exception {
+        provision(policy, body, exclusive, "fixture-text-budget");
+    }
+    void provision(ProviderQuotaLedger.Policy policy,String body,boolean exclusive,String adapter) throws Exception {
         try (var factory = factory(); var connection = factory.createConnection();var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {
             ((ActiveMQSession)session).getCoreSession().createQueue(QueueConfiguration.of(QUEUE).setAddress(QUEUE)
                     .setRoutingType(RoutingType.ANYCAST).setDurable(true).setExclusive(exclusive).setAutoDelete(false).setAutoCreated(false));
@@ -732,7 +826,7 @@ class ArtemisProviderRateQuotasTest {
                 var message = session.createTextMessage(body);
                 message.setIntProperty("schemaVersion", 1);message.setStringProperty("quotaGroup", GROUP);
                 message.setStringProperty("policyFingerprint", policy.fingerprint());
-                if (policy.tpm() > 0) message.setStringProperty("tokenAdapter", "fixture-text-budget");
+                if (policy.tpm() > 0) message.setStringProperty("tokenAdapter", adapter);
                 producer.send(message, DeliveryMode.PERSISTENT, jakarta.jms.Message.DEFAULT_PRIORITY, 0); session.commit();
             }
         }

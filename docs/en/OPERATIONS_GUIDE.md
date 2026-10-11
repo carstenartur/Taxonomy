@@ -602,7 +602,7 @@ RPM counts a rolling 60-second window and RPD a rolling 24-hour window. Counts a
 
 Every participating process and broker must maintain absolute UTC error within the configured bound. Expiry/cooldowns include twice that allowance; observed excessive backwards motion fails closed. An isolated client cannot detect arbitrary forward clock violations, so this is an explicit operational prerequisite, not a broker-clock guarantee. Coordinate NTP/clock monitoring, policy versions and provider account sharing before admission. A shared `Retry-After` cooldown applies to all mapped providers and workers, including when the originating call has exhausted its retry budget. Long or overflowing durations saturate the durable deadline conservatively; they never reset the shared cooldown.
 
-Current built-in and contributed transports **fail closed for active TPM** because the complete input bound has not been demonstrated. A model's advertised context size alone does not prove the usage of an oversized rejected request. Character/token estimates or guessed role/framing overhead do not establish a hard bound. The durable TPM protocol is tested with an explicitly bounded fixture; no paid-model calls or production token-contract guarantee follows from that fixture. A future supported adapter must validate the entire emitted request, enforce a real cap including reasoning/visible output and freeze its model/contract/bounds/cap into recovery fingerprints. Recording replay and local ONNX do not spend physical-provider quota.
+The explicit OpenAI Responses snapshot adapter below establishes a complete-input count and actual output cap. Other built-in and contributed transports **fail closed for active TPM**. A model's context size alone does not prove the usage of an oversized rejected request. Character/token estimates and guessed role/framing overhead never establish a hard bound. Recording replay and local ONNX do not spend physical-provider quota.
 
 The native acceptance fixture distinguishes persistent restart from actual shared-store primary/backup promotion. Those component checks do not replace deployment-specific TLS, advertised-hostname, quorum/fencing, failback, database/coordinator failover and capacity exercises on the reviewed CI head. See [cluster acceptance](../testing/analysis-cluster-acceptance.md) for the remaining production gates.
 
@@ -686,3 +686,28 @@ pod, bounded expiry/DLQ, permit recovery, and denied non-broker/admin egress. Us
 deterministic provider and actual catalogue roots. Record command/image/chart
 versions, replica/resources, source commit, timings and outcomes without secrets
 or payload bodies; do not report render-only checks as a successful live exercise.
+
+
+### Supported OpenAI Responses TPM adapter
+
+This opt-in contract supports only the built-in `openai` provider at its default configured endpoint/model and pins generation to `gpt-4o-mini-2024-07-18`. Select it explicitly on a new or deliberately migrated quota group; TPM-off retains the old Chat Completions endpoint, body, recording behavior and frozen identity. Gemini, DeepSeek, Qwen, Mistral, the configured third-party Llama endpoint, custom compatible endpoints and contributed transports remain unsupported under active TPM. Do not map such transports to this adapter hoping to share its proof.
+
+Example policy for one OpenAI credential/account group:
+
+```json
+{"taxonomy":{"analysis":{"provider-quotas":{"enabled":true,"provider-groups":{"openai":"openai-responses"},"groups":{"openai-responses":{"rpm":60,"tpm":12000,"rpd":20000,"input-upper-bound":5000,"output-cap":256,"token-adapter":"openai.responses.gpt-4o-mini-2024-07-18.v1","clock-skew-millis":1000,"maximum-reservations":20000}}}}}}
+```
+
+Provision a new group with the same policy and ordinary secret-backed broker settings:
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderQuotaProvisioner   -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher   openai-responses 60 12000 20000 openai.responses.gpt-4o-mini-2024-07-18.v1 5000 256
+```
+
+The adapter freezes the complete authored prompt, including embedded system/catalogue instructions, as one user-role `input_text`. There are no tools, images, files, remote input URLs, conversation IDs or previous-response IDs. Both actual JSON requests contain identical immutable snapshot/input and explicit `truncation:"disabled"`; generation adds `max_output_tokens` and `store:false`. The [official counter](https://developers.openai.com/api/docs/guides/token-counting) counts the full Responses input including framing and role boundaries. Its strict `response.input_tokens` integer must fit the configured complete input bound before any generation. The [snapshot contract](https://developers.openai.com/api/docs/models/gpt-4o-mini) limits output to 16384 and context to 128000; configured input bound plus output cap must fit this context. No character/token ratio or guessed framing constant is used.
+
+Before count admission both serialized UTF-8 JSON bodies must fit 1 MiB. Each physical HTTP operation has a total deadline of at most 30 seconds, further limited by `llm.timeout.seconds`, including header and body waits. Count response is bounded to 16 KiB; generation response to 2 MiB. Redirects are disabled. Cancellation aborts the outstanding local future/client and prevents later generation; an already accepted remote request can still have run, so its outcome remains conservatively unknown. Refusal, incomplete output, malformed/count-over-bound input or oversized response cannot become a semantic answer. Oversized HTTP-error bodies still retain status/Retry-After, so a 429 cannot bypass the shared cooldown.
+
+Count is itself an external physical operation. Every count attempt and retry needs its own ordinary permit, full durable RPM/RPD/TPM reservation and diagnostic START before HTTP; its usage stays UNKNOWN even if a response includes a usage-shaped field. Count never refunds tokens and never becomes a saved answer. A successful logical call therefore spends at least two physical attempts: Count plus generation. Both initially reserve input bound plus output cap; allow enough TPM and request capacity for both. Generation may settle once from coherent actual Responses usage; unknown, incomplete or inconsistent usage remains fully reserved, including failed exchanges without coherent usage. Every retry needs another debit. A count rejected because its input is too large still consumes its admitted request/full unknown token reservation. RPD and maximum-reservations count physical attempts, so daily logical capacity is at most half the physical-attempt budget before retries or failures.
+
+This is a bound on actual inference-token usage of the emitted request. OpenAI's [rate-limit accounting](https://developers.openai.com/api/docs/guides/rate-limits) also uses estimates and can return 429 despite a fitting exact count; this adapter does not guarantee provider billing or internal rate accounting. Shared cooldown/Retry-After handling remains active. All participating roles must use the same adapter/snapshot/input bound/output cap; these values enter frozen provider and recovery identity. A saved semantic answer can replay with zero HTTP, while a changed contract rejects continuation before transport. A database backup never recreates live grants or external quota capacity.
