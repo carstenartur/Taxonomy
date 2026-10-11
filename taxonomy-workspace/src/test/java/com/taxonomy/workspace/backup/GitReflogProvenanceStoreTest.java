@@ -42,6 +42,25 @@ class GitReflogProvenanceStoreTest {
         }
     }
 
+    @Test void hibernateReadsTheExactCommittedOwnerEvidenceThroughTheEntityMapping() throws Exception {
+        try (var f = new Fixture()) {
+            var events = GitReflogProvenance.original(ORIGIN, List.of(ORIGINAL));
+            f.retain(events);
+            try (var session = f.persistence.factory.openSession()) {
+                var row = session.createSelectionQuery("""
+                        select p, p.repositoryId, p.workspaceId, p.storageRepositoryName,
+                               p.eventOrdinal, p.bodyVersion, p.sha256, p.body
+                        from GitReflogProvenanceRecord p
+                        """, Object[].class).getSingleResult();
+                assertThat(row[0]).isInstanceOf(GitReflogProvenanceRecord.class);
+                assertThat(row).containsExactly(row[0], TARGET.repositoryId(), TARGET.workspaceId(), STORAGE,
+                        0, 1, GitReflogProvenance.digest(GitReflogProvenance.encoded(events.getFirst())),
+                        new String(GitReflogProvenance.encoded(events.getFirst()), java.nio.charset.StandardCharsets.UTF_8));
+            }
+            assertThat(f.store.read(TARGET, STORAGE, 10, CHECK)).containsExactlyElementsOf(events);
+        }
+    }
+
     @Test void cancellationAfterActualInsertRollsBackTheWholeEvidenceSet() throws Exception {
         try (var f = new Fixture(); var transaction = f.database.getConnection()) {
             transaction.setAutoCommit(false);

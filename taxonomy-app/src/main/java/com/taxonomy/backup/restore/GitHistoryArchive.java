@@ -5,6 +5,7 @@ import com.taxonomy.backup.archive.VerifiedBackup;
 import com.taxonomy.workspace.backup.*;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.util.sha1.SHA1;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -274,9 +275,12 @@ public final class GitHistoryArchive implements AutoCloseable {
     }
     /** Standard empty pack index v2; JGit discards an empty received pack rather than writing this optional file. */
     private static void emptyPackIndex(OutputStream output,String packChecksum)throws IOException {
-        var digest=sha1();var bytes=new DataOutputStream(new DigestOutputStream(output,digest));
+        // An empty v2 index has a fixed 1,052-byte body, independent of archive size.
+        var content=new ByteArrayOutputStream(1_052);var bytes=new DataOutputStream(content);
         bytes.writeInt(0xff744f63);bytes.writeInt(2);for(int i=0;i<256;i++)bytes.writeInt(0);
-        bytes.write(HexFormat.of().parseHex(packChecksum));bytes.flush();output.write(digest.digest());
+        bytes.write(HexFormat.of().parseHex(packChecksum));bytes.flush();
+        byte[] body=content.toByteArray();var digest=sha1();digest.update(body);
+        output.write(body);output.write(digest.digest());
     }
     @FunctionalInterface private interface Writer {void write(OutputStream output)throws IOException;}
     private static void require(Map<String,BackupEntry> entries,Set<String> expected,String path,Writer writer)throws IOException {
@@ -314,7 +318,7 @@ public final class GitHistoryArchive implements AutoCloseable {
     private static void text(OutputStream output,String value)throws IOException{output.write(value.getBytes(StandardCharsets.UTF_8));}
     private static String hex(byte[] value){return HexFormat.of().formatHex(value);}
     private static MessageDigest sha256(){return digest("SHA-256");}
-    private static MessageDigest sha1(){return digest("SHA-1");}
+    private static SHA1 sha1(){return SHA1.newInstance().setDetectCollision(true);}
     private static MessageDigest digest(String algorithm){try{return MessageDigest.getInstance(algorithm);}catch(NoSuchAlgorithmException impossible){throw new AssertionError(impossible);}}
     private static IOException invalid(){return new IOException("Invalid original Git archive evidence");}
     private static void remove(Path directory)throws IOException {

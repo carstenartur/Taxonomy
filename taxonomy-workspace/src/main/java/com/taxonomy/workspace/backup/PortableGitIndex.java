@@ -2,9 +2,9 @@ package com.taxonomy.workspace.backup;
 
 import com.taxonomy.backup.BackupCheckpoint;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.util.sha1.SHA1;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.security.*;
 import java.util.*;
 
 /**
@@ -18,10 +18,15 @@ final class PortableGitIndex {
     static void write(List<GitTreeCapture.File> files, OutputStream output, BackupCheckpoint check) throws IOException {
         var ordered = files.stream().map(file -> new Entry(file, file.path().getBytes(StandardCharsets.UTF_8)))
                 .sorted((a, b) -> Arrays.compareUnsigned(a.path(), b.path())).toList();
-        MessageDigest sha;
-        try { sha = MessageDigest.getInstance("SHA-1"); }
-        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
-        var data = new DataOutputStream(new DigestOutputStream(output, sha));
+        var sha = SHA1.newInstance().setDetectCollision(true);
+        var data = new DataOutputStream(new FilterOutputStream(output) {
+            @Override public void write(int value) throws IOException {
+                out.write(value); sha.update(new byte[] { (byte) value });
+            }
+            @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                out.write(bytes, offset, length); sha.update(bytes, offset, length);
+            }
+        });
         data.writeInt(0x44495243); data.writeInt(2); data.writeInt(ordered.size());
         for (var entry : ordered) {
             check.check();
