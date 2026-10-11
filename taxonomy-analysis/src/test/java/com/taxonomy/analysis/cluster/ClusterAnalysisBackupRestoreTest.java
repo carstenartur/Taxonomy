@@ -441,12 +441,14 @@ class ClusterAnalysisBackupRestoreTest {
             var bound=new AnalyzeRequirementCommand(c.businessText(),c.includeArchitectureView(),c.maxArchitectureNodes(),c.provider(),c.username(),c.workspaceContext(),c.provenance(),c.analysisScope(),binding);
             source.store.admit(original,bound,null,Map.of(CP,"{\"root\":\"CP\"}",IP,"{\"root\":\"IP\"}"));
             var archive=exportedArchive(source);var destination=targetContext("bound-restored");var t=targetCommand();
-            var restoredCommand=new AnalyzeRequirementCommand(t.businessText(),t.includeArchitectureView(),t.maxArchitectureNodes(),t.provider(),t.username(),t.workspaceContext(),t.provenance(),t.analysisScope(),binding);
+            var restoredCommand=new AnalyzeRequirementCommand(t.businessText(),t.includeArchitectureView(),t.maxArchitectureNodes(),t.provider(),t.username(),t.workspaceContext(),t.provenance(),t.analysisScope(),binding)
+                    .withContinuationBinding(new com.taxonomy.analysis.recovery.AnalysisContinuationBinding(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "c".repeat(64), "d".repeat(64), "e".repeat(64)));
             assertThrows(IllegalArgumentException.class,()->new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON).restore(archive,destination,restoredCommand));
             assertNull(new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId())));
             new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON,binding::equals).restore(archive,destination,restoredCommand);
             var stored=new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId()).commandJson);
             assertEquals(binding,JSON.readValue(stored,AnalyzeRequirementCommand.class).providerBinding());
+            assertNull(JSON.readValue(stored,AnalyzeRequirementCommand.class).continuationBinding());
             assertNoOperationalState(target);
         }
     }

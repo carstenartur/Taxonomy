@@ -20,5 +20,9 @@ public class AnalysisQuestionCheckpoint {
     @Column(nullable = false) int attempts;
     @Column(name = "started_at", nullable = false) long startedAt;
     @Column(name = "error_text", length = 2048) String error;
+    @Column(name = "attempt_owner", length = 36) String attemptOwner;
+    @Column(name = "cluster_operation_id", length = 160) String clusterOperationId;
+    @Column(name = "cluster_task_id", length = 640) String clusterTaskId;
+    @Column(name = "cluster_delivery") Integer clusterDelivery;
     protected AnalysisQuestionCheckpoint() { }
 }

@@ -14,8 +14,13 @@ import java.util.Objects;
 public final class ClusterRelationService {
     /** The implementation authorizes reads and joins the completion ledger's transaction for writes. */
     public interface Store {
+        default void verifyDelivery(AnalysisTaskMessage task, int capturedDelivery) { }
         ClusterAnalysisStore.Input start(AnalysisTaskMessage task);
         ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int deliveryAttempt);
+        default com.taxonomy.analysis.recovery.AnalysisCheckpointSession checkpointSession(ClusterAnalysisStore.Input input,
+                AnalysisTaskMessage task, String scoringPolicyHash, String relationPolicyHash) {
+            throw new IllegalStateException("Distributed continuation is unavailable");
+        }
         String shard(AnalysisOperationContext context, TaxonomyShardRoot root);
         AnalysisResult rootResults(AnalysisOperationContext context);
         RelationSearchDistribution.Plan relationPlan(AnalysisOperationContext context);
@@ -52,12 +57,12 @@ public final class ClusterRelationService {
                     String stopped = stopped(plan.stopReason());
                     var outcome = outcome(stopped, plan.stopReason(), !plan.warnings().isEmpty(), !plan.sources().isEmpty());
                     return new PreparedAnalysisCompletion<>(messages.completed(task, outcome, 0, stopped),
-                            () -> store.persistRelationPlan(task, plan));
+                            () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationPlan(task, plan); });
                 }
                 if (result instanceof ClusterRelationComputation.ScoreOnly scoreOnly && !evaluation) {
                     return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.COMPLETED,
                             scoreOnly.hypotheses().size(), null),
-                            () -> store.persistScoreOnlyRelations(task, scoreOnly.hypotheses()));
+                            () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistScoreOnlyRelations(task, scoreOnly.hypotheses()); });
                 }
                 if (result instanceof ClusterRelationComputation.Evaluation evaluated && evaluation) {
                     var evidence = evaluated.result();
@@ -65,23 +70,23 @@ public final class ClusterRelationService {
                     var outcome = outcome(stopped, evidence.stopReason(), !evidence.result().searchExhausted(),
                             !evidence.result().edges().isEmpty());
                     return new PreparedAnalysisCompletion<>(messages.completed(task, outcome, evidence.result().edges().size(), stopped),
-                            () -> store.persistRelationResult(task, evidence));
+                            () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationResult(task, evidence); });
                 }
                 throw new IllegalArgumentException("Relation computation returned the wrong phase");
             } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {
                 String reason = unavailable.reason();
                 return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),
-                        () -> store.persistRelationFailure(task, reason));
+                        () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationFailure(task, reason); });
             } catch (AnalysisStoppedException stopped) {
                 String reason = stopped.reason().name();
                 return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),
-                        () -> store.persistRelationFailure(task, reason));
+                        () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationFailure(task, reason); });
             } catch (RuntimeException failed) {
                 // A malformed input cannot be represented by an invented empty Plan or Work grant.
                 String reason = task.taskId().relationWorkOrdinal().isPresent()
                         ? "RELATION_EVALUATION_FAILED" : "RELATION_PREPARATION_FAILED";
                 return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.FAILED, 0, null),
-                        () -> store.persistRelationFailure(task, reason));
+                        () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationFailure(task, reason); });
             }
         }
     }

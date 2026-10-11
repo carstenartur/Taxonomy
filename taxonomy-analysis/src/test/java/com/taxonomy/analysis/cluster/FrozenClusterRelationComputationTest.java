@@ -212,6 +212,64 @@ class FrozenClusterRelationComputationTest {
         }
     }
 
+    @Test void aSavedRelationAnswerSurvivesAWorkerFactoryRestartWithoutAnotherPhysicalHttp() {
+        var fixture=new Fixture();String database="jdbc:hsqldb:mem:continued-relations-"+UUID.randomUUID()+";hsqldb.tx=mvcc";
+        String endpoint="https://continued-relations.invalid/chat/completions";
+        ReflectionTestUtils.setField(fixture.providers,"customLlmUrl",endpoint);ReflectionTestUtils.setField(fixture.providers,"customLlmModel","fixture");
+        var http=new org.springframework.web.client.RestTemplate();var server=org.springframework.test.web.client.MockRestServiceServer.bindTo(http).build();
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        server.expect(org.springframework.test.web.client.ExpectedCount.once(),org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(endpoint)).andRespond(request -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();calls.incrementAndGet();
+            String prompt=JSON.readTree(((org.springframework.mock.http.client.MockClientHttpRequest)request).getBodyAsString()).path("messages").get(0).path("content").asString();
+            String response=JSON.writeValueAsString(Map.of("choices",List.of(Map.of("message",Map.of("content",Fixture.answer(prompt))))));
+            return org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(response,org.springframework.http.MediaType.APPLICATION_JSON).createResponse(request);
+        });
+        AnalysisRuntimeSettings settings=(key,fallback)->"llm.retry.max".equals(key)?0:fallback;
+        fixture.physicalGateway=new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI,endpoint,"fixture",0,http,JSON,new LlmResponseParser(JSON),settings,null,null);
+        var context=fixture.store.context;var original=fixture.store.command;
+        var request=new AnalysisRequest("requirement");request.setProvider("CUSTOM_OPENAI");request.setMaxArchitectureNodes(20);
+        request.setAnalysisScope(new AnalysisScope(Set.of("BP"),AnalysisMode.FULL));request.setResumable(true);request.setContinuationId(UUID.randomUUID().toString());
+        var identity=DurableClusterAnalysisExecution.source(context);
+        var roots=TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(root->JSON.readValue(fixture.store.snapshots.get(root.code()),RootCatalogueSnapshot.class)).toList();
+        RelationAnalysisTask task;RelationSearchDistribution.Plan first;
+        try(var db=new ClusterAnalysisStoreTest.Database(database,"create",sql->sql)) {
+            var saved=continuationStore(db);
+            var snapshots=new CatalogueSnapshotService(fixture.repository,fixture.overlay,new CatalogueRuntimePolicy("all","BP,BR,CP,CI,CO,CR,IP,UA"),mock(CatalogueSourceJournal.class));
+            com.taxonomy.analysis.usecase.AnalyzeRequirementCommand command;
+            try(var frozen=snapshots.bind(identity,TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(java.util.stream.Collectors.toSet()),roots);
+                var provider=fixture.providers.withRequestProvider("CUSTOM_OPENAI")) {
+                String signature=com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest("relation-checkpoint-fixture");
+                var claim=saved.begin(request,original.workspaceContext(),signature,fixture.taxonomy.getFullTree());
+                command=new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand("requirement",false,20,"CUSTOM_OPENAI","alice",original.workspaceContext(),null,request.getAnalysisScope(),null)
+                        .withContinuationBinding(new com.taxonomy.analysis.recovery.AnalysisContinuationBinding(claim.id(),claim.token(),signature,
+                                fixture.llm.recoveryPolicyFingerprint("CUSTOM_OPENAI"),com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fixture.relations.recoveryPolicyFingerprint())));
+            }
+            var store=new ClusterAnalysisStore(db.em,db.transactions,JSON,db.dispatch,saved);
+            var targets=new LinkedHashMap<TaxonomyShardRoot,String>();TaxonomyShardRoot.DEFAULT_ROOTS.forEach(root->targets.put(root,fixture.store.snapshots.get(root.code())));
+            store.admit(context,command,null,Map.of(TaxonomyShardRoot.of("BP"),fixture.store.snapshots.get("BP")),targets);
+            var root=db.task(TaxonomyShardRoot.of("BP"));store.start(root);fixture.store.roots.setStatus("SUCCESS");
+            new org.springframework.transaction.support.TransactionTemplate(db.transactions).executeWithoutResult(status->store.persistResult(root,fixture.store.roots));
+            store.accept(new AnalysisMessageFactory(context,java.time.Clock.systemUTC()).completed(root,AnalysisTaskOutcome.COMPLETED,80,1,null));
+            task=(RelationAnalysisTask)db.sent.stream().filter(t->t instanceof RelationAnalysisTask).findFirst().orElseThrow();
+            first=((ClusterRelationComputation.Preparation)fixture.computation(store,"all","BP,BR,CP,CI,CO,CR,IP,UA").compute(store.start(task),task,()->false)).plan();
+            assertThat(calls).hasValue(1);assertThat(first.sources()).isNotEmpty();
+            var recovery=saved.read(request.getContinuationId(),original.workspaceContext()).recovery();
+            assertThat(recovery.completedCalls()).isEqualTo(1);assertThat(recovery.openQuestions()).isEmpty();
+        }
+        try(var db=new ClusterAnalysisStoreTest.Database(database,"validate",sql->sql)) {
+            var store=new ClusterAnalysisStore(db.em,db.transactions,JSON,db.dispatch,continuationStore(db));
+            var replay=((ClusterRelationComputation.Preparation)fixture.computation(store,"all","BP,BR,CP,CI,CO,CR,IP,UA").compute(store.start(task),task,()->false)).plan();
+            assertThat(replay.sources()).isEqualTo(first.sources());assertThat(calls).hasValue(1);assertThat(fixture.prompts).hasSize(1);
+            assertThat(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()).isFalse();assertRestored(fixture);
+        }
+        server.verify();verifyNoInteractions(fixture.repository);
+    }
+    private static com.taxonomy.analysis.recovery.AnalysisContinuationStore continuationStore(ClusterAnalysisStoreTest.Database db) {
+        var proxy=new org.springframework.aop.framework.ProxyFactory(new com.taxonomy.analysis.recovery.AnalysisContinuationStore(db.em,JSON));proxy.setProxyTargetClass(true);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(db.transactions,new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        return (com.taxonomy.analysis.recovery.AnalysisContinuationStore)proxy.getProxy();
+    }
+
     private static void assertRestored(Fixture fixture) {
         assertThat(FrozenCatalogueContext.current()).isNull();
         assertThat(AnalysisRunControl.active()).isFalse();
@@ -228,7 +286,7 @@ class FrozenClusterRelationComputationTest {
         final List<String> prompts = new ArrayList<>();
         Runnable afterResponse = () -> { };
         OpenAiCompatibleGateway physicalGateway;
-        final LlmService llm = new LlmService(providers, null, JSON, taxonomy, null, null, null) {
+        final LlmService llm = new LlmService(providers, null, JSON, taxonomy, mock(PromptTemplateService.class), null, null) {
             @Override public String callLlmRaw(String prompt) {
                 if (physicalGateway != null) {
                     assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();

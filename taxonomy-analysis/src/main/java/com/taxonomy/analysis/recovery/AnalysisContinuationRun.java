@@ -26,6 +26,9 @@ public class AnalysisContinuationRun {
     @Column(name = "updated_at", nullable = false) long updatedAt;
     @Column(name = "payload_characters", nullable = false) long payloadCharacters;
     @Column(name = "current_node", length = 320) String currentNode;
+    @Column(name = "cluster_operation_id", length = 160) String clusterOperationId;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "cluster_source_json") String clusterSourceJson;
+    @Column(name = "cluster_catalogue_hash", length = 64) String clusterCatalogueHash;
     @Version @Column(name = "row_version", nullable = false) long version;
     protected AnalysisContinuationRun() { }
 }

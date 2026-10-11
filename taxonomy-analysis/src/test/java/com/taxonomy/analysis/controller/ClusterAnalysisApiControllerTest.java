@@ -81,15 +81,44 @@ class ClusterAnalysisApiControllerTest {
         var replay = mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.Execution.class);
         var result = new AnalysisResult(Map.of("CP", 42), List.of());
         when(replay.replay()).thenReturn(result);
-        when(continuation.begin(any(), eq("alice"), eq(source), anyInt())).thenReturn(replay);
+        when(continuation.beginDistributed(any(), eq("alice"), eq(source), anyInt())).thenReturn(replay);
         ReflectionTestUtils.setField(controller, "continuationService", continuation);
         mvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
                         "{\"businessText\":\"requirement\",\"resumable\":true,\"continuationId\":\"same-continuation\",\"continuationAction\":\"RETRY\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.rawScores.CP").value(42));
-        verify(continuation).begin(argThat(request -> "same-continuation".equals(request.getContinuationId())
+        verify(continuation).beginDistributed(argThat(request -> "same-continuation".equals(request.getContinuationId())
                 && "RETRY".equals(request.getContinuationAction())), eq("alice"), eq(source), anyInt());
         verify(replay).close();
         verifyNoInteractions(analyze, localRegistry);
+    }
+
+    @Test void aResumablePostUsesTheOrdinaryClusterPathWithItsDurableBinding() throws Exception {
+        var continuation = mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.class);
+        var execution = mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.Execution.class);
+        var binding = new com.taxonomy.analysis.recovery.AnalysisContinuationBinding(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                "a".repeat(64), "b".repeat(64), "c".repeat(64));
+        when(execution.binding()).thenReturn(binding);
+        when(execution.bind(any())).thenAnswer(i -> i.<AnalyzeRequirementCommand>getArgument(0).withContinuationBinding(binding));
+        when(continuation.begin(any(), eq("alice"), eq(source), anyInt())).thenReturn(execution);
+        when(continuation.beginDistributed(any(), eq("alice"), eq(source), anyInt())).thenReturn(execution);
+        var result = new AnalysisResult(Map.of("CP", 81), List.of()); result.setStatus("SUCCESS");
+        when(analyze.analyze(any())).thenReturn(new AnalyzeRequirementResult(result));
+        when(execution.complete(any())).thenReturn(result);
+        when(analyze.analyze(any(), any(), eq(view))).thenAnswer(i -> {
+            AnalyzeRequirementCommand command = i.getArgument(0);
+            assertThat(command.continuationBinding()).isEqualTo(binding);
+            assertThat(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()).isFalse();
+            return new AnalyzeRequirementResult(result);
+        });
+        ReflectionTestUtils.setField(controller, "continuationService", continuation);
+        mvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"businessText\":\"requirement\",\"provider\":\"MOCK\",\"resumable\":true,\"continuationId\":\"" + binding.id() + "\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rawScores.CP").value(81));
+        verify(analyze).analyze(any(), any(), eq(view));
+        verify(analyze, never()).analyze(any());
+        verify(continuation).beginDistributed(any(), eq("alice"), eq(source), anyInt());
+        verifyNoInteractions(localRegistry);
+        verify(execution, never()).complete(any());
     }
 
     @Test void postUsesProvisionedMainBranchWhenLegacyUserStateStillNamesDraft() throws Exception {

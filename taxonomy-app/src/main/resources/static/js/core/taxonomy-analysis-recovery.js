@@ -127,6 +127,7 @@
             var snapshot = await request(c, '');
             if (!inScope(c)) return;
             S.analysisRecovery = snapshot.recovery;
+            if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
             c.observationError = null;
             // Refresh may report a RUNNING new attempt plus an older paused result. Never hydrate it.
             if (!busy && snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, c);
@@ -144,6 +145,7 @@
         } finally { reading = false; }
     }
     function scheduleRead() {
+        if (current()?.distributed) return; // Durable cluster progress is event-driven; refresh is explicit on reconnect.
         clearTimeout(poll);
         poll = setTimeout(function () { poll = null; refresh(); }, 1200);
     }
@@ -290,8 +292,8 @@
             body.append(el('p', selected.nodes.join(', ')));
             body.append(el('p', text('Versuche: ', 'Attempts: ') + selected.attempts));
             if (selected.outcomeUncertain) body.append(el('p', text(
-                'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben.',
-                'The provider may already have processed or billed the last request.')));
+                'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben. Nach einer Worker-Unterbrechung ist eine explizite Entscheidung erforderlich: wiederholen oder offenlassen. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet.',
+                'The provider may already have processed or billed the last request. After a worker interruption, an explicit decision is required: retry or leave open. Saved validated answers are reused without another provider request.')));
             var details = el('details'); details.append(el('summary', text('Prompt und Antwort anzeigen', 'Show prompt and response')));
             var detailBody = el('div'); details.append(detailBody); body.append(details); var loadedKey = null;
             details.addEventListener('toggle', async function () {
@@ -408,8 +410,13 @@
     });
     // Observe live activity, without a timer which changes focus, scroll position or score values.
     document.addEventListener('taxonomy:analysis-progress', function (event) {
-        if (!busy || !inScope(current()) || stopped()) return;
+        if (!inScope(current()) || stopped()) return;
         var snapshot = event.detail;
+        if (snapshot?.transport === 'artemis') {
+            current().distributed = true; current().operationId = snapshot.operationId;
+            clearTimeout(poll); poll = null;
+        }
+        if (!busy) return;
         liveWork = window.TaxonomyAnalysisProgress?.workSummary?.(snapshot) || '';
         if (snapshot?.node) S.analysisRecovery.currentNode = snapshot.node;
         update();

@@ -70,7 +70,7 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         else try (var ignored = providers.withRequestProvider(provider, binding)) { /* Validate the job's original admission. */ }
         var admitted = new AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),
                 command.maxArchitectureNodes(), provider, command.username(), command.workspaceContext(),
-                command.provenance(), command.analysisScope(), binding);
+                command.provenance(), command.analysisScope(), binding, command.continuationBinding());
         var available = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
         command.analysisScope().validateRoots(available);
         Map<TaxonomyShardRoot, String> scoring = new LinkedHashMap<>();

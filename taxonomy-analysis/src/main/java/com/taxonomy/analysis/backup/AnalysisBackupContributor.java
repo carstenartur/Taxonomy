@@ -88,11 +88,11 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
                     run.state(),ResumePolicy.REVIEW_REQUIRED,run.updatedAt(),run.currentNode());
         });
         if (!pending.isEmpty()) throw new IOException("Analysis continuation disappeared during capture");
-        rows.writeBatches(sink,"analysis","questions",profile,batches("select "+RUN_COLUMNS+",q.id,q.run_id as question_run_id,q.question_key,q.input_hash,q.provider,q.node_codes,q.detail_json,q.prompt_text,q.state,q.attempts,q.started_at from analysis_question_checkpoint q join analysis_continuation r on r.id=q.run_id where r.id in (", " order by q.id",includedRuns.keySet()),r -> {
+        rows.writeBatches(sink,"analysis","questions",profile,batches("select "+RUN_COLUMNS+",q.id,q.run_id as question_run_id,q.question_key,q.input_hash,q.provider,q.node_codes,q.detail_json,q.prompt_text,q.state,q.attempts,q.started_at,q.error_text from analysis_question_checkpoint q join analysis_continuation r on r.id=q.run_id where r.id in (", " order by q.id",includedRuns.keySet()),r -> {
             var run=run(r,scope);
             if (!run.id().equals(text(r,"question_run_id")) || !run.equals(includedRuns.get(run.id())))
                 throw new IOException("Analysis question reference is inconsistent");
-            return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),text(r,"node_codes"),text(r,"detail_json"),text(r,"prompt_text"),text(r,"state"),r.getInt("attempts"),r.getLong("started_at"));
+            return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),text(r,"node_codes"),text(r,"detail_json"),text(r,"prompt_text"),text(r,"state"),r.getInt("attempts"),r.getLong("started_at"),text(r,"error_text"));
         });
         new ClusterAnalysisBackupExport(rows, principalScope).write(snapshot, sink, (owner, authority, businessText, terminal) -> {
             if (authority.workspaceId() == null || authority.branch() == null) return !terminal;
@@ -162,5 +162,10 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     public record ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,
                                      String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode) { }
     public record QuestionRecord(SourceRecordId sourceId,SourceRecordId run,String questionKey,String inputHash,String provider,String nodeCodesJson,
-                                 String detailJson,String prompt,String sourceState,int attempts,long startedAtEpochMillis) { }
+                                 String detailJson,String prompt,String sourceState,int attempts,long startedAtEpochMillis,String error) {
+        public QuestionRecord(SourceRecordId sourceId,SourceRecordId run,String questionKey,String inputHash,String provider,String nodeCodesJson,
+                              String detailJson,String prompt,String sourceState,int attempts,long startedAtEpochMillis) {
+            this(sourceId,run,questionKey,inputHash,provider,nodeCodesJson,detailJson,prompt,sourceState,attempts,startedAtEpochMillis,null);
+        }
+    }
 }

@@ -65,7 +65,7 @@ public final class ClusterAnalysisBackupExport {
                     if (!scope.history() && !projectLineage
                             && !current.include(run.owner, run.context.authority(), command.businessText(), run.state.terminal())) return null;
                     included.put(run.id, run);
-                    return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, commandJson,
+                    return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, mapper.writeValueAsString(command.withContinuationBinding(null)),
                             text(r, "view_json"), text(r, "result_json"), text(r, "relation_plan_json"), run.state.name(),
                             ResumePolicy.REVIEW_REQUIRED, run.total, run.completed, run.revision, run.createdAt, run.updatedAt);
                 });

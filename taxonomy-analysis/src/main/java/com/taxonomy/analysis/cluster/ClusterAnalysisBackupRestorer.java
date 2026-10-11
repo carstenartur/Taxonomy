@@ -55,7 +55,7 @@ public final class ClusterAnalysisBackupRestorer {
             var run = new ClusterAnalysisRun(); run.id = target.operationId(); run.username = command.username();
             run.scopeKey = ClusterAnalysisStore.scopeKey(command.workspaceContext());
             run.projectId = target.requirement().projectId(); run.requirementId = target.requirement().requirementId();
-            run.contextJson = json.writeValueAsString(target); run.commandJson = json.writeValueAsString(command);
+            run.contextJson = json.writeValueAsString(target); run.commandJson = json.writeValueAsString(command.withContinuationBinding(null));
             run.viewJson = source.viewJson(); run.resultJson = resultJson;
             run.relationPlanJson = source.relationPlanJson() == null ? null : json.writeValueAsString(remapPlan(read(source.relationPlanJson(), RelationSearchDistribution.Plan.class), target.operationId()));
             run.state = interrupted ? ClusterAnalysisState.CANCELLED : ClusterAnalysisState.valueOf(source.sourceState());

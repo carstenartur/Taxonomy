@@ -49,7 +49,7 @@ function harness() {
   }
   return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,derivedRequests,
     followups:()=>followups,options:()=>openOptions,
-    act:id=>openOptions.find(o=>o.id===id).handler(),emit:name=>(listeners.get(name)||[]).forEach(fn=>fn({detail:{}})),
+    act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
     recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
@@ -231,4 +231,15 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
   assert.equal(attributes.get('aria-describedby'),'analysisCoverage-CP');
  }
  assert.equal(header.children.length,1,'Status refresh must retain the same accessible node badge');
+});
+
+test('durable Artemis question recovery uses progress events and explicit decisions without a fixed observation timer',async()=>{
+ const h=harness();h.recovery.startCopilot();assert.equal(h.analyses.length,1);assert.equal(h.timers.size,1);
+ h.emit('taxonomy:analysis-progress',{transport:'artemis',operationId:'durable-operation',status:'RUNNING',node:'CP'});
+ assert.equal(h.timers.size,0);assert.equal(h.S.recoveryContext.distributed,true);
+ assert.equal(h.S.recoveryContext.operationId,'durable-operation');
+ h.complete();await settle();assert.equal(h.analyses.length,1);assert.equal(h.requests.length,0);
+ h.act('analysisRecoveryRetry');assert.equal(h.analyses.length,2);assert.equal(h.timers.size,0);
+ assert.equal(h.analyses[1].continuationVersion,7);assert.equal(h.analyses[1].continuationQuestion,'question-a');
+ h.complete('COMPLETED');await settle();assert.equal(h.timers.size,0);
 });

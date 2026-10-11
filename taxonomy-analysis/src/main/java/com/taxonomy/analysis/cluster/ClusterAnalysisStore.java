@@ -38,6 +38,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     private final ObjectMapper mapper;
     private final AnalysisDispatchService dispatch;
     private final ClusterAnalysisDiagnostics diagnostics;
+    private final com.taxonomy.analysis.recovery.AnalysisContinuationStore continuations;
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
     private volatile Consumer<AnalysisProgressEvent> events = event -> { };
 
@@ -72,12 +73,59 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public ClusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
                                 ObjectMapper mapper, AnalysisDispatchService dispatch) {
+        this(em, transactions, mapper, dispatch, null);
+    }
+    public ClusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
+                                ObjectMapper mapper, AnalysisDispatchService dispatch,
+                                com.taxonomy.analysis.recovery.AnalysisContinuationStore continuations) {
         this.em = Objects.requireNonNull(em); this.tx = new TransactionTemplate(transactions);
         this.mapper = Objects.requireNonNull(mapper); this.dispatch = Objects.requireNonNull(dispatch);
         this.diagnostics = new ClusterAnalysisDiagnostics(em, transactions, mapper, this);
+        this.continuations = continuations;
     }
 
     public ClusterAnalysisDiagnostics callDiagnostics() { return diagnostics; }
+    public com.taxonomy.analysis.recovery.AnalysisCheckpointSession checkpointSession(Input input, AnalysisTaskMessage task,
+            String scoringPolicyHash, String relationPolicyHash) {
+        var binding = Objects.requireNonNull(input.command().continuationBinding(), "Continuation binding");
+        if (continuations == null) throw new IllegalStateException("Distributed continuation is unavailable");
+        if (!binding.scoringPolicyHash().equals(scoringPolicyHash)
+                || task.taskType() == AnalysisTaskType.RELATION_ANALYSIS && !binding.relationPolicyHash().equals(relationPolicyHash))
+            throw new IllegalStateException("Frozen continuation provider or policy changed");
+        var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
+        tx.executeWithoutResult(status -> {
+            diagnosticAuthority(task, input.deliveryAttempt());
+            if (!binding.equals(command(input.context()).continuationBinding()))
+                throw new IllegalStateException("Unexpected continuation command authority");
+        });
+        var questionOwner = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.QuestionOwner(task.envelope().operationId(),
+                task.taskId().value(), input.deliveryAttempt(), java.util.UUID.randomUUID().toString(),
+                task.taskType().name() + ":" + (task.routingRoot() == null ? "all" : task.routingRoot().code()));
+        return new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store() {
+            public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question) {
+                return tx.execute(status -> { diagnosticAuthority(task, input.deliveryAttempt()); return continuations.prepareDistributed(claim, question, questionOwner); });
+            }
+            public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+                tx.executeWithoutResult(status -> { diagnosticAuthority(task, input.deliveryAttempt()); continuations.finishDistributed(claim, question, state, detail, questionOwner); });
+                if ("PAUSED".equals(continuations.state(claim))) throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.AWAITING_DECISION);
+            }
+            public void checkActive() {
+                boolean current = Boolean.TRUE.equals(tx.execute(status -> {
+                    var rows = em.createQuery("select r.state,r.contextJson,w.attempts,w.state from ClusterAnalysisRun r,ClusterAnalysisWork w where r.id=:run and w.id=:work and w.operationId=r.id", Object[].class)
+                            .setParameter("run", task.envelope().operationId()).setParameter("work", key(task.taskId().value())).getResultList();
+                    return rows.size() == 1 && input.context().equals(read((String) rows.getFirst()[1], AnalysisOperationContext.class))
+                            && !((ClusterAnalysisState) rows.getFirst()[0]).terminal() && ((Number) rows.getFirst()[2]).intValue() == input.deliveryAttempt()
+                            && "RUNNING".equals(rows.getFirst()[3]);
+                }));
+                String state = current ? continuations.distributedState(claim, task.envelope().operationId()) : "CANCELLED";
+                if (!"RUNNING".equals(state)) throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                        "PAUSED".equals(state) ? com.taxonomy.analysis.service.AnalysisStoppedException.Reason.AWAITING_DECISION
+                                : com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
+            }
+            public com.taxonomy.dto.RelationSearchReport previousRelations() { return continuations.previousRelations(claim); }
+        });
+    }
     public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task) { return diagnostics.session(task); }
     @Override public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int deliveryAttempt) {
         return diagnostics.session(task, deliveryAttempt);
@@ -134,6 +182,27 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 requireAuthority(existing, context);
                 if (!existing.commandJson.equals(json(command))) throw new IllegalStateException("Operation input changed");
                 return;
+            }
+            if (command.continuationBinding() != null) {
+                if (continuations == null) throw new IllegalStateException("Distributed continuation is unavailable");
+                String oldId = continuations.boundOperation(command.continuationBinding().id());
+                if (oldId != null && !oldId.equals(context.operationId())) {
+                    var old = requireRun(oldId, true);
+                    if (!old.state.terminal()) {
+                        old.state = ClusterAnalysisState.PARTIAL;
+                        var partial = aggregate(old); partial.setStatus("PARTIAL"); partial.setErrorMessage("SUPERSEDED: explicit continuation decision");
+                        old.resultJson = json(partial); for (var work : works(old.id)) if (!work.settled) work.state = "STOPPED";
+                        appendEvent(old, AnalysisProgressPhase.OPERATION_STOPPED);
+                    }
+                }
+                var frozen = inputs.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .map(entry -> read(entry.getValue(), com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class)).toList();
+                if (frozen.stream().anyMatch(root -> !DurableClusterAnalysisExecution.source(context).equals(root.source())))
+                    throw new IllegalStateException("Frozen continuation shard belongs to another source");
+                String frozenHash = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
+                        frozen.stream().map(this::json).toArray(String[]::new));
+                continuations.attach(command.continuationBinding(), command, context.operationId(), oldId,
+                        json(frozen.getFirst().source()), frozenHash, frozen);
             }
             var run = new ClusterAnalysisRun();
             run.id = context.operationId(); run.username = command.username(); run.contextJson = json(context);
@@ -284,6 +353,25 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         requireAuthority(run, context(task.envelope())); requireWork(task); return run;
     }
 
+    /** Fences the prepared effect inside the same ledger transaction as its settlement. */
+    @Override public void verifyDelivery(AnalysisTaskMessage task, int capturedDelivery) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("Delivery fencing must join completion transaction");
+        var run = requireRun(task.envelope().operationId(), true); requireAuthority(run, context(task.envelope()));
+        if (run.state.terminal()) return;
+        var work = requireWork(task);
+        if (work.attempts != capturedDelivery || !"RUNNING".equals(work.state)) throw new IllegalStateException("Delivery was superseded");
+    }
+
+    private AnalysisResult completeContinuation(ClusterAnalysisRun run, AnalysisResult result, boolean cancelled) {
+        var command = read(run.commandJson, AnalyzeRequirementCommand.class);
+        var binding = command.continuationBinding();
+        if (binding == null) return result;
+        var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
+        if (!continuations.owns(claim, run.id)) return result;
+        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext()).result()
+                : continuations.complete(claim, result, result.getTree());
+    }
+
     /** Joins the caller's ledger transaction; never starts an independent result transaction. */
     public void persistResult(AnalysisTaskMessage task, AnalysisResult result) {
         if (!TransactionSynchronizationManager.isActualTransactionActive())
@@ -317,7 +405,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 String reason = completion instanceof SubtaxonomyAnalysisCompleted root ? root.stopReason()
                         : ((RelationAnalysisCompleted) completion).stopReason();
                 result.setStatus("PARTIAL"); result.setErrorMessage(reason + ": remaining analysis work was stopped");
-                result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(result);
+                result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(completeContinuation(run, result, false));
                 for (var pending : works(run.id)) if (!pending.settled) pending.state = "STOPPED";
                 appendEvent(run, AnalysisProgressPhase.OPERATION_STOPPED); return true;
             }
@@ -338,7 +426,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             run.state = ClusterAnalysisState.CANCELLED;
             var result = aggregate(run);
             result.setStatus("PARTIAL"); result.setErrorMessage("CANCELLED: Analysis stopped cooperatively");
-            result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(result);
+            result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(completeContinuation(run, result, true));
             for (var work : works(run.id)) if (!work.settled) work.state = "STOPPED";
             appendEvent(run, AnalysisProgressPhase.OPERATION_STOPPED);
             return true;
@@ -500,6 +588,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
             run.resultJson = json(result);
             run.state = "SUCCESS".equals(result.getStatus()) ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.PARTIAL;
+            run.resultJson = json(completeContinuation(run, result, false));
             appendEvent(run, AnalysisProgressPhase.OPERATION_COMPLETED);
         });
     }
@@ -533,7 +622,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var result = aggregate(run);
         run.state = "SUCCESS".equals(result.getStatus()) ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.PARTIAL;
         if (read(run.commandJson, AnalyzeRequirementCommand.class).includeArchitectureView()) run.state = ClusterAnalysisState.FINALIZING;
-        run.resultJson = json(result);
+        run.resultJson = json(run.state.terminal() ? completeContinuation(run, result, false) : result);
     }
 
     private void advanceRelations(ClusterAnalysisRun run) {

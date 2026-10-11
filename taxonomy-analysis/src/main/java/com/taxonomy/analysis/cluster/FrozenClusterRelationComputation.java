@@ -57,6 +57,9 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
         Set<String> required = task.targetRoots().stream().map(TaxonomyShardRoot::code).collect(Collectors.toUnmodifiableSet());
         var diagnostics = store.diagnostics(task, input.deliveryAttempt());
         try (var provider = providers.withRequestProvider(input.command().provider(), input.command().providerBinding());
+             var checkpoint = input.command().continuationBinding() == null ? null : store.checkpointSession(input, task,
+                     relations.scoringPolicyFingerprint(input.command().provider()),
+                     com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(relations.recoveryPolicyFingerprint()));
              var control = AnalysisRunControl.worker(diagnostics, cancelled, Objects.requireNonNull(guards.get()));
              var transport = LlmTransportMeter.openJournal(diagnostics)) {
             AnalysisRunControl.checkpoint();

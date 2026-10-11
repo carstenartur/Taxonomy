@@ -102,6 +102,8 @@ public class RequirementRelationSearchService {
         return "relation-downwalk-v2/complete-plan/resumable-exchanges/" + enabled + "/" + options();
     }
 
+    public String scoringPolicyFingerprint(String provider) { return llm.recoveryPolicyFingerprint(provider); }
+
     private String complete(String prompt) {
         String provider = llm.getActiveProviderName();
         // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
