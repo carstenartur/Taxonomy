@@ -12,8 +12,10 @@ public final class ReformulationUsageBoundaryChecks {
             bad(() -> new ReformulationUsageService.Start(invalid, ID, "GEMINI", "HTTP", 0));
             bad(() -> new ReformulationUsageService.Start(ID, invalid, "GEMINI", "HTTP", 0));
         }
-        for (String provider : new String[]{null, "", "http://private", "lower", "X".repeat(33)})
+        for (String provider : new String[]{null, "", "http://private", "lower", "X".repeat(129)})
             bad(() -> new ReformulationUsageService.Start(ID, ID, provider, "HTTP", 0));
+        // Provider identities follow the 128-character ProviderId contract, including run-bound replay ids.
+        new ReformulationUsageService.Start(ID, ID, "DEMO." + "X".repeat(120) + ".R1", "HTTP", 0);
         for (String source : new String[]{null, "", "NOT_HTTP"})
             bad(() -> new ReformulationUsageService.Start(ID, ID, "GEMINI", source, 0));
         bad(() -> new ReformulationUsageService.Start(ID, ID, "GEMINI", "HTTP", -1));

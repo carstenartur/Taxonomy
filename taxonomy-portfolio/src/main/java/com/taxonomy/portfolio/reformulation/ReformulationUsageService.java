@@ -21,7 +21,8 @@ public class ReformulationUsageService {
     public record Start(String id, String invocationId, String provider, String source, int retryIndex) {
         public Start {
             identifier(id); identifier(invocationId);
-            if (provider == null || !provider.matches("[A-Z_0-9]{1,32}") || source == null || !Set.of("HTTP", "RECORDING_REPLAY").contains(source)
+            // Canonical upper-case provider identity (built-in, plugin or run-bound replay namespace), bounded like ProviderId.
+            if (provider == null || !provider.matches("[A-Z0-9_][A-Z0-9_.-]{0,127}") || source == null || !Set.of("HTTP", "RECORDING_REPLAY").contains(source)
                     || retryIndex < 0 || ("RECORDING_REPLAY".equals(source) && retryIndex != 0))
                 throw new IllegalArgumentException("Invalid usage start");
         }

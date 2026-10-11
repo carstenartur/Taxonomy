@@ -1,0 +1,111 @@
+{
+  "schema": "taxonomy-product-demo-scenario-v1",
+  "id": "time-tracking-v1",
+  "version": 1,
+  "title": {
+    "de": "Arbeitszeiterfassung",
+    "en": "Working-time recording"
+  },
+  "banner": {
+    "de": "DEMODUS · Arbeitszeiterfassung · Vorproduzierte KI-Antworten · Keine externen KI-Aufrufe",
+    "en": "DEMO MODE · Working-time recording · Pre-produced AI replies · No external AI calls"
+  },
+  "catalogue": {
+    "source": "C3_Taxonomy_Catalogue_25AUG2025",
+    "anchors": {
+      "BP": "Business Processes",
+      "BP-1000": "Business Processes",
+      "BP-1327": "Enable",
+      "BP-1819": "Personnel Support",
+      "BP-1500": "Human Resource Management",
+      "BP-1334": "Ensure Compliance with Employment Legislation and Regulations",
+      "BP-1680": "Manage Workforce Compensation and Benefits",
+      "BR": "Business Roles",
+      "BR-1000": "Business Roles",
+      "BR-1057": "Functional Military Roles",
+      "BR-1102": "Personnel and Administration Staff Roles",
+      "BR-1101": "Personnel Administration Roles",
+      "CR": "Core Services",
+      "CR-1000": "Core Services",
+      "CR-1011": "Business Support Services",
+      "CR-1023": "Enterprise Resource Planning Services",
+      "CR-1036": "Human Resource Management Services",
+      "CR-1038": "Information Management Services",
+      "CR-1065": "Workflow Services",
+      "CR-1047": "Infrastructure Services",
+      "CR-1039": "Infrastructure CIS Security Services",
+      "CR-1006": "Authentication Services",
+      "CR-1007": "Authorization and Access Control Services",
+      "CR-1022": "Digital Identity Services",
+      "UA": "User Applications",
+      "UA-1000": "User Applications",
+      "UA-1253": "Human Resources Applications",
+      "UA-1604": "Payroll Applications",
+      "UA-1605": "Work Time Applications",
+      "CI-1121": "Task Time Location Management Services"
+    }
+  },
+  "requirement": {
+    "key": "AZE-01",
+    "title": "Unternehmensweite Arbeitszeiterfassung",
+    "language": "de",
+    "text": "Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter."
+  },
+  "iterations": {
+    "R0": {
+      "exactText": "Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter."
+    },
+    "R1": {
+      "requiredPhrases": [
+        "Mitarbeiter erfassen ihre Arbeitszeit im Browser und an Online-Terminals.",
+        "Eine Offline-Erfassung ist nicht erforderlich; Buchungen erfolgen nur online.",
+        "Mitarbeiter beantragen Korrekturen ihrer Zeitbuchungen, die von ihren Vorgesetzten genehmigt werden.",
+        "Die Anmeldung erfolgt über die zentrale Unternehmensanmeldung; Mitarbeiterstammdaten werden aus dem führenden HR-System übernommen.",
+        "Das System erfasst weder Standortdaten noch biometrische Merkmale der Mitarbeiter."
+      ]
+    }
+  },
+  "demoDecisions": [
+    {
+      "question": "F-01",
+      "values": ["Browser und Online-Terminals"],
+      "rationale": "Demo-Antwort aus dem Szenario: Büro- und Produktionsbeschäftigte buchen im Browser oder am Terminal."
+    },
+    {
+      "question": "F-02",
+      "values": ["Nein"],
+      "rationale": "Demo-Antwort aus dem Szenario: Alle Standorte sind dauerhaft angebunden."
+    },
+    {
+      "question": "F-03",
+      "values": ["Mitarbeiter beantragen, Vorgesetzte genehmigen"],
+      "rationale": "Demo-Antwort aus dem Szenario: Korrekturen bleiben nachvollziehbar und werden freigegeben."
+    },
+    {
+      "question": "F-04",
+      "values": ["Zentrale Anmeldung, HR-System führend"],
+      "rationale": "Demo-Antwort aus dem Szenario: Keine zweite Benutzer- und Stammdatenverwaltung."
+    },
+    {
+      "question": "F-05",
+      "values": ["Keine Standortverfolgung und keine Biometrie"],
+      "rationale": "Demo-Antwort aus dem Szenario: Datenschutzrechtliche Begrenzung der Erfassung."
+    }
+  ],
+  "demoReviews": [
+    {
+      "wording": "Beim Stempeln wird zusätzlich der GPS-Standort des Mitarbeiters gespeichert.",
+      "action": "REJECT",
+      "rationale": "Demo-Prüfung: Standortverfolgung ist für die Arbeitszeiterfassung nicht vorgesehen."
+    }
+  ],
+  "stations": [
+    {"id": "start", "de": "Demo-Projekt mit der Ausgangsanforderung R0 wurde isoliert angelegt.", "en": "An isolated demo project with the initial requirement R0 was created."},
+    {"id": "analysis-r0", "de": "Echte Analyse A0 von R0 – nur die KI-Antwort stammt aus dem Szenario.", "en": "Real analysis A0 of R0 – only the AI reply comes from the scenario."},
+    {"id": "feedback", "de": "Architektur-Rücklauf: Die Reformulierung schlägt Ergänzungen und Fragen F-01 bis F-05 vor.", "en": "Architecture feedback: the reformulation proposes additions and questions F-01 to F-05."},
+    {"id": "answers", "de": "Sichtbare Demo-Antworten werden über den normalen Antwortpfad gespeichert; eine Ergänzung wird abgelehnt.", "en": "Visible demo answers are stored through the normal answer path; one addition is rejected."},
+    {"id": "adoption", "de": "Übernahme mit Vorschau und ausdrücklicher Bestätigung erzeugt R1.", "en": "Adoption with preview and explicit confirmation creates R1."},
+    {"id": "analysis-r1", "de": "Echte Analyse A1 von R1.", "en": "Real analysis A1 of R1."},
+    {"id": "comparison", "de": "Unabhängige Referenzbewertung von R0/A0 gegenüber R1/A1.", "en": "Independent reference evaluation of R0/A0 versus R1/A1."}
+  ]
+}

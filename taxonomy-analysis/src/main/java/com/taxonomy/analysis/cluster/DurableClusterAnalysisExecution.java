@@ -142,7 +142,9 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
             catch (IllegalArgumentException invalid) { throw new UnknownAnalysisProviderException(requested); }
             requireSupportedProvider(explicit);
         }
-        String effective = "MOCK".equals(explicit) || providers.isMockMode() ? "MOCK"
+        // A run-bound scenario replay is never silently replaced by global mock mode.
+        String effective = providers.isScenarioReplay(explicit) ? explicit
+                : "MOCK".equals(explicit) || providers.isMockMode() ? "MOCK"
                 : explicit == null ? providers.getActiveProviderId().value() : explicit;
         requireSupportedProvider(effective);
         return effective;

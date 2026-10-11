@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Executes V32 SQL on HSQL's PostgreSQL syntax mode and checks its explicit mapping contract.
  * PostgreSQL installation/upgrade remains covered by TaxonomySchemaPostgresMigrationIT. */
 class ClusterAnalysisSchemaMigrationTest {
-    private static final String DIAGNOSTICS = "db/migration/taxonomy/postgresql/V34__cluster_call_diagnostics.sql";
+    private static final String DIAGNOSTICS = "db/migration/taxonomy/postgresql/V35__cluster_call_diagnostics.sql";
     private static final String MIGRATION = "db/migration/taxonomy/postgresql/V32__ClusterAnalysis.sql";
 
     @Test void migratedSchemaMatchesAllClusterEntityMappings() throws Exception {

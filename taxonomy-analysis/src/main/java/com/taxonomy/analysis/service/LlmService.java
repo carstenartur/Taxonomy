@@ -11,6 +11,7 @@ import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
@@ -191,6 +192,13 @@ public class LlmService {
     public LlmProvider getActiveProvider() { return providerConfig.getActiveProvider(); }
 
     public void setRequestProviderId(ProviderId provider) { providerConfig.setRequestProviderId(provider); }
+
+    /** A scenario replay is admitted only for a persisted analysis whose run explicitly binds it. */
+    public void requireProviderAdmissible(String provider, boolean persistedRun) {
+        if (persistedRun || provider == null || provider.isBlank()) return;
+        if (providerConfig.isScenarioReplay(provider))
+            throw new UnknownAnalysisProviderException(provider);
+    }
 
     /** A durable job may execute only with its admitted artifact/configuration. */
     public LlmProviderConfig.RequestProviderScope withProviderBinding(String provider,
@@ -810,6 +818,15 @@ public class LlmService {
             } catch (IllegalArgumentException invalidProvider) {
                 throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
             }
+        }
+        if (providerConfig.isScenarioReplay(provider)) {
+            // Replay identity is the exact authored reply content, never a live provider configuration.
+            var replay = providerConfig.requireScenarioReplay(provider);
+            String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
+                    .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), "SCENARIO_REPLAY",
+                    replay.contentIdentity(), replay.model(), Integer.toString(productBatchSize),
+                    Integer.toString(minimumProductScore()), templates);
         }
         String endpoint = provider.equals(LlmProvider.GEMINI.id()) ? providerConfig.getGeminiUrl()
                 : provider.equals(LlmProvider.LOCAL_ONNX.id()) ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);

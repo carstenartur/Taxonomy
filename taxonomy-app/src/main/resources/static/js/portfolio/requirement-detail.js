@@ -125,7 +125,11 @@
 
     document.addEventListener('DOMContentLoaded', initialize);
     // Read-only adoption refresh must not reset the separate new-version form.
-    window.TaxonomyRequirementDetail = {refreshAfterAdoption: () => loadAll(true)};
+    // The parsed route is shared so page add-ons never re-implement route parsing.
+    window.TaxonomyRequirementDetail = {
+        route: Object.freeze({projectId: projectId, requirementId: requirementId}),
+        refreshAfterAdoption: () => loadAll(true)
+    };
 
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 

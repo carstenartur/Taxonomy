@@ -73,6 +73,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/analyze",
                         "/api/search/graph",
                         "/api/projects/**",
+                        "/api/product-demo/**",
                         "/api/solutions/**",
                         "/api/products/**");
     }

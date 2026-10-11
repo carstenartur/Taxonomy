@@ -17,6 +17,7 @@ com.taxonomy.provenance.model.SourceVersion	application	PORTABLE_PRIMARY	Explici
 com.taxonomy.security.model.AppRole	application	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.security.model.AppUser	application	PORTABLE_PRIMARY	Current identity metadata is portable; password hashes only in authorized encrypted DR; no sessions
 com.taxonomy.security.webdav.WebDavApplicationCredential	application	TRANSIENT	Revocable application login tokens must be issued again on target
+com.taxonomy.composition.demo.ProductDemoRun	application	TRANSIENT	Product-demo replay binding only; restore never re-admits scenario replay, restored DEMO projects stay labelled ordinary projects and a new demo is started explicitly
 com.taxonomy.architecture.model.ArchitectureDslDocument	architecture	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.ExternalIdentityMappingEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.IntegrationCheckpointEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
