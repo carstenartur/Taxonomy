@@ -33,6 +33,7 @@ final class ContributedLlmGateway implements LlmGateway {
 
     void configureRequestLimits(ProviderRequestLimiter.Limits limits) { admission.configure(limits); }
     void configureProviderPermits(ProviderConcurrencyPermits permits) { admission.configure(permits); }
+    void configureProviderQuotas(ProviderRateQuotas quotas) { admission.configure(quotas); }
 
     @Override public String providerName() { return provider.value(); }
 

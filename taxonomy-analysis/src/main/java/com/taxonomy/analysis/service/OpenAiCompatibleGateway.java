@@ -53,6 +53,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
     void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }
     void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }
+    void configureProviderQuotas(ProviderRateQuotas quotas) { requestAdmission.configure(quotas); }
 
     @Override public String providerName() { return provider.name(); }
 
@@ -171,7 +172,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {
             throw exception;
-        } catch (LlmTransportMeter.JournalStartException unavailable) {
+        } catch (LlmTransportMeter.JournalStartException | ProviderRateQuotas.UnavailableException unavailable) {
             throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;

@@ -393,3 +393,24 @@ not seed capacity on startup. Existing local RPM/TPM/RPD behavior remains separa
 from cluster concurrency. For TLS Secret mounts, external broker HA, exact queue
 names, DLQ/expiry, Hawtio administration and Helm worker scaling see
 [External Artemis operations](OPERATIONS_GUIDE.md#external-artemis-analysis-operations).
+
+
+### Cluster-wide physical-attempt rate quotas
+
+Enable `taxonomy.analysis.provider-quotas.enabled=true` only with the Artemis transport. Each explicitly mapped credential/account group owns one durable state message in an exclusive durable ANYCAST queue. These settings do not infer sharing from a URL, provider name or API key. Unmapped physical providers fail closed while this feature is enabled; local ONNX and recording replay use no HTTP quota.
+
+| Spring property | Default | Contract |
+| --- | --- | --- |
+| `taxonomy.analysis.provider-quotas.destination-prefix` | `taxonomy.analysis.provider-quotas` | Exact durable ANYCAST queue prefix; administrative provisioning uses the same prefix. |
+| `taxonomy.analysis.provider-quotas.maximum-wait-ms` | `120000` | Bounded cancellable acquisition of the short ledger transaction. Existing overall provider-admission limits still apply. |
+| `taxonomy.analysis.provider-quotas.provider-groups.<provider>` | none | Required explicit credential/account-group map, e.g. `openai=shared-openai`. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpm` | `0` | Permanent physical-attempt debits in a conservative rolling 60-second window; zero disables this dimension. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpd` | `0` | Permanent physical-attempt debits in a conservative rolling 24-hour window; this is stricter than calendar-day reset. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.tpm` | `0` | Conservative minute token reservations. Active TPM rejects transports lacking a demonstrated complete-input bound and real complete-output cap. Current built-ins/contributed transports remain unsupported and send zero HTTP under active TPM. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.input-upper-bound` | `0` | Required only for a demonstrated TPM adapter; complete compiled input includes all catalogue/system/role/tool framing. A character-based estimate is insufficient. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.output-cap` | `0` | Required real wire cap, including reasoning and visible output, for a demonstrated TPM adapter. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.token-adapter` | none | Required versioned supported token contract when TPM is active. Merely naming a contract does not make a transport support it. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.clock-skew-millis` | `1000` | Operational maximum absolute UTC clock error for every participating node/broker. Windows/cooldowns retain an additional twice this allowance. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.maximum-reservations` | `20000` | Bounded ledger capacity, valid 1..20000. A group with RPD retains all attempts for a full day, so capacity must cover intended daily admission. Exhaustion fails closed. |
+
+Policy/group coverage is exact, and unknown group limit keys are rejected. Keep every role and the admin provisioner on the same limits, clock bound, capacity and token-adapter version. Do not change a live group policy by editing worker settings alone: policy fingerprints deliberately reject mismatched retained state. Stop admission and reconcile remaining budgets with the provider before a reviewed migration. [Operator procedure](OPERATIONS_GUIDE.md#cluster-wide-physical-attempt-rate-quotas).

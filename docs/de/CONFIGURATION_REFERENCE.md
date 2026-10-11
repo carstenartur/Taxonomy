@@ -396,3 +396,24 @@ keine Kapazität. Lokale RPM-/TPM-/RPD-Regeln bleiben getrennt von clusterweiter
 Gleichzeitigkeit. TLS-Secrets, externe Broker-HA, Queue-Namen, DLQ/Expiry,
 Hawtio-Administration und Helm-Skalierung beschreibt
 [Betrieb mit externem Artemis](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker).
+
+
+### Clusterweite Quoten für physische Provider-Aufrufe
+
+`taxonomy.analysis.provider-quotas.enabled=true` ist ausschließlich mit dem Artemis-Transport zulässig. Jede ausdrücklich zugeordnete Credential-/Accountgruppe besitzt genau eine dauerhafte Zustandsnachricht in einer exklusiven dauerhaften ANYCAST-Queue. Providername, URL oder API-Key erzeugen keine automatische Gruppierung. Nicht zugeordnete physische Provider werden bei aktivierter Funktion kontrolliert gesperrt; lokale ONNX-Ausführung und Recording-Replay benötigen keine HTTP-Quote.
+
+| Spring-Property | Standard | Vertrag |
+| --- | --- | --- |
+| `taxonomy.analysis.provider-quotas.destination-prefix` | `taxonomy.analysis.provider-quotas` | Präfix der dauerhaften ANYCAST-Queue; die administrative Provisionierung muss dasselbe Präfix verwenden. |
+| `taxonomy.analysis.provider-quotas.maximum-wait-ms` | `120000` | Begrenztes, abbrechbares Warten auf die kurze Ledgertransaktion. Das bestehende Gesamtlimit der Provider-Admission gilt weiterhin. |
+| `taxonomy.analysis.provider-quotas.provider-groups.<provider>` | keine | Erforderliche explizite Accountgruppe, beispielsweise `openai=shared-openai`. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpm` | `0` | Dauerhafte Debits tatsächlicher Versuche in einem konservativen rollierenden 60-Sekunden-Fenster; 0 deaktiviert diese Dimension. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpd` | `0` | Rollierendes 24-Stunden-Fenster; konservativer als ein Tageswechsel-Reset. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.tpm` | `0` | Konservative Tokenreservierung pro Minute. Aktives TPM sperrt Transporte ohne belegten vollständigen Inputbound und realen vollständigen Outputcap vor HTTP. Für die aktuellen Built-in-/beigesteuerten Transporte ist dieser Vertrag noch nicht belegt. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.input-upper-bound` | `0` | Nur für einen tatsächlich belegten TPM-Adapter: gesamter kompilierter Input einschließlich System-/Katalog-/Rollen-/Tool-Framing. Eine Zeichen-/Tokenschätzung genügt nicht. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.output-cap` | `0` | Tatsächlich gesendeter und erzwungener Outputcap einschließlich sichtbarer Ausgabe und Reasoning. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.token-adapter` | keiner | Versionierter unterstützter Tokenvertrag. Ein eingetragener Name allein macht einen Transport nicht unterstützt. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.clock-skew-millis` | `1000` | Verbindlicher maximaler absoluter UTC-Fehler aller beteiligten Prozesse/Broker; Fenster und Cooldowns behalten zusätzlich den doppelten Spielraum. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.maximum-reservations` | `20000` | Begrenzte Ledgerkapazität, gültig 1..20000. Bei RPD bleiben alle Versuche einen Tag gespeichert; die Kapazität muss die geplante Tageslast abdecken. Erschöpfung bleibt gesperrt. |
+
+Die Policy muss genau alle zugeordneten Gruppen abdecken; unbekannte Limitkeys werden abgelehnt. Alle Rollen und der Provisioner müssen identische Limits, Clock-Bounds, Kapazität und Adapterversion verwenden. Worker-Einstellungen allein ändern keine laufende Gruppe: ihr Fingerprint verweigert absichtlich eine abweichende vorhandene Autorität. Admission vor einer geprüften Migration stoppen und verbleibende Budgets mit der Provider-Autorität abgleichen. [Betriebsverfahren](OPERATIONS_GUIDE.md#clusterweite-quoten-für-physische-provider-aufrufe).

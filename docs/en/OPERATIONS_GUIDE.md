@@ -573,8 +573,38 @@ consumers. The broker transaction timeout must exceed the maximum physical HTTP
 exchange; review the example's 900 seconds against provider timeouts. On holder
 loss the unacknowledged token becomes available again. Inspect an interrupted
 initial provisioning operation with all consumers stopped; a queue created before
-token commit may be empty and needs deliberate recreation. Concurrency tokens do
-not provide cluster-wide RPM, TPM or RPD; existing local rate limits remain.
+token commit may be empty and needs deliberate recreation. Concurrency tokens remain separate from the optional rate-quota ledger described below; existing local rate limits remain.
+
+### Cluster-wide physical-attempt rate quotas
+
+Rate quotas are a separate opt-in from HTTP concurrency permits. Configure every web/worker role with the same explicit credential/account groups and policy. For example, the following settings give the two explicitly shared OpenAI-compatible providers one common 60 RPM/20000 RPD budget; TPM token limits are disabled:
+
+```json
+{"taxonomy":{"analysis":{"provider-quotas":{"enabled":true,"provider-groups":{"openai":"shared-openai","custom-openai":"shared-openai"},"groups":{"shared-openai":{"rpm":60,"rpd":20000,"clock-skew-millis":1000,"maximum-reservations":20000}}}}}}
+```
+
+There is exactly one durable persistent state message in an exclusive durable ANYCAST queue, `taxonomy.analysis.provider-quotas.shared-openai`. Workers consume and replace it in short broker transactions; they never hold that message during HTTP. Each transaction validates exclusive broker consumer ownership and a second forced-immediate receive from that same consumer. An actual second state rolls the transaction back. Management message-count statistics are non-atomic and never authorize acceptance or rejection. A missing force-delivery end-marker is bounded and cancellable; its receiver must terminate before normal caller session use resumes. A confirmed debit precedes each physical attempt, including every retry. After the ordinary diagnostic DB START, a second short transaction consumes the same still-live receipt once and conservatively extends occupancy to physical-start admission. An expired/removed/consumed receipt, changed cooldown/policy/clock, missing state or unconfirmed commit permits zero HTTP; it is never refunded or silently replaced. A cancelled worker rechecks ordinary checkpoint authority before and after this transaction. Quota waiting releases HTTP capacity and local provisional admission before cooperative cancellable sleep.
+
+Use the separate provisioning account and exactly matching settings to create a new group once:
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderQuotaProvisioner \
+  -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher shared-openai 60 0 20000
+```
+
+The positional arguments are group, RPM, TPM, RPD. Active TPM additionally requires token-adapter, complete-input-upper-bound and actual-output-cap, but unsupported transports still reject before HTTP. The provisioner shares `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL`, `TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS`, `TAXONOMY_ANALYSIS_ARTEMIS_USER` and `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` with the existing administrative command. Optional `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_DESTINATION_PREFIX`, `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_CLOCK_SKEW_MILLIS` and `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_MAXIMUM_RESERVATIONS` must match worker policy; defaults are the documented prefix, 1000 ms and 20000 entries. URLs/credentials do not enter quota messages.
+
+Atomic durable queue creation is the exclusive seed claim. Provisioning an existing queue always rejects, even if its message is currently delivering or the queue appears empty. A crash between queue creation and state commit therefore fails closed. Stop all consumers and inspect prior usage/provider limits before deliberately repairing an interrupted provisioning operation. Do not refill, replace or delete a live ledger to clear a cooldown or regain quota. A restored database does not restore or reset this external provider authority.
+
+The broker example grants worker send/consume only, reserves queue/address creation for the separate provisioner/admin, and reserves browsing/deletion for admin. Preserve zero expiry, unlimited redelivery, no auto-create/delete and no purge on zero consumers for quota state. Losing the sole state message loses retained debits, so missing or duplicated state fails closed. Keep one logical HA broker authority for each group; independent brokers behind a load balancer cannot share quota.
+
+RPM counts a rolling 60-second window and RPD a rolling 24-hour window. Counts are permanent until expiry; a lost worker, unknown HTTP outcome, journal failure, error or lost commit acknowledgement never refunds them. RPD retains every admitted attempt for a day, so the bounded ledger capacity must cover intended daily use. Token accounting retains the complete conservative input/output reservation for unknown, incomplete, inconsistent or invalid usage. Only a started receipt with coherent input/output/total fields can settle downward once; exceeding the validated bounds permanently stops that ledger for operator review. Late coherent bound violations remain evidence while the ID is retained, and a private locally confirmed start receipt can also stop its exact matching group after independent pruning. This local authority is never reconstructed from an ID, JMS payload or archive; unknown/unstarted/unconfirmed receipts have none. A pruned or expired ID can never refund another reservation.
+
+Every participating process and broker must maintain absolute UTC error within the configured bound. Expiry/cooldowns include twice that allowance; observed excessive backwards motion fails closed. An isolated client cannot detect arbitrary forward clock violations, so this is an explicit operational prerequisite, not a broker-clock guarantee. Coordinate NTP/clock monitoring, policy versions and provider account sharing before admission. A shared `Retry-After` cooldown applies to all mapped providers and workers, including when the originating call has exhausted its retry budget. Long or overflowing durations saturate the durable deadline conservatively; they never reset the shared cooldown.
+
+Current built-in and contributed transports **fail closed for active TPM** because the complete input bound has not been demonstrated. A model's advertised context size alone does not prove the usage of an oversized rejected request. Character/token estimates or guessed role/framing overhead do not establish a hard bound. The durable TPM protocol is tested with an explicitly bounded fixture; no paid-model calls or production token-contract guarantee follows from that fixture. A future supported adapter must validate the entire emitted request, enforce a real cap including reasoning/visible output and freeze its model/contract/bounds/cap into recovery fingerprints. Recording replay and local ONNX do not spend physical-provider quota.
+
+The native acceptance fixture distinguishes persistent restart from actual shared-store primary/backup promotion. Those component checks do not replace deployment-specific TLS, advertised-hostname, quorum/fencing, failback, database/coordinator failover and capacity exercises on the reviewed CI head. See [cluster acceptance](../testing/analysis-cluster-acceptance.md) for the remaining production gates.
 
 ### Readiness, observability and administration
 

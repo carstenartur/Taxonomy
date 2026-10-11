@@ -286,7 +286,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 15
+      "classDependencyCount": 28
     },
     {
       "fromContext": "app-composition",

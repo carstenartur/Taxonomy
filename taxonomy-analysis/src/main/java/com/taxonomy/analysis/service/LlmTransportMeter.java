@@ -41,11 +41,16 @@ public final class LlmTransportMeter {
     private LlmTransportMeter() {}
 
     public static Scope open(Consumer<Observation> observer) {
-        return new Scope(Objects.requireNonNull(observer, "observer"), journal());
+        return new Scope(Objects.requireNonNull(observer, "observer"), journal(), quota());
     }
 
     public static Scope openJournal(Journal journal) {
-        return new Scope(observer(), Objects.requireNonNull(journal, "journal"));
+        return new Scope(observer(), Objects.requireNonNull(journal, "journal"), quota());
+    }
+
+    /** Binds exactly the already committed debit to its physical transport attempt. */
+    static Scope openQuota(ProviderRateQuotas.Reservation reservation) {
+        return new Scope(observer(), journal(), Objects.requireNonNull(reservation, "reservation"));
     }
 
     /** Explicit capture only: pooled threads do not inherit another request's observer. */
@@ -54,7 +59,7 @@ public final class LlmTransportMeter {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
         return () -> {
-            try (var ignored = new Scope(observer, journal)) { return operation.get(); }
+            try (var ignored = new Scope(observer, journal, null)) { return operation.get(); }
         };
     }
 
@@ -66,8 +71,8 @@ public final class LlmTransportMeter {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
         if ((observer == null && journal == null) || invocationId == null) return;
-        Attempt attempt = begin(journal, invocationId, provider, Source.RECORDING_REPLAY, 0);
-        completed(journal, attempt, observer, new Observation(invocationId, provider, Source.RECORDING_REPLAY,
+        Attempt attempt = begin(journal, invocationId, provider, Source.RECORDING_REPLAY, 0, null);
+        completed(journal, attempt, observer, null, new Observation(invocationId, provider, Source.RECORDING_REPLAY,
                 0, null, Outcome.RESPONSE, 0, UNKNOWN));
     }
 
@@ -76,8 +81,13 @@ public final class LlmTransportMeter {
             ObjectMapper json, Supplier<ResponseEntity<String>> operation) {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
-        if ((observer == null && journal == null) || invocationId == null) return operation.get();
-        Attempt attempt = begin(journal, invocationId, provider, Source.HTTP, retryIndex);
+        var reservation = quota();
+        if (observer == null && journal == null && reservation == null) return operation.get();
+        if (invocationId == null) invocationId = UUID.randomUUID().toString();
+        Attempt attempt = begin(journal, invocationId, provider, Source.HTTP, retryIndex, reservation);
+        // A worker/DB pause after durable START cannot revive an expired or already consumed debit.
+        // Confirmation failure remains outside retry/error handling: no HTTP and no quota compensation.
+        if (reservation != null) reservation.beforeTransport();
         long started = System.nanoTime();
         ResponseEntity<String> response;
         try {
@@ -91,25 +101,34 @@ public final class LlmTransportMeter {
                 outcome = Outcome.HTTP_ERROR;
                 usage = usage(json, provider, http.getResponseBodyAsString());
             }
-            completed(journal, attempt, observer, new Observation(invocationId, provider, Source.HTTP, retryIndex,
+            completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                     status, outcome, elapsed(started), usage));
             throw failure;
         }
-        completed(journal, attempt, observer, new Observation(invocationId, provider, Source.HTTP, retryIndex,
+        completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                 response.getStatusCode().value(), response.getStatusCode().isError()
                         ? Outcome.HTTP_ERROR : Outcome.RESPONSE,
                 elapsed(started), usage(json, provider, response.getBody())));
         return response;
     }
 
-    private static Attempt begin(Journal journal, String invocation, String provider, Source source, int retry) {
+    private static Attempt begin(Journal journal, String invocation, String provider, Source source, int retry,
+            ProviderRateQuotas.Reservation reservation) {
         if (journal == null) return null;
-        var attempt = new Attempt(UUID.randomUUID().toString(), invocation, provider, source, retry);
+        var attempt = new Attempt(reservation == null ? UUID.randomUUID().toString() : reservation.id(), invocation, provider, source, retry);
         try { journal.started(attempt); }
         catch (RuntimeException failure) { throw new JournalStartException(); }
         return attempt;
     }
-    private static void completed(Journal journal, Attempt attempt, Consumer<Observation> observer, Observation result) {
+    private static void completed(Journal journal, Attempt attempt, Consumer<Observation> observer,
+            ProviderRateQuotas.Reservation reservation, Observation result) {
+        if (reservation != null && result.source() == Source.HTTP) {
+            try { reservation.settle(result.usage()); }
+            catch (RuntimeException failure) {
+                LoggerFactory.getLogger(LlmTransportMeter.class)
+                        .warn("LLM quota settlement was not confirmed; no quota compensation is attempted");
+            }
+        }
         if (journal != null) {
             try { journal.completed(attempt, result); }
             catch (RuntimeException failure) {
@@ -119,6 +138,11 @@ public final class LlmTransportMeter {
         }
         if (observer != null) emit(observer, result);
     }
+    private static ProviderRateQuotas.Reservation quota() {
+        Scope scope = CURRENT.get();
+        return scope == null ? null : scope.reservation;
+    }
+
     private static Journal journal() {
         Scope scope = CURRENT.get();
         return scope == null ? null : scope.journal;
@@ -189,8 +213,11 @@ public final class LlmTransportMeter {
         private final Thread owner = Thread.currentThread();
         private final Consumer<Observation> observer;
         private final Journal journal;
+        private final ProviderRateQuotas.Reservation reservation;
         private boolean closed;
-        private Scope(Consumer<Observation> observer, Journal journal) { this.observer = observer; this.journal = journal; CURRENT.set(this); }
+        private Scope(Consumer<Observation> observer, Journal journal, ProviderRateQuotas.Reservation reservation) {
+            this.observer = observer; this.journal = journal; this.reservation = reservation; CURRENT.set(this);
+        }
         @Override public void close() {
             if (Thread.currentThread() != owner) throw new IllegalStateException("Meter scope closed on another thread");
             if (closed) return;
