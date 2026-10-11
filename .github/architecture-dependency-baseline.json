@@ -319,6 +319,41 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.backup",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "interop",
+      "toPackage": "com.taxonomy.interop.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.backup",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.backup",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences.backup",
       "classDependencyCount": 2
@@ -328,7 +363,7 @@
       "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences.storage",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -340,9 +375,30 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "templates",
+      "toPackage": "com.taxonomy.templates",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "templates",
+      "toPackage": "com.taxonomy.templates.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
+      "classDependencyCount": 13
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.backup",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",
