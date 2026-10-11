@@ -100,7 +100,7 @@ def main() -> int:
         if "image.digest=${IMAGE_DIGEST}" not in bind_block:
             failures.append("Helm release evidence must include a digest-bound manifest")
 
-        publish_block = workflow[publish:]
+        publish_block = step_block(workflow, publish)
         evidence_check = publish_block.find("evidence_digest")
         publish_release = publish_block.find("gh release edit")
         if evidence_check < 0 or publish_release < 0 or evidence_check > publish_release:
@@ -109,6 +109,32 @@ def main() -> int:
             )
         if 'image="${repository}@${IMAGE_DIGEST}"' not in publish_block:
             failures.append("final publication must inspect the immutable digest, not only a tag")
+        require(
+            publish_block,
+            "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
+            failures,
+        )
+        main_guard_order = [
+            publish_block.find(needle)
+            for needle in (
+                'if [[ "$evidence_digest" != "$IMAGE_DIGEST" ]]; then',
+                'is_draft=$(gh release view "$tag" --json isDraft',
+                'git fetch origin "refs/heads/main:refs/remotes/origin/main" --force',
+                'publication_main=$(git rev-parse --verify "refs/remotes/origin/main^{commit}")',
+                'if [[ "$publication_main" != "$EXPECTED_MAIN_SHA" ]]; then',
+                'if [[ "$is_draft" == "true" ]]; then',
+                "gh release edit",
+                'curl -fSL --retry 3 "$RENDER_DEPLOY_HOOK_URL"',
+            )
+        ]
+        if any(position < 0 for position in main_guard_order) or any(
+            before >= after
+            for before, after in zip(main_guard_order, main_guard_order[1:])
+        ):
+            failures.append(
+                "final main must be freshly fetched, resolved and compared before "
+                "either the draft branch or publication and deployment"
+            )
     except ValueError as error:
         failures.append(f"Could not determine immutable image gate order: {error}")
 
@@ -122,7 +148,7 @@ def main() -> int:
         "Immutable release image gate passed: a container Buildx builder is selected, "
         "provenance/SBOM attestations are enabled, "
         "the pushed digest is vulnerability-scanned, release evidence is digest-bound, "
-        "and publication occurs only after those checks."
+        "and publication follows a fresh comparison with the previously verified main."
     )
     return 0
 
