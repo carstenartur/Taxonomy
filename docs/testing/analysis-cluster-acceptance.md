@@ -133,6 +133,48 @@ See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
 
+## Coordinator-loss acceptance follow-up (2026-10-11)
+
+The runnable Artemis smoke now adds two real coordinator replacements before
+its existing delivered-worker-loss scenario. The first replacement occurs while
+the disposable broker is stopped and both real after-commit intents are retained
+as `WAITING_FOR_BROKER` / `DISPATCH_PENDING`. The replacement coordinator must
+recover the same owned operation after a connection event. The second replacement
+occurs after both intents are `DISPATCHED` and each root has exactly one queued
+message, with workers still absent. It keeps the broker unchanged and must not
+republish either task.
+
+The fixture broker stores data in `emptyDir`. Its reset happens only before the
+first dispatch and before any provider permit/quota authority exists; this test
+does not prove broker data persistence or HA. The normal operator broker XML
+provisions the fresh task queues. Authenticated management must prove readiness,
+zero consumers and the exact queued counts after reconnection. No runtime quota
+reseeding or fail-open exception is introduced.
+
+Each coordinator loss requires independent fresh evidence: the old pod UID is
+absent, PostgreSQL has no session from its old IP, and the retained broker has no
+connection from that exact IP (or the disposable broker is confirmed stopped in
+the first stage). The management parser uses the [Artemis 2.53 source projection](https://github.com/apache/artemis/blob/2.53.0/artemis-server/src/main/java/org/apache/activemq/artemis/core/management/impl/ActiveMQServerControlImpl.java)
+`clientAddress` and `sessionCount`; it rejects malformed/unbounded
+responses and never uses substring address matching. Missing observations replace
+old success with `observed:false`. Separate before/after stage artifacts retain
+only allowed counters, identities, timestamps and an aggregate frozen-data digest.
+
+The run identity, authority/input hashes, task graph, selected frozen inputs and
+progress revision must remain identical while workers are absent. The original
+POST is expected to detach with the first coordinator. Recovery reads the saved
+request and terminal result through the normal workspace-scoped GET endpoints;
+it never submits another analysis. Existing worker redelivery, exactly one effect
+per root and resource/network assertions remain required.
+
+Local bounded Node/shell tests exercise the actual observation predicates,
+IP parsing, stale-evidence replacement and unchanged-identity comparison. The
+new Kubernetes flow has **not** executed locally: Docker, kind, kubectl and Helm
+are unavailable in this workspace. A successful current-head canonical live run,
+including its separate stage artifacts, is required before either new deployment
+row is accepted. This follow-up does not close loss during physical provider HTTP,
+a browser using two actual web pods, or a production capacity baseline.
+
 ## Measured memory boundary
 
 The retained nine-process [data/cache experiment](evidence/frozen-embedding-footprint-2026-10-04.json),

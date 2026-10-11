@@ -214,3 +214,106 @@ test('Loss polling replaces previous observations instead of retaining stale suc
     rmSync(root, {recursive: true, force: true});
   }
 });
+
+function pollLostCoordinator(root, {connections = 0, sessions = 0, oldPod = false,
+    brokerAvailable = true, databaseAvailable = true, podsAvailable = true, stage = 'after-dispatch'}) {
+  const evidence = join(root, 'evidence'), privateDir = join(root, 'private');
+  for (const directory of [evidence, privateDir]) mkdirSync(directory, {recursive: true});
+  writeFileSync(join(root, 'connections.json'), JSON.stringify({status:200, value:JSON.stringify(
+    Array.from({length:connections}, (_, i) => ({clientAddress:`/10.244.0.11:${42000+i}`,sessionCount:1, secret:'must-not-be-retained'})))}));
+  writeFileSync(join(root, 'pods.json'), JSON.stringify({items:oldPod ? [{metadata:{uid:'lost-uid'}}] : []}));
+  writeFileSync(join(root, 'database.json'), JSON.stringify({sessionCount:sessions, query:'must-not-be-retained'}));
+  const result = spawnSync('bash', ['-c', `set -euo pipefail
+kubectl() { [[ "$PODS_AVAILABLE" == true ]] || return 1; cat "$SMOKE_TEST_STATE/pods.json"; }
+broker_connections() {
+  echo broker >>"$SMOKE_TEST_STATE/calls"
+  cp "$SMOKE_TEST_STATE/connections.json" "$PRIVATE_DIR/broker-connections.json"
+  [[ "$BROKER_AVAILABLE" == true ]]
+}
+broker_stopped() { echo broker >>"$SMOKE_TEST_STATE/calls"; [[ "$BROKER_AVAILABLE" == true ]]; }
+sql() { echo database >>"$SMOKE_TEST_STATE/calls"; [[ "$DATABASE_AVAILABLE" == true ]] || return 1; cat "$SMOKE_TEST_STATE/database.json"; }
+${smokeFunction('lost_coordinator_disconnected')}
+if lost_coordinator_disconnected; then exit 0; else exit 1; fi
+`], {env:{...process.env, SMOKE_TEST_STATE:root, EVIDENCE_DIR:evidence, PRIVATE_DIR:privateDir,
+    CHART_DIR:dirname(script), NAMESPACE:'test', WEB_SELECTOR:'test', COORDINATOR_IP:'10.244.0.11', COORDINATOR_UID:'lost-uid',
+    LOSS_STAGE:stage, BROKER_AVAILABLE:String(brokerAvailable), DATABASE_AVAILABLE:String(databaseAvailable), PODS_AVAILABLE:String(podsAvailable)},
+    encoding:'utf8', timeout:5000});
+  assert.ok(!result.error, result.error?.message);
+  return {result, evidence};
+}
+for (const [name, state, disconnected] of [
+  ['old UID remains', {oldPod:true}, false],
+  ['broker connection remains', {connections:1}, false],
+  ['database connection remains', {sessions:1}, false],
+  ['fresh resources all disconnected', {}, true],
+  ['unavailable broker', {brokerAvailable:false}, false],
+  ['unavailable database', {databaseAvailable:false}, false],
+  ['unavailable pod observation', {podsAvailable:false}, false],
+  ['before-dispatch broker confirmed stopped', {stage:'before-dispatch'}, true],
+  ['before-dispatch broker absence unobserved', {stage:'before-dispatch',brokerAvailable:false}, false],
+]) test(`Coordinator loss predicate requires fresh independent observations: ${name}`, () => {
+  const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-'));
+  try {
+    const {result,evidence}=pollLostCoordinator(root,state);
+    assert.equal(result.status,disconnected?0:1,result.stdout+result.stderr);
+    assert.deepEqual(readFileSync(join(root,'calls'),'utf8').trim().split('\n'),['broker','database']);
+    assert.equal(readdirSync(evidence).length,3);
+    assert.ok(!evidenceText(evidence).includes('must-not-be-retained'));
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+test('Coordinator stage observations replace stale success and keep before/after stages distinct', () => {
+  const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-'));
+  try {
+    assert.equal(pollLostCoordinator(root, {stage:'before-dispatch'}).result.status,0);
+    assert.equal(pollLostCoordinator(root, {}).result.status,0);
+    const {result,evidence}=pollLostCoordinator(root,{podsAvailable:false,brokerAvailable:false,databaseAvailable:false});
+    assert.equal(result.status,1);
+    assert.equal(readdirSync(evidence).length,6);
+    for (const file of readdirSync(evidence).filter(name=>name.startsWith('after-dispatch'))) {
+      const value=JSON.parse(readFileSync(join(evidence,file),'utf8'));
+      assert.equal(value.observed,false);
+      assert.deepEqual(Object.keys(value).sort(),['observed','observedAt']);
+    }
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('Replacement coordinator readiness rejects HTTP-success DOWN instead of reusing a successful status', () => {
+  const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-ready-'));
+  try {
+    for (const status of ['UP','DOWN']) {
+      const result=spawnSync('bash',['-c',`set -euo pipefail
+curl() { echo '{"status":"${status}"}'; }
+${smokeFunction('web_ready')}
+if web_ready; then exit 0; else exit 1; fi
+`],{env:{...process.env,EVIDENCE_DIR:root},encoding:'utf8',timeout:5000});
+      assert.equal(result.status,status==='UP'?0:1,result.stdout+result.stderr);
+      assert.equal(JSON.parse(readFileSync(join(root,'web-readiness.json'),'utf8')).status,status);
+    }
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+test('Frozen coordinator identity refuses incomplete selected graph and detects changed input or revision', () => {
+  const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-identity-'));
+  try {
+    const identity={run:['op','admin','scope','context','command','view','QUEUED',2,0,1],
+      work:[['cp','task-cp'],['ip','task-ip']],inputs:[['cp','frozen-cp'],['ip','frozen-ip']],
+      intents:[['cp','message-cp'],['ip','message-ip']],events:[['first',1]]};
+    function observe(value, baseline) {
+      writeFileSync(join(root,'snapshot.json'),JSON.stringify(value));
+      const body=`set -euo pipefail
+sql() { cat "$PRIVATE_DIR/snapshot.json"; }
+${smokeFunction('frozen_identity')}
+${smokeFunction('identity_unchanged')}
+${baseline?'if identity_unchanged; then exit 0; else exit 1; fi':'frozen_identity >"$PRIVATE_DIR/admitted-identity.json"'}
+`;
+      return spawnSync('bash',['-c',body],{env:{...process.env,PRIVATE_DIR:root,OPERATION:'op'},encoding:'utf8',timeout:5000});
+    }
+    assert.equal(observe(identity,false).status,0);
+    assert.equal(observe(identity,true).status,0);
+    const changedInput=structuredClone(identity);changedInput.inputs[0][1]='other-frozen-input';
+    assert.equal(observe(changedInput,true).status,1);
+    const changedRevision=structuredClone(identity);changedRevision.run[9]=2;
+    assert.equal(observe(changedRevision,true).status,1);
+    const incomplete=structuredClone(identity);incomplete.intents.pop();
+    assert.notEqual(observe(incomplete,false).status,0,'Incomplete graph must fail, including the jq no-output exit status');
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
