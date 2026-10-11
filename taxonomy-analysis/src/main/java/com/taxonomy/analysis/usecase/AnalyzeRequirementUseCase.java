@@ -94,6 +94,7 @@ public class AnalyzeRequirementUseCase {
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command, AnalysisOperationContext context,
                                              ViewContext view) {
         if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
+        llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
         promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
         // Root scoring, relation work and rendering have already been persisted when this returns.
         return new AnalyzeRequirementResult(clusterExecution.execute(context, command, view, ignored -> { }));
@@ -104,6 +105,7 @@ public class AnalyzeRequirementUseCase {
         long startedNanos = System.nanoTime();
         InProcessAnalysisOperation operation = null;
         try {
+            llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
                     command.businessText(), command.provider());

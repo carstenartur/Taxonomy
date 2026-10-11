@@ -143,6 +143,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "editor_workspace")).isTrue();
         assertThat(tableExists(dataSource, "editor_operation")).isTrue();
         assertThat(tableExists(dataSource, "editor_checkpoint")).isTrue();
+        assertThat(tableExists(dataSource, "product_demo_run")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertIntegrationSchema(dataSource);
@@ -155,7 +156,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34");
     }
 
     @Test
@@ -230,7 +231,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);

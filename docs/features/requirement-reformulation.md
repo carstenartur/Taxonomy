@@ -145,7 +145,9 @@ additions remain reviewable; mechanical coverage checks cannot certify semantics
 
 Each run persists the exact Phase B prompt and schema instructions in
 `reconcileContext` before Phase A starts, including offers created before Phase B
-existed. Versions are `reformulation-reconcile-v1` / `reconcile-response-v1`, with
+existed. New offers use `reformulation-reconcile-v2` / `reconcile-response-v1` (v2 omits
+absent node fields and English copies identical to the original text and says so
+in the frozen instructions; offers frozen with v1 keep their exact v1 encoding), with
 schema instructions in `prompts/reformulation-reconcile.txt`. Calls receive the
 FULL exact original and only scoped frozen node/mapping/edge data; live workspace
 DSL and archive-only snapshots never enter formulation prompts. One schema repair

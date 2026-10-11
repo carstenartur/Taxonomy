@@ -31,6 +31,7 @@ static/js/api/
   workspace-api.js         ← /api/workspace/* (add when migrating)
   versioning-api.js        ← /api/versions/*, /api/context/* (add when migrating)
   relations-api.js         ← /api/relations/* (add when migrating)
+  product-demo-api.js      ← /api/product-demo/*
 ```
 
 `taxonomy-api-client.js` **must be loaded before** all other `api/*.js` files,

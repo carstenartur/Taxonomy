@@ -26,7 +26,7 @@
             impact:'Betroffene Aussagen / Abschnitte / Schnittstellen', noImpact:'Noch keine Antwortänderungen.', review:'Alle Ergänzungen bleiben fachlich ungeprüft.',
             additions:'Aussagen, Ergänzungen und Herkunft', edit:'Absatz bearbeiten', reject:'Ergänzung ablehnen', rejected:'Abgelehnt – bleibt als Beleg erhalten',
             sourceAnswer:'Durch Original beantwortet', sourceConflict:'Widerspruch: Original und menschliche Entscheidung bleiben erhalten.',
-            candidate:'Änderungsvorschlag – geschützte Bearbeitung bleibt erhalten', current:'Aktuell gespeicherter Text', candidateText:'Neuer Kandidat',
+            candidate:'Änderungsvorschlag – geschützte Bearbeitung bleibt erhalten', useCandidate:'Kandidat in den Editor laden (danach Entwurf speichern)', candidateLoaded:'Kandidat in den Editor geladen. Erst „Entwurf speichern“ ändert das Angebot.', current:'Aktuell gespeicherter Text', candidateText:'Neuer Kandidat',
             older:'Dieses Angebot basiert auf einer älteren Quellversion.', noQuestions:'Keine Fragen erfasst. Dies ist keine fachliche Freigabe.',
             loading:'Wird geladen…', working:'Wird verarbeitet…', dirty:'Ungespeicherte Bearbeitung bleibt erhalten.', failed:'Aktion fehlgeschlagen: ',
             referenceUnavailable:'Der Bezug ist im eingefrorenen Snapshot nicht vorhanden.', architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
@@ -52,7 +52,7 @@
             impact:'Affected statements / sections / interfaces', noImpact:'No answer changes yet.', review:'All additions still require expert review.',
             additions:'Statements, additions and provenance', edit:'Edit paragraph', reject:'Reject addition', rejected:'Rejected – retained as evidence',
             sourceAnswer:'Answered by original', sourceConflict:'Conflict: source and human decision remain available.',
-            candidate:'Candidate change – protected edit remains in place', current:'Currently saved text', candidateText:'New candidate',
+            candidate:'Candidate change – protected edit remains in place', useCandidate:'Load candidate into editor (then save draft)', candidateLoaded:'Candidate loaded into the editor. Only “Save draft” changes the proposal.', current:'Currently saved text', candidateText:'New candidate',
             older:'This offer is based on an older source version.', noQuestions:'No questions recorded. This does not mean expert approval.',
             loading:'Loading…', working:'Working…', dirty:'Unsaved edit has been preserved.', failed:'Action failed: ',
             referenceUnavailable:'This reference is not present in the frozen snapshot.', architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
@@ -152,6 +152,12 @@
                 pre([edge.relationType, edge.presenceReason, edge.reviewStatus].filter(v => v != null).join('\n')));
         } else detail.append(el('p', t('referenceUnavailable'), 'alert alert-warning'));
         detail.tabIndex = -1; detail.focus(); announce(t('architecture')+' '+id);
+    }
+    function loadCandidate(text) {
+        // Explicit, reviewable step: the candidate only becomes the proposal after "Save draft".
+        const use=button(t('useCandidate'),()=>{const editor=host.querySelector('[data-reformulation-editor]');if(!editor)return;
+            changeView('proposal',false);editor.value=text;editor.dispatchEvent(new Event('input',{bubbles:true}));editor.focus();announce(t('candidateLoaded'));},'btn btn-sm btn-outline-primary ms-2');
+        use.dataset.reformulationUseCandidate='';return use;
     }
     async function update(operation, body, draftKey) {
         if (mutationInFlight) throw new Error(t('working'));
@@ -436,7 +442,7 @@
                 await refreshRuns();
             },'btn btn-sm btn-outline-danger'));
 
-            if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
+            if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))),loadCandidate(run.candidate.text));target.append(candidate);}
         });
         await refreshProgress();
         if(offer.id!==selected || generation!==readGeneration)return;

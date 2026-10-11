@@ -90,6 +90,7 @@ class StreamRequirementAnalysisUseCaseTest {
         verify(llmService).setRequestProviderId(com.taxonomy.analysis.service.LlmProvider.GEMINI.id());
         verify(llmService).analyzeStreaming(eq(command.businessText()), any());
         verify(llmService).clearRequestProvider();
+        verify(llmService).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), eq(false));
         verifyNoMoreInteractions(llmService);
     }
 
@@ -140,6 +141,7 @@ class StreamRequirementAnalysisUseCaseTest {
         verify(llmService).clearRequestProvider();
         verify(llmService).setRequestProviderId(new com.taxonomy.extension.api.llm.ProviderId("unknown"));
         verifyNoInteractions(promptBudgetPolicy);
+        verify(llmService).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), eq(false));
         verifyNoMoreInteractions(llmService);
     }
 }

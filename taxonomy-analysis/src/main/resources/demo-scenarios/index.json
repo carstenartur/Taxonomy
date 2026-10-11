@@ -1,0 +1,6 @@
+{
+  "schema": "taxonomy-product-demo-index-v1",
+  "command": "produktdemo",
+  "defaultScenario": "time-tracking-v1",
+  "scenarios": ["time-tracking-v1"]
+}

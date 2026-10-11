@@ -29,6 +29,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -114,7 +116,8 @@ class AnalyzeRequirementUseCaseTest {
 
         verify(repositoryStateService).getViewContext("alice", "main", selected);
         verify(repositoryStateService, never()).resolveWorkspaceBranch(any());
-        verifyNoInteractions(llmService);
+        verify(llmService).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), anyBoolean());
+        verifyNoMoreInteractions(llmService);
     }
 
     @Test

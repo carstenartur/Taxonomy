@@ -151,6 +151,12 @@ public class AuthorizationRulesConfigurer {
 
         auth.requestMatchers(HttpMethod.POST, "/api/projects/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
+        // The product demo creates a project and drives reformulation/adoption like a normal project.
+        // Reads are tenant-scoped like project reads; starting and closing require project-write roles.
+        auth.requestMatchers(HttpMethod.GET, "/api/product-demo/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/product-demo/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PATCH, "/api/projects/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/projects/**")
