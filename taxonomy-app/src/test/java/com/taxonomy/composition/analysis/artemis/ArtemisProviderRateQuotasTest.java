@@ -697,8 +697,18 @@ class ArtemisProviderRateQuotasTest {
     }
     @Test void actualSingleStateCanAdmitDespiteANonAtomicDoubleCountObservation() throws Exception {
         var policy=new ProviderQuotaLedger.Policy(1,0,2,0,0,1000,16);provision(policy);
-        var actual=broker.getActiveMQServer().locateQueue(SimpleString.of(QUEUE));
-        assertThat(actual.getMessageCount()).isOne();assertThat(actual.getDeliveringCount()).isZero();
+        // Establish the actual singleton through a real transacted delivery. Queue statistics
+        // can lag even a confirmed seed commit and cannot prove this fixture's state.
+        try(var verifier=connect();var session=verifier.createSession(true);
+            var consumer=session.createConsumer(session.createQueue(QUEUE+"::"+QUEUE))){
+            var delivered=(TextMessage)consumer.receive(1000);assertThat(delivered).isNotNull();
+            assertThat(delivered.getIntProperty("schemaVersion")).isEqualTo(1);
+            assertThat(delivered.getStringProperty("quotaGroup")).isEqualTo(GROUP);
+            assertThat(delivered.getStringProperty("policyFingerprint")).isEqualTo(policy.fingerprint());
+            assertThat(json.readValue(delivered.getText(),ProviderQuotaLedger.State.class)).isEqualTo(ProviderQuotaLedger.empty(policy));
+            assertThat(consumer.receiveNoWait()).as("Real forced second receive finds no duplicate seed state").isNull();
+            session.rollback(); // Admission below must consume the original seed, not a fixture replacement.
+        }
         var physical=new AtomicInteger();
         assertThat(send(quotasWithCountObservation(connect(),policy,2),LlmProvider.OPENAI,physical)).isTrue();
         assertThat(physical.get()).isOne();
