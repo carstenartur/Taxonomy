@@ -155,7 +155,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34");
     }
 
     @Test
@@ -230,7 +230,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
@@ -294,7 +294,12 @@ class TaxonomySchemaPostgresMigrationIT {
                 "analysis_cluster_work", List.of("id", "operation_id", "task_id", "task_type", "root_code", "ordinal_number",
                         "message_json", "input_json", "result_json", "failure_reason", "state", "settled", "delivery_attempts", "started_at", "finished_at"),
                 "analysis_cluster_input", List.of("id", "operation_id", "root_code", "input_json"),
-                "analysis_cluster_event", List.of("id", "operation_id", "event_revision", "event_json"));
+                "analysis_cluster_event", List.of("id", "operation_id", "event_revision", "event_json"),
+                "analysis_cluster_call", List.of("id", "operation_id", "task_id", "call_number", "execution_id", "logical_ordinal",
+                        "delivery_attempt", "provider", "node", "state", "started_at", "duration_millis", "event_revision",
+                        "prompt_text", "response_text", "error_text", "prompt_length", "response_length"),
+                "analysis_cluster_attempt", List.of("id", "operation_id", "call_id", "invocation_id", "provider", "source",
+                        "retry_index", "started_at", "observation_json"));
         for (var table : columns.entrySet())
             for (String column : table.getValue())
                 assertThat(columnExists(dataSource, table.getKey(), column)).as(table.getKey() + " " + column).isTrue();
@@ -304,6 +309,9 @@ class TaxonomySchemaPostgresMigrationIT {
         assertRecoveryIndex(dataSource, "analysis_cluster_input", "idx_analysis_cluster_input_run", true, "operation_id");
         assertRecoveryIndex(dataSource, "analysis_cluster_event", "idx_analysis_cluster_event_run", true, "operation_id", "event_revision");
         assertRecoveryIndex(dataSource, "analysis_cluster_event", "uq_analysis_cluster_event_revision", false, "operation_id", "event_revision");
+        assertRecoveryIndex(dataSource, "analysis_cluster_call", "idx_analysis_cluster_call_run", true, "operation_id", "call_number");
+        assertRecoveryIndex(dataSource, "analysis_cluster_call", "uq_analysis_cluster_call_number", false, "operation_id", "call_number");
+        assertRecoveryIndex(dataSource, "analysis_cluster_attempt", "idx_analysis_cluster_attempt_call", true, "operation_id", "call_id", "started_at");
     }
 
     private static void assertAnalysisDispatchSchema(DataSource dataSource) throws SQLException {

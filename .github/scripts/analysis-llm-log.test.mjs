@@ -161,11 +161,20 @@ test('absent response is explicit rather than an empty apparent answer', async (
     assert.match(view.log.textContent, /Keine Antwort/); assert.match(view.log.textContent, /IllegalStateException/); view.monitor.stop();
 });
 
-test('an already open pending call loads the final response once without another toggle', async () => {
-    const view = fixture(failure, 'STARTED'); await view.tick(); await view.open();
-    assert.equal(view.detailCalls, 0); view.ready(); await view.tick();
-    assert.equal(view.detailCalls, 1); assert.ok(view.log.textContent.includes(reply));
-    view.row.emit('toggle'); await flush(); assert.equal(view.detailCalls, 1); view.monitor.stop();
+test('an open pending call shows its prompt and refreshes once when the final response arrives', async () => {
+    let completed = false;
+    const view = fixture(() => completed ? failure : { ...failure, response: '', error: '' }, 'STARTED');
+    await view.tick(); await view.open();
+    assert.equal(view.detailCalls, 1);
+    assert.ok(view.log.textContent.includes(failure.prompt), 'committed START already exposes its prompt');
+    assert.ok(!view.log.textContent.includes(reply), 'pending transport has no invented response');
+    completed = true; view.ready(); await view.tick();
+    assert.equal(view.detailCalls, 2); assert.ok(view.log.textContent.includes(reply));
+    await view.tick(); assert.equal(view.detailCalls, 2, 'an unchanged observation does not refetch details');
+    view.row.open = false; view.row.emit('toggle'); await flush();
+    assert.equal(view.detailCalls, 2);
+    await view.open(); assert.equal(view.detailCalls, 3, 'deliberate reopening requests current durable evidence');
+    view.monitor.stop();
 });
 
 test('terminal monitoring still allows on-demand inspection', async () => {
