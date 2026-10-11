@@ -811,6 +811,16 @@ public class LlmService {
                 throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
             }
         }
+        var demo = com.taxonomy.analysis.demo.DemoProviderIds.parse(provider);
+        if (demo.isPresent()) {
+            // Replay identity is the exact scenario content and iteration, never a live provider configuration.
+            var scenario = com.taxonomy.analysis.demo.DemoScenarioCatalog.builtin().require(demo.get());
+            String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
+                    .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), "DEMO_REPLAY",
+                    scenario.fingerprint(), demo.get().iteration(), Integer.toString(productBatchSize),
+                    Integer.toString(minimumProductScore()), templates);
+        }
         String endpoint = provider.equals(LlmProvider.GEMINI.id()) ? providerConfig.getGeminiUrl()
                 : provider.equals(LlmProvider.LOCAL_ONNX.id()) ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
         String model = provider.equals(LlmProvider.GEMINI.id()) || provider.equals(LlmProvider.LOCAL_ONNX.id()) ? endpoint

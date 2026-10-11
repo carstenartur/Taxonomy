@@ -10,6 +10,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import com.taxonomy.analysis.demo.DemoProviderIds;
+import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import com.taxonomy.extension.api.llm.*;
@@ -27,6 +29,8 @@ public class LlmGatewayRegistry {
     private static final Logger log = LoggerFactory.getLogger(LlmGatewayRegistry.class);
     private final Map<ProviderId, LlmGateway> gateways;
     private final List<LlmGateway> transports = new ArrayList<>();
+    private final Map<ProviderId, LlmGateway> demoGateways = new java.util.concurrent.ConcurrentHashMap<>();
+    private AiPromptBudgetPolicy demoBudget;
 
     @Autowired
     public LlmGatewayRegistry(LlmProviderConfig providerConfig,
@@ -38,6 +42,7 @@ public class LlmGatewayRegistry {
                                AiPromptBudgetPolicy promptBudgetPolicy,
                                List<LlmTransportExtension> extensions) {
         LlmResponseParser responseParser = new LlmResponseParser(objectMapper);
+        demoBudget = promptBudgetPolicy;
         gateways = new LinkedHashMap<>();
         register(LlmProvider.GEMINI, new GeminiGateway(
                 providerConfig, restTemplate, objectMapper, responseParser,
@@ -162,11 +167,25 @@ public class LlmGatewayRegistry {
     }
 
     public LlmGateway getGatewayById(ProviderId provider) {
+        if (DemoProviderIds.isDemo(provider)) return demoGateway(provider);
         LlmGateway gateway = gateways.get(provider);
         if (gateway == null) {
             throw new IllegalArgumentException("No HTTP gateway registered for provider " + provider
                     + ". LOCAL_ONNX uses local embeddings, not an HTTP gateway.");
         }
         return gateway;
+    }
+
+    /** Scenario replay replaces only the model reply; it never shares the live transport or recordings. */
+    private LlmGateway demoGateway(ProviderId provider) {
+        var binding = DemoProviderIds.parse(provider).orElseThrow();
+        var catalog = DemoScenarioCatalog.builtin();
+        if (!catalog.supports(provider)) {
+            throw new IllegalArgumentException("Unknown product-demo scenario or iteration: " + provider);
+        }
+        return demoGateways.computeIfAbsent(provider, id -> {
+            LlmGateway replay = new ScenarioReplayGateway(binding, catalog);
+            return demoBudget == null ? replay : new PromptBudgetEnforcingLlmGateway(replay, demoBudget);
+        });
     }
 }
