@@ -33,6 +33,31 @@ class DurableClusterAnalysisObservationTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final WorkspaceContext SCOPE = command("requirement").workspaceContext();
 
+    @Test void explicitScopedDetailsSurvivePersistenceRestartAndDoNotEnterProgress() throws Exception {
+        String url = "jdbc:hsqldb:mem:diagnostic-restart-" + java.util.UUID.randomUUID() + ";hsqldb.tx=mvcc";
+        var context = context("diagnostic-restart"); long call;
+        try (var db = new Database(url, "create", sql -> sql)) {
+            db.admit(context); var task = db.task(CP); db.store.start(task); var session = db.store.diagnostics(task);
+            call = session.started("Mock", "CP"); session.prepared(call, "PRIVATE-REQUEST");
+            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setRawResponse("PRIVATE-ANSWER"); session.completed(call, detail, 3);
+        }
+        try (var db = new Database(url, "validate", sql -> sql); var observer = new DurableClusterAnalysisObservation(db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
+            var view = observer.snapshot(context.operationId(), "alice", SCOPE).orElseThrow(); assertEquals(1, view.snapshot().calls().size());
+            assertFalse(new tools.jackson.databind.ObjectMapper().writeValueAsString(view).contains("PRIVATE-"));
+            assertEquals("PRIVATE-REQUEST", observer.callDetail(context.operationId(), call, "alice", SCOPE).prompt());
+            assertEquals("PRIVATE-ANSWER", observer.callDetail(context.operationId(), call, "alice", SCOPE).response());
+            assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> observer.callDetail(context.operationId(), call, "bob", SCOPE)).getStatusCode());
+            assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> observer.callDetail(context.operationId(), call, "alice", new WorkspaceContext("alice", "foreign", "draft", "repo"))).getStatusCode());
+            assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> observer.callDetail(context.operationId(), call + 1, "alice", SCOPE)).getStatusCode());
+            var resolver = mock(WorkspaceResolver.class); when(resolver.resolveCurrentUsername()).thenReturn("alice"); when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
+            var mvc = MockMvcBuilders.standaloneSetup(new AnalysisProgressController(new AnalysisProgressRegistry(new StandardEnvironment()), resolver, observer)).build();
+            mvc.perform(get("/api/analysis-runs/" + context.operationId() + "/calls/" + call)).andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.prompt").value("PRIVATE-REQUEST")).andExpect(jsonPath("$.response").value("PRIVATE-ANSWER"));
+            new org.springframework.jdbc.core.JdbcTemplate(db.bean.getDataSource()).update("update analysis_cluster_call set task_id='foreign-task'");
+            assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> observer.callDetail(context.operationId(), call, "alice", SCOPE)).getStatusCode());
+        }
+    }
+
     @Test void stagedAssessmentStaysRunningAndCannotBeRecoveredUntilFinalizationCommits() {
         try (var db = new Database(); var observer = new DurableClusterAnalysisObservation(
                 db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {

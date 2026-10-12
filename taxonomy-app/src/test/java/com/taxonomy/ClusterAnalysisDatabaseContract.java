@@ -98,7 +98,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             }
         });
         factory.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
-                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(),
+                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(),
                 AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", schemaMode, "hibernate.search.enabled", "false"));
@@ -114,6 +114,28 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         }, 20, 100);
         store = new ClusterAnalysisStore(em, transactions, JSON, dispatch);
         completions = new JpaAnalysisTaskCompletionStore(em, transactions);
+    }
+
+    void durableDiagnosticsSurviveANewPersistenceFactoryWithUnknownUsageAndScopedDetails() {
+        var scope = scope("diagnostic-workspace", "draft", "diagnostic-repository");
+        var context = context("diagnostics", scope, "requirement", null, null);
+        store.admit(context, command(scope, "requirement"), null, Map.of(CP, "{}", IP, "{}"));
+        var task = task(context, CP); store.start(task); var session = store.diagnostics(task);
+        String request = "bounded-request".repeat(1000);
+        long call = session.started("Mock", "CP"); session.prepared(call, request);
+        var attempt = new com.taxonomy.analysis.service.LlmTransportMeter.Attempt(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "CUSTOM_OPENAI", com.taxonomy.analysis.service.LlmTransportMeter.Source.HTTP, 0);
+        session.started(attempt);
+        var detail = new LlmCallDetail(); detail.setRawResponse("retained-answer"); session.completed(call, detail, 1);
+        assertEquals(1, count("ClusterAnalysisCall", "operationId", context.operationId()));
+        assertEquals(1, count("ClusterAnalysisAttempt", "operationId", context.operationId()));
+        try (var reread = existing(database); var observation = new DurableClusterAnalysisObservation(reread.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
+            var retained = observation.callDetail(context.operationId(), call, owner, scope);
+            assertEquals("retained-answer", retained.response()); assertTrue(retained.truncated()); assertEquals(request.length(), retained.promptLength());
+            assertEquals(8192, retained.prompt().length());
+            assertEquals("STARTED", retained.attempts().getFirst().state()); assertNull(retained.attempts().getFirst().usage().totalTokens());
+            assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> observation.callDetail(context.operationId(), call, "foreign-owner", scope));
+            assertEquals(1, observation.snapshot(context.operationId(), owner, scope).orElseThrow().snapshot().calls().size());
+        }
     }
 
     void largePayloadsAndAllFourTablesSurviveANewPersistenceFactory() {

@@ -43,10 +43,21 @@ Results without relationship evidence use a bounded hierarchy-only view. Global
 relation propagation is never used. Deterministic rendering failures finish with explicit
 `ARCHITECTURE_VIEW_INCOMPLETE` partial evidence; database failures remain retryable.
 
-The existing #808 question-continuation protocol is an explicit compatibility
-boundary. Requests with `resumable=true` continue through
-`AnalysisContinuationService`, including START, decisions, replay and cancellation.
-An active `AnalysisCheckpointSession` keeps `AnalyzeRequirementUseCase` on that
-existing implementation. Ordinary requests and SSE use the cluster path when it
-is configured. This choice is made before execution and is not a fallback after a
-cluster failure. With no cluster bean, all existing local routes are unchanged.
+The #808 question-continuation protocol now has an explicit distributed binding.
+`AnalysisContinuationService.beginDistributed` freezes request, catalogue, provider
+and scoring/relation policy identity, then binds the durable claim to the admitted
+cluster operation. Actual workers reconstruct checkpoint sessions from that
+binding and their exact task grant. Saved validated question answers replay without
+HTTP. A worker interrupted after durable question START leaves an uncertain window;
+redelivery does not blindly issue another provider request. The scoped owner must
+submit an explicit RETRY or SKIP decision with the current recovery version.
+Operation ownership is checked atomically under the continuation lock at attach,
+prepare and finish. Cancellation fences late results. Closing the HTTP/SSE admission
+scope leaves an attached distributed claim alive; losing its observer is not
+cancellation. The local checkpoint path remains available for local execution.
+
+The optional OpenAI Responses token contract is described in the
+[operator guide](../en/OPERATIONS_GUIDE.md#supported-openai-responses-tpm-adapter).
+Its immutable snapshot/schema/input bound/output cap enter provider and recovery
+fingerprints. Count and generation are separately admitted physical operations;
+Count always retains UNKNOWN usage and never becomes a semantic checkpoint answer.

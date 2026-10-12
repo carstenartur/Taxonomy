@@ -139,6 +139,16 @@ public class LlmGatewayRegistry {
         }
     }
 
+    /** Independent optional rate policy, installed once before publication. */
+    @Autowired(required = false)
+    public void configureProviderQuotas(ProviderRateQuotas quotas) {
+        for (var gateway : transports) {
+            if (gateway instanceof OpenAiCompatibleGateway openAi) openAi.configureProviderQuotas(quotas);
+            else if (gateway instanceof GeminiGateway gemini) gemini.configureProviderQuotas(quotas);
+            else if (gateway instanceof ContributedLlmGateway contributed) contributed.configureProviderQuotas(quotas);
+        }
+    }
+
     private void register(LlmProvider provider, LlmGateway gateway, AiPromptBudgetPolicy promptBudgetPolicy) {
         register(provider.id(), gateway, promptBudgetPolicy);
     }

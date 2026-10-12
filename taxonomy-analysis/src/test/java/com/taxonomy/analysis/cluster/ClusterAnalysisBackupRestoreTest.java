@@ -31,6 +31,30 @@ class ClusterAnalysisBackupRestoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    @Test void diagnosticsExportRestoreRetainsBoundedDetailUnresolvedStartAndReplayWithoutResuming() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("diagnostic-source"); source.admit(original); var task = source.task(CP); source.store.start(task);
+            var session = source.store.diagnostics(task); long call = session.started("Mock", "CP");
+            session.prepared(call, "request".repeat(2000));
+            var unresolved = new com.taxonomy.analysis.service.LlmTransportMeter.Attempt(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "CUSTOM_OPENAI", com.taxonomy.analysis.service.LlmTransportMeter.Source.HTTP, 0);
+            session.started(unresolved);
+            var replay = new com.taxonomy.analysis.service.LlmTransportMeter.Attempt(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "CUSTOM_OPENAI", com.taxonomy.analysis.service.LlmTransportMeter.Source.RECORDING_REPLAY, 0);
+            session.started(replay); session.completed(replay, new com.taxonomy.analysis.service.LlmTransportMeter.Observation(replay.invocationId(), replay.provider(), replay.source(), 0, null,
+                    com.taxonomy.analysis.service.LlmTransportMeter.Outcome.RESPONSE, 0, new com.taxonomy.analysis.service.LlmTransportMeter.Usage(null, null, null, null, null, false)));
+            var exported = exportedArchive(source); assertEquals(1, exported.calls().size()); assertEquals(2, exported.attempts().size());
+            var restored = targetContext("diagnostic-restored");
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(exported, restored, targetCommand());
+            var detail = target.store.callDiagnostics().detail(restored, call);
+            assertTrue(detail.truncated()); assertEquals(ClusterAnalysisDiagnostics.MAX_TEXT, detail.prompt().length()); assertEquals(14000, detail.promptLength());
+            assertEquals(2, detail.attempts().size()); assertTrue(detail.attempts().stream().anyMatch(a -> a.source().equals("HTTP") && a.state().equals("STARTED")));
+            assertTrue(detail.attempts().stream().anyMatch(a -> a.source().equals("RECORDING_REPLAY") && a.state().equals("COMPLETED") && a.usage().totalTokens() == null));
+            assertNotEquals(unresolved.id(), detail.attempts().stream().filter(a -> a.source().equals("HTTP")).findFirst().orElseThrow().attemptId());
+            assertTrue(detail.taskId().startsWith("diagnostic-restored:")); assertTrue(target.sent.isEmpty());
+            assertEquals(ClusterAnalysisState.CANCELLED, target.store.snapshot(restored).state());
+            assertEquals(2, archive(target, restored.operationId()).attempts().size());
+        }
+    }
+
     @Test void interruptedRestoreRetainsCommittedRootAndFrozenInputWithoutDispatching() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("source"); source.admit(original);
@@ -375,7 +399,13 @@ class ClusterAnalysisBackupRestoreTest {
                     .map(i -> new Input(new SourceRecordId("analysis.cluster-input", i.id), reference, i.root, i.inputJson)).toList();
             var events = database.em.createQuery("select e from ClusterAnalysisEvent e where e.operationId=:id order by e.revision", ClusterAnalysisEvent.class).setParameter("id", id).getResultList().stream()
                     .map(e -> new Event(new SourceRecordId("analysis.cluster-event", e.id), reference, e.revision, e.eventJson)).toList();
-            return new Archive(run, work, inputs, events);
+            var calls = database.em.createQuery("select c from ClusterAnalysisCall c where c.operationId=:id order by c.callNumber", ClusterAnalysisCall.class).setParameter("id", id).getResultList().stream()
+                    .map(c -> new Call(new SourceRecordId("analysis.cluster-call", c.id), reference, c.taskId, c.callNumber, c.executionId, c.logicalOrdinal, c.deliveryAttempt,
+                            c.provider, c.node, c.state, c.startedAt, c.durationMillis, c.eventRevision, c.prompt, c.response, c.error, c.promptLength, c.responseLength)).toList();
+            var attempts = database.em.createQuery("select a from ClusterAnalysisAttempt a where a.operationId=:id order by a.id", ClusterAnalysisAttempt.class).setParameter("id", id).getResultList().stream()
+                    .map(a -> new Attempt(new SourceRecordId("analysis.cluster-attempt", a.id), reference, new SourceRecordId("analysis.cluster-call", a.callId), a.id, a.invocationId,
+                            a.provider, a.source, a.retryIndex, a.startedAt, a.observationJson)).toList();
+            return new Archive(run, work, inputs, events, calls, attempts);
         });
     }
     private static void assertTerminalProvenance(Archive original, Archive restored) {
@@ -411,12 +441,14 @@ class ClusterAnalysisBackupRestoreTest {
             var bound=new AnalyzeRequirementCommand(c.businessText(),c.includeArchitectureView(),c.maxArchitectureNodes(),c.provider(),c.username(),c.workspaceContext(),c.provenance(),c.analysisScope(),binding);
             source.store.admit(original,bound,null,Map.of(CP,"{\"root\":\"CP\"}",IP,"{\"root\":\"IP\"}"));
             var archive=exportedArchive(source);var destination=targetContext("bound-restored");var t=targetCommand();
-            var restoredCommand=new AnalyzeRequirementCommand(t.businessText(),t.includeArchitectureView(),t.maxArchitectureNodes(),t.provider(),t.username(),t.workspaceContext(),t.provenance(),t.analysisScope(),binding);
+            var restoredCommand=new AnalyzeRequirementCommand(t.businessText(),t.includeArchitectureView(),t.maxArchitectureNodes(),t.provider(),t.username(),t.workspaceContext(),t.provenance(),t.analysisScope(),binding)
+                    .withContinuationBinding(new com.taxonomy.analysis.recovery.AnalysisContinuationBinding(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "c".repeat(64), "d".repeat(64), "e".repeat(64)));
             assertThrows(IllegalArgumentException.class,()->new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON).restore(archive,destination,restoredCommand));
             assertNull(new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId())));
             new ClusterAnalysisBackupRestorer(target.em,target.transactions,JSON,binding::equals).restore(archive,destination,restoredCommand);
             var stored=new TransactionTemplate(target.transactions).execute(status->target.em.find(ClusterAnalysisRun.class,destination.operationId()).commandJson);
             assertEquals(binding,JSON.readValue(stored,AnalyzeRequirementCommand.class).providerBinding());
+            assertNull(JSON.readValue(stored,AnalyzeRequirementCommand.class).continuationBinding());
             assertNoOperationalState(target);
         }
     }
@@ -435,7 +467,7 @@ class ClusterAnalysisBackupRestoreTest {
         }, (owner, authority, businessText, terminal) -> true);
         return new Archive(exportedRecords(datasets, "cluster-runs", Run.class).getFirst(),
                 exportedRecords(datasets, "cluster-work", Work.class), exportedRecords(datasets, "cluster-inputs", Input.class),
-                exportedRecords(datasets, "cluster-events", Event.class));
+                exportedRecords(datasets, "cluster-events", Event.class), exportedRecords(datasets, "cluster-calls", Call.class), exportedRecords(datasets, "cluster-attempts", Attempt.class));
     }
     private static <T> List<T> exportedRecords(Map<String, String> datasets, String name, Class<T> type) {
         return datasets.get("data/analysis/" + name + ".ndjson").lines().skip(1).map(line -> JSON.readValue(line, type)).toList();

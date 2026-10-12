@@ -154,16 +154,22 @@ public class AnalysisApiController {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
             WorkspaceContext context = resolveWorkspaceContext(username);
-            // #808 owns its checkpoint/decision protocol even when ordinary runs use Artemis.
-            if (clusterExecution != null && !request.isResumable()) {
-                var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
-                        maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
-                String branch = context.currentBranch();
-                var view = repositoryStateService.getViewContext(context.username(), branch, context);
-                var operation = AnalysisOperationContexts.create(operationId, command, view);
-                var result = analyzeRequirementUseCase.analyze(command, operation, view);
-                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
-                        .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(result.analysisResult());
+            if (clusterExecution != null) {
+                if (request.isResumable() && continuationService == null)
+                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
+                try (var continuation = request.isResumable() ? continuationService.beginDistributed(request, username, context, maxArchitectureNodes) : null) {
+                    if (continuation != null && continuation.replay() != null) return ResponseEntity.ok()
+                            .cacheControl(org.springframework.http.CacheControl.noStore()).header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());
+                    var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
+                            maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
+                    if (continuation != null) command = continuation.bind(command);
+                    String branch = context.currentBranch();
+                    var view = repositoryStateService.getViewContext(context.username(), branch, context);
+                    var operation = AnalysisOperationContexts.create(operationId, command, view);
+                    var result = analyzeRequirementUseCase.analyze(command, operation, view);
+                    return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                            .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(result.analysisResult());
+                }
             }
             if (request.isResumable() && continuationService == null) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");

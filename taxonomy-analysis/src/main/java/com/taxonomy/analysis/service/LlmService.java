@@ -837,6 +837,8 @@ public class LlmService {
         String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), endpoint, model,
                 Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
                 Integer.toString(minimumProductScore()), templates);
+        String tokenContract = providerConfig.isMockMode() ? null : providerConfig.tokenContractRevision(provider);
+        if (tokenContract != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, tokenContract);
         // Existing built-in continuations retain their identity; external transports
         // must never reuse checkpoints produced by another artifact or configuration.
         if (LlmProvider.builtin(provider).isEmpty()) {

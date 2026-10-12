@@ -36,6 +36,12 @@ class ClusterAnalysisDatabaseContractTest {
         assertEquals(0, database.active.get(), "Failed initialization must not leak a connection pool");
     }
 
+    @Test void durableDiagnosticsSurviveANewPersistenceFactoryWithUnknownUsageAndScopedDetails() {
+        try (var contract = ClusterAnalysisDatabaseContract.hsql()) {
+            contract.durableDiagnosticsSurviveANewPersistenceFactoryWithUnknownUsageAndScopedDetails();
+        }
+    }
+
     @Test void largePayloadsAndAllFourTablesSurviveANewPersistenceFactory() {
         try (var contract = ClusterAnalysisDatabaseContract.hsql()) {
             contract.largePayloadsAndAllFourTablesSurviveANewPersistenceFactory();

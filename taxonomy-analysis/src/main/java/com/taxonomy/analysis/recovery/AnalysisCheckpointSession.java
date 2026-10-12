@@ -49,6 +49,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         String key = "R" + digest(kind, provider, String.join("\n", nodes), input).substring(1);
         Question question = new Question(key, digest(provider, input), provider, nodes, input);
         Checkpoint saved = current.store.prepare(question);
+        question = saved.question();
         if ("SUCCESS".equals(saved.state())) return copy(saved.detail());
         if ("SKIPPED".equals(saved.state())) {
             var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);
@@ -92,6 +93,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Question question = new Question(digest(kind, String.join("\n", offered)),
                 digest(provider, input), provider, offered, input);
         Checkpoint checkpoint = current.store.prepare(question);
+        question = checkpoint.question();
         if ("SUCCESS".equals(checkpoint.state())) return copy(checkpoint.detail());
         if ("SKIPPED".equals(checkpoint.state())) {
             var unknown = new LlmCallDetail();

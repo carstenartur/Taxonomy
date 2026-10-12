@@ -33,6 +33,10 @@ public interface ClusterAnalysisObservation {
     /** Return the persisted result, 409 before it is ready, or indistinguishable 404 outside scope. */
     AnalysisResult result(String operationId, String owner, WorkspaceContext scope);
 
+    default com.taxonomy.analysis.service.AnalysisProgressRegistry.CallDetail callDetail(String operationId, long callId, String owner, WorkspaceContext scope) {
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Analysis call not found");
+    }
+
     /** Original user input for an explicit recovery action, never provider credentials or internal command state. */
     RecoveryInput request(String operationId, String owner, WorkspaceContext scope);
 

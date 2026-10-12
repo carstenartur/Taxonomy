@@ -100,7 +100,7 @@ class ClusterAnalysisRecordsExportIT {
     }
 
     static Fixture fixture() {
-        return new Fixture(ClusterAnalysisRun.class, ClusterAnalysisWork.class, ClusterAnalysisInput.class, ClusterAnalysisEvent.class);
+        return new Fixture(ClusterAnalysisRun.class, ClusterAnalysisWork.class, ClusterAnalysisInput.class, ClusterAnalysisEvent.class, ClusterAnalysisCall.class, ClusterAnalysisAttempt.class);
     }
     static void run(Fixture fixture, String id, String owner, String repository, String workspace,
                     long updated, String state, String text) {

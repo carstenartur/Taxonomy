@@ -25,7 +25,9 @@ public class AnalysisContinuationStore {
     public record Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations) {
         public Claim(String id, String token, AnalysisResult completedResult) { this(id, token, completedResult, null); }
     }
-    public record Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request) { }
+    public record Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request, String clusterOperationId) {
+        public Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request) { this(recovery, result, request, null); }
+    }
 
     @Transactional
     public Claim begin(AnalysisRequest request, WorkspaceContext scope, String signature, List<TaxonomyNodeDto> tree) {
@@ -80,10 +82,66 @@ public class AnalysisContinuationStore {
         return new Claim(id, run.claimToken, null, previous == null ? null : previous.getRelationSearchReport());
     }
 
+    @Transactional(readOnly = true)
+    public String boundOperation(String id) {
+        return em.createQuery("select r.clusterOperationId from AnalysisContinuationRun r where r.id=:id", String.class)
+                .setParameter("id", id).getResultList().stream().filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    /** Joins cluster admission; a dispatch intent cannot exist without this frozen authority. */
+    @Transactional
+    public void attach(AnalysisContinuationBinding binding, com.taxonomy.analysis.usecase.AnalyzeRequirementCommand command,
+            String operationId, String expectedPreviousOperation, String sourceJson, String catalogueHash,
+            Collection<com.taxonomy.catalog.snapshot.RootCatalogueSnapshot> roots) {
+        var run = em.find(AnalysisContinuationRun.class, binding.id(), LockModeType.PESSIMISTIC_WRITE);
+        if (run == null) throw conflict("Continuation no longer exists");
+        authorize(run, command.workspaceContext());
+        if (!"RUNNING".equals(run.state) || !Objects.equals(run.claimToken, binding.token())
+                || run.claimUntil < System.currentTimeMillis() || !Objects.equals(run.inputHash, binding.inputHash()))
+            throw conflict("Continuation authority changed before distributed admission");
+        if (!Objects.equals(run.clusterOperationId, expectedPreviousOperation))
+            throw conflict("Another distributed admission changed the current operation binding");
+        var request = mapper.readValue(run.requestJson, AnalysisRequest.class);
+        if (!Objects.equals(request.getBusinessText(), command.businessText())
+                || !Objects.equals(request.getProvider(), command.provider())
+                || request.isIncludeArchitectureView() != command.includeArchitectureView()
+                || !Objects.equals(request.getMaxArchitectureNodes(), command.maxArchitectureNodes())
+                || !Objects.equals(request.getAnalysisScope(), command.analysisScope()))
+            throw conflict("Distributed command differs from the saved requirement");
+        if (!AnalysisContinuationCatalogue.matches(readResult(run).getTree(), roots))
+            throw conflict("Catalogue changed between continuation capture and distributed admission");
+        if (run.clusterSourceJson != null && (!run.clusterSourceJson.equals(sourceJson) || !Objects.equals(run.clusterCatalogueHash, catalogueHash)))
+            throw conflict("Frozen source or catalogue changed; start a new continuation");
+        run.clusterOperationId = operationId; run.clusterSourceJson = sourceJson; run.clusterCatalogueHash = catalogueHash;
+        // Queued and staged cluster work can outlive the finite admission window.
+        // Operation state and delivery fencing revoke authority on completion, cancellation or supersession.
+        run.claimUntil = Long.MAX_VALUE;
+        em.flush();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean owns(Claim claim, String operationId) {
+        return !em.createQuery("select r.id from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token and r.clusterOperationId=:operation", String.class)
+                .setParameter("id", claim.id()).setParameter("token", claim.token()).setParameter("operation", operationId).getResultList().isEmpty();
+    }
+
     @Transactional
     public AnalysisCheckpointSession.Checkpoint prepare(Claim claim, AnalysisCheckpointSession.Question request) {
+        return prepareQuestion(claim, request, true);
+    }
+    private AnalysisCheckpointSession.Checkpoint prepareQuestion(Claim claim, AnalysisCheckpointSession.Question request, boolean compatibleLocal) {
         var run = checkpointOwner(claim, true);
         var question = question(run.id(), request.key());
+        if (question == null && compatibleLocal) {
+            var candidates = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.inputHash=:hash and q.provider=:provider", AnalysisQuestionCheckpoint.class)
+                    .setParameter("id", run.id()).setParameter("hash", request.inputHash()).setParameter("provider", request.provider()).setMaxResults(2).getResultList();
+            if (candidates.size() > 1) throw conflict("Ambiguous saved question scope; use the original distributed context");
+            if (candidates.size() == 1 && Objects.equals(candidates.getFirst().nodeCodes, mapper.writeValueAsString(request.nodes()))
+                    && AnalysisCheckpointSession.isRelationQuestion(candidates.getFirst().questionKey) == AnalysisCheckpointSession.isRelationQuestion(request.key())) {
+                question = candidates.getFirst();
+                request = new AnalysisCheckpointSession.Question(question.questionKey, request.inputHash(), request.provider(), request.nodes(), request.prompt());
+            }
+        }
         if (question != null) {
             if (!question.inputHash.equals(request.inputHash())) throw conflict("A saved question's input changed");
             if (!"READY".equals(question.state)) return checkpoint(question, request);
@@ -116,6 +174,59 @@ public class AnalysisContinuationStore {
         return checkpoint(question, request);
     }
 
+    /** A physical question belongs to one captured delivery and one worker session. */
+    public record QuestionOwner(String operationId, String taskId, int delivery, String owner, String namespace) {
+        public QuestionOwner {
+            Objects.requireNonNull(operationId); Objects.requireNonNull(taskId); Objects.requireNonNull(namespace);
+            UUID.fromString(owner); if (delivery < 1) throw new IllegalArgumentException("Captured delivery required");
+        }
+    }
+
+    @Transactional
+    public AnalysisCheckpointSession.Checkpoint prepareDistributed(Claim claim, AnalysisCheckpointSession.Question input, QuestionOwner owner) {
+        var run = checkpointOwner(claim, true);
+        if (!Objects.equals(run.operationId(), owner.operationId())) throw conflict("Question operation binding was superseded");
+        String scopedKey = AnalysisCheckpointSession.digest("distributed-question-v1", owner.namespace(), input.key(), input.inputHash());
+        if (AnalysisCheckpointSession.isRelationQuestion(input.key())) scopedKey = "R" + scopedKey.substring(1);
+        var request = new AnalysisCheckpointSession.Question(scopedKey, input.inputHash(), input.provider(), input.nodes(), input.prompt());
+        var existing = question(run.id(), scopedKey);
+        // Old in-process answers remain usable only for precisely the same question and input.
+        if (existing == null) {
+            var legacy = question(run.id(), input.key());
+            if (legacy != null && Objects.equals(legacy.inputHash, input.inputHash())
+                    && Objects.equals(legacy.provider, input.provider())
+                    && Objects.equals(legacy.nodeCodes, mapper.writeValueAsString(input.nodes()))) {
+                existing = legacy; request = input;
+            }
+        }
+        if (existing != null && "ATTEMPT".equals(existing.state)) {
+            existing.state = "FAILED";
+            existing.error = "OUTCOME_UNCERTAIN: another delivery found a committed question START without an accepted outcome; explicit retry or leave-open is required";
+            updateCheckpointOwner(claim, run, "PAUSED", run.payloadCharacters(), run.currentNode());
+            return checkpoint(existing, request);
+        }
+        var admitted = prepareQuestion(claim, request, false);
+        if ("ATTEMPT".equals(admitted.state())) {
+            var question = question(run.id(), request.key());
+            question.attemptOwner = owner.owner(); question.clusterOperationId = owner.operationId();
+            question.clusterTaskId = owner.taskId(); question.clusterDelivery = owner.delivery();
+            em.flush();
+        }
+        return admitted;
+    }
+
+    @Transactional
+    public void finishDistributed(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail, QuestionOwner owner) {
+        var run = checkpointOwner(claim, true);
+        if (!Objects.equals(run.operationId(), owner.operationId())) throw conflict("Question operation binding was superseded");
+        var question = question(claim.id(), request.key());
+        if (question == null || !Objects.equals(question.attemptOwner, owner.owner())
+                || !Objects.equals(question.clusterOperationId, owner.operationId())
+                || !Objects.equals(question.clusterTaskId, owner.taskId())
+                || !Objects.equals(question.clusterDelivery, owner.delivery())) throw conflict("Question belongs to another worker delivery");
+        finish(claim, request, state, detail);
+    }
+
     @Transactional
     public void finish(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail) {
         var run = checkpointOwner(claim, false);
@@ -143,6 +254,21 @@ public class AnalysisContinuationStore {
         return em.createQuery("select r.state from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token", String.class)
                 .setParameter("id", claim.id()).setParameter("token", claim.token())
                 .getResultList().stream().findFirst().orElse("CANCELLED");
+    }
+
+    @Transactional(readOnly = true)
+    public String distributedState(Claim claim, String operationId) {
+        return em.createQuery("select r.state from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token and r.clusterOperationId=:operation and r.claimUntil>=:now", String.class)
+                .setParameter("id", claim.id()).setParameter("token", claim.token()).setParameter("operation", operationId)
+                .setParameter("now", System.currentTimeMillis()).getResultList().stream().findFirst().orElse("CANCELLED");
+    }
+
+    @Transactional(readOnly = true)
+    public RelationSearchReport previousRelations(Claim claim) {
+        var rows = em.createQuery("select r.resultJson from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token", String.class)
+                .setParameter("id", claim.id()).setParameter("token", claim.token()).getResultList();
+        if (rows.isEmpty() || rows.getFirst() == null) return null;
+        return mapper.readValue(rows.getFirst(), AnalysisResult.class).getRelationSearchReport();
     }
 
     @Transactional
@@ -176,6 +302,17 @@ public class AnalysisContinuationStore {
         } else if (open.stream().anyMatch(AnalysisRecoveryView.OpenQuestion::skipped)) {
             run.state = "COMPLETED_WITH_GAPS"; result.setStatus("PARTIAL");
         } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "STOPPED";
+        if (run.clusterOperationId != null) {
+            var raw = new LinkedHashMap<>(result.getRawScores());
+            var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
+            for (var q : questions(run)) if ("SUCCESS".equals(q.state) && q.detailJson != null
+                    && !AnalysisCheckpointSession.isRelationQuestion(q.questionKey)) {
+                var detail = mapper.readValue(q.detailJson, LlmCallDetail.class);
+                detail.getScores().forEach(raw::putIfAbsent);
+                if (detail.getReasons() != null) detail.getReasons().forEach(reasons::putIfAbsent);
+            }
+            result.setRawScores(raw); result.setReasons(reasons);
+        }
         Map<String, String> missing = new LinkedHashMap<>();
         for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key()))
             for (String node : question.nodes()) missing.put(node,
@@ -219,7 +356,7 @@ public class AnalysisContinuationStore {
     @Transactional
     public Snapshot read(String id, WorkspaceContext scope) {
         var run = scoped(id, scope); expire(run); em.flush();
-        return new Snapshot(view(run), readResult(run), mapper.readValue(run.requestJson, AnalysisRequest.class));
+        return new Snapshot(view(run), readResult(run), mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
     }
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope) {
@@ -259,7 +396,7 @@ public class AnalysisContinuationStore {
             // uncertain, derives coverage from the frozen tree and persists the entire result.
             result = complete(new Claim(run.id, run.claimToken, null), result, result.getTree());
         }
-        return new Snapshot(view(run), result, mapper.readValue(run.requestJson, AnalysisRequest.class));
+        return new Snapshot(view(run), result, mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
     }
     @Transactional
     public LlmCallDetail detail(String id, String key, WorkspaceContext scope) {
@@ -285,10 +422,10 @@ public class AnalysisContinuationStore {
         var run = em.find(AnalysisContinuationRun.class, requireId(id), LockModeType.PESSIMISTIC_WRITE);
         if (run == null) throw notFound(); authorize(run, scope); return run;
     }
-    private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode) { }
+    private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode, String operationId) { }
     private CheckpointOwner checkpointOwner(Claim claim, boolean requireUnexpired) {
         // The same row lock as cancellation/completion, but no result/request LOB hydration.
-        var rows = em.createQuery("select r.version, r.payloadCharacters, r.currentNode, r.state, r.claimToken, r.claimUntil "
+        var rows = em.createQuery("select r.version, r.payloadCharacters, r.currentNode, r.state, r.claimToken, r.claimUntil, r.clusterOperationId "
                         + "from AnalysisContinuationRun r where r.id=:id", Object[].class)
                 .setParameter("id", claim.id()).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         if (rows.isEmpty()) throw conflict("Operation no longer owns its execution claim");
@@ -297,7 +434,7 @@ public class AnalysisContinuationStore {
                 || (requireUnexpired && System.currentTimeMillis() > ((Number) row[5]).longValue()))
             throw conflict("Operation no longer owns its execution claim");
         return new CheckpointOwner(claim.id(), ((Number) row[0]).longValue(),
-                ((Number) row[1]).longValue(), (String) row[2]);
+                ((Number) row[1]).longValue(), (String) row[2], row.length > 6 ? (String) row[6] : null);
     }
     private void updateCheckpointOwner(Claim claim, CheckpointOwner run, String state, long payload, String currentNode) {
         // Commit the question and its bookkeeping atomically. Bulk updates explicitly advance
@@ -318,7 +455,7 @@ public class AnalysisContinuationStore {
         return key == null ? null : em.find(AnalysisQuestionCheckpoint.class, runId + ":" + key);
     }
     private AnalysisCheckpointSession.Checkpoint checkpoint(AnalysisQuestionCheckpoint q, AnalysisCheckpointSession.Question input) {
-        return new AnalysisCheckpointSession.Checkpoint(input, q.state,
+        return new AnalysisCheckpointSession.Checkpoint(new AnalysisCheckpointSession.Question(q.questionKey, input.inputHash(), input.provider(), input.nodes(), input.prompt()), q.state,
                 q.detailJson == null ? null : mapper.readValue(q.detailJson, LlmCallDetail.class));
     }
     private List<AnalysisQuestionCheckpoint> questions(AnalysisContinuationRun run) {

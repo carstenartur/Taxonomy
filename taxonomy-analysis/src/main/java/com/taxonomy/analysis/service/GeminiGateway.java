@@ -49,6 +49,7 @@ public class GeminiGateway implements LlmGateway {
 
     void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }
     void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }
+    void configureProviderQuotas(ProviderRateQuotas quotas) { requestAdmission.configure(quotas); }
 
     @Override public String providerName() { return "GEMINI"; }
 
@@ -149,7 +150,7 @@ public class GeminiGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
-        } catch (LlmTransportMeter.JournalStartException unavailable) {
+        } catch (LlmTransportMeter.JournalStartException | ProviderRateQuotas.UnavailableException unavailable) {
             throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;

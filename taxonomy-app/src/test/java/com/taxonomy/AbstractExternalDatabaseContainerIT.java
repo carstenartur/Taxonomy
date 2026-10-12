@@ -20,6 +20,7 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     void clusterLargePayloadsAndAllFourTablesSurviveANewPersistenceFactory() {
         try (var contract = clusterContract()) {
             contract.largePayloadsAndAllFourTablesSurviveANewPersistenceFactory();
+            contract.durableDiagnosticsSurviveANewPersistenceFactoryWithUnknownUsageAndScopedDetails();
         }
     }
     @Test @Order(22)

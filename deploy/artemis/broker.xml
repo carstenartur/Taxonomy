@@ -86,6 +86,16 @@
         <permission type="deleteAddress" roles="taxonomy-admin"/>
         <permission type="browse" roles="taxonomy-admin"/>
       </security-setting>
+      <!-- Quota state has one exclusive administrative seed and transactional worker updates. -->
+      <security-setting match="taxonomy.analysis.provider-quotas.#">
+        <permission type="send" roles="taxonomy-analysis,taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="consume" roles="taxonomy-analysis,taxonomy-admin"/>
+        <permission type="createAddress" roles="taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="createDurableQueue" roles="taxonomy-provisioner,taxonomy-admin"/>
+        <permission type="deleteDurableQueue" roles="taxonomy-admin"/>
+        <permission type="deleteAddress" roles="taxonomy-admin"/>
+        <permission type="browse" roles="taxonomy-admin"/>
+      </security-setting>
     </security-settings>
     <address-settings>
       <address-setting match="taxonomy.analysis.#">
@@ -145,6 +155,19 @@
         <max-delivery-attempts>-1</max-delivery-attempts>
         <redelivery-delay>0</redelivery-delay>
         <default-purge-on-no-consumers>false</default-purge-on-no-consumers>
+        <auto-delete-queues>false</auto-delete-queues>
+        <auto-delete-addresses>false</auto-delete-addresses>
+      </address-setting>
+      <!-- Losing or expiring the single quota state would lose prior debits. Never auto-seed/refill it. -->
+      <address-setting match="taxonomy.analysis.provider-quotas.#">
+        <default-exclusive-queue>true</default-exclusive-queue>
+        <no-expiry>true</no-expiry>
+        <expiry-delay>-1</expiry-delay>
+        <max-delivery-attempts>-1</max-delivery-attempts>
+        <redelivery-delay>0</redelivery-delay>
+        <default-purge-on-no-consumers>false</default-purge-on-no-consumers>
+        <auto-create-queues>false</auto-create-queues>
+        <auto-create-addresses>false</auto-create-addresses>
         <auto-delete-queues>false</auto-delete-queues>
         <auto-delete-addresses>false</auto-delete-addresses>
       </address-setting>

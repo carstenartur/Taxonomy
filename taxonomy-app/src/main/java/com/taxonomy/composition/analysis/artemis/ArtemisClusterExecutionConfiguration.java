@@ -43,8 +43,9 @@ public class ArtemisClusterExecutionConfiguration {
 
     @Bean ClusterAnalysisStore clusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
             ObjectMapper mapper, AnalysisDispatchService dispatch, ClusterAnalysisSignals signals,
-            ArtemisAnalysisTaskPublisher publisher, ArtemisAnalysisMetrics metrics) {
-        var store = new ClusterAnalysisStore(em, transactions, mapper, dispatch);
+            ArtemisAnalysisTaskPublisher publisher, ArtemisAnalysisMetrics metrics,
+            org.springframework.beans.factory.ObjectProvider<com.taxonomy.analysis.recovery.AnalysisContinuationStore> continuations) {
+        var store = new ClusterAnalysisStore(em, transactions, mapper, dispatch, continuations.getIfAvailable());
         store.eventPublisher(event -> {
             signals.progress(event); metrics.progress(event); publisher.progress(event);
         });

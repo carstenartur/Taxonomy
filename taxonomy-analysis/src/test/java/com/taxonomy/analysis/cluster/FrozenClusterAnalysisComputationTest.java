@@ -25,6 +25,8 @@ class FrozenClusterAnalysisComputationTest {
     void realMockScoringUsesOnlyThePersistedRootAndCleansEveryScope() {
         var mapper = new ObjectMapper();
         var store = mock(ClusterAnalysisStore.class);
+        var diagnostics = mock(ClusterAnalysisDiagnostics.Session.class);
+        when(store.diagnostics(any(), anyInt())).thenReturn(diagnostics);
         var nodes = mock(TaxonomyNodeRepository.class);
         var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
         var snapshots = new CatalogueSnapshotService(nodes, overlay, new CatalogueRuntimePolicy("worker", "CP"), mock(CatalogueSourceJournal.class));
@@ -58,7 +60,90 @@ class FrozenClusterAnalysisComputationTest {
         assertThat(providers.isMockMode()).isFalse();
         verifyNoInteractions(nodes, gateways, embedding);
         verify(store).shard(context, task.root());
+        verify(store).diagnostics(task, 0);
         verifyNoMoreInteractions(store);
+    }
+
+    @Test
+    void realFrozenWorkerKeepsLogicalCallDiagnosticsAfterItsScopeCloses() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var mapper = new ObjectMapper();
+            var context = ClusterAnalysisStoreTest.context("worker-diagnostics");
+            db.admitFrozen(context);
+            var task = db.task(TaxonomyShardRoot.of("CP"));
+            var input = db.store.start(task);
+            var nodes = mock(TaxonomyNodeRepository.class);
+            var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
+            var snapshots = new CatalogueSnapshotService(nodes, overlay, new CatalogueRuntimePolicy("worker", "CP"), mock(CatalogueSourceJournal.class));
+            var taxonomy = new TaxonomyService(nodes, mock(TaxonomyRelationRepository.class), new AppInitializationStateService());
+            ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
+            var embedding = mock(LocalEmbeddingService.class);
+            var providers = new LlmProviderConfig(embedding);
+            var llm = new LlmService(providers, mock(LlmGatewayRegistry.class), mapper, taxonomy,
+                    mock(PromptTemplateService.class), embedding, mock(SavedAnalysisService.class));
+            ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
+            var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, llm, providers,
+                    FrozenClusterAnalysisComputationTest::guard, mapper);
+            assertThat(computation.score(input,
+                    task, () -> false).getStatus()).isEqualTo("SUCCESS");
+            try (var observation = new DurableClusterAnalysisObservation(db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
+                var view = observation.snapshot(context.operationId(), "alice", ClusterAnalysisStoreTest.command("requirement").workspaceContext()).orElseThrow();
+                assertThat(view.snapshot().calls()).hasSize(1);
+                assertThat(view.snapshot().calls().getFirst().status()).isEqualTo("COMPLETED");
+                assertThat(view.snapshot().calls().getFirst().provider()).isEqualTo("Mock");
+            }
+            assertThat(AnalysisRunControl.active()).isFalse();
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void realFrozenWorkerBindsThePhysicalJournalBeforeDeterministicHttp(boolean cancelAfterResponse) {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("worker-http");
+            var original = ClusterAnalysisStoreTest.command("requirement");
+            var command = new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(original.businessText(), false, 20, "CUSTOM_OPENAI", original.username(), original.workspaceContext(), null, original.analysisScope());
+            var source = DurableClusterAnalysisExecutionTest.source(context);
+            db.store.admit(context, command, null, java.util.Map.of(TaxonomyShardRoot.of("CP"), mapper.writeValueAsString(DurableClusterAnalysisExecutionTest.root(source, "CP")),
+                    TaxonomyShardRoot.of("IP"), mapper.writeValueAsString(DurableClusterAnalysisExecutionTest.root(source, "IP"))));
+            var task = db.task(TaxonomyShardRoot.of("CP")); var input = db.store.start(task);
+            var nodes = mock(TaxonomyNodeRepository.class); var embedding = mock(LocalEmbeddingService.class);
+            var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
+            var snapshots = new CatalogueSnapshotService(nodes, overlay, new CatalogueRuntimePolicy("worker", "CP"), mock(CatalogueSourceJournal.class));
+            var taxonomy = new TaxonomyService(nodes, mock(TaxonomyRelationRepository.class), new AppInitializationStateService());
+            ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
+            var providers = new LlmProviderConfig(embedding);
+            String url = "https://worker.invalid/chat/completions";
+            ReflectionTestUtils.setField(providers, "customLlmUrl", url); ReflectionTestUtils.setField(providers, "customLlmModel", "fixture");
+            var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+            var http = new org.springframework.web.client.RestTemplate(); var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(http).build();
+            server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(url)).andRespond(request -> {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                assertThat(db.store.callDiagnostics().detail(context, 1).attempts()).singleElement().satisfies(a -> assertThat(a.state()).isEqualTo("STARTED"));
+                if (cancelAfterResponse) { db.store.cancel(context); cancelled.set(true); }
+                String response = mapper.writeValueAsString(java.util.Map.of("choices", List.of(java.util.Map.of("message", java.util.Map.of("content", "{\"CP\":75}"))),
+                        "usage", java.util.Map.of("prompt_tokens", 5, "completion_tokens", 2, "total_tokens", 7)));
+                return org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(response, org.springframework.http.MediaType.APPLICATION_JSON).createResponse(request);
+            });
+            AnalysisRuntimeSettings settings = (key, fallback) -> "llm.retry.max".equals(key) ? 0 : fallback;
+            var gateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, mapper, new LlmResponseParser(mapper), settings, null, null);
+            var gateways = mock(LlmGatewayRegistry.class); when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
+            var templates = mock(PromptTemplateService.class); when(templates.renderPrompt(anyString(), anyString(), anyString(), anyInt(), anyString())).thenReturn("PRIVATE-FROZEN-REQUEST");
+            var llm = new LlmService(providers, gateways, mapper, taxonomy, templates, embedding, mock(SavedAnalysisService.class));
+            ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
+            var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, llm, providers, FrozenClusterAnalysisComputationTest::guard, mapper);
+            if (cancelAfterResponse) {
+                assertThatThrownBy(() -> computation.score(input, task, cancelled::get)).isInstanceOf(AnalysisStoppedException.class);
+                assertThat(db.store.snapshot(context).state()).isEqualTo(ClusterAnalysisState.CANCELLED);
+                assertThat(db.store.callDiagnostics().summaries(context).calls()).singleElement().satisfies(c -> assertThat(c.status()).isEqualTo("STOPPED"));
+                assertThat(db.store.callDiagnostics().detail(context, 1).response()).contains("CP");
+            } else assertThat(computation.score(input, task, cancelled::get).getRawScores()).containsEntry("CP", 75);
+            server.verify();
+            assertThat(db.store.callDiagnostics().detail(context, 1).attempts()).singleElement().satisfies(a -> {
+                assertThat(a.source()).isEqualTo("HTTP"); assertThat(a.usage().totalTokens()).isEqualTo(7L);
+            });
+            assertThat(AnalysisRunControl.active()).isFalse(); verifyNoInteractions(nodes);
+        }
     }
 
     @Test

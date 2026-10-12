@@ -18,7 +18,16 @@ public final class ClusterAnalysisBackupRecords {
                        Long startedAt, Long finishedAt) { }
     public record Input(SourceRecordId sourceId, SourceRecordId run, String root, String inputJson) { }
     public record Event(SourceRecordId sourceId, SourceRecordId run, long revision, String eventJson) { }
-    public record Archive(Run run, List<Work> work, List<Input> inputs, List<Event> events) {
-        public Archive { work = List.copyOf(work); inputs = List.copyOf(inputs); events = List.copyOf(events); }
+    public record Call(SourceRecordId sourceId, SourceRecordId run, String taskId, long callNumber,
+                       String executionId, int logicalOrdinal, int deliveryAttempt, String provider, String node,
+                       String state, long startedAt, long durationMillis, long eventRevision,
+                       String prompt, String response, String error, int promptLength, int responseLength) { }
+    public record Attempt(SourceRecordId sourceId, SourceRecordId run, SourceRecordId call, String attemptId,
+                          String invocationId, String provider, String source, int retryIndex, long startedAt,
+                          String observationJson) { }
+    public record Archive(Run run, List<Work> work, List<Input> inputs, List<Event> events, List<Call> calls, List<Attempt> attempts) {
+        public Archive { work = List.copyOf(work); inputs = List.copyOf(inputs); events = List.copyOf(events);
+            calls = calls == null ? List.of() : List.copyOf(calls); attempts = attempts == null ? List.of() : List.copyOf(attempts); }
+        public Archive(Run run, List<Work> work, List<Input> inputs, List<Event> events) { this(run, work, inputs, events, List.of(), List.of()); }
     }
 }

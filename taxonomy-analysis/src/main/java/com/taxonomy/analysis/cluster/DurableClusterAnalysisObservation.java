@@ -63,7 +63,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
     }
 
     @Override public Optional<ClusterAnalysisView> snapshot(String operationId, String owner, WorkspaceContext scope) {
-        return find(operationId, owner, scope).map(context -> view(context, store.snapshot(context)));
+        return find(operationId, owner, scope).map(context -> diagnosticView(context, store.snapshot(context)));
     }
 
     @Override public Optional<ClusterAnalysisView> cancel(String operationId, String owner, WorkspaceContext scope) {
@@ -78,7 +78,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
                     log.warn("Cluster cancellation committed; live control delivery unavailable for operation {}", operationId);
                 }
             }
-            return view(context, store.snapshot(context));
+            return diagnosticView(context, store.snapshot(context));
         });
     }
 
@@ -95,6 +95,11 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis result is not ready");
         }
         return durable.result();
+    }
+
+    @Override public AnalysisProgressRegistry.CallDetail callDetail(String operationId, long callId, String owner, WorkspaceContext scope) {
+        var context = find(operationId, owner, scope).orElseThrow(DurableClusterAnalysisObservation::notFound);
+        return store.callDiagnostics().detail(context, callId);
     }
 
     @Override public RecoveryInput request(String operationId, String owner, WorkspaceContext scope) {
@@ -182,7 +187,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
                         if (complete) return;
                         if (durable.revision() > sequence) {
                             emitter.send(SseEmitter.event().id(Long.toString(durable.revision()))
-                                    .name(sent ? "progress" : "snapshot").data(view(context, durable)));
+                                    .name(sent ? "progress" : "snapshot").data(diagnosticView(context, durable)));
                             sequence = durable.revision();
                             sent = true;
                         }
@@ -220,12 +225,16 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         }
     }
 
-    private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable) {
-        return view(context, durable, ClusterAnalysisStore.ScorePreview.from(durable.result()));
+    private ClusterAnalysisView diagnosticView(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable) {
+        return view(context, durable, ClusterAnalysisStore.ScorePreview.from(durable.result()), store.callDiagnostics().summaries(context, durable.revision()));
     }
 
     private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable,
                                             ClusterAnalysisStore.ScorePreview scores) {
+        return view(context, durable, scores, new ClusterAnalysisDiagnostics.Summaries(List.of(), 0));
+    }
+    private static ClusterAnalysisView view(AnalysisOperationContext context, ClusterAnalysisStore.Snapshot durable,
+                                            ClusterAnalysisStore.ScorePreview scores, ClusterAnalysisDiagnostics.Summaries diagnostics) {
         var counts = new LinkedHashMap<TaskKey, TaskCounts>();
         for (var task : durable.tasks()) {
             var key = new TaskKey(AnalysisTaskType.valueOf(task.type()), task.root() == null ? null : TaxonomyShardRoot.of(task.root()));
@@ -254,7 +263,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, null,
                 durable.state() == ClusterAnalysisState.CANCELLED ? "CANCELLED" : null,
                 durable.revision(), durable.createdAt(), durable.updatedAt(), now, scores.evaluatedNodes(), scores.scoresTruncated(),
-                scores.rawScores(), List.of(), 0, null, "EXTERNAL_OR_UNKNOWN", "EXTERNAL_OR_UNKNOWN", provenance,
+                scores.rawScores(), diagnostics.calls(), diagnostics.omitted(), null, "EXTERNAL_OR_UNKNOWN", "EXTERNAL_OR_UNKNOWN", provenance,
                 terminal ? durable.updatedAt() : null, Math.max(0, end - durable.createdAt()), executionStart,
                 Math.max(0, (executionStart == null ? end : executionStart) - durable.createdAt()),
                 executionStart == null ? 0 : Math.max(0, end - executionStart), null, null);

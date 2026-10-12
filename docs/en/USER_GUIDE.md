@@ -2028,3 +2028,9 @@ Word. Downloads exclude unsaved typing and retain the historical source, decisio
 and architecture. Save a separate project checkpoint when you want portable Git
 history. See the [complete workflow](../features/requirement-reformulation.md) and
 [verification boundaries](../testing/requirement-reformulation.md).
+
+### Distributed continuation
+
+When Artemis execution is configured, resumable analysis uses the same durable workers as ordinary analysis. Saved validated answers are reused without another provider request. The original requirement, workspace branch and commit, catalogue generation and provider configuration remain bound to the saved operation; changed inputs require a new analysis. Closing the page does not cancel an admitted operation. Reconnect to its saved operation or choose **Refresh status** to read the current result.
+
+If a worker stops after a question START was committed and before an outcome was accepted, the question is **Outcome uncertain**. Redelivery pauses rather than silently repeating the provider call. Choose **Retry LLM request and continue** to authorize that question again, or **Leave area unassessed and continue** to keep the area unknown. A changed revision requires refreshing before deciding. Cancellation preserves earlier accepted evidence and prevents late answers from restarting the operation. Restoring a backup retains evidence and requires review; it never restores worker leases or automatically resumes provider calls.

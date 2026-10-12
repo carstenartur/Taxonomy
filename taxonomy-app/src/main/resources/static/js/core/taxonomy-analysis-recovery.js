@@ -66,7 +66,7 @@
         if (!r) return '';
         var label = {
             RUNNING: text('Bewertung läuft', 'Assessment running'),
-            PAUSED: text('Pausiert – Entscheidung erforderlich', 'Paused – decision required'),
+            PAUSED: text('Pausiert – Prüfung erforderlich', 'Paused – review required'),
             COMPLETED: text('Bewertung abgeschlossen', 'Assessment complete'),
             COMPLETED_WITH_GAPS: text('Teilergebnis – offene Bewertungsbereiche', 'Partial result – unassessed areas'),
             CANCELLED: text('Abgebrochen – gültige Ergebnisse erhalten', 'Cancelled – valid results retained'),
@@ -80,7 +80,7 @@
         if (c?.followupState === 'COMPLETED_SCOPED') label = text('Gewählte Analyse abgeschlossen', 'Selected analysis complete');
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
         if (busy && liveWork) return liveWork;
-        return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' questions complete')
+        return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' requests complete')
             + (r.currentNode && r.state === 'RUNNING' ? ' · ' + r.currentNode : '');
     }
     function update() {
@@ -127,6 +127,7 @@
             var snapshot = await request(c, '');
             if (!inScope(c)) return;
             S.analysisRecovery = snapshot.recovery;
+            if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
             c.observationError = null;
             // Refresh may report a RUNNING new attempt plus an older paused result. Never hydrate it.
             if (!busy && snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, c);
@@ -144,6 +145,7 @@
         } finally { reading = false; }
     }
     function scheduleRead() {
+        if (current()?.distributed) return; // Durable cluster progress is event-driven; refresh is explicit on reconnect.
         clearTimeout(poll);
         poll = setTimeout(function () { poll = null; refresh(); }, 1200);
     }
@@ -253,7 +255,7 @@
         var questions = r.openQuestions || [];
         var selected = questions.find(function (q) { return !q.skipped; }) || questions[0];
         if (!busy && !stopped() && selected) {
-            options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Wiederholen', 'Retry'), label: text('Abfrage wiederholen und fortsetzen', 'Retry question and continue'),
+            options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Wiederholen', 'Retry'), label: text('LLM-Anfrage wiederholen und fortsetzen', 'Retry LLM request and continue'),
                 handler: function () { run('RETRY', selected.key); } });
             if (!selected.skipped) options.push({ id: 'analysisRecoverySkip', shortLabel: text('Offenlassen', 'Leave open'), label: text('Bereich offenlassen und fortfahren', 'Leave area unassessed and continue'),
                 handler: function () { run('SKIP', selected.key); } });
@@ -274,24 +276,41 @@
             if (c.observationError) body.append(el('p', c.observationError));
             if (c.followupError) body.append(el('p', c.followupError));
             if (!selected) return;
+            body.append(el('p', text(
+                'Die Auswahl bezeichnet eine interne LLM-Anfrage und ihre betroffenen Knoten. Prompt und Antwort enthalten die Bewertungsdetails.',
+                'The selection identifies an internal LLM request and its affected nodes. The prompt and response contain the assessment details.')));
+            if (!stopped()) body.append(el('p', text(
+                'Wiederholen sendet eine neue LLM-Anfrage für die gewählte Bewertung und setzt die Analyse fort. Offenlassen setzt die weitere Analyse fort; der betroffene Bereich bleibt nicht bewertet.',
+                'Retry sends a new LLM request for the selected assessment and continues the analysis. Leave open continues the remaining analysis; the affected area stays unassessed.')));
+            var assessmentState = el('p'), attempts = el('p'), uncertain = el('p');
+            function updateSelected() {
+                note.textContent = selected.error || c.pauseReason || '';
+                assessmentState.textContent = selected.skipped
+                    ? text('Bewertung offengelassen – betroffener Bereich nicht bewertet.', 'Assessment left unassessed – affected area remains open.')
+                    : selected.error?.startsWith('RELATION_UNRESOLVED')
+                        ? text('Beziehungsbewertung erfordert Klärung.', 'Relation assessment needs clarification.')
+                        : text('LLM-Bewertung fehlgeschlagen.', 'LLM assessment failed.');
+                attempts.textContent = text('Versuche: ', 'Attempts: ') + selected.attempts;
+                uncertain.textContent = selected.outcomeUncertain ? text(
+                    'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben. Nach einer Worker-Unterbrechung ist eine explizite Entscheidung erforderlich: wiederholen oder offenlassen. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet.',
+                    'The provider may already have processed or billed the last request. After a worker interruption, an explicit decision is required: retry or leave open. Saved validated answers are reused without another provider request.') : '';
+                uncertain.hidden = !selected.outcomeUncertain;
+            }
             if (questions.length > 1) {
-                var label = el('label', text('Offene Abfrage: ', 'Open question: '));
+                var label = el('label', text('Offene LLM-Bewertung – betroffene Knoten: ', 'Open LLM assessment – affected nodes: '));
                 var select = el('select'); select.id = 'analysisRecoveryQuestion'; select.className = 'form-select';
                 questions.forEach(function (q) { var o = el('option', q.nodes.join(', ')); o.value = q.key; select.append(o); });
                 select.value = selected.key;
                 select.addEventListener('change', function () {
                     selected = questions.find(function (q) { return q.key === select.value; });
-                    note.textContent = selected.error;
+                    updateSelected();
                     var skip = document.getElementById('analysisRecoverySkip'); if (skip) skip.disabled = selected.skipped;
                     details.open = false; detailBody.replaceChildren(); loadedKey = null;
                 });
                 label.append(select); body.append(label);
             }
-            body.append(el('p', selected.nodes.join(', ')));
-            body.append(el('p', text('Versuche: ', 'Attempts: ') + selected.attempts));
-            if (selected.outcomeUncertain) body.append(el('p', text(
-                'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben.',
-                'The provider may already have processed or billed the last request.')));
+            else body.append(el('p', text('Betroffene Knoten: ', 'Affected nodes: ') + selected.nodes.join(', ')));
+            updateSelected(); body.append(assessmentState, attempts, uncertain);
             var details = el('details'); details.append(el('summary', text('Prompt und Antwort anzeigen', 'Show prompt and response')));
             var detailBody = el('div'); details.append(detailBody); body.append(details); var loadedKey = null;
             details.addEventListener('toggle', async function () {
@@ -408,8 +427,13 @@
     });
     // Observe live activity, without a timer which changes focus, scroll position or score values.
     document.addEventListener('taxonomy:analysis-progress', function (event) {
-        if (!busy || !inScope(current()) || stopped()) return;
+        if (!inScope(current()) || stopped()) return;
         var snapshot = event.detail;
+        if (snapshot?.transport === 'artemis') {
+            current().distributed = true; current().operationId = snapshot.operationId;
+            clearTimeout(poll); poll = null;
+        }
+        if (!busy) return;
         liveWork = window.TaxonomyAnalysisProgress?.workSummary?.(snapshot) || '';
         if (snapshot?.node) S.analysisRecovery.currentNode = snapshot.node;
         update();

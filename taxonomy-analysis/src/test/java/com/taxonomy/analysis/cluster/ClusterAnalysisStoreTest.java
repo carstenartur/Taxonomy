@@ -358,8 +358,9 @@ class ClusterAnalysisStoreTest {
         Database(String url, String schema, org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
             bean.setDataSource(new DriverManagerDataSource(url, "sa", ""));
             bean.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
-                    ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(),
-                    AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
+                    ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(),
+                    AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName(),
+                    com.taxonomy.analysis.recovery.AnalysisContinuationRun.class.getName(), com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint.class.getName()));
             bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
             bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", schema, "hibernate.search.enabled", "false",
                     "hibernate.session_factory.statement_inspector", inspector));

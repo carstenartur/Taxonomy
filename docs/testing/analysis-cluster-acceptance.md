@@ -133,6 +133,48 @@ See [capacity and execution instructions](../../deploy/helm/taxonomy/CAPACITY.md
 This scenario does not claim broker HA, external-provider throughput, loss during
 a physical provider call or a production memory/capacity baseline.
 
+## Coordinator-loss acceptance follow-up (2026-10-11)
+
+The runnable Artemis smoke now adds two real coordinator replacements before
+its existing delivered-worker-loss scenario. The first replacement occurs while
+the disposable broker is stopped and both real after-commit intents are retained
+as `WAITING_FOR_BROKER` / `DISPATCH_PENDING`. The replacement coordinator must
+recover the same owned operation after a connection event. The second replacement
+occurs after both intents are `DISPATCHED` and each root has exactly one queued
+message, with workers still absent. It keeps the broker unchanged and must not
+republish either task.
+
+The fixture broker stores data in `emptyDir`. Its reset happens only before the
+first dispatch and before any provider permit/quota authority exists; this test
+does not prove broker data persistence or HA. The normal operator broker XML
+provisions the fresh task queues. Authenticated management must prove readiness,
+zero consumers and the exact queued counts after reconnection. No runtime quota
+reseeding or fail-open exception is introduced.
+
+Each coordinator loss requires independent fresh evidence: the old pod UID is
+absent, PostgreSQL has no session from its old IP, and the retained broker has no
+connection from that exact IP (or the disposable broker is confirmed stopped in
+the first stage). The management parser uses the [Artemis 2.53 source projection](https://github.com/apache/artemis/blob/2.53.0/artemis-server/src/main/java/org/apache/activemq/artemis/core/management/impl/ActiveMQServerControlImpl.java)
+`clientAddress` and `sessionCount`; it rejects malformed/unbounded
+responses and never uses substring address matching. Missing observations replace
+old success with `observed:false`. Separate before/after stage artifacts retain
+only allowed counters, identities, timestamps and an aggregate frozen-data digest.
+
+The run identity, authority/input hashes, task graph, selected frozen inputs and
+progress revision must remain identical while workers are absent. The original
+POST is expected to detach with the first coordinator. Recovery reads the saved
+request and terminal result through the normal workspace-scoped GET endpoints;
+it never submits another analysis. Existing worker redelivery, exactly one effect
+per root and resource/network assertions remain required.
+
+Local bounded Node/shell tests exercise the actual observation predicates,
+IP parsing, stale-evidence replacement and unchanged-identity comparison. The
+new Kubernetes flow has **not** executed locally: Docker, kind, kubectl and Helm
+are unavailable in this workspace. A successful current-head canonical live run,
+including its separate stage artifacts, is required before either new deployment
+row is accepted. This follow-up does not close loss during physical provider HTTP,
+a browser using two actual web pods, or a production capacity baseline.
+
 ## Measured memory boundary
 
 The retained nine-process [data/cache experiment](evidence/frozen-embedding-footprint-2026-10-04.json),
@@ -457,3 +499,39 @@ failed as expected after adding the stacked base; its two tests pass with the
 new exact list and all existing protected-main/release assertions retained.
 The issue [implementation tracker](https://github.com/carstenartur/Taxonomy/issues/1161#issuecomment-5978670496)
 records the published PRs and outstanding exact-head acceptance.
+
+
+## 2026-10-11 supported token contract and automatic-client HA follow-up
+
+Review checkpoint on the shared-quota tree `52fbb26f87ab520f4f93a589ed414bd1743e26a3`.
+The following are actual bounded native javac/JUnit component results in unique
+classes directories (javac 256 MiB, test JVM 512 MiB). They are supplemental to the
+normal Maven/App/canonical gates, which are still pending for this follow-up.
+No live or paid provider request was made; all HTTP is actual loopback fixture HTTP.
+
+| Executed owner gate | Result | Actual behavior |
+| --- | --- | --- |
+| Token/HTTP/gateway/meter/frozen binding plus legacy cases | 68/68 | Full identical Responses input, pinned snapshot, `truncation:disabled`, actual output cap, fixed UTF-8/body/deadline limits, real header/body cancellation, Count UNKNOWN, individual retry admissions, TPM-off and MOCK identity compatibility. |
+| Additional gateway authority/replay | 9/9 | Unconfirmed diagnostic START or `beforeTransport` permits zero Count/Generation HTTP and no refund. Count usage-shaped additions remain UNKNOWN and do not authorize generation. Replay uses no HTTP/quota. |
+| Persistent broker quota integration | 53/53 | Both Count and generation handlers observe a committed SQL diagnostic START and confirmed started broker debit before real HTTP. Count retains the full UNKNOWN reservation; coherent generation usage settles once; independent client cannot bypass consumed request limits. Count cancellation never starts generation and retains UNKNOWN; exhausted Count 429 blocks an independent client through the shared cooldown. Includes existing ledger/failover/duplicate/cancellation cases. |
+| Actual saved answer/restart worker | 6/6 | Reopened real HSQL/JPA factory reconstructs frozen distributed checkpoint. Supported Responses answer replays with zero additional Count or generation HTTP; changed token input bound rejects policy before HTTP. Existing uncertain START/explicit RETRY and SKIP, scope lifetime and attach race cases remain covered. |
+| Automatic primary/backup production client | 3/3 | Same production connection automatically fails over using actual advertised topology. Durable debits/cooldown/unknown TPM survive. A live physical permit remains occupied for the same and independent client. Same restored worker redelivers a real SQL-committed completion before JMS acknowledgement without repeating preparation or SQL effect. |
+
+The initial owner tests recorded genuine behavioral REDs before implementing the
+new token/count/usage/fingerprint behavior. Initial HA wrong-transaction expectation
+and later javac fixture errors were setup/test corrections, not claimed feature REDs.
+The HA topology is a disposable persistent shared-store pair using installed Artemis
+2.53.0 and production `ArtemisAnalysisTransportConfiguration`/`ArtemisAnalysisConnection`.
+It does not prove external replication/quorum fencing, TLS/failback/disaster recovery
+or database HA. Transaction uncertainty remains fail-closed; automatic failover is
+not permission to manufacture capacity or assume a physical remote call stopped.
+
+The exact inference-token contract and upstream estimated-429 limitation are in the
+[EN](../en/OPERATIONS_GUIDE.md#supported-openai-responses-tpm-adapter) and
+[DE](../de/OPERATIONS_GUIDE.md#unterstützter-openai-responses-tpm-adapter) operator guides.
+All other current provider transports remain closed before HTTP with active TPM.
+This package does not declare issue #1161 complete. Current-head normal Maven and CI,
+canonical database vendors and browser reconnect to another web pod, actual Kubernetes
+coordinator replacement and worker loss during a physical provider request, deployment
+HA/fencing and the required repeated capacity/memory comparison remain distinct gates.
+Their historical fixtures or checked-in scripts do not close these current-head rows.

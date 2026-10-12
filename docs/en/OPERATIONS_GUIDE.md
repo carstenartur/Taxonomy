@@ -573,8 +573,38 @@ consumers. The broker transaction timeout must exceed the maximum physical HTTP
 exchange; review the example's 900 seconds against provider timeouts. On holder
 loss the unacknowledged token becomes available again. Inspect an interrupted
 initial provisioning operation with all consumers stopped; a queue created before
-token commit may be empty and needs deliberate recreation. Concurrency tokens do
-not provide cluster-wide RPM, TPM or RPD; existing local rate limits remain.
+token commit may be empty and needs deliberate recreation. Concurrency tokens remain separate from the optional rate-quota ledger described below; existing local rate limits remain.
+
+### Cluster-wide physical-attempt rate quotas
+
+Rate quotas are a separate opt-in from HTTP concurrency permits. Configure every web/worker role with the same explicit credential/account groups and policy. For example, the following settings give the two explicitly shared OpenAI-compatible providers one common 60 RPM/20000 RPD budget; TPM token limits are disabled:
+
+```json
+{"taxonomy":{"analysis":{"provider-quotas":{"enabled":true,"provider-groups":{"openai":"shared-openai","custom-openai":"shared-openai"},"groups":{"shared-openai":{"rpm":60,"rpd":20000,"clock-skew-millis":1000,"maximum-reservations":20000}}}}}}
+```
+
+There is exactly one durable persistent state message in an exclusive durable ANYCAST queue, `taxonomy.analysis.provider-quotas.shared-openai`. Workers consume and replace it in short broker transactions; they never hold that message during HTTP. Each transaction validates exclusive broker consumer ownership and a second forced-immediate receive from that same consumer. An actual second state rolls the transaction back. Management message-count statistics are non-atomic and never authorize acceptance or rejection. A missing force-delivery end-marker is bounded and cancellable; its receiver must terminate before normal caller session use resumes. A confirmed debit precedes each physical attempt, including every retry. After the ordinary diagnostic DB START, a second short transaction consumes the same still-live receipt once and conservatively extends occupancy to physical-start admission. An expired/removed/consumed receipt, changed cooldown/policy/clock, missing state or unconfirmed commit permits zero HTTP; it is never refunded or silently replaced. A cancelled worker rechecks ordinary checkpoint authority before and after this transaction. Quota waiting releases HTTP capacity and local provisional admission before cooperative cancellable sleep.
+
+Use the separate provisioning account and exactly matching settings to create a new group once:
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderQuotaProvisioner \
+  -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher shared-openai 60 0 20000
+```
+
+The positional arguments are group, RPM, TPM, RPD. Active TPM additionally requires token-adapter, complete-input-upper-bound and actual-output-cap, but unsupported transports still reject before HTTP. The provisioner shares `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL`, `TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS`, `TAXONOMY_ANALYSIS_ARTEMIS_USER` and `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` with the existing administrative command. Optional `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_DESTINATION_PREFIX`, `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_CLOCK_SKEW_MILLIS` and `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_MAXIMUM_RESERVATIONS` must match worker policy; defaults are the documented prefix, 1000 ms and 20000 entries. URLs/credentials do not enter quota messages.
+
+Atomic durable queue creation is the exclusive seed claim. Provisioning an existing queue always rejects, even if its message is currently delivering or the queue appears empty. A crash between queue creation and state commit therefore fails closed. Stop all consumers and inspect prior usage/provider limits before deliberately repairing an interrupted provisioning operation. Do not refill, replace or delete a live ledger to clear a cooldown or regain quota. A restored database does not restore or reset this external provider authority.
+
+The broker example grants worker send/consume only, reserves queue/address creation for the separate provisioner/admin, and reserves browsing/deletion for admin. Preserve zero expiry, unlimited redelivery, no auto-create/delete and no purge on zero consumers for quota state. Losing the sole state message loses retained debits, so missing or duplicated state fails closed. Keep one logical HA broker authority for each group; independent brokers behind a load balancer cannot share quota.
+
+RPM counts a rolling 60-second window and RPD a rolling 24-hour window. Counts are permanent until expiry; a lost worker, unknown HTTP outcome, journal failure, error or lost commit acknowledgement never refunds them. RPD retains every admitted attempt for a day, so the bounded ledger capacity must cover intended daily use. Token accounting retains the complete conservative input/output reservation for unknown, incomplete, inconsistent or invalid usage. Only a started receipt with coherent input/output/total fields can settle downward once; exceeding the validated bounds permanently stops that ledger for operator review. Late coherent bound violations remain evidence while the ID is retained, and a private locally confirmed start receipt can also stop its exact matching group after independent pruning. This local authority is never reconstructed from an ID, JMS payload or archive; unknown/unstarted/unconfirmed receipts have none. A pruned or expired ID can never refund another reservation.
+
+Every participating process and broker must maintain absolute UTC error within the configured bound. Expiry/cooldowns include twice that allowance; observed excessive backwards motion fails closed. An isolated client cannot detect arbitrary forward clock violations, so this is an explicit operational prerequisite, not a broker-clock guarantee. Coordinate NTP/clock monitoring, policy versions and provider account sharing before admission. A shared `Retry-After` cooldown applies to all mapped providers and workers, including when the originating call has exhausted its retry budget. Long or overflowing durations saturate the durable deadline conservatively; they never reset the shared cooldown.
+
+The explicit OpenAI Responses snapshot adapter below establishes a complete-input count and actual output cap. Other built-in and contributed transports **fail closed for active TPM**. A model's context size alone does not prove the usage of an oversized rejected request. Character/token estimates and guessed role/framing overhead never establish a hard bound. Recording replay and local ONNX do not spend physical-provider quota.
+
+The native acceptance fixture distinguishes persistent restart from actual shared-store primary/backup promotion. Those component checks do not replace deployment-specific TLS, advertised-hostname, quorum/fencing, failback, database/coordinator failover and capacity exercises on the reviewed CI head. See [cluster acceptance](../testing/analysis-cluster-acceptance.md) for the remaining production gates.
 
 ### Readiness, observability and administration
 
@@ -656,3 +686,28 @@ pod, bounded expiry/DLQ, permit recovery, and denied non-broker/admin egress. Us
 deterministic provider and actual catalogue roots. Record command/image/chart
 versions, replica/resources, source commit, timings and outcomes without secrets
 or payload bodies; do not report render-only checks as a successful live exercise.
+
+
+### Supported OpenAI Responses TPM adapter
+
+This opt-in contract supports only the built-in `openai` provider at its default configured endpoint/model and pins generation to `gpt-4o-mini-2024-07-18`. Select it explicitly on a new or deliberately migrated quota group; TPM-off retains the old Chat Completions endpoint, body, recording behavior and frozen identity. Gemini, DeepSeek, Qwen, Mistral, the configured third-party Llama endpoint, custom compatible endpoints and contributed transports remain unsupported under active TPM. Do not map such transports to this adapter hoping to share its proof.
+
+Example policy for one OpenAI credential/account group:
+
+```json
+{"taxonomy":{"analysis":{"provider-quotas":{"enabled":true,"provider-groups":{"openai":"openai-responses"},"groups":{"openai-responses":{"rpm":60,"tpm":12000,"rpd":20000,"input-upper-bound":5000,"output-cap":256,"token-adapter":"openai.responses.gpt-4o-mini-2024-07-18.v1","clock-skew-millis":1000,"maximum-reservations":20000}}}}}}
+```
+
+Provision a new group with the same policy and ordinary secret-backed broker settings:
+
+```bash
+java -Dloader.main=com.taxonomy.composition.analysis.artemis.ArtemisProviderQuotaProvisioner   -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher   openai-responses 60 12000 20000 openai.responses.gpt-4o-mini-2024-07-18.v1 5000 256
+```
+
+The adapter freezes the complete authored prompt, including embedded system/catalogue instructions, as one user-role `input_text`. There are no tools, images, files, remote input URLs, conversation IDs or previous-response IDs. Both actual JSON requests contain identical immutable snapshot/input and explicit `truncation:"disabled"`; generation adds `max_output_tokens` and `store:false`. The [official counter](https://developers.openai.com/api/docs/guides/token-counting) counts the full Responses input including framing and role boundaries. Its strict `response.input_tokens` integer must fit the configured complete input bound before any generation. The [snapshot contract](https://developers.openai.com/api/docs/models/gpt-4o-mini) limits output to 16384 and context to 128000; configured input bound plus output cap must fit this context. No character/token ratio or guessed framing constant is used.
+
+Before count admission both serialized UTF-8 JSON bodies must fit 1 MiB. Each physical HTTP operation has a total deadline of at most 30 seconds, further limited by `llm.timeout.seconds`, including header and body waits. Count response is bounded to 16 KiB; generation response to 2 MiB. Redirects are disabled. Cancellation aborts the outstanding local future/client and prevents later generation; an already accepted remote request can still have run, so its outcome remains conservatively unknown. Refusal, incomplete output, malformed/count-over-bound input or oversized response cannot become a semantic answer. Oversized HTTP-error bodies still retain status/Retry-After, so a 429 cannot bypass the shared cooldown.
+
+Count is itself an external physical operation. Every count attempt and retry needs its own ordinary permit, full durable RPM/RPD/TPM reservation and diagnostic START before HTTP; its usage stays UNKNOWN even if a response includes a usage-shaped field. Count never refunds tokens and never becomes a saved answer. A successful logical call therefore spends at least two physical attempts: Count plus generation. Both initially reserve input bound plus output cap; allow enough TPM and request capacity for both. Generation may settle once from coherent actual Responses usage; unknown, incomplete or inconsistent usage remains fully reserved, including failed exchanges without coherent usage. Every retry needs another debit. A count rejected because its input is too large still consumes its admitted request/full unknown token reservation. RPD and maximum-reservations count physical attempts, so daily logical capacity is at most half the physical-attempt budget before retries or failures.
+
+This is a bound on actual inference-token usage of the emitted request. OpenAI's [rate-limit accounting](https://developers.openai.com/api/docs/guides/rate-limits) also uses estimates and can return 429 despite a fitting exact count; this adapter does not guarantee provider billing or internal rate accounting. Shared cooldown/Retry-After handling remains active. All participating roles must use the same adapter/snapshot/input bound/output cap; these values enter frozen provider and recovery identity. A saved semantic answer can replay with zero HTTP, while a changed contract rejects continuation before transport. A database backup never recreates live grants or external quota capacity.

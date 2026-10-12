@@ -1,6 +1,8 @@
 package com.taxonomy.composition.persistence;
 
 import com.taxonomy.analysis.cluster.ClusterAnalysisEvent;
+import com.taxonomy.analysis.cluster.ClusterAnalysisCall;
+import com.taxonomy.analysis.cluster.ClusterAnalysisAttempt;
 import com.taxonomy.analysis.cluster.ClusterAnalysisInput;
 import com.taxonomy.analysis.cluster.ClusterAnalysisRun;
 import com.taxonomy.analysis.cluster.ClusterAnalysisWork;
@@ -27,12 +29,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Executes V32 SQL on HSQL's PostgreSQL syntax mode and checks its explicit mapping contract.
  * PostgreSQL installation/upgrade remains covered by TaxonomySchemaPostgresMigrationIT. */
 class ClusterAnalysisSchemaMigrationTest {
+    private static final String DIAGNOSTICS = "db/migration/taxonomy/postgresql/V35__cluster_call_diagnostics.sql";
     private static final String MIGRATION = "db/migration/taxonomy/postgresql/V32__ClusterAnalysis.sql";
 
     @Test void migratedSchemaMatchesAllClusterEntityMappings() throws Exception {
         var database = migrate();
-        String sql = new ClassPathResource(MIGRATION).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
-        for (Class<?> entity : Set.of(ClusterAnalysisRun.class, ClusterAnalysisWork.class, ClusterAnalysisInput.class, ClusterAnalysisEvent.class)) {
+        String sql = new ClassPathResource(MIGRATION).getContentAsString(java.nio.charset.StandardCharsets.UTF_8) + new ClassPathResource(DIAGNOSTICS).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        for (Class<?> entity : Set.of(ClusterAnalysisRun.class, ClusterAnalysisWork.class, ClusterAnalysisInput.class, ClusterAnalysisEvent.class, ClusterAnalysisCall.class, ClusterAnalysisAttempt.class)) {
             String table = entity.getAnnotation(Table.class).name();
             var definition = java.util.regex.Pattern.compile("CREATE TABLE " + table + " \\((.*?)\\n\\);", java.util.regex.Pattern.DOTALL).matcher(sql);
             assertThat(definition.find()).as(table).isTrue();
@@ -59,7 +62,7 @@ class ClusterAnalysisSchemaMigrationTest {
         }
         var indexes = new HashSet<String>();
         try (var connection = database.getConnection()) {
-            for (String table : Set.of("ANALYSIS_CLUSTER_RUN", "ANALYSIS_CLUSTER_WORK", "ANALYSIS_CLUSTER_INPUT", "ANALYSIS_CLUSTER_EVENT")) {
+            for (String table : Set.of("ANALYSIS_CLUSTER_RUN", "ANALYSIS_CLUSTER_WORK", "ANALYSIS_CLUSTER_INPUT", "ANALYSIS_CLUSTER_EVENT", "ANALYSIS_CLUSTER_CALL", "ANALYSIS_CLUSTER_ATTEMPT")) {
                 try (var result = connection.getMetaData().getIndexInfo(null, "PUBLIC", table, false, false)) {
                     while (result.next()) if (result.getString("INDEX_NAME") != null)
                         indexes.add(result.getString("INDEX_NAME").toLowerCase(Locale.ROOT));
@@ -67,7 +70,7 @@ class ClusterAnalysisSchemaMigrationTest {
             }
         }
         assertThat(indexes).contains("idx_analysis_cluster_owner", "idx_analysis_cluster_scope", "idx_analysis_cluster_work_run",
-                "idx_analysis_cluster_input_run", "idx_analysis_cluster_event_run");
+                "idx_analysis_cluster_input_run", "idx_analysis_cluster_event_run", "idx_analysis_cluster_call_run", "idx_analysis_cluster_attempt_call");
     }
 
     @Test void preservesLargeFrozenInputAndEnforcesMonotonicEventIdentity() throws Exception {
@@ -95,6 +98,7 @@ class ClusterAnalysisSchemaMigrationTest {
         try (var connection = database.getConnection()) {
             connection.createStatement().execute("SET DATABASE SQL SYNTAX PGS TRUE");
             ScriptUtils.executeSqlScript(connection, migration);
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource(DIAGNOSTICS));
         }
         return database;
     }

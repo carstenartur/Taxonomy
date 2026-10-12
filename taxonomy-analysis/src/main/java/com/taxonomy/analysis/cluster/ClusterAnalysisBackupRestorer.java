@@ -55,7 +55,7 @@ public final class ClusterAnalysisBackupRestorer {
             var run = new ClusterAnalysisRun(); run.id = target.operationId(); run.username = command.username();
             run.scopeKey = ClusterAnalysisStore.scopeKey(command.workspaceContext());
             run.projectId = target.requirement().projectId(); run.requirementId = target.requirement().requirementId();
-            run.contextJson = json.writeValueAsString(target); run.commandJson = json.writeValueAsString(command);
+            run.contextJson = json.writeValueAsString(target); run.commandJson = json.writeValueAsString(command.withContinuationBinding(null));
             run.viewJson = source.viewJson(); run.resultJson = resultJson;
             run.relationPlanJson = source.relationPlanJson() == null ? null : json.writeValueAsString(remapPlan(read(source.relationPlanJson(), RelationSearchDistribution.Plan.class), target.operationId()));
             run.state = interrupted ? ClusterAnalysisState.CANCELLED : ClusterAnalysisState.valueOf(source.sourceState());
@@ -86,6 +86,30 @@ public final class ClusterAnalysisBackupRestorer {
                         ? INTERRUPTED : work.failureReason();
                 // Historical attempts remain in the archive DTO, never become a new live attempt.
                 restored.attempts = 0; restored.startedAt = null; restored.finishedAt = unfinished ? Long.valueOf(now) : work.finishedAt(); em.persist(restored);
+            }
+            var callIds = new HashMap<SourceRecordId, String>();
+            var executions = new HashMap<String, String>(); var invocations = new HashMap<String, String>();
+            for (var call : archive.calls()) {
+                var restored = new ClusterAnalysisCall(); restored.id = ClusterAnalysisDiagnostics.callKey(run.id, call.callNumber());
+                restored.operationId = run.id; restored.callNumber = call.callNumber();
+                var originalTask = archive.work().stream().filter(work -> work.taskId().equals(call.taskId())).findFirst().orElseThrow();
+                restored.taskId = remapTask((AnalysisTaskMessage) decode(originalTask.messageJson()), source.context(), target).taskId().value();
+                restored.executionId = executions.computeIfAbsent(call.executionId(), ignored -> UUID.randomUUID().toString());
+                restored.logicalOrdinal = call.logicalOrdinal(); restored.deliveryAttempt = call.deliveryAttempt(); restored.provider = call.provider(); restored.node = call.node();
+                restored.state = call.state(); restored.startedAt = call.startedAt(); restored.durationMillis = call.durationMillis(); restored.eventRevision = call.eventRevision();
+                restored.prompt = call.prompt(); restored.response = call.response(); restored.error = call.error(); restored.promptLength = call.promptLength(); restored.responseLength = call.responseLength();
+                callIds.put(call.sourceId(), restored.id); em.persist(restored);
+            }
+            for (var attempt : archive.attempts()) {
+                var restored = new ClusterAnalysisAttempt(); restored.id = UUID.randomUUID().toString(); restored.operationId = run.id; restored.callId = callIds.get(attempt.call());
+                restored.invocationId = invocations.computeIfAbsent(attempt.invocationId(), ignored -> UUID.randomUUID().toString());
+                restored.provider = attempt.provider(); restored.source = attempt.source(); restored.retryIndex = attempt.retryIndex(); restored.startedAt = attempt.startedAt();
+                if (attempt.observationJson() != null) {
+                    var observation = read(attempt.observationJson(), com.taxonomy.analysis.service.LlmTransportMeter.Observation.class);
+                    restored.observationJson = json.writeValueAsString(new com.taxonomy.analysis.service.LlmTransportMeter.Observation(restored.invocationId, observation.provider(), observation.source(),
+                            observation.retryIndex(), observation.statusCode(), observation.outcome(), observation.durationMillis(), observation.usage()));
+                }
+                em.persist(restored);
             }
             for (var event : archive.events()) {
                 var original = (AnalysisProgressEvent) decode(event.eventJson());
@@ -160,6 +184,21 @@ public final class ClusterAnalysisBackupRestorer {
             var effects = relationEffects(archive);
             RelationSearchDistribution.combine(plan, effects);
         } else scoreOnlyRelations(archive);
+        require(archive.calls().size() <= ClusterAnalysisDiagnostics.MAX_CALLS && archive.attempts().size() <= ClusterAnalysisDiagnostics.MAX_ATTEMPTS, "Oversized archived diagnostics");
+        var calls = new HashMap<SourceRecordId, Call>(); var numbers = new HashSet<Long>(); var logicalKeys = new HashSet<String>();
+        for (var call : archive.calls()) {
+            requireReference(call.sourceId(), "analysis.cluster-call", call.run(), run, sourceIds);
+            validateCall(call, run.revision(), taskIds);
+            require(numbers.add(call.callNumber()) && logicalKeys.add(call.executionId() + ":" + call.logicalOrdinal()), "Duplicate archived logical call");
+            calls.put(call.sourceId(), call); characters += bounded(call.prompt()) + bounded(call.response());
+        }
+        var attemptCounts = new HashMap<SourceRecordId, Integer>(); var attemptIds = new HashSet<String>();
+        for (var attempt : archive.attempts()) {
+            requireReference(attempt.sourceId(), "analysis.cluster-attempt", attempt.run(), run, sourceIds);
+            validateAttempt(attempt, calls, json);
+            require(attemptIds.add(attempt.attemptId()) && attemptCounts.merge(attempt.call(), 1, Integer::sum) <= ClusterAnalysisDiagnostics.MAX_ATTEMPTS_PER_CALL, "Duplicate or oversized archived attempt");
+            characters += bounded(attempt.observationJson());
+        }
         long revision = 0;
         for (var event : archive.events()) {
             requireReference(event.sourceId(), "analysis.cluster-event", event.run(), run, sourceIds);
@@ -169,6 +208,35 @@ public final class ClusterAnalysisBackupRestorer {
             characters += bounded(event.eventJson());
         }
         require(revision == run.revision() && characters <= 64_000_000L, "Incomplete or oversized archived aggregate");
+    }
+
+    static void validateCall(Call call, long revision, Set<String> taskIds) {
+        ClusterAnalysisDiagnostics.uuid(call.executionId());
+        require(taskIds.contains(call.taskId()) && call.callNumber() > 0 && call.callNumber() <= ClusterAnalysisDiagnostics.MAX_CALLS
+                && call.logicalOrdinal() > 0 && call.deliveryAttempt() > 0 && call.startedAt() >= 0 && call.durationMillis() >= 0
+                && call.eventRevision() > 0 && call.eventRevision() <= revision
+                && Set.of("STARTED", "COMPLETED", "FAILED", "STOPPED").contains(call.state())
+                && call.provider() != null && !call.provider().isBlank() && call.provider().length() <= 128
+                && ClusterAnalysisDiagnostics.length(call.node()) <= 512 && ClusterAnalysisDiagnostics.length(call.error()) <= 1024
+                && ClusterAnalysisDiagnostics.length(call.prompt()) <= ClusterAnalysisDiagnostics.MAX_TEXT && ClusterAnalysisDiagnostics.length(call.response()) <= ClusterAnalysisDiagnostics.MAX_TEXT
+                && call.promptLength() >= ClusterAnalysisDiagnostics.length(call.prompt()) && call.responseLength() >= ClusterAnalysisDiagnostics.length(call.response()), "Invalid archived logical call");
+        require(call.sourceId().equals(new SourceRecordId("analysis.cluster-call", ClusterAnalysisDiagnostics.callKey(call.run().value(), call.callNumber()))), "Invalid archived logical call key");
+    }
+    static void validateAttempt(Attempt attempt, Map<SourceRecordId, Call> calls, ObjectMapper json) {
+        var call = calls.get(attempt.call());
+        require(call != null, "Missing archived logical call");
+        validateAttempt(attempt, call.run(), call.startedAt(), json);
+    }
+    static void validateAttempt(Attempt attempt, SourceRecordId callRun, long callStartedAt, ObjectMapper json) {
+        require(callRun.equals(attempt.run()) && attempt.startedAt() >= callStartedAt
+                && attempt.sourceId().equals(new SourceRecordId("analysis.cluster-attempt", attempt.attemptId())), "Invalid archived transport ownership");
+        var start = new com.taxonomy.analysis.service.LlmTransportMeter.Attempt(attempt.attemptId(), attempt.invocationId(), attempt.provider(),
+                com.taxonomy.analysis.service.LlmTransportMeter.Source.valueOf(attempt.source()), attempt.retryIndex());
+        ClusterAnalysisDiagnostics.validate(start);
+        if (attempt.observationJson() != null) {
+            require(attempt.observationJson().length() <= 8192, "Oversized transport observation");
+            ClusterAnalysisDiagnostics.validateResult(start, json.readValue(attempt.observationJson(), com.taxonomy.analysis.service.LlmTransportMeter.Observation.class));
+        }
     }
 
     private AnalysisResult interruptedResult(Archive archive) {

@@ -510,7 +510,7 @@ class ArtemisAnalysisTransportTest {
         var emf = new LocalContainerEntityManagerFactoryBean();
         emf.setDataSource(new DriverManagerDataSource("jdbc:hsqldb:mem:cluster-broker-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", ""));
         emf.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
-                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
+                ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(), AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
         emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         emf.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop", "hibernate.search.enabled", "false"));
         emf.afterPropertiesSet(); resources.push(emf::destroy);

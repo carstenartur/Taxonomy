@@ -41,7 +41,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 23
+      "classDependencyCount": 24
     },
     {
       "fromContext": "analysis",
@@ -90,7 +90,14 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.recovery",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.snapshot",
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
@@ -104,7 +111,7 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 4
+      "classDependencyCount": 5
     },
     {
       "fromContext": "analysis",
@@ -306,6 +313,13 @@
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.recovery",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis.artemis",
+      "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.relations",
       "classDependencyCount": 1
     },
@@ -314,7 +328,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 15
+      "classDependencyCount": 28
     },
     {
       "fromContext": "app-composition",

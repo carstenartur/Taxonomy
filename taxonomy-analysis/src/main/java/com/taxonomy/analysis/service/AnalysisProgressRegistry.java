@@ -66,8 +66,16 @@ public class AnalysisProgressRegistry {
     }
 
     public record CallView(long id, String provider, String node, String status, long startedAt, long durationMillis) { }
+    public record TransportAttempt(String attemptId, String invocationId, String provider, String source,
+                                   int retryIndex, String state, long startedAt, long durationMillis,
+                                   Integer httpStatus, String outcome, LlmTransportMeter.Usage usage) { }
     public record CallDetail(String prompt, String response, boolean truncated, String error,
-                             int promptLength, int responseLength) {
+                             int promptLength, int responseLength, List<TransportAttempt> attempts,
+                             String taskId, String executionId, Integer deliveryAttempt) {
+        public CallDetail { attempts = List.copyOf(attempts); }
+        public CallDetail(String prompt, String response, boolean truncated, String error, int promptLength, int responseLength) {
+            this(prompt, response, truncated, error, promptLength, responseLength, List.of(), null, null, null);
+        }
         public CallDetail(String prompt, String response, boolean truncated) {
             this(prompt, response, truncated, "", length(prompt), length(response));
         }

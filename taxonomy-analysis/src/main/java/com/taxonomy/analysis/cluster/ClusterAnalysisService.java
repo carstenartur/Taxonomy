@@ -52,7 +52,7 @@ public final class ClusterAnalysisService {
             var completion = messages.completed(task, outcome, result.getRawScores().get(task.root().code()),
                     result.getRawScores().size(), reason);
             var prepared = result;
-            return new PreparedAnalysisCompletion<>(completion, () -> store.persistResult(task, prepared));
+            return new PreparedAnalysisCompletion<>(completion, () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistResult(task, prepared); });
         }
     }
 

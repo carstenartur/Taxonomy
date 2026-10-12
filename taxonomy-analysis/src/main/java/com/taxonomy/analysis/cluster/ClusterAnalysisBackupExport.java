@@ -65,7 +65,7 @@ public final class ClusterAnalysisBackupExport {
                     if (!scope.history() && !projectLineage
                             && !current.include(run.owner, run.context.authority(), command.businessText(), run.state.terminal())) return null;
                     included.put(run.id, run);
-                    return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, commandJson,
+                    return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, mapper.writeValueAsString(command.withContinuationBinding(null)),
                             text(r, "view_json"), text(r, "result_json"), text(r, "relation_plan_json"), run.state.name(),
                             ResumePolicy.REVIEW_REQUIRED, run.total, run.completed, run.revision, run.createdAt, run.updatedAt);
                 });
@@ -108,6 +108,40 @@ public final class ClusterAnalysisBackupExport {
                     revisions.put(run.id, revision);
                     return new ClusterAnalysisBackupRecords.Event(PortableRows.reference(r, "analysis.cluster-event", "id"), reference(run.id), revision, eventJson);
                 });
+        var callNumbers = new HashMap<String, Long>();
+        rows.writeBatches(sink, "analysis", "cluster-calls", profile,
+                batches("select " + META + ",c.*,c.operation_id as child_run,c.event_revision as child_revision,w.operation_id as work_run,w.task_id as work_task"
+                        + " from analysis_cluster_call c join analysis_cluster_run r on r.id=c.operation_id left join analysis_cluster_work w on w.operation_id=c.operation_id and w.task_id=c.task_id where r.id in (",
+                        " order by r.id,c.call_number", included.keySet()), r -> {
+                    var run = parent(r, scope, included);
+                    var call = new ClusterAnalysisBackupRecords.Call(PortableRows.reference(r, "analysis.cluster-call", "id"), reference(run.id),
+                            text(r, "task_id"), r.getLong("call_number"), text(r, "execution_id"), r.getInt("logical_ordinal"), r.getInt("delivery_attempt"),
+                            text(r, "provider"), text(r, "node"), text(r, "state"), r.getLong("started_at"), r.getLong("duration_millis"),
+                            r.getLong("child_revision"), text(r, "prompt_text"), text(r, "response_text"), text(r, "error_text"), r.getInt("prompt_length"), r.getInt("response_length"));
+                    if (!run.id.equals(text(r, "work_run")) || !call.taskId().equals(text(r, "work_task"))) throw new IOException("Cluster call task reference is inconsistent");
+                    try { ClusterAnalysisBackupRestorer.validateCall(call, run.revision, Set.of(call.taskId())); }
+                    catch (IllegalArgumentException invalid) { throw new IOException("Cluster call evidence is inconsistent"); }
+                    if (call.callNumber() <= callNumbers.getOrDefault(run.id, 0L)) throw new IOException("Invalid cluster call identity");
+                    callNumbers.put(run.id, call.callNumber());
+                    return call;
+                });
+        var attemptCounts = new HashMap<String, Integer>(); var callAttempts = new AttemptGroup();
+        rows.writeBatches(sink, "analysis", "cluster-attempts", profile,
+                batches("select " + META + ",a.*,a.operation_id as child_run,c.operation_id as call_run,c.started_at as call_started"
+                        + " from analysis_cluster_attempt a join analysis_cluster_run r on r.id=a.operation_id left join analysis_cluster_call c on c.id=a.call_id where r.id in (",
+                        " order by r.id,a.call_id,a.id", included.keySet()), r -> {
+                    var run = parent(r, scope, included);
+                    var attempt = new ClusterAnalysisBackupRecords.Attempt(PortableRows.reference(r, "analysis.cluster-attempt", "id"), reference(run.id),
+                            new SourceRecordId("analysis.cluster-call", text(r, "call_id")), text(r, "id"), text(r, "invocation_id"), text(r, "provider"),
+                            text(r, "source"), r.getInt("retry_index"), r.getLong("started_at"), text(r, "observation_json"));
+                    if (!run.id.equals(text(r, "call_run"))) throw new IOException("Cluster attempt call reference is inconsistent");
+                    try { ClusterAnalysisBackupRestorer.validateAttempt(attempt, reference(text(r, "call_run")), r.getLong("call_started"), mapper); }
+                    catch (IllegalArgumentException invalid) { throw new IOException("Cluster attempt evidence is inconsistent"); }
+                    if (attemptCounts.merge(run.id, 1, Integer::sum) > ClusterAnalysisDiagnostics.MAX_ATTEMPTS
+                            || callAttempts.include(attempt.call()) > ClusterAnalysisDiagnostics.MAX_ATTEMPTS_PER_CALL)
+                        throw new IOException("Cluster attempt evidence exceeds bounds");
+                    return attempt;
+                });
         for (var run : included.values()) {
             var roots = rootWork.getOrDefault(run.id, Set.of());
             if (roots.size() != run.total || completed.getOrDefault(run.id, 0) != run.completed
@@ -115,9 +149,15 @@ public final class ClusterAnalysisBackupExport {
                 throw new IOException("Cluster analysis dependency closure is incomplete");
         }
     }
+    // Attempts are ordered by parent call; no request/answer DTOs are retained while streaming the archive.
+    private static final class AttemptGroup {
+        private SourceRecordId previous;
+        private int count;
+        int include(SourceRecordId call) { if (!call.equals(previous)) { previous = call; count = 0; } return ++count; }
+    }
     private List<Query> children(String alias, String table, String order, Map<String, Metadata> included) {
         return batches("select " + META + "," + alias + ".*," + alias + ".operation_id as child_run"
-                + (alias.equals("e") ? ",e.event_revision as child_revision" : "")
+                + ((alias.equals("e") || alias.equals("c")) ? "," + alias + ".event_revision as child_revision" : "")
                 + " from " + table + " " + alias + " join analysis_cluster_run r on r.id=" + alias + ".operation_id where r.id in (",
                 " order by r.id," + alias + "." + order, included.keySet());
     }

@@ -4,6 +4,7 @@ import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
 import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.LlmTransportMeter;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
@@ -69,9 +70,13 @@ public final class FrozenClusterAnalysisComputation implements ClusterAnalysisCo
         }
         var frozen = mapper.readValue(store.shard(context, task.root()), RootCatalogueSnapshot.class);
         var root = task.root().code();
+        var diagnostics = store.diagnostics(task, input.deliveryAttempt());
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), Set.of(root), List.of(frozen));
              var provider = providers.withRequestProvider(command.provider(), command.providerBinding());
-             var run = AnalysisRunControl.worker(context.operationId(), cancelled, guards.get());
+             var checkpoint = command.continuationBinding() == null ? null : store.checkpointSession(input, task,
+                     llm.recoveryPolicyFingerprint(command.provider()), null);
+             var run = AnalysisRunControl.worker(diagnostics, cancelled, guards.get());
+             var transport = LlmTransportMeter.openJournal(diagnostics);
              var operation = InProcessAnalysisOperation.open(context, null)) {
             AnalysisRunControl.checkpoint();
             if (localOnnx) {

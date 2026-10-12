@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class ClusterRelationServiceTest {
     @Test void preparationAndEvaluationPersistOnlyThroughTheCompletionCallback() {
@@ -146,6 +147,11 @@ class ClusterRelationServiceTest {
         int rootReads;
         public ClusterAnalysisStore.Input start(AnalysisTaskMessage task) {
             return new ClusterAnalysisStore.Input(context, command, executable, input);
+        }
+        public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int delivery) {
+            var diagnostics = mock(ClusterAnalysisDiagnostics.Session.class);
+            org.mockito.Mockito.when(diagnostics.operationId()).thenReturn(context.operationId());
+            return diagnostics;
         }
         public String shard(AnalysisOperationContext context, TaxonomyShardRoot root) {
             reads.add(root.code()); return Objects.requireNonNull(snapshots.get(root.code()), "missing snapshot");

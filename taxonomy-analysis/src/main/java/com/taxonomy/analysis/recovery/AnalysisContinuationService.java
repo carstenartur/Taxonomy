@@ -19,6 +19,10 @@ public class AnalysisContinuationService {
     private final ObjectMapper mapper;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.taxonomy.analysis.relations.RequirementRelationSearchService relations;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private LlmProviderConfig providers;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.cluster.ClusterAnalysisStore clusterStore;
     public AnalysisContinuationService(AnalysisContinuationStore store, TaxonomyService catalogue,
             LlmService llm, WorkspaceManager workspaces, ObjectMapper mapper) {
         this.store = store; this.catalogue = catalogue; this.llm = llm; this.workspaces = workspaces; this.mapper = mapper;
@@ -36,6 +40,27 @@ public class AnalysisContinuationService {
         }
         return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree));
     }
+    public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
+        authorize(username, scope);
+        if (providers == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Frozen provider authority is unavailable");
+        var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
+        frozen.setMaxArchitectureNodes(maxNodes);
+        String requested = request.getProvider();
+        String provider = "MOCK".equalsIgnoreCase(requested) || providers.isMockMode() ? "MOCK"
+                : requested == null || requested.isBlank() ? providers.getActiveProviderId().value() : requested.toUpperCase(java.util.Locale.ROOT);
+        frozen.setProvider(provider);
+        var tree = catalogue.getFullTree();
+        try { frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet())); }
+        catch (IllegalArgumentException invalid) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid); }
+        var pluginBinding = providers.captureProviderBinding(provider);
+        try (var ignored = providers.withRequestProvider(provider, pluginBinding)) {
+            String signature = signature(frozen, tree);
+            var claim = store.begin(frozen, scope, signature, tree);
+            var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
+                    llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint())) : null;
+            return new Execution(claim, binding, provider, pluginBinding);
+        }
+    }
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.read(id, scope);
     }
@@ -44,9 +69,12 @@ public class AnalysisContinuationService {
         var snapshot = store.read(id, scope);
         if (snapshot.result() == null || snapshot.result().getTree() == null) {
             var tree = catalogue.getFullTree();
-            return store.cancel(id, scope, tree, signature(snapshot.request(), tree));
-        }
-        return store.cancel(id, scope);
+            snapshot = store.cancel(id, scope, tree, signature(snapshot.request(), tree));
+        } else snapshot = store.cancel(id, scope);
+        var cancelled = snapshot;
+        String operation = store.boundOperation(id);
+        if (operation != null && clusterStore != null) clusterStore.cancel(clusterStore.authorize(operation, username, scope));
+        return cancelled;
     }
     public LlmCallDetail detail(String id, String key, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.detail(id, key, scope);
@@ -73,9 +101,14 @@ public class AnalysisContinuationService {
         private final AnalysisContinuationStore.Claim claim;
         private final AnalysisCheckpointSession session;
         private boolean completed;
-        Execution(AnalysisContinuationStore.Claim claim) {
-            this.claim = claim;
-            session = claim.completedResult() != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
+        private final AnalysisContinuationBinding distributedBinding;
+        private final String frozenProvider;
+        private final com.taxonomy.extension.api.plugin.PluginInvocation providerBinding;
+        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null); }
+        Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, String provider,
+                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding) {
+            this.claim = claim; distributedBinding = binding; frozenProvider = provider; providerBinding = pluginBinding;
+            session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
                 public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) {
                     return store.prepare(claim, q);
                 }
@@ -94,6 +127,12 @@ public class AnalysisContinuationService {
                 }
             });
         }
+        public AnalysisContinuationBinding binding() { return distributedBinding; }
+        public com.taxonomy.analysis.usecase.AnalyzeRequirementCommand bind(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand command) {
+            return new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),
+                    command.maxArchitectureNodes(), frozenProvider, command.username(), command.workspaceContext(), command.provenance(),
+                    command.analysisScope(), providerBinding, distributedBinding);
+        }
         public AnalysisResult replay() { return claim.completedResult(); }
         public AnalysisResult complete(AnalysisResult result) {
             AnalysisResult completedResult = store.complete(claim, result, catalogue.getFullTree());
@@ -101,7 +140,10 @@ public class AnalysisContinuationService {
         }
         @Override public void close() {
             if (session != null) session.close();
-            if (!completed && claim.completedResult() == null) store.interrupted(claim);
+            if (!completed && claim.completedResult() == null) {
+                String operation = distributedBinding == null ? null : store.boundOperation(claim.id());
+                if (operation == null || !store.owns(claim, operation)) store.interrupted(claim);
+            }
         }
     }
 }

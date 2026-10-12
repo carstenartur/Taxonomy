@@ -2039,3 +2039,9 @@ HTML oder Word herunter. Ungespeicherte Eingaben sind nicht enthalten; historisc
 Quelle, Entscheidungen und Architektur bleiben erhalten. Erstellen Sie für portable
 Git-Historie einen eigenen Projekt-Checkpoint. Weitere Details: [Ablauf](../features/requirement-reformulation.md)
 und [Prüfgrenzen](../testing/requirement-reformulation.md).
+
+### Verteilte Fortsetzung
+
+Wenn Artemis konfiguriert ist, verwendet die fortsetzbare Analyse dieselben dauerhaften Worker wie die gewöhnliche Analyse. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet. Die ursprüngliche Anforderung, der Arbeitsbereich mit Branch und Commit, die Kataloggeneration sowie die Anbieterkonfiguration bleiben an den gespeicherten Vorgang gebunden; geänderte Eingaben benötigen eine neue Analyse. Das Schließen der Seite bricht einen angenommenen Vorgang nicht ab. Verbinden Sie sich erneut mit dem gespeicherten Vorgang oder wählen Sie **Status aktualisieren**, um das aktuelle Ergebnis zu lesen.
+
+Stoppt ein Worker nach einem dauerhaft gespeicherten Abfrage-START und vor einer angenommenen Antwort, lautet der Zustand **Ausgang ungewiss**. Eine erneute Zustellung pausiert, statt die Anbieteranfrage automatisch zu wiederholen. Mit **LLM-Anfrage wiederholen und fortsetzen** geben Sie diese Abfrage erneut frei; **Bereich offenlassen und fortfahren** erhält den Bereich als unbekannt. Bei einer geänderten Revision müssen Sie vor der Entscheidung aktualisieren. Ein Abbruch erhält zuvor angenommene Bewertungen und verhindert, dass späte Antworten den Vorgang wieder starten. Ein wiederhergestelltes Backup erhält die Nachweise und verlangt eine Prüfung; es stellt keine Worker-Leases wieder her und startet keine Anbieteranfragen automatisch.

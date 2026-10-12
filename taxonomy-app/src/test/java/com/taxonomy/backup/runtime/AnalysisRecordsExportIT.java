@@ -142,11 +142,16 @@ class AnalysisRecordsExportIT {
             }
             var output = new Contents();
             new AnalysisBackupContributor(fixture.database, "alice").write(selected(profile), output);
-            assertThat(output.entries).hasSize(7);
+            assertCompleteAnalysisDatasets(output, profile);
+            for (String dataset : List.of("cluster-calls", "cluster-attempts")) {
+                assertThat(records(output, dataset)).as("No diagnostics exist in this continuation-only fixture: %s", dataset).isEmpty();
+            }
             List<String> expected = profile.includesHistory() ? allIds : selectedIds;
             assertThat(ids(output, "continuations")).containsExactlyInAnyOrderElementsOf(expected);
             assertThat(records(output, "questions")).extracting(r -> r.path("run").path("value").asText()).containsExactlyInAnyOrderElementsOf(expected);
-            assertThat(output.text()).contains("CURRENT-alice", "REVIEW_REQUIRED", "maxNodes", "\"N1\":80").doesNotContain("WORKER-CLAIM", "PRIVATE-WORKER-ERROR");
+            assertThat(records(output, "questions")).allSatisfy(question ->
+                    assertThat(question.path("error").asText()).isEqualTo("CHECKPOINT-DIAGNOSTIC"));
+            assertThat(output.text()).contains("CURRENT-alice", "REVIEW_REQUIRED", "maxNodes", "\"N1\":80").doesNotContain("WORKER-CLAIM");
             if (!profile.includesHistory()) assertThat(output.text()).doesNotContain("OLD-RUN-", "OLD-DRAFT-", "OLD-QUESTION-");
             if (!profile.isInstallation()) assertThat(output.text()).doesNotContain("bob");
             assertThat(fixture.jdbc.queryForObject("select count(*) from analysis_continuation", Integer.class)).isEqualTo(4);
@@ -262,8 +267,20 @@ class AnalysisRecordsExportIT {
             @Override public Connection getConnection(String username, String password) { return getConnection(); }
         };
         var output = new Contents(); new AnalysisBackupContributor(unavailable, "alice").write(scoped(BackupProfile.SELECTED_VERSION), output);
-        assertThat(output.entries).hasSize(7);
-        for (String dataset : List.of("drafts", "continuations", "questions")) assertThat(records(output, dataset)).isEmpty();
+        assertCompleteAnalysisDatasets(output, BackupProfile.SELECTED_VERSION);
+        for (String dataset : ANALYSIS_DATASETS) assertThat(records(output, dataset)).as("Selected Git version cannot attribute present-day %s", dataset).isEmpty();
+    }
+    private static final List<String> ANALYSIS_DATASETS = List.of("drafts", "continuations", "questions",
+            "cluster-runs", "cluster-work", "cluster-inputs", "cluster-events", "cluster-calls", "cluster-attempts");
+    private static void assertCompleteAnalysisDatasets(Contents output, BackupProfile profile) throws IOException {
+        assertThat(output.entries.keySet()).containsExactlyInAnyOrderElementsOf(
+                ANALYSIS_DATASETS.stream().map(dataset -> "data/analysis/" + dataset + ".ndjson").toList());
+        for (String dataset : ANALYSIS_DATASETS) {
+            String firstLine = new String(output.entries.get("data/analysis/" + dataset + ".ndjson"), StandardCharsets.UTF_8)
+                    .lines().findFirst().orElseThrow();
+            assertThat(PortableRows.json().readTree(firstLine)).as("Portable dataset header: %s", dataset)
+                    .isEqualTo(PortableRows.json().valueToTree(new PortableRows.Header(1, dataset, profile)));
+        }
     }
     @ParameterizedTest @ValueSource(strings = {"null", "[]", "{\"businessText\":false}"})
     void malformedAnalysisBodiesFailRatherThanBecomingEmptyRecords(String payload) throws Exception {
@@ -284,7 +301,7 @@ class AnalysisRecordsExportIT {
         return id;
     }
     private static void question(Fixture fixture, String run, String text) {
-        fixture.jdbc.update("insert into analysis_question_checkpoint(id,run_id,question_key,input_hash,provider,node_codes,detail_json,prompt_text,state,attempts,started_at,error_text) values(?,?,'first-question',?,'LOCAL','[\"N1\"]',?,?,'SUCCESS',1,10,'PRIVATE-WORKER-ERROR')",
+        fixture.jdbc.update("insert into analysis_question_checkpoint(id,run_id,question_key,input_hash,provider,node_codes,detail_json,prompt_text,state,attempts,started_at,error_text) values(?,?,'first-question',?,'LOCAL','[\"N1\"]',?,?,'SUCCESS',1,10,'CHECKPOINT-DIAGNOSTIC')",
                 run + ":question", run, "b".repeat(64), "{\"text\":\"" + text + "\"}", text);
     }
     private static List<String> ids(Contents contents, String dataset) { return records(contents, dataset).stream().map(r -> r.path("sourceId").path("value").asText()).toList(); }

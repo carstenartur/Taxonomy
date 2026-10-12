@@ -24,7 +24,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         get textContent() { return this.value + this.children.map(child => child.textContent).join(' '); }
         append(...children) { this.children.push(...children); }
         setAttribute() {}
-        addEventListener() {}
+        addEventListener(name, listener) { (this.listeners ||= new Map()).set(name, listener); }
         insertAdjacentElement() {}
         replaceChildren(...children) { this.children = children; }
         remove() { this.isConnected = false; elements.delete(this.id); }
@@ -785,4 +785,42 @@ test('only the latest in-scope monitor may apply a full HTTP result', () => {
     f.scope.analysisGeneration++;
     assert.equal(next.acceptsResult(), false);
     next.stop();
+});
+
+test('explicit cluster detail opens unresolved attempts and refreshes the completed answer with unknown usage preserved', async () => {
+    let completed = false;
+    const call = { id: 1, provider: 'Fixture', node: 'CP', status: 'STARTED', startedAt: 1000, durationMillis: 0 };
+    const f = fixture(async url => {
+        if (String(url).includes('/calls/1')) return response({ prompt: 'PRIVATE-REQUEST', response: completed ? 'PRIVATE-ANSWER' : '',
+            promptLength: 15, responseLength: completed ? 14 : 0, truncated: false, taskId: 'operation:subtaxonomy:CP', deliveryAttempt: 2,
+            attempts: [{ attemptId: 'attempt', source: 'HTTP', retryIndex: 0, state: completed ? 'COMPLETED' : 'STARTED',
+                httpStatus: completed ? 200 : null, outcome: completed ? 'RESPONSE' : null,
+                usage: { inputTokens: null, outputTokens: completed ? 0 : null, totalTokens: null, invalid: false } }] });
+        return response({ ...clusterSnapshot(1), calls: [call] });
+    }, 'workspace-a', true);
+    f.window.TaxonomyRoleSurface.canAnalyze = () => true;
+    await f.step(0);
+    const entry = f.elements.get('llmCommLogContent').children.find(child => child.tag === 'details');
+    assert.ok(entry);
+    assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 0, 'Ordinary progress never fetches request/answer detail');
+    entry.open = true;
+    entry.listeners.get('toggle')();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 1, 'An unresolved START is inspectable after explicit opening');
+    assert.ok(entry.textContent.includes('UNKNOWN'));
+    assert.ok(entry.textContent.includes('STARTED'));
+    completed = true;
+    await f.streams[0].emit('progress', { ...clusterSnapshot(2), calls: [{ ...call, status: 'COMPLETED', durationMillis: 10 }] });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(entry.textContent.includes('PRIVATE-ANSWER'));
+    assert.ok(entry.textContent.includes('output=0'));
+    assert.ok(entry.textContent.includes('total=UNKNOWN'));
+    f.monitor.stop();
+    entry.open = false;
+    entry.listeners.get('toggle')();
+    entry.open = true;
+    entry.listeners.get('toggle')();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 3,
+        'Explicit reopening reads retained evidence again after live observation ends');
 });

@@ -53,6 +53,32 @@ class LlmServiceBranchCoverageTest {
     private LlmService service;
 
     @Test
+    void completeProductValuesSurviveMissingOuterBraceWithoutRepeatingTheProviderRequest() {
+        var products = List.of(node("IP-1365", "IP-F", "IP"), node("IP-1676", "IP-F", "IP"),
+                node("IP-1775", "IP-F", "IP"));
+        products.forEach(product -> when(catalogueOverlayService.isProduct(product.getCode())).thenReturn(true));
+        String raw = """
+                ```json
+                {
+                  "IP-1365": {"score": 70, "reason": "Readiness reports for prophylaxis."},
+                  "IP-1676": {"score": 60, "reason": "Collection of prophylaxis data."},
+                  "IP-1775": {"score": 70, "reason": "Queries identify vaccination status."}
+                ```
+                """;
+        when(gateway.sendHttpRequest("product prompt", "test-key")).thenReturn("product-body");
+        when(gateway.extractResponseText("product-body")).thenReturn(raw);
+
+        var result = service.analyzeSingleBatchDetailed("Vaccination records", products, 100);
+
+        assertThat(result.getError()).isNull();
+        assertThat(result.getScores()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("IP-1365", 70, "IP-1676", 60, "IP-1775", 70));
+        assertThat(result.getReasons()).containsEntry("IP-1775", "Queries identify vaccination status.");
+        assertThat(result.getRawResponse()).contains(raw);
+        verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
+    }
+
+    @Test
     void cancellationBetweenRootsRetainsCompletedScoresWithoutAllocatingAnotherTree() {
         var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
         var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");

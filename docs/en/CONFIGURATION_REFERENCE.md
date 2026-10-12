@@ -359,6 +359,7 @@ The legacy SSE connection has no independent servlet timeout. The configured ana
 | `TAXONOMY_ANALYSIS_RUNTIME_ROLE` | `taxonomy.analysis.runtime-role` | `all` | `all` retains combined web/worker behavior; `coordinator` serves web and coordinates durable tasks; `worker` consumes configured roots without global catalogue initialization. Separate roles require Artemis. |
 | `TAXONOMY_ANALYSIS_TRANSPORT_MODE` | `taxonomy.analysis.transport.mode` | `local` | `local` keeps analysis in-process (default, no broker). `artemis` enables the external Apache Artemis task transport. Any other value fails startup. |
 | `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_ENABLED` | `taxonomy.analysis.provider-permits.enabled` | `false` | Enables cluster-wide concurrency permits for physical provider requests. Requires `artemis` mode, explicit provider-group mappings and provisioned permit queues. |
+| `TAXONOMY_ANALYSIS_PROVIDER_QUOTAS_ENABLED` | `taxonomy.analysis.provider-quotas.enabled` | `false` | Opts in to shared durable RPM/TPM/RPD limits and provider cooldowns. Requires `artemis` mode, explicit provider/credential groups and policies, and separately provisioned quota-state queues; runtime does not seed or refill them. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL` | `taxonomy.analysis.artemis.broker-url` | empty | Required in `artemis` mode. `tcp://` (or a failover list `(tcp://a,tcp://b)?ha=true`) or `vm://`. Never logged or shown in health output. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_USER` | `taxonomy.analysis.artemis.user` | empty | Broker user; supply through a secret. |
 | `TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD` | `taxonomy.analysis.artemis.password` | empty | Broker password; supply through a secret, never through images or committed files. |
@@ -394,3 +395,31 @@ not seed capacity on startup. Existing local RPM/TPM/RPD behavior remains separa
 from cluster concurrency. For TLS Secret mounts, external broker HA, exact queue
 names, DLQ/expiry, Hawtio administration and Helm worker scaling see
 [External Artemis operations](OPERATIONS_GUIDE.md#external-artemis-analysis-operations).
+
+
+### Cluster-wide physical-attempt rate quotas
+
+Enable `taxonomy.analysis.provider-quotas.enabled=true` only with the Artemis transport. Each explicitly mapped credential/account group owns one durable state message in an exclusive durable ANYCAST queue. These settings do not infer sharing from a URL, provider name or API key. Unmapped physical providers fail closed while this feature is enabled; local ONNX and recording replay use no HTTP quota.
+
+| Spring property | Default | Contract |
+| --- | --- | --- |
+| `taxonomy.analysis.provider-quotas.destination-prefix` | `taxonomy.analysis.provider-quotas` | Exact durable ANYCAST queue prefix; administrative provisioning uses the same prefix. |
+| `taxonomy.analysis.provider-quotas.maximum-wait-ms` | `120000` | Bounded cancellable acquisition of the short ledger transaction. Existing overall provider-admission limits still apply. |
+| `taxonomy.analysis.provider-quotas.provider-groups.<provider>` | none | Required explicit credential/account-group map, e.g. `openai=shared-openai`. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpm` | `0` | Permanent physical-attempt debits in a conservative rolling 60-second window; zero disables this dimension. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.rpd` | `0` | Permanent physical-attempt debits in a conservative rolling 24-hour window; this is stricter than calendar-day reset. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.tpm` | `0` | Conservative minute token reservations. Active TPM rejects transports lacking a demonstrated complete-input bound and real complete-output cap. The explicit OpenAI Responses snapshot adapter below is supported; other built-in/contributed transports send zero HTTP under active TPM. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.input-upper-bound` | `0` | Required only for a demonstrated TPM adapter; complete compiled input includes all catalogue/system/role/tool framing. A character-based estimate is insufficient. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.output-cap` | `0` | Required real wire cap, including reasoning and visible output, for a demonstrated TPM adapter. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.token-adapter` | none | Required versioned supported token contract when TPM is active. Merely naming a contract does not make a transport support it. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.clock-skew-millis` | `1000` | Operational maximum absolute UTC clock error for every participating node/broker. Windows/cooldowns retain an additional twice this allowance. |
+| `taxonomy.analysis.provider-quotas.groups.<group>.maximum-reservations` | `20000` | Bounded ledger capacity, valid 1..20000. A group with RPD retains all attempts for a full day, so capacity must cover intended daily admission. Exhaustion fails closed. |
+
+Policy/group coverage is exact, and unknown group limit keys are rejected. Keep every role and the admin provisioner on the same limits, clock bound, capacity and token-adapter version. Do not change a live group policy by editing worker settings alone: policy fingerprints deliberately reject mismatched retained state. Stop admission and reconcile remaining budgets with the provider before a reviewed migration. [Operator procedure](OPERATIONS_GUIDE.md#cluster-wide-physical-attempt-rate-quotas).
+
+
+#### Exact OpenAI Responses token contract
+
+Only `token-adapter=openai.responses.gpt-4o-mini-2024-07-18.v1` is supported with the built-in `openai` provider, its default configured `gpt-4o-mini` alias and endpoint. The opt-in adapter sends the pinned `gpt-4o-mini-2024-07-18` snapshot to Responses. It sends the complete stateless authored prompt to the server-side input counter, checks the configured complete input bound, then sends identical model/input with `truncation:"disabled"` and the actual `max_output_tokens` cap. Output cap must be at most 16384; input bound plus output cap must be at most 128000. No character/token ratio or assumed framing constant is used.
+
+Every count attempt consumes a full durable request/token reservation and remains UNKNOWN until expiry. Generation needs a separate full reservation. Allow at least two attempts and two complete reservations for one fresh logical call; retries add further attempts. The contract bounds actual inference tokens and does not promise that OpenAI's estimated rate-limit accounting will avoid 429s. TPM-off keeps the existing Chat Completions request and frozen identity. [Wire contract and bounded transport](OPERATIONS_GUIDE.md#supported-openai-responses-tpm-adapter).

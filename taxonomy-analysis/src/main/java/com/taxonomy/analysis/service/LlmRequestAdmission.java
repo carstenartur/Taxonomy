@@ -18,6 +18,7 @@ final class LlmRequestAdmission {
     private ProviderRequestLimiter.Limits limits = new ProviderRequestLimiter.Limits(4, 64);
     private ProviderRequestLimiter limiter = new ProviderRequestLimiter(limits);
     private ProviderConcurrencyPermits clusterPermits = ProviderConcurrencyPermits.NONE;
+    private ProviderRateQuotas clusterQuotas = ProviderRateQuotas.NONE;
     private boolean used;
 
     LlmRequestAdmission(LlmProvider provider, int defaultRpm, AnalysisRuntimeSettings settings) {
@@ -42,14 +43,25 @@ final class LlmRequestAdmission {
         clusterPermits = java.util.Objects.requireNonNull(permits, "permits");
     }
 
+    synchronized void configure(ProviderRateQuotas quotas) {
+        if (used) throw new IllegalStateException("Cannot replace an active provider quota policy");
+        clusterQuotas = java.util.Objects.requireNonNull(quotas, "quotas");
+    }
+    synchronized ProviderRateQuotas.TokenBudget requiredTokenBudget() { return clusterQuotas.requiredBudget(provider); }
+
     <T> T execute(Supplier<T> request) {
+        return execute(null, request);
+    }
+    <T> T execute(ProviderRateQuotas.TokenBudget tokenBudget, Supplier<T> request) {
         ProviderRequestLimiter current;
         ProviderConcurrencyPermits distributed;
+        ProviderRateQuotas quotas;
         long maximumWait;
         synchronized (this) {
             used = true;
             current = limiter;
             distributed = clusterPermits;
+            quotas = clusterQuotas;
             maximumWait = limits.maximumWaitMillis();
         }
         String key = provider.equals(LlmProvider.GEMINI.id()) ? "llm.rpm"
@@ -58,12 +70,13 @@ final class LlmRequestAdmission {
         long queuedAt = System.nanoTime();
         Runnable checkpoint = () -> {
             AnalysisRunControl.checkpoint();
-            if (distributed != ProviderConcurrencyPermits.NONE
+            if ((distributed != ProviderConcurrencyPermits.NONE || quotas != ProviderRateQuotas.NONE)
                     && TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt) >= maximumWait) {
                 throw new LlmRateLimitException(provider + ": Provider admission wait expired");
             }
         };
         while (true) {
+            long quotaWait = 0;
             ProviderRequestLimiter.Permit permit;
             try {
                 permit = current.acquire(rpm, checkpoint, (reason, millis) ->
@@ -74,24 +87,41 @@ final class LlmRequestAdmission {
             }
             boolean requestStarted = false;
             try {
-                if (distributed == ProviderConcurrencyPermits.NONE) return request.get();
-                AnalysisRunControl.phase("WAITING_PROVIDER_CAPACITY", null);
+                if (distributed == ProviderConcurrencyPermits.NONE && quotas == ProviderRateQuotas.NONE) return request.get();
+                if (distributed != ProviderConcurrencyPermits.NONE) AnalysisRunControl.phase("WAITING_PROVIDER_CAPACITY", null);
                 try (var clusterPermit = distributed.acquire(provider, checkpoint)) {
                     checkpoint.run();
                     if (!permit.refreshRateAdmission(rpm)) continue;
-                    requestStarted = true;
-                    return request.get();
+                    var decision = quotas.tryReserve(provider, java.util.UUID.randomUUID().toString(), tokenBudget, checkpoint);
+                    if (decision.granted()) {
+                        requestStarted = true;
+                        try (var quotaScope = LlmTransportMeter.openQuota(decision.reservation())) {
+                            return request.get();
+                        }
+                    }
+                    quotaWait = decision.waitMillis();
                 }
             } finally {
-                if (distributed != ProviderConcurrencyPermits.NONE && !requestStarted) permit.cancelRateReservation();
+                if ((distributed != ProviderConcurrencyPermits.NONE || quotas != ProviderRateQuotas.NONE) && !requestStarted) permit.cancelRateReservation();
                 permit.close();
             }
+            checkpoint.run();
+            long remaining = maximumWait - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
+            // Cooperative pause checks cancellation every250ms without repeatedly polling the broker ledger.
+            AnalysisRunControl.pause("WAITING_RATE_LIMIT", Math.min(quotaWait, Math.max(1, remaining)));
         }
+    }
+
+    private void deferRateLimit(long delayMillis) {
+        ProviderRateQuotas quotas;
+        synchronized (this) { limiter.deferFor(delayMillis); quotas = clusterQuotas; }
+        // A provider cooldown applies to every worker even when this caller has exhausted retries.
+        quotas.defer(provider, delayMillis);
     }
 
     boolean retryRateLimit(Duration retryAfter, int attempt, int maxRetries) {
         var decision = ProviderRetryPolicy.rateLimit(attempt, maxRetries, retryAfter);
-        synchronized (this) { limiter.deferFor(decision.delayMillis()); }
+        deferRateLimit(decision.delayMillis());
         if (decision.retry()) AnalysisRunControl.phase("WAITING_RATE_LIMIT", null);
         return decision.retry();
     }
@@ -107,7 +137,7 @@ final class LlmRequestAdmission {
         String retryAfter = failure.getResponseHeaders() == null ? null
                 : failure.getResponseHeaders().getFirst("Retry-After");
         var decision = ProviderRetryPolicy.rateLimit(attempt, maxRetries, retryAfter, code, Instant.now());
-        synchronized (this) { limiter.deferFor(decision.delayMillis()); }
+        deferRateLimit(decision.delayMillis());
         if (decision.retry()) AnalysisRunControl.phase("WAITING_RATE_LIMIT", null);
         return decision.retry();
     }
