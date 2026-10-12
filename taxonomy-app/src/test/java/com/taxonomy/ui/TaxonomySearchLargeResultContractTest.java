@@ -164,15 +164,17 @@ class TaxonomySearchLargeResultContractTest {
     }
 
     @Test
-    void newSearchClearsStaleHighlightAndKeepsOneTreeTabStop() throws Exception {
+    void newSearchClearsStaleHighlightAndKeepsOneTabStopInTheTargetTree() throws Exception {
         String search = resource("/static/js/shared/taxonomy-search.js");
 
         assertThat(search)
                 .contains("function resetResultState()")
                 .contains("document.querySelectorAll('.search-highlight')")
-                .contains("#taxonomyTree [role=\"treeitem\"][tabindex=\"0\"]")
+                .contains("var tree = node.closest('[role=\"tree\"]')")
+                .contains("tree.querySelectorAll('[role=\"treeitem\"][tabindex=\"0\"]')")
                 .contains("item.setAttribute('tabindex', '-1')")
-                .contains("node.setAttribute('tabindex', '0')");
+                .contains("node.setAttribute('tabindex', '0')")
+                .doesNotContain("#taxonomyTree [role=\"treeitem\"][tabindex=\"0\"]");
     }
 
     @Test

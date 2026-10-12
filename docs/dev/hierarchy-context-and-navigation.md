@@ -8,6 +8,14 @@ Implementation of the hierarchy review in #1111. A precise child can rely on des
 
 The original workbook, the existing overlay, original IDs, historical snapshots and active architecture are not rewritten by this increment. The current allocation/product-score formulas are not endorsed or changed here. In particular, an independent suitability score is not thereby a conditional probability suitable for multiplication. Redesigning its semantics requires a versioned change across scoring, derived values, display and persistence rather than an isolated formula patch.
 
+## Sub-taxonomy containers in the browser
+
+`TaxonomyNodeDto.isTaxonomyContainer()` exposes computed, read-only presentation metadata. A container has a nonblank `code` equal to `taxonomyRoot`, `level == 0`, and no `parentCode`. The browser uses the explicit boolean when present, including `false`, and applies the same metadata predicate to older snapshots without it. Names, code prefixes and a `-1000` suffix do not establish this role. The role is independent of `analysisRole` and does not classify other local navigation groups.
+
+List and Tabs render containers as labelled groups with native expansion buttons. Tree, Canvas, Sunburst and Decision Map build a separate content-root projection; the original child objects, parent references and ordering remain intact. Original top-level catalogue entries remain selectable and eligible for ranking. Area scores appear as separately labelled area relevance, outside the Decision Map ranking. CSV retains the evidence with an empty container rank and an additive `TaxonomyContainer` column; DOT and Mermaid tree exports use groups. JSON evidence retains the full tree and scores.
+
+This presentation change does not migrate persistence, reparent catalogue entries, change score calculations or rewrite saved snapshots. The DTO getter is recomputed on JSON reads; an injected boolean cannot override catalogue metadata. Regression tests cover current and historical snapshot round-trips, both catalogue fingerprint versions and the typed score fingerprint. Browser regressions belong to the existing Maven-owned UI contract suite.
+
 ## Runtime context contract
 
 `TaxonomyService.getPathToRoot` remains the ordinary navigation path. `getSemanticPathToRoot` returns the source-hierarchy suffix, stopping at an overlay-assigned parent. `reviewRequired=false` in the existing deterministic overlay is not treated as external semantic approval. A future reviewed semantic extension must carry explicit authority and scope rather than reuse that boolean.

@@ -12,12 +12,14 @@ const stateScript = await readFile(path.join(
   'taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js'
 ), 'utf8');
 
-function createHarness({ renderedCodes = [], currentView = 'list' } = {}) {
+function createHarness({ renderedCodes = [], currentView = 'list', containerCodes = [] } = {}) {
   const scheduled = [];
   const allCodes = ['BP', 'BR'];
   const nodes = allCodes.map(code => ({
-    dataset: { code },
-    querySelector: () => renderedCodes.includes(code) ? { className: 'tax-pct' } : null
+    dataset: containerCodes.includes(code) ? { taxonomyContainer: code } : { code },
+    querySelector: selector => renderedCodes.includes(code)
+      && selector.includes(containerCodes.includes(code) ? '.tax-container-score' : '.tax-pct')
+      ? { className: containerCodes.includes(code) ? 'tax-container-score' : 'tax-pct' } : null
   }));
   let renderCalls = 0;
 
@@ -34,8 +36,9 @@ function createHarness({ renderedCodes = [], currentView = 'list' } = {}) {
       return {};
     },
     querySelectorAll: selector => {
-      assert.equal(selector, '#taxonomyTree .tax-node[data-code]');
-      return nodes;
+      assert.ok(['#taxonomyTree .tax-node[data-code]',
+        '#taxonomyTree .tax-node[data-code], #taxonomyTree [data-taxonomy-container]'].includes(selector));
+      return selector.includes('[data-taxonomy-container]') ? nodes : nodes.filter(node => node.dataset.code);
     }
   };
 
@@ -81,6 +84,13 @@ test('does not render twice when the caller already rendered the replacement map
   harness.state.currentScores = { BP: 85 };
   harness.flush();
   assert.equal(harness.renderCalls(), 0);
+});
+
+for (const rendered of [false, true]) test(`area-only score replacement ${rendered ? 'retains' : 'repairs'} its heading badge`, () => {
+  const harness = createHarness({ containerCodes: ['BP'], renderedCodes: rendered ? ['BP'] : [] });
+  harness.state.currentScores = { BP: 85 };
+  harness.flush();
+  assert.equal(harness.renderCalls(), rendered ? 0 : 1);
 });
 
 test('does not interfere with incremental mutations of the streaming score object', () => {

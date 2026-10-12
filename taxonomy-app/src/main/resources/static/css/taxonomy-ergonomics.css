@@ -719,3 +719,16 @@ button.summary-layer-element { font: inherit; text-align: left; }
 button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
 #summarySelectionDetails { margin-top: 1rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .375rem; overflow-wrap: anywhere; }
 #summarySelectionDetails p { margin-bottom: .5rem; }
+
+/* Sub-taxonomy containers label groups; the first indented rows are catalogue entries. */
+.tax-container { margin-bottom: .75rem; }
+.tax-container-labels { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+.tax-container-labels > div { flex: 1 1 18rem; }
+.tax-container-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .5rem; padding: .25rem 0; border-bottom: 2px solid var(--bs-border-color, #d0d8e8); font-size: 1rem; font-weight: 600; }
+.tax-container-toggle { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; padding: .25rem; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.tax-container-toggle:focus-visible { outline: 2px solid var(--bs-primary, #0d6efd); outline-offset: 2px; }
+.tax-container-arrow { width: 1em; flex-shrink: 0; font-size: .75em; }
+.tax-container-score { margin-left: auto; color: var(--bs-secondary-color, #6c757d); font-size: .8rem; font-weight: 500; }
+.tax-container > .tax-children { margin-left: 0; padding-left: 0; border-left: 0; }
+.tax-container-empty { margin: .5rem .25rem; }
+.tax-container.tax-evaluating > .tax-container-heading { animation: tax-pulse 1.5s ease-in-out infinite; }
