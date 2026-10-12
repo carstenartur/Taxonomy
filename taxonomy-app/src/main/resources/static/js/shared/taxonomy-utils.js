@@ -310,17 +310,17 @@ window.TaxonomyUtils = (function () {
     }
 
     function syncTreeContainerSemantics(tree) {
-        if (tree.querySelector('[role="treeitem"]')) {
-            tree.setAttribute('role', 'tree');
+        var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
+        // Area headings and tabs surround their own catalogue trees. Giving the
+        // outer region a tree role would make those headings invalid tree children.
+        var containsInnerWidgets = Boolean(tree.querySelector(
+            '[data-taxonomy-container], [role="tree"], [role="tablist"]'));
+        var expectedRole = containsTreeItems && !containsInnerWidgets ? 'tree' : 'region';
+        if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
+        if (containsTreeItems || tree.getAttribute('data-view-rendered')) {
             tree.removeAttribute('aria-busy');
         } else {
-            tree.removeAttribute('role');
-            // Collapsed or empty container views can finish without materializing tree items.
-            if (tree.getAttribute('data-view-rendered')) {
-                tree.removeAttribute('aria-busy');
-            } else {
-                tree.setAttribute('aria-busy', 'true');
-            }
+            tree.setAttribute('aria-busy', 'true');
         }
     }
 

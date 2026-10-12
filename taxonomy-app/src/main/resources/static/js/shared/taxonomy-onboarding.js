@@ -585,9 +585,13 @@
                     return;
                 }
                 if (match) {
-                    document.querySelectorAll('#taxonomyTree .tax-node[tabindex="0"]').forEach(function (node) {
-                        node.tabIndex = -1;
-                    });
+                    var targetTree = target.closest('[role="tree"]')
+                        || document.getElementById('taxonomyTree');
+                    if (targetTree) {
+                        targetTree.querySelectorAll('.tax-node[tabindex="0"]').forEach(function (node) {
+                            node.tabIndex = -1;
+                        });
+                    }
                     target.tabIndex = 0;
                 } else if (target.tagName !== 'BUTTON') {
                     target.tabIndex = -1;

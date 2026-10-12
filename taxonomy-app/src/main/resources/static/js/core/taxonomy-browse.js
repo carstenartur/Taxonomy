@@ -1015,33 +1015,81 @@
         const container = document.getElementById('taxonomyTree');
         cleanupD3(container);
         container.innerHTML = '';
-        nodes.forEach(node => container.appendChild(buildNodeEl(node, scores)));
+        const hasContainers = nodes.some(window.TaxonomyUtils.isTaxonomyContainer);
+        container.setAttribute('role', hasContainers ? 'region' : 'tree');
+        nodes.forEach(node => container.appendChild(hasContainers && !window.TaxonomyUtils.isTaxonomyContainer(node)
+            ? buildOriginalTree(node, scores) : buildNodeEl(node, scores)));
         initTreeKeyboardNavigation(container);
+    }
+
+    function buildOriginalTree(node, scores, labelledBy) {
+        const tree = document.createElement('div');
+        tree.className = 'tax-content-tree';
+        tree.setAttribute('role', 'tree');
+        if (labelledBy) {
+            tree.setAttribute('aria-labelledby', labelledBy);
+        } else {
+            tree.setAttribute('aria-label', node.code + ' ' + (node.name || node.nameEn || ''));
+        }
+        tree.appendChild(buildNodeEl(node, scores));
+        return tree;
+    }
+
+    function isVisibleTreeElement(element) {
+        if (!element || !element.isConnected) return false;
+        for (var parent = element; parent; parent = parent.parentElement) {
+            if (parent.hidden || (parent.style && parent.style.display === 'none')) return false;
+            if (parent.classList && parent.classList.contains('tab-pane') && !parent.classList.contains('active')) return false;
+        }
+        return true;
+    }
+
+    // Each actual tree owns its one roving tab stop. Area headings are outside
+    // these widgets, so their native buttons keep their independent tab behavior.
+    function syncTreeTabStops(container) {
+        if (!container) return;
+        var trees = Array.from(container.querySelectorAll('[role="tree"]'));
+        if (container.getAttribute('role') === 'tree') trees.unshift(container);
+        trees.forEach(function (tree) {
+            var items = Array.from(tree.querySelectorAll('[role="treeitem"]')).filter(function (item) {
+                return item.closest('[role="tree"]') === tree;
+            });
+            var visibleItems = items.filter(isVisibleTreeElement);
+            var focused = document.activeElement && document.activeElement.closest
+                ? document.activeElement.closest('[role="treeitem"]') : null;
+            var candidate = items.indexOf(focused) >= 0 ? focused
+                : items.find(function (item) { return item.getAttribute('tabindex') === '0'; });
+            while (candidate && visibleItems.indexOf(candidate) < 0) {
+                candidate = candidate.parentElement
+                    ? candidate.parentElement.closest('[role="treeitem"]') : null;
+            }
+            var selected = candidate || visibleItems[0];
+            items.forEach(function (item) {
+                var tabIndex = item === selected ? '0' : '-1';
+                if (item.getAttribute('tabindex') !== tabIndex) item.setAttribute('tabindex', tabIndex);
+            });
+        });
     }
 
     // ── Keyboard navigation for treeview (WCAG 2.1.1, 2.4.3) ─────────────────
     function initTreeKeyboardNavigation(tree) {
         if (!tree) return;
         // Renders replace the content, while the shared tree keeps its one listener.
-        var firstItem = tree.querySelector('[role="treeitem"]');
-        if (firstItem) firstItem.setAttribute('tabindex', '0');
+        syncTreeTabStops(tree);
         if (tree._taxonomyKeyboardBound) return;
         tree._taxonomyKeyboardBound = true;
+        tree.addEventListener('focusin', function () { syncTreeTabStops(tree); });
+        tree.addEventListener('shown.bs.tab', function () { syncTreeTabStops(tree); });
         tree.addEventListener('keydown', function (e) {
             var current = document.activeElement;
             if (!current || current.getAttribute('role') !== 'treeitem') return;
-
-            var allItems = Array.from(tree.querySelectorAll('[role="treeitem"]')).filter(function (el) {
-                // Only include visible items
-                var p = el;
-                while (p && p !== tree) {
-                    if (p.hidden || (p.style && p.style.display === 'none')) return false;
-                    if (p.classList && p.classList.contains('tab-pane') && !p.classList.contains('active')) return false;
-                    p = p.parentElement;
-                }
-                return true;
+            var widget = current.closest('[role="tree"]');
+            if (!widget) return;
+            var allItems = Array.from(widget.querySelectorAll('[role="treeitem"]')).filter(function (el) {
+                return el.closest('[role="tree"]') === widget && isVisibleTreeElement(el);
             });
             var idx = allItems.indexOf(current);
+            if (idx < 0) return;
 
             switch (e.key) {
                 case 'ArrowDown':
@@ -1095,6 +1143,7 @@
         const container = document.getElementById('taxonomyTree');
         cleanupD3(container);
         container.innerHTML = '';
+        container.setAttribute('role', 'region');
 
         const navUl = document.createElement('ul');
         navUl.className = 'nav nav-tabs tax-tabs mb-2';
@@ -1141,7 +1190,8 @@
             pane.setAttribute('role', 'tabpanel');
             pane.setAttribute('aria-labelledby', tabId);
 
-            pane.appendChild(buildNodeEl(rootNode, scores));
+            pane.appendChild(window.TaxonomyUtils.isTaxonomyContainer(rootNode)
+                ? buildNodeEl(rootNode, scores) : buildOriginalTree(rootNode, scores, tabId));
             tabContent.appendChild(pane);
         });
 
@@ -1163,6 +1213,10 @@
             clickedBtn.setAttribute('aria-selected', 'true');
             const targetPane = tabContent.querySelector(clickedBtn.getAttribute('data-bs-target'));
             if (targetPane) { targetPane.classList.add('show', 'active'); }
+            syncTreeTabStops(container);
+            if (tabContent.contains(document.activeElement) && !isVisibleTreeElement(document.activeElement)) {
+                clickedBtn.focus();
+            }
         });
     }
 
@@ -1197,6 +1251,8 @@
         return found || [];
     }
 
+    let materializationBatchDepth = 0;
+
     function materializeChildren(wrapper, scores) {
         if (!wrapper) { return null; }
         const childContainer = wrapper.querySelector(':scope > .tax-children');
@@ -1212,8 +1268,10 @@
         childContainer.appendChild(fragment);
         childContainer.dataset.renderState = 'ready';
         if (wrapper.classList.contains('tax-container')) {
-            const firstItem = childContainer.querySelector('[role="treeitem"]');
-            if (firstItem) { firstItem.setAttribute('tabindex', '0'); }
+            childContainer.setAttribute('role', 'tree');
+        }
+        if (wrapper.isConnected && materializationBatchDepth === 0) {
+            syncTreeTabStops(childContainer.closest('[role="tree"]'));
         }
         return childContainer;
     }
@@ -1258,17 +1316,23 @@
     function materializeAllTaxonomyNodes(scores) {
         const tree = document.getElementById('taxonomyTree');
         if (!tree) { return; }
-        let deferred = Array.from(
-            tree.querySelectorAll('.tax-children[data-render-state="deferred"]'));
-        while (deferred.length > 0) {
-            deferred.forEach(function (group) {
-                const wrapper = group.parentElement;
-                if (wrapper && wrapper._taxonomyNode) {
-                    materializeChildren(wrapper, scores);
-                }
-            });
-            deferred = Array.from(
+        materializationBatchDepth++;
+        try {
+            let deferred = Array.from(
                 tree.querySelectorAll('.tax-children[data-render-state="deferred"]'));
+            while (deferred.length > 0) {
+                deferred.forEach(function (group) {
+                    const wrapper = group.parentElement;
+                    if (wrapper && wrapper._taxonomyNode) {
+                        materializeChildren(wrapper, scores);
+                    }
+                });
+                deferred = Array.from(
+                    tree.querySelectorAll('.tax-children[data-render-state="deferred"]'));
+            }
+        } finally {
+            materializationBatchDepth--;
+            if (materializationBatchDepth === 0) { syncTreeTabStops(tree); }
         }
     }
 
@@ -1318,7 +1382,6 @@
             const children = document.createElement('div');
             children.className = 'tax-children';
             children.id = 'tax-container-children-' + node.code;
-            children.setAttribute('role', 'group');
             children.setAttribute('aria-labelledby', heading.id);
             children.dataset.renderState = 'deferred';
             wrapper.appendChild(children);
@@ -1538,6 +1601,13 @@
             const toggle = wrapper.querySelector(':scope > .tax-node-header > .tax-toggle');
             if (toggle) { toggle.textContent = expanded ? '▼' : '▶'; }
         }
+        if (wrapper.isConnected) {
+            if (!expanded && children.contains(document.activeElement)) {
+                const focusTarget = containerToggle || wrapper;
+                if (isVisibleTreeElement(focusTarget)) { focusTarget.focus(); }
+            }
+            syncTreeTabStops(wrapper.closest('[role="tree"]') || wrapper);
+        }
     }
 
     function toggleNode(wrapper) {
@@ -1720,9 +1790,11 @@
             el.setAttribute('aria-expanded', 'true');
         });
         document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, true));
+        syncTreeTabStops(document.getElementById('taxonomyTree'));
     }
 
     function collapseAll() {
+        const focused = document.activeElement;
         document.querySelectorAll('.tax-children').forEach(el => {
             el.style.display = 'none';
         });
@@ -1734,6 +1806,13 @@
             el.setAttribute('aria-expanded', 'false');
         });
         document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, false));
+        const container = document.getElementById('taxonomyTree');
+        syncTreeTabStops(container);
+        if (container && container.contains(focused) && !isVisibleTreeElement(focused)) {
+            const tree = focused.closest('[role="tree"]');
+            const visibleItem = tree && tree.querySelector('[role="treeitem"][tabindex="0"]');
+            if (visibleItem) { visibleItem.focus(); }
+        }
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────

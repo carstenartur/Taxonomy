@@ -26,18 +26,23 @@ function catalogue() {
 // Use the real classifier and onboarding workflow. Browse/scoring are bounded
 // navigation interfaces here; their rendering, lazy expansion and score updates
 // are exercised with the real modules in subtaxonomy-container-browse.test.mjs.
-function harness({ data = catalogue(), scores = {} } = {}) {
+function harness({ data = catalogue(), scores = {}, legacyRolePending = false } = {}) {
     const document = { readyState: 'loading', activeElement: null, addEventListener() {} };
     function element(tag = 'div') {
         const attributes = new Map();
-        const node = { tagName: tag.toUpperCase(), dataset: {}, className: '', value: '',
+        const node = { tagName: tag.toUpperCase(), dataset: {}, className: '', value: '', parentElement: null,
             textContent: '', disabled: false, scrolled: false,
             setAttribute(name, value) { attributes.set(name, String(value)); },
             getAttribute(name) { return attributes.get(name) ?? null; },
             removeAttribute(name) { attributes.delete(name); },
             focus() { document.activeElement = this; },
             scrollIntoView() { this.scrolled = true; },
-            querySelector() { return null; }
+            querySelector() { return null; },
+            querySelectorAll() { return []; },
+            closest(selector) {
+                if (selector === '[role="tree"]' && this.getAttribute('role') === 'tree') return this;
+                return this.parentElement?.closest(selector) || null;
+            }
         };
         Object.defineProperty(node, 'tabIndex', {
             get() { return attributes.has('tabindex') ? Number(attributes.get('tabindex')) : (tag === 'button' ? 0 : -1); },
@@ -79,8 +84,20 @@ function harness({ data = catalogue(), scores = {} } = {}) {
         CSS: { escape: value => value } });
     vm.runInContext(utilsSource, context, { filename: 'taxonomy-utils.js' });
 
-    function render(nodes) {
+    function treeWidget() {
+        const tree = element();
+        tree.setAttribute('role', 'tree');
+        tree.rows = [];
+        tree.querySelectorAll = selector => selector === '.tax-node[tabindex="0"]'
+            ? tree.rows.filter(node => node.tabIndex === 0) : [];
+        return tree;
+    }
+    elements.taxonomyTree = treeWidget();
+    if (legacyRolePending) elements.taxonomyTree.removeAttribute('role');
+
+    function render(nodes, owner = elements.taxonomyTree) {
         for (const node of nodes) {
+            let descendantOwner = owner;
             if (window.TaxonomyUtils.isTaxonomyContainer(node)) {
                 const group = element('section'), heading = element('h3');
                 group.dataset.taxonomyContainer = node.code;
@@ -90,12 +107,16 @@ function harness({ data = catalogue(), scores = {} } = {}) {
                 group.querySelector = selector => selector === '.tax-container-toggle' ? toggle
                     : selector === '.tax-container-heading' ? heading : null;
                 groups.set(node.code, group);
+                descendantOwner = treeWidget();
             } else {
                 const row = element('div');
-                row.className = 'tax-node'; row.dataset.code = node.code; row.tabIndex = 0;
+                row.className = 'tax-node'; row.dataset.code = node.code;
+                row.setAttribute('role', 'treeitem'); row.parentElement = owner;
+                row.tabIndex = owner.rows.length ? -1 : 0;
+                owner.rows.push(row);
                 rows.set(node.code, row);
             }
-            render(node.children || []);
+            render(node.children || [], descendantOwner);
         }
     }
     render(data);
@@ -145,6 +166,34 @@ test('explicit original top-level nodes remain eligible even when legacy metadat
     assert.ok(h.document.activeElement === h.rows.get('BP'));
     assert.equal(h.rows.get('BP-1000').tabIndex, -1, 'the actual result remains the sole roving tree target');
     assert.equal(h.elements.taskNextAction.dataset.action, 'open-architecture');
+});
+
+test('review moves the tab stop within the selected area without clearing another catalogue tree', () => {
+    const data = catalogue();
+    data[0].children[0].children.push({ code: 'BP-1327', name: 'Enable', taxonomyRoot: 'BP',
+        level: 2, parentCode: 'BP-1000', children: [] });
+    data.push({ code: 'BR', name: 'Business Roles', taxonomyContainer: true, taxonomyRoot: 'BR',
+        level: 0, children: [{ code: 'BR-1000', name: 'Business Roles', taxonomyRoot: 'BR',
+            level: 1, parentCode: 'BR', children: [] }] });
+    const h = harness({ data, scores: { 'BP-1327': 91, 'BR-1000': 64 } });
+    assert.equal(h.rows.get('BP-1000').tabIndex, 0);
+    assert.equal(h.rows.get('BP-1327').tabIndex, -1);
+    assert.equal(h.rows.get('BR-1000').tabIndex, 0);
+    h.review();
+    assert.equal(h.rows.get('BP-1000').tabIndex, -1);
+    assert.equal(h.rows.get('BP-1327').tabIndex, 0);
+    assert.equal(h.rows.get('BR-1000').tabIndex, 0,
+        'another area must retain its tab stop without a later focusin repair');
+    assert.ok(h.document.activeElement === h.rows.get('BP-1327'));
+});
+
+test('review retains a single tab stop when legacy rows render before the tree role observer', () => {
+    const data = catalogue(); data[0].taxonomyContainer = false;
+    const h = harness({ data, scores: { 'BP-1000': 91 }, legacyRolePending: true });
+    h.review();
+    assert.equal(h.rows.get('BP').tabIndex, -1);
+    assert.equal(h.rows.get('BP-1000').tabIndex, 0);
+    assert.ok(h.document.activeElement === h.rows.get('BP-1000'));
 });
 
 test('a zero original assessment stays reviewable without inheriting positive area relevance', () => {

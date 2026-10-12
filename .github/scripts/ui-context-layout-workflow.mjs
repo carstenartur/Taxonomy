@@ -193,12 +193,23 @@ export async function runReviewNavigationWorkflow({ page, evidence }) {
       await expect(page.locator('#taskGuidance')).toHaveText(selected.root + ' · ' + areaRelevance);
       await page.locator('#taskNextAction').click();
       const area = page.locator('#taxonomyTree .tax-container[data-taxonomy-container="' + selected.root + '"]');
+      const heading = area.locator(':scope > .tax-container-heading');
       const toggle = area.locator(':scope > .tax-container-heading > button.tax-container-toggle');
+      const contentTree = area.locator(':scope > .tax-children');
+      await expect(page.locator('#taxonomyTree')).toHaveAttribute('role', 'region');
       await expect(area).toHaveAttribute('role', 'group');
       await expect(area).not.toHaveAttribute('aria-expanded', /./);
       await expect(toggle).toHaveAttribute('type', 'button');
       await expect(toggle).toBeFocused();
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(contentTree).toHaveAttribute('role', 'tree');
+      await expect(contentTree).toHaveAttribute('aria-labelledby', await heading.getAttribute('id'));
+      await expect(contentTree.locator('.tax-container-heading')).toHaveCount(0);
+      for (const tree of await page.locator('#taxonomyTree [role="tree"]:visible').all()) {
+        const tabStop = tree.locator('[role="treeitem"][tabindex="0"]');
+        await expect(tabStop).toHaveCount(1);
+        await expect(tabStop).toBeVisible();
+      }
       await expect(area.locator(':scope > .tax-container-heading > .tax-container-score')).toHaveText(areaRelevance);
       await expect(page.locator('#taxonomyTree .tax-node[data-code="' + selected.root + '"]')).toHaveCount(0);
       await expect(area.locator('.tax-node .tax-pct')).toHaveCount(0);

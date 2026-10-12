@@ -101,10 +101,13 @@ test('presentation projection leaves frozen catalogue evidence and recorded scor
   assert.equal(original.matchPercentage, 64);
 });
 
-function accessibilityHarness(hasTreeItems = false, moduleSources = [source], initialView = null) {
+function accessibilityHarness(hasTreeItems = false, moduleSources = [source], initialView = null,
+    initialStructure = []) {
   const listeners = new Map();
   const attributes = new Map();
   const observers = [];
+  let structure = new Set(initialStructure);
+  attributes.set('aria-label', 'Taxonomy Tree');
   if (initialView) attributes.set('data-view-rendered', initialView);
 
   function attributeChanged(name) {
@@ -131,7 +134,10 @@ function accessibilityHarness(hasTreeItems = false, moduleSources = [source], in
     nodeType: 1,
     dataset: {},
     closest: () => null,
-    querySelector: selector => selector === '[role="treeitem"]' && hasTreeItems ? {} : null,
+    querySelector: selector => selector.split(',').some(part => {
+      const element = part.trim();
+      return element === '[role="treeitem"]' ? hasTreeItems : structure.has(element);
+    }) ? {} : null,
     querySelectorAll: () => [],
     getAttribute: name => attributes.get(name) ?? null,
     setAttribute(name, value) {
@@ -167,6 +173,16 @@ function accessibilityHarness(hasTreeItems = false, moduleSources = [source], in
       (listeners.get('taxonomy:view-rendered') || []).forEach(callback => callback());
       flushMutations();
     },
+    replaceContents(items, selectors = []) {
+      hasTreeItems = items;
+      structure = new Set(selectors);
+      for (const observer of observers) {
+        if (observer.options.childList) {
+          observer.records.push({ target: tree, type: 'childList', addedNodes: [] });
+        }
+      }
+      flushMutations();
+    },
     markerChanged: flushMutations
   };
 }
@@ -177,7 +193,7 @@ test('completed list and tab views without tree items are available to assistive
     h.tree.setAttribute('data-view-rendered', view);
     h.rendered();
     assert.equal(h.tree.getAttribute('aria-busy'), null, view);
-    assert.equal(h.tree.getAttribute('role'), null, 'container headings are not a tree of catalogue items');
+    assert.equal(h.tree.getAttribute('role'), 'region', 'container headings belong to the labelled region');
   }
 });
 
@@ -199,21 +215,23 @@ test('materialized catalogue items retain their existing tree accessibility sema
 });
 
 for (const [order, modules] of [
+  ['utils alone', [source]],
+  ['security alone', [semanticsSource]],
   ['utils then security', [source, semanticsSource]],
   ['security then utils', [semanticsSource, source]]
 ]) {
-  test(`${order}: both modules keep completed empty and collapsed container views settled`, () => {
+  test(`${order}: completed empty and collapsed container views stay settled`, () => {
     for (const view of ['list', 'tabs']) {
       const h = accessibilityHarness(false, modules, view);
       assert.equal(h.tree.getAttribute('aria-busy'), null, `${view}: completed before initialization`);
       h.rendered();
       assert.equal(h.tree.getAttribute('aria-busy'), null, `${view}: observers must not undo completion`);
       assert.equal(h.tree.getAttribute('role'), 'region');
-      assert.equal(h.tree.getAttribute('tabindex'), '0');
+      if (modules.includes(semanticsSource)) assert.equal(h.tree.getAttribute('tabindex'), '0');
     }
   });
 
-  test(`${order}: both modules preserve loading, completion, and another loading cycle`, () => {
+  test(`${order}: loading, completion, and another loading cycle preserve busy state`, () => {
     const h = accessibilityHarness(false, modules);
     assert.equal(h.tree.getAttribute('aria-busy'), 'true');
     h.tree.setAttribute('data-view-rendered', 'list');
@@ -227,10 +245,39 @@ for (const [order, modules] of [
     assert.equal(h.tree.getAttribute('aria-busy'), null);
   });
 
-  test(`${order}: materialized items retain the security bridge's tree role and focus target`, () => {
+  test(`${order}: legacy materialized items retain the tree role and existing focus target`, () => {
     const h = accessibilityHarness(true, modules);
     assert.equal(h.tree.getAttribute('role'), 'tree');
-    assert.equal(h.tree.getAttribute('tabindex'), '0');
+    if (modules.includes(semanticsSource)) assert.equal(h.tree.getAttribute('tabindex'), '0');
     assert.equal(h.tree.getAttribute('aria-busy'), null);
+  });
+
+  test(`${order}: area headings and tab navigation stay outside catalogue trees`, () => {
+    for (const structure of [
+      ['[data-taxonomy-container]'],
+      ['[data-taxonomy-container]', '[role="tree"]'],
+      ['[role="tablist"]'],
+      ['[role="tablist"]', '[role="tree"]'],
+      ['[role="tree"]']
+    ]) {
+      const h = accessibilityHarness(true, modules, 'list', structure);
+      assert.equal(h.tree.getAttribute('role'), 'region', structure.join(', '));
+      assert.equal(h.tree.getAttribute('aria-label'), 'Taxonomy Tree');
+      assert.equal(h.tree.getAttribute('aria-busy'), null);
+      h.rendered();
+      assert.equal(h.tree.getAttribute('role'), 'region', 'observers must preserve inner tree ownership');
+    }
+  });
+
+  test(`${order}: replacing legacy rows with area trees updates the outer role without stale ownership`, () => {
+    const h = accessibilityHarness(true, modules, 'list');
+    assert.equal(h.tree.getAttribute('role'), 'tree');
+    h.replaceContents(true, ['[data-taxonomy-container]', '[role="tree"]']);
+    assert.equal(h.tree.getAttribute('role'), 'region');
+    h.replaceContents(false, ['[data-taxonomy-container]']);
+    assert.equal(h.tree.getAttribute('role'), 'region');
+    assert.equal(h.tree.getAttribute('aria-busy'), null, 'collapsed groups remain a completed view');
+    h.replaceContents(true);
+    assert.equal(h.tree.getAttribute('role'), 'tree', 'ordinary catalogue-only lists still have their tree owner');
   });
 }

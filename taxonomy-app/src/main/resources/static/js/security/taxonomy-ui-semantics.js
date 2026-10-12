@@ -104,7 +104,9 @@ window.TaxonomyUiSemantics = (function () {
     function synchronizeTaxonomyContainer(tree) {
         if (!tree) return;
         var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
-        var expectedRole = containsTreeItems ? 'tree' : 'region';
+        var containsInnerWidgets = Boolean(tree.querySelector(
+            '[data-taxonomy-container], [role="tree"], [role="tablist"]'));
+        var expectedRole = containsTreeItems && !containsInnerWidgets ? 'tree' : 'region';
         if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
         if (tree.getAttribute('tabindex') !== '0') tree.setAttribute('tabindex', '0');
         // A completed container view may still have only collapsed headings or an empty state.

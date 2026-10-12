@@ -9,8 +9,8 @@ const sources = ['shared/taxonomy-utils.js', 'core/taxonomy-browse.js', 'core/ta
 const searchSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-search.js', import.meta.url), 'utf8');
 
 // A bounded, deterministic catalogue fixture. The BP-1000 -> BP-1327 -> BP-1060
-// and BR-1000 -> BR-1228 edges and names come from the checked-in 25AUG2025 Excel
-// catalogue; BP/BR are the application's navigation containers. No provider runs.
+// and BR-1000 -> BR-1228 edges come from the checked-in 25AUG2025 Excel catalogue;
+// labels are fixture text, and BP/BR are navigation containers. No provider runs.
 function catalogue() {
     return [
         { code: 'BP', name: 'Business Processes', level: 0, taxonomyRoot: 'BP', taxonomyContainer: true,
@@ -19,7 +19,7 @@ function catalogue() {
                     children: [{ code: 'BP-1060', name: 'Analytical Support', level: 3, parentCode: 'BP-1327', taxonomyRoot: 'BP', children: [] }] }] }] },
         { code: 'BR', name: 'Business Roles', level: 0, taxonomyRoot: 'BR', taxonomyContainer: true,
             children: [{ code: 'BR-1000', name: 'Business Roles', level: 1, parentCode: 'BR', taxonomyRoot: 'BR',
-                children: [{ code: 'BR-1228', name: 'Civilian Roles', level: 2, parentCode: 'BR-1000', taxonomyRoot: 'BR', children: [] }] }] }
+                children: [{ code: 'BR-1228', name: 'Recorded Roles', level: 2, parentCode: 'BR-1000', taxonomyRoot: 'BR', children: [] }] }] }
     ];
 }
 
@@ -102,10 +102,11 @@ class Element {
         return !event.defaultPrevented;
     }
     click() { this.dispatchEvent({ type: 'click' }); }
-    focus() { this.ownerDocument.activeElement = this; }
+    focus() { this.ownerDocument.activeElement = this; this.dispatchEvent({ type: 'focusin' }); }
     scrollIntoView() {}
     matches(selector) { return selector.split(',').some(part => matchPath(this, part.trim().split(/\s+/), this)); }
     closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) || null; }
+    contains(node) { return node === this || this.children.some(child => child.contains(node)); }
     querySelectorAll(selector) {
         const alternatives = selector.split(',').map(part => part.trim().split(/\s+/));
         return descendants(this).filter(node => alternatives.some(tokens => matchPath(node, tokens, this)));
@@ -132,6 +133,13 @@ function matchPath(node, tokens, scope) {
         if (matchPath(parent, tokens.slice(0, -1), scope)) return true;
     }
     return false;
+}
+
+function tabStops(tree) {
+    assert.ok(tree, 'catalogue entries must belong to a tree widget');
+    return tree.querySelectorAll('[role="treeitem"][tabindex="0"]')
+        .filter(item => item.closest('[role="tree"]') === tree)
+        .map(item => item.dataset.code);
 }
 
 function harness({ view = 'list', data = catalogue(), scores = null, interactive = false, response } = {}) {
@@ -165,7 +173,10 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
         }
     });
     vm.runInContext(sources[0], context); context.TaxonomyUtils = window.TaxonomyUtils;
-    vm.runInContext(sources[1], context); vm.runInContext(sources[2], context);
+    // Exercise the real expand/collapse commands without adding a production API.
+    vm.runInContext(sources[1].replace('window.TaxonomyBrowse = {',
+        'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll,'), context);
+    vm.runInContext(sources[2], context);
     const browse = window.TaxonomyBrowse;
     browse.renderView(data, scores);
     return { tree, document, browse, state, window, requests, errors,
@@ -203,6 +214,20 @@ test('list renders BP/BR as named groups and original entries as the first actua
     assert.deepEqual(h.state.currentScores, { BP: 91, 'BP-1000': 64, BR: 37 });
 });
 
+test('each list area has a labelled tree below its heading and one original tab stop', () => {
+    const h = harness();
+    assert.equal(h.tree.getAttribute('role'), 'region');
+    for (const code of ['BP', 'BR']) {
+        const group = h.group(code), tree = group.querySelector(':scope > .tax-children');
+        assert.equal(tree.getAttribute('role'), 'tree');
+        assert.equal(tree.getAttribute('aria-labelledby'), group.querySelector('h3').id);
+        assert.ok(tree.querySelector('h3') === null, 'headings must remain outside the ARIA tree');
+        assert.deepEqual(tabStops(tree), [code + '-1000']);
+        assert.equal(group.querySelector('button').getAttribute('tabindex'), null,
+            'area buttons keep their native tab behavior');
+    }
+});
+
 test('group collapse uses a labelled native button and keeps child construction lazy', () => {
     const h = harness(), group = h.group('BP');
     assert.ok(group, 'container group is present');
@@ -234,16 +259,122 @@ test('path materialization traverses a heading and preserves original descendant
         ['BP-1000', 'BP-1327', 'BP-1060', 'BR-1000', 'BR-1228']);
 });
 
-test('keyboard navigation starts at actual entries and expands their own descendants', () => {
+test('keyboard navigation roves among actual entries within the current area tree', () => {
     const h = harness();
     assert.ok(h.row('BP-1000'), 'first original row is materialized');
     h.row('BP-1000').focus(); h.key('ArrowDown');
-    assert.equal(h.document.activeElement, h.row('BR-1000'));
-    h.key('Home'); assert.equal(h.document.activeElement, h.row('BP-1000'));
+    assert.ok(h.document.activeElement === h.row('BP-1000'), 'ArrowDown stays in the current tree');
+    h.key('Home'); assert.ok(h.document.activeElement === h.row('BP-1000'));
     h.key('ArrowRight'); assert.equal(h.row('BP-1000').getAttribute('aria-expanded'), 'true');
-    h.key('ArrowRight'); assert.equal(h.document.activeElement, h.row('BP-1327'));
-    h.key('ArrowLeft'); assert.equal(h.document.activeElement, h.row('BP-1000'));
+    h.key('ArrowRight'); assert.ok(h.document.activeElement === h.row('BP-1327'));
+    assert.deepEqual(tabStops(h.row('BP-1000').closest('[role="tree"]')), ['BP-1327']);
+    assert.deepEqual(tabStops(h.row('BR-1000').closest('[role="tree"]')), ['BR-1000']);
+    h.key('ArrowUp'); assert.ok(h.document.activeElement === h.row('BP-1000'));
+    h.key('End'); assert.ok(h.document.activeElement === h.row('BP-1327'));
+    h.key('ArrowLeft'); assert.ok(h.document.activeElement === h.row('BP-1000'));
     h.key('ArrowLeft'); assert.equal(h.row('BP-1000').getAttribute('aria-expanded'), 'false');
+    assert.deepEqual(tabStops(h.row('BP-1000').closest('[role="tree"]')), ['BP-1000']);
+    const button = h.group('BP').querySelector('.tax-container-toggle');
+    button.focus(); h.key('ArrowDown');
+    assert.ok(h.document.activeElement === button, 'tree navigation does not intercept native heading controls');
+});
+
+test('successive lazy materialization preserves the focused row and creates no hidden tab stops', () => {
+    const h = harness({ interactive: true });
+    h.window.TaxonomyScoring.runInteractiveAnalysis();
+    const before = JSON.stringify(h.state.taxonomyData);
+    const bp = h.group('BP'), br = h.group('BR');
+    for (const group of [bp, br]) {
+        assert.notEqual(group.querySelector(':scope > .tax-children').getAttribute('role'), 'tree',
+            'an unmaterialized area has no empty tree widget');
+    }
+    const bpTree = h.browse.materializeChildren(bp, null);
+    assert.equal(bpTree.getAttribute('role'), 'tree');
+    assert.deepEqual(tabStops(bpTree), [], 'materializing a collapsed area does not add a hidden tab stop');
+    h.browse.setNodeExpanded(bp, true);
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    h.browse.setNodeExpanded(h.row('BP-1000'), true);
+    h.row('BP-1327').focus();
+    h.browse.setNodeExpanded(br, true);
+    h.browse.setNodeExpanded(h.row('BP-1327'), true);
+    h.browse.materializeChildren(bp, null);
+    h.browse.materializeChildren(br, null);
+    assert.ok(h.document.activeElement === h.row('BP-1327'), 'opening another branch preserves focus');
+    assert.deepEqual(tabStops(bpTree), ['BP-1327']);
+    assert.deepEqual(tabStops(h.row('BR-1000').closest('[role="tree"]')), ['BR-1000']);
+    assert.equal(h.row('BP-1060').getAttribute('tabindex'), '-1');
+    assert.equal(h.requests.length, 0, 'materialization and roving do not trigger evaluation');
+    assert.equal(JSON.stringify(h.state.taxonomyData), before);
+});
+
+test('bulk materialization bounds focus scans by the final catalogue size', () => {
+    const h = harness({ data: freeze([catalogue()[0]]) });
+    const tree = h.row('BP-1000').closest('[role="tree"]');
+    h.row('BP-1000').focus();
+    const query = tree.querySelectorAll.bind(tree);
+    let scannedItems = 0;
+    tree.querySelectorAll = selector => {
+        const items = query(selector);
+        if (selector === '[role="treeitem"]') scannedItems += items.length;
+        return items;
+    };
+    h.browse.materializeAllTaxonomyNodes(null);
+    tree.querySelectorAll = query;
+    const itemCount = tree.querySelectorAll('[role="treeitem"]').length;
+    assert.equal(itemCount, 3, 'the real BP path is completely materialized');
+    assert.ok(scannedItems <= itemCount,
+        'one bulk operation must not rescan the growing tree after every deferred branch: ' + scannedItems + ' visits for ' + itemCount + ' items');
+    assert.deepEqual(tabStops(tree), ['BP-1000']);
+    assert.ok(h.document.activeElement === h.row('BP-1000'));
+    assert.equal(h.row('BP-1000').getAttribute('aria-expanded'), 'false');
+    assert.equal(h.row('BP-1060').getAttribute('tabindex'), '-1');
+    assert.equal(h.requests.length, 0);
+});
+
+test('collapsing a focused branch restores a visible ancestor or the native area button', () => {
+    const h = harness(), bp = h.group('BP'), br = h.group('BR');
+    h.browse.setNodeExpanded(h.row('BP-1000'), true);
+    h.browse.setNodeExpanded(h.row('BP-1327'), true);
+    h.row('BP-1060').focus();
+    const bpTree = h.row('BP-1000').closest('[role="tree"]');
+    h.browse.setNodeExpanded(br, false);
+    assert.ok(h.document.activeElement === h.row('BP-1060'), 'unrelated collapse keeps focus');
+    assert.deepEqual(tabStops(bpTree), ['BP-1060']);
+    h.row('BP-1000').querySelector(':scope > .tax-node-header > .tax-toggle').click();
+    assert.equal(h.row('BP-1000').getAttribute('aria-expanded'), 'false');
+    assert.ok(h.document.activeElement === h.row('BP-1000'));
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    h.browse.setNodeExpanded(bp, false);
+    assert.ok(h.document.activeElement === bp.querySelector('.tax-container-toggle'));
+    assert.deepEqual(tabStops(bpTree), [], 'collapsed area rows leave the tab order');
+    h.browse.setNodeExpanded(bp, true);
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    h.browse.expandAllForTest();
+    h.row('BR-1228').focus();
+    h.browse.collapseAllForTest();
+    assert.ok(h.document.activeElement === br.querySelector('.tax-container-toggle'));
+    assert.equal(h.tree.querySelectorAll('[role="treeitem"][tabindex="0"]').length, 0);
+    h.browse.expandAllForTest();
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    assert.deepEqual(tabStops(h.row('BR-1000').closest('[role="tree"]')), ['BR-1000']);
+});
+
+test('collapse all returns hidden focus to a visible original in legacy and mixed root trees', () => {
+    const data = catalogue();
+    for (const example of [
+        { data: [data[0].children[0]], original: 'BP-1000', descendant: 'BP-1060' },
+        { data: [data[0], data[1].children[0]], original: 'BR-1000', descendant: 'BR-1228' }
+    ]) {
+        const h = harness({ data: example.data });
+        h.browse.expandAllForTest();
+        h.row(example.descendant).focus();
+        h.browse.collapseAllForTest();
+        assert.ok(h.document.activeElement === h.row(example.original),
+            'bulk collapse must move focus out of the hidden branch to its visible original root');
+        assert.deepEqual(tabStops(h.row(example.original).closest('[role="tree"]')), [example.original]);
+        assert.equal(h.row(example.descendant).getAttribute('tabindex'), '-1');
+        assert.equal(h.requests.length, 0);
+    }
 });
 
 test('tabs retain named container tabs while showing original nodes and an empty-state message', () => {
@@ -257,15 +388,71 @@ test('tabs retain named container tabs while showing original nodes and an empty
     h.tree.querySelector('#tax-tab-BR').click();
     assert.equal(h.tree.querySelector('#tax-tab-BR').getAttribute('aria-selected'), 'true');
     assert.equal(h.tree.querySelector('#tax-pane-BR').classList.contains('active'), true);
+    assert.equal(h.tree.querySelectorAll('[role="treeitem"][tabindex="0"]').length, 0,
+        'an empty active tab leaves no hidden original in the tab order');
+});
+
+test('tab changes assign the sole entry tab stop to the visible tree without moving tab focus', () => {
+    const h = harness({ view: 'tabs' });
+    const bpTree = h.row('BP-1000').closest('[role="tree"]');
+    const brTree = h.row('BR-1000').closest('[role="tree"]');
+    assert.equal(h.tree.getAttribute('role'), 'region');
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    assert.deepEqual(tabStops(brTree), []);
+    const brTab = h.tree.querySelector('#tax-tab-BR');
+    brTab.focus(); brTab.click();
+    assert.ok(h.document.activeElement === brTab);
+    assert.deepEqual(tabStops(bpTree), []);
+    assert.deepEqual(tabStops(brTree), ['BR-1000']);
+    h.row('BR-1000').focus(); h.key('ArrowRight'); h.key('ArrowRight');
+    assert.ok(h.document.activeElement === h.row('BR-1228'));
+    assert.deepEqual(tabStops(brTree), ['BR-1228']);
+    h.key('Home'); assert.ok(h.document.activeElement === h.row('BR-1000'));
+    const bpTab = h.tree.querySelector('#tax-tab-BP');
+    bpTab.focus(); bpTab.click();
+    assert.ok(h.document.activeElement === bpTab);
+    assert.deepEqual(tabStops(bpTree), ['BP-1000']);
+    assert.deepEqual(tabStops(brTree), []);
 });
 
 test('ordinary top-level catalogue nodes remain selectable in both list and tabs', () => {
     const ordinary = { ...catalogue()[0].children[0], level: 0, parentCode: null, taxonomyContainer: false };
     for (const view of ['list', 'tabs']) {
         const h = harness({ view, data: [ordinary] });
-        assert.equal(h.tree.querySelector('[role="treeitem"]').dataset.code, 'BP-1000', view);
+        const row = h.tree.querySelector('[role="treeitem"]');
+        assert.equal(row.dataset.code, 'BP-1000', view);
         assert.equal(h.group('BP-1000'), null);
+        assert.deepEqual(tabStops(row.closest('[role="tree"]')), ['BP-1000']);
+        assert.equal(h.tree.getAttribute('role'), view === 'tabs' ? 'region' : 'tree');
+        if (view === 'tabs') {
+            assert.equal(row.closest('[role="tree"]').getAttribute('aria-labelledby'), 'tax-tab-BP-1000');
+        }
     }
+});
+
+test('a list of original roots keeps its one tab stop on the focused visible original', () => {
+    const data = catalogue().map(area => ({ ...area.children[0], level: 0, parentCode: null, taxonomyContainer: false }));
+    const h = harness({ data });
+    h.row('BR-1000').focus();
+    h.browse.setNodeExpanded(h.row('BP-1000'), true);
+    assert.deepEqual(h.tree.querySelectorAll('[role="treeitem"][tabindex="0"]').map(item => item.dataset.code),
+        ['BR-1000'], 'lazy expansion preserves the focused entry as the only tab stop');
+    h.key('Home');
+    assert.ok(h.document.activeElement === h.row('BP-1000'));
+    assert.deepEqual(tabStops(h.tree), ['BP-1000']);
+});
+
+test('mixed list roots keep original top-level entries in their own labelled tree', () => {
+    const data = catalogue();
+    const original = { ...data[1].children[0], level: 0, parentCode: null, taxonomyContainer: false };
+    const h = harness({ data: [data[0], original] });
+    const originalTree = h.row('BR-1000').closest('[role="tree"]');
+    assert.equal(h.tree.getAttribute('role'), 'region');
+    assert.ok(originalTree !== h.tree);
+    assert.equal(originalTree.getAttribute('aria-label'), 'BR-1000 Business Roles');
+    assert.deepEqual(tabStops(originalTree), ['BR-1000']);
+    assert.ok(h.row('BR-1000')._taxonomyNode === original);
+    assert.equal(h.group('BR-1000'), null);
 });
 
 test('rendering an explicit unscored view does not reuse scores from the previous state', () => {
@@ -338,6 +525,9 @@ test('search reveals original catalogue descendants through a collapsed heading'
     assert.equal(revealed.querySelector('.tax-node-header').classList.contains('search-highlight'), true);
     assert.equal(revealed.getAttribute('tabindex'), '0');
     assert.ok(h.row('BP') === null);
+    assert.deepEqual(tabStops(h.row('BP-1000').closest('[role="tree"]')), ['BP-1060']);
+    assert.deepEqual(tabStops(h.row('BR-1000').closest('[role="tree"]')), ['BR-1000'],
+        'search updates only the selected tree widget');
 });
 
 test('searching for a container highlights its heading and returns the native focus target', () => {

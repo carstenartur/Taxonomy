@@ -725,8 +725,8 @@
             if (focusTarget === header) header.setAttribute('tabindex', '-1');
             return focusTarget;
         }
-        document.querySelectorAll(
-            '#taxonomyTree [role="treeitem"][tabindex="0"]')
+        var tree = node.closest('[role="tree"]') || document.getElementById('taxonomyTree');
+        tree.querySelectorAll('[role="treeitem"][tabindex="0"]')
             .forEach(function (item) { item.setAttribute('tabindex', '-1'); });
         node.setAttribute('tabindex', '0');
         header.scrollIntoView({ behavior: 'auto', block: 'center' });
