@@ -39,13 +39,14 @@ class AnalysisContinuationUiIT {
         assertThat(text).contains(language.equals("de") ? "explizite Entscheidung" : "explicit decision");
         assertThat(writes.get()).isZero(); assertThat(reads.get()).isZero();
         browser.findElement(By.id(action.equals("SKIP") ? "analysisRecoverySkip" : "analysisRecoveryRetry")).click();
-        // The server counts the write before its response reaches the page; wait until the browser applied it.
+        // The write is counted before the response is sent; wait for the browser to apply it.
         wait.until(driver -> writes.get() == 1 && !Boolean.TRUE.equals(browser.executeScript("return document.getElementById('analysisRecoveryDialog').open"))
                 && !"RUNNING".equals(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state")));
         assertThat(decision.get()).contains("\"continuationAction\":\"" + action + "\"", "\"continuationVersion\":7", "\"continuationQuestion\":\"" + KEY + "\"");
+        String expectedState = action.equals("SKIP") ? "COMPLETED_WITH_GAPS" : "COMPLETED";
         assertThat(writes.get()).isEqualTo(1); assertThat(reads.get()).isZero();
         assertThat(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state"))
-                .isEqualTo(action.equals("SKIP") ? "COMPLETED_WITH_GAPS" : "COMPLETED");
+                .isEqualTo(expectedState);
     }
     static void serve(HttpExchange exchange) throws java.io.IOException {
         String path = exchange.getRequestURI().getPath();
