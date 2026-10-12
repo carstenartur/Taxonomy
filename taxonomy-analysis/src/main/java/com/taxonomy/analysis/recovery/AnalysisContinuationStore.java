@@ -113,6 +113,9 @@ public class AnalysisContinuationStore {
         if (run.clusterSourceJson != null && (!run.clusterSourceJson.equals(sourceJson) || !Objects.equals(run.clusterCatalogueHash, catalogueHash)))
             throw conflict("Frozen source or catalogue changed; start a new continuation");
         run.clusterOperationId = operationId; run.clusterSourceJson = sourceJson; run.clusterCatalogueHash = catalogueHash;
+        // Queued and staged cluster work can outlive the finite admission window.
+        // Operation state and delivery fencing revoke authority on completion, cancellation or supersession.
+        run.claimUntil = Long.MAX_VALUE;
         em.flush();
     }
 
