@@ -53,7 +53,7 @@ class AnalysisContinuationUiIT {
         if (path.equals("/fixture")) {
             String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";
             send(exchange, "text/html", """
-                <!doctype html><html><head><meta charset="utf-8"></head><body>
+                <!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/recovery.css"></head><body>
                 <input id="businessText" value="requirement"><button id="analyzeBtn"></button><button id="copilotBtn"></button>
                 <script>const state={recoveryContext:{id:'%s',workspaceId:'workspace-a',distributed:true,request:{businessText:'requirement',provider:'MOCK',analysisScope:{taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}}},
                   analysisRecovery:{id:'%s',version:7,state:'PAUSED',completedCalls:1,openQuestions:[{key:'%s',nodes:['CP'],attempts:1,outcomeUncertain:true,error:'OUTCOME_UNCERTAIN'}]}};
@@ -64,6 +64,9 @@ class AnalysisContinuationUiIT {
                 window.TaxonomyScoring={runAnalysis:({continuation})=>fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(continuation)}).then(r=>r.json())};
                 </script><script src="/viewport.js"></script><script src="/recovery.js"></script><script>TaxonomyAnalysisRecovery.open();</script></body></html>
                 """.formatted(ID, ID, KEY, language)); return;
+        }
+        if (path.equals("/recovery.css")) {
+            send(exchange, "text/css", new ClassPathResource("static/css/taxonomy-analysis-recovery.css").getContentAsString(StandardCharsets.UTF_8)); return;
         }
         String script = path.equals("/viewport.js") ? "static/js/core/taxonomy-recovery-viewport.js"
                 : path.equals("/recovery.js") ? "static/js/core/taxonomy-analysis-recovery.js" : null;
