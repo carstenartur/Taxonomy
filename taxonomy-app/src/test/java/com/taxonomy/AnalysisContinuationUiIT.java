@@ -39,7 +39,9 @@ class AnalysisContinuationUiIT {
         assertThat(text).contains(language.equals("de") ? "explizite Entscheidung" : "explicit decision");
         assertThat(writes.get()).isZero(); assertThat(reads.get()).isZero();
         browser.findElement(By.id(action.equals("SKIP") ? "analysisRecoverySkip" : "analysisRecoveryRetry")).click();
-        wait.until(driver -> writes.get() == 1 && !Boolean.TRUE.equals(browser.executeScript("return document.getElementById('analysisRecoveryDialog').open")));
+        // The server counts the write before its response reaches the page; wait until the browser applied it.
+        wait.until(driver -> writes.get() == 1 && !Boolean.TRUE.equals(browser.executeScript("return document.getElementById('analysisRecoveryDialog').open"))
+                && !"RUNNING".equals(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state")));
         assertThat(decision.get()).contains("\"continuationAction\":\"" + action + "\"", "\"continuationVersion\":7", "\"continuationQuestion\":\"" + KEY + "\"");
         assertThat(writes.get()).isEqualTo(1); assertThat(reads.get()).isZero();
         assertThat(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state"))
