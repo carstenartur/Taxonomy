@@ -507,7 +507,7 @@
                             '.search-result-item[data-result-index="'
                                 + index + '"]');
                     }
-                    : function () { return findTreeNode(node.code); }
+                    : function () { return findTreeFocusTarget(node.code); }
             });
         });
     }
@@ -670,10 +670,20 @@
     }
 
     function findTreeNode(code) {
+        if (window.TaxonomyBrowse && window.TaxonomyBrowse.findRenderedNode) {
+            return window.TaxonomyBrowse.findRenderedNode(code);
+        }
         return Array.from(document.querySelectorAll('.tax-node'))
             .find(function (candidate) {
                 return candidate.dataset && candidate.dataset.code === code;
             }) || null;
+    }
+
+    function findTreeFocusTarget(code) {
+        var node = findTreeNode(code);
+        if (!node || !node.getAttribute('data-taxonomy-container')) return node;
+        return node.querySelector(':scope > .tax-container-heading > .tax-container-toggle')
+            || node.querySelector(':scope > .tax-container-heading');
     }
 
     function revealNodeInTree(code) {
@@ -689,21 +699,32 @@
         while (ancestor) {
             if (ancestor.classList
                     && ancestor.classList.contains('tax-children')) {
-                ancestor.style.display = '';
                 var parentNode = ancestor.parentElement;
                 if (parentNode) {
-                    parentNode.setAttribute('aria-expanded', 'true');
-                    var toggle = parentNode.querySelector(
-                        ':scope > .tax-node-header > .tax-toggle');
-                    if (toggle) toggle.textContent = '▼';
+                    if (window.TaxonomyBrowse && window.TaxonomyBrowse.setNodeExpanded) {
+                        window.TaxonomyBrowse.setNodeExpanded(parentNode, true);
+                    } else {
+                        ancestor.style.display = '';
+                        parentNode.setAttribute('aria-expanded', 'true');
+                        var toggle = parentNode.querySelector(
+                            ':scope > .tax-node-header > .tax-toggle');
+                        if (toggle) toggle.textContent = '▼';
+                    }
                 }
             }
             ancestor = ancestor.parentElement;
         }
 
-        var header = node.querySelector(':scope > .tax-node-header');
+        var header = node.querySelector(':scope > .tax-node-header')
+            || node.querySelector(':scope > .tax-container-heading');
         if (!header) return node;
         header.classList.add('search-highlight');
+        if (node.getAttribute('data-taxonomy-container')) {
+            header.scrollIntoView({ behavior: 'auto', block: 'center' });
+            var focusTarget = findTreeFocusTarget(code);
+            if (focusTarget === header) header.setAttribute('tabindex', '-1');
+            return focusTarget;
+        }
         document.querySelectorAll(
             '#taxonomyTree [role="treeitem"][tabindex="0"]')
             .forEach(function (item) { item.setAttribute('tabindex', '-1'); });

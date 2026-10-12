@@ -69,6 +69,15 @@ public class TaxonomyNodeDto {
     public int getLevel() { return level; }
     public void setLevel(int level) { this.level = level; }
 
+    /**
+     * Read-only presentation metadata for a sub-taxonomy's navigation container.
+     * The original catalogue hierarchy and analysis role retain their own semantics.
+     */
+    public boolean isTaxonomyContainer() {
+        return code != null && !code.isBlank() && code.equals(taxonomyRoot)
+                && level == 0 && (parentCode == null || parentCode.isBlank());
+    }
+
     public String getDataset() { return dataset; }
     public void setDataset(String dataset) { this.dataset = dataset; }
 

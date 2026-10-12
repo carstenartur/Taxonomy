@@ -91,22 +91,33 @@ export async function runMainContextLayoutWorkflow({ page, evidence }) {
 export async function runReviewNavigationWorkflow({ page, evidence }) {
   const original = await page.evaluate(() => ({
     input: document.getElementById('businessText').value,
-    state: Object.fromEntries(['currentScores', 'currentReasons', 'lastAnalysisScope',
+    state: Object.fromEntries(['currentScores', 'currentRawScores', 'currentReasons', 'lastAnalysisScope',
       'lastAnalysisDurationMillis', 'lastAnalyzedText', 'currentView'].map(key => [key, window.TaxonomyState[key]]))
   }));
   const providerRequests = [];
   const observeRequest = request => {
-    if (/\/api\/(?:analyze|analysis-sessions|copilot)(?:[/?]|$)/.test(request.url())
-        && request.method() === 'POST') providerRequests.push(request.url());
+    const postAnalysis = request.method() === 'POST'
+      && /\/api\/(?:analyze|analyze-node|justify-leaf|analysis-sessions|copilot)(?:[/?]|$)/.test(request.url());
+    // Native expansion uses GET analyze-node; EventSource uses GET analyze-stream.
+    const getAnalysis = request.method() === 'GET'
+      && /\/api\/analyze-(?:node|stream)(?:[/?]|$)/.test(request.url());
+    if (postAnalysis || getAnalysis) providerRequests.push(request.url());
   };
   page.on('request', observeRequest);
   try {
     await page.waitForFunction(() => window.TaxonomyState.taxonomyData.length > 0);
     const selected = await page.evaluate(() => {
-      const root = window.TaxonomyState.taxonomyData.find(node => node.children?.length);
-      let leaf = root;
+      const utils = window.TaxonomyUtils;
+      const root = window.TaxonomyState.taxonomyData.find(node =>
+        utils.isTaxonomyContainer(node) && node.children?.length);
+      if (!root) throw new Error('No classified taxonomy container is available for review navigation');
+      const firstEntry = utils.contentRoots([root])[0];
+      if (!firstEntry || utils.isTaxonomyContainer(firstEntry)) {
+        throw new Error('The selected area has no original first catalogue entry');
+      }
+      let leaf = firstEntry;
       while (leaf.children?.length) leaf = leaf.children[leaf.children.length - 1];
-      return { root: root.code, leaf: leaf.code, name: leaf.name };
+      return { root: root.code, firstEntry: firstEntry.code, leaf: leaf.code, name: leaf.name };
     });
     for (const view of ['list', 'tabs', 'tree', 'sunburst', 'decision', 'summary']) {
       const frozen = await page.evaluate(({ view, selected }) => {
@@ -116,14 +127,16 @@ export async function runReviewNavigationWorkflow({ page, evidence }) {
         input.classList.remove('stale-results');
         document.getElementById('statusArea').replaceChildren();
         const state = window.TaxonomyState;
-        state.currentScores = { [selected.root]: 20, [selected.leaf]: 98, 'QA-NOT-IN-CATALOGUE': 100 };
+        state.currentScores = { [selected.root]: 99, [selected.leaf]: 98, 'QA-NOT-IN-CATALOGUE': 100 };
+        state.currentRawScores = { ...state.currentScores };
         state.currentReasons = { [selected.leaf]: 'QA rationale for the strongest catalogue match' };
         state.lastAnalyzedText = input.value;
         state.lastAnalysisDurationMillis = 12345;
         state.lastAnalysisScope = { selectedRoots: [selected.root], mode: 'TAXONOMIES_ONLY' };
         window.TaxonomyBrowse.switchView(view);
         window.TaxonomyOnboarding.syncTaskProgress();
-        return JSON.stringify([state.currentScores, state.currentReasons, state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
+        return JSON.stringify([state.currentScores, state.currentRawScores, state.currentReasons,
+          state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
       }, { view, selected });
       await expect(page.locator('#taskNextAction')).toHaveAttribute('data-action', 'review-results');
       await page.locator('#taskNextAction').click();
@@ -132,30 +145,72 @@ export async function runReviewNavigationWorkflow({ page, evidence }) {
       await expect(page.locator('#taskNextAction')).toHaveAttribute('data-action', 'open-architecture');
       evidence.assert(await page.evaluate(() => {
         const state = window.TaxonomyState;
-        return JSON.stringify([state.currentScores, state.currentReasons, state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
+        return JSON.stringify([state.currentScores, state.currentRawScores, state.currentReasons,
+          state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
       }) === frozen, 'Review navigation must preserve scores, reasons, scope and measured duration');
     }
     evidence.assert(providerRequests.length === 0, 'Inspecting existing results must not start a provider request');
-    evidence.passed('strongest known match is focused from all six views, with frozen evidence and no new analysis');
+    evidence.passed('strongest original match wins over higher area relevance from all six views, with frozen evidence and no new analysis');
 
     await page.evaluate(code => {
       const input = document.getElementById('businessText');
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.classList.remove('stale-results');
       window.TaxonomyState.currentScores = { [code]: 0 };
+      window.TaxonomyState.currentRawScores = { [code]: 0 };
       window.TaxonomyState.currentReasons = { [code]: 'QA rationale explaining zero relevance' };
       window.TaxonomyBrowse.switchView('sunburst');
       window.TaxonomyOnboarding.syncTaskProgress();
-    }, selected.root);
+    }, selected.firstEntry);
     await expect(page.locator('#taskNextAction')).toHaveText('Bewertungen prüfen');
     await expect(page.locator('#taskGuidance')).toContainText('keine positive Relevanz');
     await page.locator('#taskNextAction').click();
-    await expect.poll(() => page.evaluate(() => document.activeElement?.dataset.code)).toBe(selected.root);
-    const zeroNode = page.locator('#taxonomyTree .tax-node[data-code="' + selected.root + '"]');
+    await expect.poll(() => page.evaluate(() => document.activeElement?.dataset.code)).toBe(selected.firstEntry);
+    const zeroNode = page.locator('#taxonomyTree .tax-node[data-code="' + selected.firstEntry + '"]');
     await expect(zeroNode).toHaveAttribute('aria-label', /QA rationale explaining zero relevance/);
     await expect(zeroNode.locator(':scope > .tax-node-header > .tax-reason-icon'))
       .toHaveAttribute('title', 'QA rationale explaining zero relevance');
     await expect(page.locator('#taskNextAction')).toHaveAttribute('data-action', 'open-architecture');
+
+    for (const score of [0, 91]) {
+      const frozen = await page.evaluate(({ code, score }) => {
+        const input = document.getElementById('businessText');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.classList.remove('stale-results');
+        const state = window.TaxonomyState;
+        state.currentScores = { [code]: score };
+        state.currentRawScores = { [code]: score };
+        state.currentReasons = { [code]: 'QA area relevance evidence' };
+        window.TaxonomyBrowse.switchView('sunburst');
+        window.TaxonomyOnboarding.syncTaskProgress();
+        return JSON.stringify([state.taxonomyData, state.currentScores, state.currentRawScores,
+          state.currentReasons, state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
+      }, { code: selected.root, score });
+      const areaRelevance = await page.evaluate(score =>
+        window.TaxonomyI18n.t('browse.container.relevance', score), score);
+      await expect(page.locator('#taskNextAction')).toHaveText('Bewertungen prüfen');
+      await expect(page.locator('#taskNextAction')).toHaveAttribute('data-action', 'review-results');
+      await expect(page.locator('#taskGuidance')).toHaveText(selected.root + ' · ' + areaRelevance);
+      await page.locator('#taskNextAction').click();
+      const area = page.locator('#taxonomyTree .tax-container[data-taxonomy-container="' + selected.root + '"]');
+      const toggle = area.locator(':scope > .tax-container-heading > button.tax-container-toggle');
+      await expect(area).toHaveAttribute('role', 'group');
+      await expect(area).not.toHaveAttribute('aria-expanded', /./);
+      await expect(toggle).toHaveAttribute('type', 'button');
+      await expect(toggle).toBeFocused();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(area.locator(':scope > .tax-container-heading > .tax-container-score')).toHaveText(areaRelevance);
+      await expect(page.locator('#taxonomyTree .tax-node[data-code="' + selected.root + '"]')).toHaveCount(0);
+      await expect(area.locator('.tax-node .tax-pct')).toHaveCount(0);
+      await expect(page.locator('#taskNextAction')).toHaveAttribute('data-action', 'open-architecture');
+      evidence.assert(await page.evaluate(() => {
+        const state = window.TaxonomyState;
+        return JSON.stringify([state.taxonomyData, state.currentScores, state.currentRawScores,
+          state.currentReasons, state.lastAnalysisScope, state.lastAnalysisDurationMillis]);
+      }) === frozen, 'Area review must preserve catalogue, scores, raw evidence, reasons, scope and duration');
+      evidence.assert(providerRequests.length === 0, 'Reviewing an area assessment must not start a provider request');
+    }
+    evidence.passed('zero and positive area-only assessments focus the native heading with distinct area relevance and unchanged evidence');
 
     await page.evaluate(() => {
       document.getElementById('businessText').dispatchEvent(new Event('input', { bubbles: true }));

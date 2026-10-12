@@ -22,9 +22,10 @@
     function standaloneSvg(containerId) {
         var source = currentSvg(containerId);
         if (!source) return null;
+        var svgNamespace = 'http://www.w3.org/2000/svg';
         var clone = source.cloneNode(true);
-        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-        var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        clone.setAttribute('xmlns', svgNamespace);
+        var style = document.createElementNS(svgNamespace, 'style');
         style.textContent = [
             'text { font-family: Arial, Helvetica, sans-serif; }',
             '.tv-link, .dm-link { fill: none; }',
@@ -32,7 +33,53 @@
             '.dm-rank { font-size: 13px; }'
         ].join('\n');
         clone.insertBefore(style, clone.firstChild);
-        return clone;
+
+        // Live diagrams keep area headings outside their SVG. Include that visible
+        // context in captures; canvas-generated SVGs already contain these labels.
+        var container = document.getElementById(containerId || 'taxonomyTree');
+        var includedAreas = new Set(Array.from(source.querySelectorAll('[data-taxonomy-container]'))
+            .map(function (heading) { return heading.getAttribute('data-taxonomy-container'); }));
+        var headings = container ? Array.from(container.querySelectorAll('.tax-container-heading[data-taxonomy-container]'))
+            .filter(function (heading) {
+                var code = heading.getAttribute('data-taxonomy-container');
+                if (heading.namespaceURI === svgNamespace || includedAreas.has(code)) return false;
+                includedAreas.add(code);
+                return true;
+            }) : [];
+        if (!headings.length) return clone;
+
+        var width = dimension(source, 'width', 800);
+        var height = dimension(source, 'height', 400);
+        var headerHeight = headings.length * 28 + 12;
+        var wrapper = document.createElementNS(svgNamespace, 'svg');
+        wrapper.setAttribute('xmlns', svgNamespace);
+        wrapper.setAttribute('width', width);
+        wrapper.setAttribute('height', height + headerHeight);
+        wrapper.setAttribute('viewBox', '0 0 ' + width + ' ' + (height + headerHeight));
+        headings.forEach(function (heading, index) {
+            var label = heading.cloneNode(true);
+            var score = label.querySelector('.tax-container-score');
+            var scoreText = score ? score.textContent.trim() : '';
+            if (score) score.remove();
+            var text = document.createElementNS(svgNamespace, 'text');
+            text.setAttribute('data-taxonomy-container', heading.getAttribute('data-taxonomy-container'));
+            text.setAttribute('x', '20');
+            text.setAttribute('y', 20 + index * 28);
+            text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
+            text.setAttribute('font-size', '12');
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('fill', '#111');
+            text.textContent = label.textContent.trim() + (scoreText ? ' · ' + scoreText : '');
+            wrapper.appendChild(text);
+        });
+        // A nested SVG preserves the source viewBox (including a negative
+        // sunburst origin), viewport and existing pan/zoom transforms unchanged.
+        clone.setAttribute('x', '0');
+        clone.setAttribute('y', headerHeight);
+        clone.setAttribute('width', width);
+        clone.setAttribute('height', height);
+        wrapper.appendChild(clone);
+        return wrapper;
     }
 
     function serializeSvg(svg) {
@@ -185,9 +232,11 @@
 
     function exportCsv(scores, taxonomyData) {
         if (!scores || !taxonomyData) return;
-        var paths = {}, names = {}, levels = {};
+        var paths = {}, names = {}, levels = {}, containers = new Set();
         function visit(node, ancestors, level) {
             names[node.code] = node.name || '';
+            if (window.TaxonomyUtils && window.TaxonomyUtils.isTaxonomyContainer
+                    && window.TaxonomyUtils.isTaxonomyContainer(node)) containers.add(node.code);
             levels[node.code] = level;
             paths[node.code] = ancestors.concat(node.name ? node.code + ' ' + node.name : node.code);
             (node.children || []).forEach(function (child) {
@@ -198,27 +247,31 @@
         var coverage = window.TaxonomyState && window.TaxonomyState.analysisCoverage;
         var scope = window.TaxonomyState && window.TaxonomyState.lastAnalysisScope;
         var scopeFields = [csvField(scope ? (scope.taxonomyRoots?.length ? scope.taxonomyRoots.join(';') : 'ALL') : ''), csvField(scope?.mode || '')];
-        var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '') + ',AnalysisTaxonomies,AnalysisMode'];
+        function containerField(code) {
+            return Object.prototype.hasOwnProperty.call(names, code) ? String(containers.has(code)) : '';
+        }
+        var rank = 0;
+        var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '') + ',AnalysisTaxonomies,AnalysisMode,TaxonomyContainer'];
         Object.entries(scores)
             .filter(function (entry) { return Number.isFinite(entry[1]) && (coverage || entry[1] > 0); })
             .sort(function (left, right) { return right[1] - left[1]; })
-            .forEach(function (entry, index) {
+            .forEach(function (entry) {
                 var code = entry[0];
                 lines.push([
-                    index + 1,
+                    containerField(code) === 'false' ? ++rank : '',
                     csvField(code),
                     csvField(names[code] || ''),
                     entry[1],
                     csvField((paths[code] || []).join(' > ')),
                     levels[code] || 0
                 ].concat(coverage ? [coverage.nodes[code]?.state || 'UNKNOWN',
-                    coverage.nodes[code]?.descendants || 'UNASSESSED', csvField(coverage.nodes[code]?.reason || '')] : []).concat(scopeFields).join(','));
+                    coverage.nodes[code]?.descendants || 'UNASSESSED', csvField(coverage.nodes[code]?.reason || '')] : []).concat(scopeFields, containerField(code)).join(','));
             });
         if (coverage) Object.entries(coverage.nodes).forEach(function (entry) {
             var code = entry[0], assessment = entry[1];
             if (Object.prototype.hasOwnProperty.call(scores, code) || assessment.state !== 'UNKNOWN') return;
             lines.push(['', csvField(code), csvField(names[code] || ''), '', csvField((paths[code] || []).join(' > ')),
-                levels[code] || 0, 'UNKNOWN', assessment.descendants, csvField(assessment.reason || '')].concat(scopeFields).join(','));
+                levels[code] || 0, 'UNKNOWN', assessment.descendants, csvField(assessment.reason || '')].concat(scopeFields, containerField(code)).join(','));
         });
         downloadBlob(
             new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }),

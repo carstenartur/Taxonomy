@@ -1022,6 +1022,11 @@
     // ── Keyboard navigation for treeview (WCAG 2.1.1, 2.4.3) ─────────────────
     function initTreeKeyboardNavigation(tree) {
         if (!tree) return;
+        // Renders replace the content, while the shared tree keeps its one listener.
+        var firstItem = tree.querySelector('[role="treeitem"]');
+        if (firstItem) firstItem.setAttribute('tabindex', '0');
+        if (tree._taxonomyKeyboardBound) return;
+        tree._taxonomyKeyboardBound = true;
         tree.addEventListener('keydown', function (e) {
             var current = document.activeElement;
             if (!current || current.getAttribute('role') !== 'treeitem') return;
@@ -1030,7 +1035,8 @@
                 // Only include visible items
                 var p = el;
                 while (p && p !== tree) {
-                    if (p.style && p.style.display === 'none') return false;
+                    if (p.hidden || (p.style && p.style.display === 'none')) return false;
+                    if (p.classList && p.classList.contains('tab-pane') && !p.classList.contains('active')) return false;
                     p = p.parentElement;
                 }
                 return true;
@@ -1082,9 +1088,6 @@
                     break;
             }
         });
-        // First root item gets tabindex="0" so it's in the tab order
-        var firstItem = tree.querySelector('[role="treeitem"]');
-        if (firstItem) firstItem.setAttribute('tabindex', '0');
     }
 
     // ── Render tabbed list view ────────────────────────────────────────────────
@@ -1131,22 +1134,20 @@
             li.appendChild(btn);
             navUl.appendChild(li);
 
-            // Tab pane – render the root's children (not the root row itself)
+            // Containers remain headings; original top-level entries remain treeitems.
             const pane = document.createElement('div');
             pane.id = paneId;
             pane.className = 'tab-pane fade' + (isFirst ? ' show active' : '');
             pane.setAttribute('role', 'tabpanel');
             pane.setAttribute('aria-labelledby', tabId);
 
-            // Render the root node's children in the pane; fall back to the root
-            // itself if it has no children (edge case: a root with no sub-nodes).
-            const children = rootNode.children && rootNode.children.length ? rootNode.children : [rootNode];
-            children.forEach(child => pane.appendChild(buildNodeEl(child, scores)));
+            pane.appendChild(buildNodeEl(rootNode, scores));
             tabContent.appendChild(pane);
         });
 
         container.appendChild(navUl);
         container.appendChild(tabContent);
+        initTreeKeyboardNavigation(container);
 
         // Fallback tab switching – works even when Bootstrap JS is not available
         navUl.addEventListener('click', function (e) {
@@ -1210,13 +1211,25 @@
         children.forEach(child => fragment.appendChild(buildNodeEl(child, scores)));
         childContainer.appendChild(fragment);
         childContainer.dataset.renderState = 'ready';
+        if (wrapper.classList.contains('tax-container')) {
+            const firstItem = childContainer.querySelector('[role="treeitem"]');
+            if (firstItem) { firstItem.setAttribute('tabindex', '0'); }
+        }
         return childContainer;
+    }
+
+    function findRenderedNode(code) {
+        const tree = document.getElementById('taxonomyTree');
+        if (!tree || !code) { return null; }
+        const escaped = CSS.escape(code);
+        return tree.querySelector('.tax-node[data-code="' + escaped + '"]')
+            || tree.querySelector('[data-taxonomy-container="' + escaped + '"]');
     }
 
     function ensureNodeRendered(code, scores) {
         const tree = document.getElementById('taxonomyTree');
         if (!tree || !code) { return null; }
-        let target = tree.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        let target = findRenderedNode(code);
         if (target) { return target; }
 
         const path = findNodePath(code);
@@ -1224,19 +1237,15 @@
         let parentEl = null;
         for (let i = 0; i < path.length; i++) {
             const current = path[i];
-            let currentEl = tree.querySelector('[data-code="' + CSS.escape(current.code) + '"]');
+            let currentEl = findRenderedNode(current.code);
             if (!currentEl && parentEl) {
                 materializeChildren(parentEl, scores);
-                currentEl = parentEl.querySelector(
-                    ':scope > .tax-children > [data-code="' + CSS.escape(current.code) + '"]');
+                currentEl = findRenderedNode(current.code);
             }
-            // In tabs view the taxonomy root is represented by the tab itself,
-            // while its direct children are the first treeitems in the pane.
-            if (!currentEl && S.currentView === 'tabs' && i === 0) { continue; }
             if (!currentEl) { return null; }
             parentEl = currentEl;
         }
-        return tree.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        return findRenderedNode(code);
     }
 
     function materializeScoredPaths(scores) {
@@ -1254,7 +1263,7 @@
         while (deferred.length > 0) {
             deferred.forEach(function (group) {
                 const wrapper = group.parentElement;
-                if (wrapper && wrapper.classList.contains('tax-node')) {
+                if (wrapper && wrapper._taxonomyNode) {
                     materializeChildren(wrapper, scores);
                 }
             });
@@ -1263,7 +1272,75 @@
         }
     }
 
+    function buildContainerEl(node, scores) {
+        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+        const wrapper = document.createElement('section');
+        wrapper.className = 'tax-container';
+        wrapper.dataset.taxonomyContainer = node.code;
+        wrapper._taxonomyNode = node;
+        wrapper.setAttribute('role', 'group');
+
+        const heading = document.createElement('h3');
+        heading.className = 'tax-container-heading';
+        heading.id = 'tax-container-heading-' + node.code;
+        wrapper.setAttribute('aria-labelledby', heading.id);
+        const title = node.code + ' ' + (node.name || node.nameEn || '');
+
+        if (hasChildren) {
+            const button = document.createElement('button');
+            button.className = 'tax-container-toggle';
+            button.setAttribute('type', 'button');
+            button.setAttribute('aria-controls', 'tax-container-children-' + node.code);
+            const arrow = document.createElement('span');
+            arrow.className = 'tax-container-arrow';
+            arrow.setAttribute('aria-hidden', 'true');
+            button.appendChild(arrow);
+            const label = document.createElement('span');
+            label.className = 'tax-container-title';
+            label.textContent = title;
+            button.appendChild(label);
+            button.addEventListener('click', function () { toggleNode(wrapper); });
+            heading.appendChild(button);
+        } else {
+            heading.textContent = title;
+        }
+
+        const pct = scores && scores[node.code];
+        if (Number.isFinite(pct)) {
+            const badge = document.createElement('span');
+            badge.className = 'tax-container-score';
+            badge.textContent = t('browse.container.relevance', pct);
+            heading.appendChild(badge);
+        }
+        wrapper.appendChild(heading);
+
+        if (hasChildren) {
+            const children = document.createElement('div');
+            children.className = 'tax-children';
+            children.id = 'tax-container-children-' + node.code;
+            children.setAttribute('role', 'group');
+            children.setAttribute('aria-labelledby', heading.id);
+            children.dataset.renderState = 'deferred';
+            wrapper.appendChild(children);
+            // Interactive analysis still evaluates the container's actual children
+            // when its heading is opened. Passive browsing shows that first level.
+            const needsEvaluation = S.interactiveMode && S.storedBusinessText
+                && !S.evaluatedNodes.has(node.code);
+            if (!needsEvaluation) { materializeChildren(wrapper, scores); }
+            setNodeExpanded(wrapper, !needsEvaluation);
+        } else {
+            const empty = document.createElement('p');
+            empty.className = 'tax-container-empty text-muted small';
+            empty.textContent = t('browse.container.empty');
+            wrapper.appendChild(empty);
+        }
+        return wrapper;
+    }
+
     function buildNodeEl(node, scores) {
+        if (window.TaxonomyUtils.isTaxonomyContainer(node)) {
+            return buildContainerEl(node, scores);
+        }
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
         const reason = S.currentReasons ? (S.currentReasons[node.code] || null) : null;
@@ -1312,7 +1389,7 @@
             toggle.textContent = '▶';
             toggle.addEventListener('click', function (e) {
                 e.stopPropagation();
-                toggleNode(wrapper, toggle);
+                toggleNode(wrapper);
             });
         }
         header.appendChild(toggle);
@@ -1446,7 +1523,24 @@
         return wrapper;
     }
 
-    function toggleNode(wrapper, toggleEl) {
+    function setNodeExpanded(wrapper, expanded) {
+        if (!wrapper) { return; }
+        const children = wrapper.querySelector(':scope > .tax-children');
+        if (!children) { return; }
+        if (expanded) { materializeChildren(wrapper, S.currentScores); }
+        children.style.display = expanded ? '' : 'none';
+        const containerToggle = wrapper.querySelector(':scope > .tax-container-heading > .tax-container-toggle');
+        if (containerToggle) {
+            containerToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            containerToggle.querySelector('.tax-container-arrow').textContent = expanded ? '▼' : '▶';
+        } else {
+            wrapper.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            const toggle = wrapper.querySelector(':scope > .tax-node-header > .tax-toggle');
+            if (toggle) { toggle.textContent = expanded ? '▼' : '▶'; }
+        }
+    }
+
+    function toggleNode(wrapper) {
         let children = wrapper.querySelector(':scope > .tax-children');
         if (!children) return;
         const isHidden = children.style.display === 'none';
@@ -1455,21 +1549,18 @@
         }
 
         if (isHidden && S.interactiveMode && S.storedBusinessText) {
-            const code = wrapper.dataset.code;
+            const code = wrapper.dataset.taxonomyContainer || wrapper.dataset.code;
             if (!S.evaluatedNodes.has(code)) {
                 S.evaluatedNodes.add(code);
-                evaluateNodeChildren(code, wrapper, toggleEl);
+                evaluateNodeChildren(code, wrapper);
                 return; // don't toggle yet — wait for API response
             }
         }
 
-        children.style.display = isHidden ? '' : 'none';
-        toggleEl.textContent = isHidden ? '▼' : '▶';
-        // Update ARIA expanded state (WCAG 4.1.2)
-        wrapper.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+        setNodeExpanded(wrapper, isHidden);
     }
 
-    function evaluateNodeChildren(parentCode, wrapper, toggle) {
+    function evaluateNodeChildren(parentCode, wrapper) {
         wrapper.classList.add('tax-evaluating');
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
             + ', businessText=' + (S.storedBusinessText ? S.storedBusinessText.substring(0, 80) : ''));
@@ -1596,12 +1687,7 @@
                 });
 
                 // Now expand the node
-                const children = wrapper.querySelector(':scope > .tax-children');
-                if (children) {
-                    children.style.display = '';
-                    toggle.textContent = '▼';
-                    wrapper.setAttribute('aria-expanded', 'true');
-                }
+                setNodeExpanded(wrapper, true);
 
                 // Reconcile family corrections in previously evaluated product rows as well.
                 SC().syncVisibleScoreNodes();
@@ -1617,12 +1703,7 @@
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
                 showStatus('danger', t('browse.eval.failed', parentCode, err.message));
                 // Still expand the node (without scores)
-                const children = wrapper.querySelector(':scope > .tax-children');
-                if (children) {
-                    children.style.display = '';
-                    toggle.textContent = '▼';
-                    wrapper.setAttribute('aria-expanded', 'true');
-                }
+                setNodeExpanded(wrapper, true);
             });
     }
 
@@ -1638,6 +1719,7 @@
         document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
             el.setAttribute('aria-expanded', 'true');
         });
+        document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, true));
     }
 
     function collapseAll() {
@@ -1651,6 +1733,7 @@
         document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
             el.setAttribute('aria-expanded', 'false');
         });
+        document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, false));
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
@@ -2352,6 +2435,8 @@
         escapeHtml: escapeHtml,
         updateExportGroupVisibility: updateExportGroupVisibility,
         ensureNodeRendered: ensureNodeRendered,
+        findRenderedNode: findRenderedNode,
+        setNodeExpanded: setNodeExpanded,
         materializeChildren: materializeChildren,
         materializeAllTaxonomyNodes: materializeAllTaxonomyNodes
     };

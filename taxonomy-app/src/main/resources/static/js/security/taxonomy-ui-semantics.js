@@ -107,7 +107,8 @@ window.TaxonomyUiSemantics = (function () {
         var expectedRole = containsTreeItems ? 'tree' : 'region';
         if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
         if (tree.getAttribute('tabindex') !== '0') tree.setAttribute('tabindex', '0');
-        if (containsTreeItems) tree.removeAttribute('aria-busy');
+        // A completed container view may still have only collapsed headings or an empty state.
+        if (containsTreeItems || tree.getAttribute('data-view-rendered')) tree.removeAttribute('aria-busy');
         else tree.setAttribute('aria-busy', 'true');
     }
 
@@ -123,7 +124,7 @@ window.TaxonomyUiSemantics = (function () {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['role', 'tabindex']
+            attributeFilter: ['role', 'tabindex', 'data-view-rendered']
         });
         observers.push(observer);
     }

@@ -518,6 +518,12 @@
                 ? 'analysis.task.next.results' : 'analysis.task.next.assessments');
             if (strongest && strongest.score === 0) {
                 document.getElementById('taskGuidance').textContent = t('analysis.task.review.noMatch');
+            } else if (!strongest) {
+                var area = strongestKnownAssessment(scores, true);
+                if (area) {
+                    document.getElementById('taskGuidance').textContent = area.code + ' · '
+                        + t('browse.container.relevance', area.score);
+                }
             }
             nextAction.dataset.action = 'review-results';
         } else {
@@ -529,11 +535,16 @@
     }
 
     function strongestKnownMatch(scores) {
+        return strongestKnownAssessment(scores, false);
+    }
+
+    function strongestKnownAssessment(scores, containersOnly) {
         var selected = null;
         function visit(nodes) {
             (nodes || []).forEach(function (node) {
                 var score = scores && scores[node.code];
-                if (typeof score === 'number' && Number.isFinite(score)
+                if (window.TaxonomyUtils.isTaxonomyContainer(node) === containersOnly
+                        && typeof score === 'number' && Number.isFinite(score)
                         && score >= 0 && (!selected || score > selected.score)) {
                     selected = { code: node.code, score: score };
                 }
@@ -552,23 +563,35 @@
         } else if (action === 'review-results') {
             var state = window.TaxonomyState;
             var match = strongestKnownMatch(state && state.currentScores);
+            // Area-only analysis has an existing assessment to review, but no
+            // catalogue match. Keep that distinction in selection and focus.
+            var assessment = match || strongestKnownAssessment(state && state.currentScores, true);
             var browse = window.TaxonomyBrowse;
             var scoring = window.TaxonomyScoring;
-            if (match && browse && scoring) {
+            if (assessment && browse && scoring) {
                 // The text tree exposes the score and rationale, including deferred
                 // descendants. Expanding it through the browse API never starts an LLM call.
                 browse.switchView('list');
-                scoring.expandNodeByCode(match.code);
-                var target = document.querySelector('#taxonomyTree .tax-node[data-code="'
-                    + CSS.escape(match.code) + '"]');
+                scoring.expandNodeByCode(assessment.code);
+                var target = browse.findRenderedNode ? browse.findRenderedNode(assessment.code)
+                    : document.querySelector('#taxonomyTree .tax-node[data-code="'
+                        + CSS.escape(assessment.code) + '"]');
+                if (!match && target) {
+                    target = target.querySelector('.tax-container-toggle')
+                        || target.querySelector('.tax-container-heading');
+                }
                 if (!target) {
                     showReviewUnavailable();
                     return;
                 }
-                document.querySelectorAll('#taxonomyTree .tax-node[tabindex="0"]').forEach(function (node) {
-                    node.tabIndex = -1;
-                });
-                target.tabIndex = 0;
+                if (match) {
+                    document.querySelectorAll('#taxonomyTree .tax-node[tabindex="0"]').forEach(function (node) {
+                        node.tabIndex = -1;
+                    });
+                    target.tabIndex = 0;
+                } else if (target.tagName !== 'BUTTON') {
+                    target.tabIndex = -1;
+                }
                 target.scrollIntoView({ block: 'center' });
                 target.focus({ preventScroll: true });
                 reviewAcknowledged = true;
