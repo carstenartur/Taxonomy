@@ -112,7 +112,7 @@ ARG TAXONOMY_GID=10001
 # curl is used only by the container-native healthcheck. The application itself
 # remains reachable exclusively through the reverse proxy in production.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libssl3 openssl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid "${TAXONOMY_GID}" taxonomy \
     && useradd --uid "${TAXONOMY_UID}" --gid "${TAXONOMY_GID}" \
