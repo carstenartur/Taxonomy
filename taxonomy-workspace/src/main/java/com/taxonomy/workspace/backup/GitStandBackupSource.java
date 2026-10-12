@@ -40,12 +40,21 @@ public final class GitStandBackupSource {
     }
 
     /** Caller holds the installation fence and fresh authorization through the final copy and close. */
+    public Stand openHistoryWorkingCopy(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+        if (!authorization.request().profile().includesHistory()) throw failure("Raw history working copies require history authorization");
+        return open(authorization, key, limits, checkpoint, true);
+    }
+
+    /** Caller holds the installation fence and fresh authorization through the final copy and close. */
     public Stand open(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+        return open(authorization, key, limits, checkpoint, false);
+    }
+    private Stand open(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint, boolean historyWorkingCopy) throws IOException {
         ExistingGitBackupRepositories.ReadSession session = null;
         try {
             Objects.requireNonNull(limits); checkpoint.check();
             session = repositories.open(authorization, key, checkpoint);
-            var tree = session.captureStand(limits.git(), checkpoint).orElse(null);
+            var tree = (historyWorkingCopy ? session.captureHistoryWorkingTree(limits.git(), checkpoint) : session.captureStand(limits.git(), checkpoint)).orElse(null);
             boolean selected = authorization.request().profile() == BackupProfile.SELECTED_VERSION;
             var saved = selected || key.workspaceId() == null ? null : savedProof(key, session.branch(), limits, checkpoint);
             String commit = tree == null ? null : tree.commit();
@@ -67,7 +76,7 @@ public final class GitStandBackupSource {
                     if (working && saved.state().semanticRevision() == saved.state().checkpointRevision()
                             && !hash(raw).equals(original == null ? hash(new byte[0]) : original.sha256()))
                         throw failure("Completed editor checkpoint content disagrees with its Git document");
-                    byte[] projected = project(raw, limits, checkpoint);
+                    byte[] projected = documentBytes(raw, limits, checkpoint, historyWorkingCopy);
                     file = new File(path, mode, projected.length, hash(projected));
                     if (original != null && (!working || original.sha256().equals(saved.sha256())))
                         documents.add(new BackupDocumentReference(key, commit, path, original.sha256()));
@@ -80,7 +89,7 @@ public final class GitStandBackupSource {
             var state = new SnapshotContext.RepositoryState(branch == null || commit == null ? Map.of() : Map.of(branch, commit), branch,
                     saved == null ? Map.of() : Map.of(session.branch(), saved.state()), commit == null ? Set.of() : Set.of(commit));
             checkpoint.check();
-            return new Stand(session, tree, limits, saved, evidence, state, documents);
+            return new Stand(session, tree, limits, saved, evidence, state, documents, historyWorkingCopy);
         } catch (IOException | RuntimeException | Error problem) {
             if (session != null) try { session.close(); } catch (IOException | RuntimeException cleanup) { problem.addSuppressed(cleanup); }
             if (problem instanceof Error error) throw error;
@@ -98,16 +107,21 @@ public final class GitStandBackupSource {
         private final List<File> files;
         private final SnapshotContext.RepositoryState state;
         private final List<BackupDocumentReference> documents;
+        private final boolean historyWorkingCopy;
         private final AtomicBoolean active = new AtomicBoolean(true);
         private Stand(ExistingGitBackupRepositories.ReadSession session, GitTreeCapture tree, Limits limits, SavedProof saved,
-                      Map<File, Evidence> evidence, SnapshotContext.RepositoryState state, List<BackupDocumentReference> documents) {
+                      Map<File, Evidence> evidence, SnapshotContext.RepositoryState state, List<BackupDocumentReference> documents, boolean historyWorkingCopy) {
             this.session = session; this.tree = tree; this.limits = limits; this.saved = saved;
             this.evidence = Map.copyOf(evidence); files = List.copyOf(evidence.keySet()); this.state = state; this.documents = List.copyOf(documents);
+            this.historyWorkingCopy = historyWorkingCopy;
         }
         public List<File> files() { return files; }
         /** Source capture evidence. This does not declare an exported Git representation. */
         public SnapshotContext.RepositoryState state() { return state; }
         public List<BackupDocumentReference> documents() { return documents; }
+        boolean isHistoryWorkingCopy() { return historyWorkingCopy; }
+        GitHistoryCapture.Origin origin() { return session.origin(); }
+        GitTreeCapture sourceTree() { return tree; }
         public void copy(File file, OutputStream output, BackupCheckpoint checkpoint) throws IOException {
             try {
                 Objects.requireNonNull(output); var check = (BackupCheckpoint) () -> check(checkpoint); check.check();
@@ -117,9 +131,9 @@ public final class GitStandBackupSource {
                     if (source.working()) {
                         raw = savedBytes(saved, session.key(), session.branch(), limits, check);
                     } else raw = document(tree, source.original(), limits, check);
-                    byte[] projected = project(raw, limits, check);
+                    byte[] projected = documentBytes(raw, limits, check, historyWorkingCopy);
                     if (projected.length != file.length() || !hash(projected).equals(file.sha256()))
-                        throw failure("Projected stand content changed after capture");
+                        throw failure("Captured stand content changed after capture");
                     for (int offset = 0; offset < projected.length; offset += BUFFER) {
                         check.check(); output.write(projected, offset, Math.min(BUFFER, projected.length - offset)); check.check();
                     }
@@ -138,6 +152,7 @@ public final class GitStandBackupSource {
             checkpoint.check();
             if (!active.get()) throw failure("Git stand capture session is closed");
         }
+        void checkLifetime() throws IOException { check(() -> { }); }
         @Override public void close() throws IOException { if (active.getAndSet(false)) session.close(); }
     }
 
@@ -193,9 +208,10 @@ public final class GitStandBackupSource {
         if (file.length() > limits.maxDocumentBytes()) throw failure("Stand document byte limit exceeded");
         var output = new ByteArrayOutputStream((int) file.length()); tree.copy(file, output, checkpoint); return output.toByteArray();
     }
-    private byte[] project(byte[] raw, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+    private byte[] documentBytes(byte[] raw, Limits limits, BackupCheckpoint checkpoint, boolean rawHistory) throws IOException {
         checkpoint.check();
         String document = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(raw)).toString();
+        if (rawHistory) { checkpoint.check(); return raw; }
         String projected = projector.currentState(document); checkpoint.check(); return utf8(projected, limits, checkpoint);
     }
     private static byte[] utf8(String value, Limits limits, BackupCheckpoint checkpoint) throws IOException {

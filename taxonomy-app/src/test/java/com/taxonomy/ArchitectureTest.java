@@ -142,7 +142,9 @@ class ArchitectureTest {
      * No circular dependencies between the main domain packages.
      *
      * <p>Each top-level package under {@code com.taxonomy} is treated as a
-     * slice. Dependencies to/from cross-cutting and shared infrastructure
+     * slice, except physically domain-owned Backup API contracts and app-owned
+     * Backup orchestration, which retain separate API and composition ownership.
+     * Dependencies to/from cross-cutting and shared infrastructure
      * packages are excluded from cycle detection.
      *
      * <p>Known excluded packages and reasons:
@@ -159,7 +161,16 @@ class ArchitectureTest {
      */
     @ArchTest
     static final ArchRule noCyclesBetweenDomains = slices()
-            .matching("com.taxonomy.(*)..")
+            .assignedFrom(new com.tngtech.archunit.library.dependencies.SliceAssignment() {
+                @Override public com.tngtech.archunit.library.dependencies.SliceIdentifier getIdentifierOf(JavaClass type) {
+                    String name = type.getPackageName();
+                    if (!name.startsWith("com.taxonomy.")) return com.tngtech.archunit.library.dependencies.SliceIdentifier.ignore();
+                    String backup = ArchitectureSourceOwnership.backupSlice(ArchitectureSourceOwnership.repository(), type);
+                    return com.tngtech.archunit.library.dependencies.SliceIdentifier.of(backup != null ? backup
+                            : name.substring("com.taxonomy.".length()).split("\\.")[0]);
+                }
+                @Override public String getDescription() { return "Taxonomy domains with physical backup API ownership"; }
+            })
             .should().beFreeOfCycles()
             .ignoreDependency(resideInAnyPackage(
                     "com.taxonomy.dto..", "com.taxonomy.model..",
@@ -174,6 +185,10 @@ class ArchitectureTest {
                     "com.taxonomy.catalog..", "com.taxonomy.relations..",
                     "com.taxonomy.versioning..", "com.taxonomy.workspace.."))
             .because("Domain packages must not have circular dependencies (shared infra excluded)");
+
+    @ArchTest
+    static final ArchRule domainContractsShouldNotDependOnApplication = ArchitectureSourceOwnership
+            .domainShouldNotDependOnApplication(ArchitectureSourceOwnership.repository());
 
     /**
      * Controllers must go through services or facades and never touch

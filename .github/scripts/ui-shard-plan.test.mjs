@@ -159,7 +159,7 @@ for (const gate of ['verify:ui', 'verify:ui-contracts']) {
     const { scripts } = JSON.parse(await readFile(
       path.join(repoRoot, '.github', 'package.json'), 'utf8'));
     const commands = scripts[gate].split(' && ');
-    for (const name of ['test:ui-localization', 'test:ux-state-recovery', 'test:search-mode-readiness']) {
+    for (const name of ['test:ui-localization', 'test:ux-state-recovery', 'test:search-mode-readiness', 'test:backup-export']) {
       assert.ok(scripts[name], `Missing regression command ${name}`);
       assert.equal(commands.filter(command => command === `npm run ${name}`).length, 1,
         `${gate} must execute ${name} exactly once`);

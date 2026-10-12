@@ -420,6 +420,13 @@
     },
     "entry": {
       "type": "object",
+      "description": "A trailing slash declares an empty directory and requires directory-entries-v1 in the manifest.",
+      "allOf": [
+        {
+          "if": { "properties": { "path": { "pattern": "/$" } }, "required": ["path"] },
+          "then": { "properties": { "length": { "const": 0 }, "sha256": { "const": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" } } }
+        }
+      ],
       "properties": {
         "path": {
           "type": "string",

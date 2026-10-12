@@ -73,6 +73,76 @@
             }
         } finally { busy = false; }
     }
+    var exportForm = document.getElementById('backupExportForm');
+    if (exportForm) {
+        var scopeInput = document.getElementById('backupExportScope');
+        var profileInput = document.getElementById('backupExportProfile');
+        var commitInput = document.getElementById('backupExportCommit');
+        var submitButton = document.getElementById('backupExportSubmit');
+        var exportFeedback = document.getElementById('backupExportFeedback');
+        var historyOption = document.getElementById('backupExportHistoryOption');
+        var representationInput = document.getElementById('backupExportGit');
+        function historyAvailable(selection) {
+            return !!selection && selection.dataset.installation !== 'true' && selection.dataset.historyAvailable === 'true';
+        }
+        function gitFormats(history) { return history ? ['BUNDLE', 'BARE', 'WORKTREE'] : ['NONE', 'BUNDLE']; }
+        function syncExport() {
+            var selection = scopeInput.selectedOptions[0];
+            var installation = selection && selection.dataset.installation === 'true';
+            var canUseHistory = historyAvailable(selection);
+            if (historyOption) { historyOption.hidden = !canUseHistory; historyOption.disabled = !canUseHistory; }
+            if (installation || (profileInput.value === 'REPOSITORY_HISTORY' && !canUseHistory)) profileInput.value = 'CURRENT_STATE';
+            profileInput.disabled = !!installation;
+            var history = !installation && profileInput.value === 'REPOSITORY_HISTORY';
+            var formats = gitFormats(history);
+            if (representationInput) {
+                for (var option of representationInput.options) { option.hidden = !formats.includes(option.value); option.disabled = option.hidden; }
+                if (!formats.includes(representationInput.value)) representationInput.value = formats[0];
+            }
+            var currentHelp = document.getElementById('backupExportCurrentHelp');
+            var historyHelp = document.getElementById('backupExportHistoryHelp');
+            if (currentHelp) currentHelp.hidden = history;
+            if (historyHelp) historyHelp.hidden = !history;
+            var selectedVersion = !installation && profileInput.value === 'SELECTED_VERSION';
+            document.getElementById('backupCommitGroup').hidden = !selectedVersion;
+            commitInput.disabled = !selectedVersion; commitInput.required = selectedVersion;
+        }
+        scopeInput.addEventListener('change', syncExport);
+        profileInput.addEventListener('change', syncExport);
+        exportForm.addEventListener('submit', async function (event) {
+            event.preventDefault();
+            if (submitButton.disabled) return;
+            var selection = scopeInput.selectedOptions[0];
+            if (!selection) { exportFeedback.textContent = t('export.choose'); return; }
+            var installation = selection.dataset.installation === 'true';
+            var profile = installation ? 'INSTALLATION_CURRENT' : profileInput.value;
+            var history = profile === 'REPOSITORY_HISTORY';
+            if (history && !historyAvailable(selection)) { exportFeedback.textContent = t('export.denied'); return; }
+            if (!['CURRENT_STATE', 'SELECTED_VERSION', 'REPOSITORY_HISTORY', 'INSTALLATION_CURRENT'].includes(profile)) {
+                exportFeedback.textContent = t('export.choose'); return;
+            }
+            var representation = representationInput ? representationInput.value : 'NONE';
+            if (!gitFormats(history).includes(representation)) { exportFeedback.textContent = t('export.git.invalid'); return; }
+            var repository = {repositoryId: selection.dataset.repositoryId, workspaceId: selection.dataset.workspaceId || null};
+            var scope = installation ? {kind: 'INSTALLATION', repositoryId: null, workspaceId: null, workspacesByRepository: {}}
+                : repository.workspaceId ? {kind: 'WORKSPACE', repositoryId: repository.repositoryId, workspaceId: repository.workspaceId, workspacesByRepository: {}}
+                : {kind: 'REPOSITORIES', repositoryId: null, workspaceId: null, workspacesByRepository: {[repository.repositoryId]: []}};
+            var time = {kind: history ? 'HISTORY' : 'CURRENT', commitsByRepository: []};
+            if (profile === 'SELECTED_VERSION') {
+                var commit = commitInput.value.trim();
+                if (!/^[0-9a-f]{40}$/.test(commit)) { exportFeedback.textContent = t('export.commit.invalid'); return; }
+                time = {kind: 'SELECTED_VERSION', commitsByRepository: [{repository: repository, commit: commit}]};
+            }
+            submitButton.disabled = true; exportForm.setAttribute('aria-busy', 'true');
+            exportFeedback.textContent = t('export.submitting');
+            try {
+                await api.submit({profile: profile, scope: scope, time: time, gitRepresentation: representation, secrets: 'EXCLUDE'});
+                exportFeedback.textContent = t('export.submitted'); await refresh();
+            } catch (failure) { exportFeedback.textContent = failure.status === 403 ? t('export.denied') : t('error'); }
+            finally { submitButton.disabled = false; exportForm.removeAttribute('aria-busy'); }
+        });
+        syncExport();
+    }
     document.getElementById('backupRefresh').addEventListener('click', refresh);
     document.getElementById('backupPrevious').addEventListener('click', function () { if (page > 0) { page--; render(); } });
     document.getElementById('backupNext').addEventListener('click', function () { if ((page + 1) * pageSize < jobs.length) { page++; render(); } });

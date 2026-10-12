@@ -41,7 +41,7 @@ public final class ExistingGitBackupRepositories {
             // Unlike the default storage factory, the secured public facade opens existing metadata only.
             var storage = repositories.open(access.storage(), access);
             try {
-                checkpoint.check(); return new ReadSession(key, request, route.branch(), storage, access);
+                checkpoint.check(); return new ReadSession(key, request, route.branch(), storage, access, database, new GitHistoryCapture.Origin(this, key));
             } catch (IOException | RuntimeException problem) {
                 access.active().set(false);
                 try { storage.close(); } catch (RuntimeException cleanup) { problem.addSuppressed(cleanup); }
@@ -53,8 +53,8 @@ public final class ExistingGitBackupRepositories {
     private Route route(BackupRepositoryKey key, boolean selectedVersion, BackupCheckpoint checkpoint) throws IOException {
         boolean central = key.workspaceId() == null;
         String sql = central
-                ? "select storage_repository_name,default_branch from system_repository where repository_id=?"
-                : "select w.current_branch from user_workspace w join system_repository r on r.repository_id=w.source_repository_id where r.repository_id=? and w.workspace_id=?";
+                ? "select storage_repository_name,default_branch,repository_id from system_repository where repository_id=?"
+                : "select w.current_branch,r.repository_id,w.workspace_id,w.source_repository_id from user_workspace w join system_repository r on r.repository_id=w.source_repository_id where r.repository_id=? and w.workspace_id=?";
         try (var connection = database.getConnection()) {
             connection.setReadOnly(true); connection.setAutoCommit(false);
             try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {
@@ -65,8 +65,11 @@ public final class ExistingGitBackupRepositories {
                     if (!row.next()) throw failure("Captured repository routing is missing or inconsistent");
                     String storage = central ? row.getString(1) : DslGitRepositoryFactory.workspaceRepositoryName(key.workspaceId());
                     String branch = selectedVersion ? null : row.getString(central ? 2 : 1);
+                    boolean exact = central ? key.repositoryId().equals(row.getString(3))
+                            : key.repositoryId().equals(row.getString(2)) && key.workspaceId().equals(row.getString(3))
+                                    && key.repositoryId().equals(row.getString(4));
                     if (storage == null || storage.isBlank() || !storage.equals(storage.strip()) || storage.length() > 512
-                            || row.next()) throw failure("Captured repository routing is missing or inconsistent");
+                            || !exact || row.next()) throw failure("Captured repository routing is missing or inconsistent");
                     if (!selectedVersion && (branch == null || branch.length() > 255 || !Repository.isValidRefName(Constants.R_HEADS + branch)))
                         throw failure("Captured repository has no valid current branch");
                     checkpoint.check(); return new Route(storage, branch);
@@ -81,12 +84,43 @@ public final class ExistingGitBackupRepositories {
         private final String branch;
         private final AuthorizedRepositorySession<Access> storage;
         private final Access access;
-        private ReadSession(BackupRepositoryKey key, BackupRequest request, String branch, AuthorizedRepositorySession<Access> storage, Access access) {
-            this.key = key; this.request = request; this.branch = branch; this.storage = storage; this.access = access;
+        private final DataSource database;
+        private final GitHistoryCapture.Origin origin;
+        private ReadSession(BackupRepositoryKey key, BackupRequest request, String branch, AuthorizedRepositorySession<Access> storage, Access access, DataSource database, GitHistoryCapture.Origin origin) {
+            this.key = key; this.request = request; this.branch = branch; this.storage = storage; this.access = access; this.database = database;
+            this.origin = origin;
         }
         public BackupRepositoryKey key() { return key; }
         /** Selected-version capture has no dependency on the live branch. */
         public String branch() { return branch; }
+        GitHistoryCapture.Origin origin() { return origin; }
+        public boolean containsHistoryCommit(String commit, GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+            try {
+                check(checkpoint);
+                if (!request.profile().includesHistory()) throw failure("Current and selected scopes do not authorize history membership reads");
+                if (commit == null || !commit.matches("[a-f0-9]{40}")) throw failure("A complete Git commit identity is required");
+                storage.require(RepositoryAccessRequest.repository(storage.repositoryName(), RepositoryAccessOperation.READ));
+                var check = (BackupCheckpoint) () -> check(checkpoint);
+                try (var reader = GitHistoryObjects.inventoryReader(storage.repository(), limits, check)) {
+                    var proof = GitHistoryObjects.verify(reader, org.eclipse.jgit.lib.ObjectId.fromString(commit), check);
+                    if (proof.type() != Constants.OBJ_COMMIT) throw failure("Database history reference is not a commit");
+                    check.check(); return true;
+                } catch (org.eclipse.jgit.errors.MissingObjectException missing) {
+                    check.check(); return false;
+                }
+            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+        }
+        Optional<GitTreeCapture> captureHistoryWorkingTree(GitTreeCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+            try {
+                check(checkpoint);
+                if (!request.profile().includesHistory()) throw failure("Current and selected scopes do not authorize raw history working copies");
+                storage.require(RepositoryAccessRequest.repository(storage.repositoryName(), RepositoryAccessOperation.READ));
+                var ref = storage.repository().getRefDatabase().exactRef(Constants.R_HEADS + branch);
+                String commit = ref == null || ref.getObjectId() == null ? null : ref.getObjectId().name();
+                check(checkpoint);
+                return commit == null ? Optional.empty() : Optional.of(GitTreeCapture.capture(storage.repository(), commit, limits, checkpoint, this::requireOpen));
+            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+        }
         public Optional<GitTreeCapture> captureStand(GitTreeCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
             try {
                 requireOpen();
@@ -100,6 +134,56 @@ public final class ExistingGitBackupRepositories {
                 check(checkpoint);
                 return commit == null ? Optional.empty() : Optional.of(GitTreeCapture.capture(storage.repository(), commit, limits, checkpoint, this::requireOpen));
             } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+        }
+        public GitHistoryCapture captureHistory(Set<String> requiredCommits,
+                Map<String, SnapshotContext.WorkingState> workingStates, GitHistoryCapture.Limits limits,
+                BackupCheckpoint checkpoint) throws IOException {
+            try {
+                check(checkpoint);
+                if (!request.profile().includesHistory()) throw failure("Current and selected scopes do not authorize Git history");
+                storage.require(RepositoryAccessRequest.repository(storage.repositoryName(), RepositoryAccessOperation.READ));
+                return GitHistoryCapture.capture(storage.repository(), requiredCommits, workingStates, limits,
+                        checkpoint, this::requireOpen, check -> retainedReflogNames(limits, check), origin,
+                        check -> new GitReflogProvenanceStore(database).read(key, storage.repositoryName().value(), limits.maxReflogEntries(), check));
+            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+        }
+        private Set<String> retainedReflogNames(GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+            check(checkpoint);
+            storage.require(RepositoryAccessRequest.repository(storage.repositoryName(), RepositoryAccessOperation.READ));
+            // Include the exact ref key so case-insensitive database collations cannot merge distinct Git refs.
+            String sql = "select distinct repository_name,ref_name,ref_name_key from git_reflog where repository_name=? order by ref_name_key";
+            try (var connection = database.getConnection()) {
+                connection.setReadOnly(true); connection.setAutoCommit(false);
+                try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {
+                    statement.setMaxRows(limits.maxRefs() + 1); statement.setFetchSize(Math.min(200, limits.maxRefs() + 1));
+                    statement.setQueryTimeout(60); statement.setString(1, storage.repositoryName().value());
+                    check(checkpoint); var names = new TreeSet<String>();
+                    try (var rows = statement.executeQuery()) {
+                        while (rows.next()) {
+                            check(checkpoint); String name = rows.getString(2);
+                            if (!storage.repositoryName().value().equals(rows.getString(1)) || name == null || name.length() > 1_024
+                                    || !io.github.carstenartur.jgit.storage.hibernate.entity.GitReflogEntity.refNameKey(name).equals(rows.getString(3)))
+                                throw failure("Retained Git reflog routing is inconsistent");
+                            if (!names.add(name) || names.size() > limits.maxRefs()) throw failure("Git reflog ref limit exceeded");
+                        }
+                    }
+                    check(checkpoint); return Set.copyOf(names);
+                }
+            } catch (SQLException problem) { throw sanitized(problem); }
+        }
+        /** Current routing metadata only; no commit/tree or ancestor payload is read. */
+        public Set<String> branchNames(BackupCheckpoint checkpoint) throws IOException {
+            try {
+                if(request.profile()==BackupProfile.SELECTED_VERSION)throw failure("Selected-version capture cannot inspect live branch routing");
+                check(checkpoint);var names=new TreeSet<String>();names.add(branch);
+                for(var ref:storage.repository().getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+                    check(checkpoint);String name=ref.getName().substring(Constants.R_HEADS.length());
+                    if(!Repository.isValidRefName(Constants.R_HEADS+name))throw failure("Invalid current branch routing");
+                    names.add(name);
+                    if(names.size()>BackupLimits.MAX_ITEMS)throw failure("Current branch routing limit exceeded");
+                }
+                check(checkpoint);return Set.copyOf(names);
+            } catch(IOException | RuntimeException problem){throw sanitized(problem);}
         }
         private void requireOpen() throws IOException {
             if (!access.active().get()) throw failure("Git capture session is closed");

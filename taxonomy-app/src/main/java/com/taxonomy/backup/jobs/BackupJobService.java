@@ -13,15 +13,21 @@ public final class BackupJobService {
     private final BackupAuthorizationService authorization;
     private final BackupJobStorage storage;
     private final boolean encrypted;
+    private final BackupCaptureSource source;
     public BackupJobService(JdbcBackupJobStore store, BackupAuthorizationService authorization, BackupJobStorage storage, boolean encrypted) {
-        this.store = Objects.requireNonNull(store); this.authorization = Objects.requireNonNull(authorization);
+        this(store,authorization,storage,encrypted,null);
+    }
+    public BackupJobService(JdbcBackupJobStore store, BackupAuthorizationService authorization, BackupJobStorage storage, boolean encrypted, BackupCaptureSource source) {
+        this.source=source;this.store = Objects.requireNonNull(store); this.authorization = Objects.requireNonNull(authorization);
         this.storage = Objects.requireNonNull(storage); this.encrypted = encrypted;
     }
     public BackupJobId submit(BackupRequest request, PrincipalId actor) {
+        if(source!=null)source.validateRequest(request);
         var authorized = authorization.authorize(actor, request);
         if (request.secrets() == SecretsSelection.INCLUDE_ENCRYPTED && !encrypted) throw new IllegalStateException("Backup protection is unavailable");
         return store.enqueue(authorized);
     }
+    public BackupExportOptions exportOptions(PrincipalId actor) { return source==null ? new BackupExportOptions(List.of()) : source.exportOptions(actor); }
     public boolean cancel(BackupJobId id, PrincipalId actor) { require(id, actor); return store.cancel(id, actor); }
     public JobView status(BackupJobId id, PrincipalId actor) { return view(require(id, actor), actor); }
     public List<JobView> list(PrincipalId actor) {

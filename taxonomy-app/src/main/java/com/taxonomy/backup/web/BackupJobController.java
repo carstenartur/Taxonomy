@@ -35,8 +35,10 @@ public final class BackupJobController {
     public BackupJobController(ObjectProvider<BackupJobService> services, BackupPrincipalResolver principals) {
         this.services = services; this.principals = principals;
     }
-    @GetMapping("/backup-jobs") public String page(Authentication authentication, HttpServletResponse response) {
-        principals.require(authentication); response.setHeader("Cache-Control", "no-store"); return "backup-jobs";
+    @GetMapping("/backup-jobs") public String page(Authentication authentication, HttpServletResponse response,org.springframework.ui.Model model) {
+        var actor=principals.require(authentication); response.setHeader("Cache-Control", "no-store");
+        var service=services.getIfAvailable();if(service!=null)model.addAttribute("backupExportOptions",service.exportOptions(actor));
+        return "backup-jobs";
     }
     @PostMapping(value = "/api/backups/jobs", consumes = MediaType.APPLICATION_JSON_VALUE) @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Submit a bounded backup job",

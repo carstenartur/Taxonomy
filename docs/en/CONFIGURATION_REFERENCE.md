@@ -48,6 +48,7 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_BACKUP_WRITER_LEASE_SECONDS` | `taxonomy.backup.writer-lease-seconds` | `300` | Maximum lifetime of a runtime write section, in seconds (1–1800). Expired writers are rejected before commit. |
 | `TAXONOMY_BACKUP_STARTUP_WAIT_SECONDS` | `taxonomy.backup.startup-wait-seconds` | `30` | Maximum seconds to wait for startup maintenance ownership. Failed startup leaves its hold in place for explicit operator recovery. |
 | `TAXONOMY_BACKUP_DIRECTORY` | `taxonomy.backup.directory` | `./data/backups` | Durable private shared volume for all instances; atomic rename must be supported. |
+| `TAXONOMY_BACKUP_SOURCE_CONTENT_DIRECTORY` | `taxonomy.backup.source-content-directory` | `./data/source-content` | Root containing retained source-version files for the explicitly enabled current-export preview; missing or changed original bytes fail capture. Separate from the backup artifact volume. |
 | `TAXONOMY_BACKUP_KEYSET_FILE` | `taxonomy.backup.keyset-file` | `empty / leer` | Read-only external Tink Streaming AEAD keyset mount, outside the backup directory. Empty disables secret exports. |
 | `TAXONOMY_BACKUP_HEAVY_CONCURRENCY` | `taxonomy.backup.jobs.heavy-concurrency` | `1` | Installation-wide concurrent history/installation jobs (1–8). |
 | `TAXONOMY_BACKUP_CURRENT_CONCURRENCY` | `taxonomy.backup.jobs.current-concurrency` | `2` | Installation-wide concurrent current/selected-state jobs (1–32). |

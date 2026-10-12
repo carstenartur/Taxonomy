@@ -75,6 +75,17 @@ public final class GitTreeCapture {
     public String tree() { return tree; }
     public List<File> files() { return files; }
 
+    /** The standard index is generated only from this privately constructed, validated capture. */
+    public void writeIndex(OutputStream output, BackupCheckpoint checkpoint) throws IOException {
+        var check=guarded(lifetime,checkpoint);check.check();
+        PortableGitIndex.write(files,Objects.requireNonNull(output),check);check.check();
+    }
+    /** An unborn working tree has an empty native index and no invented initial commit. */
+    public static void writeEmptyIndex(OutputStream output, BackupCheckpoint checkpoint) throws IOException {
+        Objects.requireNonNull(checkpoint).check();
+        PortableGitIndex.write(List.of(),Objects.requireNonNull(output),checkpoint);checkpoint.check();
+    }
+
     /** Copies raw captured bytes. Stand exporters must project embedded document history separately. Does not close output. */
     public void copy(File file, OutputStream output, BackupCheckpoint checkpoint) throws IOException {
         try {

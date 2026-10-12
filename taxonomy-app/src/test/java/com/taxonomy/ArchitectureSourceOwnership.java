@@ -20,4 +20,27 @@ final class ArchitectureSourceOwnership {
         String relative = type.getPackageName().replace('.', '/') + "/" + file;
         return Arrays.stream(modules).anyMatch(module -> Files.isRegularFile(root.resolve(module + "/src/main/java/" + relative)));
     }
+    /** Shared contracts and application orchestration keep their existing physical owners. */
+    static String backupSlice(Path root, JavaClass type) {
+        String name = type.getPackageName();
+        if (!name.equals("com.taxonomy.backup") && !name.startsWith("com.taxonomy.backup.")) return null;
+        boolean domain = belongsTo(root, type, "taxonomy-domain");
+        boolean app = belongsTo(root, type, "taxonomy-app");
+        if (domain && !app) return "backup-api";
+        if (app && !domain) return "composition";
+        // An unknown or conflicting owner remains visible; physical duplicate-owner gates still apply.
+        return "backup";
+    }
+
+    static com.tngtech.archunit.lang.ArchRule domainShouldNotDependOnApplication(Path root) {
+        var domain = new com.tngtech.archunit.base.DescribedPredicate<JavaClass>("physically owned by taxonomy-domain") {
+            @Override public boolean test(JavaClass type) { return belongsTo(root, type, "taxonomy-domain"); }
+        };
+        var app = new com.tngtech.archunit.base.DescribedPredicate<JavaClass>("physically owned by taxonomy-app") {
+            @Override public boolean test(JavaClass type) { return belongsTo(root, type, "taxonomy-app"); }
+        };
+        return com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses().that(domain)
+                .should().dependOnClassesThat(app).allowEmptyShould(false)
+                .because("shared domain contracts must not depend on their application implementations");
+    }
 }

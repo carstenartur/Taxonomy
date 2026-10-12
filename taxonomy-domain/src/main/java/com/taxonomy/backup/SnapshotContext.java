@@ -38,7 +38,10 @@ public record SnapshotContext(BackupId backupId, AuthorizedBackupRequest authori
             workingStates.keySet().forEach(branch -> BackupChecks.text(branch, "branch"));
             if (symbolicHead != null) {
                 BackupChecks.text(symbolicHead, "symbolicHead");
-                if (!refs.isEmpty() && !refs.containsKey(symbolicHead)) throw new IllegalArgumentException("HEAD target is missing");
+                // An unborn HEAD may name a branch that does not exist while other branches do.
+                // When HEAD has an object, its symbolic target must resolve to that exact object.
+                if (refs.containsKey("HEAD") && !Objects.equals(refs.get("HEAD"), refs.get(symbolicHead)))
+                    throw new IllegalArgumentException("HEAD and its symbolic target disagree");
             }
         }
     }

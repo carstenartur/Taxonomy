@@ -123,6 +123,11 @@ final class PortfolioClientTestPage implements AutoCloseable {
 
     void openAt(String templateName, String prefix, String absolutePagePath, String locale,
                 String bootstrapJavascript) {
+        openAt(templateName, prefix, absolutePagePath, locale, bootstrapJavascript, Map.of());
+    }
+
+    void openAt(String templateName, String prefix, String absolutePagePath, String locale,
+                String bootstrapJavascript, Map<String, Object> model) {
         contextPath = normalizedPrefix(prefix);
         var servletContext = new MockServletContext();
         servletContext.setContextPath(contextPath);
@@ -136,6 +141,7 @@ final class PortfolioClientTestPage implements AutoCloseable {
         var exchange = application.buildExchange(request, new MockHttpServletResponse());
         var context = new WebContext(exchange, Locale.forLanguageTag(locale));
         context.setVariable("_csrf", null);
+        model.forEach(context::setVariable);
         String html = templates.process(templateName.replaceFirst("\\.html$", ""), context);
         if (!bootstrapJavascript.isEmpty()) {
             // Trusted, test-authored setup runs before the unchanged feature scripts.

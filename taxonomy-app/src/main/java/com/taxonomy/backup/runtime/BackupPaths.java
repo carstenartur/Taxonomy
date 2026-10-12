@@ -12,7 +12,7 @@ public final class BackupPaths {
     private BackupPaths() { }
 
     public static String requireEntry(String path) {
-        new BackupEntry(path, 0, "0".repeat(64));
+        new BackupEntry(path, 0, BackupEntry.EMPTY_SHA256);
         if (!Normalizer.isNormalized(path, Normalizer.Form.NFC)) throw new IllegalArgumentException("Noncanonical archive path");
         String[] parts = path.split("/");
         if (parts.length < 2 || parts.length > 32 || !ROOTS.contains(parts[0])) throw new IllegalArgumentException("Unsupported archive entry path");
@@ -28,6 +28,7 @@ public final class BackupPaths {
     }
 
     public static String collisionKey(String path) {
-        return Normalizer.normalize(requireEntry(path).toUpperCase(Locale.ROOT), Normalizer.Form.NFC);
+        String canonical = Normalizer.normalize(requireEntry(path).toUpperCase(Locale.ROOT), Normalizer.Form.NFC);
+        return canonical.endsWith("/") ? canonical.substring(0, canonical.length() - 1) : canonical;
     }
 }

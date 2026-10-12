@@ -51,6 +51,49 @@ class BackupArchiveValidationTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void explicitlyDeclaredEmptyDirectoriesSurviveSpoolingAndArchiveVerification(boolean encrypted) throws Exception {
+        var protection = encrypted ? encryption() : plain;
+        String directory = "data/records/empty/";
+        Path archive = root.resolve("directories.taxbackup");
+        try (var captured = capture(protection, encrypted, () -> new ByteArrayInputStream("current".getBytes(UTF_8)), null, directory)) {
+            assertThat(captured.directory().resolve(directory)).isDirectory();
+            assertThat(captured.manifest().requiredFeatures()).contains("directory-entries-v1");
+            assertThat(captured.manifest().entries()).contains(new BackupEntry(directory, 0, BackupEntry.EMPTY_SHA256));
+            try (var input = captured.openEntry(directory)) { assertThat(input.read()).isEqualTo(-1); }
+            new BackupArchiveWriter(protection, ArchiveLimits.defaults(), BackupFeaturePrerequisites.discover()).write(captured, archive);
+        }
+        try (var verified = reader(protection).verify(archive); var input = verified.openEntry(directory)) {
+            assertThat(input.read()).isEqualTo(-1);
+        }
+        if (!encrypted) try (var zip = ZipFile.builder().setPath(archive).get()) {
+            var entry = zip.getEntry(directory);
+            assertThat(entry.isDirectory()).isTrue();
+            assertThat(entry.getUnixMode() & 0170000).isEqualTo(040000);
+            assertThat(entry.getSize()).isZero();
+        }
+    }
+
+    @Test void directoriesCannotHideContentSymlinksOrAFileAtTheSamePath() throws Exception {
+        String directory = "data/records/empty/";
+        try (var captured = capture(plain, false, () -> new ByteArrayInputStream("current".getBytes(UTF_8)), null, directory)) {
+            var entries = contents(captured);
+            for (var invalid : List.of(new Entry(directory, new byte[]{1}, 040700, false),
+                    new Entry(directory, new byte[0], 0100600, false),
+                    new Entry(directory, new byte[0], 0120777, false),
+                    new Entry(directory, new byte[0], 040700, true))) {
+                var changed = entries.stream().map(entry -> entry.path().equals(directory) ? invalid : entry).toList();
+                assertThatThrownBy(() -> reader(plain).verify(zip(changed))).isInstanceOf(IOException.class);
+            }
+            var alias = new ArrayList<>(entries);
+            alias.add(new Entry(directory.substring(0, directory.length() - 1), new byte[0], 0100600, false));
+            assertThatThrownBy(() -> reader(plain).verify(zip(alias))).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> reader(plain).verify(zip(entries.stream().filter(entry -> !entry.path().equals(directory)).toList())))
+                    .isInstanceOf(IOException.class);
+        }
+    }
+
     enum EntryRead { SINGLE, BULK, SKIP, CLOSE, CATALOGUE_CAPTURE }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -341,6 +384,9 @@ class BackupArchiveValidationTest {
         return capture(protection, secrets, source, null);
     }
     private CapturedBackup capture(ArchiveProtectionProvider protection, boolean secrets, Source source, ComponentSink.EntryWriter producer) throws Exception {
+        return capture(protection, secrets, source, producer, null);
+    }
+    private CapturedBackup capture(ArchiveProtectionProvider protection, boolean secrets, Source source, ComponentSink.EntryWriter producer, String directory) throws Exception {
         var database = new JDBCDataSource(); database.setUrl("jdbc:hsqldb:mem:archive-" + UUID.randomUUID()); database.setUser("sa");
         BackupMaintenanceLease.initialize(database);
         var barrier = new BackupMaintenanceLease(database, Duration.ofSeconds(30));
@@ -361,6 +407,7 @@ class BackupArchiveValidationTest {
             public BackupComponentId componentId() { return RECORDS; }
             public int schemaVersion() { return 1; }
             public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+                if (directory != null) sink.write(directory, InputStream.nullInputStream());
                 String path = secrets ? "protected/local-passwords.ndjson" : DATA;
                 if (producer != null) sink.writeGenerated(path, producer);
                 else try (var input = source.open()) { sink.write(path, input); }
@@ -372,7 +419,7 @@ class BackupArchiveValidationTest {
     private List<Entry> contents(CapturedBackup capture) throws Exception {
         var files = new ArrayList<Entry>();
         for (var entry : capture.manifest().entries()) try (var input = capture.openEntry(entry.path())) {
-            files.add(new Entry(entry.path(), input.readAllBytes(), 0100600, false));
+            files.add(new Entry(entry.path(), input.readAllBytes(), entry.path().endsWith("/") ? 040700 : 0100600, false));
         }
         files.add(new Entry("manifest.json", new BackupManifestCodec().write(capture.manifest()), 0100600, false)); return files;
     }

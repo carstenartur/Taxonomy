@@ -69,6 +69,7 @@ com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY
 com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.SyncState	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMARY	Immutable original imported Git events, preserving order, duplicate events and original time separately from target live audit; history capture includes their referenced objects
 com.taxonomy.workspace.model.SystemRepository	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.UserWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild workspace projection from captured DSL and Git; old readiness is invalid

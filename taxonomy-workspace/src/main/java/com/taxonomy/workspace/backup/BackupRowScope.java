@@ -7,16 +7,23 @@ import java.util.*;
 
 /** SQL predicates are assembled only from source-owned column names; all selected IDs are parameters. */
 public final class BackupRowScope {
-    private final SnapshotContext snapshot;
-    public BackupRowScope(SnapshotContext snapshot) { this.snapshot = Objects.requireNonNull(snapshot); }
-    public boolean selectedVersion() { return snapshot.authorization().request().profile() == BackupProfile.SELECTED_VERSION; }
-    public boolean history() { return snapshot.authorization().request().profile().includesHistory(); }
-    public boolean installation() { return snapshot.authorization().request().profile().isInstallation(); }
+    private final AuthorizedBackupRequest authorization;
+    private final Set<BackupRepositoryKey> repositories;
+    public BackupRowScope(SnapshotContext snapshot) { this(snapshot.authorization(), snapshot.repositories().keySet()); }
+    public BackupRowScope(AuthorizedBackupRequest authorization, Set<BackupRepositoryKey> repositories) {
+        this.authorization = Objects.requireNonNull(authorization); this.repositories = Set.copyOf(repositories);
+        if (repositories.size() > BackupLimits.MAX_ITEMS || !(authorization.request().scope() instanceof BackupScope.Installation)
+                && !repositories.equals(authorization.request().scope().selectedRepositories()))
+            throw new IllegalArgumentException("Repository inventory differs from authorized scope");
+    }
+    public boolean selectedVersion() { return authorization.request().profile() == BackupProfile.SELECTED_VERSION; }
+    public boolean history() { return authorization.request().profile().includesHistory(); }
+    public boolean installation() { return authorization.request().profile().isInstallation(); }
     public boolean includesRepository(String repositoryId) {
-        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -> key.repositoryId().equals(repositoryId));
+        return installation() || repositories.stream().anyMatch(key -> key.repositoryId().equals(repositoryId));
     }
     public boolean includesWorkspace(String repositoryId, String workspaceId) {
-        return installation() || snapshot.repositories().keySet().stream().anyMatch(key -> key.repositoryId().equals(repositoryId)
+        return installation() || repositories.stream().anyMatch(key -> key.repositoryId().equals(repositoryId)
                 && Objects.equals(key.workspaceId(), workspaceId));
     }
     public Query repositories(String repositoryColumn, String workspaceColumn) {
@@ -53,10 +60,10 @@ public final class BackupRowScope {
         if (installation()) return true;
         var parsed = RepositoryTenantIdentity.parse(tenant);
         String workspace = parsed.workspaceScope().equals("CENTRAL") ? null : parsed.workspaceScope().substring("WORKSPACE:".length());
-        return snapshot.repositories().containsKey(new BackupRepositoryKey(parsed.repositoryId(), workspace));
+        return repositories.contains(new BackupRepositoryKey(parsed.repositoryId(), workspace));
     }
     private List<BackupRepositoryKey> keys() {
-        var keys = snapshot.repositories().keySet().stream().sorted(Comparator.comparing(BackupRepositoryKey::repositoryId)
+        var keys = repositories.stream().sorted(Comparator.comparing(BackupRepositoryKey::repositoryId)
                 .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()))).toList();
         // Bounded predicates also fit the supported database parameter/IN limits. Larger captures use installation scope.
         if (keys.size() > 200) throw new IllegalArgumentException("Too many selected repositories for one portable capture");
