@@ -49,8 +49,10 @@ final class GitHistoryReflogs {
         if (line.length() < 83 || line.charAt(40) != ' ' || line.charAt(81) != ' ' || tab < 82
                 || !ObjectId.isId(line.substring(0, 40)) || !ObjectId.isId(line.substring(41, 81))
                 || line.indexOf('\0') >= 0 || line.indexOf('\r') >= 0) throw failure("Invalid retained Git reflog record");
-        var who = RawParseUtils.parsePersonIdent(line.substring(82, tab));
-        if (who == null) throw failure("Invalid retained Git reflog author");
+        String identity = line.substring(82, tab);
+        var who = RawParseUtils.parsePersonIdent(identity);
+        if (who == null || !identity.equals(who.toExternalString()))
+            throw failure("Invalid retained Git reflog author");
         return new GitHistoryCapture.Reflog(name, line.substring(0, 40), line.substring(41, 81), who.getName(), who.getEmailAddress(),
                 who.getWhenAsInstant().getEpochSecond(), who.getTimeZoneOffset(), line.substring(tab + 1));
     }
