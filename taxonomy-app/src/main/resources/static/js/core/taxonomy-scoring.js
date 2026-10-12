@@ -782,7 +782,7 @@
 
         // Render the tree without scores; mark all expandable nodes as unevaluated
         B().renderView(S.taxonomyData, null);
-        document.querySelectorAll('.tax-node').forEach(function (el) {
+        document.querySelectorAll('.tax-node, .tax-container').forEach(function (el) {
             if (el.querySelector(':scope > .tax-children')) {
                 el.classList.add('tax-has-unevaluated');
             }
@@ -994,24 +994,45 @@
 
     function syncVisibleScoreNodes() {
         // Reconcile terminal evidence without rebuilding the tree or losing focus/scroll.
-        document.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
-            var code = node.getAttribute('data-code');
+        document.querySelectorAll('.tax-node[data-code], [data-taxonomy-container]').forEach(function (node) {
+            var code = node.getAttribute('data-code') || node.getAttribute('data-taxonomy-container');
             applyScoreToNode(code, (S.currentScores || {})[code] || 0,
                 (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
                 (S.currentRawScores || {})[code]);
         });
     }
 
+    function renderedScoreNode(code, scores) {
+        return B().ensureNodeRendered(code, scores)
+            || (B().findRenderedNode && B().findRenderedNode(code))
+            || document.querySelector('[data-code="' + CSS.escape(code) + '"]')
+            || document.querySelector('[data-taxonomy-container="' + CSS.escape(code) + '"]');
+    }
+
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
     function applyScoreToNode(code, pct, reason, detail, rawScore) {
-        B().ensureNodeRendered(code, S.currentScores);
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        const el = renderedScoreNode(code, S.currentScores);
         if (!el) return;
-        const header = el.querySelector(':scope > .tax-node-header');
-        if (!header) return;
-
         // Remove evaluating animation
         el.classList.remove('tax-evaluating');
+
+        if (el.getAttribute('data-taxonomy-container')) {
+            const heading = el.querySelector(':scope > .tax-container-heading') || el;
+            let areaBadge = heading.querySelector('.tax-container-score');
+            if (Object.prototype.hasOwnProperty.call(S.currentScores || {}, code) && Number.isFinite(pct)) {
+                if (!areaBadge) {
+                    areaBadge = document.createElement('span');
+                    areaBadge.className = 'tax-container-score small ms-2';
+                    heading.appendChild(areaBadge);
+                }
+                areaBadge.textContent = t('browse.container.relevance', pct);
+                areaBadge.title = reason || '';
+            } else if (areaBadge) areaBadge.remove();
+            return;
+        }
+
+        const header = el.querySelector(':scope > .tax-node-header');
+        if (!header) return;
 
         var raw = rawScore === undefined
             ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
@@ -1069,39 +1090,43 @@
         el.setAttribute('aria-label', ariaLabel);
     }
 
-    /** Expand a node in the DOM and all of its ancestors. */
-    function expandNodeByCode(code) {
-        B().ensureNodeRendered(code, S.currentScores);
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
-        if (!el) return;
+    function expandRenderedNode(el, scores) {
+        if (B().setNodeExpanded) {
+            B().setNodeExpanded(el, true);
+            return;
+        }
         const children = el.querySelector(':scope > .tax-children');
         if (children) {
-            B().materializeChildren(el, S.currentScores);
+            B().materializeChildren(el, scores);
             children.style.display = '';
             const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
             if (toggle) toggle.textContent = '▼';
             el.setAttribute('aria-expanded', 'true');
         }
-        // Also make sure all ancestors are visible
+    }
+
+    function expandRenderedAncestors(el, scores) {
         let parent = el.parentElement;
         while (parent) {
             if (parent.classList.contains('tax-children')) {
-                parent.style.display = '';
                 const pNode = parent.parentElement;
-                if (pNode) {
-                    const t = pNode.querySelector(':scope > .tax-node-header > .tax-toggle');
-                    if (t) t.textContent = '▼';
-                    pNode.setAttribute('aria-expanded', 'true');
-                }
+                if (pNode) expandRenderedNode(pNode, scores);
             }
             parent = parent.parentElement;
         }
     }
 
+    /** Expand a catalogue node or subtaxonomy group and all of its ancestors. */
+    function expandNodeByCode(code) {
+        const el = renderedScoreNode(code, S.currentScores);
+        if (!el) return;
+        expandRenderedNode(el, S.currentScores);
+        expandRenderedAncestors(el, S.currentScores);
+    }
+
     /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
     function markNodeAsEvaluating(code) {
-        B().ensureNodeRendered(code, S.currentScores);
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        const el = renderedScoreNode(code, S.currentScores);
         if (el) el.classList.add('tax-evaluating');
     }
 
@@ -1109,32 +1134,10 @@
     function expandMatched(scores) {
         Object.entries(scores).forEach(([code, pct]) => {
             if (pct > 0) {
-                const el = B().ensureNodeRendered(code, scores)
-                    || document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+                const el = renderedScoreNode(code, scores);
                 if (!el) return;
-                // expand this node only after its immediate child level exists
-                const children = el.querySelector(':scope > .tax-children');
-                if (children) {
-                    B().materializeChildren(el, scores);
-                    children.style.display = '';
-                    const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
-                    if (toggle) toggle.textContent = '▼';
-                    el.setAttribute('aria-expanded', 'true');
-                }
-                // expand ancestors
-                let parent = el.parentElement;
-                while (parent) {
-                    if (parent.classList.contains('tax-children')) {
-                        parent.style.display = '';
-                        const parentNode = parent.parentElement;
-                        if (parentNode) {
-                            const t = parentNode.querySelector(':scope > .tax-node-header > .tax-toggle');
-                            if (t) t.textContent = '▼';
-                            parentNode.setAttribute('aria-expanded', 'true');
-                        }
-                    }
-                    parent = parent.parentElement;
-                }
+                expandRenderedNode(el, scores);
+                expandRenderedAncestors(el, scores);
             }
         });
         highlightScoringPaths(scores);

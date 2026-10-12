@@ -135,4 +135,104 @@ class TaxonomyNodeDtoTest {
         assertNull(dto.getMatchPercentage());
         assertNull(dto.getSortOrder());
     }
+
+    @Test
+    void taxonomyContainerIsDerivedFromRootMetadata() {
+        for (String code : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+            var dto = taxonomyRoot(code);
+
+            assertTrue(dto.isTaxonomyContainer(), code);
+            assertEquals("CATEGORY", dto.getAnalysisRole());
+        }
+        assertTrue(taxonomyRoot("fixture-navigation-root").isTaxonomyContainer());
+    }
+
+    @Test
+    void originalTopLevelCatalogueEntriesRemainOrdinaryNodes() {
+        for (String rootCode : List.of("BP", "BR")) {
+            var root = taxonomyRoot(rootCode);
+            root.setNameEn("Same display name");
+            var original = new TaxonomyNodeDto();
+            original.setCode(rootCode + "-1000");
+            original.setTaxonomyRoot(rootCode);
+            original.setParentCode(rootCode);
+            original.setLevel(1);
+            original.setNameEn(root.getNameEn());
+
+            assertFalse(original.isTaxonomyContainer());
+            original.setLevel(0);
+            original.setParentCode(null);
+            assertFalse(original.isTaxonomyContainer());
+        }
+    }
+
+    @Test
+    void taxonomyContainerRequiresMatchingNonblankRootCode() {
+        assertFalse(new TaxonomyNodeDto().isTaxonomyContainer());
+        for (String invalidCode : new String[]{null, "", " \t"}) {
+            var dto = taxonomyRoot(invalidCode);
+            assertFalse(dto.isTaxonomyContainer());
+        }
+        var dto = taxonomyRoot("BP");
+        dto.setTaxonomyRoot(null);
+        assertFalse(dto.isTaxonomyContainer());
+        dto.setTaxonomyRoot("BR");
+        assertFalse(dto.isTaxonomyContainer());
+    }
+
+    @Test
+    void taxonomyContainerRequiresZeroLevelAndNoParent() {
+        var dto = taxonomyRoot("BP");
+        dto.setLevel(1);
+        assertFalse(dto.isTaxonomyContainer());
+        dto.setLevel(0);
+        dto.setParentCode("BR");
+        assertFalse(dto.isTaxonomyContainer());
+        dto.setParentCode("");
+        assertTrue(dto.isTaxonomyContainer());
+        dto.setParentCode(" \t");
+        assertTrue(dto.isTaxonomyContainer());
+        dto.setParentCode(null);
+        assertTrue(dto.isTaxonomyContainer());
+    }
+
+    @Test
+    void containerPresentationDoesNotChangeIdentityFingerprintsOrScores() {
+        var root = taxonomyRoot("BP");
+        root.setId(1L);
+        root.setUuid("fixture-container-uuid");
+        root.setMatchPercentage(64);
+        var original = new TaxonomyNodeDto();
+        original.setCode("BP-1000");
+        original.setTaxonomyRoot("BP");
+        original.setParentCode("BP");
+        original.setLevel(1);
+        original.setMatchPercentage(64);
+        root.setChildren(List.of(original));
+        var tree = List.of(root);
+        String fingerprint = TaxonomyDataFingerprint.sha256(tree);
+        String legacyFingerprint = TaxonomyDataFingerprint.legacySha256(tree);
+
+        assertTrue(root.isTaxonomyContainer());
+        assertFalse(original.isTaxonomyContainer());
+
+        assertEquals(1L, root.getId());
+        assertEquals("fixture-container-uuid", root.getUuid());
+        assertEquals("BP", root.getCode());
+        assertEquals("CATEGORY", root.getAnalysisRole());
+        assertEquals(64, root.getMatchPercentage());
+        assertSame(original, root.getChildren().get(0));
+        assertEquals("BP", original.getParentCode());
+        assertEquals(64, original.getMatchPercentage());
+        assertEquals(fingerprint, TaxonomyDataFingerprint.sha256(tree));
+        assertEquals(legacyFingerprint, TaxonomyDataFingerprint.legacySha256(tree));
+    }
+
+    private TaxonomyNodeDto taxonomyRoot(String code) {
+        var dto = new TaxonomyNodeDto();
+        dto.setCode(code);
+        dto.setTaxonomyRoot(code);
+        dto.setLevel(0);
+        return dto;
+    }
 }

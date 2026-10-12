@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,9 +41,16 @@ class UiSemanticsBridgeContractTest {
         String source = resource("/static/js/security/taxonomy-ui-semantics.js");
 
         assertThat(source)
-                .contains("var expectedRole = containsTreeItems ? 'tree' : 'region'")
-                .contains("attributeFilter: ['role', 'tabindex']")
+                .contains("[data-taxonomy-container], [role=\"tree\"], [role=\"tablist\"]")
+                .contains("var expectedRole = containsTreeItems && !containsInnerWidgets ? 'tree' : 'region'")
                 .doesNotContain("tree.removeAttribute('role')");
+
+        String bridge = source.substring(source.indexOf("function installTaxonomyContainerBridge()"));
+        var filter = Pattern.compile("attributeFilter\\s*:\\s*\\[([^]]*)]").matcher(bridge);
+        assertThat(filter.find()).as("taxonomy observer attribute filter").isTrue();
+        var observedAttributes = Pattern.compile("['\"]([^'\"]+)['\"]")
+                .matcher(filter.group(1)).results().map(match -> match.group(1)).toList();
+        assertThat(observedAttributes).contains("role", "tabindex", "data-view-rendered");
     }
 
     private static String resource(String path) throws IOException {

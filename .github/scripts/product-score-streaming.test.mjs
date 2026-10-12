@@ -92,9 +92,10 @@ function harness(locale = 'en') {
     documentElement: { lang: locale }, activeElement: focused, addEventListener() {},
     getElementById: id => controls[id] || null,
     createElement: () => element(), createTextNode: value => ({ textContent: value }),
-    querySelector(selector) { return nodes.get(selector.match(/data-code="([^"]+)"/)?.[1]) || null; },
+    querySelector(selector) { return nodes.get(selector.match(/data-(?:code|taxonomy-container)="([^"]+)"/)?.[1]) || null; },
     querySelectorAll(selector) {
-      assert.equal(selector, '.tax-node[data-code]'); return [...nodes.values()];
+      assert.ok(['.tax-node[data-code]', '.tax-node[data-code], [data-taxonomy-container]'].includes(selector));
+      return [...nodes.values()];
     }
   };
   const sharedUtils = {
@@ -109,7 +110,7 @@ function harness(locale = 'en') {
   };
   const context = vm.createContext({
     window, document, console,
-    TaxonomyI18n: { t: key => key }, TaxonomyUtils: sharedUtils,
+    TaxonomyI18n: { t: (key, value) => key === 'browse.container.relevance' ? `Area relevance: ${value}%` : key }, TaxonomyUtils: sharedUtils,
     CSS: { escape: value => value },
     EventSource: class {
       constructor() { transport = this; }
@@ -142,6 +143,22 @@ function harness(locale = 'en') {
     aria(code = product) { return nodes.get(code).getAttribute('aria-label'); }
   };
 }
+
+test('streaming keeps area relevance in the group heading without a catalogue-node score badge', () => {
+  const h = harness();
+  const group = h.nodes.get('BP');
+  group.setAttribute('data-taxonomy-container', 'BP');
+  group.header.className = 'tax-container-heading';
+  group.querySelector = selector => selector === ':scope > .tax-container-heading' ? group.header : null;
+  h.score({BP: 80});
+  assert.equal(group.header.querySelector('.tax-container-score')?.textContent, 'Area relevance: 80%');
+  assert.equal(group.header.querySelector('.tax-pct'), null);
+  assert.equal(h.state.currentScores.BP, 80);
+  assert.equal(h.state.currentRawScores.BP, 80);
+  h.score({BP: 0});
+  assert.equal(group.header.querySelector('.tax-container-score')?.textContent, 'Area relevance: 0%');
+  assert.equal(h.state.currentRawScores.BP, 0);
+});
 
 test('legacy LLM log renderer exposes copy controls for prompt and response', async () => {
   const h = harness();
@@ -393,7 +410,7 @@ const browseSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js', import.meta.url), 'utf8');
 function interactiveHarness(response) {
   const classes = new Set(['tax-has-unevaluated']);
-  const children = { style: { display: 'none' } };
+  const children = { style: { display: 'none' }, dataset: { renderState: 'ready' } };
   const wrapper = {
     classList: { add: key => classes.add(key), remove: key => classes.delete(key) },
     querySelector: selector => selector === ':scope > .tax-children' ? children : null,

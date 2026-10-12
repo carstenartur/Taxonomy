@@ -24,6 +24,29 @@ window.TaxonomyUtils = (function () {
         return doc.body.textContent || '';
     }
 
+    /** Prefer API metadata; retain the verified root contract for historical trees. */
+    function isTaxonomyContainer(node) {
+        if (!node) return false;
+        if (typeof node.taxonomyContainer === 'boolean') return node.taxonomyContainer;
+        return typeof node.code === 'string' && node.code.trim().length > 0 &&
+            node.code === node.taxonomyRoot && node.level === 0 &&
+            (node.parentCode == null ||
+                (typeof node.parentCode === 'string' && node.parentCode.trim().length === 0));
+    }
+
+    /** Project top-level containers to their content without changing catalogue evidence. */
+    function contentRoots(nodes) {
+        var roots = [];
+        (nodes || []).forEach(function (node) {
+            if (isTaxonomyContainer(node)) {
+                (node.children || []).forEach(function (child) { roots.push(child); });
+            } else {
+                roots.push(node);
+            }
+        });
+        return roots;
+    }
+
     function currentLanguage() {
         return (document.documentElement.lang || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
     }
@@ -287,11 +310,16 @@ window.TaxonomyUtils = (function () {
     }
 
     function syncTreeContainerSemantics(tree) {
-        if (tree.querySelector('[role="treeitem"]')) {
-            tree.setAttribute('role', 'tree');
+        var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
+        // Area headings and tabs surround their own catalogue trees. Giving the
+        // outer region a tree role would make those headings invalid tree children.
+        var containsInnerWidgets = Boolean(tree.querySelector(
+            '[data-taxonomy-container], [role="tree"], [role="tablist"]'));
+        var expectedRole = containsTreeItems && !containsInnerWidgets ? 'tree' : 'region';
+        if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
+        if (containsTreeItems || tree.getAttribute('data-view-rendered')) {
             tree.removeAttribute('aria-busy');
         } else {
-            tree.removeAttribute('role');
             tree.setAttribute('aria-busy', 'true');
         }
     }
@@ -325,7 +353,7 @@ window.TaxonomyUtils = (function () {
             childList: true,
             characterData: true,
             attributes: true,
-            attributeFilter: ['title', 'class']
+            attributeFilter: ['title', 'class', 'data-view-rendered']
         });
         document.addEventListener('taxonomy:view-rendered', syncAll);
         syncAll();
@@ -511,6 +539,8 @@ window.TaxonomyUtils = (function () {
     return {
         escapeHtml: escapeHtml,
         stripHtml: stripHtml,
+        isTaxonomyContainer: isTaxonomyContainer,
+        contentRoots: contentRoots,
         copyText: copyText,
         showMessage: showMessage,
         requestScore: requestScore,

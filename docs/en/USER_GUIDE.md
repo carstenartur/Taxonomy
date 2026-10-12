@@ -380,6 +380,14 @@ The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only ap
 
 The left panel displays the taxonomy in six different views. Switch between them using the buttons at the top: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary**.
 
+### Sub-taxonomies and catalogue entries
+
+A sub-taxonomy such as **BP – Business Processes** or **BR – Business Roles** defines an area. List and Tabs display it as a group heading; the actual tree begins with the original entry, for example **BP-1000** or **BR-1000**. Taxonomy diagrams use an area label without drawing an additional catalogue node. An empty sub-taxonomy displays a message explaining that it contains no catalogue entries.
+
+An area's assessment appears separately as **Area relevance** beside its heading. It does not participate in the Decision Map's best-match list or rank markers. Original top-level entries such as BP-1000 remain ordinary catalogue entries and can appear there. In List and Tabs, the group heading expands or collapses its content; in interactive analysis mode, opening it for the first time still assesses the entries immediately below it.
+
+DOT and Mermaid tree exports represent areas as groups. CSV exports retain their values, leave their rank blank and identify them with `true` in the `TaxonomyContainer` column. Original entries have `false`; codes missing from the loaded catalogue have an empty value. Saved analyses and JSON evidence retain the complete hierarchy and recorded assessments.
+
 ### List View (Default)
 
 The default view shows all taxonomy nodes as a flat, indented list. Each row contains the node name, its code, and — after analysis — a score bar and percentage.
@@ -2025,4 +2033,4 @@ history. See the [complete workflow](../features/requirement-reformulation.md) a
 
 When Artemis execution is configured, resumable analysis uses the same durable workers as ordinary analysis. Saved validated answers are reused without another provider request. The original requirement, workspace branch and commit, catalogue generation and provider configuration remain bound to the saved operation; changed inputs require a new analysis. Closing the page does not cancel an admitted operation. Reconnect to its saved operation or choose **Refresh status** to read the current result.
 
-If a worker stops after a question START was committed and before an outcome was accepted, the question is **Outcome uncertain**. Redelivery pauses rather than silently repeating the provider call. Choose **Retry question and continue** to authorize that question again, or **Leave area unassessed and continue** to keep the area unknown. A changed revision requires refreshing before deciding. Cancellation preserves earlier accepted evidence and prevents late answers from restarting the operation. Restoring a backup retains evidence and requires review; it never restores worker leases or automatically resumes provider calls.
+If a worker stops after a question START was committed and before an outcome was accepted, the question is **Outcome uncertain**. Redelivery pauses rather than silently repeating the provider call. Choose **Retry LLM request and continue** to authorize that question again, or **Leave area unassessed and continue** to keep the area unknown. A changed revision requires refreshing before deciding. Cancellation preserves earlier accepted evidence and prevents late answers from restarting the operation. Restoring a backup retains evidence and requires review; it never restores worker leases or automatically resumes provider calls.

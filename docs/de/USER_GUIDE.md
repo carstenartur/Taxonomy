@@ -384,6 +384,14 @@ Die Export-Schaltflächen (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) 
 
 Das linke Panel zeigt die Taxonomie in sechs verschiedenen Ansichten. Wechseln Sie zwischen ihnen mit den Schaltflächen oben: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary**.
 
+### Teiltaxonomien und Katalogeinträge
+
+Eine Teiltaxonomie wie **BP – Business Processes** oder **BR – Business Roles** bildet einen Bereich. In Liste und Registerkarten erscheint sie als Gruppenüberschrift; der eigentliche Baum beginnt mit dem Originaleintrag, beispielsweise **BP-1000** oder **BR-1000**. In den Taxonomiediagrammen kennzeichnet ein Bereichslabel die Teiltaxonomie, ohne einen zusätzlichen Katalogknoten zu zeichnen. Eine leere Teiltaxonomie zeigt einen Hinweis auf die fehlenden Katalogeinträge.
+
+Die Bewertung eines Bereichs steht gesondert als **Bereichsrelevanz** an seiner Überschrift. Sie nimmt nicht an der Bestenliste und den Rangmarkierungen der Entscheidungskarte teil. Originale Oberknoten wie BP-1000 bleiben reguläre Katalogeinträge und können dort erscheinen. In Liste und Registerkarten können Sie die Gruppenüberschrift auf- und zuklappen; im interaktiven Analysemodus startet das erstmalige Öffnen weiterhin die Bewertung der unmittelbar darunterliegenden Einträge.
+
+DOT- und Mermaid-Baumexporte stellen die Bereiche als Gruppen dar. Der CSV-Export erhält ihre Werte, lässt ihren Rang leer und kennzeichnet sie in der Spalte `TaxonomyContainer` mit `true`. Bei Originaleinträgen steht dort `false`; bei Codes, die im geladenen Katalog fehlen, bleibt die Kennzeichnung leer. Gespeicherte Analysen und JSON-Nachweise behalten die vollständige Hierarchie und die aufgezeichneten Bewertungen.
+
 ### Listenansicht (Standard)
 
 Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. Jede Zeile enthält den Knotennamen, seinen Code und — nach der Analyse — einen Bewertungsbalken und Prozentsatz.
@@ -2036,4 +2044,4 @@ und [Prüfgrenzen](../testing/requirement-reformulation.md).
 
 Wenn Artemis konfiguriert ist, verwendet die fortsetzbare Analyse dieselben dauerhaften Worker wie die gewöhnliche Analyse. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet. Die ursprüngliche Anforderung, der Arbeitsbereich mit Branch und Commit, die Kataloggeneration sowie die Anbieterkonfiguration bleiben an den gespeicherten Vorgang gebunden; geänderte Eingaben benötigen eine neue Analyse. Das Schließen der Seite bricht einen angenommenen Vorgang nicht ab. Verbinden Sie sich erneut mit dem gespeicherten Vorgang oder wählen Sie **Status aktualisieren**, um das aktuelle Ergebnis zu lesen.
 
-Stoppt ein Worker nach einem dauerhaft gespeicherten Abfrage-START und vor einer angenommenen Antwort, lautet der Zustand **Ausgang ungewiss**. Eine erneute Zustellung pausiert, statt die Anbieteranfrage automatisch zu wiederholen. Mit **Abfrage wiederholen und fortsetzen** geben Sie diese Abfrage erneut frei; **Bereich offenlassen und fortfahren** erhält den Bereich als unbekannt. Bei einer geänderten Revision müssen Sie vor der Entscheidung aktualisieren. Ein Abbruch erhält zuvor angenommene Bewertungen und verhindert, dass späte Antworten den Vorgang wieder starten. Ein wiederhergestelltes Backup erhält die Nachweise und verlangt eine Prüfung; es stellt keine Worker-Leases wieder her und startet keine Anbieteranfragen automatisch.
+Stoppt ein Worker nach einem dauerhaft gespeicherten Abfrage-START und vor einer angenommenen Antwort, lautet der Zustand **Ausgang ungewiss**. Eine erneute Zustellung pausiert, statt die Anbieteranfrage automatisch zu wiederholen. Mit **LLM-Anfrage wiederholen und fortsetzen** geben Sie diese Abfrage erneut frei; **Bereich offenlassen und fortfahren** erhält den Bereich als unbekannt. Bei einer geänderten Revision müssen Sie vor der Entscheidung aktualisieren. Ein Abbruch erhält zuvor angenommene Bewertungen und verhindert, dass späte Antworten den Vorgang wieder starten. Ein wiederhergestelltes Backup erhält die Nachweise und verlangt eine Prüfung; es stellt keine Worker-Leases wieder her und startet keine Anbieteranfragen automatisch.

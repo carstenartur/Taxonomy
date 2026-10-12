@@ -189,6 +189,66 @@
             ? scoring.describeScore(code, scores[code]).visible : scores[code] > 0;
     }
 
+    function isTaxonomyContainer(node) {
+        return !!(window.TaxonomyUtils && window.TaxonomyUtils.isTaxonomyContainer
+            && window.TaxonomyUtils.isTaxonomyContainer(node));
+    }
+
+    function contentRoots(data) {
+        return window.TaxonomyUtils && window.TaxonomyUtils.contentRoots
+            ? window.TaxonomyUtils.contentRoots(data) : (data || []);
+    }
+
+    function containerLabel(area, scores) {
+        var label = area.code + (area.name ? ' – ' + area.name : '');
+        if (scores && Object.prototype.hasOwnProperty.call(scores, area.code) && Number.isFinite(scores[area.code])) {
+            label += ' · ' + t('browse.container.relevance', scores[area.code]);
+        }
+        return label;
+    }
+
+    /** Area headings are outside the node hierarchy and never receive node actions or ranks. */
+    function appendContainerHeadings(container, data, scores) {
+        var areas = (data || []).filter(isTaxonomyContainer);
+        if (!areas.length) return;
+        var labels = document.createElement('div');
+        labels.className = 'tax-container-labels';
+        areas.forEach(function (area) {
+            var label = document.createElement('div');
+            var heading = document.createElement('h3');
+            heading.className = 'tax-container-heading h6 mt-3 mb-2';
+            heading.setAttribute('data-taxonomy-container', area.code);
+            heading.textContent = area.code + (area.name ? ' – ' + area.name : '');
+            if (scores && Object.prototype.hasOwnProperty.call(scores, area.code) && Number.isFinite(scores[area.code])) {
+                var score = document.createElement('span');
+                score.className = 'tax-container-score small ms-2';
+                score.textContent = t('browse.container.relevance', scores[area.code]);
+                heading.appendChild(score);
+            }
+            label.appendChild(heading);
+            if (!area.children || !area.children.length) {
+                var empty = document.createElement('p');
+                empty.className = 'text-muted small';
+                empty.textContent = t('browse.container.empty');
+                label.appendChild(empty);
+            }
+            labels.appendChild(label);
+        });
+        container.appendChild(labels);
+    }
+
+    function decisionMatches(data, scores) {
+        var entries = new Set();
+        function collect(node) {
+            if (!isTaxonomyContainer(node)) { entries.add(node.code); }
+            (node.children || []).forEach(collect);
+        }
+        (data || []).forEach(collect);
+        return Object.entries(scores || {})
+            .filter(function (entry) { return Number.isFinite(entry[1]) && entry[1] > 0 && entries.has(entry[0]); })
+            .sort(function (a, b) { return b[1] - a[1]; });
+    }
+
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
@@ -327,12 +387,13 @@
             container.setAttribute('data-view-rendered', 'sunburst');
             return;
         }
+        appendContainerHeadings(container, data, scores);
         var W = container.clientWidth || 500;
         var size = Math.min(W, MAX_SUNBURST_SIZE);
         var radius = size / 2;
 
         // Synthetic root to unify the 8 root taxonomies
-        var rootData = { code: '__root__', name: 'Taxonomy', children: data };
+        var rootData = { code: '__root__', name: 'Taxonomy', children: contentRoots(data) };
         var hierarchy = d3.hierarchy(rootData)
             .sum(function (d) { return (!d.children || !d.children.length) ? 1 : 0; });
         d3.partition().size([2 * Math.PI, radius])(hierarchy);
@@ -513,6 +574,7 @@
         }
         container.innerHTML = '';
 
+        appendContainerHeadings(container, data, scores);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
         var marginRight = 300;
@@ -520,7 +582,7 @@
         var marginBottom = 20;
 
         // Synthetic root
-        var rootData = { code: '__root__', name: '', children: data };
+        var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
         // Initially collapse depth >= TREE_INITIAL_DEPTH to keep the initial view compact
@@ -727,9 +789,10 @@
         scores = scores || {};
 
         // ── Build helper maps ────────────────────────────────────────────────
-        var nameMap = {}, pathMap = {}, levelMap = {}, isLeafSet = new Set();
+        var nameMap = {}, pathMap = {}, levelMap = {}, isLeafSet = new Set(), containerCodes = new Set();
 
         function walkNodes(node, ancestors, level) {
+            if (isTaxonomyContainer(node)) { containerCodes.add(node.code); }
             nameMap[node.code] = node.name || '';
             levelMap[node.code] = level;
             var displayName = node.name ? (node.code + ' ' + node.name) : node.code;
@@ -747,7 +810,7 @@
         // ── Compute hot set (ancestors of scored nodes) ──────────────────────
         var hotSet = new Set();
         function computeHot(node) {
-            var selfHot = hasScoreLabel(node.code, scores);
+            var selfHot = !isTaxonomyContainer(node) && hasScoreLabel(node.code, scores);
             var childHot = false;
             if (node.children) {
                 node.children.forEach(function (child) {
@@ -760,16 +823,14 @@
         data.forEach(computeHot);
 
         // ── Scored nodes sorted by score desc ────────────────────────────────
-        var allScored = Object.entries(scores)
-            .filter(function (e) { return e[1] > 0; })
-            .sort(function (a, b) { return b[1] - a[1]; });
+        var allScored = decisionMatches(data, scores);
 
         var top3Codes = allScored.slice(0, 3).map(function (e) { return e[0]; });
         var rankMap = {};
         top3Codes.forEach(function (code, i) { rankMap[code] = i + 1; });
 
         // ── Stats summary ────────────────────────────────────────────────────
-        var totalNodes = Object.keys(nameMap).length;
+        var totalNodes = Object.keys(nameMap).length - containerCodes.size;
         var scoredCount = allScored.length;
         var affectedRootsSet = new Set(
             allScored.map(function (e) { return pathMap[e[0]] && pathMap[e[0]][0]; }).filter(Boolean)
@@ -778,7 +839,9 @@
         statsDiv.className = 'decision-stats';
         if (scoredCount === 0) {
             statsDiv.innerHTML = '<span class="decision-stats-item">' +
-                t(hotSet.size > 0 ? 'views.product.evidence.only' : 'views.no.scored.nodes') + '</span>';
+                t(hotSet.size > 0 ? 'views.product.evidence.only'
+                    : Array.from(containerCodes).some(function (code) { return scores[code] > 0; })
+                        ? 'views.container.evidence.only' : 'views.no.scored.nodes') + '</span>';
         } else {
             var best = allScored[0];
             var bestName = nameMap[best[0]] || '';
@@ -793,7 +856,7 @@
         // ── Filter data to hot paths only ────────────────────────────────────
         function filterToHot(node) {
             if (!hotSet.has(node.code)) { return null; }
-            var result = { code: node.code, name: node.name, description: node.description, level: node.level };
+            var result = Object.assign({}, node, {children: []});
             if (node.children) {
                 var fc = node.children.map(filterToHot).filter(Boolean);
                 if (fc.length) { result.children = fc; }
@@ -801,12 +864,11 @@
             return result;
         }
         var filteredData = data.map(filterToHot).filter(Boolean);
+        appendContainerHeadings(container, data.filter(function (node) {
+            return hotSet.has(node.code) || (isTaxonomyContainer(node) && scores[node.code] > 0);
+        }), scores);
 
         if (filteredData.length === 0) {
-            var noDataMsg = document.createElement('div');
-            noDataMsg.className = 'alert alert-info mt-2';
-            noDataMsg.textContent = t('views.no.scored.nodes');
-            container.appendChild(noDataMsg);
             renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
             container.setAttribute('data-view-rendered', 'decision');
             return;
@@ -820,7 +882,7 @@
         var marginBottom = 20;
 
         // Synthetic root to hold all filtered roots
-        var rootData = { code: '__root__', name: '', children: filteredData };
+        var rootData = { code: '__root__', name: '', children: contentRoots(filteredData) };
         var root = d3.hierarchy(rootData);
 
         var treeLayout = d3.tree().nodeSize([28, 280]);
@@ -1178,6 +1240,7 @@
         }
         container.innerHTML = '';
 
+        appendContainerHeadings(container, data, scores);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
         var marginRight = 300;
@@ -1186,7 +1249,7 @@
         var NODE_RADIUS = 7;
 
         // Synthetic root
-        var rootData = { code: '__root__', name: '', children: data };
+        var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
         // Collapse depth >= TREE_INITIAL_DEPTH
@@ -1455,15 +1518,16 @@
      */
     function buildExportSVG(data, scores, options) {
         options = options || {};
+        var areas = (data || []).filter(isTaxonomyContainer);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
         var marginRight = 300;
-        var marginTop = 20;
+        var marginTop = 20 + areas.length * 28;
         var marginBottom = 20;
         var CHAR_WIDTH_ESTIMATE = 7;  // approx px per character for 12px Arial
         var BADGE_OFFSET = 20;        // extra px gap between label end and badge
 
-        var rootData = { code: '__root__', name: '', children: data };
+        var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
         // If expandAll is not set, apply the same initial collapse
@@ -1514,6 +1578,16 @@
             '.tv-link { fill: none; stroke: #ccc; stroke-width: 1.5; }'
         ].join('\n');
         svg.appendChild(style);
+
+        areas.forEach(function (area, index) {
+            var heading = document.createElementNS(svgNS, 'text');
+            heading.setAttribute('data-taxonomy-container', area.code);
+            heading.setAttribute('x', marginLeft);
+            heading.setAttribute('y', 20 + index * 28);
+            heading.setAttribute('font-weight', 'bold');
+            heading.textContent = containerLabel(area, scores);
+            svg.appendChild(heading);
+        });
 
         var g = document.createElementNS(svgNS, 'g');
         g.setAttribute('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
@@ -1617,7 +1691,16 @@
             }
         }
 
-        data.forEach(function (root) { walk(root); });
+        data.forEach(function (root) {
+            if (isTaxonomyContainer(root)) {
+                lines.push('    subgraph ' + dotId('cluster_' + root.code) + ' {');
+                lines.push('    label="' + dotEscape(containerLabel(root, scores)) + '";');
+                (root.children || []).forEach(walk);
+                lines.push('    }');
+            } else {
+                walk(root);
+            }
+        });
         lines.push('}');
         return lines.join('\n');
     }
@@ -1653,12 +1736,23 @@
             }
         }
 
-        data.forEach(function (root) {
+        function writeRoot(root) {
             // If root has no children, render it as a standalone node
             if (!root.children || root.children.length === 0) {
                 lines.push('    ' + mermaidId(root.code) + '["' + mermaidLabel(root) + '"]');
             }
             walk(root);
+        }
+
+        data.forEach(function (root) {
+            if (isTaxonomyContainer(root)) {
+                lines.push('    subgraph cluster_' + mermaidId(root.code) + '["'
+                    + containerLabel(root, scores).replace(/"/g, '&quot;') + '"]');
+                (root.children || []).forEach(writeRoot);
+                lines.push('    end');
+            } else {
+                writeRoot(root);
+            }
         });
 
         return lines.join('\n');

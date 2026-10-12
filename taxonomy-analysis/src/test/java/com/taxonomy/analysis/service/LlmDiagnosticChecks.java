@@ -58,7 +58,7 @@ public final class LlmDiagnosticChecks {
     }
 
     static void malformedJsonKeepsVisibleFailureAndOriginalEvidence() {
-        String raw = "```json\n{\n  \"IP\": {\"score\": 100, \"reason\": \"complete child\"}\n```";
+        String raw = "```json\n{\n  \"IP\": {\"score\": 100, \"reason\": \"unfinished child\"\n```";
         var registry = new AnalysisProgressRegistry(new StandardEnvironment());
         String id = UUID.randomUUID().toString();
         try (var reservation = registry.reserve(id, "owner", SCOPE, null);
@@ -139,7 +139,7 @@ public final class LlmDiagnosticChecks {
 
     static void malformedOuterObjectIsNotSalvaged() throws Exception {
         var parser = new LlmResponseParser(JSON);
-        String malformed = "{\"IP\":{\"score\":100,\"reason\":\"valid inner object\"}";
+        String malformed = "{\"IP\":{\"score\":100,\"reason\":\"valid inner object\"},\"unfinished\":";
         boolean rejected = false;
         try { parser.parseScoreParseResult(malformed, List.of(node()), 100); }
         catch (Exception expected) { rejected = true; }

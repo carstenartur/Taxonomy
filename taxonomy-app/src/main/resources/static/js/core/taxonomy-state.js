@@ -65,16 +65,19 @@
             if (!window.TaxonomyBrowse || typeof window.TaxonomyBrowse.renderView !== 'function') return;
 
             var nodesByCode = new Map();
-            document.querySelectorAll('#taxonomyTree .tax-node[data-code]').forEach(function (node) {
-                if (node.dataset.code) nodesByCode.set(node.dataset.code, node);
+            document.querySelectorAll('#taxonomyTree .tax-node[data-code], #taxonomyTree [data-taxonomy-container]').forEach(function (node) {
+                var code = node.dataset.code || node.dataset.taxonomyContainer;
+                if (code) nodesByCode.set(code, node);
             });
 
             var renderableCodes = positiveCodes.filter(function (code) {
                 return nodesByCode.has(code);
             });
             var missingBadge = renderableCodes.some(function (code) {
-                return !nodesByCode.get(code)
-                    .querySelector(':scope > .tax-node-header > .tax-pct');
+                var node = nodesByCode.get(code);
+                return !node.querySelector(node.dataset.taxonomyContainer
+                    ? ':scope > .tax-container-heading > .tax-container-score'
+                    : ':scope > .tax-node-header > .tax-pct');
             });
 
             if (renderableCodes.length > 0 && missingBadge) {

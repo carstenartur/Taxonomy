@@ -305,17 +305,27 @@ class OnnxSeleniumIT {
 
         WebElement highlightedHeader = new WebDriverWait(driver, Duration.ofSeconds(10))
                 .until(currentDriver -> currentDriver.findElements(
-                                By.cssSelector(".tax-node-header.search-highlight"))
+                                By.cssSelector("#taxonomyTree .tax-node[role='treeitem'][data-code]"
+                                        + " > .tax-node-header.search-highlight, "
+                                        + "#taxonomyTree .tax-container[role='group'][data-taxonomy-container]"
+                                        + " > .tax-container-heading.search-highlight"))
                         .stream()
                         .filter(WebElement::isDisplayed)
-                        .filter(header -> code.equals(header.findElement(By.xpath(".."))
-                                .getAttribute("data-code")))
+                        .filter(header -> {
+                            WebElement target = header.findElement(By.xpath(".."));
+                            String targetCode = target.getAttribute("data-taxonomy-container");
+                            return code.equals(targetCode != null ? targetCode : target.getAttribute("data-code"));
+                        })
                         .findFirst()
                         .orElse(null));
 
         assertThat(highlightedHeader.isDisplayed()).isTrue();
-        assertThat(highlightedHeader.findElement(By.xpath(".."))
-                .getAttribute("data-code")).isEqualTo(code);
+        WebElement highlightedTarget = highlightedHeader.findElement(By.xpath(".."));
+        String areaCode = highlightedTarget.getAttribute("data-taxonomy-container");
+        assertThat(areaCode != null ? areaCode : highlightedTarget.getAttribute("data-code"))
+                .isEqualTo(code);
+        assertThat(highlightedTarget.getAttribute("role"))
+                .isEqualTo(areaCode != null ? "group" : "treeitem");
     }
 
     @Test
