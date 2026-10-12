@@ -1,0 +1,4 @@
+-- Explicit disabled principal allocations and inert private source identity evidence.
+create table restore_identity_owner (owner_id varchar(32) primary key, generation_id varchar(36) not null, archive_sha256 varchar(64) not null, mapping_sha256 varchar(64) not null);
+create table restore_identity_mapping (source_principal varchar(36) primary key, target_principal varchar(36) not null unique, target_scope varchar(255) not null unique, disposition varchar(32) not null, row_sha256 varchar(64) not null, constraint fk_restore_identity_principal foreign key(target_principal) references app_principal(principal_id));
+create table restore_identity_evidence (record_kind varchar(96) not null, record_key varchar(4096) not null, record_json clob not null, sha256 varchar(64) not null, classification varchar(32) not null, primary key(record_kind,record_key));

@@ -56,6 +56,25 @@ present and acyclic. Components carry schema version, completeness status and
 entry paths. A hash alone does not authenticate origin. The manifest is not
 self-hashed: the verified complete archive digest binds restore plans.
 
+An entry ending in `/` declares an empty directory. It belongs to one component,
+has length zero and the SHA-256 of empty content, and requires the mandatory
+`directory-entries-v1` feature. It counts toward entry limits and participates in
+the same normalized path collision checks as files. ZIP directories use stored
+zero-length content and directory mode; a directory cannot conceal bytes or a
+symlink. This preserves Git's required `refs/` directory even for packed refs or
+an unborn repository. Ordinary file-only archives do not require this feature.
+
+When capture witnesses the database vendor through the fenced source connection's
+`DatabaseMetaData`, it declares the required feature `source-database-family-v1`.
+`verification/capture.json` then contains `sourceDatabase` with exactly
+`schemaVersion: 1` and one allowlisted `family`: `HSQLDB`, `POSTGRESQL`,
+`SQL_SERVER` or `ORACLE`. This record contains no JDBC URL, account name or
+credentials. Unknown vendor names fail capture explicitly. Existing captures
+without this optional witness retain their readable format and do not claim the
+new feature. Restore planning must require the witness or an explicit audited
+operator declaration before selecting a tested source-to-target database matrix;
+an application version or installation ID cannot establish a database family.
+
 Repository records use opaque archive paths unrelated to external repository
 names. A typed repository/workspace key distinguishes the central repository from
 each selected workspace repository. A workspace-only selection never captures the

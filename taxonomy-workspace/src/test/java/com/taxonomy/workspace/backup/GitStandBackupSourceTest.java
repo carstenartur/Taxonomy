@@ -276,7 +276,7 @@ class GitStandBackupSourceTest {
     static final class Fixture implements AutoCloseable {
         final JDBCDataSource database = new JDBCDataSource(); final EditorPersistenceFixture persistence; final ExistingGitBackupRepositories repositories;
         Fixture() throws Exception {
-            String url = "jdbc:hsqldb:mem:git-stand-" + UUID.randomUUID() + ";hsqldb.tx=mvcc"; database.setUrl(url); database.setUser("SA"); database.setPassword(""); persistence = new EditorPersistenceFixture(url);
+            String url = "jdbc:hsqldb:mem:git-stand-" + UUID.randomUUID() + ";hsqldb.tx=mvcc"; database.setUrl(url); database.setUser("SA"); database.setPassword(""); persistence = new EditorPersistenceFixture(url, com.taxonomy.workspace.model.GitReflogProvenanceRecord.class);
             sql("create table system_repository(repository_id varchar(255) primary key,storage_repository_name varchar(255),default_branch varchar(255))");
             sql("create table user_workspace(workspace_id varchar(255) primary key,source_repository_id varchar(255),current_branch varchar(255))");
             sql("insert into system_repository values('repo-a','central-a','draft')"); sql("insert into user_workspace values('private-a','repo-a','draft')");

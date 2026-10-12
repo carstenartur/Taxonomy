@@ -11,7 +11,7 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
                              List<Repository> repositories, List<BackupEntry> entries,
                              List<String> dependencies, List<String> omissions) {
     public static final int FORMAT_VERSION = 1;
-    public static final Set<String> SUPPORTED_FEATURES = Set.of("component-sha256", "explicit-scope", "writer-barrier-v1", "plugin-prerequisites-v1");
+    public static final Set<String> SUPPORTED_FEATURES = Set.of("component-sha256", "explicit-scope", "writer-barrier-v1", "plugin-prerequisites-v1", "directory-entries-v1", SourceDatabaseMetadata.REQUIRED_FEATURE);
 
     public record Component(BackupComponentId id, int version, BackupCompleteness completeness,
                             List<String> entryPaths, Set<BackupComponentId> dependencies) {
@@ -44,6 +44,8 @@ public record BackupManifest(int formatVersion, String applicationVersion, Strin
         BackupChecks.text(consistencyEvidence, "consistencyEvidence"); requiredFeatures = Set.copyOf(requiredFeatures);
         if (!SUPPORTED_FEATURES.containsAll(requiredFeatures)) throw new IllegalArgumentException("Unknown required feature");
         components = List.copyOf(components); repositories = List.copyOf(repositories); entries = List.copyOf(entries);
+        if (entries.stream().anyMatch(entry -> entry.path().endsWith("/")) && !requiredFeatures.contains("directory-entries-v1"))
+            throw new IllegalArgumentException("Directory entries require explicit format support");
         dependencies = List.copyOf(dependencies); omissions = List.copyOf(omissions);
         for (var items : List.of(requiredFeatures, components, repositories, entries, dependencies, omissions)) BackupChecks.count(items.size());
         dependencies.forEach(value -> BackupChecks.text(value, "dependency"));

@@ -85,11 +85,18 @@ public final class CapturedBackup implements AutoCloseable {
     public InputStream openEntry(String path) throws IOException {
         BackupEntry entry = entries.get(BackupPaths.requireEntry(path));
         if (entry == null) throw new IOException("Entry is not part of the captured manifest");
-        return new VerifiedInput(SpoolStreams.input(entryPath(entry), protection, manifest.backupId(), path), entry);
+        Path file = entryPath(entry);
+        return new VerifiedInput(path.endsWith("/") ? InputStream.nullInputStream()
+                : SpoolStreams.input(file, protection, manifest.backupId(), path), entry);
     }
 
     private Path entryPath(BackupEntry entry) throws IOException {
         Path file = directory.resolve(entry.path());
+        if (entry.path().endsWith("/")) {
+            if (!Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().equals(file))
+                throw new IOException("Captured directory differs from its manifest");
+            return file;
+        }
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().equals(file)
                 || !protection.encrypted() && Files.size(file) != entry.length()) throw new IOException("Capture entry length or path differs from its manifest");
         return file;

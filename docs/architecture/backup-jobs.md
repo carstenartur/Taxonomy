@@ -79,8 +79,68 @@ a filename cannot substitute another file. The browser receives a generated
 `/backup-jobs` renders English/German status, progress, retention, cancellation
 and native streamed downloads. It bounds the recent list to 50, renders ten
 jobs per page, preserves focused controls while updating fields, and pauses
-polling while the page is hidden. Product export selection and real-browser
-acceptance are completed with the module adapters and P12.
+polling while the page is hidden. The export form lists repositories and workspaces
+that the current stable principal can read; installation-wide selection additionally
+requires EXPORT_INSTALLATION. Current export preserves the saved editor state.
+Selected-version export requires an explicitly authorized, complete lowercase
+40-character commit ID and captures that version independently of live drafts.
+Both choices support NONE and current-state BUNDLE with secrets excluded.
+For an individually selected repository or workspace, the form also offers
+REPOSITORY_HISTORY when its current scope has EXPORT_HISTORY. The server attaches
+that capability to each authorized choice; selecting a different scope updates
+the available profiles and resets incompatible representations. History requires
+BUNDLE, BARE or WORKTREE. WORKTREE includes the saved working content alongside
+the original Git history. Installation selection continues to offer only
+INSTALLATION_CURRENT. INSTALLATION_FULL and INCLUDE_ENCRYPTED selections remain
+unsupported by this production source and are rejected before queue admission.
+Form metadata grants no future authority: enqueue, capture and download still
+recheck the original request against current permissions. A File-menu entry appears
+when the preview source and current-export authority are available.
+
+## Production portable-export preview
+
+`taxonomy.backup.enabled` remains false by default. With it explicitly enabled,
+`ProductionCurrentBackupConfiguration` registers the production capture source
+only when every data-owning feature is installed. The source checks actual JPA
+categories against the reviewed coverage inventory and assembles every required
+owner. Unknown owners, missing categories or unresolved selected references fail
+the capture rather than produce a partial successful archive.
+
+Set `TAXONOMY_BACKUP_SOURCE_CONTENT_DIRECTORY` (property
+`taxonomy.backup.source-content-directory`, default `./data/source-content`) to
+the root containing retained source-version files. Original source content is
+read from this root using the existing source adapter's path and digest checks.
+Missing or changed retained content fails the job. The backup artifact volume
+is configured separately through `TAXONOMY_BACKUP_DIRECTORY`.
+
+Repository and workspace metadata discovery is read-only, capped at the existing
+10,000-item inventory boundary and queries one extra sentinel row to reject
+overflow explicitly. Git discovery opens existing storage only; it does not
+initialize missing repositories. The manifest includes exact source application
+version, build evidence and installed feature prerequisites. External Git servers
+and deployment credentials remain explicit operator dependencies.
+
+The repository-history capture retains original commits and refs, additional
+database/editor-referenced commits, saved editor journals/checkpoints and the
+historical source records/files needed by those documents. Missing referenced
+historical content fails the whole job. Scoped history does not include global
+template or preferences repositories. Bundle, bare and working-copy acceptance
+uses actual authorized jobs, verified downloads and native Git against original
+ancestor and unreferenced database-only commits; current/selected capture remains
+separate from this historical closure.
+
+Original regular/executable modes remain in Git trees and indexes. Archive files
+use private permissions, and executable filesystem permissions are not yet a
+certified portable WORKTREE restore contract. Current/working-copy capture rejects
+symlinks; raw historical Git objects do not authorize filesystem link creation.
+Self-contained LFS and submodule adapters are not implemented, so dependent
+content is rejected instead of being declared an offline-complete archive.
+
+This preview supplies current, selected-version, repository-history and
+installation-current export.
+Portable restore and the full P08/P12 acceptance remain required before a public
+backup release. Focused HSQLDB/native Git/browser checks do not certify the
+cross-database restore matrix or replace the canonical verification gate.
 
 See [configuration reference](../en/CONFIGURATION_REFERENCE.md) and the
 [protection ADR](backup-archive-protection.md) for key custody. Provision Tink's

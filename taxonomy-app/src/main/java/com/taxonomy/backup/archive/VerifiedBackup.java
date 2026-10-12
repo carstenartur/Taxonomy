@@ -22,10 +22,17 @@ public final class VerifiedBackup implements AutoCloseable {
     public BackupManifest manifest() { return manifest; }
     public String archiveSha256() { return digest; }
     public InputStream openEntry(String path) throws IOException {
+        return openEntry(path, () -> { });
+    }
+    /** Each actual read, including close-time verification, remains bound to the current operation. */
+    public InputStream openEntry(String path, BackupCheckpoint checkpoint) throws IOException {
+        Objects.requireNonNull(checkpoint);
+        try { checkpoint.check(); }
+        catch (InterruptedIOException cancelled) { Thread.currentThread().interrupt(); throw cancelled; }
         var entry = entries.get(path);
         if (entry == null) throw new IOException("Entry is not declared by the verified manifest");
         var archived = zip.getEntry(path);
-        return new CheckedInput(zip.getInputStream(archived), entry.length(), entry.sha256(), archived.getCrc(), guard);
+        return new CheckedInput(zip.getInputStream(archived), entry.length(), entry.sha256(), archived.getCrc(), guard, checkpoint);
     }
     @Override public void close() throws IOException { zip.close(); }
 
@@ -35,17 +42,24 @@ public final class VerifiedBackup implements AutoCloseable {
         private final MessageDigest digest = ArchiveIO.sha256();
         private final CRC32 crc = new CRC32();
         private final ArchiveIO.ReadGuard guard;
+        private final BackupCheckpoint checkpoint;
         private long count;
         private boolean complete, failed;
         CheckedInput(InputStream stream, long length, String digest, long crc, ArchiveIO.ReadGuard guard) {
+            this(stream, length, digest, crc, guard, () -> { });
+        }
+        CheckedInput(InputStream stream, long length, String digest, long crc, ArchiveIO.ReadGuard guard,
+                     BackupCheckpoint checkpoint) {
             super(stream); this.length = length; expectedDigest = digest; expectedCrc = crc; this.guard = guard;
+            this.checkpoint = Objects.requireNonNull(checkpoint);
         }
         @Override public int read() throws IOException {
             byte[] one = new byte[1]; return read(one, 0, 1) < 0 ? -1 : Byte.toUnsignedInt(one[0]);
         }
         @Override public int read(byte[] bytes, int offset, int size) throws IOException {
             try {
-                guard.check(); int n = in.read(bytes, offset, size);
+                guard.check(); checkpoint.check(); int n = in.read(bytes, offset, size);
+                guard.check(); checkpoint.check();
                 if (n > 0) {
                     if (n > length - count) throw new IOException("Archive entry length limit exceeded");
                     count += n; digest.update(bytes, offset, n); crc.update(bytes, offset, n); guard.check();
@@ -56,7 +70,8 @@ public final class VerifiedBackup implements AutoCloseable {
                     complete = true;
                 }
                 return n;
-            } catch (IOException failure) { failed = true; throw failure; }
+            } catch (InterruptedIOException cancelled) { failed = true; Thread.currentThread().interrupt(); throw cancelled; }
+            catch (IOException | RuntimeException failure) { failed = true; throw failure; }
         }
         @Override public long skip(long amount) throws IOException {
             long remaining = Math.max(0, amount); byte[] bytes = new byte[8192];
@@ -67,7 +82,7 @@ public final class VerifiedBackup implements AutoCloseable {
         @Override public void reset() throws IOException { throw new IOException("Verified streams cannot be rewound"); }
         void abort() { failed = true; }
         @Override public void close() throws IOException {
-            try { if (!failed && !complete) transferTo(OutputStream.nullOutputStream()); } finally { in.close(); }
+            try (var closing = in) { if (!failed && !complete) transferTo(OutputStream.nullOutputStream()); }
         }
     }
 }

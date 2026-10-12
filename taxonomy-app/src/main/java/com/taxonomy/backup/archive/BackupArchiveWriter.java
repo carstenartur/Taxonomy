@@ -86,7 +86,7 @@ public final class BackupArchiveWriter {
     }
     private static ZipArchiveEntry member(String path, long size, long crc) {
         var entry = new ZipArchiveEntry(path); entry.setMethod(ZipArchiveEntry.STORED); entry.setSize(size); entry.setCrc(crc);
-        entry.setUnixMode(0100600); entry.setTime(631152000000L); return entry;
+        entry.setUnixMode(path.endsWith("/") ? 040700 : 0100600); entry.setTime(631152000000L); return entry;
     }
     private static void consume(InputStream input, OutputStream output, CRC32 crc, ArchiveIO.Guard guard) throws IOException {
         byte[] buffer = new byte[65536];

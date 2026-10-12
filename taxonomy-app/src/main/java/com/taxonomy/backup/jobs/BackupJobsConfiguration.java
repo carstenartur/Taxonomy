@@ -34,8 +34,8 @@ public class BackupJobsConfiguration {
         return new BackupArchiveWriter(protection, ArchiveLimits.defaults(), prerequisites);
     }
     @Bean BackupJobService backupJobService(JdbcBackupJobStore store, BackupAuthorizationService authorization,
-                                          BackupJobStorage storage, ArchiveProtectionProvider protection) {
-        return new BackupJobService(store, authorization, storage, protection.encrypted());
+                                          BackupJobStorage storage, ArchiveProtectionProvider protection, BackupCaptureSource source) {
+        return new BackupJobService(store, authorization, storage, protection.encrypted(),source);
     }
     @Bean BackupJobWorker backupJobWorker(JdbcBackupJobStore store, BackupAuthorizationService authorization,
                                         BackupJobStorage storage, BackupCaptureSource source, BackupArchiveWriter writer) {

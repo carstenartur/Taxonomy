@@ -65,6 +65,10 @@ class BackupSnapshotCoordinatorTest {
             assertThat(captured.manifest().consistencyEvidence()).contains("writer-barrier-v1", "installation");
             assertThat(captured.manifest().components()).extracting(BackupManifest.Component::id).contains(COMPONENT);
             assertThat(captured.manifest().entries()).extracting(BackupEntry::path).contains("verification/capture.json");
+            assertThat(captured.manifest().requiredFeatures()).doesNotContain(SourceDatabaseMetadata.REQUIRED_FEATURE);
+            try (var proof = captured.openEntry("verification/capture.json")) {
+                assertThat(com.taxonomy.exchange.backup.PortableRows.json().readTree(proof).has("sourceDatabase")).isFalse();
+            }
             secondNode.update("update evidence set revision=2");
             var reopened = CapturedBackup.open(captured.directory(), creation);
             assertThat(reopened.snapshot()).isEqualTo(captured.snapshot());
@@ -93,6 +97,17 @@ class BackupSnapshotCoordinatorTest {
         }).capture(authorization.authorize(actor, request))).isInstanceOf(IOException.class);
         assertEmpty();
         assertThatCode(() -> secondNode.update("update evidence set revision=3")).doesNotThrowAnyException();
+    }
+
+    @Test void aDirectoryProducerCannotWriteContentOrMaskAFileCollision() {
+        assertThatThrownBy(() -> coordinator((snapshot, sink) -> write(sink, "data/records/empty/", "hidden"))
+                .capture(authorization.authorize(actor, request))).isInstanceOf(IOException.class).hasMessageContaining("Directory");
+        assertEmpty();
+        assertThatThrownBy(() -> coordinator((snapshot, sink) -> {
+            write(sink, "data/records/empty/", "");
+            write(sink, "data/records/EMPTY", "hidden");
+        }).capture(authorization.authorize(actor, request))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("path");
+        assertEmpty();
     }
 
     @Test void expiredCaptureCannotPublishAfterAnotherNodeResumesWrites() {
