@@ -41,9 +41,12 @@ class AnalysisContinuationUiIT {
         browser.findElement(By.id(action.equals("SKIP") ? "analysisRecoverySkip" : "analysisRecoveryRetry")).click();
         wait.until(driver -> writes.get() == 1 && !Boolean.TRUE.equals(browser.executeScript("return document.getElementById('analysisRecoveryDialog').open")));
         assertThat(decision.get()).contains("\"continuationAction\":\"" + action + "\"", "\"continuationVersion\":7", "\"continuationQuestion\":\"" + KEY + "\"");
+        String expectedState = action.equals("SKIP") ? "COMPLETED_WITH_GAPS" : "COMPLETED";
+        // The write is counted before the response is sent; the browser applies the returned recovery asynchronously.
+        wait.until(driver -> !"RUNNING".equals(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state")));
         assertThat(writes.get()).isEqualTo(1); assertThat(reads.get()).isZero();
         assertThat(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state"))
-                .isEqualTo(action.equals("SKIP") ? "COMPLETED_WITH_GAPS" : "COMPLETED");
+                .isEqualTo(expectedState);
     }
     static void serve(HttpExchange exchange) throws java.io.IOException {
         String path = exchange.getRequestURI().getPath();
