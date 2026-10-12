@@ -1,4 +1,6 @@
 # Explicit trusted schema model; archive input cannot select classes.
+com.taxonomy.analysis.cluster.ClusterAnalysisAttempt
+com.taxonomy.analysis.cluster.ClusterAnalysisCall
 com.taxonomy.analysis.cluster.ClusterAnalysisEvent
 com.taxonomy.analysis.cluster.ClusterAnalysisInput
 com.taxonomy.analysis.cluster.ClusterAnalysisRun
