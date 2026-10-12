@@ -6,20 +6,26 @@ import { readFileSync } from 'node:fs';
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function node() {
+  const listeners = new Map();
   return { textContent:'', hidden:false, disabled:false, style:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
     append(...items){ this.children.push(...items); }, prepend(...items){ this.children.unshift(...items); },
-    replaceChildren(...items){ this.children=items; }, setAttribute(){}, addEventListener(){},
+    replaceChildren(...items){ this.children=items; }, setAttribute(){},
+    addEventListener(name,fn){listeners.set(name,fn);}, fire(name){return listeners.get(name)?.();},
     querySelectorAll(){ return []; }, remove(){} };
 }
-function harness() {
+function harness(language = 'en') {
   const listeners = new Map(), storage = new Map(), timers = new Map(); let timer=0, pending, followups=0;
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
   const requests=[], analyses=[], saved=[], panels=[], derivedRequests=[]; let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
-    open(title,message,build,options){ this.opened=true; openOptions=options; build(node(),()=>node()); } };
-  const window = { TaxonomyState:S,__TaxonomyAnalysisSessionContext:{S,runtime,language:()=> 'en'},
+    open(title,message,build,options){
+      this.opened=true; this.message=message; openOptions=options; this.body=node();
+      build(this.body,(tag,text)=>Object.assign(node(),{tagName:tag,textContent:text||''}));
+      for(const option of options) fields[option.id]=Object.assign(node(),{disabled:Boolean(option.disabled)});
+    } };
+  const window = { TaxonomyState:S,__TaxonomyAnalysisSessionContext:{S,runtime,language:()=> language},
     TaxonomyRecoveryViewport:{mount:()=>ui},
     TaxonomyAnalysisSession:{state:()=>({ready:true,workspaceId:runtime.workspaceId}),saveNow:async()=>{saved.push(JSON.parse(JSON.stringify(S)));return true;}},
     TaxonomyAnalysisSessionApi:{request:async(url,options,workspace)=>{
@@ -232,3 +238,60 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
  }
  assert.equal(header.children.length,1,'Status refresh must retain the same accessible node badge');
 });
+
+const renderedText = element => [element.textContent, ...element.children.map(renderedText)].join(' ');
+const descendants = element => [element, ...element.children.flatMap(descendants)];
+for (const language of ['de', 'en']) {
+ test(`${language} recovery identifies an LLM assessment failure and explains retry and skip`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
+  h.S.analysisRecovery.openQuestions=[
+   {key:'product-a',nodes:['IP-1365','IP-1676','IP-1775'],error:'Invalid independent product JSON',attempts:1,skipped:false},
+   {key:'product-b',nodes:['IP-1800'],error:'HTTP 503',attempts:2,skipped:true,outcomeUncertain:true}
+  ];
+  h.recovery.open();
+  const body=renderedText(h.ui.body), label=descendants(h.ui.body).find(n=>n.tagName==='label');
+  assert.match(h.ui.message, language==='de' ? /Pausiert – Prüfung erforderlich/ : /Paused – review required/);
+  assert.match(body,language==='de' ? /LLM-Bewertung fehlgeschlagen/ : /LLM assessment failed/);
+  assert.match(label.textContent, language==='de' ? /Offene LLM-Bewertung.*betroffene Knoten/ : /Open LLM assessment.*affected nodes/);
+  assert.doesNotMatch(body,/Open question|Offene Abfrage/);
+  assert.equal(body.split('IP-1365').length-1,1,'Affected IDs appear once, in the selector');
+  assert.match(body,language==='de' ? /interne LLM-Anfrage/ : /internal LLM request/);
+  assert.match(body,language==='de' ? /neue LLM-Anfrage/ : /new LLM request/);
+  assert.match(body,language==='de' ? /nicht bewertet/ : /unassessed/);
+  const select=descendants(h.ui.body).find(n=>n.tagName==='select');
+  select.value='product-b'; await select.fire('change');
+  const changed=renderedText(h.ui.body);
+  assert.match(changed,/HTTP 503/); assert.doesNotMatch(changed,/Invalid independent product JSON/);
+  assert.match(changed,language==='de' ? /Versuche: 2/ : /Attempts: 2/);
+  assert.match(changed,language==='de' ? /offengelassen/ : /left unassessed/);
+  assert.match(changed,language==='de' ? /berechnet/ : /billed/);
+  assert.equal(h.fields.analysisRecoverySkip.disabled,true);
+  select.value='product-a'; await select.fire('change');
+  assert.equal(h.fields.analysisRecoverySkip.disabled,false);
+  assert.doesNotMatch(renderedText(h.ui.body),/billed|berechnet/);
+  h.act('analysisRecoveryRetry');
+  assert.equal(h.analyses[1].continuationQuestion,'product-a');
+  assert.equal(h.analyses[1].continuationAction,'RETRY');
+  h.complete('COMPLETED'); await settle();
+ });
+ test(`${language} unresolved relation evidence requires clarification without claiming a failed request`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
+  h.S.analysisRecovery.openQuestions=[
+   {key:'relation-a',nodes:['BP-1327','BP-1481'],error:'RELATION_UNRESOLVED: review the retained response',attempts:1,skipped:false}
+  ];
+  h.recovery.open();
+  const body=renderedText(h.ui.body);
+  assert.match(h.ui.message,language==='de' ? /Prüfung erforderlich/ : /review required/);
+  assert.match(body,language==='de' ? /Beziehungsbewertung erfordert Klärung/ : /Relation assessment needs clarification/);
+  assert.doesNotMatch(body,/LLM-Bewertung fehlgeschlagen|LLM assessment failed|keine Frage an Sie|no question for you to answer/);
+  assert.match(body,language==='de' ? /interne LLM-Anfrage/ : /internal LLM request/);
+  assert(h.options().some(o=>o.id==='analysisRecoveryRetry'));
+  assert(h.options().some(o=>o.id==='analysisRecoverySkip'));
+ });
+ test(`${language} a single failed assessment labels the affected nodes`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
+  const body=renderedText(h.ui.body);
+  assert.match(body,language==='de' ? /Betroffene Knoten: BP-1327, BP-1481/ : /Affected nodes: BP-1327, BP-1481/);
+  assert.equal(body.split('BP-1327').length-1,1);
+ });
+}

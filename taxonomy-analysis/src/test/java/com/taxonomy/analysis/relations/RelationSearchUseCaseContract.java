@@ -100,10 +100,15 @@ public final class RelationSearchUseCaseContract {
         return fixture(enabled, calls, invalid, LlmProvider.CUSTOM_OPENAI);
     }
     static Fixture fixture(Boolean enabled, int calls, boolean invalid, LlmProvider provider) throws Exception {
+        return fixture(enabled, calls, provider,
+                prompt -> invalid ? "please try again" : RequirementRelationSearchContract.answer(prompt));
+    }
+    static Fixture fixture(Boolean enabled, int calls, LlmProvider provider,
+                           java.util.function.Function<String, String> complete) throws Exception {
         AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1)); r.setStatus("SUCCESS"); return r; }
-            @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return invalid ? "please try again" : RequirementRelationSearchContract.answer(prompt); }
+            @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return complete.apply(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
             @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
             @Override public void clearRequestProvider() { }

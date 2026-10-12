@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises the existing parser, not a second JSON validator or a repair routine. */
+/** Exercises the strict parser and its diagnostics for incomplete or malformed content. */
 class LlmJsonValidationTest {
     private final LlmResponseParser parser = new LlmResponseParser(new ObjectMapper());
 
@@ -23,11 +23,11 @@ class LlmJsonValidationTest {
     }
 
     @Test
-    void missingOuterBraceBeforeMarkdownEndHasConciseDiagnosticAndOriginalCause() {
+    void unfinishedChildBeforeMarkdownEndHasConciseDiagnosticAndOriginalCause() {
         String raw = """
                 ```json
                 {
-                  "BR": {"score": 20, "reason": "Safety management"}
+                  "BR": {"score": 20, "reason": "Safety management"
                 ```
                 """;
         var error = assertThrows(IllegalArgumentException.class,
@@ -44,7 +44,7 @@ class LlmJsonValidationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "{\"BR\":{\"score\":20}",
+            "{\"BR\":{\"score\":20",
             "{\"BR\":{\"score\":20,\"reason\":\"An \"unescaped\" quote\"}}",
             "{\"BR\":20,}",
             "{\"BR\":20,\"CP\":secret_response_text}"
@@ -69,7 +69,7 @@ class LlmJsonValidationTest {
     @Test
     void independentScoringUsesTheSameSyntaxDiagnostic() {
         var error = assertThrows(IllegalArgumentException.class, () -> parser.parseIndependentScoreParseResult(
-                "{\"BR\":{\"score\":20,\"reason\":\"complete child\"}\n```", roots(), 10));
+                "{\"BR\":{\"score\":20,\"reason\":\"unfinished child\"\n```", roots(), 10));
         assertTrue(error.getMessage().startsWith("Invalid JSON in LLM response"));
     }
 }

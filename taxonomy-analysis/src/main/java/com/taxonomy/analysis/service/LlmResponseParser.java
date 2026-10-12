@@ -317,13 +317,24 @@ public class LlmResponseParser {
             throw new IllegalArgumentException("Expected a JSON object for a child assessment, but the LLM "
                     + "returned empty or non-JSON text. Inspect the raw response in the LLM communication log.");
         }
+        var reader = objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
+                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         try {
-            return objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
-                    .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-                    .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
-                    .readValue(jsonText);
+            return reader.readValue(jsonText);
         } catch (StreamReadException malformed) {
-            // Preserve main's concise diagnostic and this branch's strict, exact reader.
+            String completed = completeOuterObject(jsonText);
+            if (completed != null) {
+                try {
+                    Map<String, Object> recovered = reader.readValue(completed);
+                    log.warn("Completed a missing outer JSON object delimiter in an LLM assessment; "
+                            + "raw response and candidate/value validation are unchanged");
+                    return recovered;
+                } catch (StreamReadException stillMalformed) {
+                    // Keep the original diagnostic. Never complete values or nested containers.
+                }
+            }
             var location = malformed.getLocation();
             String position = location != null && location.getLineNr() > 0 && location.getColumnNr() > 0
                     ? " at line " + location.getLineNr() + ", column " + location.getColumnNr()
@@ -333,6 +344,22 @@ public class LlmResponseParser {
                     + ". The response could not be evaluated. Inspect the raw response in the LLM communication log.",
                     malformed);
         }
+    }
+
+    /**
+     * Only the outer envelope may be completed, after an already closed child object.
+     * The same strict reader must accept the entire result with exactly one added brace;
+     * the caller still validates every expected child and value. A bare number, unfinished
+     * reason, missing child delimiter or trailing comma is never guessed. A final standalone
+     * Markdown fence is presentation, while the original response remains untouched.
+     */
+    private static String completeOuterObject(String jsonText) {
+        String candidate = jsonText.stripTrailing();
+        int lastLine = candidate.lastIndexOf('\n');
+        if (lastLine >= 0 && candidate.substring(lastLine + 1).strip().equals("```")) {
+            candidate = candidate.substring(0, lastLine).stripTrailing();
+        }
+        return candidate.endsWith("}") ? candidate + "}" : null;
     }
 
     /**
