@@ -47,6 +47,8 @@ public final class PartialArchitectureProjection {
         var details = result.getScoreDetails();
         var ranked = scores.entrySet().stream()
                 .filter(entry -> entry.getValue() != null && entry.getValue() > 0 && entry.getValue() <= 100)
+                .filter(entry -> details.get(entry.getKey()) != null
+                        && details.get(entry.getKey()).effectiveRelevance() == entry.getValue())
                 .filter(entry -> index.containsKey(entry.getKey()) && !index.get(entry.getKey()).isTaxonomyContainer())
                 .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
                 .toList();
@@ -61,8 +63,9 @@ public final class PartialArchitectureProjection {
             element.setNodeCode(node.getCode());
             element.setTitle(node.getNameEn() == null || node.getNameEn().isBlank() ? node.getCode() : node.getNameEn());
             element.setTaxonomySheet(node.getTaxonomyRoot()); element.setScoreDetail(detail);
-            element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());
-            element.setRelevance(entry.getValue() / 100.0); element.setOrigin(NodeOrigin.DIRECT_SCORED);
+            element.setDirectLlmScore(detail.rawScore());
+            element.setRelevance(detail.effectiveRelevance() / 100.0);
+            element.setOrigin(NodeOrigin.DIRECT_SCORED); element.setAnchor(true);
             element.setPresenceReason("Directly assessed relevance; this alone does not establish a relationship or required implementation.");
             element.setIncludedBecause(element.getPresenceReason());
             element.setSelectedForImpact(true);
@@ -96,9 +99,30 @@ public final class PartialArchitectureProjection {
         if (added > 0) notes.add("DIRECT_ASSESSMENT_ONLY: additional nodes retain their assessed relevance; no relationship is inferred from a missing answer.");
         if (elements.isEmpty()) notes.add("NO_ASSESSED_ARCHITECTURE: no usable assessed catalogue elements are available yet.");
         else notes.removeIf(note -> note.startsWith("NO_ASSESSED_ARCHITECTURE:"));
+        var elementsByCode = new HashMap<String, RequirementElementView>();
+        elements.forEach(element -> elementsByCode.putIfAbsent(element.getNodeCode(), element));
+        var anchors = new LinkedHashMap<String, RequirementAnchor>();
+        if (view.getAnchors() != null) for (var anchor : view.getAnchors()) {
+            if (anchor == null || anchor.getNodeCode() == null || anchors.containsKey(anchor.getNodeCode())) continue;
+            var element = elementsByCode.get(anchor.getNodeCode());
+            var node = index.get(anchor.getNodeCode());
+            if (element != null && element.isAnchor() && node != null && !node.isTaxonomyContainer()) {
+                anchors.put(anchor.getNodeCode(), anchor);
+            }
+        }
+        for (var element : elements) {
+            if (element.getOrigin() != NodeOrigin.DIRECT_SCORED || !element.isAnchor()) continue;
+            var detail = element.getScoreDetail();
+            if (detail == null || anchors.containsKey(element.getNodeCode())) continue;
+            String kind = detail.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+            anchors.put(element.getNodeCode(), new RequirementAnchor(element.getNodeCode(),
+                    detail.effectiveRelevance(), "Direct " + kind + " assessment; raw score "
+                    + detail.rawScore() + ", effective relevance " + detail.effectiveRelevance() + "%."));
+        }
         view.setIncludedElements(elements); view.setTotalElements(elements.size());
         view.setTotalRelationships(view.getIncludedRelationships() == null ? 0 : view.getIncludedRelationships().size());
-        view.setTotalAnchors(view.getAnchors() == null ? 0 : view.getAnchors().size());
+        view.setAnchors(new ArrayList<>(anchors.values()));
+        view.setTotalAnchors(view.getAnchors().size());
         view.setNotes(new ArrayList<>(notes)); view.setRelationSearchReport(result.getRelationSearchReport());
         view.setAnalysisCoverage(result.getAnalysisCoverage()); view.setAnalysisStatus(result.getStatus());
         return view;

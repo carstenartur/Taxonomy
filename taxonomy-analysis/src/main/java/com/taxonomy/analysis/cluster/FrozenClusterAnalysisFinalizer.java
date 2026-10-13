@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 
 /** Completes the durable rendering stage before the operation becomes terminal. */
 public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOperationContext> {
+    private static final int MAX_SNAPSHOT_NODES = 100_000;
+    private static final int MAX_PATH_DEPTH = 256;
     private final ClusterAnalysisStore store;
     private final CatalogueSnapshotService snapshots;
     private final RequirementArchitectureViewService architecture;
@@ -49,6 +51,9 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                 .map(root -> mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class)).toList();
         var required = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), required, roots)) {
+            if (result.getTree() == null || result.getTree().isEmpty()) {
+                result.setTree(snapshotProjectionTree(roots, result));
+            }
             RequirementArchitectureView view = result.getRelationSearchReport() != null
                     ? architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(),
                         command.maxArchitectureNodes(), result.getRelationSearchReport())
@@ -72,6 +77,67 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
         }
         // The store rechecks authority, FINALIZING state and cancellation under its short lock.
         store.finalizeResult(context, result);
+    }
+
+    private static List<TaxonomyNodeDto> snapshotProjectionTree(
+            List<RootCatalogueSnapshot> roots, AnalysisResult result) {
+        var recorded = new java.util.LinkedHashMap<String, RootCatalogueSnapshot.Node>();
+        boolean limited = false;
+        for (var root : roots) {
+            for (var node : root.nodes()) {
+                if (recorded.size() >= MAX_SNAPSHOT_NODES) {
+                    limited = true;
+                    break;
+                }
+                recorded.put(node.code(), node);
+            }
+            if (limited) break;
+        }
+
+        var selected = new java.util.LinkedHashMap<String, RootCatalogueSnapshot.Node>();
+        for (String code : result.getRawScores().keySet()) {
+            var node = recorded.get(code);
+            int depth = 0;
+            while (node != null && depth++ < MAX_PATH_DEPTH) {
+                if (selected.size() >= MAX_SNAPSHOT_NODES && !selected.containsKey(node.code())) {
+                    limited = true;
+                    break;
+                }
+                selected.putIfAbsent(node.code(), node);
+                node = node.parentCode() == null ? null : recorded.get(node.parentCode());
+            }
+            if (node != null) limited = true;
+        }
+
+        var detached = new java.util.LinkedHashMap<String, TaxonomyNodeDto>();
+        selected.values().forEach(node -> detached.put(node.code(), toDto(node)));
+        var tree = new ArrayList<TaxonomyNodeDto>();
+        selected.values().forEach(node -> {
+            var dto = detached.get(node.code());
+            var parent = node.parentCode() == null ? null : detached.get(node.parentCode());
+            if (parent == null) tree.add(dto);
+            else parent.getChildren().add(dto);
+        });
+        if (limited && !result.getWarnings().contains("FROZEN_CATALOGUE_PROJECTION_LIMIT: retained snapshot ancestry exceeded the bounded projection limit.")) {
+            result.getWarnings().add("FROZEN_CATALOGUE_PROJECTION_LIMIT: retained snapshot ancestry exceeded the bounded projection limit.");
+        }
+        return tree;
+    }
+
+    private static TaxonomyNodeDto toDto(RootCatalogueSnapshot.Node node) {
+        var dto = new TaxonomyNodeDto();
+        dto.setId(node.id()); dto.setCode(node.code()); dto.setUuid(node.uuid());
+        dto.setNameEn(node.nameEn()); dto.setNameDe(node.nameDe());
+        dto.setDescriptionEn(node.descriptionEn()); dto.setDescriptionDe(node.descriptionDe());
+        dto.setParentCode(node.parentCode()); dto.setTaxonomyRoot(node.taxonomyRoot()); dto.setLevel(node.level());
+        dto.setDataset(node.dataset()); dto.setExternalId(node.externalId()); dto.setSource(node.source());
+        dto.setReference(node.reference()); dto.setSortOrder(node.sortOrder()); dto.setState(node.state());
+        dto.setAnalysisRole(node.metadata().analysisRole());
+        dto.setSecondaryClassificationCodes(node.metadata().secondaryClassificationCodes());
+        dto.setClassificationConfidence(node.metadata().confidence());
+        dto.setClassificationReviewRequired(node.metadata().reviewRequired());
+        dto.setClassificationJustification(node.metadata().justification());
+        return dto;
     }
 
     /** Projects scored frozen nodes and any score-only proposals without consulting global relations. */
