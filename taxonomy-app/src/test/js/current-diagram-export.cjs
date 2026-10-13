@@ -49,23 +49,37 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         const file = f.element('input'); file.files = [{text: JSON.stringify(incoming)}];
         f.elements.set('importJsonFile', file);
         f.elements.set('importJson', f.element('button'));
-        f.window.TaxonomyScoring = {applyLocalRawScores(raw) {
-            f.state.currentRawScores = raw; f.state.currentScores = incoming.scores;
-        }};
+        f.window.TaxonomyScoring = {
+            clearDerivedAnalysisView() {
+                f.state.currentArchView = null;
+                f.state.currentView = 'list';
+            },
+            acceptRelationSearchReport(data) {
+                f.state.currentRelationSearchReport = data?.relationSearchReport
+                    || data?.architectureView?.relationSearchReport || null;
+            },
+            renderArchitectureView(view) { f.state.currentArchView = view; },
+            applyLocalRawScores(raw) {
+                f.state.currentRawScores = raw; f.state.currentScores = incoming.scores;
+            }
+        };
         f.window.TaxonomyAnalysisScope = {acceptResult(scope) {f.state.lastAnalysisScope = scope;}};
         const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
         // Run the actual import event registration with UI rendering isolated from the evidence behavior.
         const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Dark mode toggle'));
         const statuses = [];
         vm.runInNewContext(registration, {window: f.window, document: f.document, S: f.state,
+            SC: () => f.window.TaxonomyScoring,
+            switchView(view) { f.state.currentView = view; },
             FileReader: class {readAsText(value) {this.onload({target: {result: value.text}});}},
             CustomEvent: class {constructor(type) {this.type = type;}},
             fetch(url, options) {f.requests.push({url, options}); return Promise.resolve({json: async () => incoming});},
-            renderView() {}, updateExportGroupVisibility() {}, showStatus(...args) {statuses.push(args);}, t: key => key});
+            renderView() {}, updateExportGroupVisibility() {}, showStatus(...args) {statuses.push(args);},
+            t: (key, ...args) => [key, ...args].join(': ')});
         file.listeners.change();
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(f.requests[0].url, '/api/scores/import');
-        assert.equal(statuses[0]?.[0], 'success');
+        assert.equal(statuses[0]?.[0], 'success', statuses[0]?.[1]);
         assert.equal(f.state.recoveryContext, null);
         assert.equal(f.state.analysisRecovery, null);
         assert.deepEqual(f.state.lastAnalysisScope, scopeKind === 'selected' ? selected : null);
