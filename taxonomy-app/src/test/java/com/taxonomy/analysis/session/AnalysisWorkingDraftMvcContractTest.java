@@ -57,6 +57,7 @@ class AnalysisWorkingDraftMvcContractTest {
                 "schemaVersion": 1,
                 "businessText": "Provide resilient communications",
                 "scores": {"BP-1000": 82},
+                "architectureView": null,
                 "relationSearchReport": {"totalCalls": 3, "searchExhausted": true}
               },
               "expectedVersion": 6
@@ -124,6 +125,7 @@ class AnalysisWorkingDraftMvcContractTest {
                 .andExpect(jsonPath("$.payload.businessText")
                         .value("Provide resilient communications"))
                 .andExpect(jsonPath("$.payload.scores['BP-1000']").value(82))
+                .andExpect(jsonPath("$.payload.architectureView").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.payload.relationSearchReport.totalCalls").value(3))
                 .andExpect(jsonPath("$.payload.relationSearchReport.searchExhausted").value(true));
 
@@ -135,6 +137,7 @@ class AnalysisWorkingDraftMvcContractTest {
                 .isEqualTo(1);
         assertThat(request.getValue().payload().path("scores").path("BP-1000").asInt())
                 .isEqualTo(82);
+        assertThat(request.getValue().payload().path("architectureView").isNull()).isTrue();
         assertThat(request.getValue().payload().path("relationSearchReport").path("totalCalls").asInt())
                 .isEqualTo(3);
     }

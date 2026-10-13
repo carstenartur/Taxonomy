@@ -95,6 +95,16 @@ test('administrator sees a usable account-management entry even when local creat
         const entry=page.locator('#userManagementMenuAction');assert.equal(await entry.count(),1);
         await page.locator('#applicationSettings > summary').click();await entry.click();
         assert.equal(await page.locator('#tab-admin').isVisible(),true);
+        await page.locator('#applicationSettings > summary').click();
+        const administration=page.locator('#adminNavTab');
+        const preferences=page.locator('#preferencesNavTab');
+        assert.equal(await administration.isVisible(),true);
+        assert.equal(await preferences.isVisible(),true);
+        await administration.click();
+        assert.equal(await page.locator('#tab-admin').isVisible(),true);
+        await page.locator('#applicationSettings > summary').click();
+        await preferences.click();
+        assert.equal(await page.locator('#tab-preferences').isVisible(),true);
     }finally{await finish(page);}
 });
 test('local account route updates with capabilities; role loss and failed refresh fail closed',async()=>{
@@ -109,9 +119,17 @@ test('local account route updates with capabilities; role loss and failed refres
         assert.equal(await page.locator('#userManagementMenuAction').isVisible(),false);
         assert.equal(await page.locator('#localUserManagementAdminEntry').count(),0);
         assert.equal(await page.evaluate(()=>document.body.classList.contains('admin-unlocked')),false);
+        await page.locator('#applicationSettings > summary').click();
+        assert.equal(await page.locator('#adminNavTab').isVisible(),false);
+        assert.equal(await page.locator('#preferencesNavTab').isVisible(),false);
+        await page.locator('#applicationSettings > summary').click();
         await page.evaluate(async()=>{window.accountError=false;window.account={username:'reader',roles:['USER'],administrator:false,localUserManagementAllowed:false};await TaxonomyRoleSurface.refresh();});
         assert.equal(await page.locator('#documentTemplateAdminEntry').count(),0);
         assert.equal(await page.locator('#localUserManagementAdminEntry').count(),0);
+        await page.locator('#applicationSettings > summary').click();
+        assert.equal(await page.locator('#adminNavTab').isVisible(),false);
+        assert.equal(await page.locator('#preferencesNavTab').isVisible(),false);
+        assert.equal(await page.locator('#userManagementMenuAction').isVisible(),false);
     }finally{await finish(page);}
 });
 test('operational warnings remain discoverable without repeatedly expanding or consuming a header row',async()=>{

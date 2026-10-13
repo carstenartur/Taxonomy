@@ -111,15 +111,19 @@ class AnalysisWorkingDraftServiceTest {
                 .put("totalCalls", 3)
                 .put("searchExhausted", true);
         ObjectNode payload = objectMapper.createObjectNode()
-                .put("businessText", "Provide resilient communications");
+                .put("businessText", "Provide resilient communications")
+                .putNull("architectureView");
         payload.set("relationSearchReport", report);
 
         var saved = service.save(
                 "Alice", "ws-1", new SaveAnalysisDraftRequest(payload, null));
         assertThat(persisted.get().getPayloadJson()).contains("\"relationSearchReport\"");
+        assertThat(persisted.get().getPayloadJson()).contains("\"architectureView\":null");
+        assertThat(saved.payload().path("architectureView").isNull()).isTrue();
         assertThat(saved.payload().path("relationSearchReport")).isEqualTo(report);
 
         var restored = service.read("Alice", "ws-1").orElseThrow();
+        assertThat(restored.payload().path("architectureView").isNull()).isTrue();
         assertThat(restored.payload().path("relationSearchReport")).isEqualTo(report);
     }
 

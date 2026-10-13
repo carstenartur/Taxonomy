@@ -156,6 +156,22 @@ export async function csrfJson(page, endpoint, {
 }
 
 export async function navigateToPage(page, pageId) {
+  const settingsDestination = {
+    admin: 'adminNavTab',
+    preferences: 'preferencesNavTab'
+  }[pageId];
+  if (settingsDestination) {
+    const settings = page.locator('#applicationSettings');
+    if (await settings.getAttribute('open') === null) {
+      await page.locator('#applicationSettings > summary').click();
+    }
+    const control = page.locator(`#applicationSettings #${settingsDestination}`);
+    await control.waitFor({ state: 'visible', timeout: 20_000 });
+    await control.click();
+    await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
+    return;
+  }
+
   const responsive = page.locator('#mobileMainNavigationSelect');
   if (await responsive.isVisible().catch(() => false)) {
     const options = responsive.locator('option');

@@ -1798,7 +1798,10 @@
     }
 
     function resetStaleResults() {
-        SC().acceptRelationSearchReport?.(null);
+        if (SC().clearDerivedAnalysisView) SC().clearDerivedAnalysisView();
+        else SC().acceptRelationSearchReport?.(null);
+        S.currentArchView = null;
+        S.currentView = 'list';
         S.currentScores = null;
         S.currentReasons = {};
         S.storedBusinessText = null;
@@ -2357,7 +2360,10 @@
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
-        SC().acceptRelationSearchReport?.(null);
+        if (SC().clearDerivedAnalysisView) SC().clearDerivedAnalysisView();
+        else SC().acceptRelationSearchReport?.(null);
+        S.currentArchView = null;
+        S.currentView = 'list';
         SC().applyLocalRawScores({}, true);
         S.currentReasons = {};
 

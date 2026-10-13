@@ -195,8 +195,17 @@ test('legacy nested reports remain readable; explicit null never revives old evi
         assert.equal(await page.evaluate(()=>typeof TaxonomyScoring.acceptRelationSearchReport), 'function');
         await page.evaluate(report=>TaxonomyScoring.acceptRelationSearchReport({architectureView:{relationSearchReport:report}}),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
-        await page.evaluate(report=>TaxonomyScoring.acceptRelationSearchReport({relationSearchReport:null,architectureView:{relationSearchReport:report}}),relationReport);
+        await page.evaluate(report=>{
+            const architectureView={relationSearchReport:report,includedElements:[],
+                includedRelationships:[],anchors:[]};
+            TaxonomyScoring.acceptRelationSearchReport({
+                relationSearchReport:null,architectureView
+            });
+            TaxonomyScoring.renderArchitectureView(architectureView);
+        },relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),false);
+        assert.equal(await page.locator('.relation-search-report').count(),0,
+            'An explicit independent null must not revive the nested report');
     } finally { await finish(page); }
 });
 test('architecture-enabled result renders its relation report exactly once', async()=>{
@@ -205,12 +214,20 @@ test('architecture-enabled result renders its relation report exactly once', asy
         await page.evaluate(report=>{
             const result={relationSearchReport:report,architectureView:{
                 relationSearchReport:report,includedElements:[],includedRelationships:[],anchors:[]}};
+            window.architectureEnabledResult=result;
             TaxonomyScoring.acceptRelationSearchReport(result);
             TaxonomyScoring.renderArchitectureView(result.architectureView);
         },relationReport);
         assert.equal(await page.locator('.relation-search-report').count(),1);
         assert.equal(await page.locator('#relationSearchReportPanel .relation-search-report').count(),1);
         assert.equal(await page.locator('#architectureViewContent .relation-search-report').count(),0);
+        await page.evaluate(()=>{
+            document.getElementById('relationSearchReportPanel').remove();
+            TaxonomyState.currentRelationSearchReport=null;
+            TaxonomyScoring.renderArchitectureView(architectureEnabledResult.architectureView);
+        });
+        assert.equal(await page.locator('#architectureViewContent .relation-search-report').count(),1,
+            'Legacy architecture-only presentation must retain its nested report');
     } finally { await finish(page); }
 });
 test('workspace draft carries the independent report even without a diagram',async()=>{
@@ -244,7 +261,29 @@ test('draft restore and EMPTY tombstone restore/clear independent evidence',asyn
         assert.equal(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),null);
     } finally { await finish(page); }
 });
-
+test('legacy nested-only draft restores report context; explicit null takes precedence', async()=>{
+    const page=await reportFixture();
+    try {
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis-session-core.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis-session-ui.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis-session-draft.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-browse.js')});
+        await page.evaluate(report=>{
+            TaxonomyState.taxonomyData=[{code:'BP-1000',name:'Time capture',children:[]}];
+            __TaxonomyAnalysisSessionContext.applyDraft({version:3,payload:{businessText:'Zeiterfassung',
+                scores:{'BP-1000':70},architectureView:{relationSearchReport:report,
+                    includedElements:[],includedRelationships:[],anchors:[]}}});
+        },relationReport);
+        assert.deepEqual(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),relationReport);
+        assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
+        await page.evaluate(report=>__TaxonomyAnalysisSessionContext.applyDraft({version:4,payload:{
+            businessText:'Zeiterfassung',scores:{'BP-1000':70},relationSearchReport:null,
+            architectureView:{relationSearchReport:report,includedElements:[],includedRelationships:[],anchors:[]}
+        }}),relationReport);
+        assert.equal(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),null);
+        assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),false);
+    } finally { await finish(page); }
+});
 test('draft data restores before the scoring renderer has loaded', async()=>{
     const page=await fixture();
     try {
@@ -350,6 +389,47 @@ test('full analysis result pipeline retains relations with the architecture opti
         assert.deepEqual(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
     }finally{await finish(page);}
+});
+test('same-operation START recovery retains its existing architecture and relation evidence', async()=>{
+    const page=await reportFixture();
+    try {
+        await page.evaluate(report=>{
+            const checkbox=document.createElement('input');checkbox.id='includeArchitectureView';
+            checkbox.type='checkbox';document.body.append(checkbox);
+            TaxonomyState.currentView='summary';
+            TaxonomyState.currentArchView={
+                relationSearchReport:report,includedElements:[],includedRelationships:[],anchors:[]};
+            TaxonomyScoring.acceptRelationSearchReport({relationSearchReport:report});
+            TaxonomyScoring.renderArchitectureView(TaxonomyState.currentArchView);
+            document.getElementById('viewSummary').style.display='';
+            window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'recovery-workspace'})};
+            window.TaxonomyBrowse={clearStatus(){},renderView(){},showStatus(){},switchView(){}};
+            window.TaxonomyAnalysisProgress={start:()=>({
+                acceptsResult:()=>true,finish(){},transportFailed(){}
+            })};
+            window.fetch=async()=>({ok:true,json:async()=>({
+                status:'SUCCESS',scores:{},reasons:{},warnings:[]
+            })});
+        },relationReport);
+        const retained=await page.evaluate(()=>{
+            const architecture=TaxonomyState.currentArchView;
+            return TaxonomyScoring.runAnalysis({
+                continuation:{continuationAction:'START'},recoveryManaged:true
+            }).then(()=>({
+                sameArchitecture:TaxonomyState.currentArchView===architecture,
+                currentView:TaxonomyState.currentView,
+                report:TaxonomyState.currentRelationSearchReport
+            }));
+        });
+        assert.equal(retained.sameArchitecture,true);
+        assert.equal(retained.currentView,'summary');
+        assert.deepEqual(retained.report,relationReport);
+        assert.equal(await page.locator('#architectureViewPanel').isVisible(),true,
+            JSON.stringify(await page.locator('#architectureViewPanel').evaluate(element=>({
+                display:getComputedStyle(element).display,text:element.textContent,rect:element.getBoundingClientRect().toJSON()
+            }))));
+        assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
+    } finally { await finish(page); }
 });
 
 for (const entryPoint of ['runInteractiveAnalysis', 'runStreamingAnalysis']) {
