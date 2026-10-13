@@ -51,7 +51,7 @@ class FrozenClusterAnalysisFinalizerTest {
             var restored = mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class);
             var diagram = new DiagramProjectionService().projectRaw(restored.getArchitectureView(), "Frozen result");
             assertThat(diagram.title()).contains("PARTIAL").doesNotContain("0 unassessed");
-            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP"));
+            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP-1136"));
             assertThat(restored.getRawScores()).isEqualTo(original.getRawScores());
             return true;
         }));
@@ -64,15 +64,15 @@ class FrozenClusterAnalysisFinalizerTest {
         verify(store).finalizeResult(eq(context), argThat(result -> {
             var view = result.getArchitectureView();
             assertThat(view.getIncludedElements()).singleElement().satisfies(element -> {
-                assertThat(element.getNodeCode()).isEqualTo("IP");
-                assertThat(element.getTitle()).isEqualTo("Frozen IP");
-                assertThat(element.getHierarchyPath()).isEqualTo("IP");
+                assertThat(element.getNodeCode()).isEqualTo("IP-1136");
+                assertThat(element.getTitle()).isEqualTo("Electronic Treatment Records");
+                assertThat(element.getHierarchyPath()).isEqualTo("IP-1136");
                 assertThat(element.getScoreDetail().rawScore()).isEqualTo(80);
             });
             assertThat(view.getIncludedRelationships()).isEmpty();
             assertThat(view.getNotes()).anyMatch(note -> note.contains("hierarchy-only"));
             assertThat(view.getViewTitle()).isEqualTo("archview.policy.title.trace");
-            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP", 55, "IP", 80));
+            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1023", 55, "IP-1136", 80));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
             return true;
         }));
@@ -105,7 +105,8 @@ class FrozenClusterAnalysisFinalizerTest {
         var command = store.command(context);
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
                 command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
-        var hypothesis = new RelationHypothesisDto("CP", "stale CP", "IP", "stale IP", "REQUIRES", 0.44,
+        var hypothesis = new RelationHypothesisDto("CP-1023", "Communication and Information System Capabilities",
+                "IP-1136", "Electronic Treatment Records", "REQUIRES", 0.44,
                 "Inferred from effective scores and compatibility matrix");
         store.snapshot(context).result().setProvisionalRelations(List.of(hypothesis));
         finalizer.accept(context);
@@ -117,8 +118,8 @@ class FrozenClusterAnalysisFinalizerTest {
             assertThat(restored.getRelationSearchReport()).isNull();
             var view = restored.getArchitectureView();
             assertThat(view.getIncludedRelationships()).singleElement().satisfies(relation -> {
-                assertThat(relation.getSourceCode()).isEqualTo("CP");
-                assertThat(relation.getTargetCode()).isEqualTo("IP");
+                assertThat(relation.getSourceCode()).isEqualTo("CP-1023");
+                assertThat(relation.getTargetCode()).isEqualTo("IP-1136");
                 assertThat(relation.getRelationType()).isEqualTo("REQUIRES");
                 assertThat(relation.getOrigin()).isEqualTo(RelationOrigin.SUGGESTED_CANDIDATE);
                 assertThat(relation.getConfidence()).isEqualTo(0.44);
@@ -127,7 +128,7 @@ class FrozenClusterAnalysisFinalizerTest {
                 assertThat(relation.getRelationId()).isNull();
             });
             assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)
-                    .containsExactly("Frozen IP", "Frozen CP");
+                    .containsExactly("Electronic Treatment Records", "Communication and Information System Capabilities");
             assertThat(view.getTotalRelationships()).isEqualTo(1);
             assertThat(view.getNotes()).anyMatch(note -> note.contains("Provisional score-only"));
             return true;
@@ -142,9 +143,45 @@ class FrozenClusterAnalysisFinalizerTest {
         when(metadata.resolve()).thenThrow(new IllegalStateException("unavailable optional metadata"));
         finalizer.accept(context);
         verify(store).finalizeResult(eq(context), argThat(result ->
-                result.getStatus().equals("PARTIAL") && result.getArchitectureView() == null
+                result.getStatus().equals("PARTIAL") && result.getArchitectureView() != null
+                        && "PARTIAL".equals(result.getArchitectureView().getAnalysisStatus())
+                        && result.getArchitectureView().getIncludedElements().stream()
+                                .map(RequirementElementView::getNodeCode).toList().equals(List.of("IP-1136"))
+                        && result.getArchitectureView().getIncludedRelationships().isEmpty()
                         && result.getWarnings().stream().anyMatch(w -> w.startsWith("ARCHITECTURE_VIEW_INCOMPLETE:"))
                         && result.getRawScores().size() == 2));
+        assertThat(FrozenCatalogueContext.current()).isNull();
+    }
+
+    @Test
+    void scoredNodesWithoutEmbeddedTreeUseTheBoundFrozenSnapshot() {
+        var context = prepare();
+        var command = store.command(context);
+        when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
+                command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
+        var result = store.snapshot(context).result();
+        result.setTree(null);
+        for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {
+            var frozenRoot = root.code().equals("CP") || root.code().equals("IP")
+                    ? retainedSnapshot(context, root.code())
+                    : DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), root.code());
+            when(store.shard(context, root)).thenReturn(mapper.writeValueAsString(frozenRoot));
+        }
+
+        finalizer.accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(finalized -> {
+            var view = finalized.getArchitectureView();
+            assertThat(finalized.getRawScores()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("CP-1023", 55, "IP-1136", 80));
+            assertThat(view.getIncludedElements()).extracting(RequirementElementView::getNodeCode)
+                    .containsExactlyInAnyOrder("CP-1023", "IP-1136");
+            assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)
+                    .containsExactlyInAnyOrder("Communication and Information System Capabilities",
+                            "Electronic Treatment Records");
+            assertThat(view.getIncludedRelationships()).isEmpty();
+            return true;
+        }));
         assertThat(FrozenCatalogueContext.current()).isNull();
     }
 
@@ -167,7 +204,9 @@ class FrozenClusterAnalysisFinalizerTest {
         var c = DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(c.businessText(), true, 1,
                 c.provider(), c.username(), c.workspaceContext(), c.provenance(), c.analysisScope()));
-        var result = new AnalysisResult(Map.of("CP", 55, "IP", 80), List.of()); result.setStatus("SUCCESS");
+        // Like durable root results, the merged result retains its own catalogue tree.
+        var result = new AnalysisResult(Map.of("CP-1023", 55, "IP-1136", 80), List.of(retained("CP"), retained("IP")));
+        result.setStatus("SUCCESS");
         result.setViewContext(new ViewContext("commit", "draft", null, false, false, false));
         when(store.snapshot(context)).thenReturn(new ClusterAnalysisStore.Snapshot(context.operationId(),
                 ClusterAnalysisState.FINALIZING, 3, 1, 1, 0, 0, 1, 2, List.of(), result));
@@ -176,5 +215,49 @@ class FrozenClusterAnalysisFinalizerTest {
         when(metadata.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         doCallRealMethod().when(metadata).applyTo(any(RequirementArchitectureView.class));
         return context;
+    }
+
+    private static TaxonomyNodeDto retained(String root) {
+        if ("CP".equals(root)) {
+            var parent = new TaxonomyNodeDto(); parent.setCode("CP-1000"); parent.setTaxonomyRoot(root);
+            parent.setNameEn("Capabilities"); parent.setLevel(1);
+            var child = new TaxonomyNodeDto(); child.setCode("CP-1023"); child.setTaxonomyRoot(root);
+            child.setNameEn("Communication and Information System Capabilities");
+            child.setParentCode("CP-1000"); child.setLevel(2);
+            parent.getChildren().add(child);
+            return parent;
+        } else if ("IP".equals(root)) {
+            var child = new TaxonomyNodeDto(); child.setCode("IP-1136"); child.setTaxonomyRoot(root);
+            child.setNameEn("Electronic Treatment Records"); child.setLevel(1);
+            return child;
+        } else {
+            throw new IllegalArgumentException("Unsupported taxonomy fixture root: " + root);
+        }
+    }
+
+    private static RootCatalogueSnapshot retainedSnapshot(
+            com.taxonomy.analysis.dag.AnalysisOperationContext context, String root) {
+        var source = DurableClusterAnalysisExecutionTest.source(context);
+        var nodes = new java.util.ArrayList<RootCatalogueSnapshot.Node>();
+        nodes.add(snapshotNode(root, root, null, "Frozen " + root, 0));
+        if ("CP".equals(root)) {
+            nodes.add(snapshotNode("CP-1000", root, root, "Capabilities", 1));
+            nodes.add(snapshotNode("CP-1023", root, "CP-1000",
+                    "Communication and Information System Capabilities", 2));
+        } else if ("IP".equals(root)) {
+            nodes.add(snapshotNode("IP-1136", root, root, "Electronic Treatment Records", 1));
+        }
+        var overlay = new CatalogueOverlayService.OverlayMetadata(false, "fixture", null, null, null, 0);
+        return new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, source, root, nodes,
+                overlay, DurableClusterAnalysisExecutionTest.provenance());
+    }
+
+    private static RootCatalogueSnapshot.Node snapshotNode(
+            String code, String root, String parent, String name, int level) {
+        var node = new com.taxonomy.catalog.model.TaxonomyNode();
+        node.setCode(code); node.setTaxonomyRoot(root); node.setParentCode(parent);
+        node.setNameEn(name); node.setLevel(level);
+        return RootCatalogueSnapshot.Node.capture(node,
+                new CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false);
     }
 }
