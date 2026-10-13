@@ -75,8 +75,10 @@ test('profile change removes an already rendered link', async () => {
 test('failed capability refresh removes an already rendered link', async () => {
   const ui = surface({ ...admin, localUserManagementAllowed: true });
   await ui.refresh();
+  assert.equal(ui.elements.has('documentTemplateAdminEntry'), true);
   await ui.refresh(new Error('unavailable'));
   assert.equal(ui.elements.has('localUserManagementAdminEntry'), false);
+  assert.equal(ui.elements.has('documentTemplateAdminEntry'), false);
   assert.equal(ui.api.getContext().localUserManagementAllowed, false);
 });
 

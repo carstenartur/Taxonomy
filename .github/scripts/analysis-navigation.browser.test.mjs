@@ -100,14 +100,17 @@ test('administrator sees a usable account-management entry even when local creat
 test('local account route updates with capabilities; role loss and failed refresh fail closed',async()=>{
     const page=await fixture();try{
         await roles(page);
+        assert.equal(await page.locator('#documentTemplateAdminEntry').count(),1);
         await page.evaluate(async()=>{window.account.localUserManagementAllowed=true;await TaxonomyRoleSurface.refresh();});
         assert.equal(await page.locator('#localUserManagementLink').getAttribute('href'),'/taxonomy/admin/users');
         assert.equal(await page.locator('#userManagementMenuAction').getAttribute('href'),'/taxonomy/admin/users');
         await page.evaluate(async()=>{window.accountError=true;await TaxonomyRoleSurface.refresh();});
+        assert.equal(await page.locator('#documentTemplateAdminEntry').count(),0);
         assert.equal(await page.locator('#userManagementMenuAction').isVisible(),false);
         assert.equal(await page.locator('#localUserManagementAdminEntry').count(),0);
         assert.equal(await page.evaluate(()=>document.body.classList.contains('admin-unlocked')),false);
         await page.evaluate(async()=>{window.accountError=false;window.account={username:'reader',roles:['USER'],administrator:false,localUserManagementAllowed:false};await TaxonomyRoleSurface.refresh();});
+        assert.equal(await page.locator('#documentTemplateAdminEntry').count(),0);
         assert.equal(await page.locator('#localUserManagementAdminEntry').count(),0);
     }finally{await finish(page);}
 });

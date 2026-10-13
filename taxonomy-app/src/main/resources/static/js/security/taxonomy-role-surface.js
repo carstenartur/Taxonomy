@@ -94,9 +94,13 @@ window.TaxonomyRoleSurface = (function () {
     }
 
     function ensureDocumentTemplateAdminEntry() {
-        if (!isAdministrator()) return;
+        var existing = document.getElementById('documentTemplateAdminEntry');
+        if (!isAdministrator()) {
+            if (existing) existing.remove();
+            return;
+        }
         var adminTab = document.getElementById('tab-admin');
-        if (!adminTab || document.getElementById('documentTemplateAdminEntry')) return;
+        if (!adminTab || existing) return;
 
         var card = document.createElement('section');
         card.id = 'documentTemplateAdminEntry';
@@ -338,7 +342,7 @@ window.TaxonomyRoleSurface = (function () {
                     administrator: false, localUserManagementAllowed: false };
                 document.body.classList.remove('admin-unlocked');
                 document.dispatchEvent(new CustomEvent('taxonomy:roles-ready', { detail: context }));
-                ensureLocalUserManagementAdminEntry();
+                ensureAdminEntries();
                 ensureStableEvidenceAnchors();
                 applyStaticSurfaces(document);
                 installMutationObserver();
