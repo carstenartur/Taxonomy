@@ -158,6 +158,14 @@ async function reportFixture() {
     await page.evaluate(()=>{
         const panel=document.createElement('section'); panel.id='relationSearchReportPanel'; panel.hidden=true;
         document.getElementById('tab-analyze').append(panel);
+        const architecture=document.createElement('section'); architecture.id='architectureViewPanel';
+        architecture.style.display='none';
+        const content=document.createElement('div'); content.id='architectureViewContent';
+        architecture.append(content); document.body.append(architecture);
+        const placeholder=document.createElement('div'); placeholder.id='architecturePlaceholder';
+        document.body.append(placeholder);
+        const summary=document.createElement('button'); summary.id='viewSummary';
+        summary.style.display='none'; document.body.append(summary);
     });
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-scoring.js')});
     return page;
@@ -189,6 +197,20 @@ test('legacy nested reports remain readable; explicit null never revives old evi
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
         await page.evaluate(report=>TaxonomyScoring.acceptRelationSearchReport({relationSearchReport:null,architectureView:{relationSearchReport:report}}),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),false);
+    } finally { await finish(page); }
+});
+test('architecture-enabled result renders its relation report exactly once', async()=>{
+    const page=await reportFixture();
+    try {
+        await page.evaluate(report=>{
+            const result={relationSearchReport:report,architectureView:{
+                relationSearchReport:report,includedElements:[],includedRelationships:[],anchors:[]}};
+            TaxonomyScoring.acceptRelationSearchReport(result);
+            TaxonomyScoring.renderArchitectureView(result.architectureView);
+        },relationReport);
+        assert.equal(await page.locator('.relation-search-report').count(),1);
+        assert.equal(await page.locator('#relationSearchReportPanel .relation-search-report').count(),1);
+        assert.equal(await page.locator('#architectureViewContent .relation-search-report').count(),0);
     } finally { await finish(page); }
 });
 test('workspace draft carries the independent report even without a diagram',async()=>{
@@ -337,13 +359,24 @@ for (const entryPoint of ['runInteractiveAnalysis', 'runStreamingAnalysis']) {
             await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-browse.js')});
             await page.evaluate(report => {
                 TaxonomyState.taxonomyData = [{code: 'BP-1000', name: 'Zeiterfassung', children: []}];
+                TaxonomyState.currentView = 'summary';
+                TaxonomyState.currentArchView = {
+                    relationSearchReport: report, includedElements: [], includedRelationships: [], anchors: []};
                 TaxonomyScoring.acceptRelationSearchReport({relationSearchReport: report});
+                TaxonomyScoring.renderArchitectureView(TaxonomyState.currentArchView);
+                document.getElementById('viewSummary').style.display = '';
                 // The transport is deliberately inert; this case tests the real start/reset path.
                 window.EventSource = class { addEventListener() {} close() {} };
             }, relationReport);
             assert.equal(await page.locator('#relationSearchReportPanel').isVisible(), true);
+            assert.equal(await page.locator('#architectureViewPanel').isVisible(), true);
             await page.evaluate(entryPoint => TaxonomyScoring[entryPoint](), entryPoint);
             assert.equal(await page.evaluate(() => TaxonomyState.currentRelationSearchReport), null);
+            assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
+            assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+            assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
+            assert.equal(await page.locator('#viewSummary').evaluate(element =>
+                getComputedStyle(element).display === 'none'), true);
             assert.equal(await page.locator('#relationSearchReportPanel').isVisible(), false);
         } finally { await finish(page); }
     });
@@ -368,7 +401,13 @@ async function bootBrowseWithReport(page) {
         TaxonomyState.taxonomyData = [{code: 'BP-1000', name: 'Zeiterfassung', children: []}];
         TaxonomyState.currentScores = {'BP-1000': 70};
         TaxonomyState.lastAnalyzedText = 'Zeiterfassung';
+        TaxonomyState.currentView = 'summary';
+        TaxonomyState.currentArchView = {
+            relationSearchReport: report, includedElements: [], includedRelationships: [], anchors: []};
         TaxonomyScoring.acceptRelationSearchReport({relationSearchReport: report});
+        TaxonomyScoring.renderArchitectureView(TaxonomyState.currentArchView);
+        document.getElementById('viewSummary').style.display = '';
+        TaxonomyBrowse.switchView('summary');
     }, relationReport);
 }
 test('manual scoring never retains relations from the previous automatic assessment', async () => {
@@ -383,6 +422,11 @@ test('manual scoring never retains relations from the previous automatic assessm
         await page.locator('.manual-score-input').fill('49');
         await page.locator('#manualApplyBtn').click();
         assert.equal(await page.evaluate(() => TaxonomyState.currentScores['BP-1000']), 49);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+        assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
+        assert.equal(await page.locator('#viewSummary').evaluate(element =>
+            getComputedStyle(element).display === 'none'), true);
     } finally { await finish(page); }
 });
 test('the explicit stale-result reset removes its independent relations too', async () => {
@@ -393,6 +437,11 @@ test('the explicit stale-result reset removes its independent relations too', as
         await page.locator('#statusArea .btn-warning').click();
         assert.equal(await page.evaluate(() => TaxonomyState.currentScores), null);
         assert.equal(await page.evaluate(() => TaxonomyState.currentRelationSearchReport), null);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+        assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
+        assert.equal(await page.locator('#viewSummary').evaluate(element =>
+            getComputedStyle(element).display === 'none'), true);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(), false);
     } finally { await finish(page); }
 });
