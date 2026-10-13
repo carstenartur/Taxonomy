@@ -41,6 +41,12 @@ const checks = [];
 function passed(name) { checks.push(name); }
 
 async function navigateTo(pageName) {
+  if (pageName === 'help') {
+    await page.locator('#main-tab-help').click();
+    await page.locator('#tab-help').waitFor({ state: 'visible' });
+    return;
+  }
+
   const settingsDestination = {
     admin: 'adminNavTab',
     preferences: 'preferencesNavTab'

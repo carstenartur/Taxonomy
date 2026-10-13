@@ -342,7 +342,7 @@
     }
 
     function checkAdminStatus() {
-        updateAdminVisibility();
+        // Pending authority is not a denial: retain deep links until the account read settles.
         const account = window.TaxonomyRoleSurface
             ? window.TaxonomyRoleSurface.ready
             : fetch('/api/account/me').then(function (response) {

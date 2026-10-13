@@ -186,8 +186,9 @@ abstract class AbstractSeleniumContainerIT {
 
     private void openMainTab(String pageId) {
         waitForRoleSurfaceReady();
-        By tabSelector = By.cssSelector(
-                "#mainNavTabs .nav-link[data-page='" + pageId + "']");
+        By tabSelector = "help".equals(pageId)
+                ? By.id("main-tab-help")
+                : By.cssSelector("#mainNavTabs .nav-link[data-page='" + pageId + "']");
         WebElement tab = new WebDriverWait(driver, Duration.ofSeconds(20))
                 .until(ExpectedConditions.visibilityOfElementLocated(tabSelector));
         ((JavascriptExecutor) driver).executeScript(
@@ -202,6 +203,13 @@ abstract class AbstractSeleniumContainerIT {
                 .click();
         new WebDriverWait(driver, Duration.ofSeconds(20))
                 .until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-" + pageId)));
+    }
+
+    private void openApplicationSettings() {
+        WebElement settings = driver.findElement(By.id("applicationSettings"));
+        if (settings.getAttribute("open") == null) {
+            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+        }
     }
 
     private String baseUrl() {
@@ -342,6 +350,7 @@ abstract class AbstractSeleniumContainerIT {
         String englishText = analyzeTab.getText().trim();
 
         // Switch to German via lang selector
+        openApplicationSettings();
         org.openqa.selenium.support.ui.Select langSelect =
                 new org.openqa.selenium.support.ui.Select(
                         driver.findElement(By.id("langSelector")));
@@ -398,6 +407,7 @@ abstract class AbstractSeleniumContainerIT {
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("langSelector")));
 
         // Switch back to English to not affect any further tests
+        openApplicationSettings();
         org.openqa.selenium.support.ui.Select langSelect =
                 new org.openqa.selenium.support.ui.Select(
                         driver.findElement(By.id("langSelector")));

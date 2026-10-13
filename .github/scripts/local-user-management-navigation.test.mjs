@@ -89,3 +89,76 @@ for (const basePath of ['', '/taxonomy', '/gateway/taxonomy']) {
     assert.equal(ui.elements.get('localUserManagementLink').href, basePath + '/admin/users');
   });
 }
+
+// Run the real browse/account integration with a deliberately pending account read.
+// A denied account must redirect; an unresolved account must not destroy a deep link.
+const browseSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js', import.meta.url), 'utf8');
+const navigationSource = browseSource.slice(
+  browseSource.indexOf('    let administrator = false;'),
+  browseSource.indexOf('    function populateProviderDropdown('));
+
+function pendingNavigation(initialPage) {
+  let currentPage = initialPage;
+  let allowed = false;
+  let resolveAccount;
+  let rejectAccount;
+  const listeners = new Map();
+  const bodyClasses = new Set();
+  const ready = new Promise((resolve, reject) => { resolveAccount = resolve; rejectAccount = reject; });
+  const sandbox = {
+    document: {
+      body: { classList: { toggle(name, enabled) { enabled ? bodyClasses.add(name) : bodyClasses.delete(name); } } },
+      querySelectorAll() { return []; },
+      getElementById(id) { return { classList: { contains(name) { return name === 'd-none' && id !== 'tab-' + currentPage; } } }; },
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    },
+    window: {
+      TaxonomyRoleSurface: { ready, isAdministrator() { return allowed; } },
+      navigateToPage(page) { currentPage = page; }
+    },
+    initPromptEditor() {}, loadDiagnostics() {}
+  };
+  vm.runInNewContext(navigationSource + '\nwindow.checkAdminStatus = checkAdminStatus;', sandbox);
+  return {
+    start: () => sandbox.window.checkAdminStatus(),
+    page: () => currentPage,
+    unlocked: () => bodyClasses.has('admin-unlocked'),
+    resolve(administrator) { allowed = administrator; resolveAccount({ administrator }); },
+    reject() { rejectAccount(new Error('Account unavailable')); },
+    revoke() { allowed = false; listeners.get('taxonomy:roles-ready')({ detail: { administrator: false } }); }
+  };
+}
+
+for (const page of ['preferences', 'admin']) {
+  test('pending account preserves ' + page + ' deep link without unlocking controls', async () => {
+    const ui = pendingNavigation(page);
+    const checked = ui.start();
+    assert.equal(ui.page(), page);
+    assert.equal(ui.unlocked(), false);
+    ui.resolve(true);
+    await checked;
+    assert.equal(ui.page(), page);
+    assert.equal(ui.unlocked(), true);
+    ui.revoke();
+    assert.equal(ui.page(), 'analyze');
+    assert.equal(ui.unlocked(), false);
+  });
+
+  test('settled denial redirects ' + page + ' without unlocking controls', async () => {
+    const ui = pendingNavigation(page);
+    const checked = ui.start();
+    ui.resolve(false);
+    await checked;
+    assert.equal(ui.page(), 'analyze');
+    assert.equal(ui.unlocked(), false);
+  });
+
+  test('failed account read redirects ' + page + ' without unlocking controls', async () => {
+    const ui = pendingNavigation(page);
+    const checked = ui.start();
+    ui.reject();
+    await checked;
+    assert.equal(ui.page(), 'analyze');
+    assert.equal(ui.unlocked(), false);
+  });
+}
