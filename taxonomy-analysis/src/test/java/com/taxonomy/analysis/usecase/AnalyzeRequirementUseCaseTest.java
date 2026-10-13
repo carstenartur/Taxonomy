@@ -10,6 +10,7 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.ViewContext;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
 import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.export.DiagramSelectionConfig;
@@ -78,21 +79,28 @@ class AnalyzeRequirementUseCaseTest {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
-        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
-        evidence.setStatus("PARTIAL");
+        var evidence = assessedBusinessProcess();
+        var viewContext = new ViewContext("commit", "draft", null, false, false, false);
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
         when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         var result = useCase.analyze(command).analysisResult();
         assertThat(result.getAnalysisScope()).isEqualTo(scope);
         assertThat(result.getProvisionalRelations()).isEmpty();
         assertThat(result.getRelationSearchReport()).isNull();
         // The explicitly requested view only projects retained assessments; no relation is inferred.
-        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getStatus()).isEqualTo("SUCCESS");
         assertThat(result.getArchitectureView()).isNotNull();
-        assertThat(result.getArchitectureView().getAnalysisStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getArchitectureView().getAnalysisStatus()).isEqualTo("SUCCESS");
+        assertThat(result.getArchitectureView().getIncludedElements()).extracting("nodeCode")
+                .containsExactly("BP-1017");
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
+        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20));
+        assertThat(result.getViewContext()).isSameAs(viewContext);
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
                 architectureViewService);
+        verify(llmService).requireProviderAdmissible(null, false);
+        verify(llmService).analyzeWithBudget("requirement", scope);
         verify(llmService).clearRequestProvider();
     }
 
@@ -149,9 +157,11 @@ class AnalyzeRequirementUseCaseTest {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
-        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        var evidence = assessedBusinessProcess();
         evidence.setStatus("SUCCESS");
+        var viewContext = new ViewContext("commit", "draft", null, false, false, false);
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
         when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenThrow(
                 new com.taxonomy.analysis.service.AnalysisStoppedException(
@@ -164,12 +174,37 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getErrorMessage()).startsWith("CANCELLED");
         assertThat(result.getArchitectureView()).isNotNull();
         assertThat(result.getArchitectureView().getAnalysisStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getArchitectureView().getIncludedElements()).extracting("nodeCode")
+                .containsExactly("BP-1017");
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
+        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20));
+        assertThat(result.getViewContext()).isSameAs(viewContext);
         verifyNoInteractions(architectureViewService);
         // Exact read authority is resolved once and reported on the result.
         verify(repositoryStateService, org.mockito.Mockito.times(1))
                 .getViewContext("alice", "draft", command.workspaceContext());
+        verify(llmService).requireProviderAdmissible(null, false);
+        verify(llmService).analyzeWithBudget("requirement", scope);
+        verify(requirementRelationSearchService).search("requirement", Map.of("BP-1017", 20));
         assertThat(com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation.current()).isEmpty();
+    }
+
+    private static AnalysisResult assessedBusinessProcess() {
+        var root = node("BP-1000", null, "Business Processes", 1);
+        var support = node("BP-1327", "BP-1000", "Enable", 2);
+        var analysis = node("BP-1060", "BP-1327", "Analytical Support", 3);
+        var assessed = node("BP-1017", "BP-1060", "Acquire Data", 4);
+        root.getChildren().add(support);
+        support.getChildren().add(analysis);
+        analysis.getChildren().add(assessed);
+        return new AnalysisResult(Map.of("BP-1017", 20), List.of(root));
+    }
+
+    private static TaxonomyNodeDto node(String code, String parentCode, String name, int level) {
+        var node = new TaxonomyNodeDto();
+        node.setCode(code); node.setTaxonomyRoot("BP"); node.setParentCode(parentCode);
+        node.setNameEn(name); node.setLevel(level);
+        return node;
     }
 
     @Test

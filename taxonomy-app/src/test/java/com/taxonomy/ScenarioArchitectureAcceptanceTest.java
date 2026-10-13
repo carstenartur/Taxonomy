@@ -135,9 +135,16 @@ class ScenarioArchitectureAcceptanceTest {
             save("architecture.json", projection);
             assertThat(projection.path("snapshotId").asText()).isEqualTo(snapshotId);
             assertThat(projection.path("requirementText")).isEqualTo(requirement.get("text"));
-            // The required view is not every high-scored category: the SMS channel is optional.
-            assertThat(projection.path("elements").propertyNames()).containsExactlyInAnyOrder(
+            // Accepted concrete scores also remain visible; these are required scenario elements.
+            JsonNode projectedElements = projection.path("elements");
+            assertThat(projectedElements.propertyNames()).contains(
                     "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
+            assertThat(projectedElements.propertyNames()).doesNotContain("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
+            for (var element : projectedElements.properties()) {
+                assertThat(analysis.path("scores").has(element.getKey()))
+                        .as("Projected element %s must come from retained assessed evidence", element.getKey())
+                        .isTrue();
+            }
             assertThat(projection.path("relations").size()).isEqualTo(7);
             for (var relation : projection.path("relations").properties()) {
                 var value = relation.getValue();

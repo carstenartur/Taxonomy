@@ -175,6 +175,7 @@ class RelationSearchPerformanceTest {
             var decisions = protocol.evaluate(query);
             assertEquals(List.of(Outcome.UNRESOLVED), decisions.stream().map(Decision::outcome).toList());
             assertEquals("CLARIFICATION", journal.saved.state());
+            assertTrue(journal.saved.detail().getError().contains("Which record?"));
             assertEquals(unresolved, journal.saved.detail().getRawResponse());
         }
     }

@@ -354,7 +354,7 @@ class ArchitectureViewTests {
     void analyzeWithPressureReturnsExplicitPartialResultAndNextRunCanComplete() throws Exception {
         String request = "{\"businessText\":\"Provide secure voice communications\",\"includeArchitectureView\":true}";
         long mib = 1024L * 1024;
-        analyzeWithHeap(request, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
+        var partial = analyzeWithHeap(request, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Analysis-Operation-Id"))
                 .andExpect(jsonPath("$.status").value("PARTIAL"))
@@ -362,14 +362,34 @@ class ArchitectureViewTests {
                 .andExpect(jsonPath("$.warnings").value(hasItem(containsString("MEMORY_PRESSURE"))))
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.tree").isArray())
-                .andExpect(jsonPath("$.architectureView").doesNotExist());
+                .andExpect(jsonPath("$.architectureView").exists())
+                .andReturn();
+        assertHonestPartialView(partial.getResponse().getContentAsString());
 
         // Pressure history is per run: a stopped request must not poison the next one.
         analyzeWithHeap(request, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.errorMessage").doesNotExist())
-                .andExpect(jsonPath("$.architectureView").exists());
+                .andExpect(jsonPath("$.architectureView.analysisStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.architectureView.includedRelationships").isArray());
+    }
+
+    private static void assertHonestPartialView(String json) throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var payload = mapper.readTree(json);
+        var view = payload.path("architectureView");
+        assertThat(view.path("analysisStatus").asText()).isEqualTo("PARTIAL");
+        assertThat(view.path("includedRelationships")).isEmpty();
+        assertThat(view.path("totalRelationships").asInt()).isZero();
+        var elements = view.path("includedElements");
+        assertThat(elements.isArray()).isTrue();
+        if (elements.isEmpty()) {
+            assertThat(view.path("notes").toString()).contains("NO_ASSESSED_ARCHITECTURE:");
+        } else {
+            var scores = payload.path("scores");
+            elements.forEach(element -> assertThat(scores.has(element.path("nodeCode").asText())).isTrue());
+        }
     }
 
     private static AnalysisMemoryGuard.Sample healthyHeap() {

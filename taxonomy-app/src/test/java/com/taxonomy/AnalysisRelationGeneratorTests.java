@@ -233,7 +233,7 @@ class AnalysisRelationGeneratorTests {
     @Test
     void memoryPressureStopsEnrichmentButDoesNotPoisonTheNextRun() throws Exception {
         long mib = 1024L * 1024;
-        analyzeWithHeap(true, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
+        var partial = analyzeWithHeap(true, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Analysis-Operation-Id"))
                 .andExpect(jsonPath("$.status").value("PARTIAL"))
@@ -242,15 +242,33 @@ class AnalysisRelationGeneratorTests {
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.tree").isArray())
                 .andExpect(jsonPath("$.provisionalRelations").isEmpty())
-                .andExpect(jsonPath("$.architectureView").doesNotExist());
+                .andExpect(jsonPath("$.architectureView").exists())
+                .andReturn();
+        assertHonestPartialView(partial.getResponse().getContentAsString());
 
         analyzeWithHeap(true, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.errorMessage").doesNotExist())
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
-                .andExpect(jsonPath("$.architectureView").exists())
+                .andExpect(jsonPath("$.architectureView.analysisStatus").value("SUCCESS"))
                 .andExpect(jsonPath("$.architectureView.includedRelationships").isNotEmpty());
+    }
+
+    private static void assertHonestPartialView(String json) throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var view = mapper.readTree(json).path("architectureView");
+        assertThat(view.path("analysisStatus").asText()).isEqualTo("PARTIAL");
+        assertThat(view.path("includedRelationships")).isEmpty();
+        assertThat(view.path("totalRelationships").asInt()).isZero();
+        var elements = view.path("includedElements");
+        assertThat(elements.isArray()).isTrue();
+        if (elements.isEmpty()) {
+            assertThat(view.path("notes").toString()).contains("NO_ASSESSED_ARCHITECTURE:");
+        } else {
+            var scores = mapper.readTree(json).path("scores");
+            elements.forEach(element -> assertThat(scores.has(element.path("nodeCode").asText())).isTrue());
+        }
     }
 
     private static AnalysisMemoryGuard.Sample healthyHeap() {
