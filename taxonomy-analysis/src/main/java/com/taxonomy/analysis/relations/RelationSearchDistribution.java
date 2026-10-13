@@ -83,6 +83,31 @@ public final class RelationSearchDistribution {
     }
 
     /**
+     * A terminal worker failure settles the EXISTING grant with no semantic finding.
+     * Consumption is unknown, so reserve its entire allowance rather than inventing
+     * a zero-cost failure. Aggregation still verifies the deterministic grant identity.
+     */
+    public static WorkResult failed(Plan plan, Work grant) {
+        return failed(plan, grant, "RELATION_EVALUATION_FAILED");
+    }
+
+    /** Preserve actual stop codes: only ordinary evaluation failures permit independent work. */
+    public static WorkResult failed(Plan plan, Work grant, String reason) {
+        if (reason == null || !reason.matches("[A-Z_]{1,64}"))
+            throw new IllegalArgumentException("Invalid relation failure code");
+        if (!grant.preparationId().equals(plan.preparationId()) || grant.ordinal() >= plan.items().size())
+            throw new IllegalArgumentException("Foreign failed relation grant");
+        Item item = plan.items().get(grant.ordinal());
+        if (!item.targetRoot().equals(grant.targetRoot()) || grant.maxCalls() > item.maxQueries()
+                || grant.maxWorkItems() > item.maxQueries()) throw new IllegalArgumentException("Invalid failed relation grant");
+        Intent intent = intent(plan, item);
+        var unfinished = new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),
+                intent.roots().stream().map(Node::id).toList(), reason, "");
+        return new WorkResult(grant, new Result(List.of(), List.of(unfinished), List.of(), 0, 0, 0),
+                Math.min(grant.maxCalls(), grant.maxWorkItems()), reason);
+    }
+
+    /**
      * Return missing members of the current deterministic wave. Do not release
      * unused reservations until every member has a persisted result. This makes
      * reverse delivery equivalent and prevents completion races inflating quotas.
@@ -129,7 +154,9 @@ public final class RelationSearchDistribution {
             duration += result.durationMillis();
             progress.finished(intent, completed.stopReason().isEmpty() && result.searchExhausted());
             result.edges().forEach(progress::verified);
-            if (stop.isEmpty() && !completed.stopReason().isEmpty()) stop = completed.stopReason();
+            // An earlier non-blocking assessment failure must never hide a later execution stop.
+            if (!completed.stopReason().isEmpty() && (stop.isEmpty()
+                    || !blocksFurtherWork(stop) && blocksFurtherWork(completed.stopReason()))) stop = completed.stopReason();
         }
         progress.calls(calls);
         progress.finish(plan.warnings().isEmpty() && stop.isEmpty() && unfinished.isEmpty());
@@ -145,6 +172,10 @@ public final class RelationSearchDistribution {
         Node root = plan.targetRoots().stream().filter(n -> n.root().equals(item.targetRoot().code()))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("Missing prepared target root"));
         return new Intent(contribution, item.type(), item.direction(), List.of(root));
+    }
+
+    private static boolean blocksFurtherWork(String reason) {
+        return !reason.isEmpty() && !reason.equals("RELATION_EVALUATION_FAILED");
     }
 
     private record Schedule(List<Work> ready, Map<Integer, WorkResult> results, String pendingReason) { }
@@ -188,7 +219,9 @@ public final class RelationSearchDistribution {
                 if (!grant.equals(result.work())) throw new IllegalArgumentException("Result does not match its deterministic grant");
                 validateEvidence(plan, result);
                 checked.put(grant.ordinal(), result);
-                stopped |= !result.stopReason().isEmpty();
+                // A settled branch failure consumes its allowance, not the right of
+                // independently admitted branches to finish. Unknown stop kinds remain conservative.
+                stopped |= blocksFurtherWork(result.stopReason());
             }
             if (stopped) { reason = "INTERRUPTED"; break; }
             if (!missing.isEmpty()) { ready = List.copyOf(missing); break; }

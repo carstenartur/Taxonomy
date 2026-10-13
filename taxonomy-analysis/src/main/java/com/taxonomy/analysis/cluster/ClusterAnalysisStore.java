@@ -343,6 +343,16 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         if (run.state.terminal()) return;
         var work = requireWork(task);
         if (work.resultJson != null || work.failureReason != null) throw new IllegalStateException("Task already has a durable effect");
+        // Only an already admitted target grant can be represented as failed work.
+        // Never fabricate a missing preparation or release an unknown provider allowance.
+        if (task.taskType() == AnalysisTaskType.RELATION_ANALYSIS && work.inputJson != null && run.relationPlanJson != null) {
+            var plan = read(run.relationPlanJson, RelationSearchDistribution.Plan.class);
+            var grant = read(work.inputJson, RelationSearchDistribution.Work.class);
+            var failed = RelationSearchDistribution.failed(plan, grant, reason);
+            var results = new ArrayList<>(relationResults(run.id)); results.add(failed);
+            RelationSearchDistribution.combine(plan, results);
+            work.resultJson = json(failed);
+        }
         work.failureReason = reason; work.state = "FAILED"; work.finishedAt = System.currentTimeMillis();
     }
 
@@ -364,6 +374,12 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     private AnalysisResult completeContinuation(ClusterAnalysisRun run, AnalysisResult result, boolean cancelled) {
         var command = read(run.commandJson, AnalyzeRequirementCommand.class);
+        // Cooperative stops bypass FINALIZING, including requests without a continuation.
+        // Project only retained, already-authorized evidence before publishing that result.
+        if (command.includeArchitectureView() && result.getArchitectureView() == null) {
+            result.setArchitectureView(com.taxonomy.analysis.usecase.PartialArchitectureProjection.complete(
+                    result, null, command.maxArchitectureNodes()));
+        }
         var binding = command.continuationBinding();
         if (binding == null) return result;
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
@@ -646,8 +662,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var results = relationTasks.stream().filter(w -> w.settled && w.inputJson != null && w.resultJson != null)
                 .map(w -> read(w.resultJson, RelationSearchDistribution.WorkResult.class)).toList();
         List<AnalysisTaskMessage> admitted = new ArrayList<>();
-        boolean failed = relationTasks.stream().anyMatch(w -> w.failureReason != null);
-        if (!failed) for (var grant : RelationSearchDistribution.ready(plan, results)) {
+        for (var grant : RelationSearchDistribution.ready(plan, results)) {
             var id = AnalysisTaskId.relationWork(run.id, grant.targetRoot(), grant.ordinal());
             if (tasks.stream().anyMatch(w -> w.taskId.equals(id.value()))) continue;
             var header = new AnalysisEnvelope(2, AnalysisMessageType.RELATION_ANALYSIS_TASK, run.id, id,

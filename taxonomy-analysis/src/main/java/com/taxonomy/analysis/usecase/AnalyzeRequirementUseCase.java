@@ -122,11 +122,6 @@ public class AnalyzeRequirementUseCase {
                 try {
                     AnalysisRunControl.phase("RELATIONS", null);
                     runRelationTask(operation, command, result, persistHypotheses);
-                    if (result.getRelationSearchReport() == null
-                            || !isCooperativeStop(result.getRelationSearchReport().stopReason())) {
-                        AnalysisRunControl.phase("ARCHITECTURE", null);
-                        enrichWithArchitectureView(command, result);
-                    }
                 } catch (AnalysisStoppedException stopped) {
                     result.setStatus("PARTIAL");
                     result.setErrorMessage(stopped.getMessage());
@@ -134,8 +129,19 @@ public class AnalyzeRequirementUseCase {
                             ? java.util.List.<String>of() : result.getWarnings());
                     warnings.add(stopped.getMessage());
                     result.setWarnings(warnings);
+                } catch (RuntimeException relationFailure) {
+                    com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(relationFailure);
+                    if (!"ERROR".equals(result.getStatus())) result.setStatus("PARTIAL");
+                    String warning = "RELATION_EVALUATION_FAILED: retained node assessments remain usable; "
+                            + relationFailure.getClass().getSimpleName();
+                    var warnings = new java.util.ArrayList<>(result.getWarnings() == null ? java.util.List.<String>of() : result.getWarnings());
+                    warnings.add(warning); result.setWarnings(warnings);
+                    if (result.getErrorMessage() == null) result.setErrorMessage(warning);
                 }
             }
+            // Projection consumes retained evidence only. A failed/paused relation request
+            // must not prevent the user from seeing already accepted node assessments.
+            enrichWithArchitectureView(command, result);
             result.setViewContext(viewContext);
             result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
             return new AnalyzeRequirementResult(result);
@@ -242,17 +248,31 @@ public class AnalyzeRequirementUseCase {
         if (!command.includeArchitectureView() || result.getScores() == null) {
             return;
         }
-        RequirementArchitectureView archView = result.getRelationSearchReport() != null
-                ? architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(), command.maxArchitectureNodes(),
-                        result.getRelationSearchReport())
-                : architectureViewService.build(result.getScores(), command.businessText(),
+        RequirementArchitectureView archView = null;
+        try {
+            if (result.getRelationSearchReport() != null) {
+                archView = architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(),
+                        command.maxArchitectureNodes(), result.getRelationSearchReport());
+            } else if ("SUCCESS".equals(result.getStatus()) && command.analysisScope().includesRelations()
+                    && (requirementRelationSearch == null || !requirementRelationSearch.isEnabled())) {
+                // Preserve only the explicitly configured legacy path, never an error fallback.
+                archView = architectureViewService.build(result.getScores(), command.businessText(),
                         command.maxArchitectureNodes(), result.getProvisionalRelations());
-        DiagramViewMetadata meta = metadataPort.resolve();
-        archView.setViewTitle(meta.viewTitle());
-        archView.setViewDescription(meta.viewDescription());
-        archView.setContainmentEnabled(meta.containmentEnabled());
-        archView.setActiveRules(meta.activeRules());
-        archView.setAnalysisCoverage(result.getAnalysisCoverage());
+            }
+            archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
+            DiagramViewMetadata meta = metadataPort.resolve();
+            archView.setViewTitle(meta.viewTitle()); archView.setViewDescription(meta.viewDescription());
+            archView.setContainmentEnabled(meta.containmentEnabled()); archView.setActiveRules(meta.activeRules());
+        } catch (RuntimeException renderingFailure) {
+            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(renderingFailure);
+            if (!"ERROR".equals(result.getStatus()) && !"CANCELLED".equals(result.getStatus())) result.setStatus("PARTIAL");
+            var warnings = new java.util.ArrayList<>(result.getWarnings() == null ? java.util.List.<String>of() : result.getWarnings());
+            String warning = "ARCHITECTURE_VIEW_INCOMPLETE: using retained assessments; " + renderingFailure.getClass().getSimpleName();
+            warnings.add(warning); result.setWarnings(warnings);
+            if (result.getErrorMessage() == null) result.setErrorMessage(warning);
+            // Keep a successfully projected evidence view if only presentation metadata failed.
+            archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
+        }
         archView.setAnalysisStatus(result.getStatus());
         result.setArchitectureView(archView);
     }

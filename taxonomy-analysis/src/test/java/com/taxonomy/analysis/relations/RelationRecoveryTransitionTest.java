@@ -23,14 +23,14 @@ class RelationRecoveryTransitionTest {
 
     @Test
     void invalidNavigationCanBeRetriedWithoutRepeatingValidatedSourceExtraction() throws Exception {
-        assertRetry(false, 2, 4);
+        assertRetry(false, 3, 3);
     }
 
     private static void assertRetry(boolean failSource, int firstCalls, int continuationCalls) throws Exception {
         var journal = new Journal();
         var fixture = fixture(failSource);
         AnalysisResult paused = analyze(fixture, journal);
-        assertPause(paused, journal, firstCalls, fixture);
+        assertPartial(paused, journal, firstCalls, fixture);
         String failedKey = journal.decide("READY");
 
         AnalysisResult resumed = analyze(fixture, journal);
@@ -50,7 +50,7 @@ class RelationRecoveryTransitionTest {
         var journal = new Journal();
         var fixture = fixture(false);
         AnalysisResult paused = analyze(fixture, journal);
-        assertPause(paused, journal, 2, fixture);
+        assertPartial(paused, journal, 3, fixture);
         String failedKey = journal.decide("SKIPPED");
 
         AnalysisResult resumed = analyze(fixture, journal);
@@ -58,7 +58,7 @@ class RelationRecoveryTransitionTest {
         assertEquals("PARTIAL", resumed.getStatus());
         assertFalse(resumed.getRelationSearchReport().isSearchExhausted());
         assertEquals("SKIPPED", journal.entries.get(failedKey).state());
-        assertEquals(3, fixture.raw().get(), "only the remaining independent PRODUCES assessment is sent");
+        assertEquals(3, fixture.raw().get(), "independent PRODUCES was already evaluated; leaving the failed area open sends no request");
         assertTrue(resumed.getRelationSearchReport().result().trace().stream().anyMatch(trace -> trace.type().equals("PRODUCES")));
         assertTrue(resumed.getRelationSearchReport().result().trace().stream().noneMatch(trace -> trace.type().equals("CONSUMES")),
                 "the failed CONSUMES assessment must remain unknown, without a fabricated negative finding");
@@ -86,14 +86,14 @@ class RelationRecoveryTransitionTest {
         }
     }
 
-    private static void assertPause(AnalysisResult result, Journal journal, int calls,
+    private static void assertPartial(AnalysisResult result, Journal journal, int calls,
                                     RelationSearchUseCaseContract.Fixture fixture) {
         assertEquals("PARTIAL", result.getStatus());
-        assertNull(result.getArchitectureView(), "an unresolved provider failure pauses before architecture projection");
-        assertTrue(result.getRelationSearchReport().stopReason().startsWith("AWAITING_DECISION:"));
-        assertTrue(journal.paused);
+        assertNotNull(result.getArchitectureView(), "an invalid answer must not prevent partial architecture projection");
+        assertFalse(result.getRelationSearchReport().stopReason().startsWith("AWAITING_DECISION:"));
+        assertFalse(journal.paused);
         assertEquals(calls, fixture.raw().get());
-        var failure = journal.entries.values().stream().filter(checkpoint -> checkpoint.state().equals("FAILED")).findFirst().orElseThrow();
+        var failure = journal.entries.values().stream().filter(checkpoint -> checkpoint.state().equals("UNASSESSED")).findFirst().orElseThrow();
         assertEquals("invalid JSON", failure.detail().getRawResponse(), "raw failure evidence remains available");
         assertTrue(failure.detail().getError().startsWith("INVALID_RELATION_RESPONSE:"));
         assertTrue(failure.detail().getScores().isEmpty(), "invalid relations cannot become node-score evidence");
@@ -122,7 +122,7 @@ class RelationRecoveryTransitionTest {
         public RelationSearchReport previousRelations() { return previous; }
 
         String decide(String state) {
-            var failed = entries.values().stream().filter(checkpoint -> checkpoint.state().equals("FAILED")).findFirst().orElseThrow();
+            var failed = entries.values().stream().filter(checkpoint -> checkpoint.state().equals("UNASSESSED")).findFirst().orElseThrow();
             entries.put(failed.question().key(), new AnalysisCheckpointSession.Checkpoint(failed.question(), state, failed.detail()));
             paused = false;
             return failed.question().key();

@@ -63,16 +63,31 @@ public class AnalysisContinuationStore {
                 throw conflict("The operation is not awaiting a continuation decision");
             if (request.getContinuationVersion() == null || request.getContinuationVersion() != run.version)
                 throw conflict("A newer operation revision exists; refresh before deciding");
-            var question = question(run, request.getContinuationQuestion());
             if ("CONTINUE".equals(action) && "STOPPED".equals(run.state)
-                    && openQuestions(run).stream().allMatch(AnalysisRecoveryView.OpenQuestion::skipped)) {
+                    && questions(run).stream().noneMatch(q -> "FAILED".equals(q.state))) {
                 // No unresolved provider attempt is outstanding. Keep previously skipped areas open.
             } else {
-            if (question == null || !Set.of("FAILED", "SKIPPED").contains(question.state))
-                throw conflict("The selected question is not open");
-            if ("RETRY".equals(action)) question.state = "READY";
-            else if ("SKIP".equals(action) && "FAILED".equals(question.state)) question.state = "SKIPPED";
-            else throw conflict("Unsupported continuation decision");
+                // Resolve and validate the complete selection before modifying any row.
+                // One explicit decision authorizes only these questions at this exact revision.
+                var keys = request.getContinuationQuestions();
+                if (keys.isEmpty()) keys = request.getContinuationQuestion() == null
+                        ? List.of() : List.of(request.getContinuationQuestion());
+                if (keys.isEmpty() || keys.size() > MAX_CALLS || new HashSet<>(keys).size() != keys.size()
+                        || keys.stream().anyMatch(key -> key == null || key.isBlank()))
+                    throw conflict("Select unique open assessment identities");
+                if (request.getContinuationQuestion() != null
+                        && (keys.size() != 1 || !keys.getFirst().equals(request.getContinuationQuestion())))
+                    throw conflict("Conflicting single and multiple assessment selections");
+                if (!Set.of("RETRY", "SKIP").contains(action)) throw conflict("Unsupported continuation decision");
+                var selected = new ArrayList<AnalysisQuestionCheckpoint>();
+                for (var key : keys) {
+                    var question = question(run, key);
+                    if (question == null || !Set.of("FAILED", "SKIPPED", "UNASSESSED", "CLARIFICATION").contains(question.state)
+                            || "SKIP".equals(action) && "SKIPPED".equals(question.state))
+                        throw conflict("The selected assessment is not open for this decision");
+                    selected.add(question);
+                }
+                selected.forEach(question -> question.state = "RETRY".equals(action) ? "READY" : "SKIPPED");
             }
         }
         run.state = "RUNNING"; run.claimToken = UUID.randomUUID().toString();
@@ -281,7 +296,8 @@ public class AnalysisContinuationStore {
             return previous; // Cancellation already committed the canonical result; late workers cannot rewrite it.
         }
         if (previous != null && previous.getTree() != null) tree = previous.getTree();
-        AnalysisScope analysisScope = mapper.readValue(run.requestJson, AnalysisRequest.class).getAnalysisScope();
+        AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
+        AnalysisScope analysisScope = frozenRequest.getAnalysisScope();
         result.setAnalysisScope(analysisScope);
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
@@ -291,17 +307,18 @@ public class AnalysisContinuationStore {
         }
         var open = openQuestions(run);
         if ("CANCELLED".equals(run.state)) result.setStatus("CANCELLED");
-        else if (open.stream().anyMatch(q -> !q.skipped())) run.state = "PAUSED";
-        else if ("ERROR".equals(result.getStatus()) || cooperativeInterruption(result.getErrorMessage())) {
+        else if (questions(run).stream().anyMatch(q -> "FAILED".equals(q.state))) run.state = "PAUSED";
+        else if ("ERROR".equals(result.getStatus()) || cooperativeInterruption(result.getErrorMessage())
+                || result.getRelationSearchReport() != null && cooperativeInterruption(result.getRelationSearchReport().stopReason())) {
             // Runtime guards use these typed-reason prefixes at the existing result boundary.
             // A prior skipped question must not disguise unfinished independent work as complete.
             run.state = "STOPPED";
         } else if (questions(run).stream().anyMatch(q -> "READY".equals(q.state))
                 || relationBudgetStopped(result.getRelationSearchReport())) {
             run.state = "STOPPED";
-        } else if (open.stream().anyMatch(AnalysisRecoveryView.OpenQuestion::skipped)) {
+        } else if (!open.isEmpty()) {
             run.state = "COMPLETED_WITH_GAPS"; result.setStatus("PARTIAL");
-        } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "STOPPED";
+        } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "COMPLETED_WITH_GAPS";
         if (run.clusterOperationId != null) {
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
@@ -313,6 +330,8 @@ public class AnalysisContinuationStore {
             }
             result.setRawScores(raw); result.setReasons(reasons);
         }
+        if (!open.isEmpty() && !"CANCELLED".equals(result.getStatus()) && !"ERROR".equals(result.getStatus()))
+            result.setStatus("PARTIAL");
         Map<String, String> missing = new LinkedHashMap<>();
         for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key()))
             for (String node : question.nodes()) missing.put(node,
@@ -327,6 +346,10 @@ public class AnalysisContinuationStore {
         String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
                 ? "INTERRUPTED:" + run.state : null;
         result.setAnalysisCoverage(AnalysisCoverage.derive(analysisScope.selectedTree(tree), result.getRawScores(), result.getScores(), missing, interruption));
+        if (frozenRequest.isIncludeArchitectureView()) {
+            result.setArchitectureView(com.taxonomy.analysis.usecase.PartialArchitectureProjection.complete(
+                    result, result.getArchitectureView(), frozenRequest.getMaxArchitectureNodes()));
+        }
         if (result.getArchitectureView() != null) {
             var view = result.getArchitectureView(); view.setAnalysisCoverage(result.getAnalysisCoverage());
             view.setAnalysisStatus(result.getStatus());
@@ -463,7 +486,7 @@ public class AnalysisContinuationStore {
                 .setParameter("id", run.id).getResultList();
     }
     private List<AnalysisRecoveryView.OpenQuestion> openQuestions(AnalysisContinuationRun run) {
-        return questions(run).stream().filter(q -> Set.of("FAILED", "SKIPPED").contains(q.state))
+        return questions(run).stream().filter(q -> Set.of("FAILED", "SKIPPED", "UNASSESSED", "CLARIFICATION").contains(q.state))
                 .map(q -> new AnalysisRecoveryView.OpenQuestion(q.questionKey,
                         List.of(mapper.readValue(q.nodeCodes, String[].class)), q.error, q.attempts,
                         "SKIPPED".equals(q.state), q.error != null && q.error.startsWith("OUTCOME_UNCERTAIN"))).toList();

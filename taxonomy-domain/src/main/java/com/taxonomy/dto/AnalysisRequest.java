@@ -18,6 +18,12 @@ public class AnalysisRequest {
     private Long continuationVersion;
     private String continuationAction;
     private String continuationQuestion;
+    /** Explicit, revision-bound batch decision; empty retains the legacy single-question field. */
+    private java.util.List<String> continuationQuestions = java.util.List.of();
+    public java.util.List<String> getContinuationQuestions() { return continuationQuestions; }
+    public void setContinuationQuestions(java.util.List<String> value) {
+        continuationQuestions = value == null ? java.util.List.of() : java.util.List.copyOf(value);
+    }
     public boolean isResumable() { return resumable; }
     public void setResumable(boolean value) { resumable = value; }
     public String getContinuationId() { return continuationId; }

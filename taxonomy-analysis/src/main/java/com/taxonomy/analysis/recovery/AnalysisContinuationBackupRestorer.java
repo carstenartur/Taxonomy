@@ -34,7 +34,7 @@ public final class AnalysisContinuationBackupRestorer {
         if(!Set.of("NEW","RUNNING","STOPPED","PAUSED","CANCELLED","COMPLETED","COMPLETED_WITH_GAPS").contains(source.sourceState()))throw invalid();
         String state=Set.of("NEW","RUNNING").contains(source.sourceState())?"STOPPED":source.sourceState();
         bounded(source.requestJson(),MAX_QUESTION_CHARACTERS);var request=json.readValue(source.requestJson(),AnalysisRequest.class);
-        request.setContinuationId(targetId);request.setContinuationAction(null);request.setContinuationVersion(null);request.setContinuationQuestion(null);
+        request.setContinuationId(targetId);request.setContinuationAction(null);request.setContinuationVersion(null);request.setContinuationQuestion(null);request.setContinuationQuestions(null);
         AnalysisResult result;
         if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());
         else { bounded(source.resultJson(),MAX_RUN_CHARACTERS);result=json.readValue(source.resultJson(),AnalysisResult.class); }
@@ -45,7 +45,7 @@ public final class AnalysisContinuationBackupRestorer {
             if(!source.sourceId().equals(question.run()) || !ids.add(question.sourceId()) || !keys.add(question.questionKey())
                     || question.questionKey()==null || !question.questionKey().matches("(?:[a-f0-9]{64}|R[a-f0-9]{63})")
                     || question.attempts()<0 || question.attempts()>MAX_CALLS || question.startedAtEpochMillis()<0
-                    || !Set.of("READY","ATTEMPT","SUCCESS","FAILED","SKIPPED").contains(question.sourceState()))throw invalid();
+                    || !Set.of("READY","ATTEMPT","SUCCESS","FAILED","SKIPPED","UNASSESSED","CLARIFICATION").contains(question.sourceState()))throw invalid();
             hash(question.inputHash());text(question.provider(),128);if(question.error()!=null)bounded(question.error(),2048);bounded(question.nodeCodesJson(),MAX_QUESTION_CHARACTERS);
             var nodes=json.readValue(question.nodeCodesJson(),String[].class);if(nodes.length>MAX_CALLS)throw invalid();for(String node:nodes)text(node,320);
             payload=add(payload,question.prompt());payload=add(payload,question.detailJson());

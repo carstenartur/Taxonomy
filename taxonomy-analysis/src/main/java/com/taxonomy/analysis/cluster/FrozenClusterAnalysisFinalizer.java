@@ -3,10 +3,10 @@ package com.taxonomy.analysis.cluster;
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.PartialArchitectureProjection;
 import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
-import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import org.springframework.dao.DataAccessException;
@@ -14,10 +14,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -56,6 +53,8 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                     ? architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(),
                         command.maxArchitectureNodes(), result.getRelationSearchReport())
                     : scoredView(command, result);
+            view = PartialArchitectureProjection.complete(result, view, command.maxArchitectureNodes());
+            result.setArchitectureView(view); // Retain verified edges even if only presentation metadata fails.
             metadata.applyTo(view);
             view.setAnalysisCoverage(result.getAnalysisCoverage());
             view.setAnalysisStatus(result.getStatus());
@@ -63,12 +62,13 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
         } catch (DataAccessException databaseFailure) {
             throw databaseFailure;
         } catch (RuntimeException renderingFailure) {
-            result.setArchitectureView(null);
+            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(renderingFailure);
             result.setStatus("PARTIAL");
             String warning = "ARCHITECTURE_VIEW_INCOMPLETE: Frozen architecture rendering could not be completed.";
             var warnings = new ArrayList<>(result.getWarnings());
             warnings.add(warning); result.setWarnings(warnings);
             if (result.getErrorMessage() == null || result.getErrorMessage().isBlank()) result.setErrorMessage(warning);
+            result.setArchitectureView(PartialArchitectureProjection.complete(result, result.getArchitectureView(), command.maxArchitectureNodes()));
         }
         // The store rechecks authority, FINALIZING state and cancellation under its short lock.
         store.finalizeResult(context, result);
@@ -76,37 +76,8 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
 
     /** Projects scored frozen nodes and any score-only proposals without consulting global relations. */
     private static RequirementArchitectureView scoredView(AnalyzeRequirementCommand command, AnalysisResult result) {
-        var catalogue = Objects.requireNonNull(FrozenCatalogueContext.current());
-        var view = new RequirementArchitectureView();
-        var ranked = result.getScores().entrySet().stream().filter(entry -> entry.getValue() > 0)
-                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())
-                        .thenComparing(Map.Entry.comparingByKey())).toList();
-        int limit = command.maxArchitectureNodes() > 0 ? command.maxArchitectureNodes() : ranked.size();
-        var selected = ranked.stream().limit(limit).map(Map.Entry::getKey).collect(Collectors.toSet());
-        for (var score : ranked.stream().limit(limit).toList()) {
-            var node = catalogue.requireNode(score.getKey());
-            var detail = result.getScoreDetails().get(node.code());
-            var element = new RequirementElementView();
-            element.setNodeCode(node.code()); element.setTitle(node.nameEn()); element.setTaxonomySheet(node.taxonomyRoot());
-            element.setScoreDetail(detail); element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());
-            element.setRelevance(score.getValue() / 100.0); element.setOrigin(NodeOrigin.DIRECT_SCORED);
-            element.setAnchor(true); element.setSelectedForImpact(true);
-            element.setPresenceReason("Direct assessment in the admitted catalogue.");
-            element.setIncludedBecause(element.getPresenceReason());
-            var path = new LinkedList<String>();
-            RootCatalogueSnapshot.Node parent = node;
-            while (parent != null) {
-                path.addFirst(parent.code());
-                parent = parent.parentCode() == null ? null : catalogue.requireNode(parent.parentCode());
-            }
-            element.setHierarchyPath(String.join(" > ", path)); element.setTaxonomyDepth(path.size() - 1);
-            for (int index = path.size() - 2; index >= 0; index--) {
-                if (selected.contains(path.get(index))) { element.setParentNodeCode(path.get(index)); break; }
-            }
-            view.getIncludedElements().add(element);
-            view.getAnchors().add(new RequirementAnchor(node.code(), element.getDirectLlmScore(), element.getPresenceReason()));
-        }
-        view.setTotalElements(view.getIncludedElements().size()); view.setTotalAnchors(view.getAnchors().size());
+        var view = PartialArchitectureProjection.complete(result, null, command.maxArchitectureNodes());
+        var selected = view.getIncludedElements().stream().map(RequirementElementView::getNodeCode).collect(Collectors.toSet());
         if (result.getProvisionalRelations().isEmpty()) {
             view.getNotes().add("Frozen hierarchy-only projection of scored taxonomy nodes; no verified relationship evidence is available in this result.");
         } else {
@@ -124,7 +95,6 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
             view.setTotalRelationships(view.getIncludedRelationships().size());
             view.getNotes().add("Provisional score-only hypotheses use effective scores and compatibility rules; no relationship verification was performed.");
         }
-        if (ranked.size() > limit) view.getNotes().add("NODE_LIMIT: Complete score and provisional evidence remains in the analysis result.");
         return view;
     }
 }

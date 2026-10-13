@@ -50,7 +50,8 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Question question = new Question(key, digest(provider, input), provider, nodes, input);
         Checkpoint saved = current.store.prepare(question);
         question = saved.question();
-        if ("SUCCESS".equals(saved.state())) return copy(saved.detail());
+        if ("SUCCESS".equals(saved.state()) || "CLARIFICATION".equals(saved.state())) return copy(saved.detail());
+        if ("UNASSESSED".equals(saved.state())) return unassessed(saved.detail());
         if ("SKIPPED".equals(saved.state())) {
             var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);
             skipped.setError("RELATION_LEFT_OPEN"); return skipped;
@@ -64,12 +65,19 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             throw deferred;
         } catch (AnalysisStoppedException stopped) { throw stopped; }
         catch (RuntimeException failed) {
+            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failed);
             result = new LlmCallDetail(); result.setProvider(provider); result.setPrompt(input);
             result.setScores(Map.of()); result.setError("RELATION_FAILURE: " + failed.getClass().getSimpleName());
         }
         if (result.getError() != null && !result.getError().isBlank()
                 || result.getRawResponse() == null || result.getRawResponse().isBlank()) {
-            current.store.finish(question, "FAILED", copy(result)); throw paused();
+            // A valid answer with a question may contain useful sibling decisions.
+            // Preserve it for strict protocol replay, without marking it a success.
+            boolean clarification = result.getError() != null && result.getError().startsWith("RELATION_UNRESOLVED:")
+                    && result.getRawResponse() != null && !result.getRawResponse().isBlank();
+            current.store.finish(question, clarification ? "CLARIFICATION" : "UNASSESSED", copy(result));
+            current.store.checkActive(); // Storage/ownership failures remain blocking.
+            return clarification ? copy(result) : unassessed(result);
         }
         current.store.finish(question, "SUCCESS", copy(result));
         current.store.checkActive();
@@ -95,6 +103,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Checkpoint checkpoint = current.store.prepare(question);
         question = checkpoint.question();
         if ("SUCCESS".equals(checkpoint.state())) return copy(checkpoint.detail());
+        if ("UNASSESSED".equals(checkpoint.state())) return unassessed(checkpoint.detail());
         if ("SKIPPED".equals(checkpoint.state())) {
             var unknown = new LlmCallDetail();
             unknown.setScores(Map.of()); unknown.setReasons(Map.of());
@@ -117,6 +126,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             }
             throw stopped;
         } catch (RuntimeException failure) {
+            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failure);
             result = new LlmCallDetail();
             result.setProvider(provider); result.setPrompt(input); result.setScores(Map.of());
             result.setError(failure.getClass().getSimpleName() + ": "
@@ -133,14 +143,23 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         if (problem != null && !problem.isBlank()) {
             var evidence = copy(result); evidence.setError(problem);
             // Retain failed raw evidence for inspection, but never return its error zeros to traversal.
-            current.store.finish(question, "FAILED", evidence);
-            throw paused();
+            current.store.finish(question, "UNASSESSED", evidence);
+            current.store.checkActive();
+            return unassessed(evidence);
         }
         current.store.finish(question, "SUCCESS", copy(result));
         try { current.store.checkActive(); }
         catch (AnalysisStoppedException stopped) { throw stopped.withPartial(result); }
         return copy(result);
     }
+    /** Keep raw diagnostics, but never expose error fallback scores to traversal. */
+    private static LlmCallDetail unassessed(LlmCallDetail detail) {
+        var result = detail == null ? new LlmCallDetail() : copy(detail);
+        result.setScores(Map.of()); result.setReasons(Map.of()); result.setDiscrepancy(null);
+        if (result.getError() == null || result.getError().isBlank()) result.setError("UNASSESSED: no accepted assessment");
+        return result;
+    }
+
     private static AnalysisStoppedException paused() {
         return new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);
     }

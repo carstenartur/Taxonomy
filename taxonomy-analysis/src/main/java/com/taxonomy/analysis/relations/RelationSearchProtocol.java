@@ -57,7 +57,8 @@ public final class RelationSearchProtocol {
         List<Node> offeredNodes = nodes;
         return exchange(Step.SOURCES, candidateIds, prompt,
                 raw -> parseContributions(original, offeredNodes, candidateIds, raw),
-                answers -> answers.stream().anyMatch(a -> !a.question().isBlank()));
+                answers -> answers.stream().filter(a -> !a.question().isBlank())
+                        .map(a -> a.node().id() + ": " + a.question()).collect(java.util.stream.Collectors.joining("\n")));
     }
 
     private List<SourceAssessment> parseContributions(String original, List<Node> nodes,
@@ -126,7 +127,8 @@ public final class RelationSearchProtocol {
             """ + JSON.writeValueAsString(query);
         return exchange(query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE,
                 candidateIds, prompt, raw -> parseDecisions(query, candidateIds, raw),
-                answers -> answers.stream().anyMatch(d -> d.outcome() == Outcome.UNRESOLVED));
+                answers -> answers.stream().filter(d -> d.outcome() == Outcome.UNRESOLVED)
+                        .map(d -> d.targetId() + ": " + d.question()).collect(java.util.stream.Collectors.joining("\n")));
     }
 
     private List<Decision> parseDecisions(Query query, List<String> candidateIds, String raw) {
@@ -149,7 +151,7 @@ public final class RelationSearchProtocol {
     }
 
     private <T> T exchange(Step step, List<String> nodes, String prompt, Function<String, T> decode,
-                           java.util.function.Predicate<T> unresolved) {
+                           Function<T, String> clarification) {
         class Decoded {
             T value;
             boolean available;
@@ -162,7 +164,8 @@ public final class RelationSearchProtocol {
             String raw = complete.complete(step, nodes, prompt); answer.setRawResponse(raw);
             try {
                 decoded.value = decode.apply(raw);
-                if (unresolved.test(decoded.value)) answer.setError("RELATION_UNRESOLVED: review the retained response");
+                String questions = clarification.apply(decoded.value);
+                if (!questions.isBlank()) answer.setError("RELATION_UNRESOLVED: " + questions);
                 decoded.available = true;
             } catch (RelationSearchEngine.InvalidResponseException invalid) {
                 decoded.error = invalid;

@@ -46,6 +46,13 @@
         return false;
     }
     function partialResultMessage() {
+        if (!S.currentArchView) return text(
+            'Teilergebnis verfügbar. Für diesen Ergebnisstand liegt noch keine Architekturansicht vor. Offene Bewertungen bleiben erhalten.',
+            'Partial result available. No architecture view is retained for this result yet. Unassessed areas remain open.');
+        if (S.currentArchView && Array.isArray(S.currentArchView.includedElements) && !S.currentArchView.includedElements.length) {
+            return text('Noch keine bewertete Architektur verfügbar. Auftrag und offene Prüfungen bleiben erhalten.',
+                'No assessed architecture is available yet. The requirement and open assessments are retained.');
+        }
         return text(
             'Architektur-Teilergebnis verfügbar. Offene Bereiche sind nicht negativ bewertet. Globale Lücken-, Muster- und Empfehlungsaussagen bleiben bis zur Nachbewertung offen.',
             'Partial architecture available. Open areas are not negative assessments. Global gap, pattern and recommendation conclusions remain open until assessment completes.');
@@ -79,13 +86,17 @@
         if (c?.followupState === 'COMPLETED') label = text('Copilot abgeschlossen', 'Copilot complete');
         if (c?.followupState === 'COMPLETED_SCOPED') label = text('Gewählte Analyse abgeschlossen', 'Selected analysis complete');
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
-        if (busy && liveWork) return liveWork;
-        return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' requests complete')
+        var openCount = (r.openQuestions || []).length;
+        var relations = S.currentRelationSearchReport?.progress?.verifiedRelations;
+        var detail = (openCount ? ' · ' + openCount + text(' Prüfungen offen', ' assessments open') : '')
+            + (Number.isFinite(relations) ? ' · ' + relations + text(' Beziehungen bestätigt', ' relations verified') : '');
+        if (busy && liveWork) return liveWork + detail;
+        return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' requests complete') + detail
             + (r.currentNode && r.state === 'RUNNING' ? ' · ' + r.currentNode : '');
     }
     function update() {
         var r = S.analysisRecovery;
-        ui.update(message(), busy, Boolean(r && (!['COMPLETED', 'CANCELLED'].includes(r.state)
+        ui.update(message(), busy, Boolean(r && (['RUNNING', 'PAUSED', 'STOPPED'].includes(r.state)
             || current()?.followupState === 'RUNNING' || current()?.followupState === 'PAUSED')));
         renderCoverage();
     }
@@ -107,7 +118,10 @@
         S.currentReasons = result.reasons || {};
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
-        S.currentArchView = result.architectureView || null;
+        // A temporary response without a view does not erase the accepted same-scope
+        // architecture. New requirements/workspaces still go through their normal reset.
+        S.currentArchView = result.architectureView || (S.lastAnalyzedText === context.request.businessText ? S.currentArchView : null);
+        S.currentRelationSearchReport = result.relationSearchReport || null;
         S.lastAnalyzedText = context.request.businessText;
         S.storedBusinessText = context.request.businessText;
         S.lastAnalysisProvider = result.provider || context.request.provider;
@@ -149,6 +163,22 @@
         clearTimeout(poll);
         poll = setTimeout(function () { poll = null; refresh(); }, 1200);
     }
+    // Capture presentation before scoring touches lastAnalyzedText or hides its panels.
+    // Only the same continuation may retain this view; do not attach it to new evidence.
+    function retainArchitecture(context, action) {
+        var view = action !== 'START' && context.request.includeArchitectureView !== false
+            && S.lastAnalyzedText === context.request.businessText ? S.currentArchView : null;
+        var fields = view ? ['architectureViewPanel', 'architecturePlaceholder'].map(function (id) {
+            var element = document.getElementById(id);
+            return element ? { id: id, element: element, display: element.style.display } : null;
+        }).filter(Boolean) : [];
+        return function () {
+            if (!view || !inScope(context) || S.currentArchView !== view) return;
+            fields.forEach(function (field) {
+                if (document.getElementById(field.id) === field.element) field.element.style.display = field.display;
+            });
+        };
+    }
     async function run(action, question) {
         var c = current();
         if (!inScope(c) || busy || decisionBusy || stopped()) return;
@@ -157,18 +187,24 @@
         }
         var body = Object.assign({}, c.request, { resumable: true, continuationId: c.id,
             continuationAction: action || 'START', continuationVersion: S.analysisRecovery?.version,
-            continuationQuestion: question || null });
+            continuationQuestion: Array.isArray(question) ? (question.length === 1 ? question[0] : null) : question || null,
+            continuationQuestions: Array.isArray(question) && question.length > 1 ? question.slice() : [] });
+        var restoreArchitecture = retainArchitecture(c, body.continuationAction);
         ui.close(); setBusy(true); c.followupState = null; c.followups = {};
         S.analysisRecovery = Object.assign({}, S.analysisRecovery, { state: 'RUNNING' });
         update(); remember(); scheduleRead();
         try {
             var promise = window.TaxonomyScoring.runAnalysis({ continuation: body, recoveryManaged: true });
+            restoreArchitecture();
             if (!promise || typeof promise.then !== 'function') throw new Error(text(
                 'Die Analyse wurde von der Vorprüfung abgewiesen.', 'Analysis preflight rejected the start.'));
             var result = await promise;
             if (!inScope(c)) return;
+            restoreArchitecture();
             if (!result?.recovery) throw new Error(text('Keine bestätigte Fortsetzungsantwort.', 'No confirmed continuation response.'));
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
+            S.lastAnalysisStatus = result.status || 'UNKNOWN';
+            S.currentRelationSearchReport = result.relationSearchReport || null;
             c.observationError = null;
             c.pauseReason = ['PAUSED', 'STOPPED'].includes(result.recovery.state) ? result.errorMessage : null;
             setBusy(false); update(); await save();
@@ -180,27 +216,28 @@
             if (!inScope(c)) return;
             setBusy(false); c.observationError = error.message;
             // A rejected write may never have started. Keep its identity; do not fabricate a new run.
-            await refresh(); open(); ui.error(error.message);
+            await refresh(); if (!inScope(c)) return; open(); ui.error(error.message);
         } finally {
             clearTimeout(poll); poll = null;
-            if (inScope(c)) { setBusy(false); update(); if (S.analysisRecovery?.state === 'RUNNING') scheduleRead(); }
+            if (inScope(c)) { restoreArchitecture(); setBusy(false); update(); if (S.analysisRecovery?.state === 'RUNNING') scheduleRead(); }
         }
     }
     async function followups() {
         var c = current();
         if (!inScope(c) || busy || stopped()) return;
+        if ((S.analysisCoverage?.failedOrBlockedNodes || 0) > 0 || S.lastAnalysisStatus === 'PARTIAL'
+                || S.analysisRecovery?.state === 'COMPLETED_WITH_GAPS' || S.analysisRecovery?.openQuestions?.length) {
+            // Existing gap/recommendation algorithms infer absence from missing scores. They
+            // cannot safely make global claims with missing inputs; keep the useful architecture.
+            c.followupState = 'COMPLETED_WITH_GAPS';
+            window.TaxonomyAnalysis.renderPartialCopilot?.(partialResultMessage());
+            update(); await save(); return;
+        }
         if (window.TaxonomyAnalysisScope?.restrictsGlobalAnalysis(S.lastAnalysisScope || c.request.analysisScope)) {
             c.followupState = 'COMPLETED_SCOPED';
             window.TaxonomyAnalysis.renderPartialCopilot?.(text(
                 'Der gewählte Analyseumfang ist abgeschlossen. Globale Lücken, Muster und Empfehlungen benötigen eine vollständige Analyse mit Relationssuche.',
                 'The selected analysis scope is complete. Global gaps, patterns and recommendations require a complete analysis with relation search.'));
-            update(); await save(); return;
-        }
-        if ((S.analysisCoverage?.failedOrBlockedNodes || 0) > 0) {
-            // Existing gap/recommendation algorithms infer absence from missing scores. They
-            // cannot safely make global claims with missing inputs; keep the useful architecture.
-            c.followupState = 'COMPLETED_WITH_GAPS';
-            window.TaxonomyAnalysis.renderPartialCopilot?.(partialResultMessage());
             update(); await save(); return;
         }
         ui.close(); setBusy(true); c.followupState = 'RUNNING'; update();
@@ -254,23 +291,42 @@
         var options = [];
         var questions = r.openQuestions || [];
         var selected = questions.find(function (q) { return !q.skipped; }) || questions[0];
+        var selectedKeys = new Set(selected ? [selected.key] : []);
+        // Resolve presentation names only from the retained snapshot, never from a newer catalogue.
+        var names = new Map(), queue = Array.isArray(S.taxonomyData) ? S.taxonomyData.slice() : [], seen = new Set();
+        for (var at = 0; at < queue.length && at < 100000; at++) {
+            var node = queue[at]; if (!node || seen.has(node)) continue; seen.add(node);
+            names.set(node.code, C.language() === 'de' ? node.nameDe || node.nameEn : node.nameEn || node.nameDe);
+            if (Array.isArray(node.children) && queue.length + node.children.length <= 100000) queue.push.apply(queue, node.children);
+        }
+        function nodeLabel(q) { return (q.nodes || []).map(function (code) {
+            var name = names.get(code); return name && name !== code ? name + ' (' + code + ')' : code;
+        }).join(', '); }
+        function explanation(q) {
+            if (!q) return c.pauseReason || '';
+            if (q.error?.startsWith('RELATION_UNRESOLVED:')) return q.error.substring('RELATION_UNRESOLVED:'.length).trim();
+            if (q.outcomeUncertain) return text('Der Ausgang dieser Anfrage ist unklar. Eine Wiederholung benötigt Ihre Entscheidung.',
+                'The outcome of this request is uncertain. Repeating it requires your decision.');
+            return text('Diese Bewertung konnte nicht abgeschlossen werden. Andere verwertbare Ergebnisse bleiben erhalten.',
+                'This assessment could not be completed. Other usable results are retained.');
+        }
         if (!busy && !stopped() && selected) {
             options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Wiederholen', 'Retry'), label: text('LLM-Anfrage wiederholen und fortsetzen', 'Retry LLM request and continue'),
-                handler: function () { run('RETRY', selected.key); } });
+                handler: function () { if (selectedKeys.size) run('RETRY', Array.from(selectedKeys)); } });
             if (!selected.skipped) options.push({ id: 'analysisRecoverySkip', shortLabel: text('Offenlassen', 'Leave open'), label: text('Bereich offenlassen und fortfahren', 'Leave area unassessed and continue'),
-                handler: function () { run('SKIP', selected.key); } });
+                handler: function () { if (selectedKeys.size) run('SKIP', Array.from(selectedKeys)); } });
         }
-        if (!busy && r.state === 'STOPPED' && !stopped() && questions.every(function (q) { return q.skipped; })) {
+        if (!busy && r.state === 'STOPPED' && !stopped() ) {
             options.push({ id: 'analysisRecoveryContinue', label: text('Gespeicherten Stand fortsetzen', 'Continue saved progress'), handler: function () { run('CONTINUE'); } });
         } else if (!busy && r.state === 'COMPLETED' && !stopped()) {
             options.push({ id: 'analysisRecoveryRetryStage', label: text('Copilot fortsetzen', 'Continue Copilot'), handler: followups });
         }
-        if (!stopped() && (r.state !== 'COMPLETED' || !['COMPLETED', 'COMPLETED_SCOPED'].includes(c.followupState)))
+        if (!stopped() && (['RUNNING', 'PAUSED', 'STOPPED'].includes(r.state) || ['RUNNING', 'PAUSED'].includes(c.followupState)))
             options.push({ id: 'analysisRecoveryCancelDialog', shortLabel: text('Abbrechen', 'Cancel'), label: text('Lauf abbrechen', 'Cancel run'), handler: cancel });
         if (c.observationError || r.state === 'RUNNING') options.push({ id: 'analysisRecoveryRefresh', shortLabel: text('Aktualisieren', 'Refresh'), label: text('Status aktualisieren', 'Refresh status'), handler: refresh });
         ui.open('Copilot', message(), function (body, el) {
-            var note = el('p', selected?.error || c.pauseReason || '');
-            if (note.textContent) body.append(note);
+            var note = el('p', explanation(selected));
+            body.append(note);
             body.append(el('p', text('Gültige Bewertungen bleiben erhalten. Unbekannt bedeutet nicht „nicht relevant“.',
                 'Valid assessments are retained. Unknown does not mean irrelevant.')));
             if (c.observationError) body.append(el('p', c.observationError));
@@ -284,7 +340,8 @@
                 'Retry sends a new LLM request for the selected assessment and continues the analysis. Leave open continues the remaining analysis; the affected area stays unassessed.')));
             var assessmentState = el('p'), attempts = el('p'), uncertain = el('p');
             function updateSelected() {
-                note.textContent = selected.error || c.pauseReason || '';
+                note.textContent = explanation(selected);
+                if (technical) technical.textContent = selected.error || '';
                 assessmentState.textContent = selected.skipped
                     ? text('Bewertung offengelassen – betroffener Bereich nicht bewertet.', 'Assessment left unassessed – affected area remains open.')
                     : selected.error?.startsWith('RELATION_UNRESOLVED')
@@ -299,20 +356,67 @@
             if (questions.length > 1) {
                 var label = el('label', text('Offene LLM-Bewertung – betroffene Knoten: ', 'Open LLM assessment – affected nodes: '));
                 var select = el('select'); select.id = 'analysisRecoveryQuestion'; select.className = 'form-select';
-                questions.forEach(function (q) { var o = el('option', q.nodes.join(', ')); o.value = q.key; select.append(o); });
+                questions.forEach(function (q) { var o = el('option', nodeLabel(q)); o.value = q.key; select.append(o); });
                 select.value = selected.key;
                 select.addEventListener('change', function () {
                     selected = questions.find(function (q) { return q.key === select.value; });
-                    updateSelected();
-                    var skip = document.getElementById('analysisRecoverySkip'); if (skip) skip.disabled = selected.skipped;
+                    if (selectedKeys.size <= 1) { selectedKeys.clear(); selectedKeys.add(selected.key); }
+                    updateSelected(); updateSelection();
+                    if (multiple?.open) renderSelectionPage();
                     details.open = false; detailBody.replaceChildren(); loadedKey = null;
                 });
                 label.append(select); body.append(label);
             }
-            else body.append(el('p', text('Betroffene Knoten: ', 'Affected nodes: ') + selected.nodes.join(', ')));
-            updateSelected(); body.append(assessmentState, attempts, uncertain);
+            else body.append(el('p', text('Betroffene Knoten: ', 'Affected nodes: ') + nodeLabel(selected)));
+            var selectionSummary = el('p'); selectionSummary.id = 'analysisRecoverySelectionCount';
+            function updateSelection() {
+                selectionSummary.textContent = selectedKeys.size + text(' Prüfungen für diese Aktion ausgewählt.', ' assessments selected for this action.');
+                var retry = options.find(function (o) { return o.id === 'analysisRecoveryRetry'; });
+                if (retry) {
+                    retry.disabled = !selectedKeys.size;
+                    retry.label = selectedKeys.size > 1 ? text('Ausgewählte Prüfungen wiederholen', 'Retry selected assessments')
+                        : text('LLM-Anfrage wiederholen und fortsetzen', 'Retry LLM request and continue');
+                    var button = document.getElementById(retry.id);
+                    if (button) { button.disabled = retry.disabled; button.textContent = retry.label; button.setAttribute('aria-label', retry.label);
+                        if (button.dataset) button.dataset.fullLabel = retry.label; }
+                }
+                var skip = options.find(function (o) { return o.id === 'analysisRecoverySkip'; });
+                if (skip) {
+                    skip.disabled = !selectedKeys.size || questions.some(function (q) { return selectedKeys.has(q.key) && q.skipped; });
+                    var skipButton = document.getElementById(skip.id); if (skipButton) skipButton.disabled = skip.disabled;
+                }
+            }
+            var multiple, selectionPage, pageNumber = 0;
+            function renderSelectionPage() {
+                selectionPage.replaceChildren();
+                questions.slice(pageNumber * 50, (pageNumber + 1) * 50).forEach(function (q) {
+                    var label = el('label'); label.className = 'd-block';
+                    var check = el('input'); check.type = 'checkbox'; check.checked = selectedKeys.has(q.key);
+                    check.addEventListener('change', function () {
+                        if (check.checked) selectedKeys.add(q.key); else selectedKeys.delete(q.key); updateSelection();
+                    });
+                    label.append(check, el('span', ' ' + nodeLabel(q))); selectionPage.append(label);
+                });
+                if (questions.length > 50) {
+                    selectionPage.append(el('p', (pageNumber * 50 + 1) + '–' + Math.min((pageNumber + 1) * 50, questions.length) + ' / ' + questions.length));
+                    [['analysisRecoveryPreviousPage', -1, text('Vorherige Seite', 'Previous page')],
+                     ['analysisRecoveryNextPage', 1, text('Nächste Seite', 'Next page')]].forEach(function (entry) {
+                        var button = el('button', entry[2]); button.type = 'button'; button.id = entry[0]; button.className = 'btn btn-sm btn-outline-secondary';
+                        button.disabled = entry[1] < 0 ? pageNumber === 0 : (pageNumber + 1) * 50 >= questions.length;
+                        button.addEventListener('click', function () { if (!button.disabled) { pageNumber += entry[1]; renderSelectionPage(); } }); selectionPage.append(button);
+                    });
+                }
+            }
+            if (questions.length > 1 && !busy && !stopped()) {
+                multiple = el('details'); multiple.id = 'analysisRecoveryMultiple';
+                multiple.append(el('summary', text('Mehrere Prüfungen auswählen', 'Select multiple assessments')));
+                selectionPage = el('div'); multiple.append(selectionSummary, selectionPage); body.append(multiple);
+                multiple.addEventListener('toggle', function () { if (multiple.open) renderSelectionPage(); });
+            }
+            updateSelection(); updateSelected(); body.append(assessmentState, attempts, uncertain);
             var details = el('details'); details.append(el('summary', text('Prompt und Antwort anzeigen', 'Show prompt and response')));
-            var detailBody = el('div'); details.append(detailBody); body.append(details); var loadedKey = null;
+            var technical = el('p', selected.error || '');
+            var detailBody = el('div'); details.append(technical, detailBody); body.append(details); var loadedKey = null;
             details.addEventListener('toggle', async function () {
                 if (!details.open || loadedKey === selected.key) return;
                 var key = selected.key; loadedKey = key;
@@ -321,7 +425,7 @@
                     if (!inScope(c) || key !== selected.key) return;
                     detailBody.replaceChildren(el('h3', 'Prompt'), el('pre', evidence.prompt || text('Nicht gespeichert.', 'Not retained.')),
                         el('h3', text('Antwort', 'Response')), el('pre', evidence.rawResponse || text('Keine Antwort erhalten.', 'No response received.')));
-                } catch (error) { loadedKey = null; detailBody.textContent = error.message; }
+                } catch (error) { if (!inScope(c) || key !== selected.key) return; loadedKey = null; detailBody.textContent = error.message; }
             });
         }, options);
     }
@@ -346,7 +450,7 @@
         // Action buttons also carry data-code. Only actual catalogue rows get a badge.
         // Unchanged observations must not tear down/reinsert reading content on every heartbeat.
         tree.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
-            var code = node.getAttribute('data-code'), assessment = isOpen ? coverage.nodes[code] : null;
+            var code = node.getAttribute('data-code'), assessment = isOpen ? coverage.nodes?.[code] : null;
             var label = !assessment ? '' : assessment.reason && /^(FAILED|LEFT_OPEN|BLOCKED_BY|INTERRUPTED):/.test(assessment.reason)
                 ? text('Nicht bewertet', 'Unassessed') : assessment.descendants !== 'COMPLETE'
                     && assessment.state !== 'UNKNOWN' ? text('Unterbaum teilweise bewertet', 'Subtree partly assessed') : '';
@@ -384,6 +488,7 @@
         S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId,
             request: { businessText: input(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
+        S.currentRelationSearchReport = null;
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
         run('START');
     }
@@ -416,7 +521,7 @@
     document.addEventListener('taxonomy:analysis-draft-restored', restore);
     document.addEventListener('taxonomy:view-rendered', renderCoverage);
     document.addEventListener('taxonomy:analysis-draft-reset', function () {
-        clearTimeout(poll); poll = null; S.recoveryContext = null; S.analysisRecovery = null; S.analysisCoverage = null;
+        clearTimeout(poll); poll = null; S.recoveryContext = null; S.analysisRecovery = null; S.analysisCoverage = null; S.currentRelationSearchReport = null;
         generation = C.runtime.analysisGeneration || 0; setBusy(false); remember(); ui.close(); update();
     });
     document.getElementById('businessText')?.addEventListener('input', function () {
@@ -443,5 +548,6 @@
         refresh: refresh, cancel: cancel, renderCoverage: renderCoverage, partialResultMessage: partialResultMessage,
         isManaged: function () { return inScope(current()); },
         hasOpenEvaluations: function () { return Boolean(S.analysisCoverage?.failedOrBlockedNodes)
-            || ['PAUSED', 'STOPPED', 'CANCELLED'].includes(S.analysisRecovery?.state); } };
+            || Boolean(S.analysisRecovery?.openQuestions?.length)
+            || ['PAUSED', 'STOPPED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(S.analysisRecovery?.state); } };
 }());

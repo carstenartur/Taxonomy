@@ -48,16 +48,16 @@ public final class QuestionRecoveryProbe {
                 throw new AssertionError("successful question contacted provider again");
             });
             check(replay.getScores().get("BP") == 80, "checkpoint aliased mutable result");
-            try {
-                AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("IP"), "large input", () -> {
-                    calls.incrementAndGet(); return answer("IP", 0, "prompt too large");
-                });
-                throw new AssertionError("failed question did not pause");
-            } catch (AnalysisStoppedException paused) {
-                check(paused.reason() == AnalysisStoppedException.Reason.AWAITING_DECISION, "wrong pause reason");
-                check(paused.partialScores().isEmpty(), "error zero escaped as assessed evidence");
-            }
-            var failed = store.entries.values().stream().filter(e -> e.state().equals("FAILED")).findFirst().orElseThrow();
+            var invalid = AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("IP"), "large input", () -> {
+                calls.incrementAndGet(); return answer("IP", 0, "prompt too large");
+            });
+            check(invalid.getScores().isEmpty(), "error zero escaped as assessed evidence");
+            check("prompt too large".equals(invalid.getError()), "settled failure lost its diagnostic");
+            var failed = store.entries.values().stream().filter(e -> e.state().equals("UNASSESSED")).findFirst().orElseThrow();
+            var retained = AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("IP"), "large input", () -> {
+                throw new AssertionError("unselected failed question contacted provider again");
+            });
+            check(retained.getScores().isEmpty() && calls.get() == 2, "known failure was retried or converted to scores");
             store.entries.put(failed.question().key(), new AnalysisCheckpointSession.Checkpoint(failed.question(), "SKIPPED", failed.detail()));
             var unknown = AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("IP"), "large input", () -> {
                 throw new AssertionError("left-open question contacted provider");
@@ -69,11 +69,21 @@ public final class QuestionRecoveryProbe {
                 calls.incrementAndGet(); return answer("IP", 60, null);
             });
             check(retried.getScores().get("IP") == 60 && calls.get() == 3, "retry repeated successful work");
+            var incomplete = AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("CO", "CR"),
+                    "incomplete siblings", () -> answer("CO", 10, null));
+            check(incomplete.getScores().isEmpty(), "incomplete sibling question accepted");
+            check(incomplete.getError().startsWith("INCOMPLETE_ASSESSMENT:"), "missing keys need an explicit incomplete outcome");
+            // An uncertain physical attempt is different from a settled invalid answer.
+            var uncertain = store.entries.values().stream().filter(e -> e.state().equals("UNASSESSED")).findFirst().orElseThrow();
+            store.entries.put(uncertain.question().key(), new AnalysisCheckpointSession.Checkpoint(
+                    uncertain.question(), "FAILED", uncertain.detail()));
             try {
-                AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("CO", "CR"), "incomplete siblings", () -> answer("CO", 10, null));
-                throw new AssertionError("incomplete sibling question accepted");
+                AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("CO", "CR"), "incomplete siblings", () -> {
+                    throw new AssertionError("uncertain attempt contacted provider without a decision");
+                });
+                throw new AssertionError("uncertain physical outcome did not pause");
             } catch (AnalysisStoppedException expected) {
-                check(expected.reason() == AnalysisStoppedException.Reason.AWAITING_DECISION, "missing keys must pause");
+                check(expected.reason() == AnalysisStoppedException.Reason.AWAITING_DECISION, "uncertainty must still pause");
             }
             store.cancelled = true;
             try {
