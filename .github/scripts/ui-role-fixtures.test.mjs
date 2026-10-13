@@ -107,49 +107,53 @@ test('rejects invalid retry bounds before issuing a request', async () => {
   assert.equal(api.calls.length, 0);
 });
 
-test('waits for a role-authorized responsive destination before navigating', async () => {
-  let optionValues = ['analyze', 'architecture'];
-  let selectedPage = null;
-  let destinationVisible = false;
-  const responsive = {
-    async isVisible() { return true; },
-    locator(selector) {
-      if (selector === 'option') {
+for (const [pageId, navigationId] of [
+  ['admin', 'adminNavTab'],
+  ['preferences', 'preferencesNavTab']
+]) {
+  test(`${pageId} navigates through Settings, not the primary responsive selector`, async () => {
+    let selectedPage = null;
+    let destinationVisible = false;
+    let settingsOpened = false;
+    const responsive = {
+      async isVisible() { return true; },
+      async selectOption(value) { selectedPage = value; }
+    };
+    const page = {
+      locator(selector) {
+        if (selector === '#mobileMainNavigationSelect') return responsive;
+        if (selector === '#applicationSettings') {
+          return { async getAttribute(name) {
+            assert.equal(name, 'open');
+            return settingsOpened ? '' : null;
+          } };
+        }
+        if (selector === '#applicationSettings > summary') {
+          return { async click() { settingsOpened = true; } };
+        }
+        if (selector === `#applicationSettings #${navigationId}`) {
+          return {
+            async waitFor(options) {
+              assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
+              assert.equal(settingsOpened, true);
+            },
+            async click() { selectedPage = pageId; settingsOpened = false; }
+          };
+        }
+        assert.equal(selector, `#tab-${pageId}`);
         return {
-          async evaluateAll(mapper) {
-            return mapper(optionValues.map(value => ({ value })));
+          async waitFor(options) {
+            assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
+            destinationVisible = true;
           }
         };
       }
-      assert.equal(selector, 'option[value="admin"]');
-      return {
-        async waitFor(options) {
-          assert.deepEqual(options, { state: 'attached', timeout: 20_000 });
-          await Promise.resolve();
-          optionValues = [...optionValues, 'admin'];
-        }
-      };
-    },
-    async selectOption(pageId) {
-      assert.ok(optionValues.includes(pageId));
-      selectedPage = pageId;
-    }
-  };
-  const page = {
-    locator(selector) {
-      if (selector === '#mobileMainNavigationSelect') return responsive;
-      assert.equal(selector, '#tab-admin');
-      return {
-        async waitFor(options) {
-          assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
-          destinationVisible = true;
-        }
-      };
-    }
-  };
+    };
 
-  await navigateToPage(page, 'admin');
+    await navigateToPage(page, pageId);
 
-  assert.equal(selectedPage, 'admin');
-  assert.equal(destinationVisible, true);
-});
+    assert.equal(selectedPage, pageId);
+    assert.equal(destinationVisible, true);
+    assert.equal(settingsOpened, false);
+  });
+}

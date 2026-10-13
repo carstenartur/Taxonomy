@@ -41,13 +41,15 @@ function harness(language='en') {
  }
  function complete(r){snapshot={request:S.recoveryContext.request,recovery:r.recovery,result:r};
   // The real scoring boundary normally hydrates result data before resolving the promise.
-  S.lastAnalyzedText='Record status';S.lastAnalysisStatus=r.status;S.taxonomyData=r.tree;
-  if(r.architectureView)S.currentArchView=r.architectureView;S.currentRelationSearchReport=r.relationSearchReport;
+  if(!realScoring){
+   S.lastAnalyzedText='Record status';S.lastAnalysisStatus=r.status;S.taxonomyData=r.tree;
+   if(r.architectureView)S.currentArchView=r.architectureView;S.currentRelationSearchReport=r.relationSearchReport;
+  }
   pending(realScoring ? {ok:true,json:async()=>r} : r);
  }
  function loadScoring(){
   realScoring=true;
-  for(const id of ['architectureViewPanel','architectureViewContent','architecturePlaceholder','includeArchitectureView'])fields[id]=element();
+  for(const id of ['architectureViewPanel','architectureViewContent','architecturePlaceholder','includeArchitectureView','relationSearchReportPanel'])fields[id]=element();
   fields.includeArchitectureView.checked=true;
   document.createTextNode=text=>element('#text',text);document.documentElement={lang:language};document.querySelectorAll=()=>[];
   window.TaxonomyBrowse={showStatus(){},clearStatus(){},renderView(){},refreshAnalysisDuration(){},switchView(){}};
@@ -188,3 +190,36 @@ test('a fresh actual scoring request without an architecture never revives a pre
  h.recovery.startCopilot();h.complete(h.result('STOPPED',[question('a')],false));await settle();
  assert.equal(h.fields.architectureViewPanel.style.display,'none');assert.equal(h.S.currentArchView,null);
 });
+
+for(const path of ['retry','refresh']){
+ for(const evidence of ['missing','explicit null','legacy nested']){
+  test(`${path}: partial recovery keeps relation-report state and its visible panel consistent for ${evidence} evidence`,async()=>{
+   const h=harness();h.loadScoring();h.recovery.startCopilot();h.complete(h.result());await settle();
+   const accepted=h.S.currentRelationSearchReport,view=h.S.currentArchView;
+   const panel=h.fields.relationSearchReportPanel,markup=panel.innerHTML;
+   assert.equal(panel.hidden,false);assert.ok(markup);
+   const next=h.result('STOPPED',[question('a')],false);
+   const replacement={progress:{verifiedRelations:23}};
+   delete next.relationSearchReport;
+   if(evidence==='explicit null')next.relationSearchReport=null;
+   if(evidence==='legacy nested')next.architectureView={...view,relationSearchReport:replacement};
+   if(path==='retry'){
+    h.recovery.open();h.act('analysisRecoveryRetry');h.complete(next);await settle();
+   }else{
+    h.snapshot(next);await h.recovery.refresh();
+   }
+   if(evidence==='missing'){
+    assert.equal(h.S.currentRelationSearchReport,accepted);
+    assert.equal(panel.hidden,false);assert.equal(panel.innerHTML,markup);
+    assert.equal(h.S.currentArchView,view);
+   }else if(evidence==='explicit null'){
+    assert.equal(h.S.currentRelationSearchReport,null);
+    assert.equal(panel.hidden,true);assert.equal(panel.innerHTML,'');
+    assert.equal(h.S.currentArchView,view);
+   }else{
+    assert.equal(h.S.currentRelationSearchReport,replacement);
+    assert.equal(panel.hidden,false);assert.ok(panel.innerHTML);
+   }
+  });
+ }
+}

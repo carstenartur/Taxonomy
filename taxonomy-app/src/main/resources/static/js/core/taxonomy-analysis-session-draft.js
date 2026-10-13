@@ -241,6 +241,7 @@
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
+        S.currentRelationSearchReport = null;
         S.storedBusinessText = null;
         S.lastAnalyzedText = null;
         S.evaluatedNodes = new Set();
@@ -289,6 +290,11 @@
             S.currentDiscrepancies = payload.discrepancies || [];
             S.currentProductCoverageGaps = payload.productCoverageGaps || [];
             S.currentArchView = payload.architectureView || null;
+            // Hydration precedes renderer readiness; never depend on the scoring module here.
+            var report = Object.prototype.hasOwnProperty.call(payload, 'relationSearchReport')
+                ? payload.relationSearchReport : payload.architectureView?.relationSearchReport;
+            S.currentRelationSearchReport = report && typeof report === 'object' && !Array.isArray(report)
+                ? report : null;
             S.storedBusinessText = payload.storedBusinessText || null;
             S.lastAnalyzedText = payload.lastAnalyzedText === undefined
                 ? null : payload.lastAnalyzedText;
@@ -341,6 +347,7 @@
         window.TaxonomyBrowse.renderView(S.taxonomyData, S.currentScores);
         window.TaxonomyBrowse.updateExportGroupVisibility();
         window.TaxonomyScoring.renderArchitectureView(S.currentArchView);
+        window.TaxonomyScoring.renderIndependentRelationSearchReport?.(S.currentRelationSearchReport);
         window.TaxonomyScoring.renderSuggestedRelations(payload.provisionalRelations || []);
 
         var summaryButton = document.getElementById('viewSummary');

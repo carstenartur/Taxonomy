@@ -221,38 +221,34 @@ export async function runRoleStateFlow({
     tasks: []
   };
 
-  const adminTab = page.locator('#adminNavTab');
-  const responsiveNavigation = page.locator('#mobileMainNavigationSelect');
+  const settingsMenu = page.locator('#applicationSettings');
+  const settingsLauncher = page.locator('#applicationSettings > summary');
+  const adminLink = page.locator('#adminNavTab');
+  const preferencesLink = page.locator('#preferencesNavTab');
   if (role === 'ADMIN') {
-    if (await responsiveNavigation.isVisible().catch(() => false)) {
-      await page.waitForFunction(() => {
-        const selector = document.querySelector('#mobileMainNavigationSelect');
-        return selector && Array.from(selector.options)
-          .some(option => option.value === 'admin');
-      }, null, { timeout: 20_000 });
-      assert(await responsiveNavigation.locator('option[value="admin"]').count() === 1,
-        'ADMIN responsive navigation is unavailable after role authorization');
-    } else {
-      await page.waitForFunction(() => {
-        const link = document.querySelector('#adminNavTab a[data-page="admin"]');
-        return link && link.getClientRects().length > 0;
-      }, null, { timeout: 20_000 });
-      const adminLink = adminTab.locator('a[data-page="admin"]');
-      await adminLink.scrollIntoViewIfNeeded();
-      assert(await adminLink.isVisible(),
-        'ADMIN desktop navigation is unavailable after role authorization');
-    }
-    passed('admin role navigation');
+    if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
+    await adminLink.waitFor({ state: 'visible', timeout: 20_000 });
+    assert(await adminLink.isVisible(),
+      'ADMIN cannot discover Administration in Settings after role authorization');
+    await adminLink.click();
+    await page.locator('#tab-admin').waitFor({ state: 'visible', timeout: 20_000 });
+    if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
+    await preferencesLink.waitFor({ state: 'visible', timeout: 20_000 });
+    assert(await preferencesLink.isVisible(),
+      'ADMIN cannot discover Preferences in Settings after role authorization');
+    await preferencesLink.click();
+    await page.locator('#tab-preferences').waitFor({ state: 'visible', timeout: 20_000 });
+    passed('admin Settings navigation');
   } else {
-    await page.locator('#adminLockBtn').waitFor({ state: 'visible', timeout: 15_000 });
-    if (await responsiveNavigation.isVisible().catch(() => false)) {
-      const responsivePages = await responsiveNavigation.locator('option').evaluateAll(options =>
-        options.map(option => option.value));
-      assert(!responsivePages.includes('admin'),
-        `${role} must not see admin in responsive navigation`);
-    }
-    assert(!(await adminTab.isVisible().catch(() => false)), `${role} must not see admin navigation`);
-    passed('role-specific navigation');
+    if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
+    assert(!(await adminLink.isVisible().catch(() => false))
+      && !(await preferencesLink.isVisible().catch(() => false)),
+    `${role} must not see Administration or Preferences in Settings`);
+    const userManagementLink = page.locator('#userManagementMenuAction');
+    assert(!(await userManagementLink.isVisible().catch(() => false)),
+      `${role} must not see user management in Settings`);
+    passed('role-specific Settings denial');
+    await settingsLauncher.click();
   }
 
   await navigateToPage(page, 'analyze');
@@ -268,9 +264,7 @@ export async function runRoleStateFlow({
     const primaryRect = primary?.getBoundingClientRect();
     const responsiveNavigation = document.getElementById('mobileMainNavigation');
     const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
-    const taskJump = document.getElementById('mobileCurrentTaskBtn');
     const responsiveRect = responsiveNavigation?.getBoundingClientRect();
-    const taskJumpRect = taskJump?.getBoundingClientRect();
     const authorizedPages = Array.from(
       document.querySelectorAll('#mainNavTabs .nav-link[data-page]'))
       .filter(link => {
@@ -278,7 +272,9 @@ export async function runRoleStateFlow({
         return item && getComputedStyle(item).display !== 'none';
       })
       .map(link => link.dataset.page);
-    const responsivePages = Array.from(responsiveSelect?.options || [], option => option.value);
+    const responsivePages = Array.from(responsiveSelect?.options || [], option => option)
+      .filter(option => option.value && !option.disabled)
+      .map(option => option.value);
     const focusable = Boolean(primary && !primary.disabled
       && primary.tabIndex >= 0 && getComputedStyle(primary).visibility !== 'hidden');
     return {
@@ -290,10 +286,8 @@ export async function runRoleStateFlow({
         && responsiveRect.width > 0 && responsiveRect.height > 0),
       responsiveNavigationInsideViewport: Boolean(responsiveRect
         && responsiveRect.top >= 0 && responsiveRect.bottom <= window.innerHeight),
-      taskJumpVisible: Boolean(taskJumpRect && taskJumpRect.width > 0 && taskJumpRect.height > 0),
-      taskJumpInsideViewport: Boolean(taskJumpRect
-        && taskJumpRect.top >= 0 && taskJumpRect.bottom <= window.innerHeight),
-      taskJumpFocusable: Boolean(taskJump && !taskJump.disabled && taskJump.tabIndex >= 0),
+      taskReachable: Boolean((progressRect && progressRect.top < window.innerHeight)
+        || (primaryRect && primaryRect.top >= 0 && primaryRect.bottom <= window.innerHeight)),
       authorizedPages,
       responsivePages,
       primaryVisible: Boolean(primaryRect && primaryRect.width > 0 && primaryRect.height > 0),
@@ -324,18 +318,15 @@ export async function runRoleStateFlow({
     assert(taskSurface.responsiveNavigationVisible
       && taskSurface.responsiveNavigationInsideViewport,
     'Responsive section navigation is not discoverable before any automatic scroll');
-    assert(taskSurface.taskJumpVisible && taskSurface.taskJumpInsideViewport
-      && taskSurface.taskJumpFocusable,
-    'Responsive current-task jump is not visible and keyboard reachable');
+    assert(taskSurface.taskReachable,
+      'Neither task progression nor the primary action is initially reachable');
     assert(JSON.stringify(taskSurface.responsivePages)
       === JSON.stringify(taskSurface.authorizedPages),
     `Responsive destinations differ from authorized tabs: ${JSON.stringify(taskSurface)}`);
     assert(taskSurface.progressTop <= taskSurface.viewportHeight
-      || taskSurface.taskJumpInsideViewport,
-    `Neither task progress nor its explicit current-task jump is initially reachable: `
+      || taskSurface.primaryInsideViewport,
+    `Neither task progression nor the primary action is initially reachable: `
       + `${JSON.stringify(taskSurface)}`);
-    assert(taskSurface.primaryInsideViewport || taskSurface.taskJumpInsideViewport,
-      'Neither the primary action nor its explicit task jump is initially visible');
   }
   assert(taskSurface.operationalCollapsed && taskSurface.operationalContainsOriginalSurfaces,
     'Operational status must be collapsed by default while retaining original detail surfaces');
@@ -733,9 +724,8 @@ export async function runRoleStateFlow({
     const navigation = document.getElementById('mainNavTabs');
     const responsiveNavigation = document.getElementById('mobileMainNavigation');
     const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
-    const taskJump = document.getElementById('mobileCurrentTaskBtn');
     const responsiveRect = responsiveNavigation?.getBoundingClientRect();
-    const taskJumpRect = taskJump?.getBoundingClientRect();
+    const selectorRect = responsiveSelect?.getBoundingClientRect();
     const authorizedPages = Array.from(navigation?.querySelectorAll('.nav-link[data-page]') || [])
       .filter(link => {
         const item = link.closest('.nav-item');
@@ -754,9 +744,12 @@ export async function runRoleStateFlow({
       desktopNavigationDisplayed: getComputedStyle(navigation).display !== 'none',
       responsiveNavigationVisible: Boolean(responsiveRect
         && responsiveRect.width > 0 && responsiveRect.height > 0),
-      taskJumpSize: taskJumpRect
-        ? { width: taskJumpRect.width, height: taskJumpRect.height } : null,
-      responsivePages: Array.from(responsiveSelect?.options || [], option => option.value),
+      responsiveSelectorKeyboardReachable: Boolean(responsiveSelect
+        && !responsiveSelect.disabled && responsiveSelect.tabIndex >= 0
+        && selectorRect && selectorRect.width > 0 && selectorRect.height > 0),
+      responsivePages: Array.from(responsiveSelect?.options || [], option => option)
+        .filter(option => option.value && !option.disabled)
+        .map(option => option.value),
       authorizedPages
     };
   });
@@ -770,9 +763,8 @@ export async function runRoleStateFlow({
     assert(!taskHierarchy.desktopNavigationDisplayed
       && taskHierarchy.responsiveNavigationVisible,
     'Narrow viewport must retain explicit responsive navigation after task interactions');
-    assert(taskHierarchy.taskJumpSize?.width >= 44
-      && taskHierarchy.taskJumpSize?.height >= 44,
-    `Current-task jump touch target regressed: ${JSON.stringify(taskHierarchy)}`);
+    assert(taskHierarchy.responsiveSelectorKeyboardReachable,
+      'Responsive section selector is not keyboard reachable after task interactions');
     assert(JSON.stringify(taskHierarchy.responsivePages)
       === JSON.stringify(taskHierarchy.authorizedPages),
     `Responsive navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);

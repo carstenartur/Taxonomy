@@ -124,6 +124,11 @@ workflow YAML:
 ./mvnw test -Parchimate-import-tests -pl taxonomy-app
 ./mvnw -B verify -pl taxonomy-app -am \
   -DskipITs=false -Dit.test=KeycloakSecurityContainerIT
+
+# Draft payload persistence and responsive-navigation source contracts
+./mvnw -pl taxonomy-app -am \
+  -Dtest=AnalysisWorkingDraftMvcContractTest,AnalysisWorkingDraftServiceTest,TaxonomyResponsiveNavigationContractTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 The architecture suite needs the complete reactor's production outputs for its
@@ -156,6 +161,14 @@ Valid suite names, profiles and focused commands are defined by
 `.github/ui-acceptance-matrix.json` and `.mvn/verification-suites.json`. Browser
 evidence is written below `target/ui-verification/`; Java integration results are
 written to the normal Failsafe report directory.
+
+The role-state browser suite exercises Administration and Preferences through the
+Settings menu. Those destinations are not entries in the primary responsive
+selector; selector comparisons must ignore its empty disabled placeholder. At
+narrow widths, task reachability is established by the visible task progression
+or primary analysis action, not the current-task jump that the compact header
+intentionally hides. These focused checks do not replace the full browser matrix
+or the canonical verification command.
 
 ## Complete plugin profile
 

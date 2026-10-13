@@ -303,7 +303,7 @@ test('shows fixed node totals and distinguishes direct assessments from pruned d
     f.monitor.stop();
 });
 
-test('keeps relation work visible during provider phases and separates budget from completion', async () => {
+test('preserves provider wait reasons while showing relation work and its separate budget', async () => {
     const f = fixture(async () => response({ ...snapshot(), relationProgress: {
         totalSources: 40, assessedSources: 32, totalSearches: 80, completedSearches: 28,
         unresolvedSearches: 4, pendingSearches: 48, calls: 24, maxCalls: 24, verifiedRelations: 12,
@@ -313,7 +313,8 @@ test('keeps relation work visible during provider phases and separates budget fr
     await f.step(0);
     const text = f.elements.get('analysisLiveProgress').textContent;
     assert.match(text, /28 of 80/);
-    assert.match(text, /Assessing relationships/);
+    assert.match(text, /Waiting for LLM response/);
+    assert.doesNotMatch(text, /Assessing relationships/);
     assert.match(text, /BP-1.*IP/);
     assert.match(text, /CONSUMES/);
     assert.match(text, /24.*24/);

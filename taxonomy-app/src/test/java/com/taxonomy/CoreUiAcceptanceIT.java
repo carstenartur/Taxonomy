@@ -99,9 +99,19 @@ class CoreUiAcceptanceIT {
         assertThat(architectureTab.getAttribute("tabindex")).isEqualTo("0");
         assertThat(driver.findElement(By.id("tab-architecture")).isDisplayed()).isTrue();
 
-        WebElement adminTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='admin']"));
-        assertThat(adminTab.isDisplayed()).isTrue();
+        WebElement settings = driver.findElement(
+                By.cssSelector("#applicationSettings > summary"));
+        settings.click();
+        WebElement adminLink = wait.until(ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#applicationSettings #adminNavTab")));
+        adminLink.click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-admin")));
+
+        settings.click();
+        WebElement preferencesLink = wait.until(ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#applicationSettings #preferencesNavTab")));
+        preferencesLink.click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-preferences")));
     }
 
     private void dismissOnboardingWhenShown() {

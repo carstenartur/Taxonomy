@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
+const recoverySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function fixture(options = {}) {
     const statuses = [], calls = [], observations = [], renders = [], order = [], progressActions = [];
     let rejectRequest, activeMonitor;
@@ -40,7 +41,20 @@ function fixture(options = {}) {
         activeMonitor = monitor;
         return monitor;
     } }; }
-    return { window, state, sessionState, statuses, calls, observations, progress, renders, order,
+    function loadRecovery() {
+        window.__TaxonomyAnalysisSessionContext = { S: state,
+            runtime: { workspaceId: sessionState.workspaceId, analysisGeneration: 0 }, language: () => 'en' };
+        window.TaxonomyRecoveryViewport = { mount: () => ({ update() {}, close() {},
+            error(message) { statuses.push(['error', message]); }, isDismissed: () => false }) };
+        document.addEventListener = () => {};
+        textField.addEventListener = () => {};
+        sandbox.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+        sandbox.setTimeout = () => 1;
+        sandbox.clearTimeout = () => {};
+        vm.runInNewContext(recoverySource, sandbox);
+        return window.TaxonomyAnalysisRecovery;
+    }
+    return { window, state, sessionState, statuses, calls, observations, progress, renders, order, loadRecovery,
         requests, progressActions, rejectRequest: error => rejectRequest(error) };
 }
 
@@ -117,6 +131,67 @@ test('continuation keeps its frozen scope when next-run controls change', () => 
         continuationId: 'saved', continuationAction: 'RETRY'};
     f.window.TaxonomyScoring.runAnalysis({continuation});
     assert.deepEqual(JSON.parse(f.calls[0][1].body), continuation);
+});
+
+for (const previousView of ['list', 'summary']) {
+    test(`new Copilot operation clears previous ${previousView} evidence before sending START`, () => {
+        const f = fixture(); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        f.state.currentView = previousView;
+        f.state.currentRelationSearchReport = { progress: { verifiedRelations: 4 } };
+        f.state.recoveryContext = { id: 'old-operation', workspaceId: f.sessionState.workspaceId,
+            request: { businessText: 'old requirement' } };
+        f.state.analysisRecovery = { id: 'old-operation', state: 'COMPLETED' };
+
+        f.loadRecovery().startCopilot();
+
+        assert.equal(f.calls.length, 1);
+        const posted = JSON.parse(f.calls[0][1].body);
+        assert.equal(posted.continuationAction, 'START');
+        assert.notEqual(posted.continuationId, 'old-operation');
+        assert.equal(posted.continuationId, f.state.recoveryContext.id);
+        assert.equal(f.state.currentArchView, null);
+        assert.equal(f.state.currentRelationSearchReport, null);
+        assert.equal(f.state.currentView, 'list');
+        assert.deepEqual({ ...f.state.currentRawScores }, {});
+        assert.deepEqual({ ...f.state.currentReasons }, {});
+        assert.equal(f.state.currentDiscrepancies.length, 0);
+        assert.equal(f.state.currentProductCoverageGaps.length, 0);
+        assert.equal(f.window._currentProvisionalRelations.length, 0);
+        assert.equal(f.state.lastAnalyzedText, null);
+        assert.deepEqual(f.order, ['render', 'monitor', 'post']);
+        assert.deepEqual(f.renders[0].scores, {});
+
+        f.observations[0][1]({ rawScores: { BP: 55 } });
+        assert.deepEqual({ ...f.state.currentRawScores }, { BP: 55 },
+            'the first live result must not merge scores from the old operation');
+    });
+}
+
+test('repeated START for the same Copilot operation retains accepted evidence', () => {
+    const f = fixture(); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    const architecture = f.state.currentArchView;
+    const report = { progress: { verifiedRelations: 4 } };
+    f.state.currentView = 'summary';
+    f.state.currentRelationSearchReport = report;
+    f.state.lastAnalyzedText = 'communications';
+    f.state.recoveryContext = { id: 'saved-operation', workspaceId: f.sessionState.workspaceId,
+        request: { businessText: 'communications' } };
+    const continuation = { ...f.state.recoveryContext.request,
+        continuationId: 'saved-operation', continuationAction: 'START' };
+
+    f.window.TaxonomyScoring.runAnalysis({ continuation, recoveryManaged: true });
+
+    assert.equal(JSON.parse(f.calls[0][1].body).continuationId, 'saved-operation');
+    assert.equal(f.state.currentArchView, architecture);
+    assert.equal(f.state.currentRelationSearchReport, report);
+    assert.equal(f.state.currentView, 'summary');
+    assert.equal(f.state.currentReasons.CP, 'retained reason');
+    assert.equal(f.state.lastAnalyzedText, 'communications');
+    f.observations[0][1]({ rawScores: { BP: 55 } });
+    assert.deepEqual({ ...f.state.currentRawScores }, { CP: 80, BP: 55 },
+        'live updates of the same operation must retain its accepted sibling scores');
 });
 
 

@@ -7,7 +7,8 @@
     var generation = C.runtime.analysisGeneration || 0;
     var STORAGE = 'taxonomy.recovery.active.v1';
     function text(de, en) { return C.language() === 'de' ? de : en; }
-    var ui = window.TaxonomyRecoveryViewport.mount({ text: text, open: open, cancel: cancel });
+    var ui = window.TaxonomyRecoveryViewport.mount({ text: text, open: open, cancel: cancel,
+        scopeKey: function () { var c = current(); return c ? c.workspaceId + '/' + c.id : ''; } });
     function input() { return (document.getElementById('businessText')?.value || '').trim(); }
     function current() { return S.recoveryContext; }
     function inScope(context) {
@@ -120,8 +121,14 @@
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
         // A temporary response without a view does not erase the accepted same-scope
         // architecture. New requirements/workspaces still go through their normal reset.
-        S.currentArchView = result.architectureView || (S.lastAnalyzedText === context.request.businessText ? S.currentArchView : null);
-        S.currentRelationSearchReport = result.relationSearchReport || null;
+        var sameEvidenceScope = S.lastAnalyzedText === context.request.businessText;
+        S.currentArchView = result.architectureView || (sameEvidenceScope ? S.currentArchView : null);
+        var hasRelationEvidence = Object.prototype.hasOwnProperty.call(result, 'relationSearchReport')
+            || (result.architectureView && Object.prototype.hasOwnProperty.call(
+                result.architectureView, 'relationSearchReport'));
+        if (hasRelationEvidence || !sameEvidenceScope) {
+            window.TaxonomyScoring?.acceptRelationSearchReport?.(result);
+        }
         S.lastAnalyzedText = context.request.businessText;
         S.storedBusinessText = context.request.businessText;
         S.lastAnalysisProvider = result.provider || context.request.provider;
@@ -148,7 +155,7 @@
             c.request = snapshot.request;
             update();
             if (snapshot.recovery.state === 'RUNNING') scheduleRead();
-            else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED') open(); }
+            else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open(); }
         } catch (error) {
             if (inScope(c)) {
                 c.observationError = error.message;
@@ -179,7 +186,7 @@
             });
         };
     }
-    async function run(action, question) {
+    async function run(action, question, newOperation) {
         var c = current();
         if (!inScope(c) || busy || decisionBusy || stopped()) return;
         if (!window.TaxonomyAnalysisSession?.state?.().ready) {
@@ -194,7 +201,8 @@
         S.analysisRecovery = Object.assign({}, S.analysisRecovery, { state: 'RUNNING' });
         update(); remember(); scheduleRead();
         try {
-            var promise = window.TaxonomyScoring.runAnalysis({ continuation: body, recoveryManaged: true });
+            var promise = window.TaxonomyScoring.runAnalysis({ continuation: body, recoveryManaged: true,
+                newOperation: newOperation === true });
             restoreArchitecture();
             if (!promise || typeof promise.then !== 'function') throw new Error(text(
                 'Die Analyse wurde von der Vorprüfung abgewiesen.', 'Analysis preflight rejected the start.'));
@@ -204,7 +212,6 @@
             if (!result?.recovery) throw new Error(text('Keine bestätigte Fortsetzungsantwort.', 'No confirmed continuation response.'));
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
-            S.currentRelationSearchReport = result.relationSearchReport || null;
             c.observationError = null;
             c.pauseReason = ['PAUSED', 'STOPPED'].includes(result.recovery.state) ? result.errorMessage : null;
             setBusy(false); update(); await save();
@@ -490,7 +497,9 @@
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
         S.currentRelationSearchReport = null;
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
-        run('START');
+        // This newly allocated identity owns no previous scores or derived evidence.
+        // A repeated START for an existing operation must retain its accepted results.
+        run('START', null, true);
     }
     async function restore() {
         if (busy || reading || !window.TaxonomyAnalysisSession?.state?.().ready) return;
@@ -508,7 +517,7 @@
             S.analysisRecovery = snapshot.recovery;
             if (snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, context);
             update(); await save();
-            if (snapshot.recovery.state === 'PAUSED') open();
+            if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open();
             else if (snapshot.recovery.state === 'RUNNING') scheduleRead();
         } catch (ignored) { /* An inaccessible foreign/deleted operation never replaces the current draft. */ }
     }
@@ -516,7 +525,7 @@
         clearTimeout(poll); poll = null; S.recoveryContext = null; S.analysisRecovery = null;
         generation = C.runtime.analysisGeneration || 0; setBusy(false); remember(); ui.close();
         // The imported coverage remains valid metadata; only the execution binding is discarded.
-        renderCoverage();
+        update();
     });
     document.addEventListener('taxonomy:analysis-draft-restored', restore);
     document.addEventListener('taxonomy:view-rendered', renderCoverage);

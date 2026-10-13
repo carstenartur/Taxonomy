@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TaxonomyResponsiveNavigationContractTest {
 
     @Test
-    void narrowViewportsUseAnExplicitSectionSelectorAndTaskJump() throws Exception {
+    void narrowViewportsUseAnExplicitSectionSelectorAndReachableTask() throws Exception {
         String utils = resource("/static/js/shared/taxonomy-utils.js");
         String css = resource("/static/css/taxonomy-ergonomics.css");
         String template = resource("/templates/index.html");
@@ -49,8 +49,10 @@ class TaxonomyResponsiveNavigationContractTest {
                 .containsPattern("grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)\\s+auto\\s*;");
         assertThat(ruleBody(narrow,
                 "\\.mobile-main-navigation-select\\s*,\\s*\\.mobile-current-task-button"))
-                .as("both responsive controls retain usable pointer targets")
                 .containsPattern("min-height:\\s*44px\\s*;");
+        assertThat(css)
+                .contains("#applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }")
+                .contains("#applicationNavigation .mobile-main-navigation-select { min-height: 34px;");
 
         String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
         assertThat(ruleBody(zoom, "\\.navbar-brand"))
@@ -76,7 +78,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 "export async function navigateArchitectureSubtab(page, subtab) {");
         String roleNavigation = between(
                 roleFlow,
-                "  const adminTab = page.locator('#adminNavTab');",
+                "  const settingsMenu = page.locator('#applicationSettings');",
                 "  await navigateToPage(page, 'analyze');");
 
         assertThat(mainNavigationHelper)
@@ -85,25 +87,31 @@ class TaxonomyResponsiveNavigationContractTest {
                 .doesNotContain("scrollIntoViewIfNeeded");
 
         assertThat(roleNavigation)
-                .contains("const responsiveNavigation = page.locator('#mobileMainNavigationSelect')")
-                .contains("if (await responsiveNavigation.isVisible().catch(() => false))")
-                .contains("option[value=\"admin\"]")
-                .contains("ADMIN responsive navigation is unavailable after role authorization")
-                .contains("ADMIN desktop navigation is unavailable after role authorization")
-                .contains("responsivePages.includes('admin')");
-        assertThat(roleNavigation.indexOf(
-                "if (await responsiveNavigation.isVisible().catch(() => false))"))
-                .isLessThan(roleNavigation.indexOf("await adminLink.scrollIntoViewIfNeeded()"));
+                .contains("const adminLink = page.locator('#adminNavTab')")
+                .contains("const preferencesLink = page.locator('#preferencesNavTab')")
+                .contains("await adminLink.click()")
+                .contains("await preferencesLink.click()")
+                .contains("await adminLink.isVisible()")
+                .contains("await preferencesLink.isVisible()")
+                .contains("${role} must not see Administration or Preferences in Settings")
+                .doesNotContain("adminLockBtn");
 
         assertThat(roleFlow)
                 .contains("await navigateToPage(page, 'analyze')")
                 .contains("responsiveNavigationInsideViewport")
-                .contains("taskJumpInsideViewport")
+                .contains("taskReachable")
                 .contains("taskSurface.progressTop <= taskSurface.viewportHeight")
-                .contains("Neither the primary action nor its explicit task jump is initially visible")
+                .contains("Neither task progression nor the primary action is initially reachable")
                 .contains("Responsive section navigation is not discoverable before any automatic scroll")
                 .contains("responsive navigation remains structurally available after task interactions")
                 .doesNotContain("single-row scrollable main navigation");
+
+        assertThat(fixtures)
+                .contains("page.locator('#applicationSettings > summary')")
+                .contains("admin: 'adminNavTab'")
+                .contains("preferences: 'preferencesNavTab'")
+                .contains("const control = page.locator(`#applicationSettings #${settingsDestination}`)")
+                .contains("Responsive navigation does not expose");
     }
 
     @Test

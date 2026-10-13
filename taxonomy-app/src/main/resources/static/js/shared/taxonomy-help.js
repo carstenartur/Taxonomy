@@ -220,27 +220,12 @@
         }
     });
 
-    /* ── Activate on tab click ─────────────────────────────────────────── */
-    document.querySelectorAll('#mainNavTabs .nav-link[data-page="help"]').forEach(function (link) {
-        link.addEventListener('click', function () {
-            if (toc.length === 0) { loadToc(); }
-        });
+    // Every navigation route (link, responsive select, deep link, API) has one lifecycle.
+    document.addEventListener('taxonomy:page-activated', function (event) {
+        if (event.detail?.page === 'help' && toc.length === 0) loadToc();
     });
-
-    /* ── Init ──────────────────────────────────────────────────────────── */
-    // Load TOC when the Help tab is first activated
-    var helpTab = document.querySelector('#mainNavTabs .nav-link[data-page="help"]');
-    if (helpTab) {
-        // Check if help tab is already active (e.g. from deep-link)
-        if (helpTab.classList.contains('active')) {
-            loadToc();
-        } else {
-            helpTab.addEventListener('click', function onFirstClick() {
-                loadToc();
-                helpTab.removeEventListener('click', onFirstClick);
-            }, true);
-        }
-    }
+    var helpTab = document.querySelector('[data-page="help"]');
+    if (helpTab && helpTab.classList.contains('active')) loadToc();
 
     // Handle deep-link on page load
     var initialHash = window.location.hash.replace('#', '');

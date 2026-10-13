@@ -14,6 +14,8 @@ public final class AnalysisExecutionFailures {
         for (Throwable cause = failure; cause != null && seen.size() < 32 && seen.add(cause); cause = cause.getCause()) {
             if (cause instanceof DataAccessException || cause instanceof PersistenceException || cause instanceof SecurityException
                     || cause instanceof ResponseStatusException || cause instanceof ProviderPluginUnavailableException
+                    || cause instanceof LlmTransportMeter.JournalStartException
+                    || cause instanceof ProviderRateQuotas.UnavailableException
                     || cause instanceof org.springframework.security.access.AccessDeniedException
                     || cause instanceof org.springframework.security.core.AuthenticationException) {
                 if (failure instanceof RuntimeException runtime) throw runtime;

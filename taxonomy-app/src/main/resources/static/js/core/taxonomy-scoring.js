@@ -235,14 +235,15 @@
         btn.replaceChildren(spinner, document.createTextNode(' ' + label));
     }
 
-    function clearAnalysisLog() {
+    function clearAnalysisLog(preserveArchitecture) {
         const log = document.getElementById('analysisLog');
         if (log) { log.style.display = 'none'; }
         const logContent = document.getElementById('analysisLogContent');
         if (logContent) { logContent.innerHTML = ''; }
-        // Also hide architecture view
-        const archPanel = document.getElementById('architectureViewPanel');
-        if (archPanel) { archPanel.style.display = 'none'; }
+        if (!preserveArchitecture) {
+            const archPanel = document.getElementById('architectureViewPanel');
+            if (archPanel) { archPanel.style.display = 'none'; }
+        }
         // Also hide suggested relations
         const sugPanel = document.getElementById('suggestedRelationsPanel');
         if (sugPanel) { sugPanel.style.display = 'none'; }
@@ -473,8 +474,20 @@
             status: result.status
         });
 
+        // Relation evidence is a result in its own right, not an optional diagram attachment.
+        var hasRelationEvidence = Object.prototype.hasOwnProperty.call(result, 'relationSearchReport')
+            || (result.architectureView && Object.prototype.hasOwnProperty.call(
+                result.architectureView, 'relationSearchReport'));
+        if (!options.recoveryManaged || hasRelationEvidence) {
+            acceptRelationSearchReport(result);
+        }
+
         // Render architecture view if present
-        renderArchitectureView(result.architectureView);
+        if (result.architectureView) {
+            renderArchitectureView(result.architectureView);
+        } else if (!options.recoveryManaged) {
+            renderArchitectureView(null);
+        }
         // Render suggested relationships from provisional relations
         renderSuggestedRelations(result.provisionalRelations);
 
@@ -564,11 +577,11 @@
             B().showStatus('danger', t('scoring.secure.id.unavailable'));
             return;
         }
-        if (!options.continuation || !options.continuation.continuationAction || options.continuation.continuationAction === 'START') {
+        if (!options.continuation || options.newOperation === true) {
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
-        S.currentArchView = null;
+        clearDerivedAnalysisView();
         S.evaluatedNodes = new Set();
         S.storedBusinessText = null;
         S.lastAnalyzedText = null;
@@ -629,7 +642,7 @@
 
         setAnalyzing(true);
         B().clearStatus();
-        clearAnalysisLog();
+        clearAnalysisLog(Boolean(options.continuation));
         document.getElementById('businessText').classList.remove('stale-results');
 
         var providerSelect = document.getElementById('providerSelect');
@@ -728,12 +741,14 @@
         field.classList.remove('stale-results');
         if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
         S.currentReasons = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
-        S.currentArchView = null; S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
+        S.currentArchView = null;
+        acceptRelationSearchReport(null);
+        S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
         S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
         S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
         S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
         S.lastAnalysisStatus = 'IN_PROGRESS'; window._currentProvisionalRelations = [];
-        applyScoreEnvelope({}); clearAnalysisLog(); setAnalyzing(true);
+        applyScoreEnvelope({}); clearAnalysisLog(true); setAnalyzing(true);
         B().renderView(S.taxonomyData, S.currentScores);
         var monitor = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
             if (!inScope() || field.value !== saved.businessText) return;
@@ -766,6 +781,7 @@
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         S.evaluatedNodes = new Set();
+        clearDerivedAnalysisView();
         S.currentScores = {};
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
@@ -811,6 +827,7 @@
         if (llmCommLogEl) {
             llmCommLogEl.innerHTML = '';
         }
+        clearDerivedAnalysisView();
         S.currentScores = {};
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
@@ -1336,6 +1353,41 @@
         return h;
     }
 
+    function relationSearchReportFrom(evidence) {
+        if (!evidence || typeof evidence !== 'object') return null;
+        // An explicit null is authoritative. Only older records may fall back to a nested report.
+        var report = Object.prototype.hasOwnProperty.call(evidence, 'relationSearchReport')
+            ? evidence.relationSearchReport : evidence.architectureView?.relationSearchReport;
+        return report && typeof report === 'object' && !Array.isArray(report) ? report : null;
+    }
+
+    function renderIndependentRelationSearchReport(report) {
+        var panel = document.getElementById('relationSearchReportPanel');
+        if (!panel) return;
+        panel.hidden = !report;
+        panel.innerHTML = report ? renderRelationSearchReport(report) : '';
+    }
+
+    function acceptRelationSearchReport(evidence) {
+        S.currentRelationSearchReport = relationSearchReportFrom(evidence);
+        renderIndependentRelationSearchReport(S.currentRelationSearchReport);
+    }
+
+    function clearDerivedAnalysisView() {
+        acceptRelationSearchReport(null);
+        S.currentArchView = null;
+        if (typeof B().switchView === 'function') {
+            B().switchView('list');
+        } else {
+            S.currentView = 'list';
+        }
+        renderArchitectureView(null);
+        var content = document.getElementById('architectureViewContent');
+        if (content) content.innerHTML = '';
+        var summaryButton = document.getElementById('viewSummary');
+        if (summaryButton) summaryButton.style.display = 'none';
+    }
+
     function renderRelationSearchReport(report) {
         if (!report) return '';
         var result = report.result || {};
@@ -1431,7 +1483,9 @@
             html += '</div>';
         }
 
-        html += renderRelationSearchReport(view.relationSearchReport);
+        if (!document.getElementById('relationSearchReportPanel')) {
+            html += renderRelationSearchReport(view.relationSearchReport);
+        }
 
         // Notes
         if (view.notes && view.notes.length > 0) {
@@ -2141,6 +2195,10 @@
         showLeafJustificationModal: showLeafJustificationModal,
         renderRelationSearchReport: renderRelationSearchReport,
         renderArchitectureView: renderArchitectureView,
+        relationSearchReportFrom: relationSearchReportFrom,
+        acceptRelationSearchReport: acceptRelationSearchReport,
+        clearDerivedAnalysisView: clearDerivedAnalysisView,
+        renderIndependentRelationSearchReport: renderIndependentRelationSearchReport,
         renderSuggestedRelations: renderSuggestedRelations,
         refreshSuggestedRelationsBulkActions: refreshSuggestedRelationsBulkActions,
         renderSummaryView: renderSummaryView,

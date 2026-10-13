@@ -732,3 +732,42 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 .tax-container > .tax-children { margin-left: 0; padding-left: 0; border-left: 0; }
 .tax-container-empty { margin: .5rem .25rem; }
 .tax-container.tax-evaluating > .tax-container-heading { animation: tax-pulse 1.5s ease-in-out infinite; }
+
+/* One compact application shell; utility menus never reserve a permanent row. */
+#applicationNavigation .application-shell { display: flex; align-items: center; gap: .5rem; flex-wrap: nowrap; }
+#applicationNavigation .navbar-brand { width: auto; flex: 0 0 auto; margin: 0 .25rem 0 0; font-size: 1rem; white-space: nowrap; }
+.application-file-menus, .application-utilities, .application-support { display: flex; align-items: center; gap: .35rem; }
+.application-file-menus, .application-utilities, .application-support { flex: 0 0 auto; }
+.application-work-navigation { flex: 1 1 auto; min-width: 0; }
+#applicationNavigation #mainNavTabs { flex-wrap: nowrap; border-bottom: 0; }
+#applicationNavigation #mainNavTabs .nav-link { font-size: .875rem; padding: .4rem .45rem; white-space: nowrap; }
+.application-utilities { margin-inline-start: auto; }
+#applicationNavigation .application-menu { position: relative; background: transparent; border: 0; color: #fff; }
+#applicationNavigation .application-menu > summary { display: flex; align-items: center; gap: .25rem; list-style: none; cursor: pointer; min-height: 34px; padding: .25rem .5rem; border: 1px solid currentColor; border-radius: .25rem; font-size: .875rem; }
+#applicationNavigation .application-menu > summary::-webkit-details-marker { display: none; }
+#applicationNavigation .operational-context-hint { display: none; }
+#applicationNavigation .application-menu-content { position: absolute; z-index: 1060; top: calc(100% + .35rem); inset-inline-end: 0; width: min(25rem, calc(100vw - 1rem)); max-height: calc(100dvh - 6rem); overflow: auto; padding: .75rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #212529); border: 1px solid var(--bs-border-color, #bbb); border-radius: .35rem; box-shadow: 0 .25rem .75rem #0003; }
+#applicationSettings .application-menu-content { display: grid; gap: .6rem; }
+#applicationSettings [hidden] { display: none !important; }
+#applicationNavigation .has-actionable-status > summary { color: #ffc107; }
+#applicationNavigation .has-actionable-status > summary::after { content: '!'; font-weight: bold; }
+#applicationNavigation summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#applicationNavigation .mobile-main-navigation { padding: 0; }
+#applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }
+#applicationNavigation .mobile-main-navigation { grid-template-columns: minmax(0, 1fr); }
+#applicationNavigation .mobile-main-navigation-select { min-height: 34px; font-size: .875rem; padding-block: .25rem; }
+@media (max-width: 1199.98px) {
+    #applicationNavigation #mainNavTabs { display: none !important; }
+    #applicationNavigation .mobile-main-navigation { display: grid; }
+}
+@media (max-width: 575.98px) {
+    #applicationNavigation .application-shell { flex-wrap: wrap; gap: .4rem; }
+    #applicationNavigation .application-utilities { order: 1; }
+    #applicationNavigation .application-file-menus { order: 2; }
+    #applicationNavigation .application-work-navigation { order: 3; flex: 1 1 8rem; }
+    #applicationNavigation .application-menu-content { position: fixed; top: 3rem; inset-inline: .5rem; width: auto; max-height: calc(100dvh - 4rem); }
+}
+@media (forced-colors: active) {
+    #applicationNavigation .has-actionable-status > summary { color: LinkText; }
+    #applicationNavigation .application-menu-content { border: 1px solid CanvasText; }
+}
