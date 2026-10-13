@@ -21,6 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,6 +94,33 @@ class AnalysisWorkingDraftServiceTest {
         assertThat(view.version()).isZero();
         verify(systemRepositoryService).getRepository("repo-1");
         verify(systemRepositoryService, never()).getPrimaryRepository();
+    }
+
+    @Test
+    void relationSearchReportSurvivesTheServerDraftStorageRoundTrip() {
+        AtomicReference<AnalysisWorkingDraft> persisted = new AtomicReference<>();
+        when(repository.findByScopeKeyAndUsername(any(), any()))
+                .thenAnswer(invocation -> Optional.ofNullable(persisted.get()));
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
+            AnalysisWorkingDraft draft = invocation.getArgument(0);
+            persisted.set(draft);
+            return draft;
+        });
+
+        ObjectNode report = objectMapper.createObjectNode()
+                .put("totalCalls", 3)
+                .put("searchExhausted", true);
+        ObjectNode payload = objectMapper.createObjectNode()
+                .put("businessText", "Provide resilient communications");
+        payload.set("relationSearchReport", report);
+
+        var saved = service.save(
+                "Alice", "ws-1", new SaveAnalysisDraftRequest(payload, null));
+        assertThat(persisted.get().getPayloadJson()).contains("\"relationSearchReport\"");
+        assertThat(saved.payload().path("relationSearchReport")).isEqualTo(report);
+
+        var restored = service.read("Alice", "ws-1").orElseThrow();
+        assertThat(restored.payload().path("relationSearchReport")).isEqualTo(report);
     }
 
     @Test
@@ -214,6 +242,7 @@ class AnalysisWorkingDraftServiceTest {
         assertThat(view.payload().path("draftState").asText()).isEqualTo("EMPTY");
         assertThat(view.payload().path("businessText").asText()).isEmpty();
         assertThat(view.payload().path("scores").isNull()).isTrue();
+        assertThat(view.payload().path("relationSearchReport").isNull()).isTrue();
         assertThat(view.payload().path("analysisOptions").path("provider").asText())
                 .isEqualTo("OPENAI");
         assertThat(captor.getValue().getPayloadJson()).contains("\"draftState\":\"EMPTY\"");

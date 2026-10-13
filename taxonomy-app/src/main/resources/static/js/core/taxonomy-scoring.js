@@ -473,6 +473,9 @@
             status: result.status
         });
 
+        // Relation evidence is a result in its own right, not an optional diagram attachment.
+        acceptRelationSearchReport(result);
+
         // Render architecture view if present
         renderArchitectureView(result.architectureView);
         // Render suggested relationships from provisional relations
@@ -569,6 +572,7 @@
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
+        acceptRelationSearchReport(null);
         S.evaluatedNodes = new Set();
         S.storedBusinessText = null;
         S.lastAnalyzedText = null;
@@ -728,7 +732,9 @@
         field.classList.remove('stale-results');
         if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
         S.currentReasons = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
-        S.currentArchView = null; S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
+        S.currentArchView = null;
+        acceptRelationSearchReport(null);
+        S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
         S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
         S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
         S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
@@ -766,6 +772,7 @@
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         S.evaluatedNodes = new Set();
+        acceptRelationSearchReport(null);
         S.currentScores = {};
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
@@ -811,6 +818,7 @@
         if (llmCommLogEl) {
             llmCommLogEl.innerHTML = '';
         }
+        acceptRelationSearchReport(null);
         S.currentScores = {};
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
@@ -1334,6 +1342,26 @@
         }
         h += '</span>';
         return h;
+    }
+
+    function relationSearchReportFrom(evidence) {
+        if (!evidence || typeof evidence !== 'object') return null;
+        // An explicit null is authoritative. Only older records may fall back to a nested report.
+        var report = Object.prototype.hasOwnProperty.call(evidence, 'relationSearchReport')
+            ? evidence.relationSearchReport : evidence.architectureView?.relationSearchReport;
+        return report && typeof report === 'object' && !Array.isArray(report) ? report : null;
+    }
+
+    function renderIndependentRelationSearchReport(report) {
+        var panel = document.getElementById('relationSearchReportPanel');
+        if (!panel) return;
+        panel.hidden = !report;
+        panel.innerHTML = report ? renderRelationSearchReport(report) : '';
+    }
+
+    function acceptRelationSearchReport(evidence) {
+        S.currentRelationSearchReport = relationSearchReportFrom(evidence);
+        renderIndependentRelationSearchReport(S.currentRelationSearchReport);
     }
 
     function renderRelationSearchReport(report) {
@@ -2141,6 +2169,9 @@
         showLeafJustificationModal: showLeafJustificationModal,
         renderRelationSearchReport: renderRelationSearchReport,
         renderArchitectureView: renderArchitectureView,
+        relationSearchReportFrom: relationSearchReportFrom,
+        acceptRelationSearchReport: acceptRelationSearchReport,
+        renderIndependentRelationSearchReport: renderIndependentRelationSearchReport,
         renderSuggestedRelations: renderSuggestedRelations,
         refreshSuggestedRelationsBulkActions: refreshSuggestedRelationsBulkActions,
         renderSummaryView: renderSummaryView,

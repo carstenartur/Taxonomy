@@ -149,7 +149,7 @@ The **Taxonomy Architecture Analyzer** helps architects, analysts and requiremen
 | Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
 | Save analysis as JSON | Left panel → export buttons → 📥 JSON |
 | Load a saved analysis | Left panel → 📤 Load Scores button |
-| Manage LLM settings and prompt templates | Unlock admin mode via 🔒 in the navigation bar |
+| Manage user accounts or server settings | Open **Settings** (⚙) in the navigation bar; administrator entries depend on server capabilities |
 
 > For the REST API reference used by developers and integrators, see [API Reference](API_REFERENCE.md).
 
@@ -177,7 +177,7 @@ Click **Got it — let's start!** to dismiss the overlay. The overlay will not a
 
 ### Checking AI Availability
 
-Look at the navigation bar at the top of the page. There is an **AI Status** indicator:
+Open **Status** in the navigation bar to inspect provider readiness:
 
 - 🟢 **Green badge** — provider readiness is reported. Check capability support: local embeddings do not enable generative relationships or wording synthesis.
 - 🔴 **Red badge** — no LLM provider is configured; analysis is unavailable. Contact your administrator.
@@ -205,7 +205,7 @@ At the top of the left panel you will find:
 Each taxonomy node row shows:
 - The **node name** and its hierarchical code.
 - A **score bar** and percentage (visible after analysis).
-- **Per-node action buttons:** 🔗 (Propose Relations) | 📋 (Request Justification) | 🔎 (Graph Explorer)
+- **Node actions (⋯)** — open a node's available actions, including its explanation and graph tools.
 
 ![Left panel — taxonomy tree in List view](../images/02-left-panel-list-view.png)
 
@@ -218,7 +218,8 @@ The right panel (narrower column) contains all interactive tools:
 
 ![Match Legend](../images/10-match-legend.png)
 
-- **Status Area** — messages and warnings about the current operation.
+- **Analysis status** — inline progress and warnings; hide it without cancelling the run, then reopen it from **Settings → Analysis status**.
+- **Status menu** — open operational and provider status details; warnings do not open the menu automatically.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
 - **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
 - **Graph Explorer Panel** — enter a node code and run upstream, downstream, or failure-impact queries.
@@ -234,10 +235,11 @@ The right panel (narrower column) contains all interactive tools:
 The navigation bar at the top of the page contains:
 
 - **Application title / logo**
+- **Settings (⚙)** — language and theme controls, administrator tools, and the analysis-status launcher.
+- **Status** — operational status details.
 - **File menu** — start a new analysis, cancel a running analysis, or save the current working draft immediately
 - **Project menu** — create a project, save the current text as a requirement, or open the project overview
-- **AI Status badge** (🟢 green or 🔴 red)
-- **🔒 Admin mode button** — click to open the Admin Mode password modal
+- **Help** and **About** — adjacent at the right side of the navigation bar.
 
 ### Dark Mode
 
@@ -268,8 +270,8 @@ Tips for good requirements:
 1. Type your requirement in the textarea.
 2. Select the taxonomy roots and full or **Taxonomies only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
 3. Click the **Analyze with AI** button.
-4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
-5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
+4. Progress appears in the inline analysis status. The taxonomy tree in the left panel starts showing colour-coded score bars as results arrive.
+5. When analysis is complete, the inline analysis status shows a summary and the export buttons become available.
 
 ![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
 
@@ -338,11 +340,11 @@ Nodes with a score of 0 % have no highlight at all. Hover over any legend box to
 
 ### The Analysis Log
 
-Below the Status Area, a collapsible **Analysis Log** section records each step of the scoring process: which LLM phases ran, how many nodes were scored, and any warnings. Click the log header to expand or collapse it.
+The collapsible **Analysis Log** section records each step of the scoring process: which LLM phases ran, how many nodes were scored, and any warnings. Click the log header to expand or collapse it.
 
 ### Streaming Progress Indicator
 
-During analysis (especially in Interactive Mode), the status area shows real-time progress messages. Each message corresponds to a phase in the LLM processing pipeline:
+During analysis (especially in Interactive Mode), the inline analysis status shows real-time progress messages. Each message corresponds to a phase in the LLM processing pipeline:
 
 | Phase Message | Meaning |
 |---|---|
@@ -1693,7 +1695,7 @@ Navigation buttons in the Context Bar:
 <a id="guide-section-21"></a>
 ## 14. Administration
 
-Administration features require the appropriate server-side role; opening or unlocking a panel does not grant that role. Standard users use their assigned accounts and do not share an administrator password.
+Administration features require the appropriate server-side role. Standard users use their assigned accounts and do not share an administrator password.
 
 > 📖 For a comprehensive guide to all AI providers, per-request provider override, mock mode, diagnostics API, and rate limiting, see **[AI Providers](AI_PROVIDERS.md)**.
 > For runtime preference management (LLM settings, DSL config, size limits), see **[Preferences](PREFERENCES.md)**.
@@ -1714,21 +1716,24 @@ If you see a red badge, either:
 
 When AI is unavailable, an **inline warning message** appears below the Analyze button listing the required environment variables.
 
-### Unlocking Admin Mode (🔒 button → Password Modal)
+### User management and administrator tools
 
-![Admin lock button in navbar](../images/14-navbar-admin-lock.png)
+Open **Settings (⚙) → User management** to reach the existing account-management
+page. If local account management is disabled, the entry explains that local
+account creation must be enabled by the operator or that external accounts are
+managed by the configured identity provider. This menu does not enable account
+creation or change server authorization.
 
-1. Click the **🔒** button in the navigation bar.
-2. The **Admin Mode Modal** opens with a password input field.
-3. Enter the administrator password.
-4. Click **Unlock**.
-5. The padlock icon changes to indicate admin mode is active, and the admin-only panels become visible in the right panel.
-
-To lock admin mode again, click the lock button and choose **Lock**.
+Other administrator tools appear only when the server reports the corresponding
+administrator capabilities. There is no separate administrator password dialog.
+If the account/status check fails, the interface stays locked rather than
+assuming administrator access.
 
 ### LLM Communication Log
 
-Once admin mode is unlocked, the **LLM Communication Log** panel is visible in the right panel. It records the full prompt sent to the LLM and the raw response received for each analysis operation. Expand the panel to view the log entries. This is useful for debugging unexpected scoring results.
+When available to your administrator role, the **LLM Communication Log** panel in
+the right panel records prompts and responses for analysis operations. Expand it
+to view the entries.
 
 ### LLM Diagnostics Panel
 
@@ -1959,7 +1964,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 **Action:**
 1. Check the **Analysis Log** (right panel, collapsible) for error messages.
 2. Check selected scope, assessment status and model/language support. Clarify ambiguity without changing the actual need merely to match catalogue labels.
-3. If admin mode is available, check the **LLM Communication Log** to see what the LLM returned.
+3. If your administrator role provides access, check the **LLM Communication Log** to see the recorded analysis details.
 
 ### Export buttons are not visible
 
@@ -1991,9 +1996,9 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ### I cannot see the admin panels (LLM Diagnostics, Prompt Editor, etc.)
 
-**Cause:** Admin mode is not unlocked.
+**Cause:** Your account does not have the required administrator capability, or its status could not be confirmed.
 
-**Action:** Click the **🔒** button in the navigation bar and enter the administrator password. If you do not know the password, contact your administrator.
+**Action:** Open **Settings (⚙)** and check whether the administrator entry is available. If it is missing, contact your operator; do not use a separate administrator password.
 
 ### The Graph Explorer shows a "Failure Impact" result — is that an error?
 

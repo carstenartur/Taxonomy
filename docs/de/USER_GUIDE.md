@@ -149,7 +149,7 @@ Der **Taxonomy Architecture Analyzer** unterstützt Architektur- und Anforderung
 | Ein Diagramm oder Bewertungsbogen exportieren | Linkes Panel → Export-Schaltflächen (erscheinen nach der Analyse) |
 | Analyse als JSON speichern | Linkes Panel → Export-Schaltflächen → 📥 JSON |
 | Eine gespeicherte Analyse laden | Linkes Panel → 📤 Load Scores Schaltfläche |
-| LLM-Einstellungen und Prompt-Vorlagen verwalten | Admin-Modus über 🔒 in der Navigationsleiste freischalten |
+| Benutzerkonten oder Servereinstellungen verwalten | **Einstellungen** (⚙) in der Navigationsleiste öffnen; Admin-Einträge richten sich nach den Serverfunktionen |
 
 > Für die REST-API-Referenz, die von Entwicklern und Integratoren verwendet wird, siehe [API-Referenz](API_REFERENCE.md).
 
@@ -178,7 +178,7 @@ Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das O
 
 ### KI-Verfügbarkeit prüfen
 
-Schauen Sie auf die Navigationsleiste am oberen Rand der Seite. Dort befindet sich ein **AI Status**-Indikator:
+Öffnen Sie **Status** in der Navigationsleiste, um die Anbieterbereitschaft zu prüfen:
 
 - 🟢 **Grünes Badge** — die Anbieterbereitschaft wird angezeigt. Prüfen Sie den Funktionsumfang: Lokale Embeddings ermöglichen keine generative Relationsbewertung oder Textsynthese.
 - 🔴 **Rotes Badge** — kein LLM-Anbieter ist konfiguriert; die Analyse ist nicht verfügbar. Kontaktieren Sie Ihren Administrator.
@@ -207,7 +207,7 @@ Am oberen Rand des linken Panels finden Sie:
 Jede Taxonomieknoten-Zeile zeigt:
 - Den **Knotennamen** und seinen hierarchischen Code.
 - Einen **Bewertungsbalken** und Prozentsatz (sichtbar nach der Analyse).
-- **Aktionsschaltflächen pro Knoten:** 🔗 (Beziehungen vorschlagen) | 📋 (Begründung anfordern) | 🔎 (Graph Explorer)
+- **Knotenaktionen (⋯)** — verfügbare Aktionen eines Knotens öffnen, darunter Begründung und Graph-Werkzeuge.
 
 ![Linkes Panel — Taxonomiebaum in Listenansicht](../images/02-left-panel-list-view.png)
 
@@ -220,7 +220,8 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ![Match Legend](../images/10-match-legend.png)
 
-- **Statusbereich** — Meldungen und Warnungen zur aktuellen Operation.
+- **Analyse-Status** — Fortschritt und Warnungen direkt im Analysebereich; Ausblenden bricht den Lauf nicht ab. Über **Einstellungen → Analyse-Status** lässt er sich wieder öffnen.
+- **Statusmenü** — Betriebs- und Anbieterstatusdetails öffnen; Warnungen öffnen das Menü nicht selbsttätig.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
 - **Architekturansicht-Panel** — erscheint nach der Analyse, wenn das Architecture View-Kontrollkästchen aktiviert ist.
 - **Graph Explorer Panel** — geben Sie einen Knotencode ein und führen Sie Upstream-, Downstream- oder Ausfallauswirkungs-Abfragen durch.
@@ -236,10 +237,11 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 Die Navigationsleiste am oberen Rand der Seite enthält:
 
 - **Anwendungstitel / Logo**
-- **AI Status Badge** (🟢 grün oder 🔴 rot)
 - **Datei-Menü** — eine neue Analyse beginnen, eine laufende Analyse abbrechen oder den aktuellen Arbeitsentwurf sofort speichern
 - **Projekt-Menü** — ein Projekt anlegen, den aktuellen Text als Anforderung speichern oder die Projektübersicht öffnen
-- **🔒 Admin-Modus-Schaltfläche** — klicken Sie, um das Admin-Modus-Passwort-Modal zu öffnen
+- **Einstellungen (⚙)** — Sprache, Design, Admin-Werkzeuge und den Analyse-Status öffnen.
+- **Status** — Details zum Betriebsstatus.
+- **Hilfe** und **Über** — rechts in der Navigationsleiste direkt nebeneinander.
 
 ### Dunkelmodus
 
@@ -271,8 +273,8 @@ Tipps für gute Anforderungen:
 1. Geben Sie Ihre Anforderung im Textbereich ein.
 2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Taxonomien** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
 3. Klicken Sie auf die Schaltfläche **Analyze with AI**.
-4. Im Statusbereich erscheint eine Fortschrittsanzeige. Der Taxonomiebaum im linken Panel beginnt, farbcodierte Bewertungsbalken anzuzeigen, sobald Ergebnisse eintreffen.
-5. Wenn die Analyse abgeschlossen ist, zeigt der Statusbereich eine Zusammenfassung an und die Export-Schaltflächen werden verfügbar.
+4. Der Fortschritt erscheint im Analyse-Status direkt im Analysebereich. Sobald Ergebnisse eintreffen, zeigt der Taxonomiebaum im linken Panel farbcodierte Bewertungsbalken.
+5. Nach Abschluss zeigt der Analyse-Status eine Zusammenfassung; die Export-Schaltflächen werden verfügbar.
 
 ![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
 
@@ -341,11 +343,11 @@ Knoten mit einer Bewertung von 0 % haben keine Hervorhebung. Fahren Sie mit der 
 
 ### Das Analyseprotokoll
 
-Unterhalb des Statusbereichs zeichnet ein einklappbarer **Analyseprotokoll**-Abschnitt jeden Schritt des Bewertungsprozesses auf: welche LLM-Phasen ausgeführt wurden, wie viele Knoten bewertet wurden und eventuelle Warnungen. Klicken Sie auf die Protokollüberschrift, um es auf- oder zuzuklappen.
+Der einklappbare Abschnitt **Analyseprotokoll** zeichnet jeden Schritt des Bewertungsprozesses auf: welche LLM-Phasen ausgeführt wurden, wie viele Knoten bewertet wurden und eventuelle Warnungen. Klicken Sie auf die Protokollüberschrift, um ihn auf- oder zuzuklappen.
 
 ### Streaming-Fortschrittsanzeige
 
-Während der Analyse (insbesondere im interaktiven Modus) zeigt der Statusbereich Echtzeit-Fortschrittsmeldungen an. Jede Meldung entspricht einer Phase in der LLM-Verarbeitungspipeline:
+Während der Analyse (insbesondere im interaktiven Modus) zeigt der Analyse-Status Echtzeit-Fortschrittsmeldungen an. Jede Meldung entspricht einer Phase in der LLM-Verarbeitungspipeline:
 
 | Phasenmeldung | Bedeutung |
 |---|---|
@@ -1697,7 +1699,7 @@ Navigationsschaltflächen in der Kontextleiste:
 <a id="guide-section-21"></a>
 ## 14. Administration
 
-Administrationsfunktionen erfordern die passende serverseitige Rolle; das Öffnen oder Entsperren eines Panels verleiht diese Rolle nicht. Standardbenutzer verwenden ihre zugewiesenen Konten, kein gemeinsam genutztes Administratorpasswort.
+Administrationsfunktionen erfordern die passende serverseitige Rolle. Standardbenutzer verwenden ihre zugewiesenen Konten, kein gemeinsam genutztes Administratorpasswort.
 
 > 📖 Für eine umfassende Anleitung zu allen KI-Anbietern, anbieterspezifischer Überschreibung pro Anfrage, Mock-Modus, Diagnose-API und Ratenbegrenzung siehe **[AI Providers](AI_PROVIDERS.md)**.
 > Für die Verwaltung von Laufzeiteinstellungen (LLM-Einstellungen, DSL-Konfiguration, Größenbeschränkungen) siehe **[Preferences](PREFERENCES.md)**.
@@ -1718,21 +1720,23 @@ Wenn Sie ein rotes Badge sehen, können Sie entweder:
 
 Wenn die KI nicht verfügbar ist, erscheint eine **Inline-Warnmeldung** unterhalb der Analyse-Schaltfläche, die die erforderlichen Umgebungsvariablen auflistet.
 
-### Admin-Modus freischalten (🔒-Schaltfläche → Passwort-Modal)
+### Benutzerverwaltung und Admin-Werkzeuge
 
-![Admin-Schloss-Schaltfläche in der Navigationsleiste](../images/14-navbar-admin-lock.png)
+Öffnen Sie **Einstellungen (⚙) → Benutzerverwaltung**, um die vorhandene
+Kontenverwaltung aufzurufen. Ist die lokale Kontenverwaltung deaktiviert, erklärt
+der Eintrag, dass der Betreiber sie freigeben muss oder externe Konten beim
+konfigurierten Identitätsanbieter verwaltet werden. Das Menü aktiviert weder die
+Kontenerstellung noch ändert es serverseitige Berechtigungen.
 
-1. Klicken Sie auf die **🔒**-Schaltfläche in der Navigationsleiste.
-2. Das **Admin-Modus-Modal** öffnet sich mit einem Passwort-Eingabefeld.
-3. Geben Sie das Administratorpasswort ein.
-4. Klicken Sie auf **Unlock**.
-5. Das Schlosssymbol ändert sich, um anzuzeigen, dass der Admin-Modus aktiv ist, und die Admin-Panels werden im rechten Panel sichtbar.
-
-Um den Admin-Modus wieder zu sperren, klicken Sie auf die Schloss-Schaltfläche und wählen Sie **Lock**.
+Weitere Admin-Werkzeuge erscheinen nur, wenn der Server die entsprechenden
+Admin-Funktionen meldet. Ein separates Administrator-Passwortdialogfeld gibt es
+nicht. Schlägt die Konto- oder Statusabfrage fehl, bleibt die Oberfläche gesperrt.
 
 ### LLM-Kommunikationsprotokoll
 
-Sobald der Admin-Modus freigeschaltet ist, ist das Panel **LLM-Kommunikationsprotokoll** im rechten Panel sichtbar. Es zeichnet den vollständigen Prompt, der an das LLM gesendet wurde, und die empfangene Rohantwort für jede Analyseoperation auf. Klappen Sie das Panel auf, um die Protokolleinträge anzuzeigen. Dies ist nützlich zur Fehlersuche bei unerwarteten Bewertungsergebnissen.
+Wenn es Ihrer Admin-Rolle zur Verfügung steht, protokolliert das Panel
+**LLM-Kommunikationsprotokoll** im rechten Bereich Prompts und Antworten zu
+Analyseoperationen. Klappen Sie es auf, um die Einträge anzuzeigen.
 
 ### LLM-Diagnose-Panel
 
@@ -1966,7 +1970,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 **Maßnahme:**
 1. Überprüfen Sie das **Analysis Log** (rechtes Panel, einklappbar) auf Fehlermeldungen.
 2. Prüfen Sie Umfang, Bewertungsstatus sowie Modell- und Sprachunterstützung. Klären Sie Mehrdeutigkeiten, ohne den tatsächlichen Bedarf nur für passende Katalogbezeichnungen zu verändern.
-3. Wenn der Admin-Modus verfügbar ist, prüfen Sie das **LLM-Kommunikationsprotokoll**, um zu sehen, was das LLM zurückgegeben hat.
+3. Wenn Ihre Admin-Rolle Zugriff gewährt, prüfen Sie die aufgezeichneten Analysedetails im **LLM-Kommunikationsprotokoll**.
 
 ### Export-Schaltflächen sind nicht sichtbar
 
@@ -1998,9 +2002,9 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ### Die Admin-Panels (LLM-Diagnose, Prompt-Editor usw.) sind nicht sichtbar
 
-**Ursache:** Der Admin-Modus ist nicht freigeschaltet.
+**Ursache:** Ihrem Konto fehlt die erforderliche Admin-Funktion oder sein Status konnte nicht bestätigt werden.
 
-**Maßnahme:** Klicken Sie auf die **🔒**-Schaltfläche in der Navigationsleiste und geben Sie das Administratorpasswort ein. Wenn Sie das Passwort nicht kennen, kontaktieren Sie Ihren Administrator.
+**Maßnahme:** Öffnen Sie **Einstellungen (⚙)** und prüfen Sie, ob der Admin-Eintrag verfügbar ist. Fehlt er, wenden Sie sich an den Betreiber; ein separates Administratorpasswort gibt es nicht.
 
 ### Der Graph Explorer zeigt ein „Failure Impact"-Ergebnis — ist das ein Fehler?
 

@@ -86,8 +86,7 @@
             }
         });
 
-        // Prompt template editor
-        initPromptEditor();
+        // Administrative tools are initialized only after account capabilities resolve.
 
         // Clear LLM communication log
         const clearLlmLogBtn = document.getElementById('clearLlmLog');
@@ -138,6 +137,7 @@
                             return;
                         }
                         S.recoveryContext = null;
+                        window.TaxonomyScoring?.acceptRelationSearchReport?.(data);
                         document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
                         S.analysisRecovery = null;
                         S.analysisCoverage = data.analysisCoverage || null;
@@ -199,7 +199,6 @@
 
         // Diagnostics panel
         checkAdminStatus();
-        initAdminModal();
         const refreshDiagBtn = document.getElementById('refreshDiagnostics');
         if (refreshDiagBtn) {
             refreshDiagBtn.addEventListener('click', loadDiagnostics);
@@ -300,182 +299,49 @@
         tree.classList.toggle('hide-descriptions', !show);
     }
 
-    // ── Admin mode ───────────────────────────────────────────────────────────
-    let adminPasswordRequired = false;
+    // ── Administration follows the authenticated account, never a browser token ──
+    let administrator = false;
 
     function isAdminMode() {
-        return !!sessionStorage.getItem('adminToken');
-    }
-
-    function getAdminToken() {
-        return sessionStorage.getItem('adminToken') || '';
-    }
-
-    function unlockAdmin(password) {
-        return fetch('/api/admin/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: password })
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.valid && data.token) {
-                sessionStorage.setItem('adminToken', data.token);
-                updateAdminVisibility();
-            }
-            return data.valid;
-        });
-    }
-
-    function lockAdmin() {
-        sessionStorage.removeItem('adminToken');
-        updateAdminVisibility();
+        return window.TaxonomyRoleSurface
+            ? window.TaxonomyRoleSurface.isAdministrator() : administrator;
     }
 
     function updateAdminVisibility() {
-        const body = document.body;
-        const lockBtn = document.getElementById('adminLockBtn');
-        const adminNavTab = document.getElementById('adminNavTab');
-        if (!adminPasswordRequired) {
-            // No password configured — admin features always accessible, no lock button
-            body.classList.add('admin-unlocked');
-            document.querySelectorAll('.admin-only').forEach(el => {
-                el.style.display = '';
-            });
-            if (adminNavTab) { adminNavTab.style.display = ''; }
-            if (lockBtn) { lockBtn.classList.add('d-none'); }
-            return;
-        }
-        if (isAdminMode()) {
-            body.classList.add('admin-unlocked');
-            if (adminNavTab) { adminNavTab.style.display = ''; }
-            if (lockBtn) {
-                lockBtn.innerHTML = '<span aria-hidden="true">🔓</span><span class="visually-hidden">Admin Mode</span>';
-                lockBtn.title = t('browse.admin.active.title');
-                lockBtn.setAttribute('aria-label', t('browse.admin.active.aria'));
-                lockBtn.classList.remove('d-none');
-            }
-        } else {
-            body.classList.remove('admin-unlocked');
-            if (adminNavTab) { adminNavTab.style.display = 'none'; }
-            if (lockBtn) {
-                lockBtn.innerHTML = '<span aria-hidden="true">🔐</span><span class="visually-hidden">Admin Mode</span>';
-                lockBtn.title = t('browse.admin.locked.title');
-                lockBtn.setAttribute('aria-label', t('browse.admin.locked.aria'));
-                lockBtn.classList.remove('d-none');
-            }
-        }
+        const allowed = isAdminMode();
+        document.body.classList.toggle('admin-unlocked', allowed);
+        document.querySelectorAll('.admin-only').forEach(function (element) {
+            element.style.display = '';
+        });
+        if (!allowed && window.navigateToPage && ['admin', 'preferences'].some(function (page) {
+            const pane = document.getElementById('tab-' + page);
+            return pane && !pane.classList.contains('d-none');
+        })) window.navigateToPage('analyze');
     }
 
     function checkAdminStatus() {
-        fetch('/api/admin/status')
-            .then(r => r.json())
-            .then(data => {
-                adminPasswordRequired = data.passwordRequired === true;
-                if (adminPasswordRequired && isAdminMode()) {
-                    // Re-verify silently on page reload
-                    fetch('/api/admin/verify', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ password: getAdminToken() })
-                    })
-                    .then(r => r.json())
-                    .then(result => {
-                        if (!result.valid) {
-                            // Token no longer valid — clear it
-                            sessionStorage.removeItem('adminToken');
-                        }
-                        updateAdminVisibility();
-                        if (isAdminMode()) { loadDiagnostics(); }
-                    })
-                    .catch(() => { updateAdminVisibility(); });
-                } else {
-                    updateAdminVisibility();
-                    if (!adminPasswordRequired) { loadDiagnostics(); }
-                }
-            })
-            .catch(() => {
-                // If status check fails, treat as no password required
-                adminPasswordRequired = false;
-                updateAdminVisibility();
-                loadDiagnostics();
+        updateAdminVisibility();
+        const account = window.TaxonomyRoleSurface
+            ? window.TaxonomyRoleSurface.ready
+            : fetch('/api/account/me').then(function (response) {
+                if (!response.ok) throw new Error('Account context unavailable');
+                return response.json();
             });
-    }
-
-    function initAdminModal() {
-        const lockBtn = document.getElementById('adminLockBtn');
-        if (!lockBtn) { return; }
-        lockBtn.addEventListener('click', function () {
-            const modal = document.getElementById('adminModal');
-            if (!modal) { return; }
-            const unlockForm = document.getElementById('adminUnlockForm');
-            const lockedInfo = document.getElementById('adminLockedInfo');
-            const unlockBtn = document.getElementById('adminUnlockBtn');
-            const lockConfirmBtn = document.getElementById('adminLockConfirmBtn');
-            const passwordInput = document.getElementById('adminPasswordInput');
-            const errorMsg = document.getElementById('adminPasswordError');
-            if (isAdminMode()) {
-                // Show "lock" view
-                if (unlockForm) { unlockForm.classList.add('d-none'); }
-                if (lockedInfo) { lockedInfo.classList.remove('d-none'); }
-                if (unlockBtn) { unlockBtn.classList.add('d-none'); }
-                if (lockConfirmBtn) { lockConfirmBtn.classList.remove('d-none'); }
-            } else {
-                // Show "unlock" view
-                if (unlockForm) { unlockForm.classList.remove('d-none'); }
-                if (lockedInfo) { lockedInfo.classList.add('d-none'); }
-                if (unlockBtn) { unlockBtn.classList.remove('d-none'); }
-                if (lockConfirmBtn) { lockConfirmBtn.classList.add('d-none'); }
-                if (errorMsg) { errorMsg.classList.add('d-none'); }
-                if (passwordInput) { passwordInput.value = ''; }
-            }
-            const bsModal = new bootstrap.Modal(modal);
-            bsModal.show();
-            // Return focus to trigger when modal closes (WCAG 2.4.3)
-            modal.addEventListener('hidden.bs.modal', function () {
-                lockBtn.focus();
-            }, { once: true });
+        return account.then(function (data) {
+            administrator = data && data.administrator === true;
+            updateAdminVisibility();
+            if (isAdminMode()) { initPromptEditor(); loadDiagnostics(); }
+        }).catch(function () {
+            administrator = false;
+            updateAdminVisibility();
         });
-
-        const unlockBtn = document.getElementById('adminUnlockBtn');
-        if (unlockBtn) {
-            unlockBtn.addEventListener('click', function () {
-                const passwordInput = document.getElementById('adminPasswordInput');
-                const errorMsg = document.getElementById('adminPasswordError');
-                const password = passwordInput ? passwordInput.value : '';
-                unlockAdmin(password).then(function (valid) {
-                    if (valid) {
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('adminModal'));
-                        if (modal) { modal.hide(); }
-                        loadDiagnostics();
-                    } else {
-                        if (errorMsg) { errorMsg.classList.remove('d-none'); }
-                        if (passwordInput) { passwordInput.focus(); }
-                    }
-                });
-            });
-        }
-
-        const lockConfirmBtn = document.getElementById('adminLockConfirmBtn');
-        if (lockConfirmBtn) {
-            lockConfirmBtn.addEventListener('click', function () {
-                lockAdmin();
-                const modal = bootstrap.Modal.getInstance(document.getElementById('adminModal'));
-                if (modal) { modal.hide(); }
-            });
-        }
-
-        // Allow Enter key to submit password
-        const passwordInput = document.getElementById('adminPasswordInput');
-        if (passwordInput) {
-            passwordInput.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') {
-                    const unlockBtnEl = document.getElementById('adminUnlockBtn');
-                    if (unlockBtnEl) { unlockBtnEl.click(); }
-                }
-            });
-        }
     }
+
+    document.addEventListener('taxonomy:roles-ready', function (event) {
+        administrator = event.detail?.administrator === true;
+        updateAdminVisibility();
+        if (isAdminMode()) initPromptEditor();
+    });
 
     // ── Check AI availability ─────────────────────────────────────────────────
     function populateProviderDropdown(aiStatus) {
@@ -515,7 +381,7 @@
                     btn.disabled = false;
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.add('d-none');
-                    if (!adminPasswordRequired || isAdminMode()) {
+                    if (isAdminMode()) {
                         infoEl.textContent = t('browse.ai.using', status.provider);
                         infoEl.classList.remove('d-none');
                     } else {
@@ -526,7 +392,7 @@
                             badge.textContent = t('browse.ai.badge.limited', status.provider);
                             badge.title = t('browse.ai.badge.limited.title', status.provider);
                             badge.className = 'badge bg-warning text-dark ms-auto me-2 fs-6';
-                        } else if (!adminPasswordRequired || isAdminMode()) {
+                        } else if (isAdminMode()) {
                             badge.textContent = t('browse.ai.badge.provider', status.provider);
                             badge.title = t('browse.ai.badge.available.title', status.provider);
                             badge.className = 'badge bg-success ms-auto me-2 fs-6';
@@ -567,12 +433,11 @@
 
     // ── LLM Diagnostics ───────────────────────────────────────────────────────
     function loadDiagnostics() {
-        if (adminPasswordRequired && !isAdminMode()) { return; }
+        if (!isAdminMode()) { return; }
         const content = document.getElementById('diagnosticsContent');
         if (!content) { return; }
         content.innerHTML = '<div class="text-muted">' + t('status.loading') + '</div>';
         const headers = { 'Accept': 'application/json' };
-        if (isAdminMode()) { headers['X-Admin-Token'] = getAdminToken(); }
         fetch('/api/diagnostics', { headers: headers })
             .then(r => {
                 if (r.status === 401) {
@@ -1008,6 +873,67 @@
             .catch(function (err) { alert(t('browse.report.export.failed', err.message)); });
             return;
         }
+    }
+
+    // Retain one explicit evidence snapshot while the user reads it. No provider call is made.
+    function showNodeActions(node, actions, trigger) {
+        const previous = document.getElementById('taxonomyActionsDialog');
+        if (previous) previous.close();
+        const origin = actions.parentElement;
+        const dialog = document.createElement('dialog');
+        dialog.id = 'taxonomyActionsDialog';
+        dialog.className = 'tax-reason-dialog tax-actions-dialog';
+        dialog.setAttribute('aria-labelledby', 'taxonomyActionsTitle');
+        const heading = document.createElement('h2');
+        heading.id = 'taxonomyActionsTitle';
+        heading.className = 'h5';
+        heading.textContent = node.code + ' — ' + node.name;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn btn-sm btn-outline-secondary';
+        close.textContent = t('browse.reason.close');
+        close.addEventListener('click', function () { dialog.close(); });
+        const header = document.createElement('div');
+        header.className = 'tax-reason-dialog-head';
+        header.append(heading, close);
+        actions.hidden = false;
+        dialog.append(header, actions);
+        // Close the native modal before a chosen action opens its own dialog or view.
+        dialog.addEventListener('click', function (event) {
+            const action = event.target.closest('button');
+            if (action && actions.contains(action) && !action.disabled) dialog.close('action');
+        }, true);
+        dialog.addEventListener('close', function () {
+            actions.hidden = true;
+            if (origin && origin.isConnected) origin.appendChild(actions);
+            dialog.remove();
+            if (dialog.returnValue !== 'action' && trigger.isConnected) trigger.focus();
+        }, { once: true });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
+    function showNodeReason(node, reason, trigger) {
+        var previous = document.getElementById('taxonomyReasonDialog');
+        if (previous) previous.remove();
+        var dialog = document.createElement('dialog');
+        dialog.id = 'taxonomyReasonDialog'; dialog.className = 'tax-reason-dialog';
+        dialog.setAttribute('aria-labelledby', 'taxonomyReasonTitle');
+        var heading = document.createElement('div'); heading.className = 'tax-reason-heading';
+        var title = document.createElement('h2'); title.id = 'taxonomyReasonTitle';
+        title.textContent = node.code + ' — ' + (node.name || node.nameEn || node.code);
+        var close = document.createElement('button'); close.type = 'button';
+        close.className = 'btn btn-sm btn-outline-secondary';
+        close.textContent = t('browse.reason.close');
+        close.addEventListener('click', function () { dialog.close(); });
+        var content = document.createElement('p'); content.className = 'tax-reason-text';
+        content.textContent = reason;
+        heading.append(title, close); dialog.append(heading, content);
+        dialog.addEventListener('close', function () {
+            dialog.remove();
+            if (trigger.isConnected) trigger.focus();
+        }, { once: true });
+        document.body.append(dialog); dialog.showModal();
     }
 
     // ── Render tree (list view) ───────────────────────────────────────────────
@@ -1484,17 +1410,23 @@
 
         // A zero assessment still has evidence worth inspecting.
         if (Number.isFinite(pct) && pct >= 0 && reason) {
-            const reasonIcon = document.createElement('span');
+            const reasonIcon = document.createElement('button');
+            reasonIcon.type = 'button';
             reasonIcon.className = 'tax-reason-icon';
+            reasonIcon.setAttribute('aria-haspopup', 'dialog');
+            reasonIcon.addEventListener('click', function (event) {
+                event.stopPropagation(); showNodeReason(node, reason, reasonIcon);
+            });
             reasonIcon.textContent = '💬';
             reasonIcon.title = reason;
             reasonIcon.setAttribute('aria-label', t('browse.node.reason', reason));
             header.appendChild(reasonIcon);
         }
 
-        // Inline action buttons — shown on hover, same line as the node header
+        // Keep one stable action target; full action labels belong in the on-demand dialog.
         const actions = document.createElement('span');
         actions.className = 'tax-node-actions';
+        actions.hidden = true;
 
         // Leaf justification button (leaf node with score > 0)
         if (!hasChildren && pct !== null && pct > 0 && S.storedBusinessText) {
@@ -1561,7 +1493,17 @@
         });
         actions.appendChild(similarBtn);
 
-        header.appendChild(actions);
+        const actionsToggle = document.createElement('button');
+        actionsToggle.type = 'button';
+        actionsToggle.className = 'tax-node-actions-toggle btn btn-sm btn-outline-secondary';
+        actionsToggle.textContent = '⋯';
+        actionsToggle.setAttribute('aria-label', t('browse.node.actions', node.code));
+        actionsToggle.setAttribute('aria-haspopup', 'dialog');
+        actionsToggle.addEventListener('click', function (event) {
+            event.stopPropagation();
+            showNodeActions(node, actions, actionsToggle);
+        });
+        header.append(actionsToggle, actions);
         wrapper.appendChild(header);
 
         // Visible description below the header row
@@ -1856,6 +1798,7 @@
     }
 
     function resetStaleResults() {
+        SC().acceptRelationSearchReport?.(null);
         S.currentScores = null;
         S.currentReasons = {};
         S.storedBusinessText = null;
@@ -2244,18 +2187,17 @@
 
     let promptTemplates = [];
 
-    /** Returns headers object including X-Admin-Token when admin mode is active. */
-    function getAdminHeaders() {
-        const h = {};
-        if (isAdminMode()) { h['X-Admin-Token'] = getAdminToken(); }
-        return h;
-    }
+    // Authentication and CSRF handling are supplied by the shared request layer.
+    function getAdminHeaders() { return {}; }
 
+    let promptEditorInitialized = false;
     function initPromptEditor() {
+        if (promptEditorInitialized || !isAdminMode()) return;
         const select   = document.getElementById('promptSelect');
         const saveBtn  = document.getElementById('promptSaveBtn');
         const resetBtn = document.getElementById('promptResetBtn');
         if (!select || !saveBtn || !resetBtn) return;
+        promptEditorInitialized = true;
 
         // Try categorized endpoint first, fall back to flat list
         fetch('/api/prompts/categories', { headers: getAdminHeaders() })
@@ -2415,6 +2357,7 @@
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
+        SC().acceptRelationSearchReport?.(null);
         SC().applyLocalRawScores({}, true);
         S.currentReasons = {};
 

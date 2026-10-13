@@ -306,6 +306,7 @@
 
     function hasDerivedAnalysis() {
         return hasScores()
+            || Boolean(S.currentRelationSearchReport)
             || Boolean(S.currentArchView)
             || (Array.isArray(S.currentDiscrepancies) && S.currentDiscrepancies.length > 0)
             || (Array.isArray(S.currentProductCoverageGaps)
@@ -345,6 +346,7 @@
             discrepancies: S.currentDiscrepancies || [],
             productCoverageGaps: S.currentProductCoverageGaps || [],
             architectureView: S.currentArchView,
+            relationSearchReport: S.currentRelationSearchReport || null,
             provisionalRelations: Array.isArray(window._currentProvisionalRelations)
                 ? window._currentProvisionalRelations : [],
             evaluatedNodes: S.evaluatedNodes instanceof Set
@@ -366,6 +368,7 @@
         return Boolean(payload && (
             String(payload.businessText || '').trim()
             || (payload.scores && Object.keys(payload.scores).length > 0)
+            || payload.relationSearchReport
             || payload.architectureView
             || (payload.discrepancies && payload.discrepancies.length > 0)
             || (payload.productCoverageGaps && payload.productCoverageGaps.length > 0)

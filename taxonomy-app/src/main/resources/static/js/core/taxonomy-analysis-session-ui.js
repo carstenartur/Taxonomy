@@ -21,6 +21,7 @@
 
     function clearDerivedUi() {
         if (window.TaxonomyScoring) {
+            window.TaxonomyScoring.renderIndependentRelationSearchReport?.(null);
             if (typeof window.TaxonomyScoring.cancelStreamingAnalysis === 'function') {
                 window.TaxonomyScoring.cancelStreamingAnalysis();
             }
@@ -141,6 +142,7 @@
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
+        S.currentRelationSearchReport = null;
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();
         S.lastAnalyzedText = null;

@@ -7,7 +7,8 @@
     var generation = C.runtime.analysisGeneration || 0;
     var STORAGE = 'taxonomy.recovery.active.v1';
     function text(de, en) { return C.language() === 'de' ? de : en; }
-    var ui = window.TaxonomyRecoveryViewport.mount({ text: text, open: open, cancel: cancel });
+    var ui = window.TaxonomyRecoveryViewport.mount({ text: text, open: open, cancel: cancel,
+        scopeKey: function () { var c = current(); return c ? c.workspaceId + '/' + c.id : ''; } });
     function input() { return (document.getElementById('businessText')?.value || '').trim(); }
     function current() { return S.recoveryContext; }
     function inScope(context) {
@@ -108,6 +109,7 @@
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
         S.currentArchView = result.architectureView || null;
+        window.TaxonomyScoring?.acceptRelationSearchReport?.(result);
         S.lastAnalyzedText = context.request.businessText;
         S.storedBusinessText = context.request.businessText;
         S.lastAnalysisProvider = result.provider || context.request.provider;
@@ -134,7 +136,7 @@
             c.request = snapshot.request;
             update();
             if (snapshot.recovery.state === 'RUNNING') scheduleRead();
-            else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED') open(); }
+            else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open(); }
         } catch (error) {
             if (inScope(c)) {
                 c.observationError = error.message;
@@ -403,7 +405,7 @@
             S.analysisRecovery = snapshot.recovery;
             if (snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, context);
             update(); await save();
-            if (snapshot.recovery.state === 'PAUSED') open();
+            if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open();
             else if (snapshot.recovery.state === 'RUNNING') scheduleRead();
         } catch (ignored) { /* An inaccessible foreign/deleted operation never replaces the current draft. */ }
     }
@@ -411,7 +413,7 @@
         clearTimeout(poll); poll = null; S.recoveryContext = null; S.analysisRecovery = null;
         generation = C.runtime.analysisGeneration || 0; setBusy(false); remember(); ui.close();
         // The imported coverage remains valid metadata; only the execution binding is discarded.
-        renderCoverage();
+        update();
     });
     document.addEventListener('taxonomy:analysis-draft-restored', restore);
     document.addEventListener('taxonomy:view-rendered', renderCoverage);

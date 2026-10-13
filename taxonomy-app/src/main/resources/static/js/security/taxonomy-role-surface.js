@@ -139,14 +139,33 @@ window.TaxonomyRoleSurface = (function () {
 
     function ensureLocalUserManagementAdminEntry() {
         var existing = document.getElementById('localUserManagementAdminEntry');
-        if (!isAdministrator() || context.localUserManagementAllowed !== true) {
+        var menuLink = document.getElementById('userManagementMenuAction');
+        if (!isAdministrator()) {
             if (existing) existing.remove();
+            if (menuLink) { menuLink.hidden = true; menuLink.href = '#admin'; menuLink.dataset.page = 'admin'; }
             return;
         }
+        var allowed = context.localUserManagementAllowed === true;
+        var userUrl = window.TaxonomyI18n
+            ? window.TaxonomyI18n.resolveUrl('/admin/users') : applicationBasePath + '/admin/users';
+        if (menuLink) {
+            menuLink.hidden = false;
+            menuLink.href = allowed ? userUrl : '#admin';
+            if (allowed) {
+                delete menuLink.dataset.page;
+                menuLink.removeAttribute('aria-current');
+                menuLink.removeAttribute('aria-controls');
+            }
+            else menuLink.dataset.page = 'admin';
+        }
         var adminTab = document.getElementById('tab-admin');
-        if (!adminTab || existing) return;
+        if (!adminTab) return;
+        var mode = allowed ? 'enabled' : 'unavailable';
+        if (existing && existing.dataset.managementMode === mode) return;
+        if (existing) existing.remove();
         var card = document.createElement('section');
         card.id = 'localUserManagementAdminEntry';
+        card.dataset.managementMode = mode;
         card.className = 'card shadow-sm mb-3';
         card.setAttribute('aria-labelledby', 'localUserManagementAdminEntryTitle');
         var body = document.createElement('div');
@@ -156,14 +175,18 @@ window.TaxonomyRoleSurface = (function () {
         title.className = 'h5';
         title.textContent = translated('users.title', 'User management');
         var description = document.createElement('p');
-        description.textContent = translated('users.description', 'Manage local accounts and roles.');
-        var link = document.createElement('a');
-        link.id = 'localUserManagementLink';
-        link.className = 'btn btn-primary';
-        link.href = window.TaxonomyI18n
-            ? window.TaxonomyI18n.resolveUrl('/admin/users') : applicationBasePath + '/admin/users';
-        link.textContent = translated('users.open', 'Manage users');
-        body.append(title, description, link);
+        description.textContent = allowed
+            ? translated('users.description', 'Manage local accounts and roles.')
+            : translated('users.management.unavailable', 'Local account management is not enabled. It requires the local-user-management profile and local authentication; external accounts are managed by the identity provider.');
+        body.append(title, description);
+        if (allowed) {
+            var link = document.createElement('a');
+            link.id = 'localUserManagementLink';
+            link.className = 'btn btn-primary';
+            link.href = userUrl;
+            link.textContent = translated('users.open', 'Manage users');
+            body.appendChild(link);
+        }
         card.appendChild(body);
         adminTab.insertBefore(card, adminTab.firstChild);
     }
@@ -291,6 +314,7 @@ window.TaxonomyRoleSurface = (function () {
         return window.TaxonomyApiClient.getJson('/api/account/me')
             .then(function (data) {
                 context = data;
+                document.body.classList.toggle('admin-unlocked', isAdministrator());
                 ensureStableEvidenceAnchors();
                 if (window.TaxonomyI18n) {
                     window.TaxonomyI18n.ready().then(ensureAdminEntries);
@@ -309,7 +333,11 @@ window.TaxonomyRoleSurface = (function () {
             })
             .catch(function (error) {
                 console.error('[Taxonomy] Unable to load role context', error);
-                context.localUserManagementAllowed = false;
+                // A previous administrator response must not survive an authority lookup failure.
+                context = { username: null, roles: [], architectureMutationAllowed: false,
+                    administrator: false, localUserManagementAllowed: false };
+                document.body.classList.remove('admin-unlocked');
+                document.dispatchEvent(new CustomEvent('taxonomy:roles-ready', { detail: context }));
                 ensureLocalUserManagementAdminEntry();
                 ensureStableEvidenceAnchors();
                 applyStaticSurfaces(document);

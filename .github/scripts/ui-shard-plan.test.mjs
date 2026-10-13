@@ -122,6 +122,20 @@ test('browser shards still install their pinned runtime before executing accepta
   assert.ok(executions.some(step => step.goal === 'install-node-and-npm'));
 });
 
+test('native analysis/navigation component tests run in the installed-browser UI shard', async () => {
+  const runner = await readFile(
+    path.join(repoRoot, '.github', 'scripts', 'run-ui-suite.mjs'), 'utf8');
+  const specialModeShard = plan.shards.find(shard =>
+    shard.scenarios.includes('special-modes/text-spacing-and-offline'));
+
+  assert.ok(specialModeShard);
+  assert.match(runner, /analysis-navigation\.browser\.test\.mjs/);
+  assert.match(runner, /analysis-ux\.browser\.test\.mjs/);
+  assert.match(runner, /BOOTSTRAP_CSS:\s*bootstrapCss/);
+  assert.match(runner, /webjars\/bootstrap\/5\.3\.8\/dist\/css\/bootstrap\.min\.css/);
+  assert.ok(specialModeShard.scenarios.includes('special-modes/text-spacing-and-offline'));
+});
+
 test('final evidence gate still validates all shard evidence without installing browsers', () => {
   const executions = verificationExecutions('evidence-gate');
   assert.ok(executions.some(step => step.phase === 'test' && step.arguments === 'run verify:ui-shards'));
