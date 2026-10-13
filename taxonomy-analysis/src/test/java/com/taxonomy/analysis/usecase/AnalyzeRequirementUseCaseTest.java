@@ -74,19 +74,22 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
-    void taxonomyOnlyScopeSkipsEveryRelationAndArchitecturePhase() {
+    void taxonomyOnlyScopeSkipsEveryRelationPhaseAndProjectsOnlyAssessedNodes() {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
         var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
+        when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         var result = useCase.analyze(command).analysisResult();
         assertThat(result.getAnalysisScope()).isEqualTo(scope);
         assertThat(result.getProvisionalRelations()).isEmpty();
         assertThat(result.getRelationSearchReport()).isNull();
-        assertThat(result.getArchitectureView()).isNull();
+        // Only the bounded local projection of retained assessments; no relation is inferred.
+        assertThat(result.getArchitectureView()).isNotNull();
+        assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
-                architectureViewService, preferencesService);
+                architectureViewService);
         verify(llmService).clearRequestProvider();
     }
 
@@ -128,7 +131,6 @@ class AnalyzeRequirementUseCaseTest {
         var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
         var report = org.mockito.Mockito.mock(com.taxonomy.dto.RelationSearchReport.class);
         when(report.isSearchExhausted()).thenReturn(true);
-        when(report.stopReason()).thenReturn("");
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
         when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenReturn(report);
@@ -140,7 +142,7 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
-    void cooperativeStopInsideTheRelationTaskKeepsPartialEvidenceAndSkipsArchitecture() {
+    void cooperativeStopInsideTheRelationTaskKeepsPartialEvidenceAndProjectsAssessedNodes() {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
@@ -151,13 +153,17 @@ class AnalyzeRequirementUseCaseTest {
         when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenThrow(
                 new com.taxonomy.analysis.service.AnalysisStoppedException(
                         com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED));
+        when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
 
         var result = useCase.analyze(command).analysisResult();
 
         assertThat(result.getStatus()).isEqualTo("PARTIAL");
         assertThat(result.getErrorMessage()).startsWith("CANCELLED");
-        assertThat(result.getArchitectureView()).isNull();
-        verifyNoInteractions(architectureViewService, preferencesService);
+        // A cooperative stop still publishes a bounded partial view without relation rendering.
+        assertThat(result.getArchitectureView()).isNotNull();
+        assertThat(result.getArchitectureView().getAnalysisStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
+        verifyNoInteractions(architectureViewService);
         // Exact read authority is resolved once and reported on the result.
         verify(repositoryStateService, org.mockito.Mockito.times(1))
                 .getViewContext("alice", "draft", command.workspaceContext());
@@ -171,6 +177,7 @@ class AnalyzeRequirementUseCaseTest {
                 "alice", new WorkspaceContext("alice", "alice-ws", "draft"));
         AnalysisResult analysisResult = new AnalysisResult();
         analysisResult.setScores(Map.of("CP", 80, "CR", 70));
+        analysisResult.setStatus("SUCCESS");
 
         List<RelationHypothesisDto> provisionalRelations = List.of(
                 new RelationHypothesisDto("CP", "Capabilities", "CR", "Communications",
