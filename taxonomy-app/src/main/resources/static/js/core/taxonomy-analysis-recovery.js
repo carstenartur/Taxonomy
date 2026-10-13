@@ -151,7 +151,7 @@
         clearTimeout(poll);
         poll = setTimeout(function () { poll = null; refresh(); }, 1200);
     }
-    async function run(action, question) {
+    async function run(action, question, newOperation) {
         var c = current();
         if (!inScope(c) || busy || decisionBusy || stopped()) return;
         if (!window.TaxonomyAnalysisSession?.state?.().ready) {
@@ -164,7 +164,8 @@
         S.analysisRecovery = Object.assign({}, S.analysisRecovery, { state: 'RUNNING' });
         update(); remember(); scheduleRead();
         try {
-            var promise = window.TaxonomyScoring.runAnalysis({ continuation: body, recoveryManaged: true });
+            var promise = window.TaxonomyScoring.runAnalysis({ continuation: body, recoveryManaged: true,
+                newOperation: newOperation === true });
             if (!promise || typeof promise.then !== 'function') throw new Error(text(
                 'Die Analyse wurde von der Vorprüfung abgewiesen.', 'Analysis preflight rejected the start.'));
             var result = await promise;
@@ -387,7 +388,9 @@
             request: { businessText: input(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
-        run('START');
+        // This newly allocated identity owns no previous scores or derived evidence.
+        // A repeated START for an existing operation must retain its accepted results.
+        run('START', null, true);
     }
     async function restore() {
         if (busy || reading || !window.TaxonomyAnalysisSession?.state?.().ready) return;

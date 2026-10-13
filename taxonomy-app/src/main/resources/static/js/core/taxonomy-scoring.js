@@ -577,7 +577,7 @@
             B().showStatus('danger', t('scoring.secure.id.unavailable'));
             return;
         }
-        if (!options.continuation) {
+        if (!options.continuation || options.newOperation === true) {
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
