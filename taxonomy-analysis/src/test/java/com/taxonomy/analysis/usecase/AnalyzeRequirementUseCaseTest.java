@@ -74,11 +74,12 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
-    void taxonomyOnlyScopeSkipsEveryRelationAndArchitecturePhase() {
+    void taxonomyOnlyScopeSkipsRelationsAndProjectsRetainedArchitecture() {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
         var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        evidence.setStatus("PARTIAL");
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         var result = useCase.analyze(command).analysisResult();
@@ -86,7 +87,9 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getProvisionalRelations()).isEmpty();
         assertThat(result.getRelationSearchReport()).isNull();
         // The explicitly requested view only projects retained assessments; no relation is inferred.
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
         assertThat(result.getArchitectureView()).isNotNull();
+        assertThat(result.getArchitectureView().getAnalysisStatus()).isEqualTo("PARTIAL");
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
                 architectureViewService);

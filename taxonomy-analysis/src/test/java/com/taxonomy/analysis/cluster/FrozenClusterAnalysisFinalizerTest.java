@@ -51,7 +51,7 @@ class FrozenClusterAnalysisFinalizerTest {
             var restored = mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class);
             var diagram = new DiagramProjectionService().projectRaw(restored.getArchitectureView(), "Frozen result");
             assertThat(diagram.title()).contains("PARTIAL").doesNotContain("0 unassessed");
-            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP-1"));
+            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP-1136"));
             assertThat(restored.getRawScores()).isEqualTo(original.getRawScores());
             return true;
         }));
@@ -64,15 +64,15 @@ class FrozenClusterAnalysisFinalizerTest {
         verify(store).finalizeResult(eq(context), argThat(result -> {
             var view = result.getArchitectureView();
             assertThat(view.getIncludedElements()).singleElement().satisfies(element -> {
-                assertThat(element.getNodeCode()).isEqualTo("IP-1");
-                assertThat(element.getTitle()).isEqualTo("Frozen IP-1");
-                assertThat(element.getHierarchyPath()).isEqualTo("IP > IP-1");
+                assertThat(element.getNodeCode()).isEqualTo("IP-1136");
+                assertThat(element.getTitle()).isEqualTo("Frozen IP-1136");
+                assertThat(element.getHierarchyPath()).isEqualTo("IP > IP-1136");
                 assertThat(element.getScoreDetail().rawScore()).isEqualTo(80);
             });
             assertThat(view.getIncludedRelationships()).isEmpty();
             assertThat(view.getNotes()).anyMatch(note -> note.contains("hierarchy-only"));
             assertThat(view.getViewTitle()).isEqualTo("archview.policy.title.trace");
-            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1", 55, "IP-1", 80));
+            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1023", 55, "IP-1136", 80));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
             return true;
         }));
@@ -105,7 +105,7 @@ class FrozenClusterAnalysisFinalizerTest {
         var command = store.command(context);
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
                 command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
-        var hypothesis = new RelationHypothesisDto("CP-1", "stale CP", "IP-1", "stale IP", "REQUIRES", 0.44,
+        var hypothesis = new RelationHypothesisDto("CP-1023", "stale CP", "IP-1136", "stale IP", "REQUIRES", 0.44,
                 "Inferred from effective scores and compatibility matrix");
         store.snapshot(context).result().setProvisionalRelations(List.of(hypothesis));
         finalizer.accept(context);
@@ -117,8 +117,8 @@ class FrozenClusterAnalysisFinalizerTest {
             assertThat(restored.getRelationSearchReport()).isNull();
             var view = restored.getArchitectureView();
             assertThat(view.getIncludedRelationships()).singleElement().satisfies(relation -> {
-                assertThat(relation.getSourceCode()).isEqualTo("CP-1");
-                assertThat(relation.getTargetCode()).isEqualTo("IP-1");
+                assertThat(relation.getSourceCode()).isEqualTo("CP-1023");
+                assertThat(relation.getTargetCode()).isEqualTo("IP-1136");
                 assertThat(relation.getRelationType()).isEqualTo("REQUIRES");
                 assertThat(relation.getOrigin()).isEqualTo(RelationOrigin.SUGGESTED_CANDIDATE);
                 assertThat(relation.getConfidence()).isEqualTo(0.44);
@@ -127,7 +127,7 @@ class FrozenClusterAnalysisFinalizerTest {
                 assertThat(relation.getRelationId()).isNull();
             });
             assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)
-                    .containsExactly("Frozen IP-1", "Frozen CP-1");
+                    .containsExactly("Frozen IP-1136", "Frozen CP-1023");
             assertThat(view.getTotalRelationships()).isEqualTo(1);
             assertThat(view.getNotes()).anyMatch(note -> note.contains("Provisional score-only"));
             return true;
@@ -170,7 +170,7 @@ class FrozenClusterAnalysisFinalizerTest {
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(c.businessText(), true, 1,
                 c.provider(), c.username(), c.workspaceContext(), c.provenance(), c.analysisScope()));
         // Like durable root results, the merged result retains its own catalogue tree.
-        var result = new AnalysisResult(Map.of("CP-1", 55, "IP-1", 80), List.of(retained("CP"), retained("IP")));
+        var result = new AnalysisResult(Map.of("CP-1023", 55, "IP-1136", 80), List.of(retained("CP"), retained("IP")));
         result.setStatus("SUCCESS");
         result.setViewContext(new ViewContext("commit", "draft", null, false, false, false));
         when(store.snapshot(context)).thenReturn(new ClusterAnalysisStore.Snapshot(context.operationId(),
@@ -185,9 +185,21 @@ class FrozenClusterAnalysisFinalizerTest {
     private static TaxonomyNodeDto retained(String root) {
         var container = new TaxonomyNodeDto(); container.setCode(root); container.setTaxonomyRoot(root);
         container.setNameEn("Frozen " + root); container.setLevel(0);
-        var child = new TaxonomyNodeDto(); child.setCode(root + "-1"); child.setTaxonomyRoot(root);
-        child.setNameEn("Frozen " + root + "-1"); child.setParentCode(root); child.setLevel(1);
-        container.getChildren().add(child);
+        if ("CP".equals(root)) {
+            var parent = new TaxonomyNodeDto(); parent.setCode("CP-1000"); parent.setTaxonomyRoot(root);
+            parent.setNameEn("Frozen Capabilities"); parent.setParentCode(root); parent.setLevel(1);
+            var child = new TaxonomyNodeDto(); child.setCode("CP-1023"); child.setTaxonomyRoot(root);
+            child.setNameEn("Frozen Communication and Information System Capabilities");
+            child.setParentCode("CP-1000"); child.setLevel(2);
+            parent.getChildren().add(child);
+            container.getChildren().add(parent);
+        } else if ("IP".equals(root)) {
+            var child = new TaxonomyNodeDto(); child.setCode("IP-1136"); child.setTaxonomyRoot(root);
+            child.setNameEn("Frozen Electronic Treatment Records"); child.setParentCode(root); child.setLevel(1);
+            container.getChildren().add(child);
+        } else {
+            throw new IllegalArgumentException("Unsupported taxonomy fixture root: " + root);
+        }
         return container;
     }
 }
