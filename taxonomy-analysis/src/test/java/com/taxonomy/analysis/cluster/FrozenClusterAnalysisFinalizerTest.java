@@ -51,7 +51,7 @@ class FrozenClusterAnalysisFinalizerTest {
             var restored = mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class);
             var diagram = new DiagramProjectionService().projectRaw(restored.getArchitectureView(), "Frozen result");
             assertThat(diagram.title()).contains("PARTIAL").doesNotContain("0 unassessed");
-            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP"));
+            assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("IP-1"));
             assertThat(restored.getRawScores()).isEqualTo(original.getRawScores());
             return true;
         }));
@@ -64,15 +64,15 @@ class FrozenClusterAnalysisFinalizerTest {
         verify(store).finalizeResult(eq(context), argThat(result -> {
             var view = result.getArchitectureView();
             assertThat(view.getIncludedElements()).singleElement().satisfies(element -> {
-                assertThat(element.getNodeCode()).isEqualTo("IP");
-                assertThat(element.getTitle()).isEqualTo("Frozen IP");
-                assertThat(element.getHierarchyPath()).isEqualTo("IP");
+                assertThat(element.getNodeCode()).isEqualTo("IP-1");
+                assertThat(element.getTitle()).isEqualTo("Frozen IP-1");
+                assertThat(element.getHierarchyPath()).isEqualTo("IP > IP-1");
                 assertThat(element.getScoreDetail().rawScore()).isEqualTo(80);
             });
             assertThat(view.getIncludedRelationships()).isEmpty();
             assertThat(view.getNotes()).anyMatch(note -> note.contains("hierarchy-only"));
             assertThat(view.getViewTitle()).isEqualTo("archview.policy.title.trace");
-            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP", 55, "IP", 80));
+            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1", 55, "IP-1", 80));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
             return true;
         }));
@@ -105,7 +105,7 @@ class FrozenClusterAnalysisFinalizerTest {
         var command = store.command(context);
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
                 command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
-        var hypothesis = new RelationHypothesisDto("CP", "stale CP", "IP", "stale IP", "REQUIRES", 0.44,
+        var hypothesis = new RelationHypothesisDto("CP-1", "stale CP", "IP-1", "stale IP", "REQUIRES", 0.44,
                 "Inferred from effective scores and compatibility matrix");
         store.snapshot(context).result().setProvisionalRelations(List.of(hypothesis));
         finalizer.accept(context);
@@ -117,8 +117,8 @@ class FrozenClusterAnalysisFinalizerTest {
             assertThat(restored.getRelationSearchReport()).isNull();
             var view = restored.getArchitectureView();
             assertThat(view.getIncludedRelationships()).singleElement().satisfies(relation -> {
-                assertThat(relation.getSourceCode()).isEqualTo("CP");
-                assertThat(relation.getTargetCode()).isEqualTo("IP");
+                assertThat(relation.getSourceCode()).isEqualTo("CP-1");
+                assertThat(relation.getTargetCode()).isEqualTo("IP-1");
                 assertThat(relation.getRelationType()).isEqualTo("REQUIRES");
                 assertThat(relation.getOrigin()).isEqualTo(RelationOrigin.SUGGESTED_CANDIDATE);
                 assertThat(relation.getConfidence()).isEqualTo(0.44);
@@ -127,7 +127,7 @@ class FrozenClusterAnalysisFinalizerTest {
                 assertThat(relation.getRelationId()).isNull();
             });
             assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)
-                    .containsExactly("Frozen IP", "Frozen CP");
+                    .containsExactly("Frozen IP-1", "Frozen CP-1");
             assertThat(view.getTotalRelationships()).isEqualTo(1);
             assertThat(view.getNotes()).anyMatch(note -> note.contains("Provisional score-only"));
             return true;
@@ -142,7 +142,9 @@ class FrozenClusterAnalysisFinalizerTest {
         when(metadata.resolve()).thenThrow(new IllegalStateException("unavailable optional metadata"));
         finalizer.accept(context);
         verify(store).finalizeResult(eq(context), argThat(result ->
-                result.getStatus().equals("PARTIAL") && result.getArchitectureView() == null
+                result.getStatus().equals("PARTIAL") && result.getArchitectureView() != null
+                        && "PARTIAL".equals(result.getArchitectureView().getAnalysisStatus())
+                        && result.getArchitectureView().getIncludedElements().size() == 1
                         && result.getWarnings().stream().anyMatch(w -> w.startsWith("ARCHITECTURE_VIEW_INCOMPLETE:"))
                         && result.getRawScores().size() == 2));
         assertThat(FrozenCatalogueContext.current()).isNull();
@@ -167,7 +169,9 @@ class FrozenClusterAnalysisFinalizerTest {
         var c = DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
         when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(c.businessText(), true, 1,
                 c.provider(), c.username(), c.workspaceContext(), c.provenance(), c.analysisScope()));
-        var result = new AnalysisResult(Map.of("CP", 55, "IP", 80), List.of()); result.setStatus("SUCCESS");
+        // Like durable root results, the merged result retains its own catalogue tree.
+        var result = new AnalysisResult(Map.of("CP-1", 55, "IP-1", 80), List.of(retained("CP"), retained("IP")));
+        result.setStatus("SUCCESS");
         result.setViewContext(new ViewContext("commit", "draft", null, false, false, false));
         when(store.snapshot(context)).thenReturn(new ClusterAnalysisStore.Snapshot(context.operationId(),
                 ClusterAnalysisState.FINALIZING, 3, 1, 1, 0, 0, 1, 2, List.of(), result));
@@ -176,5 +180,14 @@ class FrozenClusterAnalysisFinalizerTest {
         when(metadata.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         doCallRealMethod().when(metadata).applyTo(any(RequirementArchitectureView.class));
         return context;
+    }
+
+    private static TaxonomyNodeDto retained(String root) {
+        var container = new TaxonomyNodeDto(); container.setCode(root); container.setTaxonomyRoot(root);
+        container.setNameEn("Frozen " + root); container.setLevel(0);
+        var child = new TaxonomyNodeDto(); child.setCode(root + "-1"); child.setTaxonomyRoot(root);
+        child.setNameEn("Frozen " + root + "-1"); child.setParentCode(root); child.setLevel(1);
+        container.getChildren().add(child);
+        return container;
     }
 }

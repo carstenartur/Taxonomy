@@ -14,7 +14,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-import java.util.function.Predicate;
 
 import static com.taxonomy.dto.RelationSearchModel.*;
 import static com.taxonomy.dto.RelationSearchProgress.*;
@@ -134,9 +133,9 @@ class RelationSearchPerformanceTest {
 
     private static Object exchange(RelationSearchProtocol protocol, Function<String, String> decoder) throws Exception {
         var method = RelationSearchProtocol.class.getDeclaredMethod("exchange", Step.class, List.class,
-                String.class, Function.class, Predicate.class);
+                String.class, Function.class, Function.class);
         method.setAccessible(true);
-        try { return method.invoke(protocol, Step.NAVIGATE, List.of(ROOT.id()), "identical prompt", decoder, (Predicate<String>) value -> false); }
+        try { return method.invoke(protocol, Step.NAVIGATE, List.of(ROOT.id()), "identical prompt", decoder, (Function<String, String>) value -> ""); }
         catch (InvocationTargetException failure) {
             if (failure.getCause() instanceof RuntimeException runtime) throw runtime;
             if (failure.getCause() instanceof Error error) throw error;
@@ -157,15 +156,26 @@ class RelationSearchPerformanceTest {
 
     @Test void invalidAndUnresolvedProviderAnswersNeverBecomeDurableSuccess() {
         var query = query(SOURCE, ROOT, "CONSUMES");
-        for (String response : List.of("{", "{\"decisions\":[]}", JSON.writeValueAsString(Map.of("decisions",
-                List.of(new Decision(ROOT.id(), Outcome.UNRESOLVED, "", "", null, "", "", "Uncertain", "Which record?")))))) {
+        // Settled invalid answers stay inspectable without pausing independent relation work.
+        for (String response : List.of("{", "{\"decisions\":[]}")) {
             var journal = new Journal();
             var protocol = new RelationSearchProtocol((step, nodes, prompt) -> response, "TEST");
             try (var ignored = new AnalysisCheckpointSession(journal)) {
-                assertThrows(AnalysisStoppedException.class, () -> protocol.evaluate(query));
-                assertEquals("FAILED", journal.saved.state());
+                assertThrows(RelationSearchEngine.InvalidResponseException.class, () -> protocol.evaluate(query));
+                assertEquals("UNASSESSED", journal.saved.state());
                 assertEquals(response, journal.saved.detail().getRawResponse());
             }
+        }
+        // A valid clarification retains its validated decisions for replay, but is not a success.
+        String unresolved = JSON.writeValueAsString(Map.of("decisions",
+                List.of(new Decision(ROOT.id(), Outcome.UNRESOLVED, "", "", null, "", "", "Uncertain", "Which record?"))));
+        var journal = new Journal();
+        var protocol = new RelationSearchProtocol((step, nodes, prompt) -> unresolved, "TEST");
+        try (var ignored = new AnalysisCheckpointSession(journal)) {
+            var decisions = protocol.evaluate(query);
+            assertEquals(List.of(Outcome.UNRESOLVED), decisions.stream().map(Decision::outcome).toList());
+            assertEquals("CLARIFICATION", journal.saved.state());
+            assertEquals(unresolved, journal.saved.detail().getRawResponse());
         }
     }
 
