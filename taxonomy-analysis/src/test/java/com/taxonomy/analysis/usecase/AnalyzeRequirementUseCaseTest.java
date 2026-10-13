@@ -163,7 +163,7 @@ class AnalyzeRequirementUseCaseTest {
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
-        when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenThrow(
+        when(requirementRelationSearchService.search("requirement", Map.of("BP-1017", 20))).thenThrow(
                 new com.taxonomy.analysis.service.AnalysisStoppedException(
                         com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED));
         when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
@@ -197,7 +197,9 @@ class AnalyzeRequirementUseCaseTest {
         root.getChildren().add(support);
         support.getChildren().add(analysis);
         analysis.getChildren().add(assessed);
-        return new AnalysisResult(Map.of("BP-1017", 20), List.of(root));
+        var result = new AnalysisResult(Map.of("BP-1017", 20), List.of(root));
+        result.setStatus("SUCCESS");
+        return result;
     }
 
     private static TaxonomyNodeDto node(String code, String parentCode, String name, int level) {

@@ -156,6 +156,9 @@ class FrozenClusterAnalysisFinalizerTest {
     @Test
     void scoredNodesWithoutEmbeddedTreeUseTheBoundFrozenSnapshot() {
         var context = prepare();
+        var command = store.command(context);
+        when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
+                command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
         var result = store.snapshot(context).result();
         result.setTree(null);
         for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {

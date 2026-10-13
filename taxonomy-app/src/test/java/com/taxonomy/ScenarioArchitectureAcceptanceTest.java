@@ -136,15 +136,30 @@ class ScenarioArchitectureAcceptanceTest {
             assertThat(projection.path("snapshotId").asText()).isEqualTo(snapshotId);
             assertThat(projection.path("requirementText")).isEqualTo(requirement.get("text"));
             // Accepted concrete scores also remain visible; these are required scenario elements.
+            Set<String> requiredScenarioElements = Set.of(
+                    "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
             JsonNode projectedElements = projection.path("elements");
             assertThat(projectedElements.propertyNames()).contains(
                     "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
             assertThat(projectedElements.propertyNames()).doesNotContain("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
+            var projectedCodes = new HashSet<String>();
             for (var element : projectedElements.properties()) {
+                projectedCodes.add(element.getKey());
                 assertThat(analysis.path("scores").has(element.getKey()))
                         .as("Projected element %s must come from retained assessed evidence", element.getKey())
                         .isTrue();
+                if (!requiredScenarioElements.contains(element.getKey())) {
+                    var included = java.util.stream.StreamSupport.stream(
+                                    analysis.at("/architectureView/includedElements").spliterator(), false)
+                            .filter(candidate -> candidate.path("nodeCode").asText().equals(element.getKey()))
+                            .findFirst().orElseThrow();
+                    assertThat(included.path("origin").asText()).isEqualTo("DIRECT_SCORED");
+                    assertThat(included.path("presenceReason").asText()).contains("Directly assessed relevance");
+                    assertThat(element.getValue().path("mappingOrigin").asText()).isEqualTo("DIRECT");
+                    assertThat(element.getValue().path("presenceReason").asText()).contains("Directly assessed relevance");
+                }
             }
+            assertThat(projectedCodes).containsAll(requiredScenarioElements);
             assertThat(projection.path("relations").size()).isEqualTo(7);
             for (var relation : projection.path("relations").properties()) {
                 var value = relation.getValue();
