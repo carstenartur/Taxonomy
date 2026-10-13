@@ -584,6 +584,21 @@ for (const [label, architectureFields] of [
     });
 }
 
+test('score import preserves legacy nested-only relationship evidence', async () => {
+    const page = await reportFixture();
+    const legacyArchitecture = {...importedArchitecture, relationSearchReport: importedRelationReport};
+    try {
+        await bootScoreImport(page, {scores: {'BP-1000': 42}, architectureView: legacyArchitecture});
+        await page.locator('#importJsonFile').setInputFiles({name: 'legacy.json', mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify({scores: {'BP-1000': 42}}))});
+        await page.waitForFunction(() => TaxonomyState.lastAnalysisProvider === 'IMPORTED');
+        const payload = await page.evaluate(() => __TaxonomyAnalysisSessionContext.currentPayload());
+        assert.deepEqual(payload.architectureView, legacyArchitecture);
+        assert.deepEqual(payload.relationSearchReport, importedRelationReport);
+        assert.equal(await page.locator('#relationSearchReportPanel').isVisible(), true);
+    } finally { await finish(page); }
+});
+
 test('malformed score import leaves existing architecture and scores untouched', async () => {
     const page = await reportFixture();
     try {

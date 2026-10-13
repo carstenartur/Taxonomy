@@ -243,7 +243,7 @@ export async function runRoleStateFlow({
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     assert(!(await adminLink.isVisible().catch(() => false))
       && !(await preferencesLink.isVisible().catch(() => false)),
-    'ADMIN must not see Administration or Preferences in Settings');
+    `${role} must not see Administration or Preferences in Settings`);
     const userManagementLink = page.locator('#userManagementMenuAction');
     assert(!(await userManagementLink.isVisible().catch(() => false)),
       `${role} must not see user management in Settings`);

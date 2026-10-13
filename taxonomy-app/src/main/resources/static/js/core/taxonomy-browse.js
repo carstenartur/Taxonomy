@@ -137,7 +137,29 @@
                             return;
                         }
                         S.recoveryContext = null;
+                        const previousView = S.currentView;
+                        if (SC().clearDerivedAnalysisView) {
+                            SC().clearDerivedAnalysisView();
+                        } else {
+                            S.currentArchView = null;
+                            S.currentView = 'list';
+                            const architecturePanel = document.getElementById('architectureViewPanel');
+                            if (architecturePanel) architecturePanel.style.display = 'none';
+                            const architectureContent = document.getElementById('architectureViewContent');
+                            if (architectureContent) architectureContent.innerHTML = '';
+                            const summaryButton = document.getElementById('viewSummary');
+                            if (summaryButton) summaryButton.style.display = 'none';
+                        }
                         window.TaxonomyScoring?.acceptRelationSearchReport?.(data);
+                        S.currentArchView = data.architectureView || null;
+                        if (S.currentArchView) {
+                            SC().renderArchitectureView?.(S.currentArchView);
+                            const summaryButton = document.getElementById('viewSummary');
+                            if (summaryButton) summaryButton.style.display = '';
+                            switchView(previousView || 'list');
+                        } else {
+                            switchView('list');
+                        }
                         document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
                         S.analysisRecovery = null;
                         S.analysisCoverage = data.analysisCoverage || null;
