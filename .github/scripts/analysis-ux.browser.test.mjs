@@ -490,6 +490,115 @@ async function bootBrowseWithReport(page) {
         TaxonomyBrowse.switchView('summary');
     }, relationReport);
 }
+
+async function bootScoreImport(page, importedResult) {
+    await page.evaluate(({result, oldReport}) => {
+        document.body.insertAdjacentHTML('beforeend', `
+            <button id="expandAll"></button><button id="collapseAll"></button>
+            <button id="importJson"></button><input id="importJsonFile" type="file">
+            <select id="providerSelect"><option value="">Default</option></select>
+            <div id="aiProviderInfo"></div>
+        `);
+        window.importResult = result;
+        window.importRequestBody = null;
+        window.fetch = async (url, options = {}) => {
+            if (url === '/api/scores/import') {
+                window.importRequestBody = options.body;
+                const imported = options.body === 'not-json'
+                    ? {error: 'Malformed score import'} : window.importResult;
+                return {ok: true, json: async () => imported};
+            }
+            if (url === '/api/taxonomy') {
+                return {ok: true, status: 200, json: async () => [
+                    {code: 'BP-1000', name: 'Zeiterfassung', children: []}
+                ]};
+            }
+            if (url === '/api/ai-status') {
+                return {ok: true, json: async () => ({available: false, availableProviders: []})};
+            }
+            if (url === '/api/account/me') {
+                return {ok: true, json: async () => ({administrator: false, roles: ['USER']})};
+            }
+            throw new Error(`Unexpected test request: ${url}`);
+        };
+        window.setInterval = () => 0;
+        TaxonomyState.taxonomyData = [{code: 'BP-1000', name: 'Zeiterfassung', children: []}];
+        TaxonomyState.currentScores = {'BP-1000': 91};
+        TaxonomyState.currentView = 'summary';
+        TaxonomyState.currentArchView = {
+            notes: ['OLD ARCHITECTURE EVIDENCE'],
+            relationSearchReport: oldReport,
+            includedElements: [], includedRelationships: [], anchors: []
+        };
+        TaxonomyScoring.acceptRelationSearchReport({relationSearchReport: oldReport});
+        TaxonomyScoring.renderArchitectureView(TaxonomyState.currentArchView);
+        document.getElementById('viewSummary').style.display = '';
+    }, {result: importedResult, oldReport: relationReport});
+    await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-analysis-session-core.js')});
+    await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-browse.js')});
+    await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
+    await page.waitForFunction(() => document.querySelector('#providerSelect option[value="MANUAL"]'));
+}
+
+const importedRelationReport = {...relationReport, totalCalls: 1};
+const importedArchitecture = {
+    notes: ['IMPORTED ARCHITECTURE EVIDENCE'],
+    includedElements: [], includedRelationships: [], anchors: []
+};
+for (const [label, architectureFields] of [
+    ['absent architecture', {}],
+    ['explicit-null architecture', {architectureView: null}],
+    ['replacement architecture', {architectureView: importedArchitecture}]
+]) {
+    test(`score import replaces stale architecture for ${label} and retains imported scores/evidence`, async () => {
+        const page = await reportFixture();
+        try {
+            await bootScoreImport(page, {
+                scores: {'BP-1000': 42},
+                relationSearchReport: importedRelationReport,
+                ...architectureFields
+            });
+            const file = {name: 'scores.json', mimeType: 'application/json',
+                buffer: Buffer.from(JSON.stringify({scores: {'BP-1000': 42}}))};
+            await page.locator('#importJsonFile').setInputFiles(file);
+            await page.waitForFunction(() => TaxonomyState.lastAnalysisProvider === 'IMPORTED');
+
+            const payload = await page.evaluate(() => __TaxonomyAnalysisSessionContext.currentPayload());
+            assert.equal(await page.evaluate(() => TaxonomyState.currentScores['BP-1000']), 42);
+            assert.deepEqual(payload.architectureView, architectureFields.architectureView || null);
+            assert.deepEqual(payload.relationSearchReport, importedRelationReport);
+            assert.equal(await page.locator('#architectureViewContent').textContent()
+                .then(text => text.includes('OLD ARCHITECTURE EVIDENCE')), false);
+            assert.equal(await page.locator('#architectureViewPanel').isVisible(),
+                Boolean(architectureFields.architectureView));
+            assert.equal(await page.locator('#viewSummary').evaluate(element =>
+                getComputedStyle(element).display !== 'none'), Boolean(architectureFields.architectureView));
+            if (architectureFields.architectureView) {
+                assert.match(await page.locator('#architectureViewContent').textContent(),
+                    /IMPORTED ARCHITECTURE EVIDENCE/);
+            } else {
+                assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+            }
+            assert.equal(await page.evaluate(() => JSON.parse(window.importRequestBody).scores['BP-1000']), 42);
+        } finally { await finish(page); }
+    });
+}
+
+test('malformed score import leaves existing architecture and scores untouched', async () => {
+    const page = await reportFixture();
+    try {
+        await bootScoreImport(page, {error: 'Malformed score import'});
+        await page.locator('#importJsonFile').setInputFiles({name: 'invalid.json',
+            mimeType: 'application/json', buffer: Buffer.from('not-json')});
+        await page.waitForFunction(() => window.importRequestBody === 'not-json');
+        assert.equal(await page.evaluate(() => TaxonomyState.currentScores['BP-1000']), 91);
+        assert.match(await page.locator('#architectureViewContent').textContent(),
+            /OLD ARCHITECTURE EVIDENCE/);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentArchView.notes[0]),
+            'OLD ARCHITECTURE EVIDENCE');
+    } finally { await finish(page); }
+});
+
 test('manual scoring never retains relations from the previous automatic assessment', async () => {
     const page = await reportFixture();
     try {
