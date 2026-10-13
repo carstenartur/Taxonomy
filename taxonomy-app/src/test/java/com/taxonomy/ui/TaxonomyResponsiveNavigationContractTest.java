@@ -93,7 +93,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("await preferencesLink.click()")
                 .contains("await adminLink.isVisible()")
                 .contains("await preferencesLink.isVisible()")
-                .contains("ADMIN must not see Administration or Preferences in Settings")
+                .contains("${role} must not see Administration or Preferences in Settings")
                 .doesNotContain("adminLockBtn");
 
         assertThat(roleFlow)
@@ -108,7 +108,9 @@ class TaxonomyResponsiveNavigationContractTest {
 
         assertThat(fixtures)
                 .contains("page.locator('#applicationSettings > summary')")
-                .contains("page.locator('#applicationSettings #adminNavTab')")
+                .contains("admin: 'adminNavTab'")
+                .contains("preferences: 'preferencesNavTab'")
+                .contains("const control = page.locator(`#applicationSettings #${settingsDestination}`)")
                 .contains("Responsive navigation does not expose");
     }
 

@@ -166,6 +166,12 @@ async function reportFixture() {
         document.body.append(placeholder);
         const summary=document.createElement('button'); summary.id='viewSummary';
         summary.style.display='none'; document.body.append(summary);
+        const list=document.createElement('button'); list.id='viewList';
+        list.className='btn btn-outline-secondary'; list.dataset.view='list'; document.body.append(list);
+        const expandCollapse=document.createElement('div'); expandCollapse.id='expandCollapseGroup';
+        expandCollapse.style.display='none';
+        expandCollapse.innerHTML='<button id="expandAll"></button><button id="collapseAll"></button>';
+        document.body.append(expandCollapse);
     });
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-scoring.js')});
     return page;
@@ -454,6 +460,9 @@ for (const entryPoint of ['runInteractiveAnalysis', 'runStreamingAnalysis']) {
             assert.equal(await page.evaluate(() => TaxonomyState.currentRelationSearchReport), null);
             assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
             assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+            assert.equal(await page.locator('#viewList').evaluate(element =>
+                element.classList.contains('btn-primary')), true);
+            assert.equal(await page.locator('#expandCollapseGroup').isVisible(), true);
             assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
             assert.equal(await page.locator('#viewSummary').evaluate(element =>
                 getComputedStyle(element).display === 'none'), true);
@@ -465,6 +474,7 @@ for (const entryPoint of ['runInteractiveAnalysis', 'runStreamingAnalysis']) {
 async function bootBrowseWithReport(page) {
     await page.evaluate(() => {
         for (const id of ['expandAll', 'collapseAll']) {
+            if (document.getElementById(id)) continue;
             const button = document.createElement('button'); button.id = id; document.body.append(button);
         }
         const info = document.createElement('div'); info.id = 'aiProviderInfo'; document.body.append(info);
@@ -628,6 +638,9 @@ test('manual scoring never retains relations from the previous automatic assessm
         assert.equal(await page.evaluate(() => TaxonomyState.currentScores['BP-1000']), 49);
         assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
         assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+        assert.equal(await page.locator('#viewList').evaluate(element =>
+            element.classList.contains('btn-primary')), true);
+        assert.equal(await page.locator('#expandCollapseGroup').isVisible(), true);
         assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
         assert.equal(await page.locator('#viewSummary').evaluate(element =>
             getComputedStyle(element).display === 'none'), true);
@@ -643,6 +656,9 @@ test('the explicit stale-result reset removes its independent relations too', as
         assert.equal(await page.evaluate(() => TaxonomyState.currentRelationSearchReport), null);
         assert.equal(await page.evaluate(() => TaxonomyState.currentArchView), null);
         assert.equal(await page.evaluate(() => TaxonomyState.currentView), 'list');
+        assert.equal(await page.locator('#viewList').evaluate(element =>
+            element.classList.contains('btn-primary')), true);
+        assert.equal(await page.locator('#expandCollapseGroup').isVisible(), true);
         assert.equal(await page.locator('#architectureViewPanel').isVisible(), false);
         assert.equal(await page.locator('#viewSummary').evaluate(element =>
             getComputedStyle(element).display === 'none'), true);

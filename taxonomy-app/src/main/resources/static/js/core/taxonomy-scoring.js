@@ -1376,7 +1376,11 @@
     function clearDerivedAnalysisView() {
         acceptRelationSearchReport(null);
         S.currentArchView = null;
-        S.currentView = 'list';
+        if (typeof B().switchView === 'function') {
+            B().switchView('list');
+        } else {
+            S.currentView = 'list';
+        }
         renderArchitectureView(null);
         var content = document.getElementById('architectureViewContent');
         if (content) content.innerHTML = '';
