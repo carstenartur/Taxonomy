@@ -40,29 +40,39 @@ Files: `AnalyzeRequirementUseCase`, `PartialArchitectureProjection`, `FrozenClus
 
 ## Task 3: Recovery interface
 
-Files: `taxonomy-analysis-recovery.js`, recovery CSS, `.github/scripts/analysis-partial-results.test.mjs`, existing npm recovery task.
+Files: `taxonomy-analysis-recovery.js`, `taxonomy-scoring.js`, recovery CSS, `.github/scripts/analysis-partial-results.test.mjs`, `.github/scripts/analysis-readiness.test.mjs`, existing npm recovery task.
 
 - [x] Show routine partial completion without an automatic modal; display names, IDs and actual clarification text.
 - [x] Keep selected retry/skip explicit; paginate multi-selection and reject stale asynchronous UI updates.
 - [x] Prevent global completeness/absence claims from partial evidence.
 - [x] Retain the prior view's existing DOM and scroll position during the same operation's retry.
-- [x] Test against the actual unchanged scoring module; exclude the erroneous intermediate scoring upload entirely.
+- [x] Test against the actual integrated scoring module: retain accepted evidence for the same operation and reset it for a newly allocated Copilot operation. The original partial-analysis implementation left scoring unchanged; the subsequent navigation integration intentionally adds the `newOperation` reset distinction. The erroneous intermediate scoring upload remains excluded.
 
-## Current verification
+## Verified integration checkpoint (2026-10-14)
+
+Head `a159508c935a4c1ad710e7daef1018336bec62cf`, tree `905a3af044cd81769ac82243a42eab3bcf140100`, combines the partial-analysis work with the navigation and analysis-state repairs from #1223. Its base remains `9e518bed083db86c4098825b6cd3cbe16e3c00bb`.
+
+In this integrated source, `taxonomy-scoring.js` intentionally performs the complete evidence reset when `options.newOperation === true`. The recovery controller supplies that flag only when allocating a new Copilot operation. Repeated START requests and retries for the same operation retain accepted results. Scoring owns relation-report publication; recovery hydration preserves a missing report within the same evidence scope and passes explicit clears or legacy nested reports through the same central report helper. These paths are covered by the actual scoring/recovery modules in the readiness and partial-result tests.
+
+[Canonical CI 38478344828, attempt 2](https://github.com/carstenartur/Taxonomy/actions/runs/38478344828/attempts/2) passed the complete Core reactor, all six authenticated browser shards, UI contracts and final Maven verification. The independently verified Core artifact `11871089193` has SHA-256 `7052e36a7fd6caf8b45dc4c7aed3d56ae525367fed2f2cf1c81d2d84b4078fce`, build ID `38478344828.2.core`, and CI merge `b5d390703d3c82caaf9f022c582af824034daaf1` with the same source tree. Its JUnit reports contain 9,177 cases, zero failures/errors/flakes and 80 existing profile skips. All eight execution-failure checkpoint cases, 51 partial-resilience cases and four continuation UI cases passed without skips. [Database compatibility 38478344829](https://github.com/carstenartur/Taxonomy/actions/runs/38478344829) also passed. Local supporting checks passed 77 focused Java tests and 1,182 combined UI contract tests.
+
+These results apply to the named checkpoint. Any subsequent review correction requires fresh canonical verification and resolved review findings on its resulting head before the protected Main merge. The PR records the final head and CI evidence; this checkpoint is not a deployment or live-incident reproduction claim.
+
+## Historical verification of the initial partial-analysis implementation
 
 The pinned base is `9e518bed083db86c4098825b6cd3cbe16e3c00bb`, tree `cfb5795e03b0270c7bc6139b3441b86ed0899cf6`.
 
-Fresh compilation covers all 14 changed/new Java production sources against the matching, SHA-256-verified application/feature artifacts. The five standalone check owners pass 51 methods: 14 journal/storage/protocol/archive, 14 architecture/use-case, 8 distribution, 8 cluster-failure persistence and 7 cluster-completion checks. `QuestionRecoveryProbe.verify()` also passes. These are executed checks, not a full Maven/JUnit run. The normal JUnit adapter discovers all five owners.
+At that initial checkpoint, compilation covered all 14 changed/new Java production sources against the matching, SHA-256-verified application/feature artifacts. The five standalone check owners passed 51 methods: 14 journal/storage/protocol/archive, 14 architecture/use-case, 8 distribution, 8 cluster-failure persistence and 7 cluster-completion checks. `QuestionRecoveryProbe.verify()` also passed. These were executed checks, not a full Maven/JUnit run. The normal JUnit adapter discovered all five owners.
 
-The current Node 22 run passes 26 partial-result cases. Four load the actual scoring module: German/English view retention, workspace replacement and fresh-requirement isolation. Before the retention correction, the two pending-view assertions failed. Before the no-continuation projection correction, five of the seven cluster-completion checks failed. The final source passes both suites.
+The initial Node 22 run passed 26 partial-result cases. Four loaded the actual scoring module: German/English view retention, workspace replacement and fresh-requirement isolation. Before the retention correction, the two pending-view assertions failed. Before the no-continuation projection correction, five of the seven cluster-completion checks failed. The corrected initial source passed both suites.
 
-`taxonomy-scoring.js` is byte-identical to the base. Presentation retention belongs to the recovery controller, where operation identity is available before scoring mutates state. An incorrect unreferenced intermediate scoring blob is not part of this change.
+At that initial checkpoint, `taxonomy-scoring.js` was byte-identical to the base. Presentation retention belonged to the recovery controller, where operation identity was available before scoring mutated state. An incorrect unreferenced intermediate scoring blob was excluded. This byte-identity statement does not apply to the later integrated source described above.
 
-## Remaining acceptance
+### Acceptance that was outstanding at the initial checkpoint
 
-- [ ] Run the normal complete Maven/JUnit reactor, including the adjusted existing question/relation contracts.
-- [ ] Run the complete Node 24 UI contracts and actual authenticated browser shards.
-- [ ] Complete database compatibility and real Artemis worker/broker interruption acceptance.
-- [ ] Obtain independent code review and resolve findings before merge.
+- Run the normal complete Maven/JUnit reactor, including the adjusted existing question/relation contracts.
+- Run the complete Node 24 UI contracts and actual authenticated browser shards.
+- Complete database compatibility and real Artemis worker/broker interruption acceptance.
+- Obtain independent code review and resolve findings before merge.
 
-The current source checkout is reconstructed from pinned source/runtime artifacts, not a full clone. Maven/test dependencies and the full UI checkout were unavailable locally. Earlier browser/startup evidence is historical, not a fresh end-to-end verification of this revision. The author performed a separate self-review; no independent review or deployment is claimed.
+That initial checkout was reconstructed from pinned source/runtime artifacts, not a full clone. Maven/test dependencies and the full UI checkout were unavailable in that environment. Earlier browser/startup evidence was historical, not a fresh end-to-end verification of that revision. The author had performed a separate self-review; that initial report did not claim independent review or deployment. Later integration evidence is recorded separately above.

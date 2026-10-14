@@ -755,7 +755,7 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 #applicationNavigation .mobile-main-navigation { padding: 0; }
 #applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }
 #applicationNavigation .mobile-main-navigation { grid-template-columns: minmax(0, 1fr); }
-#applicationNavigation .mobile-main-navigation-select { min-height: 34px; font-size: .875rem; padding-block: .25rem; }
+#applicationNavigation .mobile-main-navigation-select { min-height: 44px; font-size: .875rem; padding-block: .25rem; }
 @media (max-width: 1199.98px) {
     #applicationNavigation #mainNavTabs { display: none !important; }
     #applicationNavigation .mobile-main-navigation { display: grid; }

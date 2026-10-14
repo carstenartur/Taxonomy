@@ -52,7 +52,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 .containsPattern("min-height:\\s*44px\\s*;");
         assertThat(css)
                 .contains("#applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }")
-                .contains("#applicationNavigation .mobile-main-navigation-select { min-height: 34px;");
+                .contains("#applicationNavigation .mobile-main-navigation-select { min-height: 44px;");
 
         String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
         assertThat(ruleBody(zoom, "\\.navbar-brand"))

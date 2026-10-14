@@ -76,7 +76,11 @@ for(const locale of ['de','en']){
             const h=await help.boundingBox(),a=await about.boundingBox();assert.ok(Math.abs(h.y-a.y)<=2);
             const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
             assert.ok(sizes.scroll<=sizes.width,JSON.stringify(sizes));
-            await page.locator('#mobileMainNavigationSelect').selectOption('versions');
+            const selector=page.locator('#mobileMainNavigationSelect');
+            const selectorBox=await selector.boundingBox();
+            assert.ok(selectorBox&&selectorBox.height>=44,
+                `Mobile section selector must retain its 44px touch target: ${JSON.stringify(selectorBox)}`);
+            await selector.selectOption('versions');
             assert.equal(await page.locator('#tab-versions').isVisible(),true);
             await help.click();assert.equal(await page.locator('#tab-help').isVisible(),true);
         }finally{await finish(page);}
