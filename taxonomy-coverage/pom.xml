@@ -114,6 +114,24 @@
                         <phase>none</phase>
                     </execution>
                     <execution>
+                        <id>merge-app-test-shard-executions</id>
+                        <phase>${taxonomy.app.shard.coverageMergePhase}</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${maven.multiModuleProjectDirectory}/target/app-test-shards</directory>
+                                    <includes>
+                                        <include>*/coverage.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${maven.multiModuleProjectDirectory}/taxonomy-app/target/jacoco-shards-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>reactor-report</id>
                         <phase>verify</phase>
                         <goals>
@@ -122,6 +140,10 @@
                         <configuration>
                             <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
                             <includeCurrentProject>false</includeCurrentProject>
+                            <dataFileIncludes>
+                                <dataFileInclude>**/jacoco.exec</dataFileInclude>
+                                <dataFileInclude>${taxonomy.app.shard.coverageInclude}</dataFileInclude>
+                            </dataFileIncludes>
                         </configuration>
                     </execution>
                 </executions>

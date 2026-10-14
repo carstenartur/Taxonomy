@@ -6,6 +6,7 @@ import java.nio.file.*;
 import java.util.UUID;
 
 /** Same real lifecycle with desktop/390px interaction and explicit browser adoption. */
+@Tag("ci-app-shard-browser")
 @Tag("browser")
 class ReformulationScenarioBrowserTest {
     @Test void realAnalysedOfferSupportsKeyboardDraftRetentionDownloadAndExplicitAdoption() throws Exception {

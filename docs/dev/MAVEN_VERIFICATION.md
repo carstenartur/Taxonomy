@@ -77,6 +77,33 @@ It excludes real LLM calls and the SQL Server and Oracle suites. The latter also
 run on pull requests through the separate database workflow; they are not merely
 optional scheduled checks.
 
+### Application test shards and CI critical path
+
+The standalone `./mvnw -B verify -Pci -DrunOnnxTests=true` command does not activate
+sharding and continues to run the complete suite. In GitHub Actions, the
+`.mvn/verification-suites.json` `applicationTestShards` plan assigns measured
+recovery/restart and browser acceptance classes to isolated Maven runners. Their
+JUnit tags and Maven profiles are checked against the catalogue; app tests not
+listed for a shard—including newly added test classes—remain in the core group.
+The product-demo isolated Surefire execution and the required architecture gates
+remain in the core reactor with their existing fail-on-empty behavior.
+
+Each app runner stages its test reports and JaCoCo execution data with SHA-256
+digests and the exact source commit/tree and run identity. The core job validates
+the complete class inventory and every artifact before verification, then JaCoCo
+merges all isolated execution data into a separate application execution file;
+the reactor aggregate report consumes it together with core module execution
+data before unchanged coverage policies run. Missing,
+duplicate, wrong-source or wrong-tree evidence fails the required core job.
+Legitimate skips and profile exclusions are counted separately from missing
+reports. Machine timings and a concise slow-suite inventory are retained in
+`target/app-test-shards/timings.json` and the CI summary.
+
+Production Docker image verification runs as a separate job and remains a
+required final-gate prerequisite. The core build-cache save is best-effort,
+bounded to five minutes, and runs only after successful test/report publication;
+test and upload results remain authoritative.
+
 ### Remaining gaps in the Java/Maven-only requirement
 
 | Gap | Current source of the difference |
@@ -250,7 +277,7 @@ must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
-| `ci-cd.yml` | Build one commit-bound application, run the core Maven `-Pci` lane, full `plugin-packaging-tests` lifecycle, parallel UI shards and other required lanes, then gate all results and digest-bound evidence |
+| `ci-cd.yml` | Build one commit-bound application, run catalogued Maven app-test shards and core `-Pci` coverage aggregation, separate required production-image verification, full `plugin-packaging-tests` lifecycle, UI shards and other lanes, then gate all results and digest-bound evidence |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
 | `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |

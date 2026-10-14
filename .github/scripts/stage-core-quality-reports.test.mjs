@@ -124,3 +124,36 @@ test('still rejects missing aggregate coverage rather than publishing success', 
     '{"heapIncreaseBytes":41208924}');
   assert.equal(existsSync(join(root, 'target/quality-reports/README.txt')), false);
 });
+
+test('aggregates isolated application reports and preserves every shard coverage input', t => {
+  const root = fixture(t);
+  put(root, 'taxonomy-app/target/surefire-reports/TEST-com.taxonomy.CoreTest.xml',
+    '<testsuite name="com.taxonomy.CoreTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="core"/></testsuite>');
+  put(root, 'taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml', '<report/>');
+  put(root, 'target/app-test-shards/core/manifest.json', '{"shard":"core"}');
+  put(root, 'target/app-test-shards/core/coverage.exec', 'core execution data');
+  put(root, 'target/app-test-shards/recovery/manifest.json', '{"shard":"recovery"}');
+  put(root, 'target/app-test-shards/recovery/coverage.exec', 'recovery execution data');
+  put(root, 'target/app-test-shards/recovery/tests/surefire-reports/TEST-com.taxonomy.RestartTest.xml',
+    '<testsuite name="com.taxonomy.RestartTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="restart"/></testsuite>');
+  put(root, 'target/app-test-shards/timings.json', '{"tests":{"classes":2}}');
+
+  const result = stage(root);
+
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.equal(readFileSync(join(root,
+    'target/quality-reports/tests/application-test-shards/recovery/surefire-reports/TEST-com.taxonomy.RestartTest.xml'),
+  'utf8').includes('RestartTest'), true);
+  assert.equal(readFileSync(join(root,
+    'target/quality-reports/tests/taxonomy-app/target/surefire-reports/TEST-com.taxonomy.CoreTest.xml'),
+  'utf8').includes('CoreTest'), true);
+  assert.equal(readFileSync(join(root,
+    'target/quality-reports/evidence/application-test-shards/recovery/coverage.exec'),
+  'utf8'), 'recovery execution data');
+  assert.equal(readFileSync(join(root,
+    'target/quality-reports/evidence/application-test-shards/core/coverage.exec'),
+  'utf8'), 'core execution data');
+  assert.equal(readFileSync(join(root,
+    'target/quality-reports/evidence/application-test-shards/timings.json'),
+  'utf8'), '{"tests":{"classes":2}}');
+});

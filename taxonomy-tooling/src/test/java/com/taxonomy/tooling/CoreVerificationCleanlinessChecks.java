@@ -89,7 +89,9 @@ final class CoreVerificationCleanlinessChecks {
             long cleans = calls.stream().filter(call -> (" " + call + " ").contains(" clean ")).count();
             require(cleans == (pullRequest ? 0 : 1), "Unexpected number of clean invocations: " + cleans);
             String verify = calls.getLast();
-            for (String flag : List.of("verify", "-Pci", "-DrunOnnxTests=true", "-Dtaxonomy.ui.skip=true")) {
+            for (String flag : List.of(
+                    "verify", "-Pci,ci-app-test-shards-core",
+                    "-DrunOnnxTests=true", "-Dtaxonomy.ui.skip=true")) {
                 require(List.of(verify.split(" ")).contains(flag), "Missing verification flag " + flag);
             }
             require(verify.contains("-Dmaven.build.cache.skipCache=true") != pullRequest,

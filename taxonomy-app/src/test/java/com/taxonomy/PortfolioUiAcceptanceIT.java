@@ -64,6 +64,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("ui-acceptance")
 @Tag("browser")
+@Tag("ci-app-shard-browser")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PortfolioUiAcceptanceIT {
 

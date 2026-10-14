@@ -66,7 +66,7 @@ class DockerfileReactorContractTest {
     }
 
     @Test
-    void pullRequestCiBuildsChangedProductionImagesBeforeCanonicalVerification()
+    void productionImageBuildIsAnIndependentRequiredCiLane()
             throws Exception {
         Path root = findRepositoryRoot();
         String workflow = Files.readString(
@@ -74,12 +74,13 @@ class DockerfileReactorContractTest {
                 StandardCharsets.UTF_8);
 
         assertThat(workflow)
+                .contains("production-image:\n    name: Production Docker image verification")
                 .contains("- name: Detect production-image changes")
                 .contains("id: production-image-scope")
                 .contains("Dockerfile \\")
                 .contains("'taxonomy-*/pom.xml' \\")
                 .contains("- name: Verify production Docker image build")
-                .contains("if: steps.production-image-scope.outputs.run == 'true'")
+                .contains("if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'")
                 .contains("docker build \\")
                 .contains("--build-arg VCS_REF=\"$GITHUB_SHA\" \\")
                 .contains("org.opencontainers.image.revision")
@@ -87,10 +88,17 @@ class DockerfileReactorContractTest {
 
         int imageBuild = workflow.indexOf(
                 "- name: Verify production Docker image build");
-        int canonicalVerification = workflow.indexOf(
-                "- name: Run the canonical Maven verification suite");
+        int coreJob = workflow.indexOf("\n  core:\n");
+        int finalGate = workflow.indexOf(
+                "\n  verify:\n");
         assertThat(imageBuild).isGreaterThanOrEqualTo(0);
-        assertThat(canonicalVerification).isGreaterThan(imageBuild);
+        assertThat(coreJob).isGreaterThan(imageBuild);
+        assertThat(finalGate).isGreaterThan(coreJob);
+        assertThat(workflow.substring(coreJob, workflow.indexOf("\n  observability:\n", coreJob)))
+                .doesNotContain("- name: Verify production Docker image build");
+        assertThat(workflow.substring(finalGate))
+                .contains("PRODUCTION_IMAGE_RESULT: ${{ needs.production-image.result }}")
+                .contains("needs: [application, production-image, app-test-shards, core");
     }
 
     private static boolean containsCopyInstruction(

@@ -726,13 +726,38 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <executions><execution>
                     <id>architecture-module-gate-ci-anchor</id>
-                    <phase>test</phase>
+                    <phase>${taxonomy.app.architectureAnchorPhase}</phase>
                     <goals><goal>test</goal></goals>
                     <configuration>
                         <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>
                         <failIfNoTests>true</failIfNoTests>
                         <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
                         <reportNameSuffix>module-gate-ci-anchor</reportNameSuffix>
+                    </configuration>
+                </execution></executions>
+            </plugin></plugins></build>
+        </profile>
+        <profile>
+            <id>ci-app-test-shards-core</id>
+            <build><plugins><plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <inherited>false</inherited>
+                <executions><execution>
+                    <id>stage-core-app-test-shard</id>
+                    <phase>post-integration-test</phase>
+                    <goals><goal>exec</goal></goals>
+                    <configuration>
+                        <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                        <executable>node</executable>
+                        <arguments>
+                            <argument>.github/scripts/verify-app-test-shards.mjs</argument>
+                            <argument>--stage</argument>
+                            <argument>true</argument>
+                            <argument>--shard</argument>
+                            <argument>core</argument>
+                        </arguments>
                     </configuration>
                 </execution></executions>
             </plugin></plugins></build>

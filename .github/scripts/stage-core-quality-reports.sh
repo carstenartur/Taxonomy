@@ -24,6 +24,39 @@ while IFS= read -r -d '' report; do
   cp "$report" "$destination"
 done < "$report_inventory"
 
+if [[ -d target/app-test-shards ]]; then
+  shard_reports=$(mktemp)
+  trap 'rm -f "$report_inventory" "$report_directories" "$shard_reports"' EXIT
+  mkdir -p target/quality-reports/evidence/application-test-shards
+  for shard_directory in target/app-test-shards/*; do
+    [[ -d "$shard_directory" ]] || continue
+    shard=${shard_directory##*/}
+    evidence_directory="target/quality-reports/evidence/application-test-shards/$shard"
+    mkdir -p "$evidence_directory"
+    [[ ! -f "$shard_directory/manifest.json" ]] \
+      || cp "$shard_directory/manifest.json" "$evidence_directory/"
+    [[ ! -f "$shard_directory/coverage.exec" ]] \
+      || cp "$shard_directory/coverage.exec" "$evidence_directory/"
+    if [[ -f "$shard_directory/timings.json" ]]; then
+      cp "$shard_directory/timings.json" "$evidence_directory/"
+    fi
+    if [[ "$shard" == core || ! -d "$shard_directory/tests" ]]; then
+      continue
+    fi
+    find "$shard_directory/tests" -type f -name 'TEST-*.xml' -print0 > "$shard_reports"
+    while IFS= read -r -d '' report; do
+      relative=${report#"$shard_directory/tests/"}
+      destination="target/quality-reports/tests/application-test-shards/$shard/$relative"
+      mkdir -p "$(dirname "$destination")"
+      cp "$report" "$destination"
+    done < "$shard_reports"
+  done
+  if [[ -f target/app-test-shards/timings.json ]]; then
+    cp target/app-test-shards/timings.json \
+      target/quality-reports/evidence/application-test-shards/
+  fi
+fi
+
 # Preserve diagnostics even when a failing integration test prevents aggregate
 # coverage generation. This copy does not turn incomplete evidence into success.
 large_result_report=target/ui-verification/large-results/report.json

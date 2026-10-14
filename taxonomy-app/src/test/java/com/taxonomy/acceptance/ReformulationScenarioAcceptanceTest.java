@@ -1,6 +1,7 @@
 package com.taxonomy.acceptance;
 
 import com.taxonomy.testsupport.BrowserSession;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import java.nio.file.*;
 import java.util.*;
@@ -8,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real application process; only the outbound provider exchange is replaced. */
+@Tag("ci-app-shard-browser")
 class ReformulationScenarioAcceptanceTest {
     @Test void authenticatedAnalysisDecisionsAdoptionExportsAndRestartPreserveEvidence() throws Exception {
         Path output = Path.of("target/reformulation-scenario-acceptance", "run-" + UUID.randomUUID());

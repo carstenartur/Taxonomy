@@ -33,6 +33,10 @@ for (const property of ['skipTests', 'skipITs']) {
 }
 requireContract((cache.match(/<reconcile propertyName="test"\/>/g) ?? []).length >= 2,
   'Surefire -Dtest and Failsafe -Dit.test selectors must participate in cache reconciliation');
+for (const property of ['groups', 'excludedGroups']) {
+  requireContract((cache.match(new RegExp(`<reconcile propertyName="${property}"\\/>`, 'g')) ?? []).length >= 3,
+    `${property} must distinguish every Maven-owned application shard from the core verification build`);
+}
 
 for (const pom of ['taxonomy-coverage/pom.xml', 'taxonomy-build/pom.xml', '.github/ui-verification-pom.xml']) {
   const content = read(pom);
@@ -61,7 +65,7 @@ requireContract(cleanup.includes("if: github.event_name != 'pull_request'")
   'only non-PR builds must clean the complete reactor before producing evidence');
 requireContract(!coreWorkflow.includes('./mvnw -B clean verify'),
   'clean must not remove prepared evidence or the open Maven log');
-requireContract(coreWorkflow.includes('./mvnw -B verify -Pci')
+requireContract(coreWorkflow.includes('./mvnw -B verify -Pci,ci-app-test-shards-core')
     && coreWorkflow.includes('-Dmaven.build.cache.skipCache=true'),
   'non-PR verification must still run the full suite without cache reads');
 requireContract(coreWorkflow.includes('${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-'),

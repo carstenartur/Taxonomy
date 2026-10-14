@@ -72,8 +72,41 @@
       "requires": ["Java 21", "Docker"]
     }
   },
+  "applicationTestShards": {
+    "purpose": "Split measured expensive taxonomy-app suites across isolated Maven runners while untagged and newly added tests remain in the authoritative core group.",
+    "defaultGroup": "core",
+    "excludedTags": ["real-llm", "db-mssql", "db-oracle"],
+    "allowedRepeatedClasses": ["com.taxonomy.ArchitectureExceptionLedgerTest"],
+    "groups": {
+      "core": {
+        "default": true,
+        "profile": "ci-app-test-shards-core",
+        "tests": []
+      },
+      "recovery": {
+        "profile": "ci-app-test-shard-recovery",
+        "tag": "ci-app-shard-recovery",
+        "requiresEmbeddingModel": true,
+        "tests": [
+          "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+          "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationProgressTest"
+        ]
+      },
+      "browser": {
+        "profile": "ci-app-test-shard-browser",
+        "tag": "ci-app-shard-browser",
+        "tests": [
+          "com.taxonomy.PortfolioUiAcceptanceIT",
+          "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest"
+        ]
+      }
+    }
+  },
   "workflowResponsibilities": {
-    "ci-cd.yml": "authoritative Maven verification and report publication",
+    "ci-cd.yml": "Maven-owned application test shards and core coverage aggregation, separate required production-image verification, authoritative report publication",
     "local-onnx-reference.yml": "Maven-owned ONNX inference and versioned DE/EN retrieval reference evidence; canonical CI remains authoritative",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",

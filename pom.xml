@@ -140,6 +140,9 @@
         <releaseCheckRequireClean>true</releaseCheckRequireClean>
         <taxonomy.model.revision>e8f8c211226b894fcb81acc59f3b34ba3efd5f42</taxonomy.model.revision>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+        <taxonomy.app.architectureAnchorPhase>test</taxonomy.app.architectureAnchorPhase>
+        <taxonomy.app.shard.coverageMergePhase>none</taxonomy.app.shard.coverageMergePhase>
+        <taxonomy.app.shard.coverageInclude>**/disabled-jacoco.exec</taxonomy.app.shard.coverageInclude>
         <taxonomy.ui.skip>true</taxonomy.ui.skip>
         <taxonomy.quality.skip>true</taxonomy.quality.skip>
         <taxonomy.ui.suite>all</taxonomy.ui.suite>
@@ -630,6 +633,36 @@
                 <generateScreenshots>true</generateScreenshots>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shards-core</id>
+            <properties>
+                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser</excludedGroups>
+                <taxonomy.app.shard.coverageMergePhase>verify</taxonomy.app.shard.coverageMergePhase>
+                <taxonomy.app.shard.coverageInclude>**/jacoco-shards-merged.exec</taxonomy.app.shard.coverageInclude>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-recovery</id>
+            <properties>
+                <groups>ci-app-shard-recovery</groups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-browser</id>
+            <properties>
+                <groups>ci-app-shard-browser</groups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
             </properties>
         </profile>
     </profiles>

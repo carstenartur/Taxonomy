@@ -1,6 +1,7 @@
 package com.taxonomy.interop.publication;
 
 import com.taxonomy.interop.IntegrationJson;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Separate provider/client JVMs, forcibly terminated at observed real durable boundaries. */
+@Tag("ci-app-shard-recovery")
 class IntegrationPublicationBoundaryRestartTest {
     @TempDir Path directory;
     private final JsonMapper mapper = JsonMapper.builder().build();
