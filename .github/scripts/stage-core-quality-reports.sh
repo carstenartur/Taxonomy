@@ -77,11 +77,12 @@ for portfolio_context in root taxonomy; do
 done
 
 coverage=taxonomy-coverage/target/site/jacoco-aggregate
-[[ -f "$coverage/jacoco.xml" ]] || {
+if [[ -f "$coverage/jacoco.xml" ]]; then
+  cp -a "$coverage/." target/quality-reports/coverage/
+elif [[ "${REQUIRE_AGGREGATE_COVERAGE:-true}" == true ]]; then
   echo '::error::Aggregate JaCoCo XML is missing; refusing stale coverage evidence.'
   exit 1
-}
-cp -a "$coverage/." target/quality-reports/coverage/
+fi
 for evidence in \
   target/version-state-report.txt \
   target/coverage-gate.txt target/dependency-hygiene-report.txt \

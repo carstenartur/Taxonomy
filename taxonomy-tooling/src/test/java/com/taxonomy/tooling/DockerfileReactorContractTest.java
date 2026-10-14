@@ -98,7 +98,7 @@ class DockerfileReactorContractTest {
                 .doesNotContain("- name: Verify production Docker image build");
         assertThat(workflow.substring(finalGate))
                 .contains("PRODUCTION_IMAGE_RESULT: ${{ needs.production-image.result }}")
-                .contains("needs: [application, production-image, app-test-shards, core");
+                .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate");
     }
 
     private static boolean containsCopyInstruction(

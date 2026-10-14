@@ -47,7 +47,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("plugin-profile:\n    name: Complete plugin packaging profile")
                 .contains("verify:\n    name: Maven verification")
                 .contains("needs: [application, ui-plan, ui-contracts]")
-                .contains("needs: [application, production-image, app-test-shards, core, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]")
+                .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
                 .contains("pattern: app-test-shard-*")
@@ -61,6 +61,7 @@ class ParallelCiEvidenceContractTest {
         int productionImageStart = workflow.indexOf("  production-image:");
         int appTestShardsStart = workflow.indexOf("  app-test-shards:");
         int coreStart = workflow.indexOf("  core:");
+        int coverageAggregateStart = workflow.indexOf("  coverage-aggregate:");
         int observabilityStart = workflow.indexOf("  observability:");
         int uiShardsStart = workflow.indexOf("  ui-shards:");
         int finalGateStart = workflow.indexOf("  verify:");
@@ -68,7 +69,8 @@ class ParallelCiEvidenceContractTest {
         assertThat(productionImageStart).isGreaterThan(applicationStart);
         assertThat(appTestShardsStart).isGreaterThan(productionImageStart);
         assertThat(coreStart).isGreaterThan(appTestShardsStart);
-        assertThat(observabilityStart).isGreaterThan(coreStart);
+        assertThat(coverageAggregateStart).isGreaterThan(coreStart);
+        assertThat(observabilityStart).isGreaterThan(coverageAggregateStart);
         assertThat(uiShardsStart).isGreaterThan(observabilityStart);
         assertThat(finalGateStart).isGreaterThan(uiShardsStart);
 
@@ -78,18 +80,25 @@ class ParallelCiEvidenceContractTest {
                 .contains("run: bash .github/scripts/stage-ui-application.sh")
                 .contains("name: taxonomy-ui-application");
 
-        String core = workflow.substring(coreStart, observabilityStart);
+        String core = workflow.substring(coreStart, coverageAggregateStart);
         assertThat(core)
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-core")
                 .contains("-Dtaxonomy.ui.skip=true")
-                .contains("--verify-inputs true")
+                .contains("name: app-test-shard-core")
+                .contains("core-reactor-classes.tar.gz")
                 .doesNotContain("Stage commit-bound UI application")
                 .doesNotContain("Verify production Docker image build")
-                .doesNotContain("Measure OpenTelemetry performance budget");
-        assertThat(core)
-                .contains("Download isolated application test shard evidence")
-                .contains("Require complete shard reports before coverage merge")
-                .contains("Run the canonical Maven verification suite");
+                .doesNotContain("Download all isolated application test evidence")
+                .doesNotContain("Measure OpenTelemetry performance budget")
+                .doesNotContain("needs: [app-test-shards]");
+
+        String coverageAggregate = workflow.substring(coverageAggregateStart, observabilityStart);
+        assertThat(coverageAggregate)
+                .contains("needs: [core, app-test-shards]")
+                .contains("--verify-inputs true")
+                .contains("./mvnw -B verify -Pci,ci-app-test-shards-coverage")
+                .contains("name: quality-reports-coverage")
+                .contains("core-reactor-classes.tar.gz");
 
         int imageStart = workflow.indexOf("  production-image:");
         int planStart = workflow.indexOf("  app-test-plan:");
@@ -123,6 +132,9 @@ class ParallelCiEvidenceContractTest {
                 .contains("<id>verify-complete-app-test-shard-inventory</id>")
                 .contains("<phase>test</phase>")
                 .contains("<argument>applicationTestShards</argument>");
+        assertThat(buildPom)
+                .contains("<id>coverage-policy-only</id>")
+                .contains("**/ReactorCoveragePolicyIT.java");
         assertThat(cacheConfig)
                 .contains("<reconcile propertyName=\"groups\"/>")
                 .contains("<reconcile propertyName=\"excludedGroups\"/>");
@@ -137,6 +149,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("APPLICATION_RESULT: ${{ needs.application.result }}")
                 .contains("PRODUCTION_IMAGE_RESULT: ${{ needs.production-image.result }}")
                 .contains("APP_TEST_SHARDS_RESULT: ${{ needs.app-test-shards.result }}")
+                .contains("COVERAGE_AGGREGATE_RESULT: ${{ needs.coverage-aggregate.result }}")
                 .contains("INTEROPERABILITY_RESULT: ${{ needs.interoperability-products.result }}")
                 .contains("PLUGIN_PROFILE_RESULT: ${{ needs.plugin-profile.result }}")
                 .contains("Require every authoritative lane")

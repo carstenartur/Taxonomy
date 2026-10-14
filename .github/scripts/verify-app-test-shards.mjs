@@ -39,6 +39,7 @@ export function verifyAppTestShards({
   if (!defaultGroup || defaultGroups.length > 1) throw new Error('expected exactly one default shard');
   if (shardGroups[defaultGroup]?.default !== true) throw new Error('default shard is not declared');
   const assignments = assignSources(sources, shardGroups, defaultGroup);
+  const expectedClasses = requiredClasses(assignments, sources, groups.excludedTags ?? []);
   const evidence = evidenceDirectory;
   const artifacts = artifactDirectories(evidence);
   for (const artifact of artifacts) {
@@ -49,13 +50,15 @@ export function verifyAppTestShards({
   }
 
   const reportsByClass = new Map();
+  const reportedSources = new Set();
   let skipped = 0;
   let reportCount = 0;
+  let caseCount = 0;
   let totalDuration = 0;
   const coverage = [];
   const runIds = new Set();
 
-  for (const [group, expectedClasses] of assignments) {
+  for (const [group, requiredForGroup] of expectedClasses) {
     const directory = join(evidence, group);
     const manifest = readManifest(directory, group);
     verifyManifestIdentity(manifest, group, expectedCommit, expectedTree);
@@ -79,16 +82,22 @@ export function verifyAppTestShards({
         throw new Error(`${group} report source mismatch: ${report.path}`);
       }
       if (parsed.failures || parsed.errors) throw new Error(`${group} report is not successful: ${report.path}`);
-      if (!sources.has(parsed.className)) {
+      const sourceClass = sourceClassForReport(parsed.className, sources);
+      if (!sourceClass) {
         throw new Error(`${group} report has no matching test source: ${parsed.className}`);
+      }
+      if (isLegitimatelyExcluded(sources.get(sourceClass), groups.excludedTags ?? [])) {
+        throw new Error(`${group} reported profile-excluded test class: ${sourceClass}`);
       }
       const records = reportsByClass.get(parsed.className) ?? [];
       if (records.some(record => record.group !== group)) {
         throw new Error(`${parsed.className} appears in more than one shard`);
       }
-      records.push({ group, report: report.path });
+      records.push({ group, report: report.path, executionId: parsed.executionId });
       reportsByClass.set(parsed.className, records);
+      reportedSources.add(sourceClass);
       skipped += parsed.skipped;
+      caseCount += parsed.tests;
       totalDuration += parsed.duration;
       reportCount++;
     }
@@ -96,8 +105,8 @@ export function verifyAppTestShards({
         || [...actualReports].some(path => !listedReports.has(path))) {
       throw new Error(`${group} has missing or unlisted JUnit reports`);
     }
-    for (const className of expectedClasses) {
-      if (!reportsByClass.has(className)) throw new Error(`${group} missing report for ${className}`);
+    for (const className of requiredForGroup) {
+      if (!reportedSources.has(className)) throw new Error(`${group} missing report for ${className}`);
     }
 
     const coverageInfo = manifest.coverage;
@@ -116,24 +125,31 @@ export function verifyAppTestShards({
   }
 
   if (runIds.size !== 1) throw new Error('shard artifacts do not belong to the same workflow run');
+  verifyRequiredExecutions(groups.requiredExecutions ?? [], reportsByClass);
   for (const [className, records] of reportsByClass) {
-    const expectedGroup = groupForClass(className, assignments);
+    const sourceClass = sourceClassForReport(className, sources);
+    const expectedGroup = groupForClass(sourceClass, assignments);
     if (records.some(record => record.group !== expectedGroup)) {
       if (new Set(records.map(record => record.group)).size > 1) {
         throw new Error(`${className} appears in more than one shard`);
       }
       throw new Error(`${className} was reported by ${records[0].group}; it belongs to ${expectedGroup}`);
     }
-    if (records.length > 1 && !shardGroups[expectedGroup].allowedRepeatedClasses?.includes(className)
-        && !groups.allowedRepeatedClasses?.includes(className)) {
-      throw new Error(`${className} appears in more than one shard`);
+    if (records.length > 1) {
+      const allowed = (groups.requiredExecutions ?? [])
+        .find(execution => execution.className === className)?.identities ?? [];
+      if (records.length !== allowed.length
+          || new Set(records.map(record => record.executionId)).size !== records.length
+          || records.some(record => !allowed.includes(record.executionId))) {
+        throw new Error(`${className} has duplicate report execution identities`);
+      }
     }
   }
-
   const missing = [];
   let excluded = 0;
   for (const [className, source] of sources) {
-    if (reportsByClass.has(className)) continue;
+    if ([...reportsByClass.keys()].some(reportClass =>
+      sourceClassForReport(reportClass, sources) === className)) continue;
     if (isLegitimatelyExcluded(source, groups.excludedTags ?? [])) {
       excluded++;
       continue;
@@ -146,8 +162,10 @@ export function verifyAppTestShards({
     commit: expectedCommit,
     sourceTree: expectedTree,
     tests: {
-      classes: reportsByClass.size,
+      classes: reportedSources.size,
+      suites: reportsByClass.size,
       reports: reportCount,
+      cases: caseCount,
       skipped,
       excludedClasses: excluded,
     },
@@ -195,6 +213,7 @@ export function verifyAppTestShardInputs({
   const sourceDirectory = join(resolve(repositoryRoot), 'taxonomy-app/src/test/java');
   const sources = testSources(sourceDirectory);
   const assignments = assignSources(sources, shardGroups, defaultGroup);
+  const expectedClasses = requiredClasses(assignments, sources, groups.excludedTags ?? []);
   const classes = new Set();
   const durations = [];
 
@@ -202,7 +221,7 @@ export function verifyAppTestShardInputs({
     const directory = join(evidence, group);
     const manifest = readManifest(directory, group);
     verifyManifestIdentity(manifest, group, expectedCommit, expectedTree);
-    const expectedClasses = assignments.get(group);
+    const expectedForGroup = expectedClasses.get(group);
     const actualReports = reportFiles(directory);
     const listedReports = new Set();
     const reportedClasses = new Set();
@@ -215,24 +234,28 @@ export function verifyAppTestShardInputs({
       const file = safeArtifactPath(directory, report.path);
       if (sha256(file) !== report.sha256) throw new Error(`${group} report digest mismatch: ${report.path}`);
       const suite = parseSuite(readFileSync(file, 'utf8'), report.path);
-      if (report.className !== suite.className || !sources.has(suite.className)) {
+      const sourceClass = sourceClassForReport(suite.className, sources);
+      if (report.className !== suite.className || !sourceClass) {
         throw new Error(`${group} report has no matching test source: ${suite.className}`);
       }
+      if (isLegitimatelyExcluded(sources.get(sourceClass), groups.excludedTags ?? [])) {
+        throw new Error(`${group} reported profile-excluded test class: ${sourceClass}`);
+      }
       if (suite.failures || suite.errors) throw new Error(`${group} report is not successful: ${report.path}`);
-      if (!expectedClasses.has(suite.className)) {
+      if (!expectedForGroup.has(sourceClass)) {
         throw new Error(`${suite.className} is not assigned to shard ${group}`);
       }
       if (reportedClasses.has(suite.className) || classes.has(suite.className)) {
         throw new Error(`${suite.className} appears in more than one shard`);
       }
-      reportedClasses.add(suite.className);
+      reportedClasses.add(sourceClass);
       classes.add(suite.className);
       durations.push({ group, className: suite.className, durationSeconds: suite.duration });
     }
     if (listedReports.size !== actualReports.size) {
       throw new Error(`${group} has unlisted JUnit reports`);
     }
-    for (const className of expectedClasses) {
+    for (const className of expectedForGroup) {
       if (!reportedClasses.has(className)) throw new Error(`${group} missing report for ${className}`);
     }
     const coverage = manifest.coverage;
@@ -274,13 +297,16 @@ export function stageAppTestShard({
       const outputPath = join(destination, 'tests', reportPath);
       mkdirSync(dirname(outputPath), { recursive: true });
       copyFileSync(file, outputPath);
-      const parsed = parseSuite(readFileSync(outputPath, 'utf8'), reportPath);
+      const parsed = parseSuite(readFileSync(outputPath, 'utf8'), reportPath, { allowFailures: true });
       files.push({
         path: `tests/${reportPath.split(sep).join('/')}`,
         className: parsed.className,
         sha256: sha256(outputPath),
         tests: parsed.tests,
         skipped: parsed.skipped,
+        failures: parsed.failures,
+        errors: parsed.errors,
+        failureElements: parsed.failureElements,
         durationSeconds: parsed.duration,
       });
     }
@@ -297,8 +323,8 @@ export function stageAppTestShard({
     commit: commit.toLowerCase(),
     sourceTree: sourceTree.toLowerCase(),
     buildId,
-    reports: files.map(({ path, className, sha256: digest }) => ({
-      path, className, sha256: digest,
+    reports: files.map(({ path, className, sha256: digest, failures, errors, failureElements }) => ({
+      path, className, sha256: digest, failures, errors, failureElements,
     })),
     coverage: { path: 'coverage.exec', sha256: sha256(coveragePath) },
     timing: {
@@ -359,27 +385,64 @@ function groupForClass(className, assignments) {
   return undefined;
 }
 
+export function discoverAppTestSourceIdentities(sourceRoot) {
+  return [...testSources(resolve(sourceRoot)).keys()].sort();
+}
+
 function testSources(sourceRoot) {
-  const sources = new Map();
-  for (const file of filesBelow(sourceRoot)) {
+  const types = [];
+  for (const file of filesBelow(sourceRoot).filter(path => path.endsWith('.java'))) {
     const name = file.split(sep).at(-1);
-    if (!TEST_SOURCE_NAME.test(name)) continue;
     const source = readFileSync(file, 'utf8');
     const code = stripJavaLiteralsAndComments(source);
-    const simpleName = name.slice(0, -'.java'.length);
-    if (!new RegExp(`\\b(?:class|record|enum)\\s+${escapeRegExp(simpleName)}\\b`).test(code)
-        || /\babstract\s+class\s+/.test(code)
-        || !/@(?:(?:org\.junit(?:\.jupiter)?(?:\.api)?\.)?Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b/.test(code)) {
-      continue;
-    }
     const packageName = source.match(/^\s*package\s+([\w.]+)\s*;/m)?.[1] ?? '';
-    const className = [packageName, simpleName].filter(Boolean).join('.');
-    if (sources.has(className)) throw new Error(`duplicate test source identity: ${className}`);
-    const annotationText = source
-      .replace(/"""[\s\S]*?"""/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\r\n]*/g, '');
-    sources.set(className, { path: file, code, annotationText, simpleName });
+    for (const declaration of code.matchAll(/\b(abstract\s+)?(?:class|record|enum)\s+([A-Za-z_$][\w$]*)([^{]*)\{/g)) {
+      const simpleName = declaration[2];
+      types.push({
+        path: file,
+        source,
+        code,
+        className: [packageName, simpleName].filter(Boolean).join('.'),
+        simpleName,
+        abstract: Boolean(declaration[1]),
+        candidate: TEST_SOURCE_NAME.test(name) && name === `${simpleName}.java`,
+        parent: declaration[3].match(/\bextends\s+([\w.$]+)/)?.[1] ?? '',
+        hasTests: /@(?:(?:org\.junit(?:\.jupiter)?(?:\.api)?\.)?Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate|ArchTest)\b/.test(code),
+      });
+    }
+  }
+
+  const testTypes = new Set(types.filter(type => type.hasTests).map(type => type.className));
+  const simpleNames = new Map();
+  for (const type of types) {
+    const matches = simpleNames.get(type.simpleName) ?? [];
+    matches.push(type.className);
+    simpleNames.set(type.simpleName, matches);
+  }
+  let changed;
+  do {
+    changed = false;
+    for (const type of types) {
+      if (testTypes.has(type.className) || !type.parent) continue;
+      const parentType = type.parent.split('.').at(-1);
+      const parents = type.parent.includes('.') ? [type.parent] : simpleNames.get(parentType) ?? [];
+      if (parents.some(parent => testTypes.has(parent))) {
+        testTypes.add(type.className);
+        changed = true;
+      }
+    }
+  } while (changed);
+
+  const sources = new Map();
+  for (const type of types) {
+    if (!type.candidate || type.abstract || !testTypes.has(type.className)) continue;
+    if (sources.has(type.className)) throw new Error(`duplicate test source identity: ${type.className}`);
+    sources.set(type.className, {
+      path: type.path,
+      code: type.code,
+      annotationText: stripJavaComments(type.source),
+      simpleName: type.simpleName,
+    });
   }
   return sources;
 }
@@ -400,16 +463,10 @@ function readManifest(directory, group) {
   return manifest;
 }
 
-function parseSuite(xml, reportPath) {
-  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error(`unsafe JUnit report: ${reportPath}`);
-  validateXmlMarkup(xml, reportPath);
-  const opening = xml.match(/<testsuite\b([^>]*)>/i);
-  if (!opening) throw new Error(`malformed JUnit report: ${reportPath}`);
-  const attributes = new Map();
-  for (const match of opening[1].matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g)) {
-    if (attributes.has(match[1])) throw new Error(`duplicate JUnit attribute: ${reportPath}`);
-    attributes.set(match[1], match[3] ?? match[4] ?? '');
-  }
+function parseSuite(xml, reportPath, { allowFailures = false } = {}) {
+  const root = parseXmlDocument(xml, reportPath);
+  if (root.name !== 'testsuite') throw new Error(`malformed JUnit report: ${reportPath}`);
+  const attributes = root.attributes;
   const required = name => {
     const value = attributes.get(name);
     if (value === undefined || value === '') throw new Error(`JUnit report has no ${name}: ${reportPath}`);
@@ -420,49 +477,192 @@ function parseSuite(xml, reportPath) {
     if (!/^\d+$/.test(value)) throw new Error(`invalid JUnit ${name}: ${reportPath}`);
     return Number(value);
   };
-  const className = decodeXml(required('name'));
+  const suiteName = required('name');
   const reportName = reportPath.split(/[\\/]/).at(-1);
+  const reportBase = reportName.endsWith('.xml') ? reportName.slice(0, -4) : reportName;
+  const suffixStart = suiteName.lastIndexOf('(');
+  const hasSuiteSuffix = suffixStart > 0 && suiteName.endsWith(')');
+  const className = hasSuiteSuffix ? suiteName.slice(0, suffixStart) : suiteName;
+  const xmlSuffix = hasSuiteSuffix ? suiteName.slice(suffixStart + 1, -1) : '';
   const suiteReportPrefix = `TEST-${className}`;
-  if (reportName !== `${suiteReportPrefix}.xml`
-      && !reportName.startsWith(`${suiteReportPrefix}-`)) {
+  if (reportBase !== suiteReportPrefix && !reportBase.startsWith(`${suiteReportPrefix}-`)) {
     throw new Error(`JUnit report filename does not identify ${className}: ${reportPath}`);
   }
-  const tests = number('tests');
+  const executionId = reportBase === suiteReportPrefix
+    ? 'default'
+    : reportBase.slice(suiteReportPrefix.length + 1);
+  if ((executionId === 'default' && xmlSuffix !== '')
+      || (executionId !== 'default' && executionId !== xmlSuffix)) {
+    throw new Error(`JUnit report execution suffix mismatch: ${reportPath}`);
+  }
+  number('tests');
   const failures = number('failures');
   const errors = number('errors');
-  const skipped = number('skipped');
-  const reportBody = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
-  const cases = [...reportBody.matchAll(/<testcase\b/g)].length;
-  const skippedElements = [...reportBody.matchAll(/<skipped\b/g)].length;
-  if (tests < 1 || cases !== tests || skippedElements !== skipped
-      || !/<\/testsuite>\s*$/i.test(xml)) {
-    throw new Error(`inconsistent JUnit counters: ${reportPath}`);
+  const declaredSkipped = number('skipped');
+  const cases = descendants(root, 'testcase');
+  const failedCases = cases.flatMap(testCase => descendants(testCase)
+    .filter(node => ['failure', 'error', 'flakyFailure', 'flakyError', 'rerunFailure', 'rerunError']
+      .includes(node.name)));
+  if (!allowFailures && (failures || errors || failedCases.length)) {
+    const details = [...new Set(failedCases.map(node => node.name))].join(', ');
+    throw new Error(`${reportPath} contains failure evidence${details ? `: ${details}` : ''}`);
+  }
+  const skipped = cases.filter(testCase => descendants(testCase, 'skipped').length > 0).length;
+  if (cases.length < 1 || declaredSkipped < skipped) {
+    throw new Error(`inconsistent JUnit testcase evidence: ${reportPath}`);
   }
   const durationText = attributes.get('time') ?? '0';
   const duration = Number(durationText);
   if (!Number.isFinite(duration) || duration < 0) throw new Error(`invalid JUnit duration: ${reportPath}`);
-  return { className, tests, failures, errors, skipped, duration };
+  return {
+    className, executionId, tests: cases.length, failures, errors, skipped,
+    failureElements: failedCases.map(node => node.name), duration,
+  };
 }
 
-function validateXmlMarkup(xml, reportPath) {
-  const markup = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\?[\s\S]*?\?>/g, '');
-  const tokens = [...markup.matchAll(/<\/?[A-Za-z_][\w:.-]*(?:\s+[^<>]*?)?\s*\/?>/g)];
+function parseXmlDocument(xml, reportPath) {
+  let offset = 0;
+  let root;
   const stack = [];
-  for (const [token] of tokens) {
-    if (/^<\//.test(token)) {
-      const name = token.match(/^<\/([A-Za-z_][\w:.-]*)/)[1];
-      if (stack.pop() !== name) throw new Error(`malformed JUnit XML nesting: ${reportPath}`);
-    } else if (!/\/>$/.test(token)) {
-      stack.push(token.match(/^<([A-Za-z_][\w:.-]*)/)[1]);
+  while (offset < xml.length) {
+    if (xml[offset] !== '<') {
+      const start = offset;
+      while (offset < xml.length && xml[offset] !== '<') offset++;
+      const text = xml.slice(start, offset);
+      decodeXml(text, reportPath);
+      if (!stack.length && text.trim()) throw new Error(`malformed JUnit XML text: ${reportPath}`);
+      continue;
     }
+    if (xml.startsWith('<!--', offset)) {
+      const end = xml.indexOf('-->', offset + 4);
+      if (end < 0) throw new Error(`malformed JUnit XML comment: ${reportPath}`);
+      offset = end + 3;
+      continue;
+    }
+    if (xml.startsWith('<![CDATA[', offset)) {
+      const end = xml.indexOf(']]>', offset + 9);
+      if (end < 0 || !stack.length) throw new Error(`malformed JUnit XML CDATA: ${reportPath}`);
+      offset = end + 3;
+      continue;
+    }
+    if (xml.startsWith('<?', offset)) {
+      const end = xml.indexOf('?>', offset + 2);
+      if (end < 0) throw new Error(`malformed JUnit XML processing instruction: ${reportPath}`);
+      offset = end + 2;
+      continue;
+    }
+    if (xml.startsWith('<!', offset)) {
+      throw new Error(`unsafe JUnit report declaration: ${reportPath}`);
+    }
+    if (xml.startsWith('</', offset)) {
+      offset += 2;
+      const start = offset;
+      if (!isXmlNameStart(xml[offset])) throw new Error(`malformed JUnit XML name: ${reportPath}`);
+      offset++;
+      while (isXmlNameCharacter(xml[offset])) offset++;
+      const name = xml.slice(start, offset);
+      offset = skipXmlWhitespace(xml, offset);
+      if (xml[offset] !== '>' || stack.pop()?.name !== name) {
+        throw new Error(`malformed JUnit XML nesting: ${reportPath}`);
+      }
+      offset++;
+      continue;
+    }
+    offset++;
+    const start = offset;
+    if (!isXmlNameStart(xml[offset])) throw new Error(`malformed JUnit XML name: ${reportPath}`);
+    offset++;
+    while (isXmlNameCharacter(xml[offset])) offset++;
+    const name = xml.slice(start, offset);
+    const attributes = new Map();
+    let selfClosing = false;
+    while (offset < xml.length) {
+      offset = skipXmlWhitespace(xml, offset);
+      if (xml.startsWith('/>', offset)) {
+        selfClosing = true;
+        offset += 2;
+        break;
+      }
+      if (xml[offset] === '>') {
+        offset++;
+        break;
+      }
+      const attributeStart = offset;
+      if (!isXmlNameStart(xml[offset])) throw new Error(`malformed JUnit attribute: ${reportPath}`);
+      offset++;
+      while (isXmlNameCharacter(xml[offset])) offset++;
+      const attributeName = xml.slice(attributeStart, offset);
+      if (attributes.has(attributeName)) throw new Error(`duplicate JUnit attribute: ${reportPath}`);
+      offset = skipXmlWhitespace(xml, offset);
+      if (xml[offset] !== '=') throw new Error(`malformed JUnit attribute: ${reportPath}`);
+      offset = skipXmlWhitespace(xml, offset + 1);
+      const quote = xml[offset++];
+      if (quote !== '"' && quote !== "'") throw new Error(`malformed JUnit attribute: ${reportPath}`);
+      const valueStart = offset;
+      while (offset < xml.length && xml[offset] !== quote && xml[offset] !== '<') offset++;
+      if (xml[offset] !== quote) throw new Error(`malformed JUnit attribute: ${reportPath}`);
+      attributes.set(attributeName, decodeXml(xml.slice(valueStart, offset), reportPath));
+      offset++;
+    }
+    if (offset > xml.length) throw new Error(`malformed JUnit element: ${reportPath}`);
+    const node = { name, attributes, children: [] };
+    if (stack.length) stack.at(-1).children.push(node);
+    else if (root) throw new Error(`multiple JUnit XML roots: ${reportPath}`);
+    else root = node;
+    if (!selfClosing) stack.push(node);
   }
-  const text = markup.replace(/<\/?[A-Za-z_][\w:.-]*(?:\s+[^<>]*?)?\s*\/?>/g, '');
-  if (stack.length || text.includes('<') || !/^<testsuite\b/i.test(markup.trim())) {
-    throw new Error(`malformed JUnit report: ${reportPath}`);
+  if (stack.length || !root) throw new Error(`malformed JUnit report: ${reportPath}`);
+  return root;
+}
+
+function isXmlNameStart(character) {
+  return character !== undefined && /[A-Za-z_:]/.test(character);
+}
+
+function isXmlNameCharacter(character) {
+  return character !== undefined && /[A-Za-z0-9_.:-]/.test(character);
+}
+
+function skipXmlWhitespace(xml, offset) {
+  while (offset < xml.length && /\s/.test(xml[offset])) offset++;
+  return offset;
+}
+
+function decodeXml(value, reportPath) {
+  let decoded = '';
+  for (let index = 0; index < value.length; index++) {
+    if (value[index] !== '&') {
+      decoded += value[index];
+      continue;
+    }
+    const end = value.indexOf(';', index + 1);
+    if (end < 0) throw new Error(`malformed JUnit XML entity: ${reportPath}`);
+    const entity = value.slice(index + 1, end);
+    const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+    let replacement = named[entity];
+    if (replacement === undefined && entity.startsWith('#')) {
+      const hexadecimal = entity[1]?.toLowerCase() === 'x';
+      const digits = entity.slice(hexadecimal ? 2 : 1);
+      const codePoint = Number.parseInt(digits, hexadecimal ? 16 : 10);
+      if (!digits || !Number.isInteger(codePoint) || codePoint < 0
+          || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+        throw new Error(`invalid JUnit XML character reference: ${reportPath}`);
+      }
+      replacement = String.fromCodePoint(codePoint);
+    }
+    if (replacement === undefined) throw new Error(`unsupported JUnit XML entity: ${reportPath}`);
+    decoded += replacement;
+    index = end;
   }
+  return decoded;
+}
+
+function descendants(node, name) {
+  if (!node || typeof node !== 'object') return [];
+  return node.children.flatMap(child => [
+    ...(name === undefined || child.name === name ? [child] : []),
+    ...descendants(child, name),
+  ]);
 }
 
 function isLegitimatelyExcluded(source, excludedTags) {
@@ -484,12 +684,82 @@ function classTags(source) {
 }
 
 function stripJavaLiteralsAndComments(source) {
-  return source
+  return stripJavaComments(source)
     .replace(/"""[\s\S]*?"""/g, '""')
     .replace(/"(?:\\.|[^"\\])*"/g, '""')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\r\n]*/g, '')
     .replace(/'(?:\\.|[^'\\])*'/g, "''");
+}
+
+function stripJavaComments(source) {
+  let result = '';
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith('//', index)) {
+      const end = source.indexOf('\n', index + 2);
+      const commentEnd = end < 0 ? source.length : end;
+      result += [...source.slice(index, commentEnd)]
+        .map(character => character === '\r' ? '\r' : ' ').join('');
+      index = commentEnd;
+    } else if (source.startsWith('/*', index)) {
+      const end = source.indexOf('*/', index + 2);
+      if (end < 0) break;
+      const comment = source.slice(index, end + 2);
+      result += [...comment].map(character => '\r\n'.includes(character) ? character : ' ').join('');
+      index = end + 2;
+    } else if (source.startsWith('"""', index)) {
+      const end = source.indexOf('"""', index + 3);
+      if (end < 0) {
+        result += source.slice(index);
+        break;
+      }
+      result += source.slice(index, end + 3);
+      index = end + 3;
+    } else if (source[index] === '"' || source[index] === "'") {
+      const start = index;
+      const quote = source[index++];
+      while (index < source.length) {
+        if (source[index] === '\\') index += 2;
+        else if (source[index++] === quote) break;
+      }
+      result += source.slice(start, index);
+    } else {
+      result += source[index++];
+    }
+  }
+  return result;
+}
+
+function sourceClassForReport(className, sources) {
+  let candidate = className;
+  while (candidate) {
+    if (sources.has(candidate)) return candidate;
+    const nested = candidate.lastIndexOf('$');
+    if (nested < 0) break;
+    candidate = candidate.slice(0, nested);
+  }
+  return undefined;
+}
+
+function requiredClasses(assignments, sources, excludedTags) {
+  return new Map([...assignments].map(([group, classNames]) => [group,
+    new Set([...classNames].filter(className =>
+      !isLegitimatelyExcluded(sources.get(className), excludedTags)))]));
+}
+
+function verifyRequiredExecutions(requiredExecutions, reportsByClass) {
+  for (const required of requiredExecutions) {
+    if (!required.className || !Array.isArray(required.identities)
+        || required.identities.length === 0) {
+      throw new Error('required app test execution identity is malformed');
+    }
+    const actual = (reportsByClass.get(required.className) ?? [])
+      .map(report => report.executionId).sort();
+    const expected = [...required.identities].sort();
+    if (actual.length !== expected.length
+        || actual.some((identity, index) => identity !== expected[index])) {
+      throw new Error(`${required.className} execution identities mismatch: expected ${expected.join(', ')}, found ${actual.join(', ')}`);
+    }
+  }
 }
 
 function reportFiles(directory) {
@@ -542,11 +812,6 @@ function suiteDuration(path) {
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
-}
-
-function decodeXml(value) {
-  return value.replaceAll('&quot;', '"').replaceAll('&apos;', "'")
-    .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
 }
 
 function escapeRegExp(value) {
@@ -609,7 +874,7 @@ function main(argumentsList) {
         groups: plan.groups,
         defaultGroup: plan.defaultGroup,
         excludedTags: plan.excludedTags ?? [],
-        allowedRepeatedClasses: plan.allowedRepeatedClasses ?? [],
+        requiredExecutions: plan.requiredExecutions ?? [],
       };
       const identity = sourceIdentity(repositoryRoot, options.get('--commit'), sourceTree);
       const result = verifyAppTestShardInputs({
@@ -648,27 +913,33 @@ function main(argumentsList) {
       const manifest = readManifest(join(repositoryRoot, 'target/app-test-shards', group), group);
       return {
         group,
-        classes: manifest.reports.length,
+        reports: manifest.reports.length,
+        cases: manifest.reports.reduce((sum, report) => sum + report.tests, 0),
+        skipped: manifest.reports.reduce((sum, report) => sum + report.skipped, 0),
         durationSeconds: manifest.timing.durationSeconds,
       };
     });
-    console.log(`Application test inventory: ${result.tests.classes} classes across `
+    console.log(`Application test inventory: ${result.tests.classes} source classes, `
+      + `${result.tests.suites} JUnit suites and ${result.tests.cases} cases across `
       + `${result.coverage.length} shards; ${result.tests.skipped} skipped cases `
       + `and ${result.tests.excludedClasses} profile-excluded classes.`);
     groupTimings.forEach(group => console.log(
-      `  group ${group.group}: ${group.classes} reports, ${group.durationSeconds}s`));
+      `  group ${group.group}: ${group.reports} reports, ${group.cases} cases, `
+        + `${group.skipped} skipped, ${group.durationSeconds}s`));
     for (const suite of result.slowSuites) {
       console.log(`  ${suite.group}: ${suite.className} ${suite.durationSeconds}s`);
     }
     appendStepSummary([
       '### Application test shards',
       '',
-      `Executed inventory: ${result.tests.classes} classes in ${result.coverage.length} isolated groups; `
+      `Executed inventory: ${result.tests.classes} source classes, ${result.tests.suites} JUnit suites, `
+        + `${result.tests.cases} cases in ${result.coverage.length} isolated groups; `
         + `${result.tests.skipped} skipped cases and ${result.tests.excludedClasses} profile-excluded classes.`,
       '',
-      '| Group | Reports | Suite seconds |',
+      '| Group | Reports and cases | Suite seconds |',
       '|---|---:|---:|',
-      ...groupTimings.map(group => `| ${group.group} | ${group.classes} | ${group.durationSeconds} |`),
+      ...groupTimings.map(group =>
+        `| ${group.group} | ${group.reports} / ${group.cases} cases (${group.skipped} skipped) | ${group.durationSeconds} |`),
       '',
       'Slowest suites:',
       ...result.slowSuites.slice(0, 5).map(suite =>

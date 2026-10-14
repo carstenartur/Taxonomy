@@ -27,6 +27,12 @@
       "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT",
       "requires": ["Java 21", "Maven", "Maven repository access", "Docker", "Helm"]
     },
+    "ci-plugin-packaging": {
+      "purpose": "CI companion to plugin-packaging-tests; skips only taxonomy-app Surefire reruns already covered by core/shards while retaining the selected packaged Failsafe suites and build checks",
+      "profile": "ci-plugin-packaging",
+      "baseProfile": "plugin-packaging-tests",
+      "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT"
+    },
     "document-template-report-e2e": {
       "purpose": "Packaged application, PostgreSQL Testcontainers, Playwright requirement evaluation, report download and rendered document evidence",
       "itTest": "DocumentTemplateReportDownloadIT",
@@ -76,7 +82,16 @@
     "purpose": "Split measured expensive taxonomy-app suites across isolated Maven runners while untagged and newly added tests remain in the authoritative core group.",
     "defaultGroup": "core",
     "excludedTags": ["real-llm", "db-mssql", "db-oracle"],
-    "allowedRepeatedClasses": ["com.taxonomy.ArchitectureExceptionLedgerTest"],
+    "requiredExecutions": [
+      {
+        "className": "com.taxonomy.composition.demo.ProductDemoEndToEndTest",
+        "identities": ["product-demo-isolated"]
+      },
+      {
+        "className": "com.taxonomy.ArchitectureExceptionLedgerTest",
+        "identities": ["default", "module-gate-ci-anchor"]
+      }
+    ],
     "groups": {
       "core": {
         "default": true,

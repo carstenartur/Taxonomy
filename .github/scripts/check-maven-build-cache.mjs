@@ -44,6 +44,21 @@ for (const pom of ['taxonomy-coverage/pom.xml', 'taxonomy-build/pom.xml', '.gith
     `${pom} must disable caching entirely for transient evidence/setup outputs`);
 }
 
+const appPom = read('taxonomy-app/pom.xml');
+for (const profile of [
+  'ci-app-test-shards-core',
+  'ci-app-test-shard-recovery',
+  'ci-app-test-shard-browser',
+  'ci-app-test-shards-coverage',
+  'ci-plugin-packaging',
+]) {
+  const start = appPom.indexOf(`<id>${profile}</id>`);
+  const end = appPom.indexOf('</profile>', start);
+  requireContract(start >= 0 && end > start
+      && appPom.slice(start, end).includes('<maven.build.cache.enabled>false</maven.build.cache.enabled>'),
+  `${profile} must not restore/save app reports across different selectors`);
+}
+
 const workflow = read('.github/workflows/ci-cd.yml');
 requireContract((workflow.match(/path: ~\/\.m2\/build-cache/g) ?? []).length >= 2,
   'application and core jobs must persist the Maven build cache');

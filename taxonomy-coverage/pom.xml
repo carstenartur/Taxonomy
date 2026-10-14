@@ -138,6 +138,7 @@
                             <goal>report-aggregate</goal>
                         </goals>
                         <configuration>
+                            <skip>${taxonomy.app.shard.coverageAggregateSkip}</skip>
                             <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
                             <includeCurrentProject>false</includeCurrentProject>
                             <dataFileIncludes>

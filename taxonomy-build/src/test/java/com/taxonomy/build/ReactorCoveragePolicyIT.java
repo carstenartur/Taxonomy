@@ -1,9 +1,13 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
+import org.jacoco.core.data.ExecutionData;
+import org.jacoco.core.tools.ExecFileLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +18,9 @@ class ReactorCoveragePolicyIT {
     void authoritativeCoverageMeetsAggregateCriticalAndDiffPoliciesAndPublishesEvidence()
             throws Exception {
         Path root = findRepositoryRoot();
+        if (Boolean.parseBoolean(System.getProperty("taxonomy.app.shard.coverage.enabled"))) {
+            assertShardExecutionsWereMerged(root);
+        }
         Path xml = root.resolve(
                 "taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml");
         Path aggregatePolicyFile = root.resolve(".github/coverage-policy.json");
@@ -59,6 +66,58 @@ class ReactorCoveragePolicyIT {
         assertThat(criticalEvaluation.passed())
                 .as("release-critical coverage policy; inspect %s", evidence)
                 .isTrue();
+    }
+
+    private static void assertShardExecutionsWereMerged(Path root) throws Exception {
+        Path shardRoot = root.resolve("target/app-test-shards");
+        Path mergedFile = root.resolve(
+                "taxonomy-app/target/jacoco-shards-merged.exec");
+        Map<Long, boolean[]> expectedProbes = new HashMap<>();
+        try (var shards = Files.list(shardRoot)) {
+            for (Path shard : shards.filter(Files::isDirectory).toList()) {
+                Path executionFile = shard.resolve("coverage.exec");
+                assertThat(executionFile)
+                        .as("real JaCoCo execution data for %s", shard.getFileName())
+                        .isRegularFile();
+                ExecFileLoader input = new ExecFileLoader();
+                input.load(executionFile.toFile());
+                for (ExecutionData data : input.getExecutionDataStore().getContents()) {
+                    boolean[] probes = expectedProbes.computeIfAbsent(data.getId(),
+                            ignored -> new boolean[data.getProbes().length]);
+                    assertThat(probes).hasSize(data.getProbes().length);
+                    for (int index = 0; index < probes.length; index++) {
+                        probes[index] |= data.getProbes()[index];
+                    }
+                }
+            }
+        }
+        assertThat(expectedProbes).isNotEmpty();
+        assertThat(expectedProbes.values().stream()
+                .flatMapToInt(probes -> java.util.stream.IntStream.range(0, probes.length)
+                        .filter(index -> probes[index]))
+                .count()).isPositive();
+
+        assertThat(mergedFile)
+                .as("JaCoCo Maven merge output")
+                .isRegularFile();
+        ExecFileLoader merged = new ExecFileLoader();
+        merged.load(mergedFile.toFile());
+        Map<Long, ExecutionData> mergedData = new HashMap<>();
+        for (ExecutionData data : merged.getExecutionDataStore().getContents()) {
+            mergedData.put(data.getId(), data);
+        }
+        expectedProbes.forEach((classId, probes) -> {
+            ExecutionData actual = mergedData.get(classId);
+            assertThat(actual).as("merged execution class id %s", classId).isNotNull();
+            assertThat(actual.getProbes()).hasSize(probes.length);
+            for (int index = 0; index < probes.length; index++) {
+                if (probes[index]) {
+                    assertThat(actual.getProbes()[index])
+                            .as("merged probe %s for class id %s", index, classId)
+                            .isTrue();
+                }
+            }
+        });
     }
 
     private static Path findRepositoryRoot() {

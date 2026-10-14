@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 import {
   mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  stageAppTestShard, verifyAppTestShardInputs, verifyAppTestShards,
+  discoverAppTestSourceIdentities, stageAppTestShard, verifyAppTestShardInputs, verifyAppTestShards,
 } from './verify-app-test-shards.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -83,6 +84,111 @@ test('discovers newly added test classes into the default shard', t => {
   assert.equal(verify(paths).tests.classes, 3);
 });
 
+test('exempts a legitimately excluded class before requiring its report', t => {
+  const paths = fixture(t);
+  const source = join(paths.sourceRoot, 'com/taxonomy/RealLlmTest.java');
+  writeFileSync(source,
+    'package com.taxonomy; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.Tag; @Tag("real-llm") class RealLlmTest { @Test void call() {} }\n');
+  assert.equal(verify(paths, {
+    ...groups,
+    excludedTags: ['real-llm'],
+  }).tests.excludedClasses, 1);
+});
+
+test('does not exempt a class for a method-only excluded tag', t => {
+  const paths = fixture(t);
+  const source = join(paths.sourceRoot, 'com/taxonomy/MethodTagTest.java');
+  writeFileSync(source,
+    'package com.taxonomy; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.Tag; class MethodTagTest { @Test @Tag("real-llm") void call() {} }\n');
+  assert.throws(() => verify(paths, {
+    ...groups,
+    excludedTags: ['real-llm'],
+  }), /missing report.*MethodTagTest/);
+});
+
+test('requires a report for every newly discovered mandatory test class', t => {
+  const paths = fixture(t);
+  const source = join(paths.sourceRoot, 'com/taxonomy/MissingNewTest.java');
+  writeFileSync(source,
+    'package com.taxonomy; import org.junit.jupiter.api.Test; class MissingNewTest { @Test void call() {} }\n');
+  assert.throws(() => verify(paths), /missing report.*MissingNewTest/);
+});
+
+test('discovers ArchUnit-only test classes in the actual source inventory', t => {
+  const paths = fixture(t);
+  const source = join(paths.sourceRoot, 'com/taxonomy/ArchitectureOnlyTest.java');
+  writeFileSync(source,
+    'package com.taxonomy; import com.tngtech.archunit.junit.ArchTest; class ArchitectureOnlyTest { @ArchTest static final Object rule = null; }\n');
+  assert.ok(discoverAppTestSourceIdentities(paths.sourceRoot).includes('com.taxonomy.ArchitectureOnlyTest'));
+  assert.throws(() => verify(paths), /missing report.*ArchitectureOnlyTest/);
+});
+
+test('discovers inherited-only test classes and maps nested JUnit suite identities', t => {
+  const paths = fixture(t);
+  const base = join(paths.sourceRoot, 'com/taxonomy/AbstractTestBase.java');
+  writeFileSync(base,
+    'package com.taxonomy; import org.junit.jupiter.api.Test; abstract class AbstractTestBase { @Test void inherited() {} }\n');
+  const inherited = join(paths.sourceRoot, 'com/taxonomy/InheritedOnlyTest.java');
+  writeFileSync(inherited,
+    'package com.taxonomy; class InheritedOnlyTest extends AbstractTestBase {}\n');
+  assert.throws(() => verify(paths), /missing report.*InheritedOnlyTest/);
+
+  const nested = join(paths.sourceRoot, 'com/taxonomy/NestedSuiteTest.java');
+  writeFileSync(nested,
+    'package com.taxonomy; import org.junit.jupiter.api.Nested; import org.junit.jupiter.api.Test; class NestedSuiteTest { @Nested class Nested { @Test void nested() {} } }\n');
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.NestedSuiteTest$Nested.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.NestedSuiteTest$Nested" tests="1" failures="0" errors="0" skipped="0"><testcase name="nested"/></testsuite>\n');
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports.push({
+    path: 'tests/TEST-com.taxonomy.NestedSuiteTest$Nested.xml',
+    className: 'com.taxonomy.NestedSuiteTest$Nested',
+    sha256: digest(report),
+  });
+  const inheritedReport = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.InheritedOnlyTest.xml');
+  writeFileSync(inheritedReport,
+    '<testsuite name="com.taxonomy.InheritedOnlyTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="inherited"/></testsuite>\n');
+  manifest.reports.push({
+    path: 'tests/TEST-com.taxonomy.InheritedOnlyTest.xml',
+    className: 'com.taxonomy.InheritedOnlyTest',
+    sha256: digest(inheritedReport),
+  });
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.equal(verify(paths).tests.classes, 4);
+});
+
+test('requires exact product-demo and architecture-anchor execution identities', t => {
+  const paths = fixture(t);
+  const suffix = 'product-demo-isolated';
+  const report = join(paths.evidenceRoot, `core/tests/TEST-com.taxonomy.CoreTest-${suffix}.xml`);
+  writeFileSync(report,
+    `<testsuite name="com.taxonomy.CoreTest(${suffix})" tests="1" failures="0" errors="0" skipped="0"><testcase name="test"/></testsuite>\n`);
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports.push({
+    path: `tests/TEST-com.taxonomy.CoreTest-${suffix}.xml`,
+    className: 'com.taxonomy.CoreTest',
+    sha256: digest(report),
+  });
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const selected = {
+    ...groups,
+    requiredExecutions: [{
+      className: 'com.taxonomy.CoreTest',
+      identities: ['default', suffix],
+    }],
+  };
+  assert.equal(verify(paths, selected).tests.reports, 3);
+  assert.throws(() => verify(paths, {
+    ...selected,
+    requiredExecutions: [{
+      className: 'com.taxonomy.CoreTest',
+      identities: ['default', 'module-gate-ci-anchor'],
+    }],
+  }), /execution identities mismatch/);
+});
+
 test('preserves test identities when Java comments contain apostrophes', t => {
   const paths = fixture(t);
   assert.equal(verify(paths).tests.classes, 2);
@@ -133,6 +239,44 @@ test('rejects malformed or externally defined JUnit XML', t => {
   manifest.reports[0].sha256 = digest(file);
   writeFileSync(join(paths.evidenceRoot, 'core/manifest.json'), JSON.stringify(manifest));
   assert.throws(() => verify(paths), /unsafe JUnit report/);
+});
+
+test('rejects failure elements even when aggregate JUnit counters claim success', t => {
+  const paths = fixture(t);
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.CoreTest.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.CoreTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="flaky"><flakyFailure message="failed then passed"/></testcase></testsuite>\n');
+  const manifest = JSON.parse(readFileSync(join(paths.evidenceRoot, 'core/manifest.json'), 'utf8'));
+  manifest.reports[0].sha256 = digest(report);
+  writeFileSync(join(paths.evidenceRoot, 'core/manifest.json'), JSON.stringify(manifest));
+  assert.throws(() => verify(paths), /failure evidence|flaky/i);
+});
+
+test('rejects missing, malformed, mismatched and tampered digests', t => {
+  const paths = fixture(t);
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const reportPath = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.CoreTest.xml');
+  const originalReport = readFileSync(reportPath, 'utf8');
+  const original = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  for (const badDigest of ['', 'not-a-digest', '0'.repeat(64)]) {
+    const manifest = structuredClone(original);
+    manifest.reports[0].sha256 = badDigest;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.throws(() => verify(paths), /digest/i);
+  }
+  for (const badDigest of ['', 'invalid', 'f'.repeat(64)]) {
+    const manifest = structuredClone(original);
+    manifest.coverage.sha256 = badDigest;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.throws(() => verify(paths), /coverage.*digest/i);
+  }
+  writeFileSync(manifestPath, JSON.stringify(original));
+  writeFileSync(reportPath, `${originalReport} `);
+  assert.throws(() => verify(paths), /report digest mismatch/i);
+  writeFileSync(reportPath, originalReport);
+  const coveragePath = join(paths.evidenceRoot, 'core/coverage.exec');
+  writeFileSync(coveragePath, `${readFileSync(coveragePath, 'utf8')} tampered`);
+  assert.throws(() => verify(paths), /coverage execution digest mismatch/i);
 });
 
 test('rejects duplicate or wrong-source suite reports', t => {
@@ -230,6 +374,29 @@ test('stages real module reports and coverage with digest-bound timings', t => {
     digest(join(paths.evidenceRoot, 'core/coverage.exec')));
 });
 
+test('stages failed and flaky testcase XML as failure evidence, never as a pass', t => {
+  const paths = fixture(t);
+  const reports = join(paths.root, 'taxonomy-app/target/surefire-reports');
+  mkdirSync(reports, { recursive: true });
+  const report = join(reports, 'TEST-com.taxonomy.CoreTest.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.CoreTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="flaky"><flakyFailure message="failed once"/></testcase></testsuite>\n');
+  writeFileSync(join(paths.root, 'taxonomy-app/target/jacoco.exec'), 'fixture coverage bytes');
+
+  const manifest = stageAppTestShard({
+    repositoryRoot: paths.root,
+    shard: 'core',
+    commit,
+    sourceTree: tree,
+    buildId: '123.1.core',
+  });
+
+  assert.deepEqual(manifest.reports[0].failureElements, ['flakyFailure']);
+  assert.match(readFileSync(join(paths.evidenceRoot,
+    'core/tests/surefire-reports/TEST-com.taxonomy.CoreTest.xml'), 'utf8'), /flakyFailure/);
+  assert.throws(() => verify(paths), /failure evidence|not successful/);
+});
+
 test('Maven shard profiles and catalogued source tags stay synchronized', () => {
   const catalog = JSON.parse(readFileSync(join(repositoryRoot, '.mvn/verification-suites.json'), 'utf8'));
   const plan = catalog.applicationTestShards;
@@ -240,6 +407,17 @@ test('Maven shard profiles and catalogued source tags stay synchronized', () => 
   const workflow = readFileSync(join(repositoryRoot, '.github/workflows/ci-cd.yml'), 'utf8');
 
   assert.equal(plan.defaultGroup, 'core');
+  assert.equal('allowedRepeatedClasses' in plan, false);
+  assert.deepEqual(plan.requiredExecutions, [
+    {
+      className: 'com.taxonomy.composition.demo.ProductDemoEndToEndTest',
+      identities: ['product-demo-isolated'],
+    },
+    {
+      className: 'com.taxonomy.ArchitectureExceptionLedgerTest',
+      identities: ['default', 'module-gate-ci-anchor'],
+    },
+  ]);
   assert.equal(plan.groups.recovery.requiresEmbeddingModel, true);
   for (const [group, definition] of Object.entries(plan.groups)) {
     assert.ok(rootPom.includes(`<id>${definition.profile}</id>`), `${group} profile must exist`);
@@ -262,6 +440,141 @@ test('Maven shard profiles and catalogued source tags stay synchronized', () => 
   assert.match(workflow, /if: matrix\.requiresModel == true/);
   assert.match(workflow, /--verify-inputs/);
 });
+
+test('core and app shard producers run independently before final coverage aggregation', () => {
+  const workflow = readFileSync(join(repositoryRoot, '.github/workflows/ci-cd.yml'), 'utf8');
+  const jobs = readWorkflowJobs(workflow);
+  const dependsOn = (job, prerequisite, seen = new Set()) => {
+    if (seen.has(job)) return false;
+    seen.add(job);
+    return (jobs.get(job) ?? []).some(
+      dependency => dependency === prerequisite || dependsOn(dependency, prerequisite, seen),
+    );
+  };
+
+  assert.ok(jobs.has('core'));
+  assert.ok(jobs.has('app-test-shards'));
+  assert.equal(dependsOn('core', 'app-test-shards'), false);
+  assert.ok(jobs.has('coverage-aggregate'));
+  assert.ok(dependsOn('coverage-aggregate', 'core'));
+  assert.ok(dependsOn('coverage-aggregate', 'app-test-shards'));
+  assert.ok(dependsOn('verify', 'coverage-aggregate'));
+});
+
+test('the full-reactor class artifact shell step stages and verifies a real fixture archive', t => {
+  const workflow = readFileSync(join(repositoryRoot, '.github/workflows/ci-cd.yml'), 'utf8');
+  const script = workflowStepScript(workflow, 'Stage full-reactor class outputs for aggregate coverage');
+  const root = mkdtempSync(join(tmpdir(), 'taxonomy-reactor-class-fixture-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const args of [
+    ['init', '-q'],
+    ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'fixture'],
+  ]) {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const classFile = join(root, 'taxonomy-app/target/classes/com/taxonomy/Fixture.class');
+  mkdirSync(join(classFile, '..'), { recursive: true });
+  writeFileSync(classFile, Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+  const result = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', script], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_SHA: 'HEAD' },
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const checksum = spawnSync('sha256sum', ['--check', 'target/core-reactor-classes.sha256'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(checksum.status, 0, checksum.stderr);
+  const files = spawnSync('tar', ['-tzf', 'target/core-reactor-classes.tar.gz'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(files.status, 0, files.stderr);
+  assert.match(files.stdout, /taxonomy-app\/target\/classes\/com\/taxonomy\/Fixture\.class/);
+  assert.match(readFileSync(join(root, 'target/core-reactor-classes.tree'), 'utf8'), /^[0-9a-f]{40}\n$/);
+});
+
+test('CI packaging skips only app Surefire while retaining the real Failsafe selector', () => {
+  const rootPom = readFileSync(join(repositoryRoot, 'pom.xml'), 'utf8');
+  const appPom = readFileSync(join(repositoryRoot, 'taxonomy-app/pom.xml'), 'utf8');
+  const workflow = readFileSync(join(repositoryRoot, '.github/workflows/ci-cd.yml'), 'utf8');
+  const catalog = JSON.parse(readFileSync(join(repositoryRoot, '.mvn/verification-suites.json'), 'utf8'));
+  assert.equal(catalog.profiles['ci-plugin-packaging'].baseProfile, 'plugin-packaging-tests');
+  assert.equal(catalog.profiles['ci-plugin-packaging'].itTest,
+    'ExternalPluginPackagedIT,OptionalFeaturePackagedIT');
+  assert.match(rootPom, /<id>plugin-packaging-tests<\/id>[\s\S]*?<it\.test>ExternalPluginPackagedIT,OptionalFeaturePackagedIT<\/it\.test>/);
+  assert.match(rootPom, /<id>ci-plugin-packaging<\/id>/);
+  assert.match(appPom, /<artifactId>maven-surefire-plugin<\/artifactId>[\s\S]*?<skip>\$\{taxonomy\.app\.unit\.tests\.skip\}<\/skip>/);
+  assert.match(appPom, /<id>ci-plugin-packaging<\/id>[\s\S]*?<maven\.build\.cache\.enabled>false<\/maven\.build\.cache\.enabled>/);
+  assert.match(workflow, /verify -Pplugin-packaging-tests,ci-plugin-packaging/);
+  assert.doesNotMatch(workflow, /plugin-packaging-tests[^\n]*-DskipTests/);
+});
+
+test('test-scope Maven cache entries cannot cross application shard or packaging profiles', () => {
+  const appPom = readFileSync(join(repositoryRoot, 'taxonomy-app/pom.xml'), 'utf8');
+  for (const profile of [
+    'ci-app-test-shards-core',
+    'ci-app-test-shard-recovery',
+    'ci-app-test-shard-browser',
+    'ci-app-test-shards-coverage',
+    'ci-plugin-packaging',
+  ]) {
+    const start = appPom.indexOf(`<id>${profile}</id>`);
+    assert.notEqual(start, -1, `${profile} profile exists`);
+    const end = appPom.indexOf('</profile>', start);
+    assert.match(appPom.slice(start, end), /<maven\.build\.cache\.enabled>false<\/maven\.build\.cache\.enabled>/);
+  }
+});
+function readWorkflowJobs(workflow) {
+  const jobs = new Map();
+  let activeJob;
+  let inJobs = false;
+  let readingNeeds = false;
+  for (const line of workflow.split(/\r?\n/)) {
+    if (line === 'jobs:') {
+      inJobs = true;
+      continue;
+    }
+    if (!inJobs) continue;
+    const job = line.match(/^  ([a-z][a-z0-9-]*):\s*$/);
+    if (job) {
+      activeJob = job[1];
+      jobs.set(activeJob, []);
+      readingNeeds = false;
+      continue;
+    }
+    if (!activeJob) continue;
+    const needs = line.match(/^    needs:\s*(.*)$/);
+    if (needs) {
+      readingNeeds = true;
+      const inline = needs[1].match(/^\[([^\]]*)\]/)?.[1];
+      if (inline) jobs.get(activeJob).push(...inline.split(',').map(value => value.trim()).filter(Boolean));
+      continue;
+    }
+    if (readingNeeds) {
+      const dependency = line.match(/^      - ([a-z][a-z0-9-]*)\s*$/);
+      if (dependency) {
+        jobs.get(activeJob).push(dependency[1]);
+        continue;
+      }
+      if (!line.startsWith('      ')) readingNeeds = false;
+    }
+  }
+  return jobs;
+}
+
+function workflowStepScript(workflow, name) {
+  const marker = `      - name: ${name}\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `workflow step exists: ${name}`);
+  const end = workflow.indexOf('\n      - ', start + marker.length);
+  const step = workflow.slice(start, end < 0 ? workflow.length : end);
+  const run = step.match(/^        run: \|\n((?:^          .*(?:\n|$)|^\s*\n)*)/m);
+  assert.ok(run, `workflow step has a literal shell command: ${name}`);
+  return run[1].split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line)
+    .join('\n');
+}
 
 function digest(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');

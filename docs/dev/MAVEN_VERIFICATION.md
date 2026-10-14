@@ -89,12 +89,15 @@ The product-demo isolated Surefire execution and the required architecture gates
 remain in the core reactor with their existing fail-on-empty behavior.
 
 Each app runner stages its test reports and JaCoCo execution data with SHA-256
-digests and the exact source commit/tree and run identity. The core job validates
-the complete class inventory and every artifact before verification, then JaCoCo
-merges all isolated execution data into a separate application execution file;
-the reactor aggregate report consumes it together with core module execution
-data before unchanged coverage policies run. Missing,
-duplicate, wrong-source or wrong-tree evidence fails the required core job.
+digests and the exact source commit/tree and run identity. The core job publishes
+its test evidence independently of the isolated app runners. The separate
+coverage-aggregate job waits for both producers, checks the source-bound
+full-reactor class outputs and complete class inventory, and validates every
+artifact before JaCoCo merges all isolated execution data into a separate
+application execution file. Its full-reactor aggregate report consumes that file
+together with core module execution data before unchanged coverage policies run.
+Missing, duplicate, wrong-source or wrong-tree evidence fails the required
+coverage-aggregate job.
 Legitimate skips and profile exclusions are counted separately from missing
 reports. Machine timings and a concise slow-suite inventory are retained in
 `target/app-test-shards/timings.json` and the CI summary.
@@ -209,10 +212,23 @@ tests. It therefore also needs Docker for the existing container-backed browser
 tests and Helm for the build contracts. A focused Failsafe invocation proves the
 selected packaging cases but does not prove this standalone lifecycle.
 
-The existing `ci-cd.yml` workflow runs this command in its `plugin-profile` job.
+In CI, the `plugin-profile` job combines this profile with
+`ci-plugin-packaging`:
+
+```bash
+./mvnw -B verify -Pplugin-packaging-tests,ci-plugin-packaging
+```
+
+That Maven-owned companion skips only taxonomy-app Surefire tests already covered
+by the core and isolated app-test union. It preserves the complete plugin build,
+SDK checks and both selected packaged Failsafe tests. It excludes the partial-lane
+coverage policy; only the separate full-reactor aggregate job can enforce
+coverage. The standalone profile above remains unchanged and runs ordinary
+application tests.
+
 The final Maven verification gate requires that job to succeed; failure,
 cancellation, a skipped job or a missing result blocks completion. The job uses
-the checked-in Maven profile without a separate workflow-owned test selector.
+the checked-in Maven profiles without a separate workflow-owned test selector.
 Its `plugin-profile-verification` artifact retains the Maven log, Surefire and
 Failsafe reports, independent SDK result and host/plugin identity evidence.
 These results supplement the canonical `ci` profile and digest-bound UI shards;
@@ -277,7 +293,7 @@ must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
-| `ci-cd.yml` | Build one commit-bound application, run catalogued Maven app-test shards and core `-Pci` coverage aggregation, separate required production-image verification, full `plugin-packaging-tests` lifecycle, UI shards and other lanes, then gate all results and digest-bound evidence |
+| `ci-cd.yml` | Build one commit-bound application, run catalogued Maven app-test shards alongside core tests, aggregate full-reactor coverage after both, separate required production-image verification, CI plugin packaging checks, UI shards and other lanes, then gate all results and digest-bound evidence |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
 | `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |
