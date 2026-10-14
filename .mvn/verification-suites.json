@@ -106,7 +106,18 @@
           "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
           "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
           "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
-          "com.taxonomy.portfolio.reformulation.ReformulationProgressTest"
+          "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
+          "com.taxonomy.interop.IntegrationRestartTest",
+          "com.taxonomy.editor.ArchitectureApplicationRestartTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationGroupCheckpointTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
+          "com.taxonomy.OnnxRestEndpointTest"
         ]
       },
       "browser": {
@@ -115,7 +126,11 @@
         "tests": [
           "com.taxonomy.PortfolioUiAcceptanceIT",
           "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
-          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest"
+          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+          "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+          "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+          "com.taxonomy.DerivedMetadataAndSummaryTests"
         ]
       }
     }

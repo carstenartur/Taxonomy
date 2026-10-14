@@ -1,5 +1,6 @@
 package com.taxonomy.editor;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("ci-app-shard-recovery")
 class ArchitectureApplicationRestartTest {
     @TempDir Path directory;
 

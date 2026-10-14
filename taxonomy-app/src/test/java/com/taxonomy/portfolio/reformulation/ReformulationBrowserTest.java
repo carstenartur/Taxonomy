@@ -16,6 +16,7 @@ import java.nio.file.*;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 @Tag("browser")
+@Tag("ci-app-shard-browser")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"taxonomy.admin-password=Reformulation-Browser-2026!","taxonomy.security.require-password-change=false"})
 @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
 class ReformulationBrowserTest extends ReformulationWorkflowFixture {

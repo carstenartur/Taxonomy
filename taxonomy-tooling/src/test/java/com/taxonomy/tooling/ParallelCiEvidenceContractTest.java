@@ -85,7 +85,8 @@ class ParallelCiEvidenceContractTest {
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-core")
                 .contains("-Dtaxonomy.ui.skip=true")
                 .contains("name: app-test-shard-core")
-                .contains("core-reactor-classes.tar.gz")
+                .contains("core-reactor-outputs.tar.gz")
+                .contains("*/target/jacoco.exec")
                 .doesNotContain("Stage commit-bound UI application")
                 .doesNotContain("Verify production Docker image build")
                 .doesNotContain("Download all isolated application test evidence")
@@ -98,7 +99,8 @@ class ParallelCiEvidenceContractTest {
                 .contains("--verify-inputs true")
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-coverage")
                 .contains("name: quality-reports-coverage")
-                .contains("core-reactor-classes.tar.gz");
+                .contains("core-reactor-outputs.tar.gz")
+                .doesNotContain("./mvnw -B -pl taxonomy-coverage");
 
         int imageStart = workflow.indexOf("  production-image:");
         int planStart = workflow.indexOf("  app-test-plan:");
@@ -155,9 +157,10 @@ class ParallelCiEvidenceContractTest {
                 .contains("Require every authoritative lane")
                 .contains("Verify complete digest-bound UI evidence")
                 .contains("run: bash .github/scripts/finalize-quality-evidence.sh");
-        assertThat(workflow)
-                .contains("timeout-minutes: 5")
-                .contains("actions/cache/save@");
+        assertThat(core)
+                .contains("cache: maven")
+                .doesNotContain(".m2/build-cache")
+                .doesNotContain("maven.build.cache.skipCache=true");
         assertThat(finalizer)
                 .contains("verify-quality-publication.py")
                 .contains("--expected-commit \"$GITHUB_SHA\"");

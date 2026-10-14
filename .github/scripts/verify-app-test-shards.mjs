@@ -57,6 +57,7 @@ export function verifyAppTestShards({
   let totalDuration = 0;
   const coverage = [];
   const runIds = new Set();
+  const casesBySource = new Map();
 
   for (const [group, requiredForGroup] of expectedClasses) {
     const directory = join(evidence, group);
@@ -81,11 +82,13 @@ export function verifyAppTestShards({
       if (report.className !== parsed.className) {
         throw new Error(`${group} report source mismatch: ${report.path}`);
       }
+      verifyExecutionIdentity(groups.requiredExecutions ?? [], parsed.className, parsed.executionId);
       if (parsed.failures || parsed.errors) throw new Error(`${group} report is not successful: ${report.path}`);
       const sourceClass = sourceClassForReport(parsed.className, sources);
       if (!sourceClass) {
         throw new Error(`${group} report has no matching test source: ${parsed.className}`);
       }
+      assertTestExecution(parsed, sources.get(sourceClass), report.path);
       if (isLegitimatelyExcluded(sources.get(sourceClass), groups.excludedTags ?? [])) {
         throw new Error(`${group} reported profile-excluded test class: ${sourceClass}`);
       }
@@ -96,6 +99,7 @@ export function verifyAppTestShards({
       records.push({ group, report: report.path, executionId: parsed.executionId });
       reportsByClass.set(parsed.className, records);
       reportedSources.add(sourceClass);
+      casesBySource.set(sourceClass, (casesBySource.get(sourceClass) ?? 0) + parsed.tests);
       skipped += parsed.skipped;
       caseCount += parsed.tests;
       totalDuration += parsed.duration;
@@ -148,8 +152,14 @@ export function verifyAppTestShards({
   const missing = [];
   let excluded = 0;
   for (const [className, source] of sources) {
-    if ([...reportsByClass.keys()].some(reportClass =>
-      sourceClassForReport(reportClass, sources) === className)) continue;
+    const hasReport = [...reportsByClass.keys()].some(reportClass =>
+      sourceClassForReport(reportClass, sources) === className);
+    if (hasReport) {
+      if (source.containerOnly && (casesBySource.get(className) ?? 0) === 0) {
+        throw new Error(`empty required test execution: ${className}`);
+      }
+      continue;
+    }
     if (isLegitimatelyExcluded(source, groups.excludedTags ?? [])) {
       excluded++;
       continue;
@@ -207,7 +217,9 @@ export function verifyAppTestShardInputs({
   const requiredGroups = Object.keys(shardGroups).filter(group => group !== defaultGroup).sort();
   const evidence = resolve(evidenceRoot);
   const actualGroups = artifactDirectories(evidence);
-  if (requiredGroups.join('\n') !== actualGroups.join('\n')) {
+  const unexpectedGroups = actualGroups.filter(group => !Object.hasOwn(shardGroups, group));
+  const actualRequiredGroups = actualGroups.filter(group => group !== defaultGroup);
+  if (unexpectedGroups.length || requiredGroups.join('\n') !== actualRequiredGroups.join('\n')) {
     throw new Error(`expected shard inputs ${requiredGroups.join(', ')}, found ${actualGroups.join(', ')}`);
   }
   const sourceDirectory = join(resolve(repositoryRoot), 'taxonomy-app/src/test/java');
@@ -216,6 +228,7 @@ export function verifyAppTestShardInputs({
   const expectedClasses = requiredClasses(assignments, sources, groups.excludedTags ?? []);
   const classes = new Set();
   const durations = [];
+  const casesBySource = new Map();
 
   for (const group of requiredGroups) {
     const directory = join(evidence, group);
@@ -234,10 +247,12 @@ export function verifyAppTestShardInputs({
       const file = safeArtifactPath(directory, report.path);
       if (sha256(file) !== report.sha256) throw new Error(`${group} report digest mismatch: ${report.path}`);
       const suite = parseSuite(readFileSync(file, 'utf8'), report.path);
+      verifyExecutionIdentity(groups.requiredExecutions ?? [], suite.className, suite.executionId);
       const sourceClass = sourceClassForReport(suite.className, sources);
       if (report.className !== suite.className || !sourceClass) {
         throw new Error(`${group} report has no matching test source: ${suite.className}`);
       }
+      assertTestExecution(suite, sources.get(sourceClass), report.path);
       if (isLegitimatelyExcluded(sources.get(sourceClass), groups.excludedTags ?? [])) {
         throw new Error(`${group} reported profile-excluded test class: ${sourceClass}`);
       }
@@ -250,6 +265,7 @@ export function verifyAppTestShardInputs({
       }
       reportedClasses.add(sourceClass);
       classes.add(suite.className);
+      casesBySource.set(sourceClass, (casesBySource.get(sourceClass) ?? 0) + suite.tests);
       durations.push({ group, className: suite.className, durationSeconds: suite.duration });
     }
     if (listedReports.size !== actualReports.size) {
@@ -257,6 +273,9 @@ export function verifyAppTestShardInputs({
     }
     for (const className of expectedForGroup) {
       if (!reportedClasses.has(className)) throw new Error(`${group} missing report for ${className}`);
+      if (sources.get(className).containerOnly && (casesBySource.get(className) ?? 0) === 0) {
+        throw new Error(`${group} empty required test execution: ${className}`);
+      }
     }
     const coverage = manifest.coverage;
     if (!coverage || typeof coverage.path !== 'string') throw new Error(`${group} coverage execution is missing`);
@@ -323,8 +342,8 @@ export function stageAppTestShard({
     commit: commit.toLowerCase(),
     sourceTree: sourceTree.toLowerCase(),
     buildId,
-    reports: files.map(({ path, className, sha256: digest, failures, errors, failureElements }) => ({
-      path, className, sha256: digest, failures, errors, failureElements,
+    reports: files.map(({ path, className, sha256: digest, tests, skipped, failures, errors, failureElements }) => ({
+      path, className, sha256: digest, tests, skipped, failures, errors, failureElements,
     })),
     coverage: { path: 'coverage.exec', sha256: sha256(coveragePath) },
     timing: {
@@ -396,23 +415,41 @@ function testSources(sourceRoot) {
     const source = readFileSync(file, 'utf8');
     const code = stripJavaLiteralsAndComments(source);
     const packageName = source.match(/^\s*package\s+([\w.]+)\s*;/m)?.[1] ?? '';
+    const fileTypes = [];
     for (const declaration of code.matchAll(/\b(abstract\s+)?(?:class|record|enum)\s+([A-Za-z_$][\w$]*)([^{]*)\{/g)) {
       const simpleName = declaration[2];
-      types.push({
+      const bodyStart = declaration.index + declaration[0].length - 1;
+      const bodyEnd = matchingBrace(code, bodyStart);
+      if (bodyEnd < 0) throw new Error(`unclosed test source type in ${file}`);
+      fileTypes.push({
+        file,
         path: file,
         source,
         code,
-        className: [packageName, simpleName].filter(Boolean).join('.'),
+        className: '',
         simpleName,
+        start: declaration.index,
+        bodyStart,
+        bodyEnd,
         abstract: Boolean(declaration[1]),
         candidate: TEST_SOURCE_NAME.test(name) && name === `${simpleName}.java`,
         parent: declaration[3].match(/\bextends\s+([\w.$]+)/)?.[1] ?? '',
-        hasTests: /@(?:(?:org\.junit(?:\.jupiter)?(?:\.api)?\.)?Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate|ArchTest)\b/.test(code),
       });
     }
+    for (const type of fileTypes.sort((left, right) => left.start - right.start)) {
+      const enclosing = fileTypes.filter(candidate =>
+        candidate !== type && candidate.start < type.start && candidate.bodyEnd > type.bodyEnd)
+        .sort((left, right) => right.start - left.start)[0];
+      type.className = enclosing
+        ? `${enclosing.className}$${type.simpleName}`
+        : [packageName, type.simpleName].filter(Boolean).join('.');
+      type.hasTests = TEST_ANNOTATION.test(typeBodyWithoutNestedTypes(code, type, fileTypes));
+    }
+    types.push(...fileTypes);
   }
 
   const testTypes = new Set(types.filter(type => type.hasTests).map(type => type.className));
+  const inheritedTestTypes = new Set();
   const simpleNames = new Map();
   for (const type of types) {
     const matches = simpleNames.get(type.simpleName) ?? [];
@@ -428,6 +465,7 @@ function testSources(sourceRoot) {
       const parents = type.parent.includes('.') ? [type.parent] : simpleNames.get(parentType) ?? [];
       if (parents.some(parent => testTypes.has(parent))) {
         testTypes.add(type.className);
+        inheritedTestTypes.add(type.className);
         changed = true;
       }
     }
@@ -435,6 +473,11 @@ function testSources(sourceRoot) {
 
   const sources = new Map();
   for (const type of types) {
+    const nestedTests = types.some(child =>
+      child !== type && child.file === type.file
+      && child.start > type.bodyStart && child.start < type.bodyEnd
+      && testTypes.has(child.className));
+    if (type.candidate && nestedTests) testTypes.add(type.className);
     if (!type.candidate || type.abstract || !testTypes.has(type.className)) continue;
     if (sources.has(type.className)) throw new Error(`duplicate test source identity: ${type.className}`);
     sources.set(type.className, {
@@ -442,9 +485,35 @@ function testSources(sourceRoot) {
       code: type.code,
       annotationText: stripJavaComments(type.source),
       simpleName: type.simpleName,
+      containerOnly: !type.hasTests && !inheritedTestTypes.has(type.className) && nestedTests,
     });
   }
   return sources;
+}
+
+const TEST_ANNOTATION = /@(?:(?:org\.junit(?:\.jupiter)?(?:\.api)?\.)?Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate|ArchTest)\b/;
+
+function typeBodyWithoutNestedTypes(code, type, fileTypes) {
+  let cursor = type.bodyStart + 1;
+  let body = '';
+  const nestedTypes = fileTypes
+    .filter(candidate => candidate.start > type.start && candidate.start < type.bodyEnd)
+    .sort((left, right) => left.start - right.start);
+  for (const nested of nestedTypes) {
+    if (nested.start < cursor) continue;
+    body += code.slice(cursor, nested.start);
+    cursor = nested.bodyEnd + 1;
+  }
+  return body + code.slice(cursor, type.bodyEnd);
+}
+
+function matchingBrace(code, openingBrace) {
+  let depth = 0;
+  for (let index = openingBrace; index < code.length; index++) {
+    if (code[index] === '{') depth++;
+    else if (code[index] === '}' && --depth === 0) return index;
+  }
+  return -1;
 }
 
 function readManifest(directory, group) {
@@ -495,7 +564,7 @@ function parseSuite(xml, reportPath, { allowFailures = false } = {}) {
       || (executionId !== 'default' && executionId !== xmlSuffix)) {
     throw new Error(`JUnit report execution suffix mismatch: ${reportPath}`);
   }
-  number('tests');
+  const declaredTests = number('tests');
   const failures = number('failures');
   const errors = number('errors');
   const declaredSkipped = number('skipped');
@@ -503,12 +572,23 @@ function parseSuite(xml, reportPath, { allowFailures = false } = {}) {
   const failedCases = cases.flatMap(testCase => descendants(testCase)
     .filter(node => ['failure', 'error', 'flakyFailure', 'flakyError', 'rerunFailure', 'rerunError']
       .includes(node.name)));
+  const validCaseClassNames = new Set([className]);
+  if (executionId !== 'default') {
+    validCaseClassNames.add(`${className}(${executionId})`);
+    validCaseClassNames.add(`${className}-${executionId}`);
+  }
+  for (const testCase of cases) {
+    const caseClassName = testCase.attributes.get('classname');
+    if (caseClassName && !validCaseClassNames.has(caseClassName)) {
+      throw new Error(`JUnit testcase source mismatch: ${reportPath}`);
+    }
+  }
   if (!allowFailures && (failures || errors || failedCases.length)) {
     const details = [...new Set(failedCases.map(node => node.name))].join(', ');
     throw new Error(`${reportPath} contains failure evidence${details ? `: ${details}` : ''}`);
   }
   const skipped = cases.filter(testCase => descendants(testCase, 'skipped').length > 0).length;
-  if (cases.length < 1 || declaredSkipped < skipped) {
+  if (declaredTests !== cases.length || declaredSkipped !== skipped) {
     throw new Error(`inconsistent JUnit testcase evidence: ${reportPath}`);
   }
   const durationText = attributes.get('time') ?? '0';
@@ -518,6 +598,12 @@ function parseSuite(xml, reportPath, { allowFailures = false } = {}) {
     className, executionId, tests: cases.length, failures, errors, skipped,
     failureElements: failedCases.map(node => node.name), duration,
   };
+}
+
+function assertTestExecution(suite, source, reportPath) {
+  if (suite.tests === 0 && !source.containerOnly) {
+    throw new Error(`empty required test execution: ${reportPath}`);
+  }
 }
 
 function parseXmlDocument(xml, reportPath) {
@@ -762,6 +848,13 @@ function verifyRequiredExecutions(requiredExecutions, reportsByClass) {
   }
 }
 
+function verifyExecutionIdentity(requiredExecutions, className, executionId) {
+  if (executionId === 'default') return;
+  const required = requiredExecutions.find(execution =>
+    execution.className === className && execution.identities?.includes(executionId));
+  if (!required) throw new Error(`${className} has an unauthorized execution identity: ${executionId}`);
+}
+
 function reportFiles(directory) {
   return new Set([...filesBelow(join(directory, 'tests'))]
     .filter(file => REPORT_NAME.test(file.split(sep).at(-1)))
@@ -896,7 +989,7 @@ function main(argumentsList) {
       groups: plan.groups,
       defaultGroup: plan.defaultGroup,
       excludedTags: plan.excludedTags ?? [],
-      allowedRepeatedClasses: plan.allowedRepeatedClasses ?? [],
+      requiredExecutions: plan.requiredExecutions ?? [],
     };
     const identity = sourceIdentity(repositoryRoot, options.get('--commit'), sourceTree);
     const result = verifyAppTestShards({

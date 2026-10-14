@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Separate JVMs are required because Git bootstrap state is JVM-global. */
+@Tag("ci-app-shard-recovery")
 class ReformulationGroupCheckpointTest {
     @TempDir Path directory;
 

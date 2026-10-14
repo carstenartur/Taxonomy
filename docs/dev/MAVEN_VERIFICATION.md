@@ -103,9 +103,10 @@ reports. Machine timings and a concise slow-suite inventory are retained in
 `target/app-test-shards/timings.json` and the CI summary.
 
 Production Docker image verification runs as a separate job and remains a
-required final-gate prerequisite. The core build-cache save is best-effort,
-bounded to five minutes, and runs only after successful test/report publication;
-test and upload results remain authoritative.
+required final-gate prerequisite. Shard and CI packaging profiles disable Maven
+module build-cache reuse so a warm result from another test scope cannot satisfy
+their evidence checks. GitHub's Maven dependency-download cache remains enabled;
+the standalone unsharded lifecycle retains its configured module cache behavior.
 
 ### Remaining gaps in the Java/Maven-only requirement
 

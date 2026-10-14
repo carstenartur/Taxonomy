@@ -158,12 +158,78 @@ test('discovers inherited-only test classes and maps nested JUnit suite identiti
   assert.equal(verify(paths).tests.classes, 4);
 });
 
+test('maps nested workspace reports to their actual outer test source', t => {
+  const paths = fixture(t);
+  const source = join(repositoryRoot, 'taxonomy-app/src/test/java',
+    'com/taxonomy/workspace/service/WorkspaceDataIsolationTest.java');
+  const destination = join(paths.sourceRoot, 'com/taxonomy/workspace/service/WorkspaceDataIsolationTest.java');
+  mkdirSync(dirname(destination), { recursive: true });
+  writeFileSync(destination, readFileSync(source, 'utf8'));
+
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest$ContextResolution.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.workspace.service.WorkspaceDataIsolationTest$ContextResolution" tests="1" failures="0" errors="0" skipped="0"><testcase name="resolvesContext" classname="com.taxonomy.workspace.service.WorkspaceDataIsolationTest$ContextResolution"/></testsuite>\n');
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports.push({
+    path: 'tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest$ContextResolution.xml',
+    className: 'com.taxonomy.workspace.service.WorkspaceDataIsolationTest$ContextResolution',
+    sha256: digest(report),
+  });
+  const containerReport = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest.xml');
+  writeFileSync(containerReport,
+    '<testsuite name="com.taxonomy.workspace.service.WorkspaceDataIsolationTest" tests="0" failures="0" errors="0" skipped="0"></testsuite>\n');
+  manifest.reports.push({
+    path: 'tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest.xml',
+    className: 'com.taxonomy.workspace.service.WorkspaceDataIsolationTest',
+    sha256: digest(containerReport),
+  });
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+
+  assert.equal(verify(paths).tests.classes, 3);
+});
+
+test('does not let an empty nested-test container satisfy the class execution', t => {
+  const paths = fixture(t);
+  const source = join(repositoryRoot, 'taxonomy-app/src/test/java',
+    'com/taxonomy/workspace/service/WorkspaceDataIsolationTest.java');
+  const destination = join(paths.sourceRoot, 'com/taxonomy/workspace/service/WorkspaceDataIsolationTest.java');
+  mkdirSync(dirname(destination), { recursive: true });
+  writeFileSync(destination, readFileSync(source, 'utf8'));
+
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.workspace.service.WorkspaceDataIsolationTest" tests="0" failures="0" errors="0" skipped="0"></testsuite>\n');
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports.push({
+    path: 'tests/TEST-com.taxonomy.workspace.service.WorkspaceDataIsolationTest.xml',
+    className: 'com.taxonomy.workspace.service.WorkspaceDataIsolationTest',
+    sha256: digest(report),
+  });
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+
+  assert.throws(() => verify(paths), /empty required test execution/);
+});
+
+test('rejects an empty required test execution instead of treating it as a JUnit container', t => {
+  const paths = fixture(t);
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.CoreTest.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.CoreTest" tests="0" failures="0" errors="0" skipped="0"></testsuite>\n');
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports[0].sha256 = digest(report);
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.throws(() => verify(paths), /empty required test execution/);
+});
+
 test('requires exact product-demo and architecture-anchor execution identities', t => {
   const paths = fixture(t);
   const suffix = 'product-demo-isolated';
   const report = join(paths.evidenceRoot, `core/tests/TEST-com.taxonomy.CoreTest-${suffix}.xml`);
   writeFileSync(report,
-    `<testsuite name="com.taxonomy.CoreTest(${suffix})" tests="1" failures="0" errors="0" skipped="0"><testcase name="test"/></testsuite>\n`);
+    `<testsuite name="com.taxonomy.CoreTest(${suffix})" tests="2" failures="0" errors="0" skipped="0"><testcase name="test" classname="com.taxonomy.CoreTest"/><testcase name="suffixed" classname="com.taxonomy.CoreTest(${suffix})"/></testsuite>\n`);
   const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   manifest.reports.push({
@@ -172,6 +238,7 @@ test('requires exact product-demo and architecture-anchor execution identities',
     sha256: digest(report),
   });
   writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.throws(() => verify(paths), /unauthorized execution identity/);
   const selected = {
     ...groups,
     requiredExecutions: [{
@@ -186,7 +253,7 @@ test('requires exact product-demo and architecture-anchor execution identities',
       className: 'com.taxonomy.CoreTest',
       identities: ['default', 'module-gate-ci-anchor'],
     }],
-  }), /execution identities mismatch/);
+  }), /unauthorized execution identity/);
 });
 
 test('preserves test identities when Java comments contain apostrophes', t => {
@@ -250,6 +317,18 @@ test('rejects failure elements even when aggregate JUnit counters claim success'
   manifest.reports[0].sha256 = digest(report);
   writeFileSync(join(paths.evidenceRoot, 'core/manifest.json'), JSON.stringify(manifest));
   assert.throws(() => verify(paths), /failure evidence|flaky/i);
+});
+
+test('rejects testcase identities inconsistent with the normalized suite identity', t => {
+  const paths = fixture(t);
+  const report = join(paths.evidenceRoot, 'core/tests/TEST-com.taxonomy.CoreTest.xml');
+  writeFileSync(report,
+    '<testsuite name="com.taxonomy.CoreTest" tests="1" failures="0" errors="0" skipped="0"><testcase name="test" classname="com.taxonomy.OtherTest"/></testsuite>\n');
+  const manifestPath = join(paths.evidenceRoot, 'core/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.reports[0].sha256 = digest(report);
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.throws(() => verify(paths), /testcase source mismatch/i);
 });
 
 test('rejects missing, malformed, mismatched and tampered digests', t => {
@@ -323,7 +402,6 @@ test('requires coverage executions from every shard and keeps skipped tests expl
 
 test('preflights all non-core shard reports and coverage before the long core build', t => {
   const paths = fixture(t);
-  rmSync(join(paths.evidenceRoot, 'core'), { recursive: true });
   const result = verifyAppTestShardInputs({
     repositoryRoot: paths.root,
     evidenceRoot: paths.evidenceRoot,
@@ -333,6 +411,15 @@ test('preflights all non-core shard reports and coverage before the long core bu
   });
   assert.deepEqual(result.groups, ['restart']);
   assert.deepEqual(result.classes, ['com.taxonomy.RestartTest']);
+  mkdirSync(join(paths.evidenceRoot, 'unexpected'));
+  assert.throws(() => verifyAppTestShardInputs({
+    repositoryRoot: paths.root,
+    evidenceRoot: paths.evidenceRoot,
+    groups,
+    expectedCommit: commit,
+    expectedTree: tree,
+  }), /expected shard inputs restart, found core, restart, unexpected/i);
+  rmSync(join(paths.evidenceRoot, 'unexpected'), { recursive: true });
   assert.throws(() => verifyAppTestShardInputs({
     repositoryRoot: paths.root,
     evidenceRoot: paths.evidenceRoot,
@@ -444,6 +531,11 @@ test('Maven shard profiles and catalogued source tags stay synchronized', () => 
 test('core and app shard producers run independently before final coverage aggregation', () => {
   const workflow = readFileSync(join(repositoryRoot, '.github/workflows/ci-cd.yml'), 'utf8');
   const jobs = readWorkflowJobs(workflow);
+  const core = workflow.slice(workflow.indexOf('\n  core:\n'), workflow.indexOf('\n  coverage-aggregate:\n'));
+  const coreTestStart = core.indexOf('Run the core reactor test suite');
+  assert.ok(coreTestStart >= 0);
+  assert.equal(core.slice(0, coreTestStart).includes('download-artifact'), false,
+    'core test production must not wait for or download external shard evidence');
   const dependsOn = (job, prerequisite, seen = new Set()) => {
     if (seen.has(job)) return false;
     seen.add(job);
@@ -458,6 +550,9 @@ test('core and app shard producers run independently before final coverage aggre
   assert.ok(jobs.has('coverage-aggregate'));
   assert.ok(dependsOn('coverage-aggregate', 'core'));
   assert.ok(dependsOn('coverage-aggregate', 'app-test-shards'));
+  const catalog = JSON.parse(readFileSync(join(repositoryRoot, '.mvn/verification-suites.json'), 'utf8'));
+  assert.deepEqual(Object.keys(catalog.applicationTestShards.groups).sort(),
+    ['browser', 'core', 'recovery']);
   assert.ok(dependsOn('verify', 'coverage-aggregate'));
 });
 
@@ -477,22 +572,25 @@ test('the full-reactor class artifact shell step stages and verifies a real fixt
   const classFile = join(root, 'taxonomy-app/target/classes/com/taxonomy/Fixture.class');
   mkdirSync(join(classFile, '..'), { recursive: true });
   writeFileSync(classFile, Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+  const coreExecutionData = join(root, 'taxonomy-app/target/jacoco.exec');
+  writeFileSync(coreExecutionData, Buffer.from([0x01, 0x02, 0x03]));
   const result = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', script], {
     cwd: root,
     encoding: 'utf8',
     env: { ...process.env, GITHUB_SHA: 'HEAD' },
   });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
-  const checksum = spawnSync('sha256sum', ['--check', 'target/core-reactor-classes.sha256'], {
+  const checksum = spawnSync('sha256sum', ['--check', 'target/core-reactor-outputs.sha256'], {
     cwd: root, encoding: 'utf8',
   });
   assert.equal(checksum.status, 0, checksum.stderr);
-  const files = spawnSync('tar', ['-tzf', 'target/core-reactor-classes.tar.gz'], {
+  const files = spawnSync('tar', ['-tzf', 'target/core-reactor-outputs.tar.gz'], {
     cwd: root, encoding: 'utf8',
   });
   assert.equal(files.status, 0, files.stderr);
   assert.match(files.stdout, /taxonomy-app\/target\/classes\/com\/taxonomy\/Fixture\.class/);
-  assert.match(readFileSync(join(root, 'target/core-reactor-classes.tree'), 'utf8'), /^[0-9a-f]{40}\n$/);
+  assert.match(files.stdout, /taxonomy-app\/target\/jacoco\.exec/);
+  assert.match(readFileSync(join(root, 'target/core-reactor-outputs.tree'), 'utf8'), /^[0-9a-f]{40}\n$/);
 });
 
 test('CI packaging skips only app Surefire while retaining the real Failsafe selector', () => {
@@ -512,6 +610,7 @@ test('CI packaging skips only app Surefire while retaining the real Failsafe sel
 });
 
 test('test-scope Maven cache entries cannot cross application shard or packaging profiles', () => {
+  const rootPom = readFileSync(join(repositoryRoot, 'pom.xml'), 'utf8');
   const appPom = readFileSync(join(repositoryRoot, 'taxonomy-app/pom.xml'), 'utf8');
   for (const profile of [
     'ci-app-test-shards-core',
@@ -520,6 +619,12 @@ test('test-scope Maven cache entries cannot cross application shard or packaging
     'ci-app-test-shards-coverage',
     'ci-plugin-packaging',
   ]) {
+    const rootStart = rootPom.indexOf(`<id>${profile}</id>`);
+    assert.notEqual(rootStart, -1, `${profile} root profile exists`);
+    const rootEnd = rootPom.indexOf('</profile>', rootStart);
+    assert.match(rootPom.slice(rootStart, rootEnd),
+      /<maven\.build\.cache\.enabled>false<\/maven\.build\.cache\.enabled>/,
+      `${profile} must disable reactor module build-cache reuse`);
     const start = appPom.indexOf(`<id>${profile}</id>`);
     assert.notEqual(start, -1, `${profile} profile exists`);
     const end = appPom.indexOf('</profile>', start);

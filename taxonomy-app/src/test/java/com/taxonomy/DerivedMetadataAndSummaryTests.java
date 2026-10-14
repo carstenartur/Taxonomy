@@ -6,6 +6,7 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.architecture.service.ArchitectureSummaryService;
 import com.taxonomy.architecture.service.DerivedMetadataService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,7 @@ import org.springframework.security.test.context.support.WithMockUser;
  * Tests for derived graph metadata, architecture summary, and related API endpoints.
  */
 @SpringBootTest
+@Tag("ci-app-shard-browser")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class DerivedMetadataAndSummaryTests {
