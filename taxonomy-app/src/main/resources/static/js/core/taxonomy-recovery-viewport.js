@@ -1,4 +1,4 @@
-/* Compact recovery feedback is positioned in the visual, not merely the layout, viewport. */
+/* Inline recovery feedback and an explicitly opened, visual-viewport-aware detail dialog. */
 (function () {
     'use strict';
     function bounds(viewport, measuredHeight, focused) {
@@ -15,6 +15,24 @@
     }
     function mount(actions) {
         var doc = document;
+        var dismissalStorage = 'taxonomy.recovery.dismissed.v1';
+        var dismissedScope = null;
+        var hasMessage = false, active = false;
+        try { dismissedScope = sessionStorage.getItem(dismissalStorage); } catch (ignored) { /* Storage is optional. */ }
+        function scopeKey() { return actions.scopeKey ? String(actions.scopeKey() || '') : 'current'; }
+        function isDismissed() { return dismissedScope === scopeKey(); }
+        function visibility() {
+            bar.hidden = !hasMessage || !active || isDismissed() || dialog.open;
+            reopen.hidden = !hasMessage;
+        }
+        function hideFeedback() {
+            dismissedScope = scopeKey();
+            try { sessionStorage.setItem(dismissalStorage, dismissedScope); } catch (ignored) { /* Retain in memory. */ }
+            visibility(); schedule();
+            var menu = reopen.closest('details');
+            if (menu && !menu.open) menu.querySelector('summary')?.focus();
+            else if (!reopen.hidden) reopen.focus();
+        }
         function element(tag, text, className) {
             var e = doc.createElement(tag);
             if (text) e.textContent = text;
@@ -34,8 +52,22 @@
         detailButton.id = 'analysisRecoveryDetails';
         var cancel = button(actions.text('Lauf abbrechen', 'Cancel run'), actions.cancel);
         cancel.id = 'analysisRecoveryCancel';
-        var buttons = element('div', '', 'analysis-recovery-buttons'); buttons.append(detailButton, cancel);
-        bar.append(status, buttons); doc.body.append(bar);
+        var hide = button(actions.text('Ausblenden', 'Hide'), hideFeedback);
+        hide.id = 'analysisRecoveryDismiss';
+        var buttons = element('div', '', 'analysis-recovery-buttons'); buttons.append(detailButton, cancel, hide);
+        bar.append(status, buttons);
+        var host = doc.getElementById('analysisRecoveryHost');
+        if (!host) {
+            host = element('div'); host.id = 'analysisRecoveryHost';
+            var pane = doc.getElementById('tab-analyze') || doc.body;
+            pane.prepend(host);
+        }
+        host.append(bar);
+        var reopen = button(actions.text('Analyse-Status', 'Analysis status'), actions.open);
+        reopen.id = 'analysisRecoveryReopen'; reopen.hidden = true;
+        reopen.setAttribute('aria-haspopup', 'dialog');
+        reopen.setAttribute('aria-controls', 'analysisRecoveryDialog');
+        (doc.getElementById('analysisStatusMenuSlot') || host).append(reopen);
 
         var dialog = element('dialog', '', 'analysis-recovery-dialog'); dialog.id = 'analysisRecoveryDialog';
         dialog.setAttribute('aria-labelledby', 'analysisRecoveryTitle');
@@ -66,18 +98,10 @@
                 var label = compact ? button.dataset.shortLabel : button.dataset.fullLabel;
                 if (button.textContent !== label) button.textContent = label;
             });
-            var focus = doc.activeElement;
-            var rect = focus && focus !== doc.body && !bar.contains(focus) && !dialog.contains(focus)
-                ? focus.getBoundingClientRect() : null;
-            bar.style.width = Math.max(1, Math.min(760, viewport.width - 16)) + 'px';
-            var box = bounds(viewport, bar.scrollHeight || 64, rect);
-            bar.style.left = box.left + 'px'; bar.style.top = box.top + 'px';
-            bar.style.maxHeight = box.height + 'px';
             dialog.style.width = Math.max(1, Math.min(760, viewport.width - 16)) + 'px';
             dialog.style.maxHeight = Math.max(1, viewport.height - 16) + 'px';
             dialog.style.left = viewport.offsetLeft + 8 + 'px';
             dialog.style.top = viewport.offsetTop + 8 + 'px';
-            doc.documentElement.style.setProperty('--analysis-recovery-clearance', bar.hidden ? '0px' : (box.height + 16) + 'px');
         }
         function schedule() {
             if (scheduled) return;
@@ -91,12 +115,13 @@
             window.visualViewport.addEventListener('scroll', schedule);
         }
         if (window.ResizeObserver) new ResizeObserver(schedule).observe(bar);
-        dialog.addEventListener('close', function () { bar.hidden = !status.textContent; schedule(); });
+        dialog.addEventListener('close', function () { visibility(); schedule(); });
         return {
             update: function (message, busy, canCancel) {
                 if (status.textContent !== message) status.textContent = message;
                 status.title = message;
-                bar.hidden = !message || dialog.open;
+                hasMessage = Boolean(message); active = Boolean(busy || canCancel);
+                visibility();
                 cancel.hidden = !canCancel; cancel.disabled = false;
                 bar.setAttribute('aria-busy', busy ? 'true' : 'false');
                 if (dialog.open) summary.dataset.fullMessage = message;
@@ -123,7 +148,8 @@
                 content.prepend(alert); schedule();
             },
             position: schedule,
-            isOpen: function () { return dialog.open; }
+            isOpen: function () { return dialog.open; },
+            isDismissed: isDismissed
         };
     }
     window.TaxonomyRecoveryViewport = { bounds: bounds, mount: mount };

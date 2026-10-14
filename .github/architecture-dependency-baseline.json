@@ -34,14 +34,14 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 24
+      "classDependencyCount": 22
     },
     {
       "fromContext": "analysis",

@@ -1,6 +1,4 @@
-/* The reserved reading clearance avoids covering the last editable page control. */
-html { scroll-padding-block-end: var(--analysis-recovery-clearance, 0px); }
-body { padding-block-end: var(--analysis-recovery-clearance, 0px); }
+/* Routine feedback belongs in the document flow; only explicitly opened details overlay content. */
 .analysis-recovery-bar, .analysis-recovery-dialog {
     box-sizing: border-box;
     background: var(--bs-body-bg, Canvas);
@@ -11,11 +9,11 @@ body { padding-block-end: var(--analysis-recovery-clearance, 0px); }
     overflow-wrap: anywhere;
 }
 .analysis-recovery-bar {
-    position: fixed; z-index: 1040; padding: .5rem .75rem;
+    position: static; padding: .5rem .75rem; margin-block: .5rem;
     display: flex; align-items: center; gap: .75rem; overflow: auto;
     box-shadow: 0 .15rem .6rem #0003;
 }
-.analysis-recovery-bar[hidden] { display: none !important; }
+.analysis-recovery-bar[hidden], #analysisRecoveryReopen[hidden] { display: none !important; }
 #analysisRecoveryStatus { flex: 1 1 12rem; min-width: 0; }
 .analysis-recovery-buttons { display: flex; flex: 0 1 auto; gap: .4rem; flex-wrap: wrap; }
 .analysis-recovery-bar button, .analysis-recovery-dialog button { min-height: 44px; white-space: normal; }
@@ -65,3 +63,11 @@ body { padding-block-end: var(--analysis-recovery-clearance, 0px); }
 .analysis-recovery-bar[data-compact="true"] #analysisRecoveryStatus {
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+
+/* The complete row is a touch target; only a bounded page of choices is mounted. */
+#analysisRecoveryMultiple label {
+    display: flex !important; align-items: flex-start; gap: .5rem;
+    min-block-size: 44px; padding-block: .5rem; cursor: pointer;
+}
+#analysisRecoveryMultiple label input { flex: 0 0 auto; inline-size: 1.15rem; block-size: 1.15rem; margin-block-start: .15rem; }
+#analysisRecoveryMultiple > summary { min-block-size: 44px; padding-block: .5rem; cursor: pointer; }

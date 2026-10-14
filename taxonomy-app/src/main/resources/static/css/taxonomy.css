@@ -137,6 +137,8 @@
 
 .tax-name {
     flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .tax-pct {
@@ -349,8 +351,15 @@
 
 /* ── Reason icon ──────────────────────────────────────────── */
 .tax-reason-icon {
-    cursor: help;
+    cursor: pointer;
     margin-left: 4px;
+    border: 1px solid transparent;
+    border-radius: .25rem;
+    background: transparent;
+    color: inherit;
+    flex-shrink: 0;
+    min-width: 32px;
+    min-height: 32px;
     font-size: 0.85rem;
     opacity: 0.85;
     vertical-align: middle;
@@ -360,17 +369,22 @@
     opacity: 1;
 }
 
-/* ── Inline node action buttons (shown on hover) ──────────── */
+/* ── Stable node-action launcher and on-demand actions ────── */
 .tax-node-actions {
-    display: none;
-    gap: 3px;
-    margin-left: 8px;
-    flex-shrink: 0;
-    align-items: center;
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
 }
-.tax-node-header:hover .tax-node-actions,
-.tax-node-header:focus-within .tax-node-actions {
-    display: inline-flex;
+.tax-node-actions[hidden] { display: none !important; }
+.tax-node-actions-toggle {
+    flex: 0 0 32px;
+    width: 32px;
+    min-height: 32px;
+}
+.tax-actions-dialog .tax-node-actions button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-height: 36px;
 }
 
 /* ── Leaf justification button ─────────────────────────────── */
@@ -1865,4 +1879,28 @@
         color: #000 !important;
         background: #fff !important;
     }
+}
+
+/* Touch has no hover. Desktop action space is reserved before the pointer arrives. */
+@media (hover: none) {
+    .tax-node-actions { opacity: 1; pointer-events: auto; }
+}
+.tax-reason-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.tax-reason-dialog {
+    box-sizing: border-box;
+    width: min(42rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    padding: 1rem;
+    border: 2px solid var(--bs-border-color, ButtonText);
+    border-radius: .5rem;
+    background: var(--bs-body-bg, Canvas);
+    color: var(--bs-body-color, CanvasText);
+}
+.tax-reason-dialog::backdrop { background: #0008; }
+.tax-reason-heading { display: flex; gap: .75rem; align-items: start; justify-content: space-between; }
+.tax-reason-heading h2 { font-size: 1.1rem; margin: 0; overflow-wrap: anywhere; }
+.tax-reason-heading button { flex-shrink: 0; min-height: 44px; }
+.tax-reason-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (forced-colors: active) {
+    .tax-reason-dialog { border-color: ButtonText; }
 }

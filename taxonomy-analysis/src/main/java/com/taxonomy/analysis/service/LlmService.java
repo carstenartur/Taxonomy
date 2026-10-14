@@ -251,6 +251,7 @@ public class LlmService {
                     "mock-scores/communication-demo.json");
             log.info("MOCK — loaded mock scores from classpath:mock-scores/communication-demo.json");
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.warn("MOCK — failed to load mock scores from classpath, using hardcoded fallback: {}", e.getMessage());
         }
         return cachedMockAnalysis;
@@ -529,6 +530,7 @@ public class LlmService {
             return messages.completed(task, AnalysisTaskOutcome.SKIPPED, null,
                     Math.max(0, run.allScores.size() - scoresBefore), null);
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Error processing root '{}': {}", root.getName(), e.getMessage(), e);
             run.warnings.add("Error processing " + root.getName() + ": " + e.getMessage());
             run.completedRoots.add(root.getName());
@@ -670,6 +672,7 @@ public class LlmService {
             callback.onError("PARTIAL", stopped.getMessage(),
                     allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
                     allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
@@ -710,6 +713,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Error in detailed LLM call", e);
             LlmCallDetail detail = new LlmCallDetail();
             detail.setScores(Map.of());
@@ -1002,6 +1006,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception exception) {
+            AnalysisExecutionFailures.rethrow(exception);
             String error = "Failed to parse independent product response: " + exception.getMessage();
             log.error(error, exception);
             detail.setScores(responseParser.zeroScores(products));
@@ -1134,6 +1139,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Error calling LLM API", e);
             return responseParser.zeroScores(nodes);
         }
@@ -1197,6 +1203,7 @@ public class LlmService {
             } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
                 log.error("Failed to parse LLM response in callLlmResult", e);
                 recordFailure(e.getMessage());
                 return ScoreParseResult.empty(nodes);
@@ -1204,6 +1211,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Error calling LLM API", e);
             return ScoreParseResult.empty(nodes);
         }
@@ -1266,6 +1274,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to parse LLM response in callLlmPropagating", e);
             return responseParser.zeroScores(nodes);
         }
@@ -1386,6 +1395,7 @@ public class LlmService {
             } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
                 log.error("Failed to parse scores in detailed LLM call", e);
                 detail.setScores(Map.of());
                 String errorMsg = "Failed to parse LLM response: " + e.getMessage();
@@ -1613,6 +1623,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to generate leaf justification for {}", leafCode, e);
             recordFailure(e.getMessage());
             return "Error generating justification: " + e.getMessage();
@@ -1660,6 +1671,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
+            AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to call LLM raw", e);
             recordFailure(e.getMessage());
             return null;

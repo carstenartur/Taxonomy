@@ -82,6 +82,7 @@ public final class ClusterRelationService {
                 return new PreparedAnalysisCompletion<>(messages.completed(task, AnalysisTaskOutcome.STOPPED, 0, reason),
                         () -> { store.verifyDelivery(task, input.deliveryAttempt()); store.persistRelationFailure(task, reason); });
             } catch (RuntimeException failed) {
+                com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failed);
                 // A malformed input cannot be represented by an invented empty Plan or Work grant.
                 String reason = task.taskId().relationWorkOrdinal().isPresent()
                         ? "RELATION_EVALUATION_FAILED" : "RELATION_PREPARATION_FAILED";

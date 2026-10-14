@@ -17,6 +17,7 @@
         currentReasons: {},   // code → reason string
         currentDiscrepancies: [], // TaxonomyDiscrepancy list from analysis
         currentProductCoverageGaps: [], // relevant product families without a suitable product
+        currentRelationSearchReport: null, // independent of the optional architecture diagram
         currentArchView: null, // latest architecture view from analysis
         lastAnalysisProvider: null, // provider that produced current scores
         lastAnalysisStatus: null, // SUCCESS, PARTIAL, ERROR, IN_PROGRESS, or imported/unknown

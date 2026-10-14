@@ -559,47 +559,12 @@ class ScreenshotGeneratorIT {
                 By.id(modalId), "data-modal-visible", "false"));
     }
 
-    /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
-    private void showAdminLockButton() {
-        // Wait for the page's async AI status check to complete.
-        // The badge starts empty and d-none; after checkAiStatus() resolves (success, failure,
-        // or catch), it gets text content.  We check for non-empty text rather than Selenium
-        // visibility because the badge may remain hidden by CSS (d-none) if the JS that removes
-        // d-none has not executed yet in the rendering pipeline.
-        wait(15).until(d -> {
-            String text = (String) ((JavascriptExecutor) d).executeScript(
-                    "var b = document.getElementById('aiStatusBadge'); return b ? b.textContent : '';");
-            return text != null && !text.trim().isEmpty();
-        });
-        js("var btn = document.getElementById('adminLockBtn');" +
-           "if (btn) { btn.classList.remove('d-none'); btn.style.display = ''; " +
-           "btn.scrollIntoView({behavior:'instant', block:'center'}); }");
-        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminLockBtn")));
-    }
-
-    /** Unlocks admin mode via the REST endpoint and reveals the admin-only panels. */
-    private void unlockAdmin() {
-        js("fetch('/api/admin/verify', {method:'POST', " +
-                "headers:{'Content-Type':'application/json'}, " +
-                "body: JSON.stringify({password:'testpassword123'})})" +
-                ".then(r => r.json()).then(data => { " +
-                "  if (data.valid) { " +
-                "    sessionStorage.setItem('adminToken', 'testpassword123'); " +
-                "    document.body.classList.add('admin-unlocked'); " +
-                "    document.querySelectorAll('.admin-only').forEach(el => { el.style.display = ''; el.classList.remove('d-none'); }); " +
-                "  } " +
-                "});");
-        // Wait for admin panels to become visible after unlock, re-applying DOM changes each poll
-        wait(15).until(d -> {
-            js("document.body.classList.add('admin-unlocked');");
-            js("document.querySelectorAll('.admin-only').forEach(el => { el.style.display = ''; el.classList.remove('d-none'); });");
-            List<WebElement> panels = driver.findElements(By.cssSelector(".admin-only"));
-            return !panels.isEmpty() && panels.stream().anyMatch(WebElement::isDisplayed);
-        });
-        // Trigger diagnostics load — the REST unlock above doesn't go through the UI's
-        // initAdminModal() flow, so loadDiagnostics() is never called automatically.
-        // Click the refresh button which has a click listener bound to loadDiagnostics().
-        js("var btn = document.getElementById('refreshDiagnostics'); if (btn) btn.click();");
+    private void showAdminSettings() {
+        WebElement menu = driver.findElement(By.id("applicationSettings"));
+        if (menu.getAttribute("open") == null) {
+            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+        }
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminNavTab")));
     }
 
     /**
@@ -998,9 +963,19 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.attributeContains(details, "open", ""));
     }
 
-    /** Navigates to a named page tab using the client-side navigateToPage() function. */
+    /** Uses Settings for administrator-only destinations and the common router otherwise. */
     private void navigateToTab(String page) {
-        js("if (window.navigateToPage) { window.navigateToPage(arguments[0]); }", page);
+        if ("admin".equals(page) || "preferences".equals(page)) {
+            WebElement menu = driver.findElement(By.id("applicationSettings"));
+            if (menu.getAttribute("open") == null) {
+                driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+            }
+            String destination = "admin".equals(page) ? "adminNavTab" : "preferencesNavTab";
+            wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(destination)));
+            driver.findElement(By.id(destination)).click();
+        } else {
+            js("if (window.navigateToPage) { window.navigateToPage(arguments[0]); }", page);
+        }
         wait(5).until(d -> {
             WebElement pane = d.findElement(By.id("tab-" + page));
             return !pane.getAttribute("class").contains("d-none");
@@ -1178,10 +1153,11 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(14)
-    void captureAdminLockButton() throws IOException {
-        showAdminLockButton();
+    void captureAdminSettings() throws IOException {
+        showAdminSettings();
         WebElement navbar = driver.findElement(By.cssSelector("nav.navbar"));
-        saveElementScreenshot(navbar, "14-navbar-admin-lock.png");
+        saveElementScreenshot(navbar, "14-navbar-settings.png");
+        driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
     }
 
     // ── Screenshots 15–27: LLM-dependent (use mock LLM — no real API key needed) ──
@@ -1522,8 +1498,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(24)
     void captureLlmDiagnostics() throws IOException {
-        unlockAdmin();
         navigateToTab("admin");
+        js("var btn = document.getElementById('refreshDiagnostics'); if (btn) btn.click();");
 
         WebElement diagPanel = driver.findElement(By.id("diagnosticsPanel"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);

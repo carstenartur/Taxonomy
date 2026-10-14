@@ -178,6 +178,43 @@ async function runScenario(application, scenario, applicationLog, groupTiming) {
   }
 }
 
+async function runAnalysisUxBrowserTests(group) {
+  if (!group.scenarios.some(
+    scenario => scenario.suite === 'special-modes'
+      && scenario.id === 'text-spacing-and-offline')) return;
+
+  const bootstrapUrl = `${baseUrl.replace(/\/+$/, '')}`
+    + '/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css';
+  const response = await fetch(bootstrapUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Could not load bundled Bootstrap 5.3.8 stylesheet: ${response.status} ${bootstrapUrl}`);
+  }
+  if (!response.headers.get('content-type')?.includes('text/css')) {
+    throw new Error(`Bundled Bootstrap resource is not CSS: ${bootstrapUrl}`);
+  }
+  const browserResources = path.join(outputRoot, '_browser-resources');
+  await mkdir(browserResources, { recursive: true });
+  const bootstrapCss = path.join(browserResources, 'bootstrap-5.3.8.min.css');
+  const css = Buffer.from(await response.arrayBuffer());
+  if (css.length === 0) throw new Error(`Bundled Bootstrap stylesheet is empty: ${bootstrapUrl}`);
+  await writeFile(bootstrapCss, css);
+
+  console.log('\n=== Native Chromium component regressions: analysis/navigation UX ===');
+  await runProcess(process.execPath, [
+    '--test',
+    path.join(scriptDir, 'analysis-navigation.browser.test.mjs'),
+    path.join(scriptDir, 'analysis-ux.browser.test.mjs')
+  ], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      BOOTSTRAP_CSS: bootstrapCss,
+      TAXONOMY_TEST_RESOURCE_ROOT: path.join(repoRoot, 'taxonomy-app', 'src', 'main', 'resources')
+    }
+  });
+}
+
 async function runGroup(group, jar, report) {
   const applicationDirectory = path.join(outputRoot, '_applications');
   await mkdir(applicationDirectory, { recursive: true });
@@ -208,6 +245,7 @@ async function runGroup(group, jar, report) {
     console.log(
       `\n=== UI application group ${group.id}: ${group.scenarios.length} scenario(s), `
       + `startup ${groupTiming.startupMs} ms ===`);
+    await runAnalysisUxBrowserTests(group);
     for (const scenario of group.scenarios) {
       await runScenario(application, scenario, logPath, groupTiming);
     }

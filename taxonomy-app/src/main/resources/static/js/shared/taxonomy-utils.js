@@ -105,7 +105,9 @@ window.TaxonomyUtils = (function () {
         tabList.setAttribute('aria-label', currentLanguage() === 'de'
             ? 'Hauptbereiche' : 'Main sections');
 
-        Array.from(tabList.querySelectorAll('.nav-link[data-page]')).forEach(function (link) {
+        var links = Array.from(tabList.querySelectorAll('.nav-link[data-page]'));
+        var hasActiveTab = links.some(function (link) { return link.classList.contains('active'); });
+        links.forEach(function (link, index) {
             var page = link.getAttribute('data-page');
             var active = link.classList.contains('active');
             var wrapper = link.closest('li');
@@ -114,7 +116,7 @@ window.TaxonomyUtils = (function () {
             link.setAttribute('role', 'tab');
             link.setAttribute('aria-selected', active ? 'true' : 'false');
             link.setAttribute('aria-controls', 'tab-' + page);
-            link.setAttribute('tabindex', active ? '0' : '-1');
+            link.setAttribute('tabindex', active || (!hasActiveTab && index === 0) ? '0' : '-1');
             var pane = document.getElementById('tab-' + page);
             if (pane) {
                 pane.setAttribute('role', 'tabpanel');
@@ -172,11 +174,16 @@ window.TaxonomyUtils = (function () {
         if (!select) return;
         var links = authorizedMainNavigationLinks();
         var active = links.find(function (link) { return link.classList.contains('active'); });
-        var selectedPage = active ? active.getAttribute('data-page') : select.value;
-        var existing = Array.from(select.options).map(function (option) { return option.value; });
+        var selectedPage = active ? active.getAttribute('data-page') : '';
+        var existing = Array.from(select.options).filter(function (option) { return option.value; }).map(function (option) { return option.value; });
         var desired = links.map(function (link) { return link.getAttribute('data-page'); });
         if (existing.join('|') !== desired.join('|')) {
             select.replaceChildren();
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.disabled = true;
+            placeholder.textContent = currentLanguage() === 'de' ? 'Arbeitsbereich auswählen' : 'Choose workspace view';
+            select.appendChild(placeholder);
             links.forEach(function (link) {
                 var option = document.createElement('option');
                 option.value = link.getAttribute('data-page');
@@ -184,7 +191,7 @@ window.TaxonomyUtils = (function () {
                 select.appendChild(option);
             });
         }
-        if (desired.includes(selectedPage)) select.value = selectedPage;
+        select.value = desired.includes(selectedPage) ? selectedPage : '';
         select.disabled = desired.length === 0;
     }
 
@@ -256,6 +263,10 @@ window.TaxonomyUtils = (function () {
             attributeFilter: ['class']
         });
         window.addEventListener('hashchange', syncResponsiveMainNavigation);
+        document.addEventListener('taxonomy:page-activated', function () {
+            syncMainNavigation();
+            syncResponsiveMainNavigation();
+        });
     }
 
     // ── Responsive task reading and focus order ───────────────────────────

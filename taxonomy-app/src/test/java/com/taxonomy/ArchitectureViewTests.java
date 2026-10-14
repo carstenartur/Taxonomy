@@ -20,8 +20,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -354,7 +356,7 @@ class ArchitectureViewTests {
     void analyzeWithPressureReturnsExplicitPartialResultAndNextRunCanComplete() throws Exception {
         String request = "{\"businessText\":\"Provide secure voice communications\",\"includeArchitectureView\":true}";
         long mib = 1024L * 1024;
-        analyzeWithHeap(request, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
+        var partial = analyzeWithHeap(request, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Analysis-Operation-Id"))
                 .andExpect(jsonPath("$.status").value("PARTIAL"))
@@ -362,14 +364,60 @@ class ArchitectureViewTests {
                 .andExpect(jsonPath("$.warnings").value(hasItem(containsString("MEMORY_PRESSURE"))))
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.tree").isArray())
-                .andExpect(jsonPath("$.architectureView").doesNotExist());
+                .andExpect(jsonPath("$.architectureView").exists())
+                .andReturn();
+        assertHonestPartialView(partial.getResponse().getContentAsString());
 
         // Pressure history is per run: a stopped request must not poison the next one.
         analyzeWithHeap(request, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.errorMessage").doesNotExist())
-                .andExpect(jsonPath("$.architectureView").exists());
+                .andExpect(jsonPath("$.architectureView.analysisStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.architectureView.includedRelationships").isArray());
+    }
+
+    private static void assertHonestPartialView(String json) throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var payload = mapper.readTree(json);
+        var view = payload.path("architectureView");
+        assertThat(view.path("analysisStatus").asText()).isEqualTo("PARTIAL");
+        assertThat(view.path("includedRelationships")).isEmpty();
+        assertThat(view.path("totalRelationships").asInt()).isZero();
+        var elements = view.path("includedElements");
+        assertThat(elements.isArray()).isTrue();
+        var retained = new HashSet<String>();
+        collectConcreteCodes(payload.path("tree"), retained);
+        var scores = payload.path("scores");
+        var usable = new HashSet<String>();
+        scores.properties().forEach(entry -> {
+            if (entry.getValue().asInt() > 0 && retained.contains(entry.getKey())) usable.add(entry.getKey());
+        });
+        if (elements.isEmpty()) {
+            assertThat(view.path("notes").toString()).contains("NO_ASSESSED_ARCHITECTURE:");
+            assertThat(usable).isEmpty();
+        } else {
+            elements.forEach(element -> {
+                var code = element.path("nodeCode").asText();
+                assertThat(usable).contains(code);
+                assertThat(element.path("origin").asText()).isEqualTo("DIRECT_SCORED");
+                assertThat(element.path("presenceReason").asText()).contains("Directly assessed relevance");
+            });
+        }
+    }
+
+    private static void collectConcreteCodes(tools.jackson.databind.JsonNode nodes, Set<String> codes) {
+        if (nodes.isArray()) {
+            nodes.forEach(node -> collectConcreteCodes(node, codes));
+            return;
+        }
+        if (!nodes.isObject()) return;
+        String code = nodes.path("code").asText();
+        String root = nodes.path("taxonomyRoot").asText();
+        boolean container = code.equals(root) && nodes.path("level").asInt() == 0
+                && nodes.path("parentCode").asText().isBlank();
+        if (!code.isBlank() && !container) codes.add(code);
+        collectConcreteCodes(nodes.path("children"), codes);
     }
 
     private static AnalysisMemoryGuard.Sample healthyHeap() {

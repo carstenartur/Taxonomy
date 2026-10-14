@@ -41,6 +41,28 @@ const checks = [];
 function passed(name) { checks.push(name); }
 
 async function navigateTo(pageName) {
+  if (pageName === 'help') {
+    await page.locator('#main-tab-help').click();
+    await page.locator('#tab-help').waitFor({ state: 'visible' });
+    return;
+  }
+
+  const settingsDestination = {
+    admin: 'adminNavTab',
+    preferences: 'preferencesNavTab'
+  }[pageName];
+  if (settingsDestination) {
+    const settings = page.locator('#applicationSettings');
+    if (await settings.getAttribute('open') === null) {
+      await page.locator('#applicationSettings > summary').click();
+    }
+    const control = page.locator(`#applicationSettings #${settingsDestination}`);
+    await control.waitFor({ state: 'visible', timeout: 20_000 });
+    await control.click();
+    await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
+    return;
+  }
+
   const responsiveSelect = page.locator('#mobileMainNavigationSelect');
   if (await responsiveSelect.isVisible().catch(() => false)) {
     await responsiveSelect.selectOption(pageName);

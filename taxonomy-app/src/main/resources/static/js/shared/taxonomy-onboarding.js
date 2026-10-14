@@ -328,21 +328,25 @@
 
         var details = document.createElement('details');
         details.id = 'operationalContextDetails';
-        details.className = 'operational-context-details';
+        details.className = 'operational-context-details application-menu';
         var summary = document.createElement('summary');
         var title = document.createElement('strong');
         title.className = 'operational-context-title';
-        title.textContent = t('analysis.task.operational.summary');
+        title.textContent = t('navbar.status');
         var hint = document.createElement('span');
-        hint.className = 'operational-context-hint';
+        hint.className = 'operational-context-hint visually-hidden';
         hint.textContent = t('analysis.task.operational.hint');
         summary.append(title, hint);
         var body = document.createElement('div');
-        body.className = 'operational-context-content';
+        body.className = 'operational-context-content application-menu-content';
         details.append(summary, body);
 
-        var navigationShell = navigation.closest('.bg-dark');
-        navigationShell.parentElement.insertBefore(details, navigationShell.nextSibling);
+        var slot = document.getElementById('operationalStatusMenuSlot');
+        if (slot) slot.appendChild(details);
+        else {
+            var navigationShell = navigation.closest('.bg-dark');
+            navigationShell.parentElement.insertBefore(details, navigationShell.nextSibling);
+        }
 
         [
             document.getElementById('aiStatusBadge'),
@@ -370,9 +374,9 @@
             var danger = Boolean(body.querySelector(
                 '.bg-danger, .text-danger, .alert-danger, .git-status-error, [data-state="error"]'));
             details.classList.toggle('has-actionable-status', actionable || danger);
-            if (actionable || danger) {
-                details.open = true;
-            }
+            // A status update must not override the user's open/close decision.
+            var summary = details.querySelector('summary');
+            summary.title = t(actionable || danger ? 'navbar.status.attention' : 'navbar.status');
         }
         new MutationObserver(refresh).observe(body, {
             attributes: true,

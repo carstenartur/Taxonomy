@@ -25,12 +25,10 @@
 <div id="a11yAlert" class="visually-hidden"
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark mb-0" th:attr="aria-label=#{ui.aria.main_navigation}" aria-label="Main navigation">
-    <div class="container-fluid flex-wrap gap-2">
-        <span class="navbar-brand fw-bold">
-            &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span><span class="navbar-version"> &mdash; <span id="navbarVersion" th:text="'v' + ${appVersion}">v0.0.0</span></span>
-        </span>
-        <div class="d-flex gap-2 ms-3 flex-wrap">
+<nav class="navbar navbar-dark bg-dark mb-0" id="applicationNavigation" th:attr="aria-label=#{ui.aria.main_navigation}" aria-label="Main navigation">
+    <div class="container-fluid application-shell">
+        <span class="navbar-brand fw-bold">Taxonomy</span>
+        <div class="application-file-menus">
             <div class="dropdown">
                 <button id="fileMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
                         type="button" data-bs-toggle="dropdown" aria-expanded="false"
@@ -76,63 +74,65 @@
                 </ul>
             </div>
         </div>
-        <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" th:title="#{navbar.ai.status.title}" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
-        <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" th:title="#{navbar.embedding.status.title}" title="Embedding model status for semantic search"></span>
-        <span id="workspaceUserBadge" class="badge bg-info text-dark ms-2 d-none" th:title="#{navbar.workspace.title}" title="Current workspace / user"></span>
-        <!-- Language selector -->
-        <select id="langSelector" class="form-select form-select-sm me-2" style="width:auto;"
+        <div class="application-work-navigation">
+            <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs" role="tablist" aria-label="Main sections">
+                <li role="presentation" class="nav-item">
+                <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
+            </li>
+                <li role="presentation" class="nav-item">
+                <a class="nav-link" data-page="architecture" data-taxonomy-feature="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
+            </li>
+                <li role="presentation" class="nav-item">
+                <a class="nav-link" data-page="graph" data-taxonomy-feature="architecture" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
+            </li>
+                <li role="presentation" class="nav-item">
+                <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
+            </li>
+                <li role="presentation" class="nav-item">
+                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; <span th:text="#{nav.dsl}">DSL</span></a>
+            </li>
+            </ul>
+        </div>
+        <div class="application-utilities">
+            <details id="applicationSettings" class="application-menu">
+                <summary th:aria-label="#{navbar.settings.menu}" th:title="#{navbar.settings.menu}">
+                    <span aria-hidden="true">⚙</span><span class="visually-hidden" th:text="#{navbar.settings.menu}">Settings</span>
+                </summary>
+                <div class="application-menu-content">
+                    <label for="langSelector" th:text="#{lang.selector.label}">Language</label>
+                    <select id="langSelector" class="form-select form-select-sm"
                 onchange="TaxonomyI18n.setLocale(this.value)"
                 th:title="#{lang.selector.label}" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
             <option value="en" th:selected="${#locale.language == 'en'}">🇬🇧 English</option>
             <option value="de" th:selected="${#locale.language == 'de'}">🇩🇪 Deutsch</option>
         </select>
-        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.about}" th:attr="aria-label=#{ui.aria.about}" aria-label="About">&#8505;&#65039;</button>
-        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button>
-        <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none"
-            th:title="#{navbar.admin.open.title}" title="Open admin mode to access diagnostic panels and prompt templates"
-            th:aria-label="#{navbar.admin.locked}" style="font-size:1.1rem;">
-            <span aria-hidden="true">&#128274;</span>
-            <span class="visually-hidden" th:text="#{navbar.admin.label}">Admin Mode</span>
-        </button>
+                    <div class="d-flex align-items-center gap-2"><button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button><span th:text="#{navbar.darkmode}">Theme</span></div>
+                    <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin"
+                       data-required-roles="ADMIN" hidden th:text="#{users.title}">User management</a>
+                    <a class="application-utility-link admin-only" id="adminNavTab" data-page="admin" href="#admin"
+                       data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
+                    <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
+                       data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
+                    <span id="analysisStatusMenuSlot"></span>
+                </div>
+            </details>
+            <span id="operationalStatusMenuSlot"></span>
+            <div class="application-support">
+                <a id="main-tab-help" class="btn btn-sm btn-outline-light application-utility-link" data-page="help" href="#help"
+                   th:text="#{nav.help}">Help</a>
+                <button id="aboutBtn" type="button" class="btn btn-sm btn-outline-light" th:text="#{navbar.about.label}"
+                        th:aria-label="#{ui.aria.about}">About</button>
+            </div>
+        </div>
     </div>
 </nav>
-
-<!-- Global Git status bar — shows branch, HEAD commit, projection/index freshness -->
-<div id="gitStatusBar" class="git-status-bar d-none"></div>
-
-<!-- Context Navigation Bar — shows current context, mode, navigation controls -->
-<div id="contextBar" class="d-none"></div>
-
-<!-- Page navigation -->
-<div class="bg-dark border-top border-secondary">
-    <div class="container-fluid px-3">
-        <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs" role="tablist" aria-label="Main sections">
-            <li role="presentation" class="nav-item">
-                <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
-            </li>
-            <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="architecture" data-taxonomy-feature="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
-            </li>
-            <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="graph" data-taxonomy-feature="architecture" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
-            </li>
-            <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
-            </li>
-            <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; <span th:text="#{nav.dsl}">DSL</span></a>
-            </li>
-            <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="help" href="#help">&#128214; <span th:text="#{nav.help}">Help</span></a>
-            </li>
-            <li role="presentation" id="adminNavTab" class="nav-item admin-only">
-                <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; <span th:text="#{nav.admin}">Admin</span></a>
-            </li>
-            <li role="presentation" id="preferencesNavTab" class="nav-item admin-only">
-                <a class="nav-link text-warning" data-page="preferences" href="#preferences">&#9881;&#65039; <span th:text="#{nav.preferences}">Preferences</span></a>
-            </li>
-        </ul>
-    </div>
+<!-- Status widgets are moved into the single on-demand Status menu. -->
+<div id="applicationOperationalStaging" hidden>
+    <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" th:title="#{navbar.ai.status.title}" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
+    <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" th:title="#{navbar.embedding.status.title}" title="Embedding model status for semantic search"></span>
+    <span id="workspaceUserBadge" class="badge bg-info text-dark ms-2 d-none" th:title="#{navbar.workspace.title}" title="Current workspace / user"></span>
+    <div id="gitStatusBar" class="git-status-bar d-none"></div>
+    <div id="contextBar" class="d-none"></div>
 </div>
 
 <!-- Global startup loading banner — shown while taxonomy data is initializing,
@@ -323,7 +323,10 @@
                 </div>
 
                 <!-- Status / error messages -->
+                <div id="analysisRecoveryHost"></div>
                 <div id="statusArea"></div>
+                <section id="relationSearchReportPanel" hidden aria-label="Relation search report"
+                         th:aria-label="#{relation.search.title}"></section>
 
                 <!-- Analysis log panel (collapsible) -->
                 <details id="analysisLog" class="mt-2" style="display:none;">
@@ -1664,33 +1667,6 @@
     </div>
 </div>
 
-<!-- Admin Mode Modal -->
-<div class="modal fade" id="adminModal" tabindex="-1" aria-labelledby="adminModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="adminModalLabel" th:text="#{admin.modal.title}">&#128274; Admin Mode</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" th:attr="aria-label=#{ui.aria.close}" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="adminUnlockForm">
-                    <label for="adminPasswordInput" class="form-label" th:text="#{admin.password.label}">Enter admin password to unlock diagnostic panels:</label>
-                    <input type="password" class="form-control mb-2" id="adminPasswordInput" th:placeholder="#{admin.password.placeholder}" placeholder="Password" autocomplete="current-password"/>
-                    <div id="adminPasswordError" class="text-danger small d-none" th:text="#{admin.password.error}">Incorrect password. Please try again.</div>
-                </div>
-                <div id="adminLockedInfo" class="d-none" th:utext="#{admin.locked.info}">
-                    <p class="mb-0">Admin mode is currently <strong>unlocked</strong>. Click Lock to hide diagnostic panels.</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{admin.btn.cancel}">Cancel</button>
-                <button type="button" class="btn btn-primary" id="adminUnlockBtn" th:text="#{admin.btn.unlock}">&#128275; Unlock</button>
-                <button type="button" class="btn btn-warning d-none" id="adminLockConfirmBtn" th:text="#{admin.btn.lock}">&#128274; Lock</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Create Relation Modal -->
 <div class="modal fade" id="createRelationModal" tabindex="-1" aria-labelledby="createRelationModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -1797,10 +1773,24 @@
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
 
         // Update nav-tab active state
-        var navLinks = document.querySelectorAll('#mainNavTabs .nav-link');
+        var navLinks = document.querySelectorAll('#mainNavTabs .nav-link, #applicationNavigation .application-utility-link[data-page]');
         navLinks.forEach(function (link) {
             var active = link.getAttribute('data-page') === pageName;
             link.classList.toggle('active', active);
+            if (!link.closest('#mainNavTabs')) {
+                if (active) link.setAttribute('aria-current', 'page');
+                else link.removeAttribute('aria-current');
+                link.setAttribute('aria-controls', 'tab-' + link.getAttribute('data-page'));
+            }
+        });
+
+        ['help', 'admin', 'preferences'].forEach(function (page) {
+            var pane = document.getElementById('tab-' + page);
+            var link = document.querySelector('#applicationNavigation [data-page="' + page + '"]');
+            if (pane && link) {
+                pane.setAttribute('role', 'region');
+                pane.setAttribute('aria-labelledby', link.id);
+            }
         });
 
         // Show / hide tab pane content
@@ -1918,6 +1908,21 @@
                 e.preventDefault();
                 activatePage(page);
             }
+        }
+    });
+
+    document.addEventListener('click', function (event) {
+        document.querySelectorAll('#applicationNavigation details.application-menu[open]').forEach(function (menu) {
+            if (!menu.contains(event.target) || event.target.closest('a[href]')) menu.open = false;
+        });
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        var menu = event.target.closest('#applicationNavigation details.application-menu[open]');
+        if (menu) {
+            event.preventDefault();
+            menu.open = false;
+            menu.querySelector('summary').focus();
         }
     });
 

@@ -16,8 +16,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,11 +52,16 @@ class DefaultArchitectureAnalysisTest {
         assertThat(search.isEnabled()).isTrue();
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");
         assertThat(result.path("relationSearchReport").isObject()).isTrue();
-        assertThat(result.path("relationSearchReport").path("warnings").toString())
-                .contains("INVALID_SOURCE_RESPONSE");
+        var report = result.path("relationSearchReport");
+        assertThat(report.path("warnings").isEmpty()).isFalse();
+        for (JsonNode warning : report.path("warnings")) {
+            assertThat(warning.asString()).startsWith("INVALID_SOURCE_RESPONSE ");
+        }
+        assertThat(report.path("result").path("edges")).isEmpty();
         assertThat(result.path("provisionalRelations").isEmpty()).isTrue();
-        assertThat(result.path("architectureView").path("includedRelationships").isEmpty()).isTrue();
-        assertThat(result.path("architectureView").path("includedElements").isEmpty()).isTrue();
+        var view = result.path("architectureView");
+        assertThat(view.path("includedRelationships")).isEmpty();
+        assertDirectEvidence(result, view, Set.of());
     }
 
     @Test
@@ -80,11 +87,25 @@ class DefaultArchitectureAnalysisTest {
         assertThat(report.path("result").path("unfinished").isEmpty()).isFalse();
         JsonNode view = result.path("architectureView");
         assertThat(view.path("includedRelationships").isEmpty()).isTrue();
-        assertThat(view.path("includedElements").size()).isEqualTo(1);
-        assertThat(view.path("includedElements").get(0).path("origin").asString())
-                .isEqualTo("REQUIREMENT_EVIDENCE");
-        assertThat(view.path("includedElements").get(0).path("presenceReason").asString())
-                .contains("SOURCE_ONLY", ORIGINAL);
+        Set<String> quotedSources = new LinkedHashSet<>();
+        for (JsonNode source : report.path("sources")) {
+            for (JsonNode contribution : source.path("contributions")) {
+                if (ORIGINAL.equals(contribution.path("quote").asString())) {
+                    quotedSources.add(source.path("node").path("id").asString());
+                }
+            }
+        }
+        assertThat(quotedSources).hasSize(1);
+        String quotedSource = quotedSources.iterator().next();
+        var requirementElements = new LinkedHashSet<String>();
+        for (JsonNode element : view.path("includedElements")) {
+            if ("REQUIREMENT_EVIDENCE".equals(element.path("origin").asString())) {
+                requirementElements.add(element.path("nodeCode").asString());
+                assertThat(element.path("presenceReason").asString()).contains("SOURCE_ONLY", ORIGINAL);
+            }
+        }
+        assertThat(requirementElements).containsExactly(quotedSource);
+        assertDirectEvidence(result, view, Set.of(quotedSource));
         assertThat(view.path("relationSearchReport")).isEqualTo(report);
     }
 
@@ -112,16 +133,129 @@ class DefaultArchitectureAnalysisTest {
         assertThat(report.path("warnings").isEmpty()).isTrue();
         assertThat(report.path("result").path("unfinished").isEmpty()).isTrue();
         assertThat(report.path("result").path("edges").size()).isEqualTo(2);
-        var relationships = result.path("architectureView").path("includedRelationships");
-        assertThat(result.path("architectureView").path("includedElements").size()).isEqualTo(3);
+        var view = result.path("architectureView");
+        var relationships = view.path("includedRelationships");
         assertThat(relationships.size()).isEqualTo(2);
-        java.util.Set<String> types = new java.util.HashSet<>();
+        Set<String> signatures = new LinkedHashSet<>();
         for (JsonNode relation : relationships) {
-            types.add(relation.path("relationType").asString());
+            signatures.add(relation.path("sourceCode").asString() + "|"
+                    + relation.path("relationType").asString() + "|"
+                    + relation.path("targetCode").asString());
             assertThat(relation.path("sourceCode").asString()).isEqualTo("UA-1574");
             assertThat(relation.path("presenceReason").asString()).contains("MOCK", ORIGINAL);
         }
-        assertThat(types).containsExactlyInAnyOrder("CONSUMES", "USES");
+        Set<String> expectedSignatures = Set.of(
+                "UA-1574|CONSUMES|IP-1136", "UA-1574|USES|CR-1005");
+        assertThat(signatures).containsExactlyInAnyOrderElementsOf(expectedSignatures);
+        Set<String> relationElements = Set.of("UA-1574", "IP-1136", "CR-1005");
+        Set<String> actualRelationElements = new LinkedHashSet<>();
+        for (JsonNode element : view.path("includedElements")) {
+            if ("RELATION_EVIDENCE".equals(element.path("origin").asString())) {
+                actualRelationElements.add(element.path("nodeCode").asString());
+            }
+        }
+        assertThat(actualRelationElements).containsExactlyInAnyOrderElementsOf(relationElements);
+        Set<String> reportSignatures = new LinkedHashSet<>();
+        for (JsonNode edge : report.path("result").path("edges")) {
+            reportSignatures.add(edge.path("contribution").path("source").path("id").asString() + "|"
+                    + edge.path("type").asString() + "|" + edge.path("target").path("id").asString());
+        }
+        assertThat(reportSignatures).containsExactlyInAnyOrderElementsOf(expectedSignatures);
+        assertDirectEvidence(result, view, relationElements);
+        JsonNode ipScore = result.path("scoreDetails").path("IP-1136");
+        assertThat(ipScore.path("rawScore").asInt()).isEqualTo(60);
+        assertThat(ipScore.path("effectiveRelevance").asInt()).isEqualTo(36);
+        assertThat(result.path("rawScores").path("IP-1136").asInt()).isEqualTo(60);
+        assertThat(result.path("scores").path("IP-1136").asInt()).isEqualTo(36);
+    }
+
+    private static void assertDirectEvidence(JsonNode result, JsonNode view, Set<String> evidenceNodes) {
+        Map<String, JsonNode> treeNodes = new LinkedHashMap<>();
+        for (JsonNode node : result.path("tree")) collectTreeNodes(node, treeNodes);
+        JsonNode rawScores = result.path("rawScores");
+        JsonNode scores = result.path("scores");
+        JsonNode scoreDetails = result.path("scoreDetails");
+        Set<String> scoredNodes = new LinkedHashSet<>();
+        for (var entry : scores.properties()) {
+            String code = entry.getKey();
+            JsonNode node = treeNodes.get(code);
+            int effective = entry.getValue().asInt();
+            int raw = rawScores.path(code).asInt();
+            JsonNode detail = scoreDetails.path(code);
+            if (effective <= 0 || node == null || node.path("taxonomyContainer").asBoolean()) continue;
+            assertThat(raw).as("Positive effective score for %s needs positive raw evidence", code).isPositive();
+            assertThat(detail.path("nodeCode").asString()).isEqualTo(code);
+            assertThat(detail.path("rawScore").asInt()).isEqualTo(raw);
+            assertThat(detail.path("effectiveRelevance").asInt()).isEqualTo(effective);
+            scoredNodes.add(code);
+        }
+
+        Set<String> includedNodes = new LinkedHashSet<>();
+        Set<String> directNodes = new LinkedHashSet<>();
+        Map<String, JsonNode> elementsByCode = new LinkedHashMap<>();
+        for (JsonNode element : view.path("includedElements")) {
+            String code = element.path("nodeCode").asString();
+            assertThat(includedNodes.add(code)).as("Included identity %s must be unique", code).isTrue();
+            JsonNode node = treeNodes.get(code);
+            assertThat(node).as("Included identity %s must come from the retained result tree", code).isNotNull();
+            assertThat(node.path("taxonomyContainer").asBoolean()).as(code).isFalse();
+            String expectedTitle = node.path("nameEn").asString();
+            assertThat(element.path("title").asString()).isEqualTo(expectedTitle.isBlank() ? code : expectedTitle);
+            assertThat(element.path("taxonomySheet").asString()).isEqualTo(node.path("taxonomyRoot").asString());
+            elementsByCode.put(code, element);
+            String origin = element.path("origin").asString();
+            if ("DIRECT_SCORED".equals(origin)) {
+                directNodes.add(code);
+                assertThat(scoredNodes).as("Direct evidence for %s must be positive and retained", code).contains(code);
+                JsonNode detail = scoreDetails.path(code);
+                assertThat(element.path("scoreDetail")).isEqualTo(detail);
+                assertThat(element.path("directLlmScore").asInt()).isEqualTo(detail.path("rawScore").asInt());
+                assertThat(element.path("relevance").asDouble())
+                        .isEqualTo(detail.path("effectiveRelevance").asInt() / 100.0);
+                assertThat(element.path("anchor").asBoolean()).isTrue();
+                assertThat(element.path("presenceReason").asString()).contains("Directly assessed relevance");
+            } else {
+                assertThat(evidenceNodes).as("Only explicitly classified evidence may be non-direct: %s", code)
+                        .contains(code);
+            }
+        }
+        assertThat(includedNodes).containsExactlyInAnyOrderElementsOf(union(scoredNodes, evidenceNodes));
+        Set<String> expectedDirectNodes = new LinkedHashSet<>(scoredNodes);
+        expectedDirectNodes.removeAll(evidenceNodes);
+        assertThat(directNodes).containsExactlyInAnyOrderElementsOf(expectedDirectNodes);
+
+        Set<String> anchorNodes = new LinkedHashSet<>();
+        Map<String, JsonNode> anchorsByCode = new LinkedHashMap<>();
+        for (JsonNode anchor : view.path("anchors")) {
+            String code = anchor.path("nodeCode").asString();
+            assertThat(anchorNodes.add(code)).as("Anchor metadata for %s must be unique", code).isTrue();
+            assertThat(elementsByCode).containsKey(code);
+            anchorsByCode.put(code, anchor);
+        }
+        assertThat(view.path("totalAnchors").asInt()).isEqualTo(view.path("anchors").size());
+        for (String code : directNodes) {
+            assertThat(anchorNodes).as("Direct assessment %s needs anchor metadata", code).contains(code);
+            JsonNode detail = scoreDetails.path(code);
+            JsonNode anchor = anchorsByCode.get(code);
+            assertThat(anchor.path("directScore").asInt()).isEqualTo(detail.path("effectiveRelevance").asInt());
+            assertThat(anchor.path("reason").asString()).contains("raw score " + detail.path("rawScore").asInt(),
+                    "effective relevance " + detail.path("effectiveRelevance").asInt() + "%");
+        }
+        assertThat(view.path("totalElements").asInt()).isEqualTo(view.path("includedElements").size());
+        assertThat(view.path("totalRelationships").asInt()).isEqualTo(view.path("includedRelationships").size());
+    }
+
+    private static Set<String> union(Set<String> first, Set<String> second) {
+        Set<String> result = new LinkedHashSet<>(first);
+        result.addAll(second);
+        return result;
+    }
+
+    private static void collectTreeNodes(JsonNode node, Map<String, JsonNode> nodes) {
+        String code = node.path("code").asString();
+        if (!code.isBlank()) assertThat(nodes.putIfAbsent(code, node))
+                .as("Retained tree identity %s must be unique", code).isNull();
+        for (JsonNode child : node.path("children")) collectTreeNodes(child, nodes);
     }
 
     private JsonNode analyze(boolean includeView) throws Exception {

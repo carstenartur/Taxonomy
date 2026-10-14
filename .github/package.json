@@ -43,7 +43,7 @@
     "test:integrations-review": "node --test scripts/integrations-review.test.mjs scripts/architecture-planning.test.mjs scripts/integration-startup.test.mjs",
     "test:version-comparison": "node --test scripts/ui-version-diff.test.mjs",
     "test:dsl-text-read": "node --test scripts/ui-dsl-text-read.test.mjs scripts/ui-dsl-read-delivery.test.mjs scripts/dsl-command-feedback.test.mjs",
-    "test:analysis-recovery": "node --test scripts/analysis-recovery.test.mjs scripts/analysis-recovery-viewport.test.mjs",
+    "test:analysis-recovery": "node --test scripts/analysis-recovery.test.mjs scripts/analysis-recovery-viewport.test.mjs scripts/analysis-partial-results.test.mjs",
     "verify:analysis-recovery": "node scripts/ui-analysis-recovery-acceptance.mjs",
     "verify:analysis-cluster-recovery-browser": "node scripts/analysis-cluster-recovery-browser.mjs",
     "test:local-user-management": "node --test scripts/local-user-management-navigation.test.mjs",

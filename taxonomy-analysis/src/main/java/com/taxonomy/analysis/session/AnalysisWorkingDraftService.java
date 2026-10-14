@@ -249,6 +249,7 @@ public class AnalysisWorkingDraftService {
         payload.set("reasons", objectMapper.createObjectNode());
         payload.set("discrepancies", objectMapper.createArrayNode());
         payload.putNull("architectureView");
+        payload.putNull("relationSearchReport");
         payload.set("provisionalRelations", objectMapper.createArrayNode());
         payload.set("evaluatedNodes", objectMapper.createArrayNode());
         payload.put("currentView", "list");

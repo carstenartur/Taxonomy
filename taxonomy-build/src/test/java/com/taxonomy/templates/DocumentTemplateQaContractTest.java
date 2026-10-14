@@ -86,7 +86,10 @@ class DocumentTemplateQaContractTest {
                 .contains("document.templates.admin.entry.description")
                 .contains("document.templates.admin.entry.action")
                 .contains("resolveUrl('/admin/document-templates')")
-                .contains("if (!isAdministrator()) return;");
+                .contains("if (!isAdministrator()) {\n"
+                        + "            if (existing) existing.remove();\n"
+                        + "            return;\n"
+                        + "        }");
         assertThat(english)
                 .contains("document.templates.admin.entry.title=")
                 .contains("document.templates.admin.entry.description=")

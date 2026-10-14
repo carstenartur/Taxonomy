@@ -143,7 +143,10 @@ public final class RequirementRelationSearchContract {
         try (var checkpoint = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
             var stopped = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
                     prompt -> { throw new IllegalStateException("later source unavailable"); }, () -> {}).search(READ, scores, options);
-            check(!stopped.stopReason().isBlank(), "Later extraction is interrupted");
+            check(stopped.stopReason().isBlank() && !stopped.isSearchExhausted()
+                    && stopped.warnings().stream().anyMatch(w -> w.startsWith("INVALID_SOURCE_RESPONSE [process-next]"))
+                    && stopped.progress().pendingSearches() == 1,
+                    "Later extraction failure remains a pending source, not an execution stop");
             check(stopped.result().edges().equals(journal.previous.result().edges()), "Verified evidence disappeared during later extraction failure");
             check(stopped.progress().completedSearches() == 1 && stopped.progress().verifiedRelations() == 1,
                     "Completed tasks and verified counts must survive an interrupted continuation");

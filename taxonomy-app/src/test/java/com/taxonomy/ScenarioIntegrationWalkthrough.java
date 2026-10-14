@@ -61,14 +61,14 @@ final class ScenarioIntegrationWalkthrough {
         var codec = new SparxXmiCodec();
         var read = codec.read(xmi, "scenario-delivery", false);
         var replay = codec.read(codec.write(read), "scenario-delivery", false);
+        var source = new ArchiMateExchangeCodec().read(archimate, "scenario-snapshot", false);
+        var sourceElements = source.artifacts().stream()
+                .filter(a -> a.kind() == ArtifactKind.ELEMENT).toList();
         assertThat(replay.artifacts()).isEqualTo(read.artifacts());
         assertThat(replay.relations()).isEqualTo(read.relations());
-        assertThat(read.artifacts()).hasSize(7);
-        var source = new ArchiMateExchangeCodec().read(archimate, "scenario-snapshot", false);
+        assertThat(read.artifacts()).hasSize(sourceElements.size());
         assertThat(read.artifacts()).extracting(a -> a.title())
-                .containsExactlyInAnyOrderElementsOf(source.artifacts().stream()
-                        .filter(a -> a.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.ELEMENT)
-                        .map(a -> a.title()).toList());
+                .containsExactlyInAnyOrderElementsOf(sourceElements.stream().map(a -> a.title()).toList());
         // These are explicit review boundaries, not an assertion of lossless export:
         // All seven evidence-based required relations satisfy native type rules.
         // Immutable Sparx profile v1 maps only the two CONSUMES claims; five
@@ -95,7 +95,7 @@ final class ScenarioIntegrationWalkthrough {
                 .containsExactlyInAnyOrderElementsOf(expectedRelations);
         app.save("integration-quality.json", app.json.valueToTree(Map.of(
                 "generatedRelations", 7, "nativeAcceptedRelations", 7, "nativeRejectedRelations", 0,
-                "sparxDeliveredElements", 7, "sparxDeliveredRelations", 2, "sparxUnmappedRelations", 5,
+                "sparxDeliveredElements", sourceElements.size(), "sparxDeliveredRelations", 2, "sparxUnmappedRelations", 5,
                 "sparxFileSha256", com.taxonomy.acceptance.ScenarioExportQa.sha256(xmi),
                 "productCompatibility", "NOT_EXECUTED", "reviewEvidence", List.of("integration-import-review.json", "integration-sparx-review.json"))));
         // A delivered file is not a remote acknowledgement and must not advance a checkpoint.

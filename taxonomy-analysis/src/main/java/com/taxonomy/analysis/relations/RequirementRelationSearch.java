@@ -351,6 +351,7 @@ public final class RequirementRelationSearch {
     }
 
     private static String failureReason(Throwable failure) {
+        com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failure);
         // Do not copy provider exception messages which can contain credentials or request bodies.
         if (failure instanceof com.taxonomy.analysis.service.AnalysisStoppedException stopped) {
             return stopped.reason().name() + ": completed evidence retained; no further model evaluations.";

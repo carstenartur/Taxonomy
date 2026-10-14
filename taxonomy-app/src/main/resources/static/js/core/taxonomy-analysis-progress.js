@@ -325,10 +325,42 @@
         return done + text(' von ', ' of ') + total + text(' erledigt', ' complete');
     }
     function relationLabel(p) {
-        return text('Relationsprüfung: ', 'Relationship search: ')
+        return text('Relationsprüfung – Suchaufträge: ', 'Relationship search – tasks: ')
             + countLabel(p.completedSearches, p.totalSearches)
             + ' · ' + p.unresolvedSearches + text(' ungeklärt', ' unresolved')
             + ' · ' + p.pendingSearches + text(' offen', ' pending');
+    }
+    var namedTaxonomy = null, names = new Map();
+    function nodeLabel(code) {
+        if (!code) return '';
+        var roots = window.TaxonomyState?.taxonomyData;
+        if (roots !== namedTaxonomy) {
+            namedTaxonomy = roots;
+            names = new Map();
+            var pending = Array.isArray(roots) ? roots.slice() : [];
+            var seen = new Set();
+            while (pending.length && seen.size < 100000) {
+                var item = pending.pop();
+                if (!item || typeof item !== 'object' || seen.has(item)) continue;
+                seen.add(item);
+                if (typeof item.code === 'string') names.set(item.code, item);
+                if (Array.isArray(item.children)) item.children.forEach(function (child) { pending.push(child); });
+            }
+        }
+        var entry = names.get(code);
+        var name = entry && (german() ? entry.nameDe || entry.name || entry.nameEn : entry.nameEn || entry.name);
+        return name && name !== code ? name + ' (' + code + ')' : code;
+    }
+    function clusterRelationCounts(snapshot) {
+        var tasks = (snapshot.cluster?.tasks || []).filter(function (task) { return task.taskType === 'RELATION_ANALYSIS'; });
+        if (!tasks.length && snapshot.phase !== 'RELATIONS') return null;
+        if (snapshot.phase !== 'RELATIONS' && !tasks.some(function (task) { return task.running > 0 || task.queued > 0; })) return null;
+        return tasks.reduce(function (total, task) {
+            ['queued', 'running', 'completed', 'failed'].forEach(function (key) {
+                total[key] += Number.isSafeInteger(task[key]) && task[key] >= 0 ? task[key] : 0;
+            });
+            return total;
+        }, { queued: 0, running: 0, completed: 0, failed: 0 });
     }
     function currentRelation(p) {
         var c = p.current;
@@ -336,7 +368,7 @@
         var steps = { SOURCES: ['Anforderungsbeitrag bestimmen', 'Identify requested contribution'],
             NAVIGATE: ['Hierarchie durchsuchen', 'Search hierarchy'], VERIFY: ['Relationsvorschlag prüfen', 'Verify relationship proposal'] };
         var phase = steps[p.step];
-        return c.sourceId + (c.targetRoot ? ' → ' + c.targetRoot : '')
+        return nodeLabel(c.sourceId) + (c.targetRoot ? ' → ' + nodeLabel(c.targetRoot) : '')
             + (c.type ? ' · ' + c.type : '')
             + (c.direction ? ' · ' + (c.direction === 'INCOMING'
                 ? text('eingehend', 'incoming') : text('ausgehend', 'outgoing')) : '')
@@ -344,10 +376,16 @@
             + (p.step !== 'SOURCES' ? text(' · Tiefe ', ' · depth ') + c.depth : '');
     }
     function workSummary(snapshot) {
-        if (snapshot.cluster) return text('Teiltaxonomien: ', 'Taxonomy roots: ')
-            + countLabel(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
         var r = snapshot.relationProgress, n = snapshot.nodeProgress;
         if (r) return relationLabel(r) + (r.current ? ' · ' + currentRelation(r) : '');
+        var relations = clusterRelationCounts(snapshot);
+        if (relations) return text('Relationsprüfung – Suchaufträge: ', 'Relationship search – tasks: ')
+            + relations.completed + text(' erledigt · ', ' complete · ')
+            + relations.running + text(' aktiv · ', ' active · ')
+            + relations.queued + text(' wartend · ', ' queued · ')
+            + relations.failed + text(' fehlgeschlagen', ' failed');
+        if (snapshot.cluster) return text('Knotenbewertung (Teiltaxonomien): ', 'Node assessment (taxonomy roots): ')
+            + countLabel(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
         return n ? text('Knotenbewertung: ', 'Node assessment: ') + countLabel(n.assessed + n.excluded, n.total) : '';
     }
     function node(tag, value, className) {
@@ -457,7 +495,14 @@
         var work = node('div', undefined, 'mt-2');
         work.id = 'analysisWorkProgress';
         var expandedTaxonomies = false;
+        var lastWorkSignature = null;
         function renderWork(snapshot) {
+            var signature = JSON.stringify([snapshot.nodeProgress, snapshot.relationProgress, snapshot.cluster, snapshot.phase]);
+            if (signature === lastWorkSignature) return;
+            lastWorkSignature = signature;
+            var oldDetails = document.getElementById('analysisTaxonomyProgressDetails');
+            if (oldDetails) expandedTaxonomies = oldDetails.open;
+            var focusedSummary = document.activeElement?.id === 'analysisTaxonomyProgressToggle';
             work.replaceChildren();
             var n = snapshot.nodeProgress, r = snapshot.relationProgress;
             function bar(done, total) {
@@ -468,12 +513,21 @@
                 work.append(progress);
             }
             if (snapshot.cluster) {
-                work.append(node('div', workSummary(snapshot), 'fw-bold'));
+                work.append(node('div', text('Knotenbewertung (Teiltaxonomien): ', 'Node assessment (taxonomy roots): ')
+                    + countLabel(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots), 'fw-bold'));
                 bar(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
+                var rootBar = work.querySelector?.('progress');
+                if (rootBar) rootBar.setAttribute('aria-label', text('Knotenbewertung (Teiltaxonomien)', 'Node assessment (taxonomy roots)'));
+                if (clusterRelationCounts(snapshot) && !r) {
+                    work.append(node('div', workSummary(snapshot), 'fw-bold mt-2'));
+                    work.append(node('div', text(
+                        'Gezählt werden verteilte Suchaufträge, nicht gefundene Beziehungen. Weitere Suchaufträge können hinzukommen; ein Gesamtprozentwert wäre daher irreführend.',
+                        'These are distributed search tasks, not relationships found. More tasks may be added; an overall percentage would therefore be misleading.'), 'small'));
+                }
                 (snapshot.cluster.tasks || []).forEach(function (task) {
                     var family = task.taskType === 'RELATION_ANALYSIS'
                         ? text('Relationsprüfung', 'Relationship search') : text('Knotenbewertung', 'Node assessment');
-                    work.append(node('div', family + ' · ' + (task.root ? task.root.code : text('Vorbereitung', 'Preparation')) + ' · '
+                    work.append(node('div', family + ' · ' + (task.root ? nodeLabel(task.root.code) : text('Vorbereitung', 'Preparation')) + ' · '
                         + task.queued + text(' wartend · ', ' queued · ')
                         + task.running + text(' aktiv · ', ' running · ')
                         + task.completed + text(' erledigt', ' complete')
@@ -487,8 +541,10 @@
                 work.append(node('div', n.assessed + text(' direkt bewertet · ', ' directly assessed · ')
                     + n.excluded + text(' durch übergeordnete Entscheidung ausgeschlossen · ', ' excluded by parent decision · ')
                     + n.open + text(' offen', ' open')));
-                var details = node('details'); details.open = expandedTaxonomies;
-                details.append(node('summary', text('Fortschritt je Teiltaxonomie', 'Progress by taxonomy')));
+                var details = node('details'); details.id = 'analysisTaxonomyProgressDetails'; details.open = expandedTaxonomies;
+                var summary = node('summary', text('Fortschritt je Teiltaxonomie', 'Progress by taxonomy'));
+                summary.id = 'analysisTaxonomyProgressToggle';
+                details.append(summary);
                 (n.taxonomies || []).forEach(function (part) {
                     details.append(node('div', (german() ? part.nameDe || part.nameEn : part.nameEn) + ' (' + part.root + '): '
                         + countLabel(part.assessed + part.excluded, part.total) + ' · ' + part.assessed
@@ -506,7 +562,7 @@
                     + r.verifiedRelations + text(' Relationsvorschläge bestätigt', ' relationship proposals verified')));
                 if (r.current) work.append(node('div', currentRelation(r)));
                 (r.taxonomies || []).forEach(function (part) {
-                    work.append(node('div', part.root + ': ' + countLabel(part.completed, part.total)
+                    work.append(node('div', nodeLabel(part.root) + ': ' + countLabel(part.completed, part.total)
                         + ' · ' + part.unresolved + text(' ungeklärt · ', ' unresolved · ')
                         + part.pending + text(' offen', ' pending'), 'small'));
                 });
@@ -516,6 +572,7 @@
                     'Relationssuche unvollständig. Offene Aufträge und Abbruchgründe bleiben im Bericht erhalten.',
                     'Relationship search incomplete. Open tasks and stop reasons remain recorded in the report.'), 'fw-bold'));
             }
+            if (focusedSummary) document.getElementById('analysisTaxonomyProgressToggle')?.focus({ preventScroll: true });
         }
         var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
         duration.id = 'analysisElapsed';
@@ -629,7 +686,7 @@
             render: function (snapshot, monitor) {
                 renderWork(snapshot);
                 var phase = phases[snapshot.phase];
-                if (snapshot.relationProgress && ['SOURCES', 'NAVIGATE', 'VERIFY'].indexOf(snapshot.relationProgress.step) >= 0)
+                if (snapshot.phase === 'RELATIONS' && snapshot.relationProgress && ['SOURCES', 'NAVIGATE', 'VERIFY'].indexOf(snapshot.relationProgress.step) >= 0)
                     phase = ['Relationen bewerten', 'Assessing relationships'];
                 title.textContent = phase ? text(phase[0], phase[1]) : snapshot.phase;
                 var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
