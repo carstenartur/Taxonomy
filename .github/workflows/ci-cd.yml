@@ -287,10 +287,26 @@ jobs:
           find . -type d -path '*/target/classes' -print0 > target/reactor-coverage-inputs
           mapfile -d '' -t class_directories < target/reactor-coverage-inputs
           ((${#class_directories[@]} > 0))
+          # A test-skipped join cannot recreate execution data from upstream tests.
+          # Reject missing data per tested production module, not just an empty tar.
+          shopt -s nullglob
+          for classes in "${class_directories[@]}"; do
+            module_target=${classes%/classes}
+            reports=("$module_target"/surefire-reports/TEST-*.xml "$module_target"/failsafe-reports/TEST-*.xml)
+            production_class=$(find "$classes" -type f -name '*.class' -print -quit)
+            if ((${#reports[@]} > 0)) && [[ -n "$production_class" && ! -s "$module_target/jacoco.exec" ]]; then
+              echo "::error::Missing JaCoCo execution data for tested module: $module_target" >&2
+              exit 1
+            fi
+          done
           mapfile -d '' -t execution_files < <(find . -type f -path '*/target/jacoco.exec' -size +0c -print0)
           ((${#execution_files[@]} > 0))
-          printf '%s\0' "${execution_files[@]}" >> target/reactor-coverage-inputs
-          tar --null -T target/reactor-coverage-inputs -czf target/core-reactor-outputs.tar.gz
+          find "${class_directories[@]}" -type f -print0 > target/reactor-output-files
+          printf '%s\0' "${execution_files[@]}" >> target/reactor-output-files
+          mapfile -d '' -t reactor_outputs < target/reactor-output-files
+          sha256sum -- "${reactor_outputs[@]}" > target/core-reactor-files.sha256
+          printf '%s\0' target/core-reactor-files.sha256 >> target/reactor-output-files
+          tar --null -T target/reactor-output-files -czf target/core-reactor-outputs.tar.gz
           source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
           printf '%s\n' "$source_tree" > target/core-reactor-outputs.tree
           sha256sum target/core-reactor-outputs.tar.gz > target/core-reactor-outputs.sha256
@@ -341,10 +357,13 @@ jobs:
           [[ "$(cat target/core-reactor-outputs.tree)" == "$source_tree" ]]
           sha256sum --check target/core-reactor-outputs.sha256
           tar -xzf target/core-reactor-outputs.tar.gz -C .
+          sha256sum --check target/core-reactor-files.sha256
           mapfile -t core_execution_files < <(find . -type f -path '*/target/jacoco.exec' -size +0c -print)
           ((${#core_execution_files[@]} > 0))
           node .github/scripts/verify-app-test-shards.mjs \
             --verify-inputs true --commit "$GITHUB_SHA" --source-tree "$source_tree"
+          node .github/scripts/verify-app-test-shards.mjs \
+            --verify true --commit "$GITHUB_SHA" --source-tree "$source_tree"
       - name: Run full-reactor JaCoCo aggregation and coverage policy
         env:
           GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
