@@ -286,7 +286,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
       - name: Download commit-bound UI application
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }
       - name: Verify and stage the UI application
         run: bash .github/scripts/verify-ui-application.sh
@@ -312,7 +312,7 @@ jobs:
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with: { java-version: '21', distribution: temurin }
       - name: Download commit-bound application
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }
       - name: Verify real StrictDoc and Archi round trips
         run: node .github/scripts/verify-interoperability-products.mjs
@@ -410,16 +410,16 @@ jobs:
           path: .cache/ui-frontend
           key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
       - name: Download commit-bound UI application manifest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }
       - name: Download all UI shard evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: 'ui-verification-*', path: target/ui-verification, merge-multiple: true }
       - name: Download observability evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: observability-performance, path: target/observability-performance }
       - name: Download core quality reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: quality-reports-core, path: target/quality-reports }
       - name: Verify complete digest-bound UI evidence
         env:
