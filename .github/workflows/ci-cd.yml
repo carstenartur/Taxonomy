@@ -42,7 +42,7 @@ jobs:
       - name: Stage commit-bound UI application
         run: bash .github/scripts/stage-ui-application.sh
       - name: Upload commit-bound UI application
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: taxonomy-ui-application, path: 'target/ui-application/**', if-no-files-found: error, retention-days: 7 }
 
   core:
@@ -182,7 +182,7 @@ jobs:
         if: always()
         run: bash .github/scripts/stage-core-quality-reports.sh
       - name: Upload core verified reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with: { name: quality-reports-core, path: 'target/quality-reports/**', if-no-files-found: warn, include-hidden-files: true, retention-days: 7 }
 
@@ -222,7 +222,7 @@ jobs:
         run: bash .github/scripts/record-observability-evidence.sh
       - name: Upload observability evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: observability-performance, path: 'target/observability-performance/**', if-no-files-found: error, retention-days: 7 }
 
   ui-plan:
@@ -297,7 +297,7 @@ jobs:
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pshard
       - name: Upload UI shard evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: 'ui-verification-${{ matrix.shard }}', path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 7 }
 
   interoperability-products:
@@ -318,7 +318,7 @@ jobs:
         run: node .github/scripts/verify-interoperability-products.mjs
       - name: Upload product compatibility evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: interoperability-product-evidence
           path: |
@@ -360,7 +360,7 @@ jobs:
           ./mvnw -B verify -Pplugin-packaging-tests 2>&1 | tee target/plugin-profile-verification.log
       - name: Upload complete plugin profile evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: plugin-profile-verification
           path: |
@@ -430,8 +430,8 @@ jobs:
       - name: Finalize commit-bound quality evidence
         run: bash .github/scripts/finalize-quality-evidence.sh
       - name: Upload verified reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: quality-reports, path: 'target/quality-reports/**', if-no-files-found: error, include-hidden-files: true, retention-days: 90, overwrite: true }
       - name: Upload consolidated UI verification evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: ui-verification, path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 90, overwrite: true }
