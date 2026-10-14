@@ -33,7 +33,7 @@ function fixture(t) {
     mkdirSync(join(source, '..'), { recursive: true });
     const tag = name === 'RestartTest' ? '@Tag("ci-restart") ' : '';
     writeFileSync(source,
-      `package com.taxonomy; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.Tag; ${tag}class ${name} { @Test void test() {} }\n`);
+      `package com.taxonomy;\n// application's test identity must not hide its annotations\nimport org.junit.jupiter.api.Test; import org.junit.jupiter.api.Tag; ${tag}class ${name} { @Test void test() {} }\n`);
   }
   for (const [group, name] of [['core', 'CoreTest'], ['restart', 'RestartTest']]) {
     const directory = join(evidenceRoot, group);
@@ -81,6 +81,11 @@ test('discovers newly added test classes into the default shard', t => {
   writeFileSync(join(paths.evidenceRoot, 'core/manifest.json'), JSON.stringify(manifest));
 
   assert.equal(verify(paths).tests.classes, 3);
+});
+
+test('preserves test identities when Java comments contain apostrophes', t => {
+  const paths = fixture(t);
+  assert.equal(verify(paths).tests.classes, 2);
 });
 
 test('rejects overlapping shard assignments and unknown shard names', t => {

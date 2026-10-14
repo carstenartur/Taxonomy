@@ -487,9 +487,9 @@ function stripJavaLiteralsAndComments(source) {
   return source
     .replace(/"""[\s\S]*?"""/g, '""')
     .replace(/"(?:\\.|[^"\\])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\])*'/g, "''")
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\r\n]*/g, '');
+    .replace(/\/\/[^\r\n]*/g, '')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''");
 }
 
 function reportFiles(directory) {
