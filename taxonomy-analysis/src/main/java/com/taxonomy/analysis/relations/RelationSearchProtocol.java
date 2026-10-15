@@ -44,6 +44,14 @@ public final class RelationSearchProtocol {
         String prompt = PREAMBLE + """
             Extract ONLY each source element's contribution actually requested by the original.
             A taxonomy category's entire scope is not requested merely because the category matches.
+            The original states the need; node descriptions describe available functions, not requirements.
+            Compare their meaning across languages, not literal words. Absence of the requirement's
+            wording in a node description is not, by itself, a reason to REJECT. A contribution can
+            express a requested function without choosing an implementation, product, role or interface.
+            If the available context does not determine whether that function is required, use
+            UNRESOLVED with a concrete question instead of treating uncertainty as a negative finding.
+            This does not license generic supporting dependencies or unstated features. Keep evidence
+            quotes verbatim in the original language; explain the functional interpretation separately.
             Return exactly one selection per offered node, in this shape:
             {"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
             "contributions":[{"text":"specific contribution","quote":"exact original quote","condition":""}],
@@ -193,10 +201,42 @@ public final class RelationSearchProtocol {
     }
 
     private static JsonNode read(String raw) {
-        if (raw == null || raw.isBlank() || raw.length() > MAX_RESPONSE_CHARACTERS) invalid("Missing or oversized JSON response");
-        try { return JSON.readTree(raw); }
-        catch (RuntimeException malformed) { invalid("Response is not one strict JSON object"); return null; }
+        if (raw == null) invalid("Missing JSON response: no response text was received");
+        if (raw.length() > MAX_RESPONSE_CHARACTERS) invalid("Oversized JSON response: " + raw.length()
+                + " characters; maximum " + MAX_RESPONSE_CHARACTERS);
+        if (raw.isBlank()) invalid("Empty JSON response: only whitespace was received");
+        String json = unwrapJsonFence(raw);
+        try { return JSON.readTree(json); }
+        catch (tools.jackson.core.exc.StreamReadException malformed) {
+            var location = malformed.getLocation();
+            String position = location != null && location.getLineNr() > 0 && location.getColumnNr() > 0
+                    ? " at line " + location.getLineNr() + ", column " + location.getColumnNr() + " of the JSON"
+                    : "";
+            invalid("Response is not one strict JSON object" + position
+                    + "; inspect the unchanged response in the LLM communication log");
+            return null;
+        } catch (RuntimeException malformed) {
+            invalid("Response is not one strict JSON object; inspect the unchanged response in the LLM communication log");
+            return null;
+        }
     }
+
+    /**
+     * Only a single complete presentation envelope may be removed. Do not select
+     * an inner object from prose, repair JSON, or alter backticks inside strings.
+     * The caller retains raw evidence and strictly validates the entire body.
+     */
+    private static String unwrapJsonFence(String raw) {
+        String value = raw.strip();
+        int firstLine = value.indexOf('\n');
+        int lastLine = value.lastIndexOf('\n');
+        if (firstLine < 0 || lastLine <= firstLine) return value;
+        String opening = value.substring(0, firstLine).strip();
+        if (!opening.equals("```") && !opening.equalsIgnoreCase("```json")) return value;
+        if (!value.substring(lastLine + 1).strip().equals("```")) return value;
+        return value.substring(firstLine + 1, lastLine).strip();
+    }
+
     private static void fields(JsonNode node, String... expected) {
         if (node == null || !node.isObject() || !node.propertyNames().equals(Set.of(expected))) invalid("Missing, extra or invalid response fields");
     }
