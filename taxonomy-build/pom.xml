@@ -155,6 +155,7 @@
                         <taxonomy.project.version>${project.version}</taxonomy.project.version>
                         <taxonomy.maven.executable>${maven.home}/bin/mvn</taxonomy.maven.executable>
                         <taxonomy.maven.user-settings>${taxonomy.maven.user-settings}</taxonomy.maven.user-settings>
+                        <taxonomy.app.shard.coverage.enabled>${taxonomy.app.shard.coverage.enabled}</taxonomy.app.shard.coverage.enabled>
                     </systemPropertyVariables>
                 </configuration>
                 <executions>
@@ -178,7 +179,6 @@
                                 <pdfbox.version>${pdfbox.version}</pdfbox.version>
                                 <documentTemplateE2E>${documentTemplateE2E}</documentTemplateE2E>
                                 <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
-                                <taxonomy.app.shard.coverage.enabled>${taxonomy.app.shard.coverage.enabled}</taxonomy.app.shard.coverage.enabled>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -297,11 +297,14 @@
                             <goals><goal>exec</goal></goals>
                             <configuration>
                                 <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                                <executable>node</executable>
+                                <executable>${java.home}/bin/java</executable>
                                 <arguments>
-                                    <argument>.github/scripts/verify-app-test-shards.mjs</argument>
+                                    <argument>-cp</argument>
+                                    <argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                                    <argument>com.taxonomy.tooling.TaxonomyTooling</argument>
+                                    <argument>check-app-test-shards</argument>
                                     <argument>--verify</argument>
-                                    <argument>applicationTestShards</argument>
+                                    <argument>true</argument>
                                 </arguments>
                             </configuration>
                         </execution></executions>

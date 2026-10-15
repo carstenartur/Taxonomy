@@ -2,8 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.analysis.service.LlmService;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,11 +13,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for {@link LlmService#normalizeToParent(Map, int)} and the delegating
  * {@link LlmService#normalizeToHundred(Map)}.
  */
-@SpringBootTest
 class LlmServiceNormalizationTests {
 
-    @Autowired
-    private LlmService llmService;
+    private final LlmService llmService = new LlmService(
+            null, null, new ObjectMapper(), null, null, null, null);
 
     // ── normalizeToHundred (delegates to normalizeToParent with target=100) ─────
 

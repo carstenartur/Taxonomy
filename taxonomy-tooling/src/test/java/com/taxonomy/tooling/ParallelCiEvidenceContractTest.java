@@ -97,7 +97,8 @@ class ParallelCiEvidenceContractTest {
         assertThat(coverageAggregate)
                 .contains("needs: [core, app-test-shards]")
                 .contains("--verify true")
-                .doesNotContain("--verify-inputs")
+                .contains("--verify-inputs true")
+                .contains("com.taxonomy.tooling.TaxonomyTooling check-app-test-shards")
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-coverage")
                 .contains("name: quality-reports-coverage")
                 .contains("core-reactor-outputs.tar.gz")
@@ -115,7 +116,7 @@ class ParallelCiEvidenceContractTest {
         String appShards = workflow.substring(appShardsStart, coreStart);
         assertThat(appShards)
                 .contains("matrix: ${{ fromJSON(needs.app-test-plan.outputs.matrix) }}")
-                .contains("./mvnw -B -pl taxonomy-app -am verify -P\"ci,$APP_TEST_PROFILE\"")
+                .contains("./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P\"ci,$APP_TEST_PROFILE\"")
                 .contains("Stage digest-bound shard reports and coverage")
                 .contains("app-test-shard-${{ matrix.shard }}");
         assertThat(shardCatalogue).contains("\"applicationTestShards\"")
@@ -134,7 +135,7 @@ class ParallelCiEvidenceContractTest {
         assertThat(buildPom)
                 .contains("<id>verify-complete-app-test-shard-inventory</id>")
                 .contains("<phase>test</phase>")
-                .contains("<argument>applicationTestShards</argument>");
+                .contains("<argument>check-app-test-shards</argument>");
         assertThat(buildPom)
                 .contains("<id>coverage-policy-only</id>")
                 .contains("**/ReactorCoveragePolicyIT.java");

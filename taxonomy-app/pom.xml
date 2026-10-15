@@ -753,9 +753,12 @@
                     <goals><goal>exec</goal></goals>
                     <configuration>
                         <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                        <executable>node</executable>
+                        <executable>${java.home}/bin/java</executable>
                         <arguments>
-                            <argument>.github/scripts/verify-app-test-shards.mjs</argument>
+                            <argument>-cp</argument>
+                            <argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                            <argument>com.taxonomy.tooling.TaxonomyTooling</argument>
+                            <argument>check-app-test-shards</argument>
                             <argument>--stage</argument>
                             <argument>true</argument>
                             <argument>--shard</argument>

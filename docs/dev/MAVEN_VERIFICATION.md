@@ -102,6 +102,19 @@ Legitimate skips and profile exclusions are counted separately from missing
 reports. Machine timings and a concise slow-suite inventory are retained in
 `target/app-test-shards/timings.json` and the CI summary.
 
+The inventory verifier is the Java `taxonomy-tooling` command
+`check-app-test-shards`; its source discovery, evidence validation and actual
+archive/staging shell contracts are tested with JUnit in the normal Maven
+lifecycle. Both isolated app runners also build `taxonomy-tooling` with
+`-pl taxonomy-tooling,taxonomy-app -am`. No separate Node test runner is needed
+for this application-test partitioning.
+
+All groups run on each CI commit and have individually visible GitHub checks.
+The required `Maven verification` gate rejects failed, cancelled or skipped
+groups and missing aggregate coverage. This is parallel execution of the same
+verification scope, not a nightly-only slow-test profile. The single unsharded
+local command above remains the way to execute all of these JUnit tests together.
+
 Production Docker image verification runs as a separate job and remains a
 required final-gate prerequisite. Shard and CI packaging profiles disable Maven
 module build-cache reuse so a warm result from another test scope cannot satisfy

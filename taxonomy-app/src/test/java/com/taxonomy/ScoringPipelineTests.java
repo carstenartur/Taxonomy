@@ -3,8 +3,7 @@ package com.taxonomy;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.analysis.service.LlmService;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,11 +18,10 @@ import com.taxonomy.dto.AnalysisResult;
  *   <li>{@link TaxonomyDiscrepancy} record creation and field access</li>
  * </ul>
  */
-@SpringBootTest
 class ScoringPipelineTests {
 
-    @Autowired
-    private LlmService llmService;
+    private final LlmService llmService = new LlmService(
+            null, null, new ObjectMapper(), null, null, null, null);
 
     // ── TaxonomyDiscrepancy DTO ───────────────────────────────────────────────
 
