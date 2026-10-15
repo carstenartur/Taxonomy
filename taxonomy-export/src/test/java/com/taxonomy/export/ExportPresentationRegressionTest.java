@@ -29,6 +29,35 @@ class ExportPresentationRegressionTest {
     }
 
     @Test
+    void visioKeepsMultilineLabelsReadableWithoutRelationshipDetailPages() throws Exception {
+        var labels = List.of("Information Management Capabilities",
+                "Situational Awareness Information Products",
+                "Information Dissemination Capabilities",
+                "Message-Oriented Middleware Services");
+        var nodes = new ArrayList<DiagramNode>();
+        for (int i = 0; i < labels.size(); i++) {
+            nodes.add(new DiagramNode("fixture-" + i, labels.get(i), "Capabilities",
+                    .5, i == 0, 1, 3, false, null, false));
+        }
+        var document = new VisioDiagramService().convert(new DiagramModel(
+                "Multiline labels", nodes, List.of(), new DiagramLayout("LR", true)));
+        assertThat(document.getPages()).hasSize(2);
+        assertThat(document.getLosses()).noneMatch(loss -> loss.field().equals("displayLabel"));
+        for (var page : document.getPages()) {
+            assertThat(page.isRelationshipDetail()).isFalse();
+            assertThat(page.getShapes()).allSatisfy(shape -> {
+                assertThat(shape.getText().replace("\n", " ").replaceAll("\\s+", " "))
+                        .contains(shape.getProperties().get("taxonomy.label").value());
+                assertThat(shape.getText()).doesNotContain("…").contains("Depth 3");
+                assertThat(shape.getText().lines().count()).isLessThanOrEqualTo(5);
+            });
+        }
+        var parts = VisioHandoffContractTest.parts(new VisioPackageBuilder().build(document));
+        String overview = parts.get("visio/pages/page1.xml").replaceAll("\\s+", " ");
+        for (String label : labels) assertThat(overview).contains(label);
+    }
+
+    @Test
     void visioUsesTaxonomyColorsEvenWhenEveryElementIsAnAnchor() throws Exception {
         var document = new VisioDiagramService().convert(model());
         var stream = new XStream(new XppDriver());

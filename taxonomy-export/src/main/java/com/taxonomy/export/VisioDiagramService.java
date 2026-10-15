@@ -78,7 +78,7 @@ public class VisioDiagramService {
 
                 VisioShape shape = new VisioShape(
                         shapeId,
-                        VisioPresentation.display(node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 2) + "\nDepth " + node.depth(),
+                        VisioPresentation.display(node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 3) + "\nDepth " + node.depth(),
                         x, y,
                         SHAPE_WIDTH, SHAPE_HEIGHT,
                         node.type(),
@@ -87,7 +87,7 @@ public class VisioDiagramService {
                 var values = shape.getProperties();
                 values.put("taxonomy.label", VisioProperty.text(node.label()));
                 values.put("taxonomy.displayKey", VisioProperty.text("N" + shapeId));
-                VisioPresentation.labelLoss(doc, node.id(), node.label(), VisioPresentation.display(node.label(), 24, 2));
+                VisioPresentation.labelLoss(doc, node.id(), node.label(), VisioPresentation.display(node.label(), 24, 3));
                 values.put("taxonomy.id", VisioProperty.text(node.id()));
                 values.put("taxonomy.type", VisioProperty.text(node.type()));
                 values.put("taxonomy.relevance", VisioProperty.number(node.relevance()));
