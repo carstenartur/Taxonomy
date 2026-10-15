@@ -525,7 +525,10 @@ test('Maven shard profiles and catalogued source tags stay synchronized', () => 
   assert.match(workflow, /applicationTestShards\.groups/);
   assert.match(workflow, /requiresModel: \(\.value\.requiresEmbeddingModel == true\)/);
   assert.match(workflow, /if: matrix\.requiresModel == true/);
-  assert.match(workflow, /--verify-inputs/);
+  const aggregateScript = workflowStepScript(workflow,
+    'Verify source-bound reactor outputs and shard inputs');
+  assert.match(aggregateScript, /--verify true\b/);
+  assert.doesNotMatch(aggregateScript, /--verify-inputs\b/);
 });
 
 test('core and app shard producers run independently before final coverage aggregation', () => {

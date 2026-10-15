@@ -96,7 +96,8 @@ class ParallelCiEvidenceContractTest {
         String coverageAggregate = workflow.substring(coverageAggregateStart, observabilityStart);
         assertThat(coverageAggregate)
                 .contains("needs: [core, app-test-shards]")
-                .contains("--verify-inputs true")
+                .contains("--verify true")
+                .doesNotContain("--verify-inputs")
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-coverage")
                 .contains("name: quality-reports-coverage")
                 .contains("core-reactor-outputs.tar.gz")
