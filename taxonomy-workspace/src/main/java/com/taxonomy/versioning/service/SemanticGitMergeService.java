@@ -15,7 +15,8 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.ResolveMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
@@ -27,10 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Executes the normal Git merge first and falls back to a block-semantic DSL
@@ -106,9 +106,18 @@ public class SemanticGitMergeService {
         }
         TaxDslMergeResult merge = semanticMerger.merge(
                 inputs.baseDsl(), inputs.oursDsl(), inputs.theirsDsl());
-        return new MergeOutcome(
-                merge.isSuccessful(), null, true,
-                merge.conflictIdentifiers(), merge);
+        if (!merge.isSuccessful()) {
+            return new MergeOutcome(false, null, true, merge.conflictIdentifiers(), merge);
+        }
+        // Like the ordinary in-core Git preview, this may create unreferenced
+        // objects, but never changes a branch, index, or working tree.
+        try (ObjectInserter inserter = repository.getGitRepository().newObjectInserter()) {
+            ObjectId dslBlob = inserter.insert(Constants.OBJ_BLOB,
+                    merge.mergedText().getBytes(StandardCharsets.UTF_8));
+            TreeMerge tree = mergeTrees(repository.getGitRepository(), inserter,
+                    inputs.baseCommit(), inputs.oursCommit(), inputs.theirsCommit(), dslBlob);
+            return new MergeOutcome(tree.conflicts().isEmpty(), null, true, tree.conflicts(), merge);
+        }
     }
 
     /** Merge three DSL payloads when source and target live in different repositories. */
@@ -251,36 +260,24 @@ public class SemanticGitMergeService {
                                         RevCommit ours,
                                         RevCommit theirs,
                                         ObjectId mergedDsl) throws IOException {
-        Map<String, TreeEntry> baseFiles = readTree(repository, base);
-        Map<String, TreeEntry> ourFiles = readTree(repository, ours);
-        Map<String, TreeEntry> theirFiles = readTree(repository, theirs);
-        Set<String> paths = new HashSet<>();
-        paths.addAll(baseFiles.keySet());
-        paths.addAll(ourFiles.keySet());
-        paths.addAll(theirFiles.keySet());
-
-        Map<String, TreeEntry> mergedFiles = new HashMap<>();
-        List<String> conflicts = new ArrayList<>();
-        for (String path : paths) {
-            if (DSL_FILE.equals(path)) continue;
-            TreeEntry baseEntry = baseFiles.get(path);
-            TreeEntry ourEntry = ourFiles.get(path);
-            TreeEntry theirEntry = theirFiles.get(path);
-            TreeEntry mergedEntry;
-            if (same(ourEntry, theirEntry)) {
-                mergedEntry = ourEntry;
-            } else if (same(baseEntry, ourEntry)) {
-                mergedEntry = theirEntry;
-            } else if (same(baseEntry, theirEntry)) {
-                mergedEntry = ourEntry;
-            } else {
-                conflicts.add("file " + path);
-                continue;
-            }
-            if (mergedEntry != null) mergedFiles.put(path, mergedEntry);
+        // Exclude the DSL from Git's textual merge: its semantic result is
+        // inserted only after every auxiliary path has merged successfully.
+        ObjectId baseTree = auxiliaryTree(repository, inserter, base);
+        ObjectId ourTree = auxiliaryTree(repository, inserter, ours);
+        ObjectId theirTree = auxiliaryTree(repository, inserter, theirs);
+        inserter.flush();
+        ResolveMerger merger = (ResolveMerger) MergeStrategy.RESOLVE.newMerger(repository, true);
+        merger.setBase(baseTree);
+        if (!merger.merge(ourTree, theirTree)) {
+            var paths = new TreeSet<>(merger.getUnmergedPaths());
+            if (merger.getFailingPaths() != null) paths.addAll(merger.getFailingPaths().keySet());
+            List<String> conflicts = paths.stream().map(path -> "file " + path).toList();
+            return new TreeMerge(null, conflicts.isEmpty()
+                    ? List.of("Auxiliary files could not be merged") : conflicts);
         }
-        if (!conflicts.isEmpty()) return new TreeMerge(null, List.copyOf(conflicts));
 
+        Map<String, TreeEntry> mergedFiles = readTree(repository, merger.getResultTreeId());
+        List<String> conflicts = new ArrayList<>();
         mergedFiles.put(DSL_FILE, new TreeEntry(FileMode.REGULAR_FILE, mergedDsl));
         List<String> orderedPaths = mergedFiles.keySet().stream().sorted().toList();
         for (int i = 0; i < orderedPaths.size(); i++) {
@@ -295,9 +292,22 @@ public class SemanticGitMergeService {
         }
         if (!conflicts.isEmpty()) return new TreeMerge(null, List.copyOf(conflicts));
 
+        return new TreeMerge(writeTree(inserter, mergedFiles), List.of());
+    }
+
+    private static ObjectId auxiliaryTree(Repository repository,
+                                          ObjectInserter inserter,
+                                          RevCommit commit) throws IOException {
+        Map<String, TreeEntry> files = readTree(repository, commit == null ? null : commit.getTree());
+        files.remove(DSL_FILE);
+        return writeTree(inserter, files);
+    }
+
+    private static ObjectId writeTree(ObjectInserter inserter,
+                                      Map<String, TreeEntry> files) throws IOException {
         DirCache cache = DirCache.newInCore();
         var builder = cache.builder();
-        List<DirCacheEntry> entries = mergedFiles.entrySet().stream()
+        List<DirCacheEntry> entries = files.entrySet().stream()
                 .map(entry -> {
                     DirCacheEntry cacheEntry = new DirCacheEntry(entry.getKey());
                     cacheEntry.setFileMode(entry.getValue().mode());
@@ -308,28 +318,21 @@ public class SemanticGitMergeService {
                 .toList();
         entries.forEach(builder::add);
         builder.finish();
-        return new TreeMerge(cache.writeTree(inserter), List.of());
+        return cache.writeTree(inserter);
     }
 
-    private static Map<String, TreeEntry> readTree(Repository repository, RevCommit commit) throws IOException {
-        if (commit == null) return Map.of();
+    private static Map<String, TreeEntry> readTree(Repository repository, ObjectId treeId) throws IOException {
         Map<String, TreeEntry> entries = new HashMap<>();
+        if (treeId == null) return entries;
         try (ObjectReader reader = repository.newObjectReader();
              TreeWalk tree = new TreeWalk(reader)) {
-            tree.addTree(commit.getTree());
+            tree.addTree(treeId);
             tree.setRecursive(true);
             while (tree.next()) {
                 entries.put(tree.getPathString(), new TreeEntry(tree.getFileMode(0), tree.getObjectId(0)));
             }
         }
         return entries;
-    }
-
-    private static boolean same(TreeEntry left, TreeEntry right) {
-        if (left == right) return true;
-        return left != null && right != null
-                && left.mode().getBits() == right.mode().getBits()
-                && left.objectId().equals(right.objectId());
     }
 
     private static ObjectId branchHead(Repository repository,

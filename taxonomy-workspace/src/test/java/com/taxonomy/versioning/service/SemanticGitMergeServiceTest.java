@@ -1,6 +1,8 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -10,7 +12,8 @@ import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
-import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -20,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class SemanticGitMergeServiceTest {
 
@@ -151,7 +156,7 @@ class SemanticGitMergeServiceTest {
                     """), Map.of("README.md", "base", "requirements.md", "Source contribution"));
 
             SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
-                    .mergeBranches(repository, "alice", "bob", "architect");
+                    .mergeBranches(repository, "bob", "alice", "architect");
 
             assertThat(outcome.success()).isTrue();
             assertThat(outcome.semanticFallback()).isTrue();
@@ -197,7 +202,15 @@ class SemanticGitMergeServiceTest {
                     """), Map.of("README.md", "bob"));
             String targetBefore = repository.getGitRepository().resolve("refs/heads/bob").name();
 
-            SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
+            SemanticGitMergeService service = new SemanticGitMergeService();
+            SemanticGitMergeService.MergeOutcome preview = service.preview(repository, "alice", "bob");
+            assertThat(preview.success()).isFalse();
+            assertThat(preview.conflicts()).contains("file README.md");
+            assertThat(previewMerge(repository, service).canMerge()).isFalse();
+            assertThat(repository.getGitRepository().resolve("refs/heads/bob").name())
+                    .isEqualTo(targetBefore);
+
+            SemanticGitMergeService.MergeOutcome outcome = service
                     .mergeBranches(repository, "alice", "bob", "architect");
 
             assertThat(outcome.success()).isFalse();
@@ -223,6 +236,99 @@ class SemanticGitMergeServiceTest {
             assertThat(outcome.conflicts())
                     .contains("projectRequirement P-001 REQ-001:text");
         }
+    }
+
+    @Test
+    void mergesIndependentAuxiliaryLineEditsDuringSemanticFallback() throws Exception {
+        String base = "first\nsecond\nthird\nfourth\nfifth\n";
+        try (DslGitRepository repository = auxiliaryMergeRepository(
+                Map.of("README.md", base),
+                Map.of("README.md", base.replace("first", "Alice first")),
+                Map.of("README.md", base.replace("fifth", "Bob fifth")))) {
+            SemanticGitMergeService service = new SemanticGitMergeService();
+            String targetBefore = repository.getGitRepository().resolve("refs/heads/bob").name();
+            assertThat(service.preview(repository, "alice", "bob").success()).isTrue();
+            assertThat(repository.getGitRepository().resolve("refs/heads/bob").name())
+                    .isEqualTo(targetBefore);
+
+            var outcome = service.mergeBranches(repository, "alice", "bob", "architect");
+
+            assertThat(outcome.success()).isTrue();
+            assertThat(outcome.semanticFallback()).isTrue();
+            assertThat(fileAtCommit(repository, outcome.commitId(), "README.md"))
+                    .isEqualTo("Alice first\nsecond\nthird\nfourth\nBob fifth\n");
+        }
+    }
+
+    @Test
+    void mergesAuxiliaryContentEditWithExecutableBitChange() throws Exception {
+        try (DslGitRepository repository = auxiliaryMergeRepository(
+                Map.of("run.sh", "echo base\n"),
+                Map.of("run.sh", "echo Alice\n"),
+                Map.of("run.sh", "echo base\n"))) {
+            commitFiles(repository, "bob", repository.getDslAtHead("bob"),
+                    Map.of("run.sh", "echo base\n"), Map.of("run.sh", FileMode.EXECUTABLE_FILE));
+            SemanticGitMergeService service = new SemanticGitMergeService();
+            assertThat(service.preview(repository, "alice", "bob").success()).isTrue();
+
+            var outcome = service.mergeBranches(repository, "alice", "bob", "architect");
+
+            assertThat(outcome.success()).isTrue();
+            assertThat(outcome.semanticFallback()).isTrue();
+            assertThat(fileAtCommit(repository, outcome.commitId(), "run.sh")).isEqualTo("echo Alice\n");
+            try (RevWalk walk = new RevWalk(repository.getGitRepository());
+                 TreeWalk tree = TreeWalk.forPath(repository.getGitRepository(), "run.sh",
+                         walk.parseCommit(ObjectId.fromString(outcome.commitId())).getTree())) {
+                assertThat(tree.getFileMode(0)).isEqualTo(FileMode.EXECUTABLE_FILE);
+            }
+        }
+    }
+
+    @Test
+    void previewRejectsAuxiliaryFileDirectoryConflictWithoutAdvancingBranches() throws Exception {
+        try (DslGitRepository repository = auxiliaryMergeRepository(
+                Map.of(), Map.of("notes", "Alice notes"), Map.of("notes/review.md", "Bob review"))) {
+            SemanticGitMergeService service = new SemanticGitMergeService();
+            String targetBefore = repository.getGitRepository().resolve("refs/heads/bob").name();
+            String sourceBefore = repository.getGitRepository().resolve("refs/heads/alice").name();
+
+            var preview = service.preview(repository, "alice", "bob");
+            assertThat(preview.success()).isFalse();
+            assertThat(preview.conflicts()).anyMatch(conflict -> conflict.contains("notes"));
+            assertThat(previewMerge(repository, service).canMerge()).isFalse();
+            var outcome = service.mergeBranches(repository, "alice", "bob", "architect");
+            assertThat(outcome.success()).isFalse();
+            assertThat(outcome.conflicts()).containsExactlyElementsOf(preview.conflicts());
+            assertThat(repository.getGitRepository().resolve("refs/heads/bob").name()).isEqualTo(targetBefore);
+            assertThat(repository.getGitRepository().resolve("refs/heads/alice").name()).isEqualTo(sourceBefore);
+        }
+    }
+
+    private static ConflictDetectionService.MergePreview previewMerge(DslGitRepository repository,
+                                                                       SemanticGitMergeService merger) {
+        DslGitRepositoryFactory factory = mock(DslGitRepositoryFactory.class);
+        when(factory.resolveRepository(WorkspaceContext.SHARED)).thenReturn(repository);
+        return new SemanticConflictDetectionService(factory, merger)
+                .previewMerge("alice", "bob", WorkspaceContext.SHARED);
+    }
+
+    private static DslGitRepository auxiliaryMergeRepository(Map<String, String> baseFiles,
+                                                              Map<String, String> aliceFiles,
+                                                              Map<String, String> bobFiles) throws Exception {
+        DslGitRepository repository = new DslGitRepository();
+        String base = document("""
+                project P-001 {
+                  title: "Architecture";
+                  description: "Initial";
+                }
+                """);
+        repository.commitDsl("draft", base, "system", "base");
+        commitFiles(repository, "draft", base, baseFiles);
+        repository.createBranch("alice", "draft");
+        repository.createBranch("bob", "draft");
+        commitFiles(repository, "alice", base.replace("Architecture", "Reviewed architecture"), aliceFiles);
+        commitFiles(repository, "bob", base.replace("Initial", "Shared target"), bobFiles);
+        return repository;
     }
 
     private static DslGitRepository ordinaryMergeRepository() throws Exception {
@@ -301,19 +407,32 @@ class SemanticGitMergeServiceTest {
                                     String branch,
                                     String dsl,
                                     Map<String, String> files) throws Exception {
+        commitFiles(repository, branch, dsl, files, Map.of());
+    }
+
+    private static void commitFiles(DslGitRepository repository,
+                                    String branch,
+                                    String dsl,
+                                    Map<String, String> files,
+                                    Map<String, FileMode> modes) throws Exception {
         var git = repository.getGitRepository();
         Ref branchRef = git.getRefDatabase().exactRef(Constants.R_HEADS + branch);
         try (ObjectInserter inserter = git.newObjectInserter()) {
-            TreeFormatter tree = new TreeFormatter();
+            DirCache cache = DirCache.newInCore();
+            var builder = cache.builder();
             Map<String, String> contents = new java.util.TreeMap<>(files);
             contents.put(DslGitRepository.DSL_FILENAME, dsl);
             for (var entry : contents.entrySet()) {
                 String path = entry.getKey();
                 String content = entry.getValue();
                 ObjectId blob = inserter.insert(Constants.OBJ_BLOB, content.getBytes(StandardCharsets.UTF_8));
-                tree.append(path, FileMode.REGULAR_FILE, blob);
+                DirCacheEntry cacheEntry = new DirCacheEntry(path);
+                cacheEntry.setFileMode(modes.getOrDefault(path, FileMode.REGULAR_FILE));
+                cacheEntry.setObjectId(blob);
+                builder.add(cacheEntry);
             }
-            ObjectId treeId = inserter.insert(tree);
+            builder.finish();
+            ObjectId treeId = cache.writeTree(inserter);
             CommitBuilder commit = new CommitBuilder();
             commit.setTreeId(treeId);
             commit.setParentId(branchRef.getObjectId());
