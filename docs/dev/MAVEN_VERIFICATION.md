@@ -73,6 +73,21 @@ database lanes supplement the complete CI coverage aggregate and cannot replace
 it. The standalone database commands in the table retain their ordinary App
 tests and aggregate report; no companion is activated automatically.
 
+The local ONNX reference workflow uses
+`./mvnw -B verify -Ponnx,ci-onnx-reference -T 2`.
+This explicit companion narrows only the App
+default Surefire execution to `*Onnx*Test`, `*Onnx*Tests` and
+`WorkerRuntimeFootprintTest`; it disables the unrelated isolated product demo.
+It retains upstream unit tests, build-policy guards, model provisioning and both
+Failsafe suites selected by `onnx`: `LocalOnnxPipelineIT` and `OnnxSeleniumIT`.
+The workflow requires positive JUnit evidence for all seven selected unit suites
+(39 cases) and both integration suites (nine cases each). It checks out the PR
+head for reference measurements. No global tag filter is applied: reference unit
+tests include untagged classes, and the integration suites also require Docker.
+The companion disables partial aggregate coverage; complete coverage remains
+owned by the canonical CI aggregate. Standalone `-Ponnx` and canonical `-Pci`
+retain their full App test scope and product demo.
+
 `./mvnw -B verify -Pci -DrunOnnxTests=true` is the local combined lifecycle
 when the reference model is provisioned. The pull-request
 workflow runs this profile in the core reactor with `-DrunOnnxTests=true`
