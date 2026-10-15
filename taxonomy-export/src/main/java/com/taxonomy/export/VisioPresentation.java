@@ -88,7 +88,9 @@ final class VisioPresentation {
                 // Six unique endpoints at generous fixed positions; captions occupy a separate rail.
                 double x = row % 2 == 0 ? 2.2 : 6.2, y = 9.4 - (row / 2) * 3.3;
                 String label = source.getProperties().get("taxonomy.label").value();
-                String text = source.getProperties().get("taxonomy.displayKey").value() + "\n" + display(label, 32, 4);
+                String text = source.getProperties().get("taxonomy.displayKey").value() + " | "
+                        + display(source.getProperties().get("taxonomy.id").value(), 26, 1) + "\n" + display(label, 32, 3)
+                        + "\nDepth " + source.getProperties().get("taxonomy.depth").value();
                 var shape = new VisioShape(source.getId(), text, x, y, 3.2, 1.4, source.getType(), source.isAnchor());
                 shape.getProperties().putAll(source.getProperties()); page.getShapes().add(shape); row++;
             }

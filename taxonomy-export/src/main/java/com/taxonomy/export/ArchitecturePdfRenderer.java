@@ -14,7 +14,6 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
@@ -67,7 +66,7 @@ public final class ArchitecturePdfRenderer {
             document.setDocumentInformation(information);
         }, (stream, height) -> {
             text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());
-            List<String> lines = Arrays.asList(displayProvenance.split("\\n"));
+            List<String> lines = Arrays.asList(displayProvenance.split("\n"));
             for (int i = 0; i < Math.min(2, lines.size()); i++) {
                 text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
             }
@@ -110,6 +109,8 @@ public final class ArchitecturePdfRenderer {
             float scale = (float) Math.min(1.0, Math.min(
                     availableWidth / Math.max(1.0, scene.width()),
                     availableHeight / Math.max(1.0, scene.height())));
+            if (scale < 0.8f) throw new IllegalArgumentException(
+                    "Architecture exceeds readable PDF page size; export a smaller selection or separate taxonomies");
             float diagramX = PAGE_MARGIN;
             float diagramTop = page.getMediaBox().getHeight() - PAGE_MARGIN - HEADER_HEIGHT;
 
@@ -124,6 +125,7 @@ public final class ArchitecturePdfRenderer {
                 footer.write(stream);
             }
 
+            drawInventory(document, scene);
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -194,7 +196,7 @@ public final class ArchitecturePdfRenderer {
             float height = (float) node.height() * scale;
             float y = top - height;
 
-            stream.setNonStrokingColor(fill(node.type()));
+            stream.setNonStrokingColor(Color.decode(DiagramPresentation.fill(node.type())));
             stream.addRect(x, y, width, height);
             stream.fill();
             stream.setStrokingColor(node.anchor()
@@ -204,21 +206,25 @@ public final class ArchitecturePdfRenderer {
             stream.addRect(x, y, width, height);
             stream.stroke();
 
-            text(stream, BOLD, 8 * scale, x + 8 * scale, top - 15 * scale, node.id());
-            String score = Math.round(node.relevance() * 100.0) + "%";
-            float scoreWidth = REGULAR.getStringWidth(score) / 1000 * Math.max(5, 8 * scale);
-            text(stream, REGULAR, 8 * scale, x + width - 8 * scale - scoreWidth,
-                    top - 15 * scale, score);
-            List<String> labelLines = DiagramTextWrapper.wrap(node.label(), 34, 2, "n/a");
+            float inset = 8 * scale, small = 8 * scale;
+            String score = DiagramPresentation.percent(node.relevance());
+            float scoreWidth = PdfDiagramText.width(REGULAR, small, score);
+            String id = PdfDiagramText.wrap(node.id(), BOLD, small,
+                    width - 3 * inset - scoreWidth, 1).getFirst();
+            text(stream, BOLD, small, x + inset, top - 15 * scale, id);
+            text(stream, REGULAR, small, x + width - inset - scoreWidth, top - 15 * scale, score);
+            List<String> labelLines = PdfDiagramText.wrap(node.label(), REGULAR, 10 * scale,
+                    width - 2 * inset, 2);
             for (int index = 0; index < labelLines.size(); index++) {
-                text(stream, REGULAR, 10 * scale,
-                        x + 8 * scale,
-                        top - (38 + index * 16) * scale,
-                        labelLines.get(index));
+                text(stream, REGULAR, 10 * scale, x + inset,
+                        top - (34 + index * 13) * scale, labelLines.get(index));
             }
-            // Type names belong on their own line; the former right-hand header overflowed
-            // the box for names such as "Communications Services".
-            text(stream, REGULAR, 8 * scale, x + 8 * scale, y + 10 * scale, node.type());
+            // Two separate footer lines leave the complete taxonomy name room to wrap safely.
+            String type = PdfDiagramText.wrap(node.type(), REGULAR, small, width - 2 * inset, 1).getFirst();
+            text(stream, REGULAR, small, x + inset, y + 21 * scale, type);
+            String depth = "Depth " + node.depth() + (node.container() ? " | Container" : "");
+            text(stream, REGULAR, small, x + inset, y + 9 * scale,
+                    PdfDiagramText.wrap(depth, REGULAR, small, width - 2 * inset, 1).getFirst());
         }
     }
 
@@ -265,17 +271,35 @@ public final class ArchitecturePdfRenderer {
         stream.endText();
     }
 
-    private static Color fill(String type) {
-        if (type == null) return new Color(241, 245, 249);
-        return switch (type) {
-            case "Capabilities" -> new Color(219, 234, 254);
-            case "Business Processes", "Business Roles" -> new Color(220, 252, 231);
-            case "Core Services", "COI Services", "Services" -> new Color(254, 243, 199);
-            case "User Applications", "Applications" -> new Color(243, 232, 255);
-            case "Information Products" -> new Color(255, 228, 230);
-            case "Communications Services" -> new Color(207, 250, 254);
-            default -> new Color(241, 245, 249);
-        };
+    /** A complete, paginated inventory is the accessible counterpart of bounded diagram labels. */
+    private static void drawInventory(PDDocument document, DiagramScene scene) throws IOException {
+        var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene));
+        lines.add("Element inventory | diagram ellipses do not remove saved labels below");
+        var seenNodes = new java.util.HashSet<String>();
+        for (var node : scene.nodes()) if (seenNodes.add(node.id())) {
+            lines.add(node.id() + " | Depth " + node.depth() + " | " + DiagramPresentation.percent(node.relevance())
+                    + (node.container() ? " | Container" : ""));
+            lines.add(node.label());
+            lines.add(node.type() + " | Parent: " + (node.parentId() == null ? "not included" : node.parentId()));
+        }
+        lines.add("Relationship inventory | presence does not establish human confirmation");
+        var seenEdges = new java.util.HashSet<String>();
+        for (var edge : scene.edges()) if (seenEdges.add(edge.id()))
+            lines.add(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId()
+                    + " | " + edge.relationType() + " | " + edge.relationCategory());
+        var wrapped = new java.util.ArrayList<String>();
+        float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;
+        for (String line : lines) wrapped.addAll(PdfDiagramText.wrap(line, REGULAR, 9, width, Integer.MAX_VALUE));
+        int perPage = (int) ((PDRectangle.A4.getHeight() - 2 * PAGE_MARGIN - 36) / 13);
+        for (int start = 0; start < wrapped.size(); start += perPage) {
+            var page = new PDPage(PDRectangle.A4); document.addPage(page);
+            try (var stream = new PDPageContentStream(document, page)) {
+                float top = PDRectangle.A4.getHeight() - PAGE_MARGIN;
+                text(stream, BOLD, 13, PAGE_MARGIN, top - 13, "Export inventory - " + (start / perPage + 1));
+                for (int i = start; i < Math.min(start + perPage, wrapped.size()); i++)
+                    text(stream, REGULAR, 9, PAGE_MARGIN, top - 36 - (i - start) * 13, wrapped.get(i));
+            }
+        }
     }
 
     private static String abbreviated(String value) {
@@ -287,22 +311,7 @@ public final class ArchitecturePdfRenderer {
         return value == null || value.isBlank() ? "n/a" : value.strip();
     }
 
-    /** Keep labels readable with the Standard 14 PDF fonts. */
     private static String ascii(String value) {
-        String german = safe(value)
-                .replace("Ä", "Ae")
-                .replace("Ö", "Oe")
-                .replace("Ü", "Ue")
-                .replace("ä", "ae")
-                .replace("ö", "oe")
-                .replace("ü", "ue")
-                .replace("ß", "ss")
-                .replace('–', '-')
-                .replace('—', '-')
-                .replace('…', '.')
-                .replace('·', '|');
-        return Normalizer.normalize(german, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .replaceAll("[^\\x20-\\x7E]", "?");
+        return PdfDiagramText.printable(value);
     }
 }

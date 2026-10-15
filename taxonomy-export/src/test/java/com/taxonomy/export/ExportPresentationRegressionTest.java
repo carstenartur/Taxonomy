@@ -58,6 +58,7 @@ class ExportPresentationRegressionTest {
                     super.writeString(value, values);
                 }
             };
+            reader.setEndPage(1); // Inventory text uses its own page coordinates.
             String text = reader.getText(document);
             assertThat(text).contains("fixture-wide", "Depth 3", "0.5%");
             assertThat(positions).isNotEmpty().allSatisfy(p -> {

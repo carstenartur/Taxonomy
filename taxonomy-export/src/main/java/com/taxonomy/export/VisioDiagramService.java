@@ -27,7 +27,7 @@ public class VisioDiagramService {
     private static final Logger log = LoggerFactory.getLogger(VisioDiagramService.class);
 
     private static final double SHAPE_WIDTH = 2.0;
-    private static final double SHAPE_HEIGHT = 0.75;
+    private static final double SHAPE_HEIGHT = 0.9;
     private static final double H_GAP = 3.0;
     private static final double V_GAP = 1.2;
     private static final double MARGIN_X = 1.5;
@@ -78,7 +78,7 @@ public class VisioDiagramService {
 
                 VisioShape shape = new VisioShape(
                         shapeId,
-                        VisioPresentation.display(node.label(), 24, 3),
+                        VisioPresentation.display(node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 2) + "\nDepth " + node.depth(),
                         x, y,
                         SHAPE_WIDTH, SHAPE_HEIGHT,
                         node.type(),
@@ -87,7 +87,7 @@ public class VisioDiagramService {
                 var values = shape.getProperties();
                 values.put("taxonomy.label", VisioProperty.text(node.label()));
                 values.put("taxonomy.displayKey", VisioProperty.text("N" + shapeId));
-                VisioPresentation.labelLoss(doc, node.id(), node.label(), shape.getText());
+                VisioPresentation.labelLoss(doc, node.id(), node.label(), VisioPresentation.display(node.label(), 24, 2));
                 values.put("taxonomy.id", VisioProperty.text(node.id()));
                 values.put("taxonomy.type", VisioProperty.text(node.type()));
                 values.put("taxonomy.relevance", VisioProperty.number(node.relevance()));
