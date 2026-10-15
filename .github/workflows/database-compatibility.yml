@@ -28,13 +28,13 @@ jobs:
         include:
           - database: PostgreSQL
             profile: database-postgres
-            command: ./mvnw -B verify -Pdatabase-postgres
+            command: ./mvnw -B verify -Pdatabase-postgres,ci-database-compatibility
           - database: Microsoft SQL Server
             profile: database-mssql
-            command: ./mvnw -B verify -Pdatabase-mssql
+            command: ./mvnw -B verify -Pdatabase-mssql,ci-database-compatibility
           - database: Oracle
             profile: database-oracle
-            command: ./mvnw -B verify -Pdatabase-oracle
+            command: ./mvnw -B verify -Pdatabase-oracle,ci-database-compatibility
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

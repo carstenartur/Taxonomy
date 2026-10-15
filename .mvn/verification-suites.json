@@ -18,6 +18,11 @@
     "database-postgres": {"itTest": "*Postgres*IT"},
     "database-mssql": {"itTest": "*Mssql*IT"},
     "database-oracle": {"itTest": "*Oracle*IT"},
+    "ci-database-compatibility": {
+      "purpose": "Explicit CI companion to database-postgres, database-mssql or database-oracle; skips only duplicate taxonomy-app Surefire execution and partial aggregate coverage while retaining the selected database Failsafe suite and reactor build guards",
+      "profile": "ci-database-compatibility",
+      "baseProfiles": ["database-postgres", "database-mssql", "database-oracle"]
+    },
     "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
     "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},

@@ -54,16 +54,67 @@ class ApplicationTestSkipContractTest {
         assertThat(value(root, "/project/properties/taxonomy.app.unit.tests.skip")).isEqualTo("false");
     }
 
+    @Test
+    void databaseCiCompanionSkipsOnlyAppSurefireAndPartialAggregateCoverage() throws Exception {
+        Document app = pom("taxonomy-app/pom.xml");
+        Document root = pom("pom.xml");
+        String profile = "/project/profiles/profile[id='ci-database-compatibility']";
+        assertThat(value(app, profile + "/build/plugins/" + SUREFIRE + "/configuration/skip"))
+                .isEqualTo("${taxonomy.app.unit.tests.skip}");
+        assertThat(value(root, profile + "/properties/taxonomy.app.unit.tests.skip")).isEqualTo("true");
+        assertThat(value(root, profile + "/properties/taxonomy.app.shard.coverageAggregateSkip")).isEqualTo("true");
+        for (Document document : new Document[]{root, app}) {
+            assertThat(value(document, "count(" + profile + "/activation)")).isEqualTo("0");
+            assertThat(value(document, profile + "/properties/maven.build.cache.enabled")).isEqualTo("false");
+            assertThat(value(document, "count(" + profile + "/properties/*[name()='skipTests' or name()='maven.test.skip' or name()='skipITs' or name()='it.test' or name()='taxonomy.quality.skip'])"))
+                    .isEqualTo("0");
+            assertThat(value(document, "count(" + profile + "/build//" + FAILSAFE + ")")).isEqualTo("0");
+        }
+        assertThat(value(root, "count(" + profile + "/build//" + SUREFIRE + ")")).isEqualTo("0");
+        Document coverage = pom("taxonomy-coverage/pom.xml");
+        assertThat(value(coverage, "/project/build/plugins/plugin[artifactId='jacoco-maven-plugin']/executions/execution[id='reactor-report']/configuration/skip"))
+                .isEqualTo("${taxonomy.app.shard.coverageAggregateSkip}");
+        assertThat(value(root, "/project/properties/taxonomy.app.shard.coverageAggregateSkip")).isEqualTo("false");
+        assertThat(value(root, "/project/properties/taxonomy.quality.skip")).isEqualTo("true");
+    }
+
+    @Test
+    void standaloneDatabaseProfilesRetainTheirCompleteLifecycleAndFailsafeSelection() throws Exception {
+        Document root = pom("pom.xml");
+        Document app = pom("taxonomy-app/pom.xml");
+        String[] databases = {"postgres", "mssql", "oracle"};
+        String[] selectors = {"*Postgres*IT", "*Mssql*IT", "*Oracle*IT"};
+        String workflow = Files.readString(repositoryRoot().resolve(".github/workflows/database-compatibility.yml"));
+        for (int i = 0; i < databases.length; i++) {
+            String id = "database-" + databases[i];
+            String profile = "/project/profiles/profile[id='" + id + "']";
+            assertThat(value(root, profile + "/properties/skipITs")).isEqualTo("false");
+            assertThat(value(root, profile + "/properties/it.test")).isEqualTo(selectors[i]);
+            assertThat(value(root, profile + "/properties/excludedGroups")).isEqualTo("real-llm,onnx");
+            assertThat(value(root, profile + "/properties/taxonomy.model.download.skip")).isEqualTo("true");
+            assertThat(value(root, "count(" + profile + "/properties/*)")).isEqualTo("4");
+            assertThat(value(root, "count(" + profile + "/build)")).isEqualTo("0");
+            assertThat(value(app, "count(" + profile + ")")).isEqualTo("0");
+            assertThat(workflow).contains("command: ./mvnw -B verify -P" + id + ",ci-database-compatibility");
+        }
+        // The App owner must keep Failsafe's fail-closed default for explicit selectors.
+        assertThat(value(app, "count(/project/build/plugins/" + FAILSAFE
+                + "/configuration/*[name()='failIfNoSpecifiedTests' or starts-with(name(), 'skip')])")).isEqualTo("0");
+        Document build = pom("taxonomy-build/pom.xml");
+        assertThat(value(build, "count(/project/build/plugins/" + SUREFIRE
+                + "/executions/execution[starts-with(id, 'required-') and phase='test' and configuration/failIfNoTests='true' and configuration/failIfNoSpecifiedTests='true'])"))
+                .isEqualTo("4");
+        // No companion property turns the build-policy integration lane into a coverage claim.
+        assertThat(value(build, "/project/build/plugins/" + FAILSAFE
+                + "/executions/execution/configuration/skipITs")).isEqualTo("${taxonomy.quality.skip}");
+    }
+
     private static String value(Document document, String expression) throws Exception {
         return XPathFactory.newInstance().newXPath().evaluate(expression, document).trim();
     }
 
     private static Document pom(String relative) throws Exception {
-        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-        while (root != null && !Files.isRegularFile(root.resolve("taxonomy-app/pom.xml"))) {
-            root = root.getParent();
-        }
-        if (root == null) throw new IllegalStateException("Cannot locate Taxonomy repository");
+        Path root = repositoryRoot();
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -72,5 +123,14 @@ class ApplicationTestSkipContractTest {
         try (var input = Files.newInputStream(root.resolve(relative))) {
             return factory.newDocumentBuilder().parse(input);
         }
+    }
+
+    private static Path repositoryRoot() {
+        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        while (root != null && !Files.isRegularFile(root.resolve("taxonomy-app/pom.xml"))) {
+            root = root.getParent();
+        }
+        if (root == null) throw new IllegalStateException("Cannot locate Taxonomy repository");
+        return root;
     }
 }

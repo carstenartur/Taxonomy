@@ -536,6 +536,14 @@
             </properties>
         </profile>
         <profile>
+            <id>ci-database-compatibility</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
+            </properties>
+        </profile>
+        <profile>
             <id>onnx</id>
             <properties>
                 <skipITs>false</skipITs>
