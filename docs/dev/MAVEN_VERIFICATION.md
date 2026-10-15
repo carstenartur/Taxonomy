@@ -54,6 +54,25 @@ mistaken for completion of the Java/Maven-only requirement.
 | Browser and accessibility only | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | permission to install browser OS libraries |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | Docker |
 
+The database workflow adds the explicit `ci-database-compatibility` companion:
+
+```bash
+./mvnw -B verify -Pdatabase-postgres,ci-database-compatibility
+./mvnw -B verify -Pdatabase-mssql,ci-database-compatibility
+./mvnw -B verify -Pdatabase-oracle,ci-database-compatibility
+```
+
+This companion skips only repeated taxonomy-app Surefire executions already owned
+by the core and isolated app-test union. It preserves the selected database
+Failsafe tests, their missing-selector failure behavior, test compilation,
+packaging and the other modules' Surefire/build-policy guards. Database profiles
+already leave UI and build-policy integration tests disabled; the companion does
+not change those settings or the database selectors. It disables the partial
+aggregate coverage report, while JaCoCo instrumentation remains enabled. These
+database lanes supplement the complete CI coverage aggregate and cannot replace
+it. The standalone database commands in the table retain their ordinary App
+tests and aggregate report; no companion is activated automatically.
+
 `./mvnw -B verify -Pci -DrunOnnxTests=true` is the local combined lifecycle
 when the reference model is provisioned. The pull-request
 workflow runs this profile in the core reactor with `-DrunOnnxTests=true`
