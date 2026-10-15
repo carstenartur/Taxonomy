@@ -25,7 +25,7 @@ concurrency:
 jobs:
   reference:
     runs-on: ubuntu-latest
-    # Full reactor verification can exceed an hour even after the ONNX tests pass.
+    # Keep the full reactor build and the selected model/reference test suites.
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -50,14 +50,19 @@ jobs:
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Ponnx -T 2 2>&1 | tee target/local-onnx-reference.log
+          ./mvnw -B verify -Ponnx,ci-onnx-reference -T 2 2>&1 | tee target/local-onnx-reference.log
       - name: Require executed ONNX tests
         run: |
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml 4 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml 5 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceCasesTest.xml 11 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxMultilingualReferenceEvaluationTest.xml 3 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceEvaluationTest.xml 14 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ui.OnnxDisclosureInteractionContractTest.xml 1 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml 1 \
             taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml 9 \
-            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 1
+            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 9
       - name: Upload local inference evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

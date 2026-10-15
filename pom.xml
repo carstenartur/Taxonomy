@@ -554,6 +554,14 @@
             </properties>
         </profile>
         <profile>
+            <id>ci-onnx-reference</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
+            </properties>
+        </profile>
+        <profile>
             <id>plugin-packaging-tests</id>
             <properties>
                 <skipITs>false</skipITs>

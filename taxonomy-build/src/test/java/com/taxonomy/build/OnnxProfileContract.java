@@ -47,8 +47,13 @@ final class OnnxProfileContract {
         for (String report : List.of(
                 "surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml 4",
                 "surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml 5",
+                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceCasesTest.xml 11",
+                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxMultilingualReferenceEvaluationTest.xml 3",
+                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceEvaluationTest.xml 14",
+                "surefire-reports/TEST-com.taxonomy.ui.OnnxDisclosureInteractionContractTest.xml 1",
+                "surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml 1",
                 "failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml 9",
-                "failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 1")) {
+                "failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 9")) {
             require(workflow.contains(report), "Missing positive test evidence: " + report);
         }
         require(workflow.contains("**/target/surefire-reports/**"), "Preserve failures before Failsafe starts");

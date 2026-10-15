@@ -109,6 +109,54 @@ class ApplicationTestSkipContractTest {
                 + "/executions/execution/configuration/skipITs")).isEqualTo("${taxonomy.quality.skip}");
     }
 
+    @Test
+    void onnxCiCompanionSelectsReferenceUnitTestsWithoutSkippingFailsafeOrReactorGuards() throws Exception {
+        Document root = pom("pom.xml");
+        Document app = pom("taxonomy-app/pom.xml");
+        String profile = "/project/profiles/profile[id='ci-onnx-reference']";
+        String execution = profile + "/build/plugins/" + SUREFIRE + "/executions/execution[id='default-test']";
+        String includes = execution + "/configuration/includes/include";
+        assertThat(value(app, "count(" + includes + ")")).isEqualTo("3");
+        assertThat(value(app, includes + "[1]")).isEqualTo("**/*Onnx*Test.java");
+        assertThat(value(app, includes + "[2]")).isEqualTo("**/*Onnx*Tests.java");
+        assertThat(value(app, includes + "[3]")).isEqualTo("**/WorkerRuntimeFootprintTest.java");
+        assertThat(value(app, execution + "/configuration/failIfNoTests")).isEqualTo("true");
+        assertThat(value(root, profile + "/properties/taxonomy.productDemo.testPhase")).isEqualTo("none");
+        assertThat(value(root, profile + "/properties/taxonomy.app.shard.coverageAggregateSkip")).isEqualTo("true");
+        for (Document document : new Document[]{root, app}) {
+            assertThat(value(document, "count(" + profile + "/activation)")).isEqualTo("0");
+            assertThat(value(document, profile + "/properties/maven.build.cache.enabled")).isEqualTo("false");
+            assertThat(value(document, "count(" + profile + "/properties/*[name()='groups' or name()='excludedGroups' or name()='skipTests' or name()='maven.test.skip' or name()='skipITs' or name()='it.test' or name()='taxonomy.quality.skip' or name()='taxonomy.app.unit.tests.skip'])"))
+                    .isEqualTo("0");
+            assertThat(value(document, "count(" + profile + "/build//" + FAILSAFE + ")")).isEqualTo("0");
+        }
+        assertThat(value(root, "count(" + profile + "/build)")).isEqualTo("0");
+        assertThat(value(app, "count(" + execution + "/configuration/*[starts-with(name(), 'skip') or name()='test' or name()='groups' or name()='excludedGroups'])"))
+                .isEqualTo("0");
+        String workflow = Files.readString(repositoryRoot().resolve(".github/workflows/local-onnx-reference.yml"));
+        assertThat(workflow).contains("./mvnw -B verify -Ponnx,ci-onnx-reference -T 2");
+    }
+
+    @Test
+    void standaloneOnnxAndCanonicalCiRetainTheirApplicationTestScope() throws Exception {
+        Document root = pom("pom.xml");
+        Document app = pom("taxonomy-app/pom.xml");
+        String profile = "/project/profiles/profile[id='onnx']";
+        assertThat(value(root, profile + "/properties/skipITs")).isEqualTo("false");
+        assertThat(value(root, profile + "/properties/it.test")).isEqualTo("LocalOnnxPipelineIT,OnnxSeleniumIT");
+        assertThat(value(root, profile + "/properties/runOnnxTests")).isEqualTo("true");
+        assertThat(value(root, profile + "/properties/excludedGroups")).isEqualTo("real-llm,db-postgres,db-mssql,db-oracle");
+        assertThat(value(root, profile + "/properties/taxonomy.model.download.skip")).isEqualTo("false");
+        assertThat(value(root, "count(" + profile + "/properties/*)")).isEqualTo("5");
+        assertThat(value(root, "/project/properties/taxonomy.productDemo.testPhase")).isEqualTo("test");
+        for (String id : new String[]{"onnx", "ci"}) {
+            String scope = "/project/profiles/profile[id='" + id + "']";
+            assertThat(value(root, "count(" + scope + "/properties/taxonomy.productDemo.testPhase)")).isEqualTo("0");
+            assertThat(value(app, "count(" + scope + "/build/plugins/" + SUREFIRE + "/configuration/includes)")).isEqualTo("0");
+            assertThat(value(app, "count(" + scope + "/build/plugins/" + SUREFIRE + "/executions/execution[id='default-test'])")).isEqualTo("0");
+        }
+    }
+
     private static String value(Document document, String expression) throws Exception {
         return XPathFactory.newInstance().newXPath().evaluate(expression, document).trim();
     }
