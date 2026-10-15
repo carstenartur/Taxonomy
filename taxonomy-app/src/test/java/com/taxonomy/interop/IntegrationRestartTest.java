@@ -6,6 +6,7 @@ import com.taxonomy.editor.EditorPersistenceFixture;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.*;
 import com.taxonomy.workspace.service.RepositoryContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Separate application JVMs cross every durable recovery boundary, including Git completion before integration acknowledgement. */
+@Tag("ci-app-shard-recovery")
 class IntegrationRestartTest {
     @TempDir Path directory;
     @Test void discoveryPreviewApplyCheckpointAndFrozenDeliverySurviveCompleteProcessRestarts() throws Exception {

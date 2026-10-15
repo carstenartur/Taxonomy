@@ -35,7 +35,6 @@ jobs:
           path: ~/.m2/build-cache
           key: ${{ runner.os }}-taxonomy-maven-build-cache-app-v2-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-
             ${{ runner.os }}-taxonomy-maven-build-cache-app-v2-
       - name: Package commit-bound UI application
         run: bash .github/scripts/package-ui-application.sh
@@ -44,6 +43,150 @@ jobs:
       - name: Upload commit-bound UI application
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: taxonomy-ui-application, path: 'target/ui-application/**', if-no-files-found: error, retention-days: 7 }
+
+  production-image:
+    name: Production Docker image verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
+      - name: Detect production-image changes
+        id: production-image-scope
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
+              Dockerfile \
+              .github/scripts/configure-docker-mirror.sh \
+              .dockerignore \
+              pom.xml \
+              mvnw \
+              .mvn/wrapper \
+              'taxonomy-*/pom.xml' \
+              docs \
+              LICENSE \
+              NOTICE \
+              THIRD-PARTY-NOTICES.md \
+              observability/javaagent.properties; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify production Docker image build
+        if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'
+        env: { IMAGE_TAG: 'taxonomy-ci:${{ github.sha }}' }
+        run: |
+          set -euo pipefail
+          docker build \
+            --progress=plain \
+            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg VERSION="ci-${GITHUB_SHA}" \
+            --tag "$IMAGE_TAG" .
+          image_revision=$(docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "$IMAGE_TAG")
+          if [[ "$image_revision" != "$GITHUB_SHA" ]]; then
+            echo "::error::Docker image revision label is '$image_revision'; expected '$GITHUB_SHA'."
+            exit 1
+          fi
+          image_user=$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")
+          if [[ "$image_user" != '10001:10001' ]]; then
+            echo "::error::Docker image runtime user is '$image_user'; expected '10001:10001'."
+            exit 1
+          fi
+
+  app-test-plan:
+    name: Plan Maven-owned application test shards
+    runs-on: ubuntu-latest
+    outputs: { matrix: '${{ steps.matrix.outputs.matrix }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Export shard matrix from the Maven verification catalogue
+        id: matrix
+        run: |
+          jq -e '
+            .applicationTestShards.defaultGroup == "core" and
+            ([.applicationTestShards.groups[] | select(.default != true)] | length > 0) and
+            ([.applicationTestShards.groups[] | select(.default != true) |
+              (.profile | test("^ci-app-test-shard-[a-z0-9-]+$"))] | all)
+          ' .mvn/verification-suites.json >/dev/null
+          matrix=$(jq -c '
+            {include: [.applicationTestShards.groups | to_entries[] |
+              select(.value.default != true) |
+            {shard: .key, profile: .value.profile,
+              requiresModel: (.value.requiresEmbeddingModel == true)}]}
+          ' .mvn/verification-suites.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  app-test-shards:
+    name: Application test shard / ${{ matrix.shard }}
+    needs: [app-test-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.app-test-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Restore pinned embedding model
+        if: matrix.requiresModel == true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: models/multilingual-minilm
+          key: ${{ runner.os }}-taxonomy-multilingual-minilm-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Configure and verify Docker Hub cache
+        run: bash .github/scripts/configure-docker-mirror.sh
+      - name: Run the Maven-owned application shard
+        env:
+          APP_TEST_PROFILE: ${{ matrix.profile }}
+          HF_TOKEN: ${{ matrix.requiresModel && secrets.HF_TOKEN || '' }}
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          VERSION_STATE_MODE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'development' }}
+          VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P"ci,$APP_TEST_PROFILE"
+      - name: Publish shard JUnit results
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
+        if: always()
+        continue-on-error: true
+        with:
+          name: 'Application tests / ${{ matrix.shard }}'
+          path: 'taxonomy-app/target/surefire-reports/TEST-*.xml,taxonomy-app/target/failsafe-reports/TEST-*.xml'
+          reporter: java-junit
+          fail-on-error: false
+      - name: Stage digest-bound shard reports and coverage
+        if: always()
+        env:
+          APP_TEST_SHARD: ${{ matrix.shard }}
+        run: |
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-app-test-shards \
+            --stage true \
+            --shard "$APP_TEST_SHARD" \
+            --commit "$GITHUB_SHA" \
+            --source-tree "$source_tree" \
+            --build-id "${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${APP_TEST_SHARD}"
+      - name: Upload application test shard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: 'app-test-shard-${{ matrix.shard }}'
+          path: target/app-test-shards/
+          if-no-files-found: error
+          retention-days: 7
 
   core:
     name: Core reactor verification
@@ -58,13 +201,6 @@ jobs:
       - name: Set up Java 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with: { java-version: '21', distribution: temurin, cache: maven }
-      - name: Restore Maven verification cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.m2/build-cache
-          key: ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-
       # Clean before any root target/ evidence exists. A clean in the later
       # tee pipeline would unlink the log and delete the rendered Helm files.
       - name: Clean reactor before producing evidence
@@ -95,53 +231,6 @@ jobs:
         run: bash .github/scripts/install-helm.sh
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh
-      - name: Detect production-image changes
-        id: production-image-scope
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
-              Dockerfile \
-              .github/scripts/configure-docker-mirror.sh \
-              .dockerignore \
-              pom.xml \
-              mvnw \
-              .mvn/wrapper \
-              'taxonomy-*/pom.xml' \
-              docs \
-              LICENSE \
-              NOTICE \
-              THIRD-PARTY-NOTICES.md \
-              observability/javaagent.properties; then
-            echo 'run=false' >> "$GITHUB_OUTPUT"
-          else
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Verify production Docker image build
-        if: steps.production-image-scope.outputs.run == 'true'
-        env: { IMAGE_TAG: 'taxonomy-ci:${{ github.event.pull_request.head.sha }}' }
-        run: |
-          set -euo pipefail
-          docker build \
-            --progress=plain \
-            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
-            --build-arg VCS_REF="$GITHUB_SHA" \
-            --build-arg VERSION="ci-${GITHUB_SHA}" \
-            --tag "$IMAGE_TAG" .
-          image_revision=$(docker image inspect \
-            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
-            "$IMAGE_TAG")
-          if [[ "$image_revision" != "$GITHUB_SHA" ]]; then
-            echo "::error::Docker image revision label is '$image_revision'; expected '$GITHUB_SHA'."
-            exit 1
-          fi
-          image_user=$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")
-          if [[ "$image_user" != '10001:10001' ]]; then
-            echo "::error::Docker image runtime user is '$image_user'; expected '10001:10001'."
-            exit 1
-          fi
       - name: Validate production and Rancher Helm profiles
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
       - name: Restore pinned embedding model
@@ -149,7 +238,7 @@ jobs:
         with:
           path: models/multilingual-minilm
           key: ${{ runner.os }}-taxonomy-multilingual-minilm-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-      - name: Run the canonical Maven verification suite
+      - name: Run the core reactor test suite
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
@@ -160,14 +249,8 @@ jobs:
         run: |
           mkdir -p target
           set -o pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
-              2>&1 | tee target/maven-verification.log
-          else
-            ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
-              -Dmaven.build.cache.skipCache=true \
-              2>&1 | tee target/maven-verification.log
-          fi
+          ./mvnw -B verify -Pci,ci-app-test-shards-core -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
+            2>&1 | tee target/maven-verification.log
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
@@ -178,13 +261,157 @@ jobs:
           reporter: java-junit
           fail-on-error: false
           max-annotations: '50'
+      - name: Stage core application shard evidence
+        if: always()
+        env:
+          APP_TEST_SHARD: core
+        run: |
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-app-test-shards \
+            --stage true --shard "$APP_TEST_SHARD" \
+            --commit "$GITHUB_SHA" --source-tree "$source_tree" \
+            --build-id "${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${APP_TEST_SHARD}"
+      - name: Upload core application test shard evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: app-test-shard-core
+          path: target/app-test-shards/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Stage full-reactor class outputs for aggregate coverage
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          find . -type d -path '*/target/classes' -print0 > target/reactor-coverage-inputs
+          mapfile -d '' -t class_directories < target/reactor-coverage-inputs
+          ((${#class_directories[@]} > 0))
+          # A test-skipped join cannot recreate execution data from upstream tests.
+          # Reject missing data per tested production module, not just an empty tar.
+          shopt -s nullglob
+          for classes in "${class_directories[@]}"; do
+            module_target=${classes%/classes}
+            reports=("$module_target"/surefire-reports/TEST-*.xml "$module_target"/failsafe-reports/TEST-*.xml)
+            production_class=$(find "$classes" -type f -name '*.class' -print -quit)
+            if ((${#reports[@]} > 0)) && [[ -n "$production_class" && ! -s "$module_target/jacoco.exec" ]]; then
+              echo "::error::Missing JaCoCo execution data for tested module: $module_target" >&2
+              exit 1
+            fi
+          done
+          mapfile -d '' -t execution_files < <(find . -type f -path '*/target/jacoco.exec' -size +0c -print0)
+          ((${#execution_files[@]} > 0))
+          find "${class_directories[@]}" -type f -print0 > target/reactor-output-files
+          printf '%s\0' "${execution_files[@]}" >> target/reactor-output-files
+          mapfile -d '' -t reactor_outputs < target/reactor-output-files
+          sha256sum -- "${reactor_outputs[@]}" > target/core-reactor-files.sha256
+          printf '%s\0' target/core-reactor-files.sha256 >> target/reactor-output-files
+          tar --null -T target/reactor-output-files -czf target/core-reactor-outputs.tar.gz
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          printf '%s\n' "$source_tree" > target/core-reactor-outputs.tree
+          sha256sum target/core-reactor-outputs.tar.gz > target/core-reactor-outputs.sha256
+      - name: Upload full-reactor class outputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: success()
+        with:
+          name: core-reactor-coverage-inputs
+          path: |
+            target/core-reactor-outputs.tar.gz
+            target/core-reactor-outputs.tree
+            target/core-reactor-outputs.sha256
+          if-no-files-found: error
+          retention-days: 7
       - name: Stage commit-bound verified reports
         if: always()
+        env:
+          REQUIRE_AGGREGATE_COVERAGE: 'false'
         run: bash .github/scripts/stage-core-quality-reports.sh
       - name: Upload core verified reports
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with: { name: quality-reports-core, path: 'target/quality-reports/**', if-no-files-found: warn, include-hidden-files: true, retention-days: 7 }
+  coverage-aggregate:
+    name: Complete reactor coverage aggregation
+    needs: [core, app-test-shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Download all isolated application test evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: app-test-shard-*
+          path: target/app-test-shards
+          merge-multiple: true
+      - name: Download full-reactor class outputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: core-reactor-coverage-inputs, path: target }
+      - name: Verify source-bound reactor outputs and shard inputs
+        run: |
+          set -euo pipefail
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          [[ "$(cat target/core-reactor-outputs.tree)" == "$source_tree" ]]
+          sha256sum --check target/core-reactor-outputs.sha256
+          tar -xzf target/core-reactor-outputs.tar.gz -C .
+          sha256sum --check target/core-reactor-files.sha256
+          mapfile -t core_execution_files < <(find . -type f -path '*/target/jacoco.exec' -size +0c -print)
+          ((${#core_execution_files[@]} > 0))
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-app-test-shards \
+            --verify-inputs true --commit "$GITHUB_SHA" --source-tree "$source_tree"
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-app-test-shards \
+            --verify true --commit "$GITHUB_SHA" --source-tree "$source_tree"
+      - name: Run full-reactor JaCoCo aggregation and coverage policy
+        env:
+          GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          ./mvnw -B verify -Pci,ci-app-test-shards-coverage -DrunOnnxTests=true \
+            -Dtaxonomy.ui.skip=true 2>&1 | tee target/coverage-aggregation.log
+      - name: Stage complete coverage and shard evidence
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p target/quality-reports/coverage \
+            target/quality-reports/evidence/application-test-shards \
+            target/quality-reports/tests/taxonomy-build/target/failsafe-reports
+          cp -a taxonomy-coverage/target/site/jacoco-aggregate/. \
+            target/quality-reports/coverage/
+          cp target/app-test-shards/timings.json \
+            target/quality-reports/evidence/application-test-shards/
+          cp target/coverage-aggregation.log target/quality-reports/evidence/
+          cp target/coverage-gate.txt target/quality-reports/evidence/
+          cp taxonomy-build/target/failsafe-reports/TEST-com.taxonomy.build.ReactorCoveragePolicyIT.xml \
+            target/quality-reports/tests/taxonomy-build/target/failsafe-reports/
+          for shard_directory in target/app-test-shards/*; do
+            [[ -d "$shard_directory" ]] || continue
+            shard=${shard_directory##*/}
+            evidence_directory="target/quality-reports/evidence/application-test-shards/$shard"
+            mkdir -p "$evidence_directory"
+            cp "$shard_directory/manifest.json" "$evidence_directory/"
+            cp "$shard_directory/coverage.exec" "$evidence_directory/"
+            if [[ "$shard" == core || ! -d "$shard_directory/tests" ]]; then
+              continue
+            fi
+            while IFS= read -r -d '' report; do
+              relative=${report#"$shard_directory/tests/"}
+              destination="target/quality-reports/tests/application-test-shards/$shard/$relative"
+              mkdir -p "$(dirname "$destination")"
+              cp "$report" "$destination"
+            done < <(find "$shard_directory/tests" -type f -name 'TEST-*.xml' -print0)
+          done
+      - name: Upload complete aggregate coverage evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: quality-reports-coverage
+          path: target/quality-reports/**
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
 
   observability:
     name: OpenTelemetry performance budget
@@ -357,7 +584,7 @@ jobs:
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Pplugin-packaging-tests 2>&1 | tee target/plugin-profile-verification.log
+          ./mvnw -B verify -Pplugin-packaging-tests,ci-plugin-packaging 2>&1 | tee target/plugin-profile-verification.log
       - name: Upload complete plugin profile evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -375,7 +602,7 @@ jobs:
 
   verify:
     name: Maven verification
-    needs: [application, core, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]
+    needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -390,14 +617,17 @@ jobs:
       - name: Require every authoritative lane
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
+          PRODUCTION_IMAGE_RESULT: ${{ needs.production-image.result }}
+          APP_TEST_SHARDS_RESULT: ${{ needs.app-test-shards.result }}
           CORE_RESULT: ${{ needs.core.result }}
+          COVERAGE_AGGREGATE_RESULT: ${{ needs.coverage-aggregate.result }}
           OBSERVABILITY_RESULT: ${{ needs.observability.result }}
           UI_CONTRACTS_RESULT: ${{ needs.ui-contracts.result }}
           UI_SHARDS_RESULT: ${{ needs.ui-shards.result }}
           INTEROPERABILITY_RESULT: ${{ needs.interoperability-products.result }}
           PLUGIN_PROFILE_RESULT: ${{ needs.plugin-profile.result }}
         run: |
-          for lane in APPLICATION_RESULT CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT INTEROPERABILITY_RESULT PLUGIN_PROFILE_RESULT; do
+          for lane in APPLICATION_RESULT PRODUCTION_IMAGE_RESULT APP_TEST_SHARDS_RESULT CORE_RESULT COVERAGE_AGGREGATE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT INTEROPERABILITY_RESULT PLUGIN_PROFILE_RESULT; do
             [[ "${!lane}" == success ]] || { echo "::error::$lane ended with ${!lane}"; exit 1; }
           done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -421,6 +651,9 @@ jobs:
       - name: Download core quality reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: quality-reports-core, path: target/quality-reports }
+      - name: Download complete coverage and app shard reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: quality-reports-coverage, path: target/quality-reports }
       - name: Verify complete digest-bound UI evidence
         env:
           TAXONOMY_UI_EXPECTED_COMMIT: ${{ github.sha }}

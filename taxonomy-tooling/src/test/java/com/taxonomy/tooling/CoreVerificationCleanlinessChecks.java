@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class CoreVerificationCleanlinessChecks {
     private static final String CLEAN = "Clean reactor before producing evidence";
-    private static final String VERIFY = "Run the canonical Maven verification suite";
+    private static final String VERIFY = "Run the core reactor test suite";
     private static final String EVENT = "${{ github.event_name }}";
     private static final List<String> EVIDENCE = List.of(
             "taxonomy-helm-rendered.yaml", "taxonomy-helm-rancher-rke2-rendered.yaml");
@@ -58,7 +58,7 @@ final class CoreVerificationCleanlinessChecks {
             require(directory.resolve("mvnw").toFile().setExecutable(true), "Cannot execute Maven fixture");
             Files.createDirectories(directory.resolve("target"));
             Files.writeString(directory.resolve("target/stale-before-build"), "stale");
-            // This represents a reusable cache outside target; cleaning must not delete it.
+            // Maven's dependency cache lives outside target; cleaning must not delete it.
             Files.createDirectories(directory.resolve("build-cache"));
             Files.writeString(directory.resolve("build-cache/entry"), "reusable");
             if (!pullRequest && core.contains("      - name: " + CLEAN + "\n")) {
@@ -89,11 +89,13 @@ final class CoreVerificationCleanlinessChecks {
             long cleans = calls.stream().filter(call -> (" " + call + " ").contains(" clean ")).count();
             require(cleans == (pullRequest ? 0 : 1), "Unexpected number of clean invocations: " + cleans);
             String verify = calls.getLast();
-            for (String flag : List.of("verify", "-Pci", "-DrunOnnxTests=true", "-Dtaxonomy.ui.skip=true")) {
+            for (String flag : List.of(
+                    "verify", "-Pci,ci-app-test-shards-core",
+                    "-DrunOnnxTests=true", "-Dtaxonomy.ui.skip=true")) {
                 require(List.of(verify.split(" ")).contains(flag), "Missing verification flag " + flag);
             }
-            require(verify.contains("-Dmaven.build.cache.skipCache=true") != pullRequest,
-                    "Non-PR verification must bypass cache reads; PRs must retain caching");
+            require(!verify.contains("-Dmaven.build.cache.skipCache=true"),
+                    "The shard profile disables module build-cache reuse for every event");
             require(!verify.contains("skipTests") && !verify.contains("skipITs") && !verify.contains(" -pl "),
                     "The canonical suite must not be weakened");
         } finally {

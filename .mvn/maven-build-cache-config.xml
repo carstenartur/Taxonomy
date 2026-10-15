@@ -66,6 +66,8 @@
                         <reconcile propertyName="skipTests" skipValue="true"/>
                         <reconcile propertyName="testFailureIgnore" skipValue="true"/>
                         <reconcile propertyName="test"/>
+                        <reconcile propertyName="groups"/>
+                        <reconcile propertyName="excludedGroups"/>
                     </reconciles>
                 </plugin>
                 <plugin groupId="org.apache.maven.plugins" artifactId="maven-failsafe-plugin" goal="integration-test">
@@ -75,6 +77,8 @@
                         <reconcile propertyName="skipTests" skipValue="true"/>
                         <reconcile propertyName="testFailureIgnore" skipValue="true"/>
                         <reconcile propertyName="test"/>
+                        <reconcile propertyName="groups"/>
+                        <reconcile propertyName="excludedGroups"/>
                     </reconciles>
                 </plugin>
                 <plugin groupId="org.apache.maven.plugins" artifactId="maven-failsafe-plugin" goal="verify">
@@ -83,6 +87,8 @@
                         <reconcile propertyName="skipITs" skipValue="true"/>
                         <reconcile propertyName="skipTests" skipValue="true"/>
                         <reconcile propertyName="testFailureIgnore" skipValue="true"/>
+                        <reconcile propertyName="groups"/>
+                        <reconcile propertyName="excludedGroups"/>
                     </reconciles>
                 </plugin>
             </plugins>

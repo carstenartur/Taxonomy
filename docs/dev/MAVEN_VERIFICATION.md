@@ -54,6 +54,40 @@ mistaken for completion of the Java/Maven-only requirement.
 | Browser and accessibility only | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | permission to install browser OS libraries |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | Docker |
 
+The database workflow adds the explicit `ci-database-compatibility` companion:
+
+```bash
+./mvnw -B verify -Pdatabase-postgres,ci-database-compatibility
+./mvnw -B verify -Pdatabase-mssql,ci-database-compatibility
+./mvnw -B verify -Pdatabase-oracle,ci-database-compatibility
+```
+
+This companion skips only repeated taxonomy-app Surefire executions already owned
+by the core and isolated app-test union. It preserves the selected database
+Failsafe tests, their missing-selector failure behavior, test compilation,
+packaging and the other modules' Surefire/build-policy guards. Database profiles
+already leave UI and build-policy integration tests disabled; the companion does
+not change those settings or the database selectors. It disables the partial
+aggregate coverage report, while JaCoCo instrumentation remains enabled. These
+database lanes supplement the complete CI coverage aggregate and cannot replace
+it. The standalone database commands in the table retain their ordinary App
+tests and aggregate report; no companion is activated automatically.
+
+The local ONNX reference workflow uses
+`./mvnw -B verify -Ponnx,ci-onnx-reference -T 2`.
+This explicit companion narrows only the App
+default Surefire execution to `*Onnx*Test`, `*Onnx*Tests` and
+`WorkerRuntimeFootprintTest`; it disables the unrelated isolated product demo.
+It retains upstream unit tests, build-policy guards, model provisioning and both
+Failsafe suites selected by `onnx`: `LocalOnnxPipelineIT` and `OnnxSeleniumIT`.
+The workflow requires positive JUnit evidence for all seven selected unit suites
+(39 cases) and both integration suites (nine cases each). It checks out the PR
+head for reference measurements. No global tag filter is applied: reference unit
+tests include untagged classes, and the integration suites also require Docker.
+The companion disables partial aggregate coverage; complete coverage remains
+owned by the canonical CI aggregate. Standalone `-Ponnx` and canonical `-Pci`
+retain their full App test scope and product demo.
+
 `./mvnw -B verify -Pci -DrunOnnxTests=true` is the local combined lifecycle
 when the reference model is provisioned. The pull-request
 workflow runs this profile in the core reactor with `-DrunOnnxTests=true`
@@ -76,6 +110,57 @@ profile runs:
 It excludes real LLM calls and the SQL Server and Oracle suites. The latter also
 run on pull requests through the separate database workflow; they are not merely
 optional scheduled checks.
+
+### Application test shards and CI critical path
+
+The 14 October 2026 comparison run (`38635506309`) took 68m41s for the core
+job and 55m23s for the plugin job. The plugin artifact repeated 1,157 JUnit
+suites / 8,439 cases already present in core, totaling 3,105 seconds of reported
+suite time. This duplication is the reason for the CI-only packaging companion
+below. These are baseline measurements, not a promised duration for the new
+parallel jobs; compare their published timings after a complete successful run.
+
+The standalone `./mvnw -B verify -Pci -DrunOnnxTests=true` command does not activate
+sharding and continues to run the complete suite. In GitHub Actions, the
+`.mvn/verification-suites.json` `applicationTestShards` plan assigns measured
+recovery/restart and browser acceptance classes to isolated Maven runners. Their
+JUnit tags and Maven profiles are checked against the catalogue; app tests not
+listed for a shard—including newly added test classes—remain in the core group.
+The product-demo isolated Surefire execution and the required architecture gates
+remain in the core reactor with their existing fail-on-empty behavior.
+
+Each app runner stages its test reports and JaCoCo execution data with SHA-256
+digests and the exact source commit/tree and run identity. The core job publishes
+its test evidence independently of the isolated app runners. The separate
+coverage-aggregate job waits for both producers, checks the source-bound
+full-reactor class outputs and complete class inventory, and validates every
+artifact before JaCoCo merges all isolated execution data into a separate
+application execution file. Its full-reactor aggregate report consumes that file
+together with core module execution data before unchanged coverage policies run.
+Missing, duplicate, wrong-source or wrong-tree evidence fails the required
+coverage-aggregate job.
+Legitimate skips and profile exclusions are counted separately from missing
+reports. Machine timings and a concise slow-suite inventory are retained in
+`target/app-test-shards/timings.json` and the CI summary.
+
+The inventory verifier is the Java `taxonomy-tooling` command
+`check-app-test-shards`; its source discovery, evidence validation and actual
+archive/staging shell contracts are tested with JUnit in the normal Maven
+lifecycle. Both isolated app runners also build `taxonomy-tooling` with
+`-pl taxonomy-tooling,taxonomy-app -am`. No separate Node test runner is needed
+for this application-test partitioning.
+
+All groups run on each CI commit and have individually visible GitHub checks.
+The required `Maven verification` gate rejects failed, cancelled or skipped
+groups and missing aggregate coverage. This is parallel execution of the same
+verification scope, not a nightly-only slow-test profile. The single unsharded
+local command above remains the way to execute all of these JUnit tests together.
+
+Production Docker image verification runs as a separate job and remains a
+required final-gate prerequisite. Shard and CI packaging profiles disable Maven
+module build-cache reuse so a warm result from another test scope cannot satisfy
+their evidence checks. GitHub's Maven dependency-download cache remains enabled;
+the standalone unsharded lifecycle retains its configured module cache behavior.
 
 ### Remaining gaps in the Java/Maven-only requirement
 
@@ -182,10 +267,23 @@ tests. It therefore also needs Docker for the existing container-backed browser
 tests and Helm for the build contracts. A focused Failsafe invocation proves the
 selected packaging cases but does not prove this standalone lifecycle.
 
-The existing `ci-cd.yml` workflow runs this command in its `plugin-profile` job.
+In CI, the `plugin-profile` job combines this profile with
+`ci-plugin-packaging`:
+
+```bash
+./mvnw -B verify -Pplugin-packaging-tests,ci-plugin-packaging
+```
+
+That Maven-owned companion skips only taxonomy-app Surefire tests already covered
+by the core and isolated app-test union. It preserves the complete plugin build,
+SDK checks and both selected packaged Failsafe tests. It excludes the partial-lane
+coverage policy; only the separate full-reactor aggregate job can enforce
+coverage. The standalone profile above remains unchanged and runs ordinary
+application tests.
+
 The final Maven verification gate requires that job to succeed; failure,
 cancellation, a skipped job or a missing result blocks completion. The job uses
-the checked-in Maven profile without a separate workflow-owned test selector.
+the checked-in Maven profiles without a separate workflow-owned test selector.
 Its `plugin-profile-verification` artifact retains the Maven log, Surefire and
 Failsafe reports, independent SDK result and host/plugin identity evidence.
 These results supplement the canonical `ci` profile and digest-bound UI shards;
@@ -250,7 +348,7 @@ must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
-| `ci-cd.yml` | Build one commit-bound application, run the core Maven `-Pci` lane, full `plugin-packaging-tests` lifecycle, parallel UI shards and other required lanes, then gate all results and digest-bound evidence |
+| `ci-cd.yml` | Build one commit-bound application, run catalogued Maven app-test shards alongside core tests, aggregate full-reactor coverage after both, separate required production-image verification, CI plugin packaging checks, UI shards and other lanes, then gate all results and digest-bound evidence |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
 | `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |

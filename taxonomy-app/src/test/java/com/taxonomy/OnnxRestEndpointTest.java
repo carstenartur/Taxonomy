@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * deliberately with an explicitly provisioned model directory.
  */
 @Tag("onnx")
+@Tag("ci-app-shard-recovery")
 @SpringBootTest(properties = {
         "llm.provider=LOCAL_ONNX",
         "embedding.enabled=true",

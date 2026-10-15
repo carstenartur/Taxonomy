@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Whole production Spring startup, not the separate frozen-data/cache microbenchmark. */
 @Tag("onnx")
+@Tag("ci-app-shard-recovery")
 class WorkerRuntimeFootprintTest {
     @Test
     @Timeout(value = 20, unit = TimeUnit.MINUTES)

@@ -18,7 +18,18 @@
     "database-postgres": {"itTest": "*Postgres*IT"},
     "database-mssql": {"itTest": "*Mssql*IT"},
     "database-oracle": {"itTest": "*Oracle*IT"},
+    "ci-database-compatibility": {
+      "purpose": "Explicit CI companion to database-postgres, database-mssql or database-oracle; skips only duplicate taxonomy-app Surefire execution and partial aggregate coverage while retaining the selected database Failsafe suite and reactor build guards",
+      "profile": "ci-database-compatibility",
+      "baseProfiles": ["database-postgres", "database-mssql", "database-oracle"]
+    },
     "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
+    "ci-onnx-reference": {
+      "purpose": "Explicit CI companion to onnx; selects App ONNX and reference unit tests plus WorkerRuntimeFootprintTest, retains both ONNX Failsafe suites and upstream/build-policy tests, and omits the unrelated product demo and partial coverage aggregate",
+      "profile": "ci-onnx-reference",
+      "baseProfile": "onnx",
+      "itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT"
+    },
     "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
     "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest"},
@@ -26,6 +37,12 @@
       "purpose": "Full standalone lifecycle for the independent SDK build, immutable host, authenticated HTTP and physically optional features; required by the existing CI workflow alongside canonical verification",
       "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT",
       "requires": ["Java 21", "Maven", "Maven repository access", "Docker", "Helm"]
+    },
+    "ci-plugin-packaging": {
+      "purpose": "CI companion to plugin-packaging-tests; skips only taxonomy-app Surefire reruns already covered by core/shards while retaining the selected packaged Failsafe suites and build checks",
+      "profile": "ci-plugin-packaging",
+      "baseProfile": "plugin-packaging-tests",
+      "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT"
     },
     "document-template-report-e2e": {
       "purpose": "Packaged application, PostgreSQL Testcontainers, Playwright requirement evaluation, report download and rendered document evidence",
@@ -72,8 +89,65 @@
       "requires": ["Java 21", "Docker"]
     }
   },
+  "applicationTestShards": {
+    "purpose": "Split measured expensive taxonomy-app suites across isolated Maven runners while untagged and newly added tests remain in the authoritative core group.",
+    "defaultGroup": "core",
+    "excludedTags": ["real-llm", "db-mssql", "db-oracle"],
+    "requiredExecutions": [
+      {
+        "className": "com.taxonomy.composition.demo.ProductDemoEndToEndTest",
+        "identities": ["product-demo-isolated"]
+      },
+      {
+        "className": "com.taxonomy.ArchitectureExceptionLedgerTest",
+        "identities": ["default", "module-gate-ci-anchor"]
+      }
+    ],
+    "groups": {
+      "core": {
+        "default": true,
+        "profile": "ci-app-test-shards-core",
+        "tests": []
+      },
+      "recovery": {
+        "profile": "ci-app-test-shard-recovery",
+        "tag": "ci-app-shard-recovery",
+        "requiresEmbeddingModel": true,
+        "tests": [
+          "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+          "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
+          "com.taxonomy.interop.IntegrationRestartTest",
+          "com.taxonomy.editor.ArchitectureApplicationRestartTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationGroupCheckpointTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
+          "com.taxonomy.OnnxRestEndpointTest"
+        ]
+      },
+      "browser": {
+        "profile": "ci-app-test-shard-browser",
+        "tag": "ci-app-shard-browser",
+        "tests": [
+          "com.taxonomy.PortfolioUiAcceptanceIT",
+          "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+          "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+          "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+          "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+          "com.taxonomy.DerivedMetadataAndSummaryTests"
+        ]
+      }
+    }
+  },
   "workflowResponsibilities": {
-    "ci-cd.yml": "authoritative Maven verification and report publication",
+    "ci-cd.yml": "Maven-owned application test shards and core coverage aggregation, separate required production-image verification, authoritative report publication",
     "local-onnx-reference.yml": "Maven-owned ONNX inference and versioned DE/EN retrieval reference evidence; canonical CI remains authoritative",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",

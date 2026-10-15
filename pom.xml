@@ -140,6 +140,13 @@
         <releaseCheckRequireClean>true</releaseCheckRequireClean>
         <taxonomy.model.revision>e8f8c211226b894fcb81acc59f3b34ba3efd5f42</taxonomy.model.revision>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+        <taxonomy.app.architectureAnchorPhase>test</taxonomy.app.architectureAnchorPhase>
+        <taxonomy.app.shard.coverageMergePhase>none</taxonomy.app.shard.coverageMergePhase>
+        <taxonomy.app.shard.coverageInclude>**/disabled-jacoco.exec</taxonomy.app.shard.coverageInclude>
+        <taxonomy.app.shard.coverageAggregateSkip>false</taxonomy.app.shard.coverageAggregateSkip>
+        <taxonomy.app.shard.coverage.enabled>false</taxonomy.app.shard.coverage.enabled>
+        <taxonomy.coverage.policy.exclude>**/NeverCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
+        <taxonomy.app.unit.tests.skip>false</taxonomy.app.unit.tests.skip>
         <taxonomy.ui.skip>true</taxonomy.ui.skip>
         <taxonomy.quality.skip>true</taxonomy.quality.skip>
         <taxonomy.ui.suite>all</taxonomy.ui.suite>
@@ -529,6 +536,14 @@
             </properties>
         </profile>
         <profile>
+            <id>ci-database-compatibility</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
+            </properties>
+        </profile>
+        <profile>
             <id>onnx</id>
             <properties>
                 <skipITs>false</skipITs>
@@ -536,6 +551,14 @@
                 <runOnnxTests>true</runOnnxTests>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-onnx-reference</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
             </properties>
         </profile>
         <profile>
@@ -552,6 +575,15 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration><failIfNoSpecifiedTests>false</failIfNoSpecifiedTests></configuration>
             </plugin></plugins></pluginManagement></build>
+        </profile>
+        <profile>
+            <id>ci-plugin-packaging</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
+                <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
+            </properties>
         </profile>
         <profile>
             <id>architecture-tests</id>
@@ -631,6 +663,66 @@
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
             </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shards-core</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser</excludedGroups>
+                <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
+                <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-recovery</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-recovery</groups>
+                <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-browser</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-browser</groups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shards-coverage</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.app.shard.coverageMergePhase>verify</taxonomy.app.shard.coverageMergePhase>
+                <taxonomy.app.shard.coverageInclude>**/jacoco-shards-merged.exec</taxonomy.app.shard.coverageInclude>
+                <taxonomy.app.shard.coverageAggregateSkip>false</taxonomy.app.shard.coverageAggregateSkip>
+                <taxonomy.app.shard.coverage.enabled>true</taxonomy.app.shard.coverage.enabled>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+                <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+            </properties>
+            <build><pluginManagement><plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration><skip>true</skip></configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration><skipITs>true</skipITs></configuration>
+                </plugin>
+            </plugins></pluginManagement></build>
         </profile>
     </profiles>
 

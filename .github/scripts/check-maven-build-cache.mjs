@@ -33,6 +33,10 @@ for (const property of ['skipTests', 'skipITs']) {
 }
 requireContract((cache.match(/<reconcile propertyName="test"\/>/g) ?? []).length >= 2,
   'Surefire -Dtest and Failsafe -Dit.test selectors must participate in cache reconciliation');
+for (const property of ['groups', 'excludedGroups']) {
+  requireContract((cache.match(new RegExp(`<reconcile propertyName="${property}"\\/>`, 'g')) ?? []).length >= 3,
+    `${property} must distinguish every Maven-owned application shard from the core verification build`);
+}
 
 for (const pom of ['taxonomy-coverage/pom.xml', 'taxonomy-build/pom.xml', '.github/ui-verification-pom.xml']) {
   const content = read(pom);
@@ -40,11 +44,33 @@ for (const pom of ['taxonomy-coverage/pom.xml', 'taxonomy-build/pom.xml', '.gith
     `${pom} must disable caching entirely for transient evidence/setup outputs`);
 }
 
+const appPom = read('taxonomy-app/pom.xml');
+const testEvidenceProfiles = [
+  'ci-app-test-shards-core',
+  'ci-app-test-shard-recovery',
+  'ci-app-test-shard-browser',
+  'ci-app-test-shards-coverage',
+  'ci-plugin-packaging',
+];
+const rootPom = read('pom.xml');
+for (const profile of testEvidenceProfiles) {
+  const rootStart = rootPom.indexOf(`<id>${profile}</id>`);
+  const rootEnd = rootPom.indexOf('</profile>', rootStart);
+  requireContract(rootStart >= 0 && rootEnd > rootStart
+      && rootPom.slice(rootStart, rootEnd).includes('<maven.build.cache.enabled>false</maven.build.cache.enabled>'),
+  `${profile} must disable module build-cache reuse for its distinct test scope`);
+  const start = appPom.indexOf(`<id>${profile}</id>`);
+  const end = appPom.indexOf('</profile>', start);
+  requireContract(start >= 0 && end > start
+      && appPom.slice(start, end).includes('<maven.build.cache.enabled>false</maven.build.cache.enabled>'),
+  `${profile} must not restore/save app reports across different selectors`);
+}
+
 const workflow = read('.github/workflows/ci-cd.yml');
-requireContract((workflow.match(/path: ~\/\.m2\/build-cache/g) ?? []).length >= 2,
-  'application and core jobs must persist the Maven build cache');
-requireContract(workflow.includes('maven.build.cache.skipCache=true'),
-  'authoritative non-PR verification must bypass cache reads');
+requireContract(workflow.includes('path: ~/.m2/build-cache'),
+  'the packaged application lane may persist its module build cache');
+requireContract(!workflow.includes('taxonomy-maven-build-cache-verify-v2-'),
+  'the packaged application lane must not restore canonical test-scope cache entries');
 const coreStart = workflow.indexOf('\n  core:\n');
 const observabilityStart = workflow.indexOf('\n  observability:\n', coreStart);
 requireContract(coreStart >= 0 && observabilityStart > coreStart,
@@ -61,12 +87,11 @@ requireContract(cleanup.includes("if: github.event_name != 'pull_request'")
   'only non-PR builds must clean the complete reactor before producing evidence');
 requireContract(!coreWorkflow.includes('./mvnw -B clean verify'),
   'clean must not remove prepared evidence or the open Maven log');
-requireContract(coreWorkflow.includes('./mvnw -B verify -Pci')
-    && coreWorkflow.includes('-Dmaven.build.cache.skipCache=true'),
-  'non-PR verification must still run the full suite without cache reads');
-requireContract(coreWorkflow.includes('${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-'),
-  'core verification must restore prior verification entries');
-requireContract(!coreWorkflow.includes('${{ runner.os }}-taxonomy-maven-build-cache-app-v2-'),
-  'core verification cache must not restore package -DskipTests entries');
+requireContract(coreWorkflow.includes('./mvnw -B verify -Pci,ci-app-test-shards-core')
+    && coreWorkflow.includes('cache: maven'),
+  'core must run the full suite and retain Maven dependency downloads');
+requireContract(!coreWorkflow.includes('~/.m2/build-cache')
+    && !coreWorkflow.includes('maven.build.cache.skipCache=true'),
+  'sharded core must neither restore nor save module test-result cache entries');
 
 console.log('Maven build-cache contract OK');

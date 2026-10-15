@@ -149,11 +149,36 @@ class PluginWorkflowTriggerTest {
         assertThat(invocation.get("continue-on-error")).isNull();
         assertThat((String) invocation.get("run"))
                 .contains("./mvnw -B verify -Pplugin-packaging-tests")
+                .contains("ci-plugin-packaging")
                 .doesNotContain("-Dtest=", "-Dit.test=", "-Dskip", "-DexcludedGroups=", "-Dtaxonomy.quality.skip=");
         Map<?, ?> verification = map(jobs.get("verify"));
         assertThat(((List<?>) verification.get("needs")).contains("plugin-profile")).isTrue();
         assertThat(map(authoritativeLaneGate().get("env")).get("PLUGIN_PROFILE_RESULT"))
                 .isEqualTo("${{ needs.plugin-profile.result }}");
+    }
+
+    @Test
+    void ciPackagingProfileSkipsOnlyTheDuplicateApplicationUnitTests() throws Exception {
+        String rootPom = Files.readString(root.resolve("pom.xml"));
+        String appPom = Files.readString(root.resolve("taxonomy-app/pom.xml"));
+        String buildPom = Files.readString(root.resolve("taxonomy-build/pom.xml"));
+        String packagingProfile = profile(rootPom, "plugin-packaging-tests");
+        String ciPackagingProfile = profile(rootPom, "ci-plugin-packaging");
+        String buildPackagingProfile = profile(buildPom, "plugin-packaging-tests");
+
+        assertThat(packagingProfile)
+                .contains("<skipITs>false</skipITs>")
+                .contains("<it.test>ExternalPluginPackagedIT,OptionalFeaturePackagedIT</it.test>");
+        assertThat(ciPackagingProfile)
+                .contains("<taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>")
+                .contains("<taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>")
+                .contains("<taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>")
+                .doesNotContain("<taxonomy.quality.skip>true</taxonomy.quality.skip>")
+                .doesNotContain("<skipITs>true</skipITs>");
+        assertThat(appPom).contains("<skip>${taxonomy.app.unit.tests.skip}</skip>");
+        assertThat(buildPackagingProfile)
+                .contains("<failIfNoTests>true</failIfNoTests>")
+                .contains("<failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>");
     }
 
     @ParameterizedTest(name = "full plugin profile result {0} -> aggregate exit {1}")
@@ -216,5 +241,13 @@ class PluginWorkflowTriggerTest {
     private static Map<?, ?> map(Object value) {
         assertThat(value).isInstanceOf(Map.class);
         return (Map<?, ?>) value;
+    }
+
+    private static String profile(String pom, String profileId) {
+        int start = pom.indexOf("<id>" + profileId + "</id>");
+        int end = pom.indexOf("</profile>", start);
+        assertThat(start).as("profile %s exists", profileId).isGreaterThanOrEqualTo(0);
+        assertThat(end).as("profile %s is closed", profileId).isGreaterThan(start);
+        return pom.substring(start, end);
     }
 }

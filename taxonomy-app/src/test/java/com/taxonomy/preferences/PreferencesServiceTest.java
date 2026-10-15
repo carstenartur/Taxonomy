@@ -4,12 +4,14 @@ import com.taxonomy.preferences.storage.PreferencesGitRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -21,11 +23,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Integration tests for {@link PreferencesService} with an in-memory JGit repository.
  *
- * <p>Uses a full Spring context so that {@code @Value} property injection is tested.
- * The {@link PreferencesGitRepository} is replaced with an in-memory instance to
- * avoid requiring a database.
+ * <p>Loads only the service and its real in-memory dependencies so that
+ * {@code @Value} property injection is tested without initializing the application,
+ * database, catalogue, or search indexes.
  */
-@SpringBootTest
+@SpringJUnitConfig(PreferencesServiceTest.InMemoryPreferencesConfig.class)
 @TestPropertySource(properties = {
     "gemini.api.key=",
     "openai.api.key=",
@@ -57,8 +59,14 @@ class PreferencesServiceTest {
         }
     }
 
-    @TestConfiguration
+    @TestConfiguration(proxyBeanMethods = false)
+    @Import(PreferencesService.class)
     static class InMemoryPreferencesConfig {
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
+
         @Bean
         @Primary
         public ControllablePreferencesGitRepository testPreferencesGitRepository() {

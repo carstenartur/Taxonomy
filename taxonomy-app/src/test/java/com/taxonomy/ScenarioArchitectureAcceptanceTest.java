@@ -6,6 +6,7 @@ import com.taxonomy.acceptance.ScenarioExportQa;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real HTTP, authentication, catalogue, jobs, persistence and exports; only LLM HTTP is replaced. */
+@Tag("ci-app-shard-browser")
 class ScenarioArchitectureAcceptanceTest {
     // Build the Spring fixture only in the child JVM, not in the long-lived reactor
     // test process. The resource guard still observes real, unmodified heap samples.
