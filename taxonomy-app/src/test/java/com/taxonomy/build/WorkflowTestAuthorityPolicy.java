@@ -29,9 +29,12 @@ final class WorkflowTestAuthorityPolicy {
 
     static final String CANONICAL_COMMAND = "./mvnw -B verify -Pci";
 
+    // The core shard is the CI producer; the separate parallel-evidence contract
+    // requires its sibling shards and the complete coverage join. Coverage-only
+    // and other partial profiles must not satisfy this invocation requirement.
     private static final Pattern CANONICAL_INVOCATION = Pattern.compile(
             "(?m)(?:^|(?:&&|\\|\\||[;|])\\s*)"
-                    + "\\./mvnw\\s+-B\\s+verify\\s+-Pci(?:\\s|$)");
+                    + "\\./mvnw\\s+-B\\s+verify\\s+-Pci(?:,ci-app-test-shards-core)?(?:\\s|$)");
     private static final Set<String> BLOCK_MARKERS = Set.of("|", ">", "|-", ">-");
     private static final Set<String> REMOVED_WORKFLOWS = Set.of(
             "accessibility.yml",

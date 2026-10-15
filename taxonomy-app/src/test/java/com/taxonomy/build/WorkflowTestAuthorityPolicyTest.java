@@ -209,6 +209,52 @@ class WorkflowTestAuthorityPolicyTest {
         }
     }
 
+    @Test
+    void acceptsTheMavenOwnedCoreShardAlongsideTheCanonicalCiProfile(
+            @TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        writeWorkflow(root, "ci-cd.yml", """
+                name: CI
+                jobs:
+                  core:
+                    steps:
+                      - run: |
+                          ./mvnw -B verify -Pci,ci-app-test-shards-core -DrunOnnxTests=true \\
+                            -Dtaxonomy.ui.skip=true
+                """);
+
+        assertThat(policy.inspect(root).errors()).isEmpty();
+    }
+
+    @Test
+    void rejectsOtherPartialProfilesAndLookalikesAsTheCanonicalProducer(
+            @TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        for (String profiles : List.of(
+                "ci-app-test-shards-core", "ci-fast", "ci,unknown",
+                "ci,ci-app-test-shards-coverage", "ci,ci-app-test-shard-browser",
+                "ci,ci-app-test-shards-core-extra")) {
+            writeWorkflow(root, "ci-cd.yml", """
+                    name: CI
+                    jobs:
+                      verify:
+                        steps:
+                          - run: ./mvnw -B verify -P%s
+                    """.formatted(profiles));
+
+            assertThat(policy.inspect(root).errors())
+                    .as("non-canonical profile selection %s", profiles)
+                    .anyMatch(error -> error.contains(
+                            "canonical Maven command in a run step"));
+        }
+    }
+
     private void writeCatalog(Path root, Map<String, String> responsibilities)
             throws IOException {
         Path catalog = root.resolve(".mvn/verification-suites.json");
