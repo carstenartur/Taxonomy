@@ -79,6 +79,13 @@ optional scheduled checks.
 
 ### Application test shards and CI critical path
 
+The 14 October 2026 comparison run (`38635506309`) took 68m41s for the core
+job and 55m23s for the plugin job. The plugin artifact repeated 1,157 JUnit
+suites / 8,439 cases already present in core, totaling 3,105 seconds of reported
+suite time. This duplication is the reason for the CI-only packaging companion
+below. These are baseline measurements, not a promised duration for the new
+parallel jobs; compare their published timings after a complete successful run.
+
 The standalone `./mvnw -B verify -Pci -DrunOnnxTests=true` command does not activate
 sharding and continues to run the complete suite. In GitHub Actions, the
 `.mvn/verification-suites.json` `applicationTestShards` plan assigns measured
