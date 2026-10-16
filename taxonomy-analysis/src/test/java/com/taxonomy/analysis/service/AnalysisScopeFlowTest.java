@@ -67,7 +67,7 @@ class AnalysisScopeFlowTest {
     }
     @Test void selectedScoringKeepsFullDisplayTreeAndSelectedCoverage() {
         var fixture = fixture(); var result = fixture.llm().analyzeWithBudget("requirement", SELECTED);
-        assertThat(result.getRawScores()).isEqualTo(Map.of("BP", 20, "BP-1", 20, "BP-2", 20));
+        assertThat(result.getRawScores()).isEqualTo(Map.of("BP", 20d, "BP-1", 20d, "BP-2", 20d));
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
         assertThat(result.getAnalysisScope()).isEqualTo(SELECTED);
         assertThat(result.getTree()).extracting(TaxonomyNodeDto::getCode).containsExactly("BP", "CP");
@@ -88,18 +88,18 @@ class AnalysisScopeFlowTest {
             assertThat(progress.total()).isEqualTo(3);
             assertThat(progress.taxonomies()).extracting(AnalysisNodeProgress.Taxonomy::root).containsExactly("BP");
         }
-        var events = new ArrayList<String>(); var scores = new HashMap<String, Integer>();
+        var events = new ArrayList<String>(); var scores = new HashMap<String, Double>();
         stream.llm().analyzeStreaming("requirement", SELECTED, new AnalysisEventCallback() {
             public void onPhase(String message, int progress) { events.add("phase"); }
-            public void onScores(Map<String,Integer> values, Map<String,String> reasons, String message, LlmCallDetail detail) {
+            public void onScores(Map<String,Double> values, Map<String,String> reasons, String message, LlmCallDetail detail) {
                 events.add("scores"); scores.putAll(values);
             }
             public void onExpanding(String parent, List<String> children) { events.add("expanding"); }
-            public void onComplete(String status, Map<String,Integer> values, List<String> warnings,
+            public void onComplete(String status, Map<String,Double> values, List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> gaps) {
                 events.add("complete"); assertThat(status).isEqualTo("SUCCESS"); assertThat(values).isEqualTo(scores);
             }
-            public void onError(String status, String error, Map<String,Integer> values, List<String> warnings,
+            public void onError(String status, String error, Map<String,Double> values, List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> gaps) { fail(error); }
         });
         assertThat(scores).isEqualTo(result.getRawScores());

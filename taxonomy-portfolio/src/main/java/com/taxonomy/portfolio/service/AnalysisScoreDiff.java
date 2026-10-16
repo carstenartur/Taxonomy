@@ -21,10 +21,10 @@ final class AnalysisScoreDiff {
     static Map<String, ScoreChange> between(
             AnalysisResult older,
             AnalysisResult newer) {
-        Map<String, Integer> oldEffective = safeScores(older == null ? null : older.getScores());
-        Map<String, Integer> newEffective = safeScores(newer == null ? null : newer.getScores());
-        Map<String, Integer> oldRaw = safeScores(older == null ? null : older.getRawScores());
-        Map<String, Integer> newRaw = safeScores(newer == null ? null : newer.getRawScores());
+        Map<String, Double> oldEffective = safeScores(older == null ? null : older.getScores());
+        Map<String, Double> newEffective = safeScores(newer == null ? null : newer.getScores());
+        Map<String, Double> oldRaw = safeScores(older == null ? null : older.getRawScores());
+        Map<String, Double> newRaw = safeScores(newer == null ? null : newer.getRawScores());
         Map<String, AnalysisScoreDetail> oldDetails =
                 safeDetails(older == null ? null : older.getScoreDetails());
         Map<String, AnalysisScoreDetail> newDetails =
@@ -42,16 +42,16 @@ final class AnalysisScoreDiff {
         for (String code : codes) {
             AnalysisScoreDetail oldDetail = oldDetails.get(code);
             AnalysisScoreDetail newDetail = newDetails.get(code);
-            Integer oldEffectiveValue = oldEffective.get(code);
-            Integer newEffectiveValue = newEffective.get(code);
-            Integer oldRawValue = rawValue(oldRaw.get(code), oldDetail);
-            Integer newRawValue = rawValue(newRaw.get(code), newDetail);
+            Double oldEffectiveValue = oldEffective.get(code);
+            Double newEffectiveValue = newEffective.get(code);
+            Double oldRawValue = rawValue(oldRaw.get(code), oldDetail);
+            Double newRawValue = rawValue(newRaw.get(code), newDetail);
             AnalysisScoreKind oldKind = oldDetail == null ? null : oldDetail.kind();
             AnalysisScoreKind newKind = newDetail == null ? null : newDetail.kind();
             String oldParentCode = oldDetail == null ? null : oldDetail.parentCode();
             String newParentCode = newDetail == null ? null : newDetail.parentCode();
-            Integer oldParentScore = oldDetail == null ? null : oldDetail.parentScore();
-            Integer newParentScore = newDetail == null ? null : newDetail.parentScore();
+            Double oldParentScore = oldDetail == null ? null : oldDetail.parentScore();
+            Double newParentScore = newDetail == null ? null : newDetail.parentScore();
 
             if (Objects.equals(oldEffectiveValue, newEffectiveValue)
                     && Objects.equals(oldRawValue, newRawValue)
@@ -75,8 +75,8 @@ final class AnalysisScoreDiff {
         return Collections.unmodifiableMap(new LinkedHashMap<>(changes));
     }
 
-    private static Integer rawValue(
-            Integer rawScore,
+    private static Double rawValue(
+            Double rawScore,
             AnalysisScoreDetail detail) {
         if (detail != null) {
             return detail.rawScore();
@@ -84,7 +84,7 @@ final class AnalysisScoreDiff {
         return rawScore;
     }
 
-    private static Map<String, Integer> safeScores(Map<String, Integer> scores) {
+    private static Map<String, Double> safeScores(Map<String, Double> scores) {
         return scores == null ? Map.of() : scores;
     }
 

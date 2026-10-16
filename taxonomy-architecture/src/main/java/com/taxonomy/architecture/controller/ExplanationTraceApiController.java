@@ -34,7 +34,7 @@ public class ExplanationTraceApiController {
      * Request body for explanation trace.
      */
     public record ExplainRequest(
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             String businessText,
             int minScore) {

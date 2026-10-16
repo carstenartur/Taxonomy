@@ -10,6 +10,13 @@ Categories:
 Note: If "Parent hierarchy" context is provided above the nodes, use it to understand
 the taxonomic context of each node, but only score the nodes listed under "Nodes to evaluate".
 Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
-Each value must be an object with "score" (integer, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
+Each value must be an object with "score" (number, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
 Do NOT use any other keys — only the ones listed above.
 Example: {"C1": {"score": 0, "reason": "No relevance to this category."}, "C2": {"score": 80, "reason": "Strong match because the requirement describes network infrastructure needs."}}
+
+Numeric contract: use JSON numbers with a decimal point, never a decimal comma, quoted number,
+percent sign or fraction expression. 0.5 means 0.5 percent, not 50 percent. Positive values may
+be smaller than 1; do not round them to zero. Keep unrelated or unresolved work distinct.
+The parent value is an absolute percentage budget, not a new local 100. Example of allocation:
+when the parent budget is 1 and two children contribute equally, use 0.5 each; four equal
+children under a 0.5 parent receive 0.125 each. Apply the actual budget and offered IDs above.

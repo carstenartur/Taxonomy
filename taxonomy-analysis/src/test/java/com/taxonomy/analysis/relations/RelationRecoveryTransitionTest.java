@@ -41,7 +41,7 @@ class RelationRecoveryTransitionTest {
         assertEquals(firstCalls + continuationCalls, fixture.raw().get(), "accepted exchanges must replay locally");
         assertEquals(continuationCalls, resumed.getRelationSearchReport().totalCalls());
         assertEquals("SUCCESS", journal.entries.get(failedKey).state());
-        assertEquals(Map.of("process", 1), resumed.getScores(), "relation recovery cannot rewrite node assessments");
+        assertEquals(Map.of("process", 1d), resumed.getScores(), "relation recovery cannot rewrite node assessments");
         assertEquals(0, fixture.legacy().get(), "recovery cannot fall back to score-inferred relations");
     }
 
@@ -65,7 +65,7 @@ class RelationRecoveryTransitionTest {
         assertTrue(resumed.getRelationSearchReport().result().unfinished().stream().anyMatch(item -> item.type().equals("CONSUMES")));
         assertTrue(resumed.getRelationSearchReport().result().edges().isEmpty());
         assertTrue(resumed.getArchitectureView().getIncludedRelationships().isEmpty());
-        assertEquals(Map.of("process", 1), resumed.getScores());
+        assertEquals(Map.of("process", 1d), resumed.getScores());
         assertEquals(0, fixture.legacy().get());
     }
 

@@ -45,7 +45,7 @@ public class ReportApiController {
     }
 
     public record ReportRequest(
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             String businessText,
             int minScore) {
     }

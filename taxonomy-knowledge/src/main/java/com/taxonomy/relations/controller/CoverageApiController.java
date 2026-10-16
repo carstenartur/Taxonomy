@@ -47,7 +47,7 @@ public class CoverageApiController {
     public record RecordCoverageRequest(
             String requirementId,
             String requirementText,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             int minScore) {
     }
 

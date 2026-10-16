@@ -28,7 +28,7 @@ class ReportApiControllerCompositionTest {
     private final RepositoryStateService repositories = mock(RepositoryStateService.class);
     private final WorkspaceResolver workspaces = mock(WorkspaceResolver.class);
     private final ReportApiController controller = new ReportApiController(reports, renderers, repositories, workspaces);
-    private final ReportApiController.ReportRequest request = new ReportApiController.ReportRequest(Map.of("A", 50), "business", 17);
+    private final ReportApiController.ReportRequest request = new ReportApiController.ReportRequest(Map.of("A", 50d), "business", 17);
 
     @ParameterizedTest
     @ValueSource(strings = {"markdown", "html", "docx", "json"})

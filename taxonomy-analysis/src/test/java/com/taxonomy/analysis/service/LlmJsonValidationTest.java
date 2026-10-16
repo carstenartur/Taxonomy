@@ -62,7 +62,7 @@ class LlmJsonValidationTest {
         String reason = "Arbeitsschutz \"Zitat\" { } [ ] ``` \u00e4 \\ $ {{PARENT_SCORE}}";
         String raw = new ObjectMapper().writeValueAsString(Map.of("BR", Map.of("score", 20, "reason", reason)));
         var parsed = parser.parseScoreParseResult("```json\n" + raw + "\n```", roots(), 20);
-        assertEquals(Map.of("BR", 20), parsed.scores());
+        assertEquals(Map.of("BR", 20d), parsed.scores());
         assertEquals(reason, parsed.reasons().get("BR"));
     }
 

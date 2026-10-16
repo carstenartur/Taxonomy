@@ -27,7 +27,7 @@ public class RequirementCoverage {
     private String nodeCode;
 
     @Column(name = "score")
-    private int score;
+    private double score;
 
     @Column(name = "analyzed_at")
     private Instant analyzedAt;
@@ -36,7 +36,7 @@ public class RequirementCoverage {
     }
 
     public RequirementCoverage(String requirementId, String requirementText,
-                               String nodeCode, int score, Instant analyzedAt) {
+                               String nodeCode, double score, Instant analyzedAt) {
         this.requirementId = requirementId;
         this.requirementText = requirementText;
         this.nodeCode = nodeCode;
@@ -52,7 +52,7 @@ public class RequirementCoverage {
 
     public String getNodeCode() { return nodeCode; }
 
-    public int getScore() { return score; }
+    public double getScore() { return score; }
 
     public Instant getAnalyzedAt() { return analyzedAt; }
 }

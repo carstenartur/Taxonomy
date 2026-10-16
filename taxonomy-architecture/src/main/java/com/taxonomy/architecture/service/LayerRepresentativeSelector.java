@@ -38,7 +38,7 @@ public class LayerRepresentativeSelector {
      *                           exists in the same root layer
      * @return {@code true} if the candidate should be included
      */
-    public boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
+    public boolean shouldInclude(TaxonomyNode node, double rootScore, boolean hasDeepLeafInLayer) {
         // Always accept deep leaves (depth > 1)
         if (node.getLevel() > 1) {
             return true;

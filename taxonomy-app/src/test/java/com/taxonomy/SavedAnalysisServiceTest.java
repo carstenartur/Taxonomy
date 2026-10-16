@@ -26,18 +26,18 @@ class SavedAnalysisServiceTest {
 
     @Test
     void buildExportPopulatesAllFields() {
-        Map<String, Integer> scores  = Map.of("CO", 35, "CR", 25, "BR", 0);
+        Map<String, Double> scores  = Map.of("CO", 35d, "CR", 25d, "BR", 0d);
         Map<String, String>  reasons = Map.of("CO", "Voice comms", "CR", "Core services");
 
         SavedAnalysis saved = savedAnalysisService.buildExport(
                 "Provide secure voice comms", scores, reasons, "GEMINI");
 
-        assertThat(saved.getVersion()).isEqualTo(2);
+        assertThat(saved.getVersion()).isEqualTo(4);
         assertThat(saved.getRequirement()).isEqualTo("Provide secure voice comms");
         assertThat(saved.getTimestamp()).isNotBlank();
         assertThat(saved.getProvider()).isEqualTo("GEMINI");
-        assertThat(saved.getScores()).containsEntry("CO", 35);
-        assertThat(saved.getScores()).containsEntry("BR", 0);
+        assertThat(saved.getScores()).containsEntry("CO", 35d);
+        assertThat(saved.getScores()).containsEntry("BR", 0d);
         assertThat(saved.getReasons()).containsEntry("CO", "Voice comms");
     }
 
@@ -45,7 +45,7 @@ class SavedAnalysisServiceTest {
 
     @Test
     void importRoundTripPreservesAllFields() throws IOException {
-        Map<String, Integer> scores  = Map.of("CO", 35, "CR", 25, "BR", 0);
+        Map<String, Double> scores  = Map.of("CO", 35d, "CR", 25d, "BR", 0d);
         Map<String, String>  reasons = Map.of("CO", "Voice comms");
 
         SavedAnalysis exported = savedAnalysisService.buildExport(
@@ -62,10 +62,10 @@ class SavedAnalysisServiceTest {
         assertThat(imported.getVersion()).isEqualTo(1);
         assertThat(imported.getRequirement()).isEqualTo("Secure voice comms requirement");
         assertThat(imported.getProvider()).isEqualTo("GEMINI");
-        assertThat(imported.getScores()).containsEntry("CO", 35);
-        assertThat(imported.getScores()).containsEntry("CR", 25);
+        assertThat(imported.getScores()).containsEntry("CO", 35d);
+        assertThat(imported.getScores()).containsEntry("CR", 25d);
         // 0 must be preserved (not missing)
-        assertThat(imported.getScores()).containsEntry("BR", 0);
+        assertThat(imported.getScores()).containsEntry("BR", 0d);
         assertThat(imported.getReasons()).containsEntry("CO", "Voice comms");
     }
 
@@ -140,8 +140,8 @@ class SavedAnalysisServiceTest {
 
         // Should NOT throw — unknown codes generate warnings but are accepted
         SavedAnalysis imported = savedAnalysisService.importFromJson(json);
-        assertThat(imported.getScores()).containsEntry("CO", 35);
-        assertThat(imported.getScores()).containsEntry("UNKNOWN_XYZ", 10);
+        assertThat(imported.getScores()).containsEntry("CO", 35d);
+        assertThat(imported.getScores()).containsEntry("UNKNOWN_XYZ", 10d);
 
         // findUnknownCodes should report the unknown code
         assertThat(savedAnalysisService.findUnknownCodes(imported))
@@ -155,7 +155,7 @@ class SavedAnalysisServiceTest {
                 {"version":2,"requirement":"Selected processes","scores":{"BP":70},
                  "analysisScope":{"taxonomyRoots":["BP","CP"],"mode":"TAXONOMIES_ONLY"}}
                 """);
-        assertThat(saved.getScores()).containsExactlyEntriesOf(Map.of("BP", 70));
+        assertThat(saved.getScores()).containsExactlyEntriesOf(Map.of("BP", 70d));
         assertThat(saved.getAnalysisScope().taxonomyRoots()).containsExactly("BP", "CP");
     }
 
@@ -226,8 +226,8 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/secure-voice-comms.json");
 
-        int sum = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double sum = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .sum();
         assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
@@ -238,8 +238,8 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/logistics-supply-chain.json");
 
-        int sum = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double sum = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .sum();
         assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
@@ -250,8 +250,8 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/cyber-defence-monitoring.json");
 
-        int sum = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double sum = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .sum();
         assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
@@ -263,9 +263,9 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/secure-voice-comms.json");
 
-        int coScore  = saved.getScores().getOrDefault("CO", 0);
-        int maxScore = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double coScore  = saved.getScores().getOrDefault("CO", 0d);
+        double maxScore = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .max().orElse(0);
         assertThat(coScore).as("CO must be the dominant root taxonomy for a voice comms requirement")
                 .isEqualTo(maxScore);
@@ -277,9 +277,9 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/logistics-supply-chain.json");
 
-        int bpScore  = saved.getScores().getOrDefault("BP", 0);
-        int maxScore = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double bpScore  = saved.getScores().getOrDefault("BP", 0d);
+        double maxScore = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .max().orElse(0);
         assertThat(bpScore).as("BP must be the dominant root taxonomy for a logistics requirement")
                 .isEqualTo(maxScore);
@@ -291,9 +291,9 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/cyber-defence-monitoring.json");
 
-        int coScore  = saved.getScores().getOrDefault("CO", 0);
-        int maxScore = ROOT_CODES.stream()
-                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+        double coScore  = saved.getScores().getOrDefault("CO", 0d);
+        double maxScore = ROOT_CODES.stream()
+                .mapToDouble(r -> saved.getScores().getOrDefault(r, 0d))
                 .max().orElse(0);
         assertThat(coScore).as("CO must be the dominant root taxonomy for a cyber defence requirement")
                 .isEqualTo(maxScore);
@@ -336,7 +336,7 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/secure-voice-comms.json");
 
-        assertThat(saved.getScores().getOrDefault("BR", -1)).isEqualTo(0);
+        assertThat(saved.getScores().getOrDefault("BR", -1d)).isEqualTo(0);
         long nonZeroBrNodes = saved.getScores().entrySet().stream()
                 .filter(e -> e.getKey().startsWith("BR") && e.getValue() > 0)
                 .count();
@@ -355,7 +355,7 @@ class SavedAnalysisServiceTest {
         SavedAnalysis imported = savedAnalysisService.importFromJson(json);
         assertThat(imported.getVersion()).isEqualTo(1);
         assertThat(imported.getRequirement()).isEqualTo("Legacy requirement");
-        assertThat(imported.getScores()).containsEntry("CO", 35);
+        assertThat(imported.getScores()).containsEntry("CO", 35d);
         assertThat(imported.getSources()).isNull();
         assertThat(imported.getRequirementSourceLinks()).isNull();
     }
@@ -389,7 +389,7 @@ class SavedAnalysisServiceTest {
 
     @Test
     void buildExportWithProvenancePopulatesFields() {
-        Map<String, Integer> scores = Map.of("CO", 35);
+        Map<String, Double> scores = Map.of("CO", 35d);
         Map<String, String> reasons = Map.of("CO", "Voice comms");
 
         com.taxonomy.dto.SourceArtifactDto src = new com.taxonomy.dto.SourceArtifactDto();
@@ -402,7 +402,7 @@ class SavedAnalysisServiceTest {
                 "Test requirement", scores, reasons, "GEMINI",
                 List.of(src), List.of(link));
 
-        assertThat(saved.getVersion()).isEqualTo(2);
+        assertThat(saved.getVersion()).isEqualTo(4);
         assertThat(saved.getSources()).hasSize(1);
         assertThat(saved.getSources().get(0).getTitle()).isEqualTo("Test Source");
         assertThat(saved.getRequirementSourceLinks()).hasSize(1);

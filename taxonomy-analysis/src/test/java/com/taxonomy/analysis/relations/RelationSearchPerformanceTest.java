@@ -63,7 +63,7 @@ class RelationSearchPerformanceTest {
         var service = new RequirementRelationSearchService(catalogue, new RelationCompatibilityMatrix(), llm, budget);
         for (int run = 1; run <= 2; run++) {
             prompts.clear();
-            var actual = service.search(ORIGINAL, Map.of(SOURCE.id(), 1));
+            var actual = service.search(ORIGINAL, Map.of(SOURCE.id(), 1d));
             var referencePrompts = new ArrayList<String>();
             var referenceLoads = new AtomicInteger();
             var reference = new RequirementRelationSearch(new RequirementRelationSearch.InputCatalogue() {
@@ -75,7 +75,7 @@ class RelationSearchPerformanceTest {
                 }
             }, new RelationCompatibilityMatrix(), prompt -> {
                 referencePrompts.add(prompt); return answer(prompt);
-            }, () -> {}, "TEST").search(ORIGINAL, Map.of(SOURCE.id(), 1),
+            }, () -> {}, "TEST").search(ORIGINAL, Map.of(SOURCE.id(), 1d),
                     new RequirementRelationSearch.Options(new Limits(24, 8, 10, 512), 32));
             assertEquals(referencePrompts, prompts, "prompts and evaluation order");
             assertEquals(normalize(reference), normalize(actual), "all evidence except elapsed time");

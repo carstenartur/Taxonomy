@@ -67,7 +67,7 @@ public final class DefaultRelationArchitectureContract {
     }
 
     public static void testMissingPositiveSourcesAreNotACompleteArchitectureAssessment() {
-        for (Map<String,Integer> scores : List.of(Map.<String,Integer>of(), Map.of("process", 0))) {
+        for (Map<String,Double> scores : List.of(Map.<String,Double>of(), Map.of("process", 0d))) {
             var report = RequirementRelationSearchContract.session(prompt -> {
                 throw new AssertionError("No model call without a concrete assessed source");
             }).search(RequirementRelationSearchContract.READ, scores, RequirementRelationSearchContract.OPTIONS);
@@ -88,7 +88,7 @@ public final class DefaultRelationArchitectureContract {
         };
         var search = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
                 RequirementRelationSearchContract::answer, () -> {});
-        var report = search.search("Each process reads and writes evidence.", Map.of("first", 100, "second", 50),
+        var report = search.search("Each process reads and writes evidence.", Map.of("first", 100d, "second", 50d),
                 new RequirementRelationSearch.Options(new Limits(7, 8, 10, 128), 16));
         Set<String> sources = new HashSet<>();
         report.result().edges().forEach(edge -> sources.add(edge.contribution().source().id()));
@@ -106,7 +106,7 @@ public final class DefaultRelationArchitectureContract {
             public List<Node> children(Node node) { return base.children(node); }
         };
         return new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(),
-                RequirementRelationSearchContract::answer, () -> {}).search(original, Map.of("process", 1),
+                RequirementRelationSearchContract::answer, () -> {}).search(original, Map.of("process", 1d),
                 RequirementRelationSearchContract.OPTIONS);
     }
     private static Set<String> types(RelationSearchReport report) {

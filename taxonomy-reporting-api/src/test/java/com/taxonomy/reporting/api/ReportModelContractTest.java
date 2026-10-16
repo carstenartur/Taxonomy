@@ -32,10 +32,10 @@ class ReportModelContractTest {
     @Test
     void missingScoresRemainDistinctFromExplicitZeroInTheWireContract() throws Exception {
         var missing = new PathStep(1, "evidence-node", "Evidence", null, null, null, ReasonSource.MISSING);
-        var zero = new PathStep(1, "evidence-node", "Evidence", 0, 0.0, "Rejected", ReasonSource.AI_SCORING);
+        var zero = new PathStep(1, "evidence-node", "Evidence", 0d, 0.0, "Rejected", ReasonSource.AI_SCORING);
         assertNotEquals(missing, zero);
         assertNull(json.readValue(json.writeValueAsBytes(missing), PathStep.class).absoluteScore());
-        assertEquals(0, json.readValue(json.writeValueAsBytes(zero), PathStep.class).absoluteScore());
+        assertEquals(0d, json.readValue(json.writeValueAsBytes(zero), PathStep.class).absoluteScore());
     }
 
     @Test

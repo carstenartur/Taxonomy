@@ -26,7 +26,6 @@ class CategoryAssessmentContractTest {
         "{\"BP\":true,\"CP\":40}",
         "{\"BP\":-1,\"CP\":100}",
         "{\"BP\":101,\"CP\":0}",
-        "{\"BP\":60.5,\"CP\":39.5}",
         "{\"BP\":4294967296,\"CP\":100}",
         "{\"BP\":60,\"BP\":0,\"CP\":40}"
     })
@@ -38,15 +37,22 @@ class CategoryAssessmentContractTest {
     void completeScoresKeepOfferedOrderReasonsAndParentBudget() throws Exception {
         var result = parser.parseScoreParseResult(
                 "{\"CP\":{\"score\":20,\"reason\":\"support\"},\"BP\":60}", nodes, 40);
-        assertEquals(Map.of("BP", 30, "CP", 10), result.scores());
+        assertEquals(Map.of("BP", 30d, "CP", 10d), result.scores());
         assertEquals(List.of("BP", "CP"), List.copyOf(result.scores().keySet()));
         assertEquals("support", result.reasons().get("CP"));
         assertNotNull(result.discrepancy());
     }
 
     @Test
+    void validFractionalCategoryScoresRemainDecimalEvidence() throws Exception {
+        var result = parser.parseScoreParseResult("{\"BP\":60.5,\"CP\":39.5}", nodes, 100);
+
+        assertEquals(Map.of("BP", 60.5d, "CP", 39.5d), result.scores());
+    }
+
+    @Test
     void explicitZerosAreValidNegativeEvidence() throws Exception {
-        assertEquals(Map.of("BP", 0, "CP", 0), parser.parseScoreParseResult(
+        assertEquals(Map.of("BP", 0d, "CP", 0d), parser.parseScoreParseResult(
                 "{\"BP\":0,\"CP\":{\"score\":0,\"reason\":\"not requested\"}}", nodes, 100).scores());
     }
 

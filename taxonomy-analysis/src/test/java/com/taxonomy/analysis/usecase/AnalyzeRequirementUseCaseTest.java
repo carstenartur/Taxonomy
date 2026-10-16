@@ -95,7 +95,7 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getArchitectureView().getIncludedElements()).extracting("nodeCode")
                 .containsExactly("BP-1017");
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
-        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20));
+        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20d));
         assertThat(result.getViewContext()).isSameAs(viewContext);
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
                 architectureViewService);
@@ -123,10 +123,10 @@ class AnalyzeRequirementUseCaseTest {
             assertThat(operation.authority().branch()).isEqualTo("main");
             assertThat(operation.authority().sourceCommit()).isEqualTo("main-commit");
             assertThat(captured.basedOnBranch()).isEqualTo("main");
-            return new AnalysisResult(Map.of("CP", 71), List.of());
+            return new AnalysisResult(Map.of("CP", 71d), List.of());
         });
 
-        assertThat(useCase.analyze(command).analysisResult().getRawScores()).containsEntry("CP", 71);
+        assertThat(useCase.analyze(command).analysisResult().getRawScores()).containsEntry("CP", 71d);
 
         verify(repositoryStateService).getViewContext("alice", "main", selected);
         verify(repositoryStateService, never()).resolveWorkspaceBranch(any());
@@ -139,16 +139,16 @@ class AnalyzeRequirementUseCaseTest {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL);
         var command = new AnalyzeRequirementCommand("requirement", false, 20, null, "alice",
                 new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
-        var evidence = new AnalysisResult(Map.of("BP", 20), List.of());
+        var evidence = new AnalysisResult(Map.of("BP", 20d), List.of());
         var report = org.mockito.Mockito.mock(com.taxonomy.dto.RelationSearchReport.class);
         when(report.isSearchExhausted()).thenReturn(true);
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
-        when(requirementRelationSearchService.search("requirement", Map.of("BP", 20))).thenReturn(report);
+        when(requirementRelationSearchService.search("requirement", Map.of("BP", 20d))).thenReturn(report);
         var result = useCase.analyze(command).analysisResult();
         assertThat(result.getAnalysisScope()).isEqualTo(scope);
         assertThat(result.getRelationSearchReport()).isSameAs(report);
-        verify(requirementRelationSearchService).search("requirement", Map.of("BP", 20));
+        verify(requirementRelationSearchService).search("requirement", Map.of("BP", 20d));
         verifyNoInteractions(analysisRelationGenerator, hypothesisService, architectureViewService);
     }
 
@@ -163,7 +163,7 @@ class AnalyzeRequirementUseCaseTest {
         when(llmService.analyzeWithBudget("requirement", scope)).thenReturn(evidence);
         when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
         when(requirementRelationSearchService.isEnabled()).thenReturn(true);
-        when(requirementRelationSearchService.search("requirement", Map.of("BP-1017", 20))).thenThrow(
+        when(requirementRelationSearchService.search("requirement", Map.of("BP-1017", 20d))).thenThrow(
                 new com.taxonomy.analysis.service.AnalysisStoppedException(
                         com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED));
         when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
@@ -177,7 +177,7 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getArchitectureView().getIncludedElements()).extracting("nodeCode")
                 .containsExactly("BP-1017");
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
-        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20));
+        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20d));
         assertThat(result.getViewContext()).isSameAs(viewContext);
         verifyNoInteractions(architectureViewService);
         // Exact read authority is resolved once and reported on the result.
@@ -185,7 +185,7 @@ class AnalyzeRequirementUseCaseTest {
                 .getViewContext("alice", "draft", command.workspaceContext());
         verify(llmService).requireProviderAdmissible(null, false);
         verify(llmService).analyzeWithBudget("requirement", scope);
-        verify(requirementRelationSearchService).search("requirement", Map.of("BP-1017", 20));
+        verify(requirementRelationSearchService).search("requirement", Map.of("BP-1017", 20d));
         assertThat(com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation.current()).isEmpty();
     }
 
@@ -197,7 +197,7 @@ class AnalyzeRequirementUseCaseTest {
         root.getChildren().add(support);
         support.getChildren().add(analysis);
         analysis.getChildren().add(assessed);
-        var result = new AnalysisResult(Map.of("BP-1017", 20), List.of(root));
+        var result = new AnalysisResult(Map.of("BP-1017", 20d), List.of(root));
         result.setStatus("SUCCESS");
         return result;
     }
@@ -215,7 +215,7 @@ class AnalyzeRequirementUseCaseTest {
                 "Need secure voice comms", true, 7, "gemini",
                 "alice", new WorkspaceContext("alice", "alice-ws", "draft"));
         AnalysisResult analysisResult = new AnalysisResult();
-        analysisResult.setScores(Map.of("CP", 80, "CR", 70));
+        analysisResult.setScores(Map.of("CP", 80d, "CR", 70d));
         analysisResult.setStatus("SUCCESS");
 
         List<RelationHypothesisDto> provisionalRelations = List.of(
@@ -269,7 +269,7 @@ class AnalyzeRequirementUseCaseTest {
                         "snapshot-1",
                         "portfolio:snapshot-1"));
         AnalysisResult analysisResult = new AnalysisResult();
-        analysisResult.setScores(Map.of("CP", 80, "CR", 70));
+        analysisResult.setScores(Map.of("CP", 80d, "CR", 70d));
         List<RelationHypothesisDto> provisionalRelations = List.of(
                 new RelationHypothesisDto("CP", "Capabilities", "CR", "Communications",
                         "REALIZES", 0.56, "compatibility matrix"));
@@ -301,7 +301,7 @@ class AnalyzeRequirementUseCaseTest {
                 "Need secure voice comms", false, 20, null,
                 "alice", new WorkspaceContext("alice", "alice-ws", "draft"));
         AnalysisResult analysisResult = new AnalysisResult();
-        analysisResult.setScores(Map.of("CP", 80));
+        analysisResult.setScores(Map.of("CP", 80d));
         ViewContext viewContext = new ViewContext("abc123", "draft", Instant.now(), true, false, false);
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
@@ -344,7 +344,7 @@ class AnalyzeRequirementUseCaseTest {
                 "Need secure voice comms", false, 20, null,
                 "alice", WorkspaceContext.SHARED);
         AnalysisResult analysisResult = new AnalysisResult();
-        analysisResult.setScores(Map.of("CP", 80));
+        analysisResult.setScores(Map.of("CP", 80d));
         ViewContext viewContext = new ViewContext(null, "draft", null, true, false, false);
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);

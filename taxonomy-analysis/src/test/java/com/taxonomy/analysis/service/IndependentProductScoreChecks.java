@@ -6,10 +6,9 @@ import java.util.List;
 
 /** Pure parser contract; IP is an existing catalogue root identity, not a made-up product tree. */
 final class IndependentProductScoreChecks {
-    static final List<String> INVALID = List.of("0.999999999999999999", "1.000000000000000001",
-            "100.000000000000000001", "-0.000000000000000001", "49.9", "99.5", "-1", "101",
-            "4294967376", "1e30", "1e309", "null", "true", "\"80\"");
-    static final List<String> VALID = List.of("0", "1", "1.0", "1e0", "49", "50", "80", "100.000");
+    static final List<String> INVALID = List.of("100.000000000000000001", "-0.000000000000000001", "-1", "101",
+            "4294967376", "1e30", "1e309", "1e-9999", "null", "true", "\"80\"");
+    static final List<String> VALID = List.of("0.5", "0.125", "0.999999999999999999", "1.000000000000000001", "49.9", "99.5", "0", "1", "1.0", "1e0", "49", "50", "80", "100.000");
 
     private IndependentProductScoreChecks() { }
 
@@ -23,7 +22,7 @@ final class IndependentProductScoreChecks {
     }
 
     static void accepts(String number) throws Exception {
-        int expected = new java.math.BigDecimal(number).intValueExact();
+        double expected = new java.math.BigDecimal(number).doubleValue();
         var raw = parse(number, 0);
         if (raw.scores().get("IP") != expected || !"explicit evidence".equals(raw.reasons().get("IP"))) {
             throw new AssertionError("Exact suitability or reason changed: " + number);

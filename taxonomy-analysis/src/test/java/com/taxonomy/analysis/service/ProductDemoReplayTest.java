@@ -52,12 +52,23 @@ class ProductDemoReplayTest {
         // UA-1253 children are scaled to the exact parent budget offered by the product.
         var children = JSON.readTree(book.reply(scoringPrompt(false, scenario.r0Text(), 35,
                 "UA-1604, UA-1605, UA-1606")));
-        int sum = 0;
-        for (var child : List.of("UA-1604", "UA-1605", "UA-1606")) sum += children.path(child).path("score").asInt();
-        assertThat(sum).isEqualTo(35);
+        double sum = 0;
+        for (var child : List.of("UA-1604", "UA-1605", "UA-1606")) sum += children.path(child).path("score").asDouble();
+        assertThat(sum).isCloseTo(35d, within(1e-12d));
         assertThat(children.path("UA-1605").path("score").asInt()).isGreaterThan(children.path("UA-1604").path("score").asInt());
         assertThat(children.path("UA-1606").path("score").asInt()).isZero();
         assertThat(children.path("UA-1606").path("reason").asString()).isNotBlank();
+    }
+
+    @Test void fractionalParentBudgetKeepsPositiveDemoChildrenBelowOnePercent() {
+        var book = new DemoReplyBook(scenario, "R0");
+        var children = JSON.readTree(book.reply(scoringPrompt(false, scenario.r0Text(), 0.5,
+                "UA-1604, UA-1605, UA-1606")));
+        double sum = List.of("UA-1604", "UA-1605", "UA-1606").stream()
+                .mapToDouble(code -> children.path(code).path("score").asDouble()).sum();
+
+        assertThat(sum).isCloseTo(0.5d, within(1e-12d));
+        assertThat(children.path("UA-1605").path("score").asDouble()).isPositive().isLessThan(0.5d);
     }
 
     @Test void missingReplyNeverCallsLiveProvider() {
@@ -323,12 +334,13 @@ class ProductDemoReplayTest {
         return node;
     }
 
-    private static String scoringPrompt(boolean root, String text, int parentScore, String keys) {
+    private static String scoringPrompt(boolean root, String text, double parentScore, String keys) {
         return root
                 ? "You assess the independent relevance of the offered C3 taxonomy root to the original business requirement.\n"
                 + "This is one root assessment, not a distribution of a parent budget or a comparison with other roots.\n\n"
                 + "Business Requirement: " + text + "\n\nRespond ONLY with a valid JSON object using EXACTLY these keys: " + keys + "\n"
-                : "Business Requirement: " + text + "\nThe scores must sum to " + parentScore + ". A score of 0 means the child is not relevant.\n"
+                : "Business Requirement: " + text + "\nThe scores must sum to "
+                + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". A score of 0 means the child is not relevant.\n"
                 + "Respond ONLY with a valid JSON object using EXACTLY these keys: " + keys + "\n";
     }
 }

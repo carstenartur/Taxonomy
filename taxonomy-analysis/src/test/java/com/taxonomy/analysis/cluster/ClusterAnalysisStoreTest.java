@@ -121,10 +121,47 @@ class ClusterAnalysisStoreTest {
             assertTrue(db.store.accept(cpCompletion));
             var snapshot = db.store.snapshot(context);
             assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
-            assertEquals(Map.of("CP", 50, "IP", 70), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 50d, "IP", 70d), snapshot.result().getRawScores());
             assertEquals(List.of("CP", "IP"), snapshot.result().getTree().stream().map(TaxonomyNodeDto::getCode).toList());
             assertEquals("SUCCESS", snapshot.result().getStatus());
             assertEquals(snapshot.revision(), db.store.events(context, 0, 100).getLast().sequence());
+        }
+    }
+
+    @Test void acceptsFractionalV3CompletionForPersistedLegacyV1Task() {
+        try (var db = new Database()) {
+            var context = context("legacy-v1-completion");
+            db.admit(context);
+            var currentTask = db.task(CP);
+            db.store.start(currentTask);
+            var taskEnvelope = currentTask.envelope();
+            var legacy = new SubtaxonomyAnalysisTask(new AnalysisEnvelope(1,
+                    AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, taskEnvelope.operationId(),
+                    taskEnvelope.taskId(), taskEnvelope.taskType(), taskEnvelope.authority(),
+                    taskEnvelope.requirement(), taskEnvelope.roots(), 1, null, taskEnvelope.correlationId(),
+                    taskEnvelope.createdAt(), taskEnvelope.deadline()), currentTask.root());
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> {
+                var work = db.em.createQuery(
+                                "select w from ClusterAnalysisWork w where w.operationId=:operation and w.taskId=:task",
+                                ClusterAnalysisWork.class)
+                        .setParameter("operation", context.operationId())
+                        .setParameter("task", legacy.taskId().value()).getSingleResult();
+                work.messageJson = new String(new com.taxonomy.analysis.dag.json.AnalysisMessageCodec().encode(legacy),
+                        java.nio.charset.StandardCharsets.UTF_8);
+            });
+            var node = new TaxonomyNodeDto();
+            node.setCode("CP"); node.setTaxonomyRoot("CP");
+            var result = new AnalysisResult(Map.of("CP", 0.5d), List.of(node));
+            result.setStatus("SUCCESS");
+            var completion = new AnalysisMessageFactory(context, Clock.systemUTC())
+                    .completed(legacy, AnalysisTaskOutcome.COMPLETED, 0.5d, 1, null);
+            db.completions.commit(new PreparedAnalysisCompletion<>(completion,
+                    () -> db.store.persistResult(legacy, result)));
+
+            assertTrue(db.store.accept(completion));
+            assertEquals(1, db.store.snapshot(context).completedRoots());
+            assertTrue(db.store.accept(db.complete(db.task(IP), result("IP", 70))));
+            assertEquals(Map.of("CP", 0.5d, "IP", 70d), db.store.snapshot(context).result().getRawScores());
         }
     }
 
@@ -173,7 +210,7 @@ class ClusterAnalysisStoreTest {
             db.store.accept(db.complete(db.task(IP), failed));
             var result = db.store.snapshot(context).result();
             assertEquals(ClusterAnalysisState.PARTIAL, db.store.snapshot(context).state());
-            assertEquals(Map.of("CP", 80), result.getRawScores());
+            assertEquals(Map.of("CP", 80d), result.getRawScores());
             assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("IP")));
             assertFalse(result.getRawScores().containsKey("IP"));
         }
@@ -264,7 +301,7 @@ class ClusterAnalysisStoreTest {
             assertExportable(combined);
             assertNull(combined.getAnalysisCoverage(), "Legacy evidence cannot be promoted to complete version 3 coverage");
             assertEquals("PARTIAL", combined.getStatus());
-            assertEquals(Map.of("CP", 75, "IP", 30), combined.getRawScores());
+            assertEquals(Map.of("CP", 75d, "IP", 30d), combined.getRawScores());
         }
     }
 

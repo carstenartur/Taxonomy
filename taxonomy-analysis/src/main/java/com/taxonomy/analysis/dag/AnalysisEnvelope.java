@@ -42,12 +42,14 @@ public record AnalysisEnvelope(
         Instant deadline) {
 
     /** Current contract version. Increment for any incompatible change. */
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 3;
+    /** V1 integer scores stay readable; V2 is the separate partitioned-relation contract. */
+    public static boolean supportedVersion(int version) { return version == 1 || version == 2 || version == SCHEMA_VERSION; }
 
     private static final Pattern REFERENCE = Pattern.compile("[A-Za-z0-9._:+*-]{1,1280}");
 
     public AnalysisEnvelope {
-        if (schemaVersion != SCHEMA_VERSION && schemaVersion != 2) {
+        if (!supportedVersion(schemaVersion)) {
             throw new IllegalArgumentException("Unsupported analysis message schema version: " + schemaVersion);
         }
         if (schemaVersion == 2 && taskType != AnalysisTaskType.RELATION_ANALYSIS)
@@ -119,7 +121,10 @@ public record AnalysisEnvelope(
 
     /** Derive a reply/event header caused by this message, keeping operation identity. */
     public AnalysisEnvelope derive(AnalysisMessageType type, Instant now) {
-        return new AnalysisEnvelope(schemaVersion, type, operationId, taskId, taskType, authority,
+        // A legacy task may be completed by a new worker. Never tag its fractional
+        // result with the old integer-score schema; legacy consumers must reject it.
+        int replyVersion = type == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED ? SCHEMA_VERSION : schemaVersion;
+        return new AnalysisEnvelope(replyVersion, type, operationId, taskId, taskType, authority,
                 requirement, roots, 1, taskId == null ? correlationId : taskId.value(), correlationId,
                 now, deadline);
     }

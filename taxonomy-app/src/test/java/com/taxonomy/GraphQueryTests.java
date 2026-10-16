@@ -75,8 +75,8 @@ class GraphQueryTests {
         // Create relation: BP → CP via SUPPORTS
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
 
         RequirementImpactView view = graphQueryService.findImpactForRequirement(
                 scores, "secure voice communications", 2);
@@ -94,8 +94,8 @@ class GraphQueryTests {
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
         relationService.createRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
 
         // With maxHops=1, CR should NOT appear
         RequirementImpactView view1 = graphQueryService.findImpactForRequirement(scores, "test", 1);
@@ -115,8 +115,8 @@ class GraphQueryTests {
     void requirementImpactTracksRelationships() {
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
 
         RequirementImpactView view = graphQueryService.findImpactForRequirement(scores, "test", 2);
 
@@ -296,14 +296,14 @@ class GraphQueryTests {
     @Test
     void maxHopsClampedToMinimum1() {
         RequirementImpactView view = graphQueryService.findImpactForRequirement(
-                Map.of("BP", 91), "test", 0);
+                Map.of("BP", 91d), "test", 0);
         assertThat(view.getMaxHops()).isEqualTo(1);
     }
 
     @Test
     void maxHopsClampedToMaximum5() {
         RequirementImpactView view = graphQueryService.findImpactForRequirement(
-                Map.of("BP", 91), "test", 10);
+                Map.of("BP", 91d), "test", 10);
         assertThat(view.getMaxHops()).isEqualTo(5);
     }
 

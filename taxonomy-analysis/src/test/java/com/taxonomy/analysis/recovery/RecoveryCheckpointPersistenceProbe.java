@@ -183,6 +183,46 @@ public final class RecoveryCheckpointPersistenceProbe {
                     "A failed persistence transaction prevented the next valid attempt");
         }
     }
+    public static void fractionalCheckpointSurvivesIndependentSessions() {
+        try (var db = new Database()) {
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            AnalysisCheckpointSession.Store durable = new AnalysisCheckpointSession.Store() {
+                @Override public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+                    return db.transaction(em -> db.store(em).prepare(db.claim(), question));
+                }
+                @Override public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+                    db.transaction(em -> { db.store(em).finish(db.claim(), question, state, detail); return null; });
+                }
+                @Override public void checkActive() {
+                    check("RUNNING".equals(db.transaction(em -> db.store(em).state(db.claim()))), "claim lost");
+                }
+            };
+            for (int iteration = 0; iteration < 2; iteration++) {
+                try (var session = new AnalysisCheckpointSession(durable)) {
+                    var accepted = AnalysisCheckpointSession.evaluate("CATEGORY", "MOCK", List.of("BP"), "decimal prompt", () -> {
+                        calls.incrementAndGet();
+                        return db.mapper.readValue("{\"scores\":{\"BP\":0.125},\"rawResponse\":\"verbatim reply\"}", LlmCallDetail.class);
+                    });
+                    check(accepted.getScores().get("BP") == .125, "durable fractional score changed");
+                    check("verbatim reply".equals(accepted.getRawResponse()), "raw reply changed");
+                    var failed = AnalysisCheckpointSession.evaluate("CATEGORY", "MOCK", List.of("CP"), "failed prompt", () -> {
+                        calls.incrementAndGet();
+                        var detail = new LlmCallDetail(); detail.setScores(Map.of("CP", 0));
+                        detail.setRawResponse("broken JSON"); detail.setError("INVALID_JSON"); return detail;
+                    });
+                    check(failed.getScores().isEmpty(), "technical failure became zero evidence");
+                    check("broken JSON".equals(failed.getRawResponse()), "failed evidence was lost");
+                }
+            }
+            check(calls.get() == 2, "a second session repeated already durable requests");
+            db.transaction(em -> {
+                check(db.savedResult.equals(em.find(AnalysisContinuationRun.class, db.id).resultJson),
+                        "checkpoint replay replaced the frozen snapshot");
+                return null;
+            });
+        }
+    }
+
     private static void expectConflict(Runnable operation) {
         try { operation.run(); throw new AssertionError("An invalid claim was admitted"); }
         catch (org.springframework.web.server.ResponseStatusException expected) {
@@ -208,6 +248,7 @@ public final class RecoveryCheckpointPersistenceProbe {
 
     public static void main(String[] args) {
         switch (args[0]) {
+            case "fractional" -> fractionalCheckpointSurvivesIndependentSessions();
             case "read" -> stateDoesNotLoadSavedResult();
             case "checkpoint-read" -> checkpointDoesNotLoadSavedResult();
             case "checkpoint-authority" -> checkpointClaimIsStillEnforced();

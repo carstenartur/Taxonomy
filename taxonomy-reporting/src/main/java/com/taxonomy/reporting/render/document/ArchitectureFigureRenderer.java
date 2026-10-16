@@ -108,7 +108,7 @@ public final class ArchitectureFigureRenderer {
                                 : new BasicStroke(node.anchor() ? 3 : 2));
                 g.draw(box);
                 g.setFont(new Font("SansSerif", Font.BOLD, 20));
-                String score = Math.round(node.relevance() * 100) + "%";
+                String score = com.taxonomy.dto.AnalysisPercentages.display(node.relevance() * 100);
                 int scoreWidth = g.getFontMetrics().stringWidth(score);
                 drawBounded(
                         g,

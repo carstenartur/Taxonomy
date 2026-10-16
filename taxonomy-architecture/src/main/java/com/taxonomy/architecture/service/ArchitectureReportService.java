@@ -75,7 +75,7 @@ public class ArchitectureReportService {
      * @return populated {@link ArchitectureReport}
      */
     @Transactional(readOnly = true)
-    public ArchitectureReport generateReport(Map<String, Integer> scores,
+    public ArchitectureReport generateReport(Map<String, Double> scores,
                                               String businessText, int minScore) {
         ArchitectureReport report = new ArchitectureReport();
         report.setBusinessText(businessText);
@@ -83,7 +83,7 @@ public class ArchitectureReportService {
         report.setGeneratedAt(Instant.now());
 
         int threshold = minScore > 0 ? minScore : DEFAULT_MIN_SCORE;
-        Map<String, Integer> safeScores = scores != null ? scores : Map.of();
+        Map<String, Double> safeScores = scores != null ? scores : Map.of();
 
         // 1. Architecture View
         RequirementArchitectureView archView = architectureViewService.build(

@@ -156,7 +156,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38");
     }
 
     @Test
@@ -231,13 +231,44 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
+    }
+
+    @Test
+    void fractionalScoreMigrationPreservesLegacyValuesAndWidensScoreColumns() throws Exception {
+        DataSource dataSource = isolatedDataSource("fractional_score_migration");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "37");
+        execute(dataSource, """
+                insert into requirement_coverage (requirement_id, node_code, score)
+                values ('fractional-requirement', 'BP-TEST', 85)
+                """);
+
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration());
+
+        assertThat(singleDouble(dataSource,
+                "select score from requirement_coverage where requirement_id = 'fractional-requirement'"))
+                .isEqualTo(85.0);
+        execute(dataSource, """
+                insert into requirement_coverage (requirement_id, node_code, score)
+                values ('fractional-requirement-2', 'BP-TEST', 0.125)
+                """);
+        assertThat(singleDouble(dataSource,
+                "select score from requirement_coverage where requirement_id = 'fractional-requirement-2'"))
+                .isEqualTo(0.125);
+        assertThat(columnType(dataSource, "req_element_mapping", "direct_score"))
+                .isEqualTo("float8");
+        assertThat(columnType(dataSource, "requirement_coverage", "score"))
+                .isEqualTo("float8");
+        assertThat(columnType(dataSource, "req_solution_link", "coverage_percent"))
+                .isEqualTo("float8");
     }
 
     private static void assertProviderBindingSchema(DataSource dataSource) throws SQLException {
@@ -253,6 +284,7 @@ class TaxonomySchemaPostgresMigrationIT {
                     assertThat(metadata.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
                 }
             }
+
             for (String table : List.of("req_analysis_job", "req_analysis_snapshot",
                     "reformulation_usage_attempt", "analysis_question_checkpoint")) {
                 try (var metadata = connection.getMetaData().getColumns(null, connection.getSchema(), table, "provider")) {
@@ -689,6 +721,25 @@ class TaxonomySchemaPostgresMigrationIT {
              ResultSet resultSet = statement.executeQuery(sql)) {
             resultSet.next();
             return resultSet.getString(1);
+        }
+    }
+
+    private static double singleDouble(DataSource dataSource, String sql) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            resultSet.next();
+            return resultSet.getDouble(1);
+        }
+    }
+
+    private static String columnType(DataSource dataSource, String table, String column)
+            throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             ResultSet resultSet = connection.getMetaData().getColumns(
+                     connection.getCatalog(), connection.getSchema(), table, column)) {
+            assertThat(resultSet.next()).as(table + "." + column).isTrue();
+            return resultSet.getString("TYPE_NAME");
         }
     }
 

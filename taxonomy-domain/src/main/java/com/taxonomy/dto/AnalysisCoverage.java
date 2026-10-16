@@ -7,15 +7,19 @@ public record AnalysisCoverage(Map<String, NodeAssessment> nodes, int assessedNo
                                int unknownNodes, int failedOrBlockedNodes) {
     public enum State { RELEVANT, NOT_RELEVANT, UNKNOWN }
     public enum Descendants { COMPLETE, PARTIAL, UNASSESSED }
-    public record NodeAssessment(State state, Integer score, Integer effectiveRelevance,
+    public record NodeAssessment(State state, Double score, Double effectiveRelevance,
                                  Descendants descendants, String reason) {
+        public NodeAssessment(State state, Number score, Number effectiveRelevance, Descendants descendants, String reason) {
+            this(state, score == null ? null : AnalysisPercentages.require(score),
+                    effectiveRelevance == null ? null : AnalysisPercentages.require(effectiveRelevance), descendants, reason);
+        }
         public NodeAssessment {
             if (state == null || descendants == null || (reason != null && reason.length() > 4096))
                 throw new IllegalArgumentException("Invalid assessment state");
             if ((state == State.UNKNOWN && (score != null || effectiveRelevance != null))
-                    || (state == State.RELEVANT && (score == null || score < 1 || score > 100))
-                    || (state == State.NOT_RELEVANT && !Integer.valueOf(0).equals(score))
-                    || (effectiveRelevance != null && (effectiveRelevance < 0 || effectiveRelevance > 100)))
+                    || (state == State.RELEVANT && (score == null || score <= 0 || !AnalysisPercentages.valid(score)))
+                    || (state == State.NOT_RELEVANT && (score == null || score != 0))
+                    || (effectiveRelevance != null && !AnalysisPercentages.valid(effectiveRelevance)))
                 throw new IllegalArgumentException("Assessment state and score disagree");
         }
     }
@@ -35,30 +39,32 @@ public record AnalysisCoverage(Map<String, NodeAssessment> nodes, int assessedNo
     }
     public boolean hasOpenEvaluations() { return failedOrBlockedNodes > 0; }
 
-    public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, Integer> raw,
-                                         Map<String, Integer> effective, Map<String, String> failed) {
+    public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, ? extends Number> raw,
+                                         Map<String, ? extends Number> effective, Map<String, String> failed) {
         return derive(tree, raw, effective, failed, null);
     }
 
     /** A stopped traversal also leaves questions it never reached open, independently of provider failures. */
-    public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, Integer> raw,
-                                         Map<String, Integer> effective, Map<String, String> failed,
+    public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, ? extends Number> raw,
+                                         Map<String, ? extends Number> effective, Map<String, String> failed,
                                          String interruption) {
         if (interruption != null && !interruption.startsWith("INTERRUPTED:"))
             throw new IllegalArgumentException("An unfinished traversal requires an explicit interruption reason");
         Map<String, NodeAssessment> nodes = new TreeMap<>();
-        for (TaxonomyNodeDto root : tree) visit(root, raw, effective, failed, null, false, interruption, nodes);
+        var acceptedRaw = AnalysisScoreSemantics.normalizeScores(raw);
+        var acceptedEffective = AnalysisScoreSemantics.normalizeScores(effective);
+        for (TaxonomyNodeDto root : tree) visit(root, acceptedRaw, acceptedEffective, failed, null, false, interruption, nodes);
         int assessed = (int) nodes.values().stream().filter(n -> n.state() != State.UNKNOWN).count();
         int blocked = (int) nodes.values().stream().filter(n -> unresolved(n.reason())).count();
         return new AnalysisCoverage(nodes, assessed, nodes.size() - assessed, blocked);
     }
     private record Visited(boolean complete, boolean anyAssessed) { }
-    private static Visited visit(TaxonomyNodeDto node, Map<String, Integer> raw,
-                                 Map<String, Integer> effective, Map<String, String> failed,
+    private static Visited visit(TaxonomyNodeDto node, Map<String, Double> raw,
+                                 Map<String, Double> effective, Map<String, String> failed,
                                  String blockedBy, boolean pruned, String interruption, Map<String, NodeAssessment> out) {
         String code = node.getCode();
         if (out.containsKey(code)) throw new IllegalArgumentException("Duplicate catalogue node " + code);
-        Integer value = raw.get(code);
+        Double value = raw.get(code);
         String ownFailure = failed.get(code);
         String reason = value != null ? null : ownFailure != null ? ownFailure
                 : blockedBy != null ? "BLOCKED_BY:" + blockedBy

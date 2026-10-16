@@ -68,7 +68,7 @@ public class RequirementElementMapping {
     private String taxonomyRoot;
 
     @Column(name = "direct_score", nullable = false)
-    private int directScore;
+    private double directScore;
 
     @Column(nullable = false)
     private double relevance;
@@ -120,7 +120,7 @@ public class RequirementElementMapping {
                                      String nodeCode,
                                      String nodeTitle,
                                      String taxonomyRoot,
-                                     int directScore,
+                                     double directScore,
                                      double relevance,
                                      double confidence,
                                      MappingOrigin mappingOrigin,
@@ -195,7 +195,7 @@ public class RequirementElementMapping {
     public String getNodeCode() { return nodeCode; }
     public String getNodeTitle() { return nodeTitle; }
     public String getTaxonomyRoot() { return taxonomyRoot; }
-    public int getDirectScore() { return directScore; }
+    public double getDirectScore() { return directScore; }
     public double getRelevance() { return relevance; }
     public double getConfidence() { return confidence; }
     public MappingOrigin getMappingOrigin() { return mappingOrigin; }

@@ -33,7 +33,7 @@ class AnalysisFacadeTest {
     @Test
     void buildAnalysisExport_delegatesToSavedAnalysisService() {
         String requirement = "Must support multi-tenancy";
-        Map<String, Integer> scores = Map.of("CP-1023", 85, "CR-1047", 60);
+        Map<String, Double> scores = Map.of("CP-1023", 85d, "CR-1047", 60d);
         Map<String, String> reasons = Map.of("CP-1023", "Directly relevant", "CR-1047", "Partially relevant");
         String provider = "gemini";
 
@@ -52,7 +52,7 @@ class AnalysisFacadeTest {
     @Test
     void buildAnalysisExport_withNullReasons() {
         String requirement = "Handle offline mode";
-        Map<String, Integer> scores = Map.of("BP-1001", 70);
+        Map<String, Double> scores = Map.of("BP-1001", 70d);
         String provider = "openai";
 
         SavedAnalysis expected = new SavedAnalysis();
@@ -67,7 +67,7 @@ class AnalysisFacadeTest {
     @Test
     void buildAnalysisExport_withEmptyScores() {
         String requirement = "New requirement";
-        Map<String, Integer> scores = Collections.emptyMap();
+        Map<String, Double> scores = Collections.emptyMap();
         Map<String, String> reasons = Collections.emptyMap();
         String provider = "gemini";
 
@@ -82,7 +82,7 @@ class AnalysisFacadeTest {
 
     @Test
     void generateRelationsFromScores_delegatesToGenerator() {
-        Map<String, Integer> scores = Map.of("CP-1023", 85, "CR-1047", 60);
+        Map<String, Double> scores = Map.of("CP-1023", 85d, "CR-1047", 60d);
         List<RelationHypothesisDto> expected = List.of(
                 new RelationHypothesisDto("CP-1023", "Source Node", "CR-1047", "Target Node",
                         "DEPENDS_ON", 0.9, "High co-occurrence")
@@ -99,7 +99,7 @@ class AnalysisFacadeTest {
 
     @Test
     void generateRelationsFromScores_withEmptyMap_returnsEmptyList() {
-        Map<String, Integer> scores = Collections.emptyMap();
+        Map<String, Double> scores = Collections.emptyMap();
         when(analysisRelationGenerator.generate(scores)).thenReturn(Collections.emptyList());
 
         List<RelationHypothesisDto> result = analysisFacade.generateRelationsFromScores(scores);

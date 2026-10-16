@@ -48,7 +48,7 @@ class PortfolioJsonCodecBoundaryTest {
         var rawScores = Map.copyOf(result.getRawScores());
         var effectiveScores = Map.copyOf(result.getScores());
         var scoreDetails = Map.copyOf(result.getScoreDetails());
-        assertThat(rawScores).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 64, "BP-1000", 57));
+        assertThat(rawScores).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 64.0, "BP-1000", 57.0));
 
         for (int round = 0; round < 3; round++) {
             String payload = codec.write(result);

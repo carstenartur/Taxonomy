@@ -60,8 +60,8 @@ class FrozenClusterAnalysisSnapshotProjectionTest {
                     .containsExactly("IP-1018");
             assertThat(view.getIncludedElements().getFirst().getTitle()).isEqualTo("Asset State Reports");
             assertThat(view.getIncludedElements().getFirst().getHierarchyPath()).isEqualTo("IP > IP-2053 > IP-1018");
-            assertThat(result.getRawScores()).containsEntry("IP-1018", 80);
-            assertThat(result.getScores()).containsEntry("IP-1018", 80);
+            assertThat(result.getRawScores()).containsEntry("IP-1018", 80.0);
+            assertThat(result.getScores()).containsEntry("IP-1018", 80.0);
             assertThat(result.getScoreDetails()).containsEntry("IP-1018",
                     new AnalysisScoreDetail("IP-1018", AnalysisScoreKind.HIERARCHICAL_RELEVANCE, 80, 80, "IP-2053", null));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");

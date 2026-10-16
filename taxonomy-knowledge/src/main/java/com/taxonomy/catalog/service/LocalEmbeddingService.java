@@ -519,7 +519,7 @@ public class LocalEmbeddingService {
     }
 
     /** Worker inference is deliberately outside a database transaction and reads only its frozen candidate texts. */
-    public Map<String, Integer> scoreFrozenNodes(String businessText, List<TaxonomyNode> nodes) {
+    public Map<String, Double> scoreFrozenNodes(String businessText, List<TaxonomyNode> nodes) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Frozen embedding inference requires no database transaction");
         }
@@ -547,11 +547,11 @@ public class LocalEmbeddingService {
     public FrozenCacheStatistics frozenCacheStatistics() { return frozenCache.statistics(); }
 
     @Transactional(readOnly = true)
-    public Map<String, Integer> scoreNodes(String businessText, List<TaxonomyNode> nodes) {
+    public Map<String, Double> scoreNodes(String businessText, List<TaxonomyNode> nodes) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
-        Map<String, Integer> scores = new HashMap<>();
+        Map<String, Double> scores = new HashMap<>();
         for (TaxonomyNode node : nodes) {
-            scores.put(node.getCode(), 0);
+            scores.put(node.getCode(), 0d);
         }
 
         if (!isAvailable()) {
@@ -581,7 +581,7 @@ public class LocalEmbeddingService {
             for (List<?> hit : hits) {
                 TaxonomyNode node = (TaxonomyNode) hit.get(0);
                 float luceneScore = (Float) hit.get(1);
-                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);
+                double percentage = (2.0 * luceneScore - 1.0) * 100.0;
                 percentage = Math.max(0, Math.min(100, percentage));
                 scores.put(node.getCode(), percentage);
             }

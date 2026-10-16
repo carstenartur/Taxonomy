@@ -45,7 +45,7 @@ class LlmMockScoringTests {
                 .isEmpty();
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
 
-        Map<String, Integer> scores = result.getScores();
+        Map<String, Double> scores = result.getScores();
         assertThat(scores).isNotEmpty();
 
         verifyHierarchicalChildrenSumToParent(taxonomyService.getRootNodes(), scores);
@@ -62,18 +62,18 @@ class LlmMockScoringTests {
 
     private void verifyHierarchicalChildrenSumToParent(
             List<TaxonomyNode> nodes,
-            Map<String, Integer> scores) {
+            Map<String, Double> scores) {
         for (TaxonomyNode parent : nodes) {
-            int parentScore = scores.getOrDefault(parent.getCode(), 0);
+            double parentScore = scores.getOrDefault(parent.getCode(), 0d);
             List<TaxonomyNode> children = taxonomyService.getChildrenOf(parent.getCode());
             List<TaxonomyNode> hierarchicalChildren = hierarchicalChildren(children);
 
             if (!hierarchicalChildren.isEmpty()) {
-                int childSum = hierarchicalChildren.stream()
-                        .mapToInt(child -> scores.getOrDefault(child.getCode(), 0))
+                double childSum = hierarchicalChildren.stream()
+                        .mapToDouble(child -> scores.getOrDefault(child.getCode(), 0d))
                         .sum();
                 assertThat(childSum)
-                        .as("Hierarchical children of %s (score=%d) must sum to the parent score, but summed to %d",
+                        .as("Hierarchical children of %s (score=%s) must sum to the parent score, but summed to %s",
                                 parent.getCode(), parentScore, childSum)
                         .isEqualTo(parentScore);
             }
@@ -85,14 +85,14 @@ class LlmMockScoringTests {
 
     private void verifyNoHierarchicalChildExceedsParent(
             List<TaxonomyNode> nodes,
-            Map<String, Integer> scores) {
+            Map<String, Double> scores) {
         for (TaxonomyNode parent : nodes) {
-            int parentScore = scores.getOrDefault(parent.getCode(), 0);
+            double parentScore = scores.getOrDefault(parent.getCode(), 0d);
             List<TaxonomyNode> children = taxonomyService.getChildrenOf(parent.getCode());
             for (TaxonomyNode child : hierarchicalChildren(children)) {
-                int childScore = scores.getOrDefault(child.getCode(), 0);
+                double childScore = scores.getOrDefault(child.getCode(), 0d);
                 assertThat(childScore)
-                        .as("Hierarchical child %s (score=%d) must not exceed parent %s (score=%d)",
+                        .as("Hierarchical child %s (score=%s) must not exceed parent %s (score=%s)",
                                 child.getCode(), childScore,
                                 parent.getCode(), parentScore)
                         .isLessThanOrEqualTo(parentScore);

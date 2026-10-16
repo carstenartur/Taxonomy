@@ -27,6 +27,17 @@ class LlmResponseParserTest {
         parser = new LlmResponseParser(new ObjectMapper());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings={"0.125", "0.5", "0.999999999999999999", "1.000000000000000001", "99.5"})
+    void acceptsFractionalCategoryRelevanceWithoutIntegerCoercion(String number) throws Exception {
+        var parser = new LlmResponseParser(new ObjectMapper());
+        var node = new TaxonomyNode(); node.setCode("A"); node.setTaxonomyRoot("A");
+        double parent = new java.math.BigDecimal(number).doubleValue();
+        var result = parser.parseScoreParseResult("{\"A\":{\"score\":" + number
+                + ",\"reason\":\"Authored fractional fixture\"}}", List.of(node), parent);
+        assertEquals(parent, result.scores().get("A"));
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private static TaxonomyNode node(String code, String parentCode, String root) {
@@ -174,12 +185,12 @@ class LlmResponseParserTest {
         @Test
         void allNodesGetZero() {
             List<TaxonomyNode> nodes = List.of(node("BP"), node("CP"), node("CR"));
-            Map<String, Integer> zeros = parser.zeroScores(nodes);
+            Map<String, Double> zeros = parser.zeroScores(nodes);
 
             assertEquals(3, zeros.size());
-            assertEquals(0, zeros.get("BP"));
-            assertEquals(0, zeros.get("CP"));
-            assertEquals(0, zeros.get("CR"));
+            assertEquals(0d, zeros.get("BP"));
+            assertEquals(0d, zeros.get("CP"));
+            assertEquals(0d, zeros.get("CR"));
         }
 
         @Test
@@ -230,57 +241,56 @@ class LlmResponseParserTest {
 
         @Test
         void basicNormalization_sumsToTarget() {
-            Map<String, Integer> scores = new LinkedHashMap<>();
-            scores.put("A", 60);
-            scores.put("B", 30);
-            scores.put("C", 10);
+            Map<String, Double> scores = new LinkedHashMap<>();
+            scores.put("A", 60d);
+            scores.put("B", 30d);
+            scores.put("C", 10d);
 
-            Map<String, Integer> result = parser.normalizeToParent(scores, 50);
-            int sum = result.values().stream().mapToInt(Integer::intValue).sum();
-            assertEquals(50, sum);
+            Map<String, Double> result = parser.normalizeToParent(scores, 50);
+            double sum = result.values().stream().mapToDouble(Double::doubleValue).sum();
+            assertEquals(50d, sum);
         }
 
         @Test
         void zeroTotal_returnsOriginalScores() {
-            Map<String, Integer> scores = Map.of("A", 0, "B", 0);
-            Map<String, Integer> result = parser.normalizeToParent(scores, 100);
-            assertEquals(0, result.get("A"));
-            assertEquals(0, result.get("B"));
+            Map<String, Double> scores = Map.of("A", 0d, "B", 0d);
+            Map<String, Double> result = parser.normalizeToParent(scores, 100);
+            assertEquals(0d, result.get("A"));
+            assertEquals(0d, result.get("B"));
         }
 
         @Test
         void exactSumMatchingTarget_preservesValues() {
-            Map<String, Integer> scores = new LinkedHashMap<>();
-            scores.put("A", 30);
-            scores.put("B", 20);
+            Map<String, Double> scores = new LinkedHashMap<>();
+            scores.put("A", 30d);
+            scores.put("B", 20d);
 
-            Map<String, Integer> result = parser.normalizeToParent(scores, 50);
-            assertEquals(30, result.get("A"));
-            assertEquals(20, result.get("B"));
+            Map<String, Double> result = parser.normalizeToParent(scores, 50);
+            assertEquals(30d, result.get("A"));
+            assertEquals(20d, result.get("B"));
         }
 
         @Test
-        void largestRemainderDistributesCorrectly() {
-            // 33, 33, 34 would be expected for three equal values normalized to 100
-            Map<String, Integer> scores = new LinkedHashMap<>();
-            scores.put("A", 1);
-            scores.put("B", 1);
-            scores.put("C", 1);
+        void equalWeightsKeepFractionalSharesInsteadOfAwardingWholeRemainders() {
+            // No child receives an artificial extra percentage point from integer apportionment.
+            Map<String, Double> scores = new LinkedHashMap<>();
+            scores.put("A", 1d);
+            scores.put("B", 1d);
+            scores.put("C", 1d);
 
-            Map<String, Integer> result = parser.normalizeToParent(scores, 100);
-            int sum = result.values().stream().mapToInt(Integer::intValue).sum();
-            assertEquals(100, sum);
-            // Each should be ~33 or 34
-            for (int v : result.values()) {
-                assertTrue(v >= 33 && v <= 34, "Each value should be 33 or 34, got " + v);
+            Map<String, Double> result = parser.normalizeToParent(scores, 100);
+            double sum = result.values().stream().mapToDouble(Double::doubleValue).sum();
+            assertEquals(100d, sum);
+            for (double value : result.values()) {
+                assertEquals(100d / 3, value, 2 * Math.ulp(100d / 3));
             }
         }
 
         @Test
         void singleEntry_getsFullTarget() {
-            Map<String, Integer> scores = Map.of("ONLY", 42);
-            Map<String, Integer> result = parser.normalizeToParent(scores, 80);
-            assertEquals(80, result.get("ONLY"));
+            Map<String, Double> scores = Map.of("ONLY", 42d);
+            Map<String, Double> result = parser.normalizeToParent(scores, 80);
+            assertEquals(80d, result.get("ONLY"));
         }
     }
 
@@ -291,25 +301,25 @@ class LlmResponseParserTest {
 
         @Test
         void normalizesToExactlyOneHundred() {
-            Map<String, Integer> scores = new LinkedHashMap<>();
-            scores.put("X", 30);
-            scores.put("Y", 70);
+            Map<String, Double> scores = new LinkedHashMap<>();
+            scores.put("X", 30d);
+            scores.put("Y", 70d);
 
-            Map<String, Integer> result = parser.normalizeToHundred(scores);
-            assertEquals(100, result.values().stream().mapToInt(Integer::intValue).sum());
-            assertEquals(30, result.get("X"));
-            assertEquals(70, result.get("Y"));
+            Map<String, Double> result = parser.normalizeToHundred(scores);
+            assertEquals(100d, result.values().stream().mapToDouble(Double::doubleValue).sum());
+            assertEquals(30d, result.get("X"));
+            assertEquals(70d, result.get("Y"));
         }
 
         @Test
         void unevenDistribution_sumsToHundred() {
-            Map<String, Integer> scores = new LinkedHashMap<>();
-            scores.put("A", 10);
-            scores.put("B", 20);
-            scores.put("C", 30);
+            Map<String, Double> scores = new LinkedHashMap<>();
+            scores.put("A", 10d);
+            scores.put("B", 20d);
+            scores.put("C", 30d);
 
-            Map<String, Integer> result = parser.normalizeToHundred(scores);
-            assertEquals(100, result.values().stream().mapToInt(Integer::intValue).sum());
+            Map<String, Double> result = parser.normalizeToHundred(scores);
+            assertEquals(100d, result.values().stream().mapToDouble(Double::doubleValue).sum());
         }
     }
 
@@ -322,7 +332,7 @@ class LlmResponseParserTest {
         void oneChildStillReceivesTheParentBudget() throws Exception {
             var child = node("BP-1", "BP", "BP");
             var result = parser.parseScoreParseResult("{\"BP-1\":20}", List.of(child), 60);
-            assertEquals(60, result.scores().get("BP-1"));
+            assertEquals(60d, result.scores().get("BP-1"));
         }
 
         @Test
@@ -332,8 +342,8 @@ class LlmResponseParserTest {
 
             LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
 
-            assertEquals(60, result.scores().get("BP"));
-            assertEquals(40, result.scores().get("CP"));
+            assertEquals(60d, result.scores().get("BP"));
+            assertEquals(40d, result.scores().get("CP"));
             assertTrue(result.reasons().isEmpty());
             assertNull(result.discrepancy());
         }
@@ -349,8 +359,8 @@ class LlmResponseParserTest {
 
             LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
 
-            assertEquals(70, result.scores().get("BP"));
-            assertEquals(30, result.scores().get("CP"));
+            assertEquals(70d, result.scores().get("BP"));
+            assertEquals(30d, result.scores().get("CP"));
             assertEquals("Relevant", result.reasons().get("BP"));
             assertEquals("Partially relevant", result.reasons().get("CP"));
             assertNull(result.discrepancy());
@@ -376,8 +386,8 @@ class LlmResponseParserTest {
             assertNotNull(result.discrepancy());
             TaxonomyDiscrepancy d = result.discrepancy();
             assertEquals("ROOT", d.parentCode());
-            assertEquals(100, d.expectedParentScore());
-            assertEquals(140, d.actualChildSum());
+            assertEquals(100d, d.expectedParentScore());
+            assertEquals(140d, d.actualChildSum());
         }
 
         @Test
@@ -387,8 +397,8 @@ class LlmResponseParserTest {
 
             LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
 
-            int sum = result.scores().values().stream().mapToInt(Integer::intValue).sum();
-            assertEquals(100, sum);
+            double sum = result.scores().values().stream().mapToDouble(Double::doubleValue).sum();
+            assertEquals(100d, sum);
             assertNull(result.discrepancy());
         }
 
@@ -399,8 +409,8 @@ class LlmResponseParserTest {
 
             LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
 
-            assertEquals(75, result.scores().get("A"));
-            assertEquals(25, result.scores().get("B"));
+            assertEquals(75d, result.scores().get("A"));
+            assertEquals(25d, result.scores().get("B"));
             assertNull(result.discrepancy());
         }
 
@@ -411,8 +421,8 @@ class LlmResponseParserTest {
 
             LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
 
-            assertEquals(50, result.scores().get("X"));
-            assertEquals(50, result.scores().get("Y"));
+            assertEquals(50d, result.scores().get("X"));
+            assertEquals(50d, result.scores().get("Y"));
         }
 
         @Test
@@ -460,10 +470,10 @@ class LlmResponseParserTest {
                     }""";
             List<TaxonomyNode> nodes = List.of(node("A"), node("B"));
 
-            Map<String, Integer> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
+            Map<String, Double> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
 
-            assertEquals(60, scores.get("A"));
-            assertEquals(40, scores.get("B"));
+            assertEquals(60d, scores.get("A"));
+            assertEquals(40d, scores.get("B"));
         }
 
         @Test
@@ -472,10 +482,10 @@ class LlmResponseParserTest {
                     {"candidates": []}""";
             List<TaxonomyNode> nodes = List.of(node("A"), node("B"));
 
-            Map<String, Integer> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
+            Map<String, Double> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
 
-            assertEquals(0, scores.get("A"));
-            assertEquals(0, scores.get("B"));
+            assertEquals(0d, scores.get("A"));
+            assertEquals(0d, scores.get("B"));
         }
 
         @Test
@@ -490,9 +500,9 @@ class LlmResponseParserTest {
                     }""";
             List<TaxonomyNode> nodes = List.of(node("A"));
 
-            Map<String, Integer> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
+            Map<String, Double> scores = parser.parseGeminiResponse(responseBody, nodes, 100);
 
-            assertEquals(0, scores.get("A"));
+            assertEquals(0d, scores.get("A"));
         }
     }
 
@@ -511,10 +521,10 @@ class LlmResponseParserTest {
                     }""";
             List<TaxonomyNode> nodes = List.of(node("X"), node("Y"));
 
-            Map<String, Integer> scores = parser.parseOpenAiResponse(responseBody, nodes, 100);
+            Map<String, Double> scores = parser.parseOpenAiResponse(responseBody, nodes, 100);
 
-            assertEquals(80, scores.get("X"));
-            assertEquals(20, scores.get("Y"));
+            assertEquals(80d, scores.get("X"));
+            assertEquals(20d, scores.get("Y"));
         }
 
         @Test
@@ -523,9 +533,9 @@ class LlmResponseParserTest {
                     {"choices": []}""";
             List<TaxonomyNode> nodes = List.of(node("X"));
 
-            Map<String, Integer> scores = parser.parseOpenAiResponse(responseBody, nodes, 100);
+            Map<String, Double> scores = parser.parseOpenAiResponse(responseBody, nodes, 100);
 
-            assertEquals(0, scores.get("X"));
+            assertEquals(0d, scores.get("X"));
         }
     }
     @Nested
@@ -539,9 +549,9 @@ class LlmResponseParserTest {
                             + "\"IP-2\": {\"score\": 70, \"reason\": \"also match\"}}",
                     nodes, 50);
 
-            assertEquals(80, result.scores().get("IP-1"));
-            assertEquals(70, result.scores().get("IP-2"));
-            assertEquals(150, result.scores().values().stream().mapToInt(Integer::intValue).sum());
+            assertEquals(80d, result.scores().get("IP-1"));
+            assertEquals(70d, result.scores().get("IP-2"));
+            assertEquals(150d, result.scores().values().stream().mapToDouble(Double::doubleValue).sum());
         }
 
         @Test
@@ -552,8 +562,8 @@ class LlmResponseParserTest {
                             + "\"IP-2\": {\"score\": 90, \"reason\": \"strong match\"}}",
                     nodes, 50);
 
-            assertEquals(0, result.scores().get("IP-1"));
-            assertEquals(90, result.scores().get("IP-2"));
+            assertEquals(0d, result.scores().get("IP-1"));
+            assertEquals(90d, result.scores().get("IP-2"));
         }
 
         @Test

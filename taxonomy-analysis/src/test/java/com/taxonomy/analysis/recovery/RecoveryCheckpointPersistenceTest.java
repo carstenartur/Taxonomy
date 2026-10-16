@@ -3,6 +3,9 @@ package com.taxonomy.analysis.recovery;
 import org.junit.jupiter.api.Test;
 
 class RecoveryCheckpointPersistenceTest {
+    @Test void fractionalEvidenceSurvivesSessionRestartWithoutRepeatingFailedOrSuccessfulCalls() {
+        RecoveryCheckpointPersistenceProbe.fractionalCheckpointSurvivesIndependentSessions();
+    }
     @Test void questionWritesRequireTheCurrentUncancelledClaim() {
         RecoveryCheckpointPersistenceProbe.checkpointClaimIsStillEnforced();
     }

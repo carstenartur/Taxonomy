@@ -22,7 +22,7 @@ public final class DecisionReportPresentation {
         for (var group : groups) {
             var root = group.getFirst();
             var outcome = group.stream().filter(row -> row.disposition() == DecisionRationaleReport.Disposition.LEAF_CANDIDATE)
-                    .sorted(java.util.Comparator.comparingInt((com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow row) -> row.score() == null ? -1 : row.score()).reversed()
+                    .sorted(java.util.Comparator.comparingDouble((com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow row) -> row.score() == null ? -1 : row.score()).reversed()
                             .thenComparing(row -> row.code())).findFirst().orElse(root);
             // Legacy callers may only carry ranked-leaf evidence. Prefer its saved reason when available.
             var legacyLeaf = report.leadingLeaves().stream().filter(leaf -> root.code().equals(leaf.taxonomyRoot())).findFirst().orElse(null);

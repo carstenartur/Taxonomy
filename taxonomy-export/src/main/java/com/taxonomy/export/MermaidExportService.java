@@ -306,7 +306,7 @@ public class MermaidExportService {
         }
         double pct = node.relevance() * 100;
         if (pct > 0) {
-            suffix.append(" [").append(String.format("%.0f%%", pct)).append(']');
+            suffix.append(" [").append(com.taxonomy.dto.AnalysisPercentages.display(pct)).append(']');
         }
         return suffix.toString();
     }
@@ -327,7 +327,7 @@ public class MermaidExportService {
         double pct = node.relevance() * 100;
         if (pct > 0) {
             if (!meta.isEmpty()) meta.append(' ');
-            meta.append(String.format("%.0f%%", pct));
+            meta.append(com.taxonomy.dto.AnalysisPercentages.display(pct));
         }
         return meta.toString();
     }

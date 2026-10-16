@@ -44,7 +44,7 @@ public class RequirementCoverageService {
      * @param minScore      minimum score threshold (inclusive); defaults to 50 if ≤ 0
      */
     @Transactional
-    public void analyzeCoverage(Map<String, Integer> scores,
+    public void analyzeCoverage(Map<String, Double> scores,
                                 String requirementId,
                                 String requirementText,
                                 int minScore) {

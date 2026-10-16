@@ -56,10 +56,10 @@ public final class AnalysisScoreSemanticsFingerprint {
                 safe(mapCode).strip(),
                 safe(detail.nodeCode()),
                 detail.kind().name(),
-                Integer.toString(detail.rawScore()),
-                Integer.toString(detail.effectiveRelevance()),
+                AnalysisPercentages.canonical(detail.rawScore()),
+                AnalysisPercentages.canonical(detail.effectiveRelevance()),
                 safe(detail.parentCode()),
-                detail.parentScore() == null ? "" : detail.parentScore().toString());
+                detail.parentScore() == null ? "" : AnalysisPercentages.canonical(detail.parentScore()));
         update(digest, canonical);
     }
 

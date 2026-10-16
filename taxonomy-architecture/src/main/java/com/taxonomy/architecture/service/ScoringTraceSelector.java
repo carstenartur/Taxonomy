@@ -39,7 +39,7 @@ public class ScoringTraceSelector {
      * @param anchors   the anchor nodes selected for the architecture view
      * @return list of trace entries with fully-populated origin and scoring path
      */
-    public List<RequirementElementView> buildTrace(Map<String, Integer> allScores,
+    public List<RequirementElementView> buildTrace(Map<String, Double> allScores,
                                                     List<RequirementAnchor> anchors) {
         Map<String, RequirementElementView> traceMap = new LinkedHashMap<>();
 
@@ -58,7 +58,7 @@ public class ScoringTraceSelector {
             for (int i = 0; i < pathToRoot.size(); i++) {
                 TaxonomyNode pathNode = pathToRoot.get(i);
                 String code = pathNode.getCode();
-                int score = allScores.getOrDefault(code, 0);
+                double score = allScores.getOrDefault(code, 0d);
 
                 if (i > 0) scoringPath.append(" > ");
                 scoringPath.append(code).append("(").append(score).append("%)");
@@ -79,7 +79,7 @@ public class ScoringTraceSelector {
     }
 
     private RequirementElementView addOrUpdate(Map<String, RequirementElementView> traceMap,
-                                                String code, Map<String, Integer> allScores,
+                                                String code, Map<String, Double> allScores,
                                                 NodeOrigin origin, TaxonomyNode node) {
         RequirementElementView existing = traceMap.get(code);
         if (existing != null) {
@@ -91,7 +91,7 @@ public class ScoringTraceSelector {
             return existing;
         }
 
-        int score = allScores.getOrDefault(code, 0);
+        double score = allScores.getOrDefault(code, 0d);
 
         RequirementElementView entry = new RequirementElementView();
         entry.setNodeCode(code);

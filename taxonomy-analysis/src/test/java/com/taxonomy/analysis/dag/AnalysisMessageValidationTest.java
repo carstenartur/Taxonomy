@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -98,6 +99,30 @@ class AnalysisMessageValidationTest {
         assertRoundTrip(subCompletion(AnalysisTaskOutcome.STOPPED, reason));
         assertRoundTrip(relationCompletion(AnalysisTaskOutcome.STOPPED, reason));
         assertRoundTrip(cancellation(reason));
+    }
+
+    @Test
+    void subtaxonomyCompletionUsesJdkOnlyDecimalValidation() {
+        var envelope = envelope(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED,
+                AnalysisTaskId.subtaxonomy(OP, CP), AnalysisTaskType.SUBTAXONOMY_ANALYSIS, List.of(CP));
+        assertEquals(0.5d, new SubtaxonomyAnalysisCompleted(envelope, CP,
+                AnalysisTaskOutcome.COMPLETED, new BigDecimal("0.5"), 1, null).rootScore());
+        assertEquals(0d, new SubtaxonomyAnalysisCompleted(envelope, CP,
+                AnalysisTaskOutcome.COMPLETED, BigDecimal.ZERO, 1, null).rootScore());
+        assertEquals(0.0000001d, new SubtaxonomyAnalysisCompleted(envelope, CP,
+                AnalysisTaskOutcome.COMPLETED, new BigDecimal("0.0000001"), 1, null).rootScore());
+
+        for (Number invalid : List.of(Double.NaN, Double.POSITIVE_INFINITY,
+                new BigDecimal("-0.01"), new BigDecimal("100.01"), new BigDecimal("1e-10000"))) {
+            assertThrows(IllegalArgumentException.class, () -> new SubtaxonomyAnalysisCompleted(
+                    envelope, CP, AnalysisTaskOutcome.COMPLETED, invalid, 1, null));
+        }
+
+        var legacyEnvelope = new AnalysisEnvelope(1, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP,
+                AnalysisTaskId.subtaxonomy(OP, CP), AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY,
+                REQUIREMENT, List.of(CP), 1, null, "corr-1", NOW, null);
+        assertThrows(IllegalArgumentException.class, () -> new SubtaxonomyAnalysisCompleted(
+                legacyEnvelope, CP, AnalysisTaskOutcome.COMPLETED, new BigDecimal("0.5"), 1, null));
     }
 
     @ParameterizedTest

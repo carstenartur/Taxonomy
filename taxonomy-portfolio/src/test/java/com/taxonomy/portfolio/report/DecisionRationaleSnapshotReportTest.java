@@ -122,7 +122,7 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(input.businessText()).isEqualTo("immutable requirement");
         assertThat(input.provider()).isEqualTo("MOCK");
         assertThat(input.analysisStatus()).isEqualTo("SUCCESS");
-        assertThat(input.scores()).containsEntry("CP", 100);
+        assertThat(input.scores()).containsEntry("CP", 100d);
         assertThat(input.scoreDetails()).containsKey("CP");
         assertThat(input.productCoverageGaps())
                 .extracting(ProductCoverageGap::productFamilyCode)

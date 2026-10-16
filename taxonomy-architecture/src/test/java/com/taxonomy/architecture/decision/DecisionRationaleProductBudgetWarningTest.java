@@ -51,8 +51,8 @@ class DecisionRationaleProductBudgetWarningTest {
 
         DecisionRationaleReportService service = new DecisionRationaleReportService(
                 taxonomyService, catalogue, build, "Europe/Berlin");
-        Map<String, Integer> scores = Map.of(
-                "IP", 40, "IP-F", 40, "IP-P", 32);
+        Map<String, Double> scores = Map.of(
+                "IP", 40d, "IP-F", 40d, "IP-P", 32d);
         Map<String, AnalysisScoreDetail> details = Map.of(
                 "IP", new AnalysisScoreDetail(
                         "IP", AnalysisScoreKind.ROOT_RELEVANCE,

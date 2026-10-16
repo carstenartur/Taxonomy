@@ -20,7 +20,7 @@ public final class ArchitectureWorkbenchDtos {
             String nodeCode,
             String nodeTitle,
             String taxonomyRoot,
-            int directScore,
+            double directScore,
             double relevance,
             double confidence,
             String mappingOrigin,

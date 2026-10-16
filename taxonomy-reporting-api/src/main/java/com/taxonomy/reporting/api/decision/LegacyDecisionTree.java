@@ -9,7 +9,7 @@ import static com.taxonomy.reporting.api.document.DecisionTreeOverview.bookmark;
 /** Compatibility construction for old report constructors; not an extension/planning API. */
 final class LegacyDecisionTree {
     private LegacyDecisionTree() {}
-    private record Node(String code, String title, Integer score, boolean leaf, Disposition disposition) {}
+    private record Node(String code, String title, Double score, boolean leaf, Disposition disposition) {}
     public static DecisionTreeOverview from(List<DecisionChapter> chapters) {
         Map<String, Node> nodes = new LinkedHashMap<>();
         Map<String, DecisionChapter> parents = new LinkedHashMap<>();
@@ -72,7 +72,7 @@ final class LegacyDecisionTree {
             throw new IllegalArgumentException("Contradictory decision node " + node.code());
     }
 
-    private static Disposition disposition(Integer score, boolean leaf) {
+    private static Disposition disposition(Double score, boolean leaf) {
         return score == null
                 ? Disposition.NOT_EVALUATED
                 : score == 0

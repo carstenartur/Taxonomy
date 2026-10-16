@@ -16,13 +16,13 @@ class DecisionRationaleDocxLayoutTest {
     void alternativesKeepDistinctScoresAndSourcesButShareFullWidthRationales() throws Exception {
         String reason = "This alternative is outside the scenario subscription boundary. "
                 + "Published warnings must retain their source, observation time and geographic area.";
-        var chapter = new DecisionChapter(1, "BP", "Business processes", "", 100, 0,
+        var chapter = new DecisionChapter(1, "BP", "Business processes", "", 100d, 0,
                 true, "Selected data acquisition", "All alternatives were assessed.", List.of(
-                new ChildDecision("BP-A", "Acquire published observations", "", 100, 100.0, 1,
+                new ChildDecision("BP-A", "Acquire published observations", "", 100d, 100.0, 1,
                         true, Disposition.LEAF_CANDIDATE, "Retains official source and time.", ReasonSource.AI_SCORING, true),
-                new ChildDecision("BP-B", "Excluded alternative B", "", 0, 0.0, 2,
+                new ChildDecision("BP-B", "Excluded alternative B", "", 0d, 0.0, 2,
                         false, Disposition.REJECTED, reason, ReasonSource.AI_SCORING, true),
-                new ChildDecision("BP-C", "Excluded alternative C", "", 0, 0.0, 2,
+                new ChildDecision("BP-C", "Excluded alternative C", "", 0d, 0.0, 2,
                         false, Disposition.REJECTED, reason, ReasonSource.AI_SCORING, true),
                 new ChildDecision("BP-D", "Unevaluated alternative D", "", null, null, null,
                         false, Disposition.NOT_EVALUATED, reason, ReasonSource.MISSING, true)), List.of());

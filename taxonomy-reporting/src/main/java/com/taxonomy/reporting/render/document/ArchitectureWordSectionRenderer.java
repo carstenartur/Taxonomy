@@ -155,6 +155,6 @@ public final class ArchitectureWordSectionRenderer {
     }
 
     private String percentage(double score) {
-        return String.format(Locale.ROOT, "%.0f%%", score * 100);
+        return com.taxonomy.dto.AnalysisPercentages.display(score * 100);
     }
 }

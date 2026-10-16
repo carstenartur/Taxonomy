@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AnalysisScoreDiffTest {
 
     @Test
-    void rawSuitabilityChangeIsVisibleWhenRoundedEffectiveRelevanceStaysEqual() {
+    void rawSuitabilityChangeRetainsTheFractionalEffectiveRelevance() {
         AnalysisResult older = productAnalysis(40, 80, "IP-F");
         AnalysisResult newer = productAnalysis(40, 81, "IP-F");
 
@@ -22,11 +22,66 @@ class AnalysisScoreDiffTest {
 
         assertThat(change).isNotNull();
         assertThat(change.oldScore()).isEqualTo(32);
-        assertThat(change.newScore()).isEqualTo(32);
+        assertThat(change.newScore()).isEqualTo(32.4);
         assertThat(change.oldRawScore()).isEqualTo(80);
         assertThat(change.newRawScore()).isEqualTo(81);
         assertThat(change.oldKind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
         assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+    }
+
+    @Test
+    void rawSuitabilityChangeIsVisibleWhenEffectiveRelevanceStaysZero() {
+        AnalysisResult older = productAnalysis(0, 80, "IP-F");
+        AnalysisResult newer = productAnalysis(0, 81, "IP-F");
+
+        ScoreChange change = AnalysisScoreDiff.between(older, newer).get("IP-P");
+
+        assertThat(change).isNotNull();
+        assertThat(change.oldScore()).isEqualTo(0);
+        assertThat(change.newScore()).isEqualTo(0);
+        assertThat(change.oldRawScore()).isEqualTo(80);
+        assertThat(change.newRawScore()).isEqualTo(81);
+        assertThat(change.oldKind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+        assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+    }
+
+    @Test
+    void subPercentEffectiveChangesRemainVisibleWithTheirParentEvidence() {
+        AnalysisResult older = productAnalysis(0.5, 25, "IP-F");
+        AnalysisResult newer = productAnalysis(0.5, 50, "IP-F");
+
+        ScoreChange change = AnalysisScoreDiff.between(older, newer).get("IP-P");
+
+        assertThat(change).isNotNull();
+        assertThat(change.oldScore()).isEqualTo(0.125);
+        assertThat(change.newScore()).isEqualTo(0.25);
+        assertThat(change.oldRawScore()).isEqualTo(25);
+        assertThat(change.newRawScore()).isEqualTo(50);
+        assertThat(change.oldParentScore()).isEqualTo(0.5);
+        assertThat(change.newParentScore()).isEqualTo(0.5);
+        assertThat(change.oldParentCode()).isEqualTo("IP-F");
+        assertThat(change.newParentCode()).isEqualTo("IP-F");
+    }
+
+    @Test
+    void unchangedFractionalEvidenceProducesNoDifference() {
+        assertThat(AnalysisScoreDiff.between(
+                productAnalysis(0.5, 25, "IP-F"), productAnalysis(0.5, 25, "IP-F")))
+                .isEmpty();
+    }
+
+    @Test
+    void removedFractionalScorePreservesNullEvidenceOnTheMissingSide() {
+        ScoreChange change = AnalysisScoreDiff.between(
+                productAnalysis(0.5, 25, "IP-F"), null).get("IP-P");
+
+        assertThat(change).isNotNull();
+        assertThat(change.oldScore()).isEqualTo(0.125);
+        assertThat(change.oldRawScore()).isEqualTo(25);
+        assertThat(change.newScore()).isNull();
+        assertThat(change.newRawScore()).isNull();
+        assertThat(change.newParentScore()).isNull();
+        assertThat(change.newKind()).isNull();
     }
 
     @Test
@@ -72,8 +127,8 @@ class AnalysisScoreDiffTest {
     }
 
     private AnalysisResult productAnalysis(
-            int familyScore,
-            int suitability,
+            double familyScore,
+            double suitability,
             String familyCode) {
         TaxonomyNodeDto root = node("IP", null, "CATEGORY");
         TaxonomyNodeDto family = node(familyCode, "IP", "PRODUCT_FAMILY");

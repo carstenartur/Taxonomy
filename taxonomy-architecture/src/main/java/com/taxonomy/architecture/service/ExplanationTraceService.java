@@ -50,7 +50,7 @@ public class ExplanationTraceService {
      */
     @Transactional(readOnly = true)
     public ExplanationTrace buildTrace(String nodeCode,
-                                        Map<String, Integer> scores,
+                                        Map<String, Double> scores,
                                         Map<String, String> reasons,
                                         String businessText) {
         ExplanationTrace trace = new ExplanationTrace();
@@ -62,7 +62,7 @@ public class ExplanationTraceService {
         }
 
         TaxonomyNode node = nodeOpt.get();
-        int score = scores != null ? scores.getOrDefault(nodeCode, 0) : 0;
+        double score = scores != null ? scores.getOrDefault(nodeCode, 0d) : 0;
 
         trace.setTaxonomyRoot(node.getTaxonomyRoot());
 
@@ -93,7 +93,7 @@ public class ExplanationTraceService {
      * Builds explanation traces for all scored nodes above a threshold.
      */
     @Transactional(readOnly = true)
-    public Map<String, ExplanationTrace> buildTraces(Map<String, Integer> scores,
+    public Map<String, ExplanationTrace> buildTraces(Map<String, Double> scores,
                                                       Map<String, String> reasons,
                                                       String businessText,
                                                       int minScore) {
@@ -102,7 +102,7 @@ public class ExplanationTraceService {
         }
 
         Map<String, ExplanationTrace> traces = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() != null && entry.getValue() >= minScore) {
                 traces.put(entry.getKey(),
                         buildTrace(entry.getKey(), scores, reasons, businessText));
@@ -168,11 +168,11 @@ public class ExplanationTraceService {
      * Builds a score breakdown showing which factors contribute to the node's score.
      */
     List<ScoreComponent> buildScoreBreakdown(TaxonomyNode node,
-                                              Map<String, Integer> scores,
+                                              Map<String, Double> scores,
                                               Map<String, String> reasons,
                                               String businessText) {
         List<ScoreComponent> components = new ArrayList<>();
-        int score = scores != null ? scores.getOrDefault(node.getCode(), 0) : 0;
+        double score = scores != null ? scores.getOrDefault(node.getCode(), 0d) : 0;
 
         // Direct match component
         components.add(new ScoreComponent("Direct LLM Score", 1.0, score / 100.0));
@@ -191,7 +191,7 @@ public class ExplanationTraceService {
         // Connected nodes component (nodes with many high-scoring neighbours score higher)
         List<TaxonomyRelation> relations = relationRepository.findBySourceNodeCode(node.getCode());
         long highScoringNeighbours = relations.stream()
-                .filter(r -> scores != null && scores.getOrDefault(r.getTargetNode().getCode(), 0) >= 50)
+                .filter(r -> scores != null && scores.getOrDefault(r.getTargetNode().getCode(), 0d) >= 50)
                 .count();
         double contextScore = Math.min(highScoringNeighbours * 0.25, 1.0);
         components.add(new ScoreComponent("Neighbourhood Context", 0.2, contextScore));
@@ -202,7 +202,7 @@ public class ExplanationTraceService {
     /**
      * Generates a human-readable summary from the structured trace components.
      */
-    private String buildSummary(TaxonomyNode node, int score, ExplanationTrace trace) {
+    private String buildSummary(TaxonomyNode node, double score, ExplanationTrace trace) {
         StringBuilder sb = new StringBuilder();
         sb.append(node.getCode()).append(" (").append(node.getNameEn()).append(") ");
         sb.append("scored ").append(score).append("% ");

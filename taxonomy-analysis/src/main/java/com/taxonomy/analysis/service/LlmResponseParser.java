@@ -17,7 +17,7 @@ import java.util.function.BiFunction;
 
 /**
  * Parses LLM API responses (Gemini and OpenAI-compatible) and extracts structured
- * score/reason data. Also provides score normalization (largest-remainder method).
+ * score/reason data. Also provides decimal-preserving score normalization.
  *
  * <p>This class is stateless and does not depend on Spring — it can be unit-tested
  * without a running application context.</p>
@@ -85,8 +85,8 @@ public class LlmResponseParser {
     /**
      * Parses a Gemini response body into scores, falling back to zero scores on failure.
      */
-    public Map<String, Integer> parseGeminiResponse(String responseBody,
-                                                     List<TaxonomyNode> nodes, int parentScore) {
+    public Map<String, Double> parseGeminiResponse(String responseBody,
+                                                     List<TaxonomyNode> nodes, double parentScore) {
         String text = extractGeminiText(responseBody);
         if (text == null) {
             log.error("Failed to parse Gemini response: {}", responseBody);
@@ -103,8 +103,8 @@ public class LlmResponseParser {
     /**
      * Parses an OpenAI-compatible response body into scores, falling back to zero scores on failure.
      */
-    public Map<String, Integer> parseOpenAiResponse(String responseBody,
-                                                     List<TaxonomyNode> nodes, int parentScore) {
+    public Map<String, Double> parseOpenAiResponse(String responseBody,
+                                                     List<TaxonomyNode> nodes, double parentScore) {
         String text = extractOpenAiText(responseBody);
         if (text == null) {
             log.error("Failed to parse OpenAI-compatible response: {}", responseBody);
@@ -122,7 +122,7 @@ public class LlmResponseParser {
      * Parses both scores and reasons from LLM response text.
      * Supports two formats (backward-compatible):
      * <ul>
-     *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
+     *   <li>Old format: {@code {"C1": 80, "C2": 0}} — numeric percentage values, no reasons</li>
      *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
      * </ul>
      * <p>All offered IDs require explicit valid scores. Missing, foreign or malformed
@@ -136,15 +136,16 @@ public class LlmResponseParser {
      */
     public LlmService.ScoreParseResult parseScoreParseResult(String text,
                                                               List<TaxonomyNode> nodes,
-                                                              int parentScore) throws Exception {
+                                                              double parentScore) throws Exception {
         return parseScoreParseResult(text, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
     }
 
     public LlmService.ScoreParseResult parseScoreParseResult(String text,
                                                               List<TaxonomyNode> nodes,
-                                                              int parentScore,
+                                                              double parentScore,
                                                               ScoreAssessmentKind kind) throws Exception {
         Objects.requireNonNull(kind);
+        com.taxonomy.dto.AnalysisPercentages.require(parentScore);
         if (kind == ScoreAssessmentKind.ROOT_RELEVANCE && (nodes.size() != 1
                 || !nodes.getFirst().getCode().equals(nodes.getFirst().getTaxonomyRoot()))) {
             throw new IllegalArgumentException("Independent root relevance requires one taxonomy root");
@@ -152,7 +153,7 @@ public class LlmResponseParser {
         Map<String, Object> raw = parseChildAssessment(text,
                 nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : raw.entrySet()) {
             String code = entry.getKey();
@@ -160,20 +161,19 @@ public class LlmResponseParser {
             Object scoreValue = value instanceof Map<?, ?> object ? object.get("score") : value;
             if (!(scoreValue instanceof Number number)) {
                 throw new IllegalArgumentException("Category response for " + code
-                        + " requires an explicit integer score between 0 and 100");
+                        + " requires an explicit finite numeric percentage between 0 and 100");
             }
-            final int score;
+            final double score;
             try {
-                // The reader preserves decimal tokens; conversion through double would
-                // turn precision-boundary fractions into apparently integral scores.
-                score = new BigDecimal(number.toString()).intValueExact();
-            } catch (ArithmeticException | NumberFormatException invalid) {
+                // Validate the original decimal token before conversion to JSON numeric storage.
+                score = com.taxonomy.dto.AnalysisPercentages.require(number);
+            } catch (IllegalArgumentException invalid) {
                 throw new IllegalArgumentException("Category response for " + code
-                        + " requires an exact integer score between 0 and 100", invalid);
+                        + " requires a finite numeric percentage between 0 and 100 (decimals allowed)", invalid);
             }
             if (score < 0 || score > 100) {
                 throw new IllegalArgumentException("Category response for " + code
-                        + " requires an explicit integer score between 0 and 100");
+                        + " requires an explicit finite numeric percentage between 0 and 100");
             }
             scores.put(code, score);
             if (value instanceof Map<?, ?> object && object.get("reason") instanceof String reason
@@ -186,11 +186,13 @@ public class LlmResponseParser {
             return new LlmService.ScoreParseResult(scores, reasons, null);
         }
 
-        int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
+        BigDecimal decimalSum = scores.values().stream().map(BigDecimal::valueOf)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        double rawSum = decimalSum.doubleValue();
 
         // Detect discrepancy: raw child sum exceeds parent budget
         TaxonomyDiscrepancy discrepancy = null;
-        if (rawSum > parentScore) {
+        if (decimalSum.compareTo(BigDecimal.valueOf(parentScore)) > 0) {
             String parentCode = deriveParentCode(nodes);
             discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);
             log.warn("Discrepancy detected: children of '{}' sum to {} but parent score is {}",
@@ -198,8 +200,8 @@ public class LlmResponseParser {
         }
 
         // Only normalize if sum doesn't match parent (fallback); trust the LLM otherwise
-        Map<String, Integer> finalScores;
-        if (rawSum == parentScore) {
+        Map<String, Double> finalScores;
+        if (decimalSum.compareTo(BigDecimal.valueOf(parentScore)) == 0) {
             finalScores = scores;
         } else {
             finalScores = normalizeToParent(scores, parentScore);
@@ -221,7 +223,7 @@ public class LlmResponseParser {
                 nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
         int threshold = Math.max(0, Math.min(100, minimumScore));
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
             Object value = raw.get(node.getCode());
@@ -242,16 +244,16 @@ public class LlmResponseParser {
                         "Independent product response for " + node.getCode()
                                 + " has no non-blank reason");
             }
-            final int score;
+            final double score;
             try {
-                score = new BigDecimal(number.toString()).intValueExact();
-            } catch (ArithmeticException | NumberFormatException invalid) {
+                score = com.taxonomy.dto.AnalysisPercentages.require(number);
+            } catch (IllegalArgumentException invalid) {
                 throw new IllegalArgumentException("Independent product response for " + node.getCode()
-                        + " requires an exact integer score between 0 and 100", invalid);
+                        + " requires a finite numeric percentage between 0 and 100 (decimals allowed)", invalid);
             }
             if (score < 0 || score > 100) {
                 throw new IllegalArgumentException("Independent product response for " + node.getCode()
-                        + " requires an explicit integer score between 0 and 100");
+                        + " requires an explicit finite numeric percentage between 0 and 100");
             }
             scores.put(node.getCode(), score >= threshold ? score : 0);
             reasons.put(node.getCode(), reason);
@@ -264,37 +266,16 @@ public class LlmResponseParser {
 
     /**
      * Normalizes a set of scores proportionally so that their sum equals {@code target}.
-     * Uses the largest-remainder method to ensure exact sum after integer rounding.
+     * Retains fractional percentages; explicit zero weights remain zero.
      */
-    public Map<String, Integer> normalizeToParent(Map<String, Integer> scores, int target) {
-        int total = scores.values().stream().mapToInt(Integer::intValue).sum();
-        if (total == 0) return scores;
-
-        Map<String, Integer> normalized = new LinkedHashMap<>();
-        List<Map.Entry<String, Double>> fractionals = new ArrayList<>();
-        int runningSum = 0;
-
-        for (Map.Entry<String, Integer> e : scores.entrySet()) {
-            double scaled = (double) e.getValue() * target / total;
-            int floor = (int) scaled;
-            normalized.put(e.getKey(), floor);
-            fractionals.add(Map.entry(e.getKey(), scaled - floor));
-            runningSum += floor;
-        }
-
-        int remaining = target - runningSum;
-        fractionals.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-        for (int i = 0; i < remaining && i < fractionals.size(); i++) {
-            normalized.merge(fractionals.get(i).getKey(), 1, Integer::sum);
-        }
-
-        return normalized;
+    public Map<String, Double> normalizeToParent(Map<String, ? extends Number> scores, double target) {
+        return com.taxonomy.dto.AnalysisPercentages.normalize(scores, target);
     }
 
     /**
      * Normalizes a set of scores proportionally so that their sum equals 100.
      */
-    public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
+    public Map<String, Double> normalizeToHundred(Map<String, ? extends Number> scores) {
         return normalizeToParent(scores, 100);
     }
 
@@ -411,9 +392,9 @@ public class LlmResponseParser {
     /**
      * Returns a map of zero scores for all given nodes.
      */
-    public Map<String, Integer> zeroScores(List<TaxonomyNode> nodes) {
-        Map<String, Integer> zeros = new HashMap<>();
-        for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
+    public Map<String, Double> zeroScores(List<TaxonomyNode> nodes) {
+        Map<String, Double> zeros = new HashMap<>();
+        for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0d);
         return zeros;
     }
 

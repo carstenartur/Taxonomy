@@ -124,7 +124,7 @@ public final class EvidenceRelationProjection {
         return text.substring(0, end) + " [full evidence in analysis report]";
     }
 
-    private static RequirementElementView element(Node node, Map<String,Integer> effectiveScores,
+    private static RequirementElementView element(Node node, Map<String,Double> effectiveScores,
             Map<String, AnalysisScoreDetail> details, String contribution) {
         RequirementElementView element = new RequirementElementView();
         element.setNodeCode(node.id()); element.setTitle(node.name()); element.setTaxonomySheet(node.root());
@@ -134,7 +134,7 @@ public final class EvidenceRelationProjection {
         }
         element.setScoreDetail(detail);
         element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());
-        Integer effective = effectiveScores.get(node.id());
+        Double effective = effectiveScores.get(node.id());
         // A numeric layout fallback is not an assessment; scoreDetail remains explicitly null.
         element.setRelevance((detail != null ? detail.effectiveRelevance()
                 : effective == null ? 0 : Math.max(0, Math.min(100, effective))) / 100.0);

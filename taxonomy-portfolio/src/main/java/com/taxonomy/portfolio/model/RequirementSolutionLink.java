@@ -45,7 +45,7 @@ public class RequirementSolutionLink {
     private String snapshotId;
 
     @Column(name = "coverage_percent", nullable = false)
-    private int coveragePercent;
+    private double coveragePercent;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "solution_role", nullable = false, length = 32)
@@ -74,7 +74,7 @@ public class RequirementSolutionLink {
     public RequirementSolutionLink(ProjectSolution projectSolution,
                                    ProjectRequirement requirement,
                                    String snapshotId,
-                                   int coveragePercent,
+                                   double coveragePercent,
                                    RequirementSolutionRole role,
                                    ReviewStatus reviewStatus,
                                    String evidence,
@@ -83,7 +83,7 @@ public class RequirementSolutionLink {
         this.projectSolution = projectSolution;
         this.requirement = requirement;
         this.snapshotId = snapshotId;
-        this.coveragePercent = coveragePercent;
+        this.coveragePercent = com.taxonomy.dto.AnalysisPercentages.require(coveragePercent);
         this.role = role != null ? role : RequirementSolutionRole.USES;
         this.reviewStatus = reviewStatus != null ? reviewStatus : ReviewStatus.PROPOSED;
         this.evidence = evidence;
@@ -92,14 +92,14 @@ public class RequirementSolutionLink {
     }
 
     public void update(String snapshotId,
-                       int coveragePercent,
+                       double coveragePercent,
                        RequirementSolutionRole role,
                        ReviewStatus reviewStatus,
                        String evidence,
                        String updatedBy,
                        Instant updatedAt) {
         this.snapshotId = snapshotId;
-        this.coveragePercent = coveragePercent;
+        this.coveragePercent = com.taxonomy.dto.AnalysisPercentages.require(coveragePercent);
         if (role != null) this.role = role;
         if (reviewStatus != null) this.reviewStatus = reviewStatus;
         this.evidence = evidence;
@@ -111,7 +111,7 @@ public class RequirementSolutionLink {
     public ProjectSolution getProjectSolution() { return projectSolution; }
     public ProjectRequirement getRequirement() { return requirement; }
     public String getSnapshotId() { return snapshotId; }
-    public int getCoveragePercent() { return coveragePercent; }
+    public double getCoveragePercent() { return coveragePercent; }
     public RequirementSolutionRole getRole() { return role; }
     public ReviewStatus getReviewStatus() { return reviewStatus; }
     public String getEvidence() { return evidence; }

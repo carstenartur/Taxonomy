@@ -61,7 +61,7 @@ class DecisionCompactReportTest {
     @Test void compactRetainsReasonsForEverySelectedRootEvenOutsideTheLeadingRanking() {
         var base = report(DecisionReportOptions.TreeLayout.AUTO, 4);
         var rows = new ArrayList<>(base.scope().decisionTree().rows());
-        rows.add(new DecisionTreeOverview.DecisionTreeRow(0, "BP", "Business processes", 0, Disposition.REJECTED, null, null));
+        rows.add(new DecisionTreeOverview.DecisionTreeRow(0, "BP", "Business processes", 0d, Disposition.REJECTED, null, null));
         var scope = new DecisionReportScope(null, null, List.of(), Set.of("CP", "BP"), Set.of("CP", "BP"),
                 new DecisionTreeOverview(rows, List.of()), base.scope().options(), true, true)
                 .withRecordedReasons(Map.of("CP", "Capability reason.", "BP", "No business-process match."));
@@ -118,9 +118,9 @@ class DecisionCompactReportTest {
     }
     static DecisionRationaleReport report(DecisionReportOptions.TreeLayout layout, int size) {
         var rows = new ArrayList<DecisionTreeOverview.DecisionTreeRow>();
-        rows.add(new DecisionTreeOverview.DecisionTreeRow(0, "CP", "Capabilities", 100, Disposition.CONTINUED, null, null));
+        rows.add(new DecisionTreeOverview.DecisionTreeRow(0, "CP", "Capabilities", 100d, Disposition.CONTINUED, null, null));
         for (int i = 1; i < size; i++) rows.add(new DecisionTreeOverview.DecisionTreeRow(1, "CP-" + i,
-                "Überprüfung Ω – nicht abgeschnittene Beschriftung " + i, i == 2 ? null : 0,
+                "Überprüfung Ω – nicht abgeschnittene Beschriftung " + i, i == 2 ? null : 0d,
                 i == 2 ? Disposition.NOT_EVALUATED : Disposition.REJECTED, null, null));
         var options = new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, Set.of("CP"), null, layout, null);
         return DecisionRationaleTemplateRendererTest.report().withScope(new DecisionReportScope(null, null,

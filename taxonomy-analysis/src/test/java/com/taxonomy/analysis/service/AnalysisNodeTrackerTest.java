@@ -24,6 +24,17 @@ class AnalysisNodeTrackerTest {
         assertThat(tracker.snapshot().open()).isEqualTo(1);
         assertThat(tracker.snapshot().excluded()).isEqualTo(2);
     }
+    @Test void positiveSubpercentAssessmentDoesNotPruneDescendants() {
+        var tracker = new AnalysisNodeTracker();
+        tracker.plan(List.of(node("BP", node("BP-1", node("BP-2")))));
+        var detail = new LlmCallDetail(); detail.setScores(Map.of("BP", 0.125d));
+
+        tracker.accept(detail);
+
+        assertThat(tracker.snapshot().assessed()).isEqualTo(1);
+        assertThat(tracker.snapshot().excluded()).isZero();
+        assertThat(tracker.snapshot().open()).isEqualTo(2);
+    }
     private static TaxonomyNodeDto node(String code, TaxonomyNodeDto... children) {
         var node = new TaxonomyNodeDto(); node.setCode(code); node.setNameEn(code);
         node.setChildren(List.of(children)); return node;

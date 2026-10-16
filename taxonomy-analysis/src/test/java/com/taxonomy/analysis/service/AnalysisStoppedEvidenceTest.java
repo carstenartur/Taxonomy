@@ -68,7 +68,7 @@ class AnalysisStoppedEvidenceTest {
     @Test void streamingErrorPayloadCarriesPartialReasonsAndDiscrepancies() {
         var discrepancy = new TaxonomyDiscrepancy("CP", 50, 80);
         var event = new AnalysisStreamEvent.Error("PARTIAL", "CANCELLED: stopped",
-                Map.of("CP", 80), List.of(), List.of(discrepancy), List.of(),
+                Map.of("CP", 80d), List.of(), List.of(discrepancy), List.of(),
                 Map.of("CP", "Retained reason"));
         var mapped = new AnalysisSseEventMapper().map(event);
         var payload = (Map<?, ?>) mapped.payload();
@@ -86,7 +86,7 @@ class AnalysisStoppedEvidenceTest {
 
     private static LlmCallDetail detail() {
         var detail = new LlmCallDetail();
-        detail.setScores(Map.of("CP", 80));
+        detail.setScores(Map.of("CP", 80d));
         detail.setReasons(Map.of("CP", "Retained reason"));
         detail.setPrompt("prompt");
         detail.setRawResponse("response");

@@ -227,7 +227,7 @@ class DecisionRationaleTemplateRendererTest {
         when(templates.downloadCurrentValidated(DecisionRationaleTemplateContract.TEMPLATE_ID))
                 .thenReturn(new TemplateFile(manifest,TEMPLATE_COMMIT,template,Instant.EPOCH));
         var base=report();
-        var chapter=new DecisionRationaleReport.DecisionChapter(1,"BP","Saved parent","",100,0,true,"Saved decision","Saved comparison",List.of(),List.of());
+        var chapter=new DecisionRationaleReport.DecisionChapter(1,"BP","Saved parent","",100d,0,true,"Saved decision","Saved comparison",List.of(),List.of());
         var decision=new DecisionRationaleReport(base.title(),language,base.requirement(),base.status(),base.metadata(),base.executiveSummary(),List.of(chapter),List.of(),List.of(),List.of(),List.of(),null);
         var graph=new com.taxonomy.diagram.DiagramModel("Saved graph",List.of(new com.taxonomy.diagram.DiagramNode("A","Saved A","Capability",1,true,0),new com.taxonomy.diagram.DiagramNode("B","Saved B","Service",.5,false,1)),List.of(new com.taxonomy.diagram.DiagramEdge("E1","A","B","serves",.5)),null);
         var evidence=new com.taxonomy.reporting.api.document.ArchitectureReportDocument.SnapshotEvidence(1L,2L,3L,4,"snapshot","repository","workspace","main","based-on-commit","MOCK","model","fingerprint",com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(graph));

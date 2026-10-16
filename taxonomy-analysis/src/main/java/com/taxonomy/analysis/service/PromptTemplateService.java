@@ -143,15 +143,15 @@ public class PromptTemplateService {
      * @return the rendered prompt string ready to send to the LLM
      */
     public String renderPrompt(String taxonomyCode, String businessText, String nodeList,
-                               int parentScore, String expectedKeys) {
+                               double parentScore, String expectedKeys) {
         String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);
         String template = getTemplate(taxonomyCode);
         return substitute(template, Map.of(
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", name,
-                "{{PARENT_SCORE}}", String.valueOf(parentScore),
-                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : ""));
+                "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
+                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract() + "The scores must sum to " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n";
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -161,12 +161,12 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
-                "{{EXPECTED_KEYS}}", taxonomyCode));
+                "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n";
     }
 
     /**
      * Renders the effective prompt by substituting all {@code {{...}}} placeholders.
-     * Delegates to {@link #renderPrompt(String, String, String, int, String)} with an empty expected-keys string.
+     * Delegates to {@link #renderPrompt(String, String, String, double, String)} with an empty expected-keys string.
      *
      * @param taxonomyCode the taxonomy root code (e.g. "BP")
      * @param businessText the user-entered business requirement text
@@ -174,13 +174,13 @@ public class PromptTemplateService {
      * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
      * @return the rendered prompt string ready to send to the LLM
      */
-    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, int parentScore) {
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, double parentScore) {
         return renderPrompt(taxonomyCode, businessText, nodeList, parentScore, "");
     }
 
     /**
      * Renders the effective prompt using a parent score of 100 (root-level default).
-     * Delegates to {@link #renderPrompt(String, String, String, int, String)}.
+     * Delegates to {@link #renderPrompt(String, String, String, double, String)}.
      *
      * @param taxonomyCode the taxonomy root code (e.g. "BP")
      * @param businessText the user-entered business requirement text
@@ -202,7 +202,15 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
-                "{{MIN_SCORE}}", String.valueOf(minimumScore)));
+                "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n";
+    }
+
+    private static String numericContract() {
+        return "\nMandatory numeric output contract (" + com.taxonomy.dto.AnalysisPercentages.POLICY + "): "
+                + "this overrides older integer-only score instructions. Return JSON numbers with decimals allowed, "
+                + "between 0 and 100. Use a decimal point, not a comma or a percent sign in the number. "
+                + "0.5 means 0.5%, not 50%. Do not round a positive contribution to zero. "
+                + "Explicit zero is negative evidence; missing or failed assessment is not zero.\n";
     }
 
     /**

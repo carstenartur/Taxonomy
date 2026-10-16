@@ -30,8 +30,8 @@ public final class ParallelReformulationChecks {
         var fork = tree.get(0).path("children").get(0);
         String left = fork.path("children").get(0).path("code").asText();
         String right = fork.path("children").get(1).path("code").asText();
-        var scores = new TreeMap<String,Integer>();
-        for (var child : fork.path("children")) scores.put(child.path("children").get(0).path("code").asText(), 50);
+        var scores = new TreeMap<String,Double>();
+        for (var child : fork.path("children")) scores.put(child.path("children").get(0).path("code").asText(), 50d);
         var scope = new ReformulationBaseline.Scope("test-repository", "test-workspace", "draft", 1L, 1L);
         var baseline = ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope, 1L, ORIGINAL),
                 new ReformulationBaseline.Snapshot(scope, "parallel-fixture", 1L, json.writeValueAsString(Map.of("scores", scores))),

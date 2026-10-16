@@ -25,17 +25,17 @@ class AnalysisScoreSemanticsTest {
         root.setChildren(List.of(family, ordinaryLeaf));
 
         AnalysisResult result = new AnalysisResult(
-                Map.of("IP", 100, "IP-F", 40, "IP-P1", 80, "IP-P2", 70, "IP-C", 60),
+                Map.of("IP", 100d, "IP-F", 40d, "IP-P1", 80d, "IP-P2", 70d, "IP-C", 60d),
                 List.of(root));
 
-        assertEquals(80, result.getRawScores().get("IP-P1"));
-        assertEquals(80, result.getProductSuitabilityScores().get("IP-P1"));
-        assertEquals(32, result.getScores().get("IP-P1"));
-        assertEquals(28, result.getEffectiveScores().get("IP-P2"));
-        assertEquals(60, result.getScores().get("IP-C"));
+        assertEquals(80d, result.getRawScores().get("IP-P1"));
+        assertEquals(80d, result.getProductSuitabilityScores().get("IP-P1"));
+        assertEquals(32d, result.getScores().get("IP-P1"));
+        assertEquals(28d, result.getEffectiveScores().get("IP-P2"));
+        assertEquals(60d, result.getScores().get("IP-C"));
         assertEquals(AnalysisScoreKind.PRODUCT_SUITABILITY,
                 result.getScoreDetails().get("IP-P1").kind());
-        assertEquals(40, result.getScoreDetails().get("IP-P1").parentScore());
+        assertEquals(40d, result.getScoreDetails().get("IP-P1").parentScore());
         assertEquals(AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
                 result.getScoreDetails().get("IP-F").kind());
         assertTrue(result.getScoreSemanticsWarnings().isEmpty());
@@ -51,11 +51,11 @@ class AnalysisScoreSemanticsTest {
         root.setChildren(List.of(weakFamily, ordinaryLeaf));
 
         AnalysisResult result = new AnalysisResult(
-                Map.of("IP", 100, "IP-F", 10, "IP-P", 100, "IP-C", 80),
+                Map.of("IP", 100d, "IP-F", 10d, "IP-P", 100d, "IP-C", 80d),
                 List.of(root));
 
-        assertEquals(100, result.getProductSuitabilityScores().get("IP-P"));
-        assertEquals(10, result.getScores().get("IP-P"));
+        assertEquals(100d, result.getProductSuitabilityScores().get("IP-P"));
+        assertEquals(10d, result.getScores().get("IP-P"));
         assertTrue(result.getScores().get("IP-P") < result.getScores().get("IP-C"));
     }
 
@@ -67,19 +67,19 @@ class AnalysisScoreSemanticsTest {
         family.setChildren(List.of(product));
         root.setChildren(List.of(family));
 
-        AnalysisResult result = new AnalysisResult(Map.of("IP-P", 95), List.of(root));
+        AnalysisResult result = new AnalysisResult(Map.of("IP-P", 95d), List.of(root));
 
-        assertEquals(95, result.getRawScores().get("IP-P"));
-        assertEquals(0, result.getScores().get("IP-P"));
+        assertEquals(95d, result.getRawScores().get("IP-P"));
+        assertEquals(0d, result.getScores().get("IP-P"));
         assertFalse(result.getScoreSemanticsWarnings().isEmpty());
     }
 
     @Test
     void settingFrozenTreeAfterAnEarlyReadRecomputesScoreSemantics() {
         AnalysisResult result = new AnalysisResult();
-        result.setScores(Map.of("IP-F", 40, "IP-P", 80));
+        result.setScores(Map.of("IP-F", 40d, "IP-P", 80d));
 
-        assertEquals(80, result.getScores().get("IP-P"));
+        assertEquals(80d, result.getScores().get("IP-P"));
         assertEquals(AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
                 result.getScoreDetails().get("IP-P").kind());
 
@@ -90,8 +90,8 @@ class AnalysisScoreSemanticsTest {
         root.setChildren(List.of(family));
         result.setTree(List.of(root));
 
-        assertEquals(32, result.getScores().get("IP-P"));
-        assertEquals(80, result.getProductSuitabilityScores().get("IP-P"));
+        assertEquals(32d, result.getScores().get("IP-P"));
+        assertEquals(80d, result.getProductSuitabilityScores().get("IP-P"));
         assertEquals(AnalysisScoreKind.PRODUCT_SUITABILITY,
                 result.getScoreDetails().get("IP-P").kind());
     }
@@ -105,16 +105,16 @@ class AnalysisScoreSemanticsTest {
 
         IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
-                () -> AnalysisScoreSemantics.derive(Map.of("IP-DUP", 80), List.of(root)));
+                () -> AnalysisScoreSemantics.derive(Map.of("IP-DUP", 80d), List.of(root)));
 
         assertTrue(failure.getMessage().contains("duplicate node code IP-DUP"));
     }
 
     @Test
     void canonicalScoreKeyCollisionsFailClosed() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("IP", 40);
-        scores.put("IP ", 60);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("IP", 40d);
+        scores.put("IP ", 60d);
 
         IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
@@ -125,10 +125,10 @@ class AnalysisScoreSemanticsTest {
 
     @Test
     void canonicalScoreKeysAreSortedAfterNormalization() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put(" Z", 20);
-        scores.put("A", 10);
-        scores.put(" M ", 15);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put(" Z", 20d);
+        scores.put("A", 10d);
+        scores.put(" M ", 15d);
 
         AnalysisResult result = new AnalysisResult();
         result.setScores(scores);
@@ -139,7 +139,7 @@ class AnalysisScoreSemanticsTest {
 
     @Test
     void exactlyOneHundredWarningsRetainAllWarningsWithoutSuppressionMarker() {
-        Map<String, Integer> scores = unknownScores(100);
+        Map<String, Double> scores = unknownScores(100);
 
         AnalysisScoreSemantics.Derived derived =
                 AnalysisScoreSemantics.derive(scores, List.of());
@@ -152,7 +152,7 @@ class AnalysisScoreSemanticsTest {
 
     @Test
     void moreThanOneHundredWarningsKeepOneHundredWarningsAndOneSuppressionMarker() {
-        Map<String, Integer> scores = unknownScores(150);
+        Map<String, Double> scores = unknownScores(150);
 
         AnalysisScoreSemantics.Derived derived =
                 AnalysisScoreSemantics.derive(scores, List.of());
@@ -168,18 +168,16 @@ class AnalysisScoreSemanticsTest {
     }
 
     @Test
-    void malformedRawScoresAreCanonicalizedOnceAndRemainComplete() {
-        Map<String, Integer> rawScores = new LinkedHashMap<>();
-        rawScores.put(" NODE ", 80);
-        rawScores.put("HIGH", 120);
-        rawScores.put("LOW", -5);
+    void rawScoreKeysAreCanonicalizedOnceAndRemainComplete() {
+        Map<String, Double> rawScores = new LinkedHashMap<>();
+        rawScores.put(" NODE ", 80d);
         rawScores.put("NULL", null);
-        rawScores.put(" ", 50);
+        rawScores.put(" ", 50d);
 
         AnalysisResult result = new AnalysisResult();
         result.setScores(rawScores);
 
-        assertEquals(Map.of("NODE", 80, "HIGH", 100, "LOW", 0), result.getRawScores());
+        assertEquals(Map.of("NODE", 80d), result.getRawScores());
         Map<String, AnalysisScoreDetail> firstRead = result.getScoreDetails();
         Map<String, AnalysisScoreDetail> secondRead = result.getScoreDetails();
         assertSame(firstRead, secondRead);
@@ -189,13 +187,13 @@ class AnalysisScoreSemanticsTest {
     @Test
     void mismatchedScoreDetailNodeCodeForcesRecomputation() {
         TaxonomyNodeDto root = node("IP", null, "CATEGORY");
-        AnalysisResult result = new AnalysisResult(Map.of("IP", 100), List.of(root));
+        AnalysisResult result = new AnalysisResult(Map.of("IP", 100d), List.of(root));
         AnalysisScoreDetail forged = new AnalysisScoreDetail(
                 "OTHER", AnalysisScoreKind.ROOT_RELEVANCE,
                 100, 100, null, null);
         Map<String, AnalysisScoreDetail> forgedDetails = Map.of("IP", forged);
         result.setScoreDetails(forgedDetails);
-        result.setEffectiveScores(Map.of("IP", 100));
+        result.setEffectiveScores(Map.of("IP", 100d));
         result.setScoreSemanticsVersion(AnalysisScoreSemantics.CURRENT_VERSION);
         result.setScoreSemanticsFingerprintSha256(
                 AnalysisScoreSemanticsFingerprint.sha256(forgedDetails));
@@ -211,16 +209,16 @@ class AnalysisScoreSemanticsTest {
     @Test
     void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {
         AnalysisResult result = new AnalysisResult();
-        result.setRawScores(Map.of("P", 80));
-        result.setScores(Map.of("P", 32));
+        result.setRawScores(Map.of("P", 80d));
+        result.setScores(Map.of("P", 32d));
 
-        assertEquals(80, result.getRawScores().get("P"));
+        assertEquals(80d, result.getRawScores().get("P"));
     }
 
-    private Map<String, Integer> unknownScores(int count) {
-        Map<String, Integer> scores = new LinkedHashMap<>();
+    private Map<String, Double> unknownScores(int count) {
+        Map<String, Double> scores = new LinkedHashMap<>();
         for (int index = 0; index < count; index++) {
-            scores.put("UNKNOWN-" + String.format("%03d", index), 50);
+            scores.put("UNKNOWN-" + String.format("%03d", index), 50d);
         }
         return scores;
     }

@@ -82,7 +82,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
 
     @Override
     @Transactional(readOnly = true)
-    public RequirementImpactView findImpactForRequirement(Map<String, Integer> scores,
+    public RequirementImpactView findImpactForRequirement(Map<String, Double> scores,
                                                            String businessText, int maxHops) {
         RequirementImpactView view = new RequirementImpactView();
         view.setBusinessText(businessText);
@@ -95,7 +95,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         }
 
         // Select anchors using the same logic as RequirementArchitectureViewService
-        List<Map.Entry<String, Integer>> anchors = selectAnchors(scores);
+        List<Map.Entry<String, Double>> anchors = selectAnchors(scores);
         if (anchors.isEmpty()) {
             view.getNotes().add("No nodes met the anchor threshold; impact view is empty.");
             return view;
@@ -103,7 +103,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
 
         // Build anchor relevance map
         Map<String, Double> anchorRelevances = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : anchors) {
+        for (Map.Entry<String, Double> entry : anchors) {
             anchorRelevances.put(entry.getKey(), entry.getValue() / 100.0);
         }
 
@@ -433,14 +433,14 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         return elements;
     }
 
-    private List<Map.Entry<String, Integer>> selectAnchors(Map<String, Integer> scores) {
+    private List<Map.Entry<String, Double>> selectAnchors(Map<String, Double> scores) {
         // Sort by score descending
-        List<Map.Entry<String, Integer>> sorted = scores.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        List<Map.Entry<String, Double>> sorted = scores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .collect(Collectors.toList());
 
         // Prefer all nodes above HIGH threshold
-        List<Map.Entry<String, Integer>> highAnchors = sorted.stream()
+        List<Map.Entry<String, Double>> highAnchors = sorted.stream()
                 .filter(e -> e.getValue() >= ANCHOR_THRESHOLD_HIGH)
                 .collect(Collectors.toList());
 
@@ -449,7 +449,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         }
 
         // Fallback: top-N above LOW threshold
-        List<Map.Entry<String, Integer>> lowAnchors = sorted.stream()
+        List<Map.Entry<String, Double>> lowAnchors = sorted.stream()
                 .filter(e -> e.getValue() >= ANCHOR_THRESHOLD_LOW)
                 .limit(MIN_ANCHORS)
                 .collect(Collectors.toList());

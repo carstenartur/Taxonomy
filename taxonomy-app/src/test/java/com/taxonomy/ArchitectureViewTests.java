@@ -69,11 +69,11 @@ class ArchitectureViewTests {
 
     @Test
     void anchorSelectionPicksAllAbove70() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
-        scores.put("CP", 80);
-        scores.put("CR", 75);
-        scores.put("CI", 40);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
+        scores.put("CP", 80d);
+        scores.put("CR", 75d);
+        scores.put("CI", 40d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
@@ -83,11 +83,11 @@ class ArchitectureViewTests {
 
     @Test
     void anchorSelectionFallsBackToTop3WhenFewerThan3Above70() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 80);
-        scores.put("CP", 55);
-        scores.put("CR", 52);
-        scores.put("CI", 30);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 80d);
+        scores.put("CP", 55d);
+        scores.put("CR", 52d);
+        scores.put("CI", 30d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
@@ -99,9 +99,9 @@ class ArchitectureViewTests {
 
     @Test
     void anchorSelectionReturnsEmptyWhenAllScoresBelowThreshold() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 30);
-        scores.put("CP", 20);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 30d);
+        scores.put("CP", 20d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
@@ -268,7 +268,7 @@ class ArchitectureViewTests {
 
     @Test
     void buildIncludesAnchorAsElement() {
-        Map<String, Integer> scores = Map.of("BP", 91);
+        Map<String, Double> scores = Map.of("BP", 91d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
@@ -283,8 +283,8 @@ class ArchitectureViewTests {
     void buildIncludesPropagatedElementsAndRelationships() {
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
@@ -298,7 +298,7 @@ class ArchitectureViewTests {
 
     @Test
     void buildAddsNoteWhenNoRelationsExist() {
-        Map<String, Integer> scores = Map.of("BP", 91);
+        Map<String, Double> scores = Map.of("BP", 91d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 

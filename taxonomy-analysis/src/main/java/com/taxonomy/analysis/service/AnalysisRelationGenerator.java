@@ -56,18 +56,18 @@ public class AnalysisRelationGenerator {
      *   <li>Return as DTOs sorted by confidence descending</li>
      * </ol>
      *
-     * @param scores map of nodeCode → integer score (0–100) from LLM analysis
+     * @param scores map of nodeCode → percentage score (0–100) from LLM analysis
      * @return list of provisional relation hypotheses, sorted by confidence descending
      */
     @Transactional(readOnly = true)
-    public List<RelationHypothesisDto> generate(Map<String, Integer> scores) {
+    public List<RelationHypothesisDto> generate(Map<String, Double> scores) {
         if (scores == null || scores.isEmpty()) {
             return Collections.emptyList();
         }
 
         // 1. Collect qualifying nodes (score >= MIN_SCORE), grouped by taxonomy root
         Map<String, List<ScoredNode>> nodesByRoot = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() < MIN_SCORE) {
                 continue;
             }
@@ -114,10 +114,10 @@ public class AnalysisRelationGenerator {
 
                     // Generate pairings: pick the top-scoring source × top-scoring target
                     ScoredNode bestSource = sourceNodes.stream()
-                            .max(Comparator.comparingInt(n -> n.score))
+                            .max(Comparator.comparingDouble(n -> n.score))
                             .orElse(null);
                     ScoredNode bestTarget = targetNodes.stream()
-                            .max(Comparator.comparingInt(n -> n.score))
+                            .max(Comparator.comparingDouble(n -> n.score))
                             .orElse(null);
 
                     if (bestSource == null || bestTarget == null) {
@@ -131,10 +131,10 @@ public class AnalysisRelationGenerator {
 
                     double confidence = (bestSource.score * bestTarget.score) / CONFIDENCE_NORMALIZATION_FACTOR;
                     String reasoning = String.format(
-                            "%s (%s, score %d) %s %s (%s, score %d) — inferred from compatibility matrix",
-                            bestSource.name, bestSource.root, bestSource.score,
+                            "%s (%s, score %s) %s %s (%s, score %s) — inferred from compatibility matrix",
+                            bestSource.name, bestSource.root, com.taxonomy.dto.AnalysisPercentages.canonical(bestSource.score),
                             relationType.name(),
-                            bestTarget.name, bestTarget.root, bestTarget.score);
+                            bestTarget.name, bestTarget.root, com.taxonomy.dto.AnalysisPercentages.canonical(bestTarget.score));
 
                     hypotheses.add(new RelationHypothesisDto(
                             bestSource.code, bestSource.name,
@@ -167,5 +167,5 @@ public class AnalysisRelationGenerator {
     }
 
     /** Internal holder for a scored node with its metadata. */
-    private record ScoredNode(String code, String name, String root, int score) {}
+    private record ScoredNode(String code, String name, String root, double score) {}
 }

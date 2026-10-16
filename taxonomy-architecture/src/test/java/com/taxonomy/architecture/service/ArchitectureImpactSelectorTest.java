@@ -29,7 +29,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView leaf = createElement("CP-1023", "Secure Communications", "CP", 3, 85);
         List<RequirementElementView> elements = new ArrayList<>(List.of(leaf));
 
-        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1023", 85d), Set.of());
 
         assertThat(leaf.isSelectedForImpact()).isTrue();
     }
@@ -37,13 +37,13 @@ class ArchitectureImpactSelectorTest {
     @Test
     void limitsImpactNodesPerCategory() {
         List<RequirementElementView> elements = new ArrayList<>();
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
 
         // Create more than MAX_IMPACT_PER_CATEGORY elements in same category
         for (int i = 0; i < 8; i++) {
             String code = "CP-10" + String.format("%02d", i);
             elements.add(createElement(code, "Node " + i, "CP", 3, 70 + i));
-            scores.put(code, 70 + i);
+            scores.put(code, 70d + i);
         }
 
         selector.selectForImpact(elements, scores, Set.of());
@@ -60,9 +60,9 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView nonCrossCat = createElement("CP-1024", "Service B", "CP", 3, 60);
 
         double crossScore = selector.computeImpactScore(
-                crossCat, Map.of("CP-1023", 60), Set.of("CP-1023"), List.of());
+                crossCat, Map.of("CP-1023", 60d), Set.of("CP-1023"), List.of());
         double nonCrossScore = selector.computeImpactScore(
-                nonCrossCat, Map.of("CP-1024", 60), Set.of(), List.of());
+                nonCrossCat, Map.of("CP-1024", 60d), Set.of(), List.of());
 
         assertThat(crossScore).isGreaterThan(nonCrossScore);
     }
@@ -73,9 +73,9 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView deep = createElement("CP-1023", "Deep Level", "CP", 4, 70);
 
         double shallowScore = selector.computeImpactScore(
-                shallow, Map.of("CP-1000", 70), Set.of(), List.of());
+                shallow, Map.of("CP-1000", 70d), Set.of(), List.of());
         double deepScore = selector.computeImpactScore(
-                deep, Map.of("CP-1023", 70), Set.of(), List.of());
+                deep, Map.of("CP-1023", 70d), Set.of(), List.of());
 
         assertThat(deepScore).isGreaterThan(shallowScore);
     }
@@ -85,7 +85,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView generic = createElement("CP-1000", "Enable", "CP", 1, 80);
         RequirementElementView concrete = createElement("CP-1023", "Secure Messaging Service", "CP", 3, 50);
         List<RequirementElementView> elements = new ArrayList<>(List.of(generic, concrete));
-        Map<String, Integer> scores = Map.of("CP-1000", 80, "CP-1023", 50);
+        Map<String, Double> scores = Map.of("CP-1000", 80d, "CP-1023", 50d);
 
         boolean isWeak = selector.isGenericWeakNode(generic, scores, elements);
 
@@ -97,7 +97,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView node = createElement("CP-1000", "Clinical Workflow Management", "CP", 1, 80);
         RequirementElementView child = createElement("CP-1023", "Sub Service", "CP", 3, 50);
         List<RequirementElementView> elements = List.of(node, child);
-        Map<String, Integer> scores = Map.of("CP-1000", 80, "CP-1023", 50);
+        Map<String, Double> scores = Map.of("CP-1000", 80d, "CP-1023", 50d);
 
         boolean isWeak = selector.isGenericWeakNode(node, scores, elements);
 
@@ -110,7 +110,7 @@ class ArchitectureImpactSelectorTest {
         leaf.setOrigin(NodeOrigin.PROPAGATED);
         List<RequirementElementView> elements = new ArrayList<>(List.of(leaf));
 
-        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1023", 85d), Set.of());
 
         assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.IMPACT_PROMOTED);
     }
@@ -121,7 +121,7 @@ class ArchitectureImpactSelectorTest {
         leaf.setOrigin(NodeOrigin.DIRECT_SCORED);
         List<RequirementElementView> elements = new ArrayList<>(List.of(leaf));
 
-        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1023", 85d), Set.of());
 
         // DIRECT_SCORED should not be downgraded to IMPACT_PROMOTED
         assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.DIRECT_SCORED);
@@ -133,7 +133,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView scaffolding = createElement("CP-1000", "Capabilities", "CP", 1, 90);
         RequirementElementView concrete = createElement("CP-1023", "Secure Messaging Service", "CP", 3, 70);
         List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding, concrete));
-        Map<String, Integer> scores = Map.of("CP-1000", 90, "CP-1023", 70);
+        Map<String, Double> scores = Map.of("CP-1000", 90d, "CP-1023", 70d);
 
         selector.selectForImpact(elements, scores, Set.of());
 
@@ -147,7 +147,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView scaffolding = createElement("CP-1000", "Capabilities", "CP", 1, 85);
         List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding));
 
-        selector.selectForImpact(elements, Map.of("CP-1000", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1000", 85d), Set.of());
 
         assertThat(scaffolding.isSelectedForImpact()).isTrue();
     }
@@ -184,7 +184,7 @@ class ArchitectureImpactSelectorTest {
         seedNode.setOrigin(NodeOrigin.SEED_CONTEXT);
         List<RequirementElementView> elements = new ArrayList<>(List.of(seedNode));
 
-        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1023", 85d), Set.of());
 
         // SEED_CONTEXT should not be overridden to IMPACT_PROMOTED
         assertThat(seedNode.getOrigin()).isEqualTo(NodeOrigin.SEED_CONTEXT);
@@ -198,7 +198,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView child = createElement("BP-1490", "Health Services", "BP", 3, 60);
         child.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1490");
         List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child));
-        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 60);
+        Map<String, Double> scores = Map.of("BP-1327", 80d, "BP-1490", 60d);
 
         boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
 
@@ -212,7 +212,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView child = createElement("BP-1490", "Health Services", "BP", 3, 10);
         child.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1490");
         List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child));
-        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 10);
+        Map<String, Double> scores = Map.of("BP-1327", 80d, "BP-1490", 10d);
 
         boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
 
@@ -228,7 +228,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView child2 = createElement("BP-1697", "Medical", "BP", 3, 55);
         child2.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1697");
         List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child1, child2));
-        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 60, "BP-1697", 55);
+        Map<String, Double> scores = Map.of("BP-1327", 80d, "BP-1490", 60d, "BP-1697", 55d);
 
         boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
 
@@ -241,7 +241,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView leaf = createElement("CP-1023", "Service", "CP", 3, 60);
         leaf.setHierarchyPath("CP > CP-1000 > CP-1023");
         List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding, leaf));
-        Map<String, Integer> scores = Map.of("CP-1000", 90, "CP-1023", 60);
+        Map<String, Double> scores = Map.of("CP-1000", 90d, "CP-1023", 60d);
 
         // Depth 1 should not be flagged as redundant intermediate (it's scaffolding)
         boolean redundant = selector.isRedundantIntermediate(scaffolding, scores, elements);
@@ -254,7 +254,7 @@ class ArchitectureImpactSelectorTest {
         RequirementElementView leaf = createElement("CP-1023", "Secure Messaging", "CP", 3, 85);
         List<RequirementElementView> elements = new ArrayList<>(List.of(leaf));
 
-        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+        selector.selectForImpact(elements, Map.of("CP-1023", 85d), Set.of());
 
         assertThat(leaf.getPresenceReason()).isNotNull();
         assertThat(leaf.getPresenceReason()).contains("CP-1023");
@@ -262,7 +262,7 @@ class ArchitectureImpactSelectorTest {
     }
 
     private static RequirementElementView createElement(String code, String title,
-                                                         String sheet, int depth, int score) {
+                                                         String sheet, int depth, double score) {
         RequirementElementView el = new RequirementElementView();
         el.setNodeCode(code);
         el.setTitle(title);

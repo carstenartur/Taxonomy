@@ -32,7 +32,7 @@ public class RecommendationApiController {
      * Request body for architecture recommendation.
      */
     public record RecommendationRequest(
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             String businessText,
             int minScore) {
     }

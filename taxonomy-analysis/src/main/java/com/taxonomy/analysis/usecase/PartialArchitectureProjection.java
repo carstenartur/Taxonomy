@@ -50,7 +50,7 @@ public final class PartialArchitectureProjection {
                 .filter(entry -> details.get(entry.getKey()) != null
                         && details.get(entry.getKey()).effectiveRelevance() == entry.getValue())
                 .filter(entry -> index.containsKey(entry.getKey()) && !index.get(entry.getKey()).isTaxonomyContainer())
-                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
+                .sorted(Map.Entry.<String, Double>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
                 .toList();
         int limit = maxNodes > 0 ? maxNodes : MAX_SNAPSHOT_NODES;
         int added = 0;
@@ -117,7 +117,8 @@ public final class PartialArchitectureProjection {
             String kind = detail.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ');
             anchors.put(element.getNodeCode(), new RequirementAnchor(element.getNodeCode(),
                     detail.effectiveRelevance(), "Direct " + kind + " assessment; raw score "
-                    + detail.rawScore() + ", effective relevance " + detail.effectiveRelevance() + "%."));
+                    + AnalysisPercentages.display(detail.rawScore()) + ", effective relevance "
+                    + AnalysisPercentages.display(detail.effectiveRelevance()) + "."));
         }
         view.setIncludedElements(elements); view.setTotalElements(elements.size());
         view.setTotalRelationships(view.getIncludedRelationships() == null ? 0 : view.getIncludedRelationships().size());

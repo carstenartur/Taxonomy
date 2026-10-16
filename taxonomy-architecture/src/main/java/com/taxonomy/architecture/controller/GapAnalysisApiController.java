@@ -34,7 +34,7 @@ public class GapAnalysisApiController {
      * Request body for gap analysis.
      */
     public record GapAnalysisRequest(
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             String businessText,
             int minScore) {
     }

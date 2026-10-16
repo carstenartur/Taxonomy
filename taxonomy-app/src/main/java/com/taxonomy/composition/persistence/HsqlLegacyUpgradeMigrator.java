@@ -47,6 +47,7 @@ final class HsqlLegacyUpgradeMigrator {
                     .toLowerCase(Locale.ROOT).contains("hsql")) {
                 return;
             }
+            widenAssessmentPercentages(connection);
             if (!tableExists(connection, "system_repository")) {
                 return; // A fresh schema is created by Hibernate after this hook.
             }
@@ -72,6 +73,26 @@ final class HsqlLegacyUpgradeMigrator {
             bindPortfolio(connection);
         } catch (SQLException error) {
             throw new IllegalStateException("Unable to upgrade HSQLDB 1.3 tenants safely", error);
+        }
+    }
+
+    /** Before Hibernate validates the existing schema; old migrations stay immutable. */
+    private static void widenAssessmentPercentages(Connection connection) throws SQLException {
+        for (var column : Map.of("req_element_mapping", "direct_score",
+                "requirement_coverage", "score", "req_solution_link", "coverage_percent").entrySet()) {
+            // Only static, owned identifiers are used for DDL. Scope metadata to the
+            // active schema so a table with the same name elsewhere is never touched.
+            try (var metadata = connection.getMetaData().getColumns(null, connection.getSchema(),
+                    column.getKey().toUpperCase(Locale.ROOT), column.getValue().toUpperCase(Locale.ROOT))) {
+                if (!metadata.next()) continue; // Fresh schema: Hibernate creates it.
+                int type = metadata.getInt("DATA_TYPE");
+                if (type != java.sql.Types.INTEGER && type != java.sql.Types.SMALLINT
+                        && type != java.sql.Types.TINYINT && type != java.sql.Types.BIGINT) continue;
+            }
+            try (var statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE " + column.getKey() + " ALTER COLUMN "
+                        + column.getValue() + " SET DATA TYPE DOUBLE");
+            }
         }
     }
 

@@ -439,7 +439,7 @@ public class PortfolioGitService {
                         .getOrDefault(requirement.getId(), List.of())) {
                     result.add(block("mapping",
                             List.of(canonicalId, "->", mapping.getNodeCode()), properties(
-                                    "score", Integer.toString(mapping.getDirectScore()),
+                                    "score", com.taxonomy.dto.AnalysisPercentages.canonical(mapping.getDirectScore()),
                                     "source", mapping.getSnapshot().getId(),
                                     MANAGED_PROPERTY, "true",
                                     "x-relevance", Double.toString(mapping.getRelevance()),

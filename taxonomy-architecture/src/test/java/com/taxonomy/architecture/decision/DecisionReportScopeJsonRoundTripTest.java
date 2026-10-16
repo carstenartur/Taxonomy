@@ -138,11 +138,11 @@ class DecisionReportScopeJsonRoundTripTest {
 
     private static DecisionReportScope scope(DecisionReportOptions.Profile profile) {
         var tree = new DecisionTreeOverview(List.of(
-                new DecisionTreeRow(0, "IP", "Products", 100,
+                new DecisionTreeRow(0, "IP", "Products", 100d,
                         DecisionRationaleReport.Disposition.CONTINUED, null, null),
-                new DecisionTreeRow(1, "IP-1", "Selected product", 60,
+                new DecisionTreeRow(1, "IP-1", "Selected product", 60d,
                         DecisionRationaleReport.Disposition.LEAF_CANDIDATE, null, null),
-                new DecisionTreeRow(1, "IP-0", "Rejected product", 0,
+                new DecisionTreeRow(1, "IP-0", "Rejected product", 0d,
                         DecisionRationaleReport.Disposition.REJECTED, null, null),
                 new DecisionTreeRow(1, "IP-unknown", "Open evaluation", null,
                         DecisionRationaleReport.Disposition.NOT_EVALUATED, null, null)),

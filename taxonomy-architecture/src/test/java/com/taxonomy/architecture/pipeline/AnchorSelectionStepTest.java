@@ -22,11 +22,11 @@ class AnchorSelectionStepTest {
 
     @Test
     void selectsAllNodesAbove70AsHighAnchors() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 91);
-        scores.put("CP", 80);
-        scores.put("CR", 75);
-        scores.put("CI", 40);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 91d);
+        scores.put("CP", 80d);
+        scores.put("CR", 75d);
+        scores.put("CI", 40d);
 
         List<RequirementAnchor> anchors = step.select(scores);
 
@@ -36,20 +36,20 @@ class AnchorSelectionStepTest {
 
     @Test
     void highAnchorsAreSortedByScoreDescending() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 75);
-        scores.put("CP", 91);
-        scores.put("CR", 80);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 75d);
+        scores.put("CP", 91d);
+        scores.put("CR", 80d);
 
         List<RequirementAnchor> anchors = step.select(scores);
 
         assertThat(anchors).extracting(RequirementAnchor::getDirectScore)
-                .containsExactly(91, 80, 75);
+                .containsExactly(91.0, 80.0, 75.0);
     }
 
     @Test
     void highAnchorReasonIsHighDirectMatch() {
-        Map<String, Integer> scores = Map.of("BP", 91, "CP", 80, "CR", 75);
+        Map<String, Double> scores = Map.of("BP", 91d, "CP", 80d, "CR", 75d);
         List<RequirementAnchor> anchors = step.select(scores);
         assertThat(anchors).allMatch(a -> "high direct match".equals(a.getReason()));
     }
@@ -58,11 +58,11 @@ class AnchorSelectionStepTest {
 
     @Test
     void fallsBackToTop3WhenFewerThan3AboveHighThreshold() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 80);  // above 70
-        scores.put("CP", 55);  // above 50 (fallback candidate)
-        scores.put("CR", 52);  // above 50 (fallback candidate)
-        scores.put("CI", 30);  // below 50 (excluded)
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 80d);  // above 70
+        scores.put("CP", 55d);  // above 50 (fallback candidate)
+        scores.put("CR", 52d);  // above 50 (fallback candidate)
+        scores.put("CI", 30d);  // below 50 (excluded)
 
         List<RequirementAnchor> anchors = step.select(scores);
 
@@ -73,23 +73,23 @@ class AnchorSelectionStepTest {
 
     @Test
     void fallbackAnchorsAreOrderedByScoreDescending() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 52);
-        scores.put("CP", 65);
-        scores.put("CR", 58);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 52d);
+        scores.put("CP", 65d);
+        scores.put("CR", 58d);
 
         List<RequirementAnchor> anchors = step.select(scores);
 
         // All below 70, so fallback: top-3 sorted by score descending
         assertThat(anchors).extracting(RequirementAnchor::getDirectScore)
-                .containsExactly(65, 58, 52);
+                .containsExactly(65.0, 58.0, 52.0);
     }
 
     @Test
     void fallbackReasonIsTopCandidateFallback() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 52);
-        scores.put("CP", 65);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 52d);
+        scores.put("CP", 65d);
 
         List<RequirementAnchor> anchors = step.select(scores);
 
@@ -100,7 +100,7 @@ class AnchorSelectionStepTest {
 
     @Test
     void returnsEmptyWhenAllScoresBelowLowThreshold() {
-        Map<String, Integer> scores = Map.of("BP", 30, "CP", 20);
+        Map<String, Double> scores = Map.of("BP", 30d, "CP", 20d);
         List<RequirementAnchor> anchors = step.select(scores);
         assertThat(anchors).isEmpty();
     }
@@ -113,13 +113,13 @@ class AnchorSelectionStepTest {
 
     @Test
     void limitsFallbackToAtMost3Candidates() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         // 5 nodes, all between 50 and 70 → fallback mode, should return only 3
-        scores.put("BP", 68);
-        scores.put("CP", 65);
-        scores.put("CR", 62);
-        scores.put("CI", 55);
-        scores.put("CO", 51);
+        scores.put("BP", 68d);
+        scores.put("CP", 65d);
+        scores.put("CR", 62d);
+        scores.put("CI", 55d);
+        scores.put("CO", 51d);
 
         List<RequirementAnchor> anchors = step.select(scores);
 

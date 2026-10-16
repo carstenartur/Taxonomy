@@ -496,9 +496,7 @@ public class DecisionChapterDiagramRenderer {
         if (value == null) {
             return "—";
         }
-        return Math.abs(value - Math.rint(value)) < 0.05
-                ? String.format(java.util.Locale.ROOT, "%.0f%%", value)
-                : String.format(java.util.Locale.ROOT, "%.1f%%", value);
+        return com.taxonomy.dto.AnalysisPercentages.display(value);
     }
 
     private String hex(Color color) {

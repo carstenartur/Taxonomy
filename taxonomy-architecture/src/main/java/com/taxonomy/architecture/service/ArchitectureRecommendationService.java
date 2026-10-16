@@ -59,7 +59,7 @@ public class ArchitectureRecommendationService {
      * @return architecture recommendation with confirmed, proposed elements, and suggested relations
      */
     @Transactional(readOnly = true)
-    public ArchitectureRecommendation recommend(Map<String, Integer> scores,
+    public ArchitectureRecommendation recommend(Map<String, Double> scores,
                                                  String businessText, int minScore) {
         ArchitectureRecommendation rec = new ArchitectureRecommendation();
         rec.setBusinessText(businessText);
@@ -73,7 +73,7 @@ public class ArchitectureRecommendationService {
 
         // Step 1: Identify confirmed elements (high score)
         List<RecommendedElement> confirmed = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() != null && entry.getValue() >= HIGH_SCORE_THRESHOLD) {
                 Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(entry.getKey());
                 if (nodeOpt.isPresent()) {
@@ -170,12 +170,12 @@ public class ArchitectureRecommendationService {
     private List<TaxonomyNode> rankByEmbeddingSimilarity(List<TaxonomyNode> candidates,
                                                           String businessText) {
         try {
-            Map<String, Integer> candidateScores = embeddingService.scoreNodes(
+            Map<String, Double> candidateScores = embeddingService.scoreNodes(
                     businessText, candidates);
 
             return candidates.stream()
-                    .sorted(Comparator.comparingInt(
-                            (TaxonomyNode n) -> candidateScores.getOrDefault(n.getCode(), 0)).reversed())
+                    .sorted(Comparator.comparingDouble(
+                            (TaxonomyNode n) -> candidateScores.getOrDefault(n.getCode(), 0d)).reversed())
                     .limit(MAX_PROPOSALS_PER_GAP)
                     .collect(Collectors.toList());
         } catch (Exception e) {

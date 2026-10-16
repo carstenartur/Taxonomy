@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.service;
 
+import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
@@ -193,8 +194,8 @@ public class PortfolioReportService {
                 .append("|---|---|---:|---:|---:|\n");
         model.taxonomyNodes().forEach(node -> output.append('|').append(node.nodeCode())
                 .append('|').append(escapeMarkdown(node.title())).append('|')
-                .append(node.requirementCount()).append('|').append(node.maximumDirectScore())
-                .append("%|").append(Math.round(node.averageRelevance() * 100)).append("%|\n"));
+                .append(node.requirementCount()).append('|').append(AnalysisPercentages.display(node.maximumDirectScore()))
+                .append('|').append(AnalysisPercentages.display(node.averageRelevance() * 100)).append("|\n"));
         output.append("\n## Solutions and products\n\n");
         for (ProjectSolutionView solution : model.solutions()) {
             output.append("### ").append(solution.solution().solutionKey()).append(" — ")
@@ -288,8 +289,8 @@ public class PortfolioReportService {
             for (int index = 0; index < model.taxonomyNodes().size(); index++) {
                 var node = model.taxonomyNodes().get(index);
                 tableRow(taxonomy, index + 1, node.nodeCode(), node.title(),
-                        String.valueOf(node.requirementCount()), node.maximumDirectScore() + "%",
-                        Math.round(node.averageRelevance() * 100) + "%");
+                        String.valueOf(node.requirementCount()), AnalysisPercentages.display(node.maximumDirectScore()),
+                        AnalysisPercentages.display(node.averageRelevance() * 100));
             }
             title(document, "Solutions and products", 2);
             for (ProjectSolutionView solution : model.solutions()) {
@@ -344,7 +345,7 @@ public class PortfolioReportService {
             output.append(csvCell(row));
             for (String column : matrix.columns()) {
                 output.append(',').append(matrix.values().getOrDefault(row, Map.of())
-                        .getOrDefault(column, 0));
+                        .getOrDefault(column, 0d));
             }
             output.append('\n');
         }

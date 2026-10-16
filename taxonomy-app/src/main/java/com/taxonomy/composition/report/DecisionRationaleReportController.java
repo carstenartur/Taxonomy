@@ -103,11 +103,11 @@ public class DecisionRationaleReportController {
     }
 
     public record DecisionReportRequest(
-            Map<String, Integer> scores,
-            Map<String, Integer> rawScores,
-            Map<String, Integer> effectiveScores,
+            Map<String, Double> scores,
+            Map<String, Double> rawScores,
+            Map<String, Double> effectiveScores,
             Map<String, AnalysisScoreDetail> scoreDetails,
-            Map<String, Integer> productSuitabilityScores,
+            Map<String, Double> productSuitabilityScores,
             Integer scoreSemanticsVersion,
             Map<String, String> reasons,
             String businessText,
@@ -119,9 +119,9 @@ public class DecisionRationaleReportController {
             Long analysisDurationMillis,
             com.taxonomy.dto.AnalysisCoverage analysisCoverage,
             AnalysisScope analysisScope, DecisionReportOptions exportOptions) {
-        public DecisionReportRequest(Map<String, Integer> scores, Map<String, Integer> rawScores,
-                Map<String, Integer> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
-                Map<String, Integer> productSuitabilityScores, Integer scoreSemanticsVersion,
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
                 Map<String, String> reasons, String businessText, String provider, String analysisStatus,
                 List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                 String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage) {
@@ -129,9 +129,9 @@ public class DecisionRationaleReportController {
                     reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
                     analysisDurationMillis, analysisCoverage, null, null);
         }
-        public DecisionReportRequest(Map<String, Integer> scores, Map<String, Integer> rawScores,
-                Map<String, Integer> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
-                Map<String, Integer> productSuitabilityScores, Integer scoreSemanticsVersion,
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
                 Map<String, String> reasons, String businessText, String provider, String analysisStatus,
                 List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                 String language, Long analysisDurationMillis) {
@@ -141,11 +141,11 @@ public class DecisionRationaleReportController {
         }
 
         public DecisionReportRequest(
-            Map<String, Integer> scores,
-            Map<String, Integer> rawScores,
-            Map<String, Integer> effectiveScores,
+            Map<String, Double> scores,
+            Map<String, Double> rawScores,
+            Map<String, Double> effectiveScores,
             Map<String, AnalysisScoreDetail> scoreDetails,
-            Map<String, Integer> productSuitabilityScores,
+            Map<String, Double> productSuitabilityScores,
             Integer scoreSemanticsVersion,
             Map<String, String> reasons,
             String businessText,
@@ -160,7 +160,7 @@ public class DecisionRationaleReportController {
 
         /** Legacy request constructor retained for Java callers and validation tests. */
         public DecisionReportRequest(
-                Map<String, Integer> scores,
+                Map<String, Double> scores,
                 Map<String, String> reasons,
                 String businessText,
                 String provider,
@@ -260,7 +260,7 @@ public class DecisionRationaleReportController {
         Locale locale = resolveLocale(request.language());
         AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);
         Map<String, AnalysisScoreDetail> scoreDetails = scoreSemantics.scoreDetails();
-        Map<String, Integer> effectiveScores = scoreSemantics.effectiveScores();
+        Map<String, Double> effectiveScores = scoreSemantics.effectiveScores();
         Map<String, String> reasons = scoreSemanticsAdapter.enrichReasons(
                 request.reasons(), scoreDetails, locale);
         DecisionAnalysisInput input = new DecisionAnalysisInput(
@@ -286,9 +286,9 @@ public class DecisionRationaleReportController {
             DecisionReportRequest request) {
         // Validation requires an explicit raw map to cover every selected code.
         // Never fill missing raw evidence with possibly weighted values from scores.
-        Map<String, Integer> suppliedRaw = request.rawScores() != null
+        Map<String, Double> suppliedRaw = request.rawScores() != null
                 ? request.rawScores() : request.scores();
-        Map<String, Integer> authoritativeRaw = new LinkedHashMap<>();
+        Map<String, Double> authoritativeRaw = new LinkedHashMap<>();
         request.scores().keySet().forEach(code -> authoritativeRaw.put(
                 code, suppliedRaw.get(code)));
         return AnalysisScoreSemantics.derive(
@@ -335,11 +335,11 @@ public class DecisionRationaleReportController {
                 && validProductCoverageGaps(request.productCoverageGaps());
     }
 
-    private boolean validOptionalScoreMap(Map<String, Integer> scores) {
+    private boolean validOptionalScoreMap(Map<String, Double> scores) {
         return scores == null || (scores.size() <= MAX_SCORE_ENTRIES && validScoreMap(scores));
     }
 
-    private boolean validScoreMap(Map<String, Integer> scores) {
+    private boolean validScoreMap(Map<String, Double> scores) {
         return scores != null && scores.entrySet().stream().allMatch(entry ->
                 boundedNodeCode(entry.getKey())
                         && entry.getValue() != null

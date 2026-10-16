@@ -21,13 +21,13 @@ class CopilotResultSelectorTest {
     @Test
     void prefersSuccessfulBroadResultOverPartialOrSparsePasses() {
         SnapshotDetail partial = snapshot(
-                "partial", AnalysisStatus.PARTIAL, Map.of("CP", 90, "BP", 0),
+                "partial", AnalysisStatus.PARTIAL, Map.of("CP", 90d, "BP", 0d),
                 0, 0, 0, 10L);
         SnapshotDetail sparse = snapshot(
-                "sparse", AnalysisStatus.SUCCESS, Map.of("CP", 95),
+                "sparse", AnalysisStatus.SUCCESS, Map.of("CP", 95d),
                 0, 0, 0, 10L);
         SnapshotDetail broad = snapshot(
-                "broad", AnalysisStatus.SUCCESS, Map.of("CP", 80, "BP", 60, "CR", 40),
+                "broad", AnalysisStatus.SUCCESS, Map.of("CP", 80d, "BP", 60d, "CR", 40d),
                 1, 0, 0, 10L);
 
         assertThat(selector.select(List.of(partial, sparse, broad)))
@@ -49,33 +49,33 @@ class CopilotResultSelectorTest {
     @Test
     void usesEveryDeterministicTieBreakerInOrder() {
         assertPreferred(
-                snapshot("sum-low", AnalysisStatus.SUCCESS, Map.of("A", 3, "B", 1),
+                snapshot("sum-low", AnalysisStatus.SUCCESS, Map.of("A", 3d, "B", 1d),
                         0, 1, 1, 10L),
-                snapshot("sum-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("sum-high", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         0, 1, 1, 10L),
                 "sum-high");
         assertPreferred(
-                snapshot("elements-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("elements-low", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         0, 1, 1, 10L),
-                snapshot("elements-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("elements-high", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         0, 2, 1, 10L),
                 "elements-high");
         assertPreferred(
-                snapshot("relations-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("relations-low", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         0, 2, 1, 10L),
-                snapshot("relations-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("relations-high", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         0, 2, 2, 10L),
                 "relations-high");
         assertPreferred(
-                snapshot("warnings-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("warnings-high", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         2, 2, 2, 10L),
-                snapshot("warnings-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("warnings-low", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         1, 2, 2, 10L),
                 "warnings-low");
         assertPreferred(
-                snapshot("duration-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("duration-high", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         1, 2, 2, 20L),
-                snapshot("duration-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                snapshot("duration-low", AnalysisStatus.SUCCESS, Map.of("A", 4d, "B", 1d),
                         1, 2, 2, 10L),
                 "duration-low");
     }
@@ -93,7 +93,7 @@ class CopilotResultSelectorTest {
     private static SnapshotDetail snapshot(
             String id,
             AnalysisStatus status,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             int warnings,
             int elements,
             int relations,

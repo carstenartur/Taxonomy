@@ -76,7 +76,7 @@ class FrozenClusterContinuationTest {
                         public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) { return saved.prepare(claim, q); }
                         public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) { saved.finish(claim, q, state, detail); }
                         public void checkActive() { assertThat(saved.state(claim)).isEqualTo("RUNNING"); }
-                    })) { assertThat(fixture.llm.analyzeWithBudget("requirement", scope).getRawScores()).containsEntry("CP", 75); }
+                    })) { assertThat(fixture.llm.analyzeWithBudget("requirement", scope).getRawScores()).containsEntry("CP", 75d); }
                     assertThat(physical).hasValue(2);
                     var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
                     store.admit(context, command, null, Map.of(TaxonomyShardRoot.of("CP"), mapper.writeValueAsString(root)));
@@ -85,7 +85,7 @@ class FrozenClusterContinuationTest {
             }
             try (var db = new ClusterAnalysisStoreTest.Database(database, "validate", sql -> sql)) {
                 var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, continuation(db, mapper));
-                assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75);
+                assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75d);
                 assertThat(physical).hasValue(2);
                 budget.set(new ProviderRateQuotas.TokenBudget(budget.get().adapterId(), 5001, 256));
                 assertThatThrownBy(() -> fixture.worker(store).score(store.start(task), task, () -> false))
@@ -127,7 +127,7 @@ class FrozenClusterContinuationTest {
                     public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) { saved.finish(claim, question, state, detail); }
                     public void checkActive() { assertThat(saved.state(claim)).isEqualTo("RUNNING"); }
                 })) {
-                    assertThat(fixture.llm.analyzeWithBudget("requirement", new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY)).getRawScores()).containsEntry("CP", 75);
+                    assertThat(fixture.llm.analyzeWithBudget("requirement", new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY)).getRawScores()).containsEntry("CP", 75d);
                 }
             }
             assertThat(AnalysisCheckpointSession.active()).isFalse();
@@ -143,12 +143,12 @@ class FrozenClusterContinuationTest {
             task = db.task(TaxonomyShardRoot.of("CP"));
             var stale = store.start(task); var current = store.start(task);
             assertThatThrownBy(() -> fixture.worker(store).score(stale, task, () -> false)).isInstanceOf(IllegalStateException.class);
-            assertThat(fixture.worker(store).score(current, task, () -> false).getRawScores()).containsEntry("CP", 75);
+            assertThat(fixture.worker(store).score(current, task, () -> false).getRawScores()).containsEntry("CP", 75d);
             assertThat(requests).hasValue(1);
         }
         try (var db = new ClusterAnalysisStoreTest.Database(url, "validate", sql -> sql)) {
             var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, continuation(db, mapper));
-            assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75);
+            assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75d);
             assertThat(requests).hasValue(1);
             assertThat(AnalysisCheckpointSession.active()).isFalse();
             var service = new ClusterAnalysisService(store, fixture.worker(store), new ClusterAnalysisSignals());
@@ -170,7 +170,7 @@ class FrozenClusterContinuationTest {
                 }
             }
             assertThat(store.snapshot(context).result().getRecovery().state()).isEqualTo("COMPLETED");
-            assertThat(store.snapshot(context).result().getRawScores()).containsEntry("CP", 75).containsEntry("IP", 12);
+            assertThat(store.snapshot(context).result().getRawScores()).containsEntry("CP", 75d).containsEntry("IP", 12d);
             assertThat(requests).hasValue(2);
         }
         fixture.server.verify();
@@ -239,7 +239,7 @@ class FrozenClusterContinuationTest {
             var result = fixture.worker(store).score(store.start(nextTask), nextTask, () -> false);
             assertThat(requests).hasValue("RETRY".equals(decision) ? 2 : 1);
             if ("RETRY".equals(decision)) {
-                assertThat(result.getRawScores()).containsEntry("CP", 75);
+                assertThat(result.getRawScores()).containsEntry("CP", 75d);
                 try (var catalogue = fixture.snapshots.bind(DurableClusterAnalysisExecutionTest.source(context), Set.of("CP", "IP"), roots);
                      var provider = fixture.providers.withRequestProvider("CUSTOM_OPENAI");
                      var local = new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
@@ -288,11 +288,11 @@ class FrozenClusterContinuationTest {
             var claim = new AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
             assertThat(saved.state(claim)).isEqualTo("RUNNING");
             var task = db.task(TaxonomyShardRoot.of("CP"));
-            assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75);
+            assertThat(fixture.worker(store).score(store.start(task), task, () -> false).getRawScores()).containsEntry("CP", 75d);
             var cancelled = service.cancel(binding.id(), "alice", original.workspaceContext());
             assertThat(cancelled.recovery().state()).isEqualTo("CANCELLED");
             assertThat(store.snapshot(context).state()).isEqualTo(ClusterAnalysisState.CANCELLED);
-            assertThat(store.snapshot(context).result().getRawScores()).containsEntry("CP", 75);
+            assertThat(store.snapshot(context).result().getRawScores()).containsEntry("CP", 75d);
             assertThat(AnalysisCheckpointSession.active()).isFalse();
         }
         fixture.server.verify();
@@ -403,7 +403,7 @@ class FrozenClusterContinuationTest {
             var gateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, mapper, new LlmResponseParser(mapper), settings, null, null);
             gateways = mock(LlmGatewayRegistry.class); when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
             var templates = mock(PromptTemplateService.class);
-            when(templates.renderPrompt(anyString(), anyString(), anyString(), anyInt(), anyString())).thenReturn("FROZEN-REQUEST");
+            when(templates.renderPrompt(anyString(), anyString(), anyString(), anyDouble(), anyString())).thenReturn("FROZEN-REQUEST");
             when(templates.renderRootPrompt(anyString(), anyString(), anyString())).thenAnswer(i -> i.<String>getArgument(0) + "-FROZEN-REQUEST");
             llm = new LlmService(providers, gateways, mapper, taxonomy, templates, embedding, mock(SavedAnalysisService.class));
             ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);

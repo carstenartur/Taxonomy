@@ -34,7 +34,7 @@ class LlmOuterObjectRecoveryTest {
 
         var result = parser.parseIndependentScoreParseResult(raw, nodes("IP-1365", "IP-1676", "IP-1775"), 10);
 
-        assertEquals(Map.of("IP-1365", 70, "IP-1676", 60, "IP-1775", 70), result.scores());
+        assertEquals(Map.of("IP-1365", 70d, "IP-1676", 60d, "IP-1775", 70d), result.scores());
         assertEquals("Queries identify vaccination status.", result.reasons().get("IP-1775"));
         // Extraction and stored raw evidence remain faithful to the provider reply.
         assertEquals(raw.substring(raw.indexOf('{')).trim(), parser.extractJson(raw));
@@ -47,7 +47,7 @@ class LlmOuterObjectRecoveryTest {
 
         var result = parser.parseScoreParseResult(complete.substring(0, complete.length() - 1), nodes("BR"), 20);
 
-        assertEquals(Map.of("BR", 20), result.scores());
+        assertEquals(Map.of("BR", 20d), result.scores());
         assertEquals(reason, result.reasons().get("BR"));
     }
 
@@ -74,13 +74,21 @@ class LlmOuterObjectRecoveryTest {
             "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1365\":{\"score\":60,\"reason\":\"duplicate\"}",
             "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"FOREIGN\":{\"score\":60,\"reason\":\"foreign\"}",
             "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1676\":{\"score\":101,\"reason\":\"out of range\"}",
-            "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1676\":{\"score\":60.00000000000000001,\"reason\":\"fractional\"}",
+            "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1676\":{\"score\":100.00000000000000001,\"reason\":\"out of range before rounding\"}",
             "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1676\":{\"score\":60,\"reason\":\"\"}",
             "{\"IP-1365\":{\"score\":70,\"reason\":\"first\"},\"IP-1676\":{\"reason\":\"missing score\"}"
     })
     void requiresEveryExpectedProductAndPreservesStrictValueValidation(String raw) {
         assertThrows(IllegalArgumentException.class,
                 () -> parser.parseIndependentScoreParseResult(raw, nodes("IP-1365", "IP-1676"), 10));
+    }
+
+    @Test
+    void outerEnvelopeRecoveryRetainsValidFractionalProductValues() throws Exception {
+        String raw = "{\"IP-1365\":{\"score\":0.5,\"reason\":\"First contribution\"},"
+                + "\"IP-1676\":{\"score\":0.125,\"reason\":\"Second contribution\"}";
+        var result = parser.parseIndependentScoreParseResult(raw, nodes("IP-1365", "IP-1676"), 0);
+        assertEquals(Map.of("IP-1365", .5, "IP-1676", .125), result.scores());
     }
 
     @Test

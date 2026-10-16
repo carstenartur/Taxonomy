@@ -300,7 +300,7 @@ public class SolutionPortfolioService {
         }
         final String effectiveSnapshotId = snapshotId;
         validateSnapshot(effectiveSnapshotId, projectId, requirement.getId());
-        int coverage = normalizePercentage(request.coveragePercent(), "coveragePercent");
+        double coverage = com.taxonomy.dto.AnalysisPercentages.require(request.coveragePercent());
         Instant now = Instant.now();
         RequirementSolutionLink link = requirementLinkRepository
                 .findByProjectSolutionIdAndRequirementId(projectSolutionId, requirement.getId())
@@ -357,15 +357,15 @@ public class SolutionPortfolioService {
                                 solution,
                                 ProjectSolutionStatus.PROPOSED,
                                 ActionStatus.UNDECIDED,
-                                Math.max(1, element.getDirectScore()),
+                                (int) Math.max(1, Math.ceil(element.getDirectScore())),
                                 "Proposed from confirmed taxonomy coverage; human decision required",
                                 PortfolioScope.username(username, context),
                                 now)));
                 touched.put(projectSolution.getId(), projectSolution);
 
                 ProjectRequirement requirement = element.getSnapshot().getRequirement();
-                int effectiveCoverage = (int) Math.round(
-                        coverage.getCoveragePercent() * Math.max(0.0, Math.min(1.0, element.getRelevance())));
+                double effectiveCoverage = com.taxonomy.dto.AnalysisPercentages.product(
+                        coverage.getCoveragePercent(), element.getRelevance() * 100);
                 RequirementSolutionLink link = requirementLinkRepository
                         .findByProjectSolutionIdAndRequirementId(
                                 projectSolution.getId(), requirement.getId())
@@ -379,7 +379,7 @@ public class SolutionPortfolioService {
                                 "Solution covers " + element.getNodeCode()
                                         + " at " + coverage.getCoveragePercent()
                                         + "% and the requirement relevance is "
-                                        + Math.round(element.getRelevance() * 100) + "%",
+                                        + com.taxonomy.dto.AnalysisPercentages.display(element.getRelevance() * 100),
                                 PortfolioScope.username(username, context),
                                 now));
                 if (link.getId() == null) {

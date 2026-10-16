@@ -240,7 +240,7 @@ public final class ClusterAnalysisBackupRestorer {
     }
 
     private AnalysisResult interruptedResult(Archive archive) {
-        var scores = new LinkedHashMap<String, Integer>(); var reasons = new LinkedHashMap<String, String>();
+        var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>(); var tree = new ArrayList<TaxonomyNodeDto>();
         var warnings = new ArrayList<String>(); var discrepancies = new ArrayList<TaxonomyDiscrepancy>(); var gaps = new ArrayList<ProductCoverageGap>();
         var coverage = new ClusterAnalysisCoverage();

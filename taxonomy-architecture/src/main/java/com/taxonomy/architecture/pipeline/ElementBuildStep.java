@@ -84,7 +84,7 @@ public class ElementBuildStep implements ArchitecturePipelineStep {
                 element.setTaxonomyDepth(node.getLevel());
             }
 
-            element.setDirectLlmScore((int) Math.round(relevance * 100));
+            element.setDirectLlmScore(com.taxonomy.dto.AnalysisPercentages.require(relevance * 100));
             element.setHierarchyPath(ctx.buildHierarchyPath(nodeCode, taxonomyService));
 
             elements.add(element);

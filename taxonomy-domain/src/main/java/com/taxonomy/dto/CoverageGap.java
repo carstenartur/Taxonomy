@@ -8,12 +8,12 @@ public class CoverageGap {
 
     private String nodeCode;
     private String taxonomyRoot;
-    private int coverageScore;
+    private double coverageScore;
     private String gapDescription;
 
     public CoverageGap() {}
 
-    public CoverageGap(String nodeCode, String taxonomyRoot, int coverageScore, String gapDescription) {
+    public CoverageGap(String nodeCode, String taxonomyRoot, double coverageScore, String gapDescription) {
         this.nodeCode = nodeCode;
         this.taxonomyRoot = taxonomyRoot;
         this.coverageScore = coverageScore;
@@ -26,8 +26,8 @@ public class CoverageGap {
     public String getTaxonomyRoot() { return taxonomyRoot; }
     public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }
 
-    public int getCoverageScore() { return coverageScore; }
-    public void setCoverageScore(int coverageScore) { this.coverageScore = coverageScore; }
+    public double getCoverageScore() { return coverageScore; }
+    public void setCoverageScore(double coverageScore) { this.coverageScore = coverageScore; }
 
     public String getGapDescription() { return gapDescription; }
     public void setGapDescription(String gapDescription) { this.gapDescription = gapDescription; }

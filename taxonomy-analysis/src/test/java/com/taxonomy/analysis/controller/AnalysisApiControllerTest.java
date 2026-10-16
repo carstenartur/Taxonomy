@@ -275,7 +275,7 @@ class AnalysisApiControllerTest {
     void analyzeNodeDelegatesToTypedUseCase() throws Exception {
         when(analyzeNodeChildrenUseCase.analyze(any())).thenReturn(
                 new AnalyzeNodeChildrenResult(
-                        Map.of("CP-1023", 82),
+                        Map.of("CP-1023", 82d),
                         Map.of("CP-1023", "reason"),
                         "prompt", "raw", "GEMINI", 42L, null));
 
@@ -366,10 +366,10 @@ class AnalysisApiControllerTest {
             AnalysisStreamEventHandler handler = invocation.getArgument(1);
             handler.handle(new AnalysisStreamEvent.Phase("Working", 12));
             handler.handle(new AnalysisStreamEvent.Scores(
-                    Map.of("CP", 80), Map.of("CP", "reason"),
+                    Map.of("CP", 80d), Map.of("CP", "reason"),
                     "Capabilities scored 80/100", detail));
             handler.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
+                    "SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
 
@@ -395,7 +395,7 @@ class AnalysisApiControllerTest {
             AnalysisStreamEventHandler handler = invocation.getArgument(1);
             handler.handle(new AnalysisStreamEvent.Phase("Working", 12));
             handler.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
+                    "SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
 

@@ -131,9 +131,9 @@ public final class LlmDiagnosticChecks {
             String wrapped = "Here is the result:\n```json\n" + json + "\n```\n";
             require(json.equals(parser.extractJson(wrapped)), "JSON extraction corrupts quoted braces or code fences: " + reason);
             var result = parser.parseScoreParseResult(wrapped, List.of(node()), 100);
-            require(result.scores().equals(Map.of("IP", 100)) && reason.equals(result.reasons().get("IP")), "Valid score/reason must survive extraction");
+            require(result.scores().equals(Map.of("IP", 100d)) && reason.equals(result.reasons().get("IP")), "Valid score/reason must survive extraction");
             var independent = parser.parseIndependentScoreParseResult(wrapped, List.of(node()), 50);
-            require(independent.scores().equals(Map.of("IP", 100)), "Product scoring uses the same safe extraction");
+            require(independent.scores().equals(Map.of("IP", 100d)), "Product scoring uses the same safe extraction");
         }
     }
 

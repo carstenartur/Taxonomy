@@ -115,7 +115,7 @@ class ArchitectureReportDocxRendererTest {
     void legacyReportUsesRealInventoryTables() throws Exception {
         var model = new com.taxonomy.dto.ArchitectureReport();
         model.setBusinessText("Legacy requirement");
-        model.setScores(Map.of("BP", 100, "CP", 0));
+        model.setScores(Map.of("BP", 100d, "CP", 0d));
         try (var doc =
                 new XWPFDocument(
                         new ByteArrayInputStream(

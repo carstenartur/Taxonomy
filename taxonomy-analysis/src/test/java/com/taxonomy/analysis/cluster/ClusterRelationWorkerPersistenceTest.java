@@ -106,7 +106,8 @@ class ClusterRelationWorkerPersistenceTest {
             }
             var snapshot = db.store.snapshot(context);
             assertThat(snapshot.state()).isEqualTo(ClusterAnalysisState.COMPLETED);
-            assertThat(snapshot.result().getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("process", 70, "IP", 0));
+            assertThat(snapshot.result().getRawScores()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("process", 70.0, "IP", 0.0));
             var report = snapshot.result().getRelationSearchReport();
             assertThat(report.isSearchExhausted()).isTrue();
             assertThat(report.result().edges()).hasSize(1);

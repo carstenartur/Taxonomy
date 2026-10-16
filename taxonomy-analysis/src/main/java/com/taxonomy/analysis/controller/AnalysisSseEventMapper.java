@@ -149,7 +149,7 @@ public class AnalysisSseEventMapper {
         return Collections.unmodifiableMap(result);
     }
 
-    private AnalysisScoreSemantics.Derived derive(Map<String, Integer> rawScores) {
+    private AnalysisScoreSemantics.Derived derive(Map<String, Double> rawScores) {
         return AnalysisScoreSemantics.derive(rawScores, taxonomyTree());
     }
 

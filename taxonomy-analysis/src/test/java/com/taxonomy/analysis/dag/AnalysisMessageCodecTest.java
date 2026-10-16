@@ -45,7 +45,7 @@ class AnalysisMessageCodecTest {
         for (AnalysisMessage message : contracts) {
             byte[] encoded = codec.encode(message);
             String json = new String(encoded, StandardCharsets.UTF_8);
-            assertThat(json).contains("\"schemaVersion\":1")
+            assertThat(json).contains("\"schemaVersion\":3")
                     .doesNotContain("com.taxonomy").doesNotContain("@class").doesNotContain("@type")
                     .doesNotContain(REQUIREMENT_TEXT);
             assertThat(codec.decode(encoded)).isEqualTo(message);
@@ -55,8 +55,8 @@ class AnalysisMessageCodecTest {
     @Test
     void unsupportedSchemaUnknownTypeAndUnknownPropertiesAreRejected() {
         String json = new String(codec.encode(allContracts().get(0)), StandardCharsets.UTF_8);
-        assertKind(json.replace("\"schemaVersion\":1", "\"schemaVersion\":999"), Kind.UNSUPPORTED_SCHEMA);
-        assertKind(json.replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""), Kind.UNSUPPORTED_SCHEMA);
+        assertKind(json.replace("\"schemaVersion\":3", "\"schemaVersion\":999"), Kind.UNSUPPORTED_SCHEMA);
+        assertKind(json.replace("\"schemaVersion\":3", "\"schemaVersion\":\"1\""), Kind.UNSUPPORTED_SCHEMA);
         assertKind(json.replace("SUBTAXONOMY_ANALYSIS_TASK", "java.lang.Runtime"), Kind.UNKNOWN_TYPE);
         assertKind(json.replace("SUBTAXONOMY_ANALYSIS_TASK", "RELATION_ANALYSIS_TASK"), Kind.INVALID_CONTRACT);
         assertKind(json.replaceFirst("\\{", "{\"prompt\":\"secret\","), Kind.INVALID_CONTRACT);

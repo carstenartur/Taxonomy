@@ -30,7 +30,7 @@ class DecisionExportScopeTest {
 
     @Test
     void completedSelectedAnalysisDoesNotRequireUnselectedRoots() {
-        var report = generate(input(Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0))
+        var report = generate(input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d))
                 .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), null), null);
         assertThat(report.status()).isEqualTo(ReportStatus.FINAL);
         assertThat(report.metadata().completenessPercent()).isEqualTo(100.0);
@@ -42,7 +42,7 @@ class DecisionExportScopeTest {
 
     @Test
     void presentationSelectionUsesAncestryAndPreservesSourceFingerprint() {
-        var input = input(Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0, "BP", 95, "CP-looking", 95));
+        var input = input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d, "BP", 95d, "CP-looking", 95d));
         var full = generate(input, null);
         var selected = generate(input, compact("CP"));
         assertThat(selected.leadingLeaves()).extracting(LeafCandidate::code).containsExactly("BP-looking");
@@ -59,7 +59,7 @@ class DecisionExportScopeTest {
 
     @Test
     void selectingSuccessfulRootDoesNotHideIncompleteSourceAnalysis() {
-        var scores = Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0);
+        var scores = Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d);
         var coverage = AnalysisCoverage.derive(tree, scores, scores, Map.of("BP", "FAILED: unavailable"));
         var report = generate(input(scores).withScope(AnalysisScope.full(), coverage), compact("CP"));
         assertThat(report.status()).isEqualTo(ReportStatus.DRAFT_INCOMPLETE);
@@ -70,13 +70,13 @@ class DecisionExportScopeTest {
 
     @Test
     void zeroRootAndMissingAlternativesSurviveWithoutPositiveChapter() {
-        var rejected = generate(input(Map.of("CP", 0, "BP", 0)), compact("CP"));
+        var rejected = generate(input(Map.of("CP", 0d, "BP", 0d)), compact("CP"));
         assertThat(rejected.scope().decisionTree().rows()).extracting(DecisionTreeRow::code).containsExactly("CP");
         assertThat(rejected.scope().decisionTree().rows().getFirst().disposition()).isEqualTo(Disposition.REJECTED);
         assertThat(rejected.scope().recordedReasons()).containsOnlyKeys("CP").containsEntry("CP", "Saved reason for CP");
         assertThat(new tools.jackson.databind.json.JsonMapper().valueToTree(rejected).path("scope").path("recordedReasons").path("CP").asText())
                 .isEqualTo("Saved reason for CP");
-        var partial = generate(input(Map.of("CP", 80, "BP-looking", 80, "BP", 0)), compact("CP"));
+        var partial = generate(input(Map.of("CP", 80d, "BP-looking", 80d, "BP", 0d)), compact("CP"));
         assertThat(partial.scope().decisionTree().rows()).extracting(DecisionTreeRow::code)
                 .containsExactly("CP", "BP-looking", "CP-zero");
         assertThat(partial.scope().decisionTree().rows().getLast().score()).isNull();
@@ -85,7 +85,7 @@ class DecisionExportScopeTest {
 
     @Test
     void rejectsUnknownRootsAndRootsOutsideRecordedAnalysisScope() {
-        var input = input(Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0))
+        var input = input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d))
                 .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.FULL), null);
         assertThatIllegalArgumentException().isThrownBy(() -> generate(input, compact("unknown")));
         assertThatIllegalArgumentException().isThrownBy(() -> generate(input, compact("BP")));
@@ -100,14 +100,14 @@ class DecisionExportScopeTest {
 
     @Test
     void recordedScopeCannotContradictSuppliedScores() {
-        var input = input(Map.of("CP", 0, "BP", 100, "CP-looking", 100))
+        var input = input(Map.of("CP", 0d, "BP", 100d, "CP-looking", 100d))
                 .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.FULL), null);
         assertThatIllegalArgumentException().isThrownBy(() -> generate(input, null));
     }
 
     @Test
     void sourceFingerprintDistinguishesTaxonomiesOnlyFromFullAnalysis() {
-        var input = input(Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0));
+        var input = input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d));
         var taxonomyOnly = generate(input.withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), null), null);
         var full = generate(input.withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.FULL), null), null);
         assertThat(taxonomyOnly.metadata().analysisSnapshotFingerprintSha256())
@@ -116,7 +116,7 @@ class DecisionExportScopeTest {
 
     @Test
     void scoreAdaptationKeepsSelectedRawEvidenceAndRemainsIdempotent() {
-        var input = input(Map.of("CP", 80, "BP-looking", 80, "CP-zero", 0, "BP", 95, "CP-looking", 95));
+        var input = input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d, "BP", 95d, "CP-looking", 95d));
         var details = Map.of("BP-looking", new AnalysisScoreDetail("BP-looking", null, 80, 80, "CP", 80),
                 "CP-looking", new AnalysisScoreDetail("CP-looking", null, 95, 95, "BP", 95));
         var adapter = new DecisionRationaleScoreSemanticsAdapter();
@@ -131,7 +131,7 @@ class DecisionExportScopeTest {
 
     @Test
     void generatedScoreDescriptionsNeverBecomeRecordedAiReasons() {
-        var scores = Map.of("CP", 80, "BP-looking", 64, "CP-zero", 0);
+        var scores = Map.of("CP", 80d, "BP-looking", 64d, "CP-zero", 0d);
         var base = input(scores);
         var details = Map.of("BP-looking", new AnalysisScoreDetail("BP-looking", AnalysisScoreKind.PRODUCT_SUITABILITY,
                 80, 64, "CP", 80));
@@ -151,7 +151,7 @@ class DecisionExportScopeTest {
                 .doesNotContain(new DecisionReportLabels("en").aiReason());
     }
 
-    private DecisionAnalysisInput input(Map<String, Integer> scores) {
+    private DecisionAnalysisInput input(Map<String, Double> scores) {
         var reasons = new LinkedHashMap<String, String>();
         scores.forEach((code, score) -> reasons.put(code, "Saved reason for " + code));
         var provenance = new DecisionRationaleReportService.AnalysisSnapshotProvenance("snapshot", 1L, 2L,

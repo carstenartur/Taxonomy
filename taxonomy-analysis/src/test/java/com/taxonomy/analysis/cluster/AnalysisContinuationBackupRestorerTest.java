@@ -28,7 +28,7 @@ class AnalysisContinuationBackupRestorerTest {
                 assertThat(q.key()).isEqualTo(UNCERTAIN); assertThat(q.outcomeUncertain()).isTrue();
                 assertThat(q.error()).contains("OUTCOME_UNCERTAIN");
             });
-            assertThat(snapshot.result().getRawScores()).containsEntry("CP", 75);
+            assertThat(snapshot.result().getRawScores()).containsEntry("CP", 75d);
             assertThat(snapshot.result().getWarnings()).anyMatch(w -> w.startsWith("RESTORED_HISTORICAL_SOURCE_EVIDENCE"));
             assertThat(snapshot.request().getContinuationId()).isEqualTo(id);
             assertThat(snapshot.request().getContinuationAction()).isNull();

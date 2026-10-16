@@ -58,10 +58,10 @@ public class AnchorSelectionStep implements ArchitecturePipelineStep {
      * Selects anchors from the given score map.
      * Package-private for direct unit testing.
      */
-    List<RequirementAnchor> select(Map<String, Integer> scores) {
+    List<RequirementAnchor> select(Map<String, Double> scores) {
         List<RequirementAnchor> highAnchors = new ArrayList<>();
 
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() >= ANCHOR_THRESHOLD_HIGH) {
                 highAnchors.add(new RequirementAnchor(
                         entry.getKey(), entry.getValue(), "high direct match"));
@@ -69,24 +69,24 @@ public class AnchorSelectionStep implements ArchitecturePipelineStep {
         }
 
         if (highAnchors.size() >= MIN_ANCHORS) {
-            highAnchors.sort(Comparator.comparingInt(RequirementAnchor::getDirectScore).reversed());
+            highAnchors.sort(Comparator.comparingDouble(RequirementAnchor::getDirectScore).reversed());
             return highAnchors;
         }
 
         // Fallback: collect top-MIN_ANCHORS with score >= ANCHOR_THRESHOLD_LOW
-        List<Map.Entry<String, Integer>> candidates = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        List<Map.Entry<String, Double>> candidates = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() >= ANCHOR_THRESHOLD_LOW) {
                 candidates.add(entry);
             }
         }
         candidates.sort(
-                Comparator.<Map.Entry<String, Integer>, Integer>comparing(Map.Entry::getValue)
+                Comparator.<Map.Entry<String, Double>, Double>comparing(Map.Entry::getValue)
                           .reversed());
 
         List<RequirementAnchor> anchors = new ArrayList<>();
         for (int i = 0; i < Math.min(MIN_ANCHORS, candidates.size()); i++) {
-            Map.Entry<String, Integer> entry = candidates.get(i);
+            Map.Entry<String, Double> entry = candidates.get(i);
             anchors.add(new RequirementAnchor(
                     entry.getKey(), entry.getValue(), "top candidate (fallback)"));
         }

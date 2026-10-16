@@ -127,8 +127,8 @@ public class PortfolioAggregationService {
                     double average = nodeMappings.stream()
                             .mapToDouble(RequirementElementMapping::getRelevance)
                             .average().orElse(0.0);
-                    int maximum = nodeMappings.stream()
-                            .mapToInt(RequirementElementMapping::getDirectScore)
+                    double maximum = nodeMappings.stream()
+                            .mapToDouble(RequirementElementMapping::getDirectScore)
                             .max().orElse(0);
                     return new AggregatedTaxonomyNode(
                             entry.getKey(),
@@ -210,11 +210,11 @@ public class PortfolioAggregationService {
         List<String> rows = requirements.stream().map(RequirementView::requirementKey).toList();
         List<String> columns = mappings.stream().map(RequirementElementMapping::getNodeCode)
                 .distinct().sorted().toList();
-        Map<String, Map<String, Integer>> values = initializeRows(rows);
+        Map<String, Map<String, Double>> values = initializeRows(rows);
         for (RequirementElementMapping mapping : mappings) {
             String requirementKey = mapping.getSnapshot().getRequirement().getRequirementKey();
-            int value = mapping.getDirectScore() > 0
-                    ? mapping.getDirectScore() : (int) Math.round(mapping.getRelevance() * 100.0);
+            double value = mapping.getDirectScore() > 0
+                    ? mapping.getDirectScore() : mapping.getRelevance() * 100.0;
             values.computeIfAbsent(requirementKey, ignored -> new LinkedHashMap<>())
                     .merge(mapping.getNodeCode(), value, Math::max);
         }
@@ -226,12 +226,12 @@ public class PortfolioAggregationService {
                                                  List<RequirementSolutionLink> links) {
         List<String> rows = solutions.stream().map(solution -> solution.solution().solutionKey()).toList();
         List<String> columns = requirements.stream().map(RequirementView::requirementKey).toList();
-        Map<String, Map<String, Integer>> values = initializeRows(rows);
+        Map<String, Map<String, Double>> values = initializeRows(rows);
         for (RequirementSolutionLink link : links) {
             values.computeIfAbsent(
                             link.getProjectSolution().getSolution().getSolutionKey(),
                             ignored -> new LinkedHashMap<>())
-                    .put(link.getRequirement().getRequirementKey(), link.getCoveragePercent());
+                    .put(link.getRequirement().getRequirementKey(), (double) link.getCoveragePercent());
         }
         return immutableMatrix(rows, columns, values);
     }
@@ -242,26 +242,26 @@ public class PortfolioAggregationService {
         List<String> columns = candidates.stream()
                 .map(candidate -> candidate.getProduct().getProductKey())
                 .distinct().sorted().toList();
-        Map<String, Map<String, Integer>> values = initializeRows(rows);
+        Map<String, Map<String, Double>> values = initializeRows(rows);
         for (SolutionProductCandidate candidate : candidates) {
             values.computeIfAbsent(
                             candidate.getProjectSolution().getSolution().getSolutionKey(),
                             ignored -> new LinkedHashMap<>())
-                    .put(candidate.getProduct().getProductKey(), candidate.getCoveragePercent());
+                    .put(candidate.getProduct().getProductKey(), (double) candidate.getCoveragePercent());
         }
         return immutableMatrix(rows, columns, values);
     }
 
-    private static Map<String, Map<String, Integer>> initializeRows(List<String> rows) {
-        Map<String, Map<String, Integer>> values = new LinkedHashMap<>();
+    private static Map<String, Map<String, Double>> initializeRows(List<String> rows) {
+        Map<String, Map<String, Double>> values = new LinkedHashMap<>();
         rows.forEach(row -> values.put(row, new LinkedHashMap<>()));
         return values;
     }
 
     private static MatrixView immutableMatrix(List<String> rows,
                                               List<String> columns,
-                                              Map<String, Map<String, Integer>> values) {
-        Map<String, Map<String, Integer>> immutableValues = new LinkedHashMap<>();
+                                              Map<String, Map<String, Double>> values) {
+        Map<String, Map<String, Double>> immutableValues = new LinkedHashMap<>();
         values.forEach((row, rowValues) -> immutableValues.put(row, Map.copyOf(rowValues)));
         return new MatrixView(List.copyOf(rows), List.copyOf(columns), Map.copyOf(immutableValues));
     }

@@ -1194,7 +1194,7 @@
         function onFilterChange() {
             renderRows(
                 leavesChk ? leavesChk.checked : false,
-                parseInt(minScoreInput ? minScoreInput.value : '0', 10) || 0
+                Number(minScoreInput ? minScoreInput.value : '0') || 0
             );
         }
         if (leavesChk) { leavesChk.addEventListener('change', onFilterChange); }

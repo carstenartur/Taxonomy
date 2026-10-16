@@ -150,62 +150,62 @@ class ReadmeShowcaseTest {
         //   BP-1697 Medical Command, Control And Communication       — clinical workflow
         //   IP-2106 CIS Coordination                                 — coordination data products
         //   BR-1334 CIS Coordination and Advice Roles                — staff coordination roles
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
 
         // Root-level scores (anchors are selected at score >= 70)
-        scores.put("CP", 92);
-        scores.put("CO", 88);
-        scores.put("CR", 81);
-        scores.put("UA", 74);
-        scores.put("BP", 71);
-        scores.put("IP", 60);
-        scores.put("BR", 55);
-        scores.put("CI", 45);
+        scores.put("CP", 92d);
+        scores.put("CO", 88d);
+        scores.put("CR", 81d);
+        scores.put("UA", 74d);
+        scores.put("BP", 71d);
+        scores.put("IP", 60d);
+        scores.put("BR", 55d);
+        scores.put("CI", 45d);
 
         // Intermediate + leaf scores — every node on the path from root to leaf.
         // Only codes known to exist in the C3 Taxonomy Catalogue workbook.
 
         // CP path: CP → CP-1000 → CP-1023 / CP-1010 → CP-1030
-        scores.put("CP-1000", 90);  // Capabilities (L1 container)
-        scores.put("CP-1023", 85);  // Communication and Information System Capabilities (L2)
-        scores.put("CP-1010", 40);  // Battlespace Management Capabilities (L2)
-        scores.put("CP-1030", 30);  // Cyberspace Battlespace Management Capabilities (L3)
+        scores.put("CP-1000", 90d);  // Capabilities (L1 container)
+        scores.put("CP-1023", 85d);  // Communication and Information System Capabilities (L2)
+        scores.put("CP-1010", 40d);  // Battlespace Management Capabilities (L2)
+        scores.put("CP-1030", 30d);  // Cyberspace Battlespace Management Capabilities (L3)
 
         // CO path: CO → CO-1000 → CO-1011 / CO-1063 → CO-1050 → CO-1019
-        scores.put("CO-1000", 86);  // Communications Services (L1 container)
-        scores.put("CO-1011", 80);  // Communications Access Services (L2)
-        scores.put("CO-1063", 70);  // Transport Services (L2)
-        scores.put("CO-1050", 55);  // Transit Services (L3)
-        scores.put("CO-1019", 52);  // Frame Switching Services (L4)
+        scores.put("CO-1000", 86d);  // Communications Services (L1 container)
+        scores.put("CO-1011", 80d);  // Communications Access Services (L2)
+        scores.put("CO-1063", 70d);  // Transport Services (L2)
+        scores.put("CO-1050", 55d);  // Transit Services (L3)
+        scores.put("CO-1019", 52d);  // Frame Switching Services (L4)
 
         // CR path: CR → CR-1000 → CR-1047 → CR-1039 → CR-1021
-        scores.put("CR-1000", 79);  // Core Services (L1 container)
-        scores.put("CR-1047", 75);  // Infrastructure Services (L2)
-        scores.put("CR-1039", 52);  // Infrastructure CIS Security Services (L3)
-        scores.put("CR-1021", 48);  // Digital Certificate Services (L4)
+        scores.put("CR-1000", 79d);  // Core Services (L1 container)
+        scores.put("CR-1047", 75d);  // Infrastructure Services (L2)
+        scores.put("CR-1039", 52d);  // Infrastructure CIS Security Services (L3)
+        scores.put("CR-1021", 48d);  // Digital Certificate Services (L4)
 
         // UA path: UA → UA-1000 → UA-1179 → UA-1574
-        scores.put("UA-1000", 72);  // User Applications (L1 container)
-        scores.put("UA-1179", 68);  // Communication and Collaboration Applications (L2)
-        scores.put("UA-1574", 62);  // Unified Communication Applications (L3 leaf)
+        scores.put("UA-1000", 72d);  // User Applications (L1 container)
+        scores.put("UA-1179", 68d);  // Communication and Collaboration Applications (L2)
+        scores.put("UA-1574", 62d);  // Unified Communication Applications (L3 leaf)
 
         // BP path: BP → BP-1000 → BP-1327 → BP-1490 → BP-1697
-        scores.put("BP-1000", 69);  // Business Processes (L1 container)
-        scores.put("BP-1327", 65);  // Enable (L2 intermediate)
-        scores.put("BP-1490", 58);  // Health Services (L3)
-        scores.put("BP-1697", 52);  // Medical Command, Control And Communication (L4 leaf)
+        scores.put("BP-1000", 69d);  // Business Processes (L1 container)
+        scores.put("BP-1327", 65d);  // Enable (L2 intermediate)
+        scores.put("BP-1490", 58d);  // Health Services (L3)
+        scores.put("BP-1697", 52d);  // Medical Command, Control And Communication (L4 leaf)
 
         // IP path: IP → IP-1000 → IP-1078 → IP-1023 → IP-2106
-        scores.put("IP-1000", 58);  // Information Products (L1 container)
-        scores.put("IP-1078", 48);  // Operation Enabling Information Products (L2)
-        scores.put("IP-1023", 42);  // CIS Information Products (L3)
-        scores.put("IP-2106", 38);  // CIS Coordination (L4 leaf)
+        scores.put("IP-1000", 58d);  // Information Products (L1 container)
+        scores.put("IP-1078", 48d);  // Operation Enabling Information Products (L2)
+        scores.put("IP-1023", 42d);  // CIS Information Products (L3)
+        scores.put("IP-2106", 38d);  // CIS Coordination (L4 leaf)
 
         // BR path: BR → BR-1000 → BR-1057 → BR-1023 → BR-1334
-        scores.put("BR-1000", 53);  // Business Roles (L1 container)
-        scores.put("BR-1057", 45);  // Functional Military Roles (L2)
-        scores.put("BR-1023", 38);  // CIS Staff Roles (L3)
-        scores.put("BR-1334", 32);  // CIS Coordination and Advice Roles (L4 leaf)
+        scores.put("BR-1000", 53d);  // Business Roles (L1 container)
+        scores.put("BR-1057", 45d);  // Functional Military Roles (L2)
+        scores.put("BR-1023", 38d);  // CIS Staff Roles (L3)
+        scores.put("BR-1334", 32d);  // CIS Coordination and Advice Roles (L4 leaf)
 
         // ── Run the REAL pipeline ──────────────────────────────────────────
 
@@ -266,7 +266,7 @@ class ReadmeShowcaseTest {
 
         // Every scored leaf must have scores on every intermediate node
         // from root to leaf — the scoring path must be complete.
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             String code = entry.getKey();
             if (!code.contains("-")) continue; // skip roots
             List<TaxonomyNode> path = taxonomyService.getPathToRoot(code);
@@ -356,14 +356,14 @@ class ReadmeShowcaseTest {
                 .toList();
 
         // Iterate roots in descending score order
-        List<Map.Entry<String, Integer>> rootEntries = scores.entrySet().stream()
+        List<Map.Entry<String, Double>> rootEntries = scores.entrySet().stream()
                 .filter(e -> !e.getKey().contains("-"))
                 .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
                 .toList();
 
-        for (Map.Entry<String, Integer> rootEntry : rootEntries) {
+        for (Map.Entry<String, Double> rootEntry : rootEntries) {
             String rootCode = rootEntry.getKey();
-            int rootScore = rootEntry.getValue();
+            double rootScore = rootEntry.getValue();
             String rootName = rootToLayer.getOrDefault(rootCode, rootCode);
 
             // Find all leaves belonging to this root
@@ -372,7 +372,7 @@ class ReadmeShowcaseTest {
                     .toList();
 
             showcase.append("| **").append(rootCode).append("** ").append(rootName)
-                    .append(" | **").append(rootScore).append("%** | Root category |\n");
+                    .append(" | **").append(com.taxonomy.dto.AnalysisPercentages.canonical(rootScore)).append("%** | Root category |\n");
 
             if (rootLeaves.isEmpty()) {
                 showcase.append("| &ensp;└ _(no leaf nodes scored above threshold)_ "
@@ -392,9 +392,9 @@ class ReadmeShowcaseTest {
                 for (int pi = 1; pi < fullPath.size(); pi++) {
                     TaxonomyNode n = fullPath.get(pi);
                     boolean isLeaf = (pi == fullPath.size() - 1);
-                    int nodeScore = scores.getOrDefault(n.getCode(), 0);
+                    double nodeScore = scores.getOrDefault(n.getCode(), 0d);
                     String nodeName = codeToTitle.getOrDefault(n.getCode(), n.getCode());
-                    int parentScore = scores.getOrDefault(fullPath.get(pi - 1).getCode(), 0);
+                    double parentScore = scores.getOrDefault(fullPath.get(pi - 1).getCode(), 0d);
 
                     // Skip already-shown intermediates (shared ancestors)
                     if (!isLeaf && shownIntermediates.contains(n.getCode())) {
@@ -405,12 +405,12 @@ class ReadmeShowcaseTest {
                     String indent = "&ensp;".repeat(pi);
                     String prefix = (isLeaf && isLastLeaf) ? "└" : "├";
                     String role = isLeaf
-                            ? "Leaf — narrowed from " + parentScore + "%"
-                            : "Intermediate (L" + n.getLevel() + ") — narrows " + parentScore + "%";
+                            ? "Leaf — narrowed from " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + "%"
+                            : "Intermediate (L" + n.getLevel() + ") — narrows " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + "%";
 
                     showcase.append("| ").append(indent).append(prefix).append(" ")
                             .append(n.getCode()).append(" ").append(nodeName)
-                            .append(" | ").append(nodeScore).append("%")
+                            .append(" | ").append(com.taxonomy.dto.AnalysisPercentages.canonical(nodeScore)).append("%")
                             .append(" | ").append(role).append(" |\n");
 
                     if (!isLeaf) {
@@ -440,7 +440,7 @@ class ReadmeShowcaseTest {
             String sheet = el.getTaxonomySheet() != null
                     ? rootToLayer.getOrDefault(el.getTaxonomySheet(), el.getTaxonomySheet())
                     : "—";
-            String pct = String.format("%.0f%%", el.getRelevance() * 100);
+            String pct = com.taxonomy.dto.AnalysisPercentages.display(el.getRelevance() * 100);
             // Build hierarchy path from the real taxonomy tree (use cache if available)
             String path;
             String code = el.getNodeCode();
@@ -488,7 +488,7 @@ class ReadmeShowcaseTest {
         showcase.append("| Source | Target | Relation Type | Relevance | Derived From |\n");
         showcase.append("|---|---|---|---|---|\n");
         for (RequirementRelationshipView rel : impactRels) {
-            String pct = String.format("%.0f%%", rel.getPropagatedRelevance() * 100);
+            String pct = com.taxonomy.dto.AnalysisPercentages.display(rel.getPropagatedRelevance() * 100);
             String srcName = codeToTitle.getOrDefault(rel.getSourceCode(), rel.getSourceCode());
             String tgtName = codeToTitle.getOrDefault(rel.getTargetCode(), rel.getTargetCode());
             showcase.append("| ").append(rel.getSourceCode()).append(" ").append(srcName)
@@ -505,7 +505,7 @@ class ReadmeShowcaseTest {
         showcase.append("| Source | Target | Relation Type | Propagated Relevance | Hop |\n");
         showcase.append("|---|---|---|---|---|\n");
         for (RequirementRelationshipView rel : traceRels) {
-            String pct = String.format("%.0f%%", rel.getPropagatedRelevance() * 100);
+            String pct = com.taxonomy.dto.AnalysisPercentages.display(rel.getPropagatedRelevance() * 100);
             showcase.append("| ").append(rel.getSourceCode())
                     .append(" | ").append(rel.getTargetCode())
                     .append(" | ").append(rel.getRelationType())

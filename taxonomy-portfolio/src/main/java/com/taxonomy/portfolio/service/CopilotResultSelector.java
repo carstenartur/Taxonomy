@@ -33,13 +33,13 @@ public class CopilotResultSelector {
 
     private Quality quality(SnapshotDetail detail) {
         AnalysisResult analysis = detail.analysis();
-        Map<String, Integer> scores = analysis.getScores();
+        Map<String, Double> scores = analysis.getScores();
         int positive = (int) scores.values().stream()
                 .filter(value -> value != null && value > 0)
                 .count();
-        int scoreSum = scores.values().stream()
+        double scoreSum = scores.values().stream()
                 .filter(java.util.Objects::nonNull)
-                .mapToInt(Integer::intValue)
+                .mapToDouble(Double::doubleValue)
                 .sum();
         int mappedElements = detail.elementMappings() != null
                 ? detail.elementMappings().size() : 0;
@@ -60,7 +60,7 @@ public class CopilotResultSelector {
     private record Quality(
             int status,
             int positiveScores,
-            int scoreSum,
+            double scoreSum,
             int mappedElements,
             int mappedRelations,
             int warningPreference,
@@ -72,7 +72,7 @@ public class CopilotResultSelector {
             if (result != 0) return result;
             result = Integer.compare(positiveScores, other.positiveScores);
             if (result != 0) return result;
-            result = Integer.compare(scoreSum, other.scoreSum);
+            result = Double.compare(scoreSum, other.scoreSum);
             if (result != 0) return result;
             result = Integer.compare(mappedElements, other.mappedElements);
             if (result != 0) return result;

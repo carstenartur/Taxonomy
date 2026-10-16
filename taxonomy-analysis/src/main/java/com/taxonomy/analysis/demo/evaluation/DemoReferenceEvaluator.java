@@ -18,7 +18,7 @@ public final class DemoReferenceEvaluator {
     public enum Overall { PASS, FAIL, INCOMPLETE }
 
     /** One analysed iteration; {@code null} scores mean the analysis was not executed or not completed. */
-    public record Observation(String requirementText, Map<String, Integer> scores, Set<String> relations) {
+    public record Observation(String requirementText, Map<String, Double> scores, Set<String> relations) {
         public boolean executed() { return requirementText != null && scores != null; }
     }
 
@@ -55,15 +55,15 @@ public final class DemoReferenceEvaluator {
                 String actual;
                 if (!executed(observation)) { status = Status.NOT_EXECUTED; actual = "not executed"; }
                 else {
-                    int score = observation.scores().getOrDefault(node.code(), 0);
+                    double score = observation.scores().getOrDefault(node.code(), 0d);
                     status = score >= node.minimumScore() ? Status.PASS : Status.FAIL;
-                    actual = Integer.toString(score);
+                    actual = com.taxonomy.dto.AnalysisPercentages.canonical(score);
                 }
                 checks.add(new Check("node:" + node.code(), "EXPECTED_NODE", iteration, status,
                         ">= " + node.minimumScore(), actual));
             }
             if (executed(a0) && executed(a1)
-                    && a1.scores().getOrDefault(node.code(), 0) > a0.scores().getOrDefault(node.code(), 0))
+                    && a1.scores().getOrDefault(node.code(), 0d) > a0.scores().getOrDefault(node.code(), 0d))
                 improvements.add("node:" + node.code());
         }
         for (var node : reference.forbiddenNodes()) {
@@ -72,9 +72,9 @@ public final class DemoReferenceEvaluator {
                 String actual;
                 if (!executed(entry.getValue())) { status = Status.NOT_EXECUTED; actual = "not executed"; }
                 else {
-                    int score = entry.getValue().scores().getOrDefault(node.code(), 0);
+                    double score = entry.getValue().scores().getOrDefault(node.code(), 0d);
                     status = score > 0 ? Status.FAIL : Status.PASS;
-                    actual = Integer.toString(score);
+                    actual = com.taxonomy.dto.AnalysisPercentages.canonical(score);
                 }
                 checks.add(new Check("forbidden-node:" + node.code(), "FORBIDDEN_NODE", entry.getKey(), status, "0", actual));
             }

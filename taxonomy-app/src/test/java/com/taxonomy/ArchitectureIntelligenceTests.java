@@ -67,7 +67,7 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void gapAnalysisWithHighScoredNodeIdentifiesGaps() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90, "BP-1010", 80);
+        Map<String, Double> scores = Map.of("CP-1010", 90d, "BP-1010", 80d);
         GapAnalysisView view = gapService.analyze(scores, "secure communications", 50);
 
         assertThat(view.getTotalAnchors()).isGreaterThan(0);
@@ -148,7 +148,7 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void recommendationWithScoresReturnsElements() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90, "BP-1010", 80);
+        Map<String, Double> scores = Map.of("CP-1010", 90d, "BP-1010", 80d);
         ArchitectureRecommendation rec = recommendationService.recommend(
                 scores, "secure voice communications", 50);
 

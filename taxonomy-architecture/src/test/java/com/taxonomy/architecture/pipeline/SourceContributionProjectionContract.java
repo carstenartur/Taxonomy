@@ -104,7 +104,7 @@ public final class SourceContributionProjectionContract {
                         List.of("IP"), "CALL_BUDGET", "")), List.of(), 1, 1, 0), 2, 2, 0, List.of(), "");
     }
     private static ArchitectureViewContext project(RelationSearchReport report, int limit) {
-        var context = new ArchitectureViewContext(Map.of("reader", 50), "Read evidence.", limit, List.of());
+        var context = new ArchitectureViewContext(Map.of("reader", 50d), "Read evidence.", limit, List.of());
         EvidenceRelationProjection.apply(context, report); return context;
     }
 }

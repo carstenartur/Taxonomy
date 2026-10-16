@@ -29,7 +29,7 @@ public interface ArchitectureGraphQueryService {
      * @param maxHops   maximum graph hops from anchors (1–5, clamped)
      * @return view of impacted elements and relationships
      */
-    RequirementImpactView findImpactForRequirement(java.util.Map<String, Integer> scores,
+    RequirementImpactView findImpactForRequirement(java.util.Map<String, Double> scores,
                                                     String businessText, int maxHops);
 
     /**

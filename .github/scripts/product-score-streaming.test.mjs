@@ -471,3 +471,48 @@ test('a complete interactive zero is evaluated evidence, not an error or retry l
   assert.equal(h.classes.has('tax-has-unevaluated'), false);
   assert.equal(h.errors.length, 0);
 });
+
+for (const locale of ['en', 'de']) {
+  test(`${locale}: fractions below one percent remain positive in streaming badges and exports`, () => {
+    const h = harness(locale);
+    h.score({[family]: .5});
+    assert.equal(h.state.currentScores[family], .5);
+    assert.equal(h.badge(family).textContent, '0.5%');
+    h.score({[product]: 25}, {[product]: {...hint, rawScore: 25}});
+    assert.equal(h.state.currentRawScores[product], 25);
+    assert.equal(h.state.currentScores[product], .125);
+    assert.match(h.badge(product).textContent, /25%.*0\.125\/100/);
+    const node = catalogue.nodePatches.find(n => n.code === product);
+    assert.match(h.views.buildMermaidTreeExport([node], h.state.currentScores), /0\.125\/100/);
+  });
+}
+test('local raw score editing keeps decimals and rejects invalid values atomically', () => {
+  const h = harness();
+  h.state.taxonomyData = [{code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+    {code: product, analysisRole: 'PRODUCT', parentCode: family, children: []}]}];
+  h.api.applyLocalRawScores({[family]: 1, [product]: 50}, true);
+  assert.equal(h.state.currentScores[product], .5);
+  assert.equal(h.state.scoreSemanticsVersion, 2);
+  h.api.applyLocalRawScores({[family]: .5, [product]: 25}, true);
+  assert.equal(h.state.currentScores[product], .125);
+  const before = JSON.stringify(h.state.currentRawScores);
+  for (const invalid of [null, false, '', '0.5', -1, 100.1, NaN, Infinity]) {
+    assert.throws(() => h.api.applyLocalRawScores({[family]: invalid}, true), /percentage/);
+    assert.equal(JSON.stringify(h.state.currentRawScores), before);
+  }
+});
+test('invalid incoming numerical evidence is left open rather than turned into zero', () => {
+  const h = harness(); h.score({[family]: .5});
+  h.score({[product]: null}, {[product]: hint});
+  assert.equal(h.state.currentScores[family], .5);
+  assert.equal(Object.prototype.hasOwnProperty.call(h.state.currentRawScores, product), false);
+  assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+  assert.equal(h.statuses.at(-1)[0], 'warning');
+});
+test('a tiny positive score remains visible without a false zero label', () => {
+  const h = harness(); h.score({[family]: 1e-10});
+  assert.equal(h.state.currentScores[family], 1e-10);
+  assert.ok(h.badge(family));
+  assert.notEqual(h.badge(family).textContent, '0%');
+  assert.notEqual(h.api.describeScore(family, 1e-10).label, '0%');
+});

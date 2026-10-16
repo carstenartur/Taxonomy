@@ -364,19 +364,21 @@ class TaxonomyApplicationTests {
     }
 
     @Test
-    void scoresExportEndpointReturns200ForValidInput() throws Exception {
+    void scoresExportEndpointPreservesFractionalPercentagesAndExplicitZero() throws Exception {
         mockMvc.perform(post("/api/scores/export")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requirement\":\"Provide secure voice communications\","
-                                + "\"scores\":{\"CO\":35,\"CR\":25,\"BR\":0},"
+                                + "\"scores\":{\"CO\":35,\"CR\":0.125,\"BR\":0},"
                                 + "\"reasons\":{\"CO\":\"Voice comms\"},"
                                 + "\"provider\":\"GEMINI\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.version").value(4))
                 .andExpect(jsonPath("$.requirement").value("Provide secure voice communications"))
                 .andExpect(jsonPath("$.timestamp").isString())
                 .andExpect(jsonPath("$.scores.CO").value(35))
-                .andExpect(jsonPath("$.scores.BR").value(0));
+                .andExpect(jsonPath("$.scores.CR").value(0.125))
+                .andExpect(jsonPath("$.scores.BR").value(0))
+                .andExpect(jsonPath("$.scores.CP").doesNotExist());
     }
 
     @Test

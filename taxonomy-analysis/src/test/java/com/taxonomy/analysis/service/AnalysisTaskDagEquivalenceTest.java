@@ -66,7 +66,7 @@ class AnalysisTaskDagEquivalenceTest {
 
     /** Deterministic replies selected by the most specific code in the prompt. */
     private static final class Gateway implements LlmGateway {
-        static final Map<String, Integer> SCORES = Map.of("BP", 40, "CP", 0, "CR", 30, "BP-1", 40, "CR-1", 30);
+        static final Map<String, Double> SCORES = Map.of("BP", 40d, "CP", 0d, "CR", 30d, "BP-1", 40d, "CR-1", 30d);
         final List<String> prompts = new ArrayList<>();
         final String rateLimitedCode;
         Gateway(String rateLimitedCode) { this.rateLimitedCode = rateLimitedCode; }
@@ -133,8 +133,8 @@ class AnalysisTaskDagEquivalenceTest {
         assertThat(viaOperation.getRawScores()).isEqualTo(standalone.getRawScores());
         assertThat(viaOperation.getReasons()).isEqualTo(standalone.getReasons());
         assertThat(viaOperation.getStatus()).isEqualTo(standalone.getStatus()).isEqualTo("SUCCESS");
-        assertThat(standalone.getRawScores()).containsEntry("BP", 40).containsEntry("CP", 0)
-                .containsEntry("CR", 30).containsEntry("BP-1", 40).containsEntry("CR-1", 30);
+        assertThat(standalone.getRawScores()).containsEntry("BP", 40d).containsEntry("CP", 0d)
+                .containsEntry("CR", 30d).containsEntry("BP-1", 40d).containsEntry("CR-1", 30d);
 
         for (String prompt : operationGateway.prompts) {
             assertThat(prompt).doesNotContain(OPERATION_ID).doesNotContain(":subtaxonomy:")

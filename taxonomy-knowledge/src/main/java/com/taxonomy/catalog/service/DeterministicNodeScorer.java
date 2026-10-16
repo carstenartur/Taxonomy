@@ -25,14 +25,14 @@ public final class DeterministicNodeScorer implements NodeScorer {
     private DeterministicNodeScorer() {}
 
     @Override
-    public Map<String, Integer> score(String requirementText,
+    public Map<String, Double> score(String requirementText,
                                       List<TaxonomyNode> nodes,
-                                      int parentScore) {
-        Map<String, Integer> scores = new LinkedHashMap<>();
+                                      double parentScore) {
+        Map<String, Double> scores = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
             // Weight range: 1–100, deterministic per code (floorMod avoids negative from Integer.MIN_VALUE)
             int weight = Math.floorMod(node.getCode().hashCode(), 100) + 1;
-            scores.put(node.getCode(), weight);
+            scores.put(node.getCode(), (double) weight);
         }
         return scores;
     }

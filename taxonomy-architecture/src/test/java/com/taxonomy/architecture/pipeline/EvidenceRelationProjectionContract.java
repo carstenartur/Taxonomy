@@ -87,8 +87,8 @@ public final class EvidenceRelationProjectionContract {
                 new Result(edges, List.of(), List.of(), 3, 3, 0), 4, 10, 0, List.of(), "");
     }
     static ArchitectureViewContext project(RelationSearchReport report, int maxNodes) {
-        var c = new ArchitectureViewContext(Map.of("reader", 1), "Read evidence.", maxNodes, List.of());
-        EvidenceRelationProjection.apply(c, report, new AnalysisResult(Map.of("reader", 1), List.of()).getScoreDetails()); return c;
+        var c = new ArchitectureViewContext(Map.of("reader", 1d), "Read evidence.", maxNodes, List.of());
+        EvidenceRelationProjection.apply(c, report, new AnalysisResult(Map.of("reader", 1d), List.of()).getScoreDetails()); return c;
     }
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
 }

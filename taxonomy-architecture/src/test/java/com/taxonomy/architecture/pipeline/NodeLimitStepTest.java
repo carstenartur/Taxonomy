@@ -134,7 +134,7 @@ class NodeLimitStepTest {
     @Test
     void projectsAnchorsOntoTheBoundedViewWithoutDiscardingAnalysisScores() {
         ArchitectureViewContext ctx = new ArchitectureViewContext(
-                Map.of("BP", 95, "CP", 94, "CR", 93, "CI", 80),
+                Map.of("BP", 95d, "CP", 94d, "CR", 93d, "CI", 80d),
                 "test", 2, null);
         ctx.setAnchors(new ArrayList<>(List.of(
                 new RequirementAnchor("BP", 95, "direct"),
@@ -155,7 +155,7 @@ class NodeLimitStepTest {
                 .containsExactly("BP", "CP");
         assertThat(ctx.getView().getAnchors()).extracting(RequirementAnchor::getNodeCode)
                 .containsExactly("BP", "CP");
-        assertThat(ctx.getScores()).containsEntry("CR", 93);
+        assertThat(ctx.getScores()).containsEntry("CR", 93d);
         assertThat(ctx.getRelationships()).hasSize(1);
         assertThat(ctx.getView().getNotes())
                 .anyMatch(note -> note.contains("Additional anchor nodes outside this bounded view: 1")

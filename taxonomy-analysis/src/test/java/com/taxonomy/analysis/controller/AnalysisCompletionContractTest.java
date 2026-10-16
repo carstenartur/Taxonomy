@@ -62,7 +62,7 @@ class AnalysisCompletionContractTest {
     }
 
     private AnalysisResult result(String status) {
-        var result = new AnalysisResult(Map.of("CP", 80), List.of());
+        var result = new AnalysisResult(Map.of("CP", 80d), List.of());
         result.setReasons(Map.of("CP", "completed provider explanation"));
         result.setWarnings(List.of("existing warning"));
         result.setErrorMessage("existing diagnostic");
@@ -104,8 +104,8 @@ class AnalysisCompletionContractTest {
             registry.cancel(id, "alice", scope);
             if ("throw".equals(ending)) throw new IllegalStateException("provider failure");
             if ("complete".equals(ending)) emit.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of("existing warning"), List.of(), List.of(), 1234L));
-            else emit.handle(new AnalysisStreamEvent.Error("ERROR", "existing diagnostic", Map.of("CP", 80),
+                    "SUCCESS", Map.of("CP", 80d), List.of("existing warning"), List.of(), List.of(), 1234L));
+            else emit.handle(new AnalysisStreamEvent.Error("ERROR", "existing diagnostic", Map.of("CP", 80d),
                     List.of("existing warning"), List.of(), List.of(), Map.of("CP", "completed explanation"), 1234L));
             return null;
         }).when(stream).stream(any(), any());
@@ -133,7 +133,7 @@ class AnalysisCompletionContractTest {
         }).when(json).writeValueAsString(any());
         doAnswer(invocation -> {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
-            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
+            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of()));
             // A late duplicate/error cannot reopen or contradict the finalized stream.
             emit.handle(new AnalysisStreamEvent.Error("ERROR", "late duplicate", Map.of(), List.of(), List.of(), List.of()));
             return null;
@@ -149,7 +149,7 @@ class AnalysisCompletionContractTest {
         }).when(mapper).map(any());
         doAnswer(invocation -> {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
-            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
+            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of()));
             return null;
         }).when(stream).stream(any(), any());
         assertThat(executeStream()).contains("\"status\":\"PARTIAL\"", "CANCELLED", "\"CP\":80")
@@ -181,10 +181,10 @@ class AnalysisCompletionContractTest {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
             if ("cancelled".equals(ending)) registry.cancel(id, "alice", scope);
             if ("complete".equals(ending)) {
-                emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80),
+                emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d),
                         List.of("retained warning"), List.of(), List.of(), 8765L));
             } else {
-                emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80),
+                emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80d),
                         List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), 8765L));
             }
             return null;

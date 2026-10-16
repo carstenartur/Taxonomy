@@ -112,7 +112,7 @@ class ReformulationRealModelComparisonTest {
         String source = testCase.path("source").asText();
         var tree = prune(json.valueToTree(catalogue.getFullTree()));
         var found = new HashSet<String>(); collect(tree, found); assertThat(found).isEqualTo(FRONT);
-        var scores = new TreeMap<String, Integer>(); FRONT.forEach(id -> scores.put(id, 100));
+        var scores = new TreeMap<String, Double>(); FRONT.forEach(id -> scores.put(id, 100d));
         var frozen = new TreeMap<String, String>();
         frozen.put("catalogue", tree.toString()); frozen.put("elementMappings", "[]"); frozen.put("relationMappings", "[]");
         frozen.put("reformulationPrompt", ReformulationPromptBuilder.interactiveTemplate());

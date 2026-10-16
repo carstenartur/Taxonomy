@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AnalysisTaskContractTest {
@@ -130,6 +131,73 @@ class AnalysisTaskContractTest {
         assertThatThrownBy(() -> messages.cancellation("cancelled by alice"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(messages.cancellation("CANCELLED").envelope().taskId()).isNull();
+    }
+
+    @Test
+    void legacySubtaxonomyTaskMayOnlyMatchItsCurrentCompletionContract() {
+        Instant created = Instant.parse("2026-01-01T00:00:00Z");
+        Instant deadline = created.plusSeconds(1);
+        var taskId = AnalysisTaskId.subtaxonomy(OP, root("BP"));
+        var legacy = new AnalysisEnvelope(1, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, OP, taskId,
+                AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, REQUIREMENT, List.of(root("BP")),
+                1, null, OP, created, deadline);
+        var completion = new SubtaxonomyAnalysisCompleted(
+                legacy.derive(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, created.plusSeconds(10)),
+                root("BP"), AnalysisTaskOutcome.COMPLETED, 0.5d, 1, null);
+
+        assertThatCode(() -> AnalysisTaskIdentity.requireSameSource(legacy, completion.envelope()))
+                .doesNotThrowAnyException();
+
+        var mismatches = List.of(
+                new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, "other-op",
+                        AnalysisTaskId.subtaxonomy("other-op", root("BP")), AnalysisTaskType.SUBTAXONOMY_ANALYSIS,
+                        AUTHORITY, REQUIREMENT, List.of(root("BP")), 1, taskId.value(), OP,
+                        created.plusSeconds(10), deadline),
+                new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP, taskId,
+                        AnalysisTaskType.SUBTAXONOMY_ANALYSIS,
+                        new AnalysisSourceAuthority("other-repo", "ws-1", "draft", "abc123"),
+                        REQUIREMENT, List.of(root("BP")), 1, taskId.value(), OP, created.plusSeconds(10), deadline),
+                new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP, taskId,
+                        AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, RequirementReference.adHoc("other requirement"),
+                        List.of(root("BP")), 1, taskId.value(), OP, created.plusSeconds(10), deadline),
+                new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP,
+                        AnalysisTaskId.subtaxonomy(OP, root("IP")), AnalysisTaskType.SUBTAXONOMY_ANALYSIS,
+                        AUTHORITY, REQUIREMENT, List.of(root("IP")), 1, taskId.value(), OP,
+                        created.plusSeconds(10), deadline),
+                new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP, taskId,
+                        AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, REQUIREMENT, List.of(root("BP")),
+                        1, taskId.value(), OP, created.plusSeconds(10), deadline.plusSeconds(1)));
+        for (var mismatch : mismatches) {
+            assertThatThrownBy(() -> AnalysisTaskIdentity.requireSameSource(legacy, mismatch))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        var modernTask = new AnalysisEnvelope(3, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, OP, taskId,
+                AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, REQUIREMENT, List.of(root("BP")),
+                1, null, OP, created, deadline);
+        var oldCompletion = new AnalysisEnvelope(1, AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, OP, taskId,
+                AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, REQUIREMENT, List.of(root("BP")),
+                1, taskId.value(), OP, created.plusSeconds(10), deadline);
+        assertThatThrownBy(() -> AnalysisTaskIdentity.requireSameSource(modernTask, oldCompletion))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void workerPreparationAcceptsLegacySubtaxonomyTaskAndProducesFractionalV3Completion() {
+        Instant created = Instant.parse("2026-01-01T00:00:00Z");
+        var legacy = new SubtaxonomyAnalysisTask(new AnalysisEnvelope(1,
+                AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, OP, AnalysisTaskId.subtaxonomy(OP, root("BP")),
+                AnalysisTaskType.SUBTAXONOMY_ANALYSIS, AUTHORITY, REQUIREMENT, List.of(root("BP")),
+                1, null, OP, created, created.plusSeconds(1)), root("BP"));
+        var handlers = new AnalysisTaskHandlers(task -> PreparedAnalysisCompletion.withoutEffects(
+                new SubtaxonomyAnalysisCompleted(task.envelope().derive(
+                        AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, created.plusSeconds(10)),
+                        task.root(), AnalysisTaskOutcome.COMPLETED, 0.5d, 1, null)), null);
+
+        var completion = (SubtaxonomyAnalysisCompleted) handlers.prepare(legacy).completion();
+
+        assertThat(completion.envelope().schemaVersion()).isEqualTo(AnalysisEnvelope.SCHEMA_VERSION);
+        assertThat(completion.rootScore()).isEqualTo(0.5d);
     }
 
     @Test

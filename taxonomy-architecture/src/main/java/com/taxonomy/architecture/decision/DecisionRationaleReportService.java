@@ -82,7 +82,7 @@ public class DecisionRationaleReportService {
     /** Input captured from the analysis session or an immutable portfolio snapshot. */
     public record DecisionAnalysisInput(
   String businessText,
-  Map<String, Integer> scores,
+  Map<String, Double> scores,
   Map<String, String> reasons,
   String provider,
   String analysisStatus,
@@ -95,7 +95,7 @@ public class DecisionRationaleReportService {
             AnalysisScope analysisScope,
             AnalysisCoverage analysisCoverage,
             Map<String, String> recordedReasons) {
-        public DecisionAnalysisInput(String businessText, Map<String, Integer> scores,
+        public DecisionAnalysisInput(String businessText, Map<String, Double> scores,
                 Map<String, String> reasons, String provider, String analysisStatus,
                 List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                 List<TaxonomyNodeDto> taxonomyTree, AnalysisSnapshotProvenance snapshotProvenance,
@@ -104,7 +104,7 @@ public class DecisionRationaleReportService {
             this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps,
                     taxonomyTree, snapshotProvenance, scoreDetails, analysisDurationMillis, analysisScope, analysisCoverage, reasons);
         }
-        public DecisionAnalysisInput(String businessText, Map<String, Integer> scores,
+        public DecisionAnalysisInput(String businessText, Map<String, Double> scores,
                 Map<String, String> reasons, String provider, String analysisStatus,
                 List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                 List<TaxonomyNodeDto> taxonomyTree, AnalysisSnapshotProvenance snapshotProvenance,
@@ -126,7 +126,7 @@ public class DecisionRationaleReportService {
         }
         public DecisionAnalysisInput(
   String businessText,
-  Map<String, Integer> scores,
+  Map<String, Double> scores,
   Map<String, String> reasons,
   String provider,
   String analysisStatus,
@@ -155,7 +155,7 @@ public class DecisionRationaleReportService {
         /** Backward-compatible full input without typed score evidence. */
         public DecisionAnalysisInput(
       String businessText,
-      Map<String, Integer> scores,
+      Map<String, Double> scores,
       Map<String, String> reasons,
       String provider,
       String analysisStatus,
@@ -170,7 +170,7 @@ public class DecisionRationaleReportService {
         /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */
         public DecisionAnalysisInput(
       String businessText,
-      Map<String, Integer> scores,
+      Map<String, Double> scores,
       Map<String, String> reasons,
       String provider,
       String analysisStatus,
@@ -182,7 +182,7 @@ public class DecisionRationaleReportService {
         /** Ad-hoc analysis input including explicit concrete-product coverage evidence. */
         public DecisionAnalysisInput(
       String businessText,
-      Map<String, Integer> scores,
+      Map<String, Double> scores,
       Map<String, String> reasons,
       String provider,
       String analysisStatus,
@@ -195,7 +195,7 @@ public class DecisionRationaleReportService {
         /** Backward-compatible immutable-snapshot input without product-gap evidence. */
         public DecisionAnalysisInput(
       String businessText,
-      Map<String, Integer> scores,
+      Map<String, Double> scores,
       Map<String, String> reasons,
       String provider,
       String analysisStatus,
@@ -239,7 +239,7 @@ public class DecisionRationaleReportService {
         Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;
         boolean german = "de".equalsIgnoreCase(effectiveLocale.getLanguage());
         var labels = new DecisionReportSourceLabels(effectiveLocale.toLanguageTag());
-        Map<String, Integer> scores = sanitizeScores(input.scores());
+        Map<String, Double> scores = sanitizeScores(input.scores());
         Map<String, String> recordedReasons = sanitizeReasons(input.recordedReasons());
 
         HierarchyData hierarchy = input.taxonomyTree().isEmpty()
@@ -505,8 +505,8 @@ public class DecisionRationaleReportService {
         return normalized(accessor.apply(input.snapshotProvenance()), fallback);
     }
 
-    private Map<String, Integer> sanitizeScores(Map<String, Integer> source) {
-        Map<String, Integer> result = new LinkedHashMap<>();
+    private Map<String, Double> sanitizeScores(Map<String, Double> source) {
+        Map<String, Double> result = new LinkedHashMap<>();
         if (source == null) {
             return result;
         }
@@ -540,7 +540,7 @@ public class DecisionRationaleReportService {
   List<ProductCoverageGap> source,
   Map<String, TaxonomyNode> nodesByCode,
   Map<String, List<TaxonomyNode>> childrenMap,
-  Map<String, Integer> scores) {
+  Map<String, Double> scores) {
         if (source == null || source.isEmpty()) {
   return List.of();
         }
@@ -568,7 +568,7 @@ public class DecisionRationaleReportService {
               "Product coverage gap family score must be between 0 and 100 for "
                       + familyCode);
   }
-  Integer storedFamilyScore = scores.get(familyCode);
+  Double storedFamilyScore = scores.get(familyCode);
   if (storedFamilyScore == null || storedFamilyScore != gap.familyScore()) {
       throw new IllegalArgumentException(
               "Product coverage gap family score does not match analysis score for "
@@ -681,7 +681,7 @@ public class DecisionRationaleReportService {
             List<TaxonomyNode> roots,
             List<TaxonomyNode> hierarchyOrder,
             Map<String, List<TaxonomyNode>> childrenMap,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             List<ProductCoverageGap> productCoverageGaps) {
         Set<String> expectedCodes = new LinkedHashSet<>();
         roots.stream().map(TaxonomyNode::getCode).forEach(expectedCodes::add);
@@ -693,10 +693,10 @@ public class DecisionRationaleReportService {
             if (children.isEmpty()) {
                 continue;
             }
-            Integer score = scores.get(node.getCode());
+            Double score = scores.get(node.getCode());
             List<String> childCodes = children.stream().map(TaxonomyNode::getCode).toList();
             boolean anyPositiveChild = childCodes.stream()
-                    .anyMatch(code -> scores.getOrDefault(code, 0) > 0);
+                    .anyMatch(code -> scores.getOrDefault(code, 0d) > 0);
 
             // A positive child cannot form a traceable decision when its parent was not
             // evaluated positively. Keep the chapter visible, but mark the snapshot incomplete.
@@ -737,9 +737,9 @@ public class DecisionRationaleReportService {
 
     private boolean hasResolvedProductCoverageGap(
   String familyCode,
-  Integer familyScore,
+  Double familyScore,
   List<String> directChildCodes,
-  Map<String, Integer> scores,
+  Map<String, Double> scores,
   List<ProductCoverageGap> productCoverageGaps) {
         return productCoverageGaps.stream().anyMatch(gap ->
       familyCode.equals(gap.productFamilyCode())
@@ -754,7 +754,7 @@ public class DecisionRationaleReportService {
     private List<DecisionChapter> buildChapters(
             List<TaxonomyNode> hierarchyOrder,
             Map<String, List<TaxonomyNode>> childrenMap,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             boolean german) {
         List<DecisionChapter> chapters = new ArrayList<>();
@@ -763,7 +763,7 @@ public class DecisionRationaleReportService {
         for (TaxonomyNode parent : hierarchyOrder) {
             List<TaxonomyNode> children = childrenMap.getOrDefault(parent.getCode(), List.of());
             if (children.isEmpty()
-                    || children.stream().noneMatch(child -> scores.getOrDefault(child.getCode(), 0) > 0)) {
+                    || children.stream().noneMatch(child -> scores.getOrDefault(child.getCode(), 0d) > 0)) {
                 continue;
             }
 
@@ -771,27 +771,27 @@ public class DecisionRationaleReportService {
                     .map(TaxonomyNode::getCode)
                     .filter(code -> !scores.containsKey(code))
                     .toList();
-            Integer parentScore = scores.get(parent.getCode());
-            int highestChildScore = children.stream()
+            Double parentScore = scores.get(parent.getCode());
+            double highestChildScore = children.stream()
                     .map(TaxonomyNode::getCode)
                     .map(scores::get)
                     .filter(Objects::nonNull)
-                    .mapToInt(Integer::intValue)
+                    .mapToDouble(Double::doubleValue)
                     .max()
                     .orElse(0);
 
             List<TaxonomyNode> rankingOrder = children.stream()
-                    .filter(child -> scores.getOrDefault(child.getCode(), 0) > 0)
+                    .filter(child -> scores.getOrDefault(child.getCode(), 0d) > 0)
                     .sorted(Comparator
-                            .comparingInt((TaxonomyNode child) -> scores.get(child.getCode())).reversed()
+                            .comparingDouble((TaxonomyNode child) -> scores.get(child.getCode())).reversed()
                             .thenComparing(NODE_ORDER))
                     .toList();
             Map<String, Integer> ranks = new HashMap<>();
-            int previousScore = Integer.MIN_VALUE;
+            double previousScore = Integer.MIN_VALUE;
             int previousRank = 0;
             for (int index = 0; index < rankingOrder.size(); index++) {
                 TaxonomyNode child = rankingOrder.get(index);
-                int childScore = scores.get(child.getCode());
+                double childScore = scores.get(child.getCode());
                 int rank = childScore == previousScore ? previousRank : index + 1;
                 ranks.put(child.getCode(), rank);
                 previousScore = childScore;
@@ -800,7 +800,7 @@ public class DecisionRationaleReportService {
 
             List<ChildDecision> childDecisions = new ArrayList<>();
             for (TaxonomyNode child : children) {
-                Integer score = scores.get(child.getCode());
+                Double score = scores.get(child.getCode());
                 boolean leaf = childrenMap.getOrDefault(child.getCode(), List.of()).isEmpty();
                 Disposition disposition;
                 if (score == null) {
@@ -852,12 +852,12 @@ public class DecisionRationaleReportService {
     private List<LeafCandidate> findLeadingLeaves(
             List<TaxonomyNode> hierarchyOrder,
             Map<String, List<TaxonomyNode>> childrenMap,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             boolean german) {
         List<LeafCandidate> leaves = hierarchyOrder.stream()
                 .filter(node -> childrenMap.getOrDefault(node.getCode(), List.of()).isEmpty())
-                .filter(node -> scores.getOrDefault(node.getCode(), 0) > 0)
+                .filter(node -> scores.getOrDefault(node.getCode(), 0d) > 0)
                 .map(node -> {
                     Reason reason = reasonFor(node, scores.get(node.getCode()), reasons, german);
                     List<TaxonomyNode> path = pathToRoot(node.getCode(), hierarchyOrder);
@@ -872,7 +872,7 @@ public class DecisionRationaleReportService {
                             reason.source());
                 })
                 .sorted(Comparator
-                        .comparingInt(LeafCandidate::score).reversed()
+                        .comparingDouble(LeafCandidate::score).reversed()
                         .thenComparing(Comparator.comparingInt(LeafCandidate::depth).reversed())
                         .thenComparing(LeafCandidate::code))
                 .limit(20)
@@ -907,15 +907,15 @@ public class DecisionRationaleReportService {
     private List<PathStep> buildPath(
             String leafCode,
             Map<String, TaxonomyNode> nodesByCode,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             boolean german) {
         List<TaxonomyNode> path = pathToRoot(leafCode, nodesByCode.values());
         List<PathStep> result = new ArrayList<>();
         for (int index = 0; index < path.size(); index++) {
             TaxonomyNode node = path.get(index);
-            Integer score = scores.get(node.getCode());
-            Integer parentScore = index == 0 ? null : scores.get(path.get(index - 1).getCode());
+            Double score = scores.get(node.getCode());
+            Double parentScore = index == 0 ? null : scores.get(path.get(index - 1).getCode());
             Reason reason = reasonFor(node, score, reasons, german);
             result.add(new PathStep(
                     index + 1,
@@ -933,7 +933,7 @@ public class DecisionRationaleReportService {
             DecisionAnalysisInput input,
             ViewContext viewContext,
             Completeness completeness,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             List<LeafCandidate> leaves,
             Set<String> knownNodeCodes,
@@ -989,7 +989,7 @@ public class DecisionRationaleReportService {
         }
         List<String> inconsistentBudgets = new ArrayList<>();
         for (Map.Entry<String, List<TaxonomyNode>> entry : childrenMap.entrySet()) {
-            Integer parentScore = scores.get(entry.getKey());
+            Double parentScore = scores.get(entry.getKey());
             if (parentScore == null || parentScore <= 0) {
                 continue;
             }
@@ -1008,11 +1008,11 @@ public class DecisionRationaleReportService {
             if (!allEvaluated) {
                 continue;
             }
-            int childTotal = budgetChildren.stream()
+            double childTotal = budgetChildren.stream()
                     .map(TaxonomyNode::getCode)
-                    .mapToInt(code -> scores.getOrDefault(code, 0))
+                    .mapToDouble(code -> scores.getOrDefault(code, 0d))
                     .sum();
-            if (childTotal != 0 && childTotal != parentScore) {
+            if (childTotal != 0 && Math.abs(childTotal - parentScore) > Math.ulp(parentScore) * Math.max(4, budgetChildren.size())) {
                 inconsistentBudgets.add(entry.getKey() + " (" + childTotal + "% / "
                         + parentScore + "%)");
             }
@@ -1112,7 +1112,7 @@ public class DecisionRationaleReportService {
 
     private String comparativeRationale(
             TaxonomyNode parent,
-            Integer parentScore,
+            Double parentScore,
             List<ChildDecision> children,
             boolean german) {
         List<ChildDecision> positive = children.stream()
@@ -1210,7 +1210,7 @@ public class DecisionRationaleReportService {
 
     private Reason reasonFor(
             TaxonomyNode node,
-            Integer score,
+            Double score,
             Map<String, String> reasons,
             boolean german) {
         String reason = reasons.get(node.getCode());
@@ -1238,7 +1238,7 @@ public class DecisionRationaleReportService {
                 ReasonSource.DETERMINISTIC_TRACE);
     }
 
-    private Double localShare(Integer childScore, Integer parentScore) {
+    private Double localShare(Double childScore, Double parentScore) {
         if (childScore == null || parentScore == null || parentScore <= 0) {
             return null;
         }
@@ -1261,7 +1261,7 @@ public class DecisionRationaleReportService {
 
     private String fingerprintAnalysis(
             DecisionAnalysisInput input,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             List<ProductCoverageGap> productCoverageGaps) {
         try {
@@ -1336,7 +1336,7 @@ public class DecisionRationaleReportService {
         return normalized.length() <= 16 ? normalized : normalized.substring(0, 16);
     }
 
-    private String scoreText(Integer score, boolean german) {
+    private String scoreText(Double score, boolean german) {
         if (score == null) {
             return german ? "keinen gespeicherten Wert" : "no stored score";
         }

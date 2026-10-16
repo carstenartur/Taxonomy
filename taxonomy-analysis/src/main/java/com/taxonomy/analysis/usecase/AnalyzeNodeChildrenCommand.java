@@ -4,7 +4,7 @@ package com.taxonomy.analysis.usecase;
 public record AnalyzeNodeChildrenCommand(
         String parentCode,
         String businessText,
-        int parentScore) {
+        double parentScore) {
 
     public AnalyzeNodeChildrenCommand {
         if (parentCode == null || parentCode.isBlank()) {
@@ -13,7 +13,7 @@ public record AnalyzeNodeChildrenCommand(
         if (businessText == null || businessText.isBlank()) {
             throw new IllegalArgumentException("businessText must not be blank");
         }
-        if (parentScore < 0 || parentScore > 100) {
+        if (!com.taxonomy.dto.AnalysisPercentages.valid(parentScore)) {
             throw new IllegalArgumentException("parentScore must be between 0 and 100");
         }
     }

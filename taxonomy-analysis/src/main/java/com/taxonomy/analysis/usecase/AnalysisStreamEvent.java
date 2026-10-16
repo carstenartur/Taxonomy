@@ -20,7 +20,7 @@ public sealed interface AnalysisStreamEvent
 
     record Phase(String message, int progressPercent) implements AnalysisStreamEvent { }
 
-    record Scores(Map<String, Integer> newScores,
+    record Scores(Map<String, Double> newScores,
                   Map<String, String> reasons,
                   String description,
                   LlmCallDetail detail) implements AnalysisStreamEvent { }
@@ -28,12 +28,12 @@ public sealed interface AnalysisStreamEvent
     record Expanding(String parentCode, List<String> childCodes) implements AnalysisStreamEvent { }
 
     record Complete(String status,
-                    Map<String, Integer> allScores,
+                    Map<String, Double> allScores,
                     List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies,
                     List<ProductCoverageGap> productCoverageGaps,
                     Long analysisDurationMillis) implements AnalysisStreamEvent {
-        public Complete(String status, Map<String, Integer> allScores, List<String> warnings,
+        public Complete(String status, Map<String, Double> allScores, List<String> warnings,
                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps) {
             this(status, allScores, warnings, discrepancies, productCoverageGaps, null);
         }
@@ -41,18 +41,18 @@ public sealed interface AnalysisStreamEvent
 
     record Error(String status,
                  String errorMessage,
-                 Map<String, Integer> partialScores,
+                 Map<String, Double> partialScores,
                  List<String> warnings,
                  List<TaxonomyDiscrepancy> discrepancies,
                  List<ProductCoverageGap> productCoverageGaps,
                  Map<String, String> partialReasons,
                  Long analysisDurationMillis) implements AnalysisStreamEvent {
-        public Error(String status, String errorMessage, Map<String, Integer> partialScores,
+        public Error(String status, String errorMessage, Map<String, Double> partialScores,
                      List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                      List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons) {
             this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, partialReasons, null);
         }
-        public Error(String status, String errorMessage, Map<String, Integer> partialScores,
+        public Error(String status, String errorMessage, Map<String, Double> partialScores,
                      List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                      List<ProductCoverageGap> productCoverageGaps) {
             this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, Map.of(), null);

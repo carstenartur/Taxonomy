@@ -182,7 +182,7 @@ class DurableClusterAnalysisObservationTest {
                     assertTrue(replay.contains("id:" + db.store.snapshot(context).revision()));
                     assertTrue(replay.contains("\"status\":\"COMPLETED\""));
                     assertEquals(0, secondSignals.listenerCount(), "Terminal observation releases its subscription");
-                    assertEquals(70, resumed.result("sse-observe", "alice", SCOPE).getRawScores().get("IP"));
+                    assertEquals(70d, resumed.result("sse-observe", "alice", SCOPE).getRawScores().get("IP"));
                     assertEquals(2, db.sent.size(), "Reconnect never submits a new analysis or task");
                 }
             }

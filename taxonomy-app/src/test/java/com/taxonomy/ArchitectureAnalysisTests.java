@@ -84,7 +84,7 @@ class ArchitectureAnalysisTests {
     void gapAnalysisDetectsMissingRelationsForCapability() {
         // CP nodes should have REALIZES → CR according to the compatibility matrix
         // No relations exist, so gap analysis should find this gap
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80), "test requirement", 50);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test requirement", 50);
 
         assertThat(view.getTotalAnchors()).isEqualTo(1);
         assertThat(view.getMissingRelations()).isNotEmpty();
@@ -98,7 +98,7 @@ class ArchitectureAnalysisTests {
         // Create the expected relation CP → CR via REALIZES (matches compatibility matrix)
         relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
 
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80), "test requirement", 50);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test requirement", 50);
 
         // Should not report REALIZES → CR as missing for the CP node
         boolean realizesToCrMissing = view.getMissingRelations().stream()
@@ -110,7 +110,7 @@ class ArchitectureAnalysisTests {
 
     @Test
     void gapAnalysisReportsCoverageGapsForAnchorNodes() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80), "test", 50);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test", 50);
         assertThat(view.getCoverageGaps()).isNotEmpty();
         assertThat(view.getCoverageGaps().stream()
                 .anyMatch(g -> "CP".equals(g.getNodeCode()))).isTrue();
@@ -118,20 +118,20 @@ class ArchitectureAnalysisTests {
 
     @Test
     void gapAnalysisReportsIncompletePatternsForMissingRelations() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80), "test", 50);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test", 50);
         assertThat(view.getIncompletePatterns()).isNotEmpty();
     }
 
     @Test
     void gapAnalysisFiltersBelowThreshold() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 30), "test", 50);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 30d), "test", 50);
         assertThat(view.getTotalAnchors()).isZero();
         assertThat(view.getNotes()).isNotEmpty();
     }
 
     @Test
     void gapAnalysisUsesDefaultThresholdWhenZero() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 55), "test", 0);
+        GapAnalysisView view = gapService.analyze(Map.of("CP", 55d), "test", 0);
         assertThat(view.getTotalAnchors()).isEqualTo(1);
     }
 
@@ -276,7 +276,7 @@ class ArchitectureAnalysisTests {
     void enrichedFailureImpactIncludesRequirements() {
         // Create relation and coverage data
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        coverageService.analyzeCoverage(Map.of("CP", 80), "REQ-ENRICH-01", "test req", 50);
+        coverageService.analyzeCoverage(Map.of("CP", 80d), "REQ-ENRICH-01", "test req", 50);
 
         EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP", 3);
 
@@ -292,7 +292,7 @@ class ArchitectureAnalysisTests {
     @Test
     void enrichedFailureImpactComputesRiskScore() {
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        coverageService.analyzeCoverage(Map.of("CP", 80), "REQ-RISK-01", "test req", 50);
+        coverageService.analyzeCoverage(Map.of("CP", 80d), "REQ-RISK-01", "test req", 50);
 
         EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP", 3);
 
@@ -348,7 +348,7 @@ class ArchitectureAnalysisTests {
     @Test
     void recommendationIdentifiesConfirmedElements() {
         ArchitectureRecommendation rec = recommendationService.recommend(
-                Map.of("CP", 85, "BP", 75), "secure voice comms", 50);
+                Map.of("CP", 85d, "BP", 75d), "secure voice comms", 50);
 
         assertThat(rec.getConfirmedElements()).isNotEmpty();
         assertThat(rec.getConfirmedElements().stream()
@@ -360,7 +360,7 @@ class ArchitectureAnalysisTests {
     void recommendationProposesElementsForGaps() {
         // CP needs REALIZES → CR, so the recommendation should propose CR nodes
         ArchitectureRecommendation rec = recommendationService.recommend(
-                Map.of("CP", 85), "secure voice communications", 50);
+                Map.of("CP", 85d), "secure voice communications", 50);
 
         assertThat(rec.getConfirmedElements()).isNotEmpty();
         // Proposals depend on available nodes in the CR root
@@ -371,7 +371,7 @@ class ArchitectureAnalysisTests {
     @Test
     void recommendationSuggestsRelations() {
         ArchitectureRecommendation rec = recommendationService.recommend(
-                Map.of("CP", 85), "secure voice communications", 50);
+                Map.of("CP", 85d), "secure voice communications", 50);
 
         // Should suggest REALIZES relations to fill gaps
         assertThat(rec.getSuggestedRelations()).isNotNull();
@@ -380,7 +380,7 @@ class ArchitectureAnalysisTests {
     @Test
     void recommendationComputesConfidence() {
         ArchitectureRecommendation rec = recommendationService.recommend(
-                Map.of("CP", 85), "test", 50);
+                Map.of("CP", 85d), "test", 50);
         assertThat(rec.getConfidence()).isGreaterThanOrEqualTo(0.0);
         assertThat(rec.getConfidence()).isLessThanOrEqualTo(100.0);
     }
@@ -479,7 +479,7 @@ class ArchitectureAnalysisTests {
     void patternDetectionForScoresAggregatesResults() {
         relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
 
-        PatternDetectionView view = patternService.detectForScores(Map.of("CP", 80), 50);
+        PatternDetectionView view = patternService.detectForScores(Map.of("CP", 80d), 50);
 
         // Should find the incomplete Full Stack pattern
         int totalDetected = view.getMatchedPatterns().size() + view.getIncompletePatterns().size();

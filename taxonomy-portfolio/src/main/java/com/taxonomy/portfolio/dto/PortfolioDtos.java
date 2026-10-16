@@ -260,7 +260,7 @@ public final class PortfolioDtos {
             String nodeCode,
             String nodeTitle,
             String taxonomyRoot,
-            int directScore,
+            double directScore,
             double relevance,
             double confidence,
             MappingOrigin mappingOrigin,
@@ -341,18 +341,18 @@ public final class PortfolioDtos {
      * The two original components remain first for source and JSON compatibility.
      */
     public record ScoreChange(
-            Integer oldScore,
-            Integer newScore,
-            Integer oldRawScore,
-            Integer newRawScore,
+            Double oldScore,
+            Double newScore,
+            Double oldRawScore,
+            Double newRawScore,
             AnalysisScoreKind oldKind,
             AnalysisScoreKind newKind,
             String oldParentCode,
             String newParentCode,
-            Integer oldParentScore,
-            Integer newParentScore) {
+            Double oldParentScore,
+            Double newParentScore) {
 
-        public ScoreChange(Integer oldScore, Integer newScore) {
+        public ScoreChange(Double oldScore, Double newScore) {
             this(oldScore, newScore, oldScore, newScore,
                     null, null, null, null, null, null);
         }
@@ -448,7 +448,7 @@ public final class PortfolioDtos {
     public record LinkRequirementSolutionRequest(
             Long requirementId,
             String snapshotId,
-            int coveragePercent,
+            double coveragePercent,
             RequirementSolutionRole role,
             ReviewStatus reviewStatus,
             String evidence) {
@@ -459,7 +459,7 @@ public final class PortfolioDtos {
             Long requirementId,
             String requirementKey,
             String snapshotId,
-            int coveragePercent,
+            double coveragePercent,
             RequirementSolutionRole role,
             ReviewStatus reviewStatus,
             String evidence,
@@ -581,7 +581,7 @@ public final class PortfolioDtos {
     public record MatrixView(
             List<String> rows,
             List<String> columns,
-            Map<String, Map<String, Integer>> values) {
+            Map<String, Map<String, Double>> values) {
     }
 
     public record AggregatedTaxonomyNode(
@@ -590,7 +590,7 @@ public final class PortfolioDtos {
             String taxonomyRoot,
             int requirementCount,
             double averageRelevance,
-            int maximumDirectScore,
+            double maximumDirectScore,
             List<String> requirementKeys,
             List<String> snapshotIds,
             Map<ActionStatus, Integer> actionStatusCounts) {

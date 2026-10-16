@@ -46,11 +46,11 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
                 "EXTRA", AnalysisScoreKind.ROOT_RELEVANCE,
                 100, 100, null, null);
         DecisionReportRequest request = new DecisionReportRequest(
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 100),
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 80, "EXTRA", 100),
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 100, "EXTRA", 100),
+                Map.of("IP", 100d, "IP-F", 40d, "IP-P", 100d),
+                Map.of("IP", 100d, "IP-F", 40d, "IP-P", 80d, "EXTRA", 100d),
+                Map.of("IP", 100d, "IP-F", 40d, "IP-P", 100d, "EXTRA", 100d),
                 Map.of("IP-P", injectedProduct, "EXTRA", injectedExtra),
-                Map.of("IP-P", 100, "EXTRA", 100),
+                Map.of("IP-P", 100d, "EXTRA", 100d),
                 AnalysisScoreSemantics.CURRENT_VERSION,
                 Map.of(),
                 "requirement",
@@ -69,7 +69,7 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         assertThat(derived).isNotNull();
         assertThat(derived.effectiveScores())
                 .containsExactlyInAnyOrderEntriesOf(
-                        Map.of("IP", 100, "IP-F", 40, "IP-P", 32))
+                        Map.of("IP", 100d, "IP-F", 40d, "IP-P", 32d))
                 .doesNotContainKey("EXTRA");
         assertThat(derived.scoreDetails().get("IP-P").rawScore()).isEqualTo(80);
         assertThat(derived.scoreDetails().get("IP-P").parentScore()).isEqualTo(40);
@@ -82,16 +82,16 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
     @Test
     void rejectsNonCanonicalScoreKeysBeforeSemanticNormalization() {
         DecisionRationaleReportController controller = controller(null);
-        Map<String, Integer> colliding = new LinkedHashMap<>();
-        colliding.put("IP", 40);
-        colliding.put("IP ", 60);
+        Map<String, Double> colliding = new LinkedHashMap<>();
+        colliding.put("IP", 40d);
+        colliding.put("IP ", 60d);
 
         Boolean canonical = ReflectionTestUtils.invokeMethod(
-                controller, "validScoreMap", Map.of("IP", 40));
+                controller, "validScoreMap", Map.of("IP", 40d));
         Boolean leadingWhitespace = ReflectionTestUtils.invokeMethod(
-                controller, "validScoreMap", Map.of(" IP", 40));
+                controller, "validScoreMap", Map.of(" IP", 40d));
         Boolean trailingWhitespace = ReflectionTestUtils.invokeMethod(
-                controller, "validScoreMap", Map.of("IP ", 40));
+                controller, "validScoreMap", Map.of("IP ", 40d));
         Boolean stripCollision = ReflectionTestUtils.invokeMethod(
                 controller, "validScoreMap", colliding);
 
@@ -111,16 +111,16 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         DecisionRationaleReportController controller = new DecisionRationaleReportController(
                 reportService, registry, repositoryState, workspaceResolver,
                 new DecisionRationaleScoreSemanticsAdapter(), taxonomy);
-        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 32);
-        List<Map<String, Integer>> incompleteRawMaps = List.of(
-                Map.of("IP", 100, "IP-2072", 40),
-                Map.of("IP", 100, "IP-1286", 80),
-                Map.of("IP-2072", 40, "IP-1286", 80),
+        Map<String, Double> scores = Map.of("IP", 100d, "IP-2072", 40d, "IP-1286", 32d);
+        List<Map<String, Double>> incompleteRawMaps = List.of(
+                Map.of("IP", 100d, "IP-2072", 40d),
+                Map.of("IP", 100d, "IP-1286", 80d),
+                Map.of("IP-2072", 40d, "IP-1286", 80d),
                 Map.of(),
-                Map.of("UA", 0),
-                Map.of("IP", 100, "IP-2072", 40, "UA", 80));
+                Map.of("UA", 0d),
+                Map.of("IP", 100d, "IP-2072", 40d, "UA", 80d));
 
-        for (Map<String, Integer> raw : incompleteRawMaps) {
+        for (Map<String, Double> raw : incompleteRawMaps) {
             assertRejectedInEveryFormat(controller, request(scores, raw));
         }
         verifyNoInteractions(reportService, registry, repositoryState, workspaceResolver, taxonomy);
@@ -129,9 +129,9 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
     @Test
     void rejectsInvalidRawValuesEvenWhenEverySelectedCodeIsPresent() {
         DecisionRationaleReportController controller = controller(null);
-        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 32);
-        for (Integer invalidValue : new Integer[] {null, -1, 101}) {
-            Map<String, Integer> raw = new LinkedHashMap<>(scores);
+        Map<String, Double> scores = Map.of("IP", 100d, "IP-2072", 40d, "IP-1286", 32d);
+        for (Double invalidValue : new Double[] {null, -1d, 101d, Double.NaN, Double.POSITIVE_INFINITY}) {
+            Map<String, Double> raw = new LinkedHashMap<>(scores);
             raw.put("IP-1286", invalidValue);
             assertRejectedInEveryFormat(controller, request(scores, raw));
         }
@@ -140,17 +140,17 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
     @Test
     void acceptsLegacyRequestsAndCompleteRawEvidenceIncludingExplicitZero() {
         DecisionRationaleReportController controller = controller(null);
-        Map<String, Integer> raw = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 80);
+        Map<String, Double> raw = Map.of("IP", 100d, "IP-2072", 40d, "IP-1286", 80d);
         DecisionReportRequest legacy = new DecisionReportRequest(
                 raw, Map.of(), "requirement", "MOCK", "SUCCESS", List.of(), List.of(), "en");
         Boolean legacyValid = ReflectionTestUtils.invokeMethod(controller, "isValid", legacy);
         Boolean nullRawValid = ReflectionTestUtils.invokeMethod(
                 controller, "isValid", request(raw, null));
-        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 0);
+        Map<String, Double> scores = Map.of("IP", 100d, "IP-2072", 40d, "IP-1286", 0d);
         Boolean zeroValid = ReflectionTestUtils.invokeMethod(
                 controller, "isValid", request(scores, scores));
-        Map<String, Integer> withExtra = new LinkedHashMap<>(raw);
-        withExtra.put("UA", 0);
+        Map<String, Double> withExtra = new LinkedHashMap<>(raw);
+        withExtra.put("UA", 0d);
         Boolean extraValid = ReflectionTestUtils.invokeMethod(
                 controller, "isValid", request(scores, withExtra));
 
@@ -171,7 +171,7 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
     }
 
     private DecisionReportRequest request(
-            Map<String, Integer> scores, Map<String, Integer> rawScores) {
+            Map<String, Double> scores, Map<String, Double> rawScores) {
         return new DecisionReportRequest(scores, rawScores, null, null, null, null,
                 Map.of(), "requirement", "MOCK", "SUCCESS", List.of(), List.of(), "en");
     }

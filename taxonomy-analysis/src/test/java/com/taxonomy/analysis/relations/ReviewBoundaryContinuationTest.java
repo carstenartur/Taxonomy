@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ReviewBoundaryContinuationTest {
     @ParameterizedTest
-    @ValueSource(strings={"0.999999999999999999", "1.000000000000000001", "100.000000000000000001"})
-    void rejectsExactFractionsRoundedToIntegersByDouble(String number) {
+    @ValueSource(strings={"-0.000000000000000001", "100.000000000000000001", "1e-9999"})
+    void rejectsOutOfRangeAndUnderflowBeforeDoubleConversion(String number) {
         var parser = new LlmResponseParser(JsonMapper.builder().build());
         var node = new TaxonomyNode(); node.setCode("A");
         assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(

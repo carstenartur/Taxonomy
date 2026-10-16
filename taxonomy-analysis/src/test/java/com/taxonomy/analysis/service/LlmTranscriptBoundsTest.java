@@ -33,7 +33,7 @@ class LlmTranscriptBoundsTest {
         }
         LlmCallDetail merged = ReflectionTestUtils.invokeMethod(service, "mergeDetails", details);
         assertThat(merged).isNotNull();
-        assertThat(merged.getScores()).hasSize(100).containsEntry("IP-99", 73);
+        assertThat(merged.getScores()).hasSize(100).containsEntry("IP-99", 73d);
         assertThat(merged.getReasons()).hasSize(100).containsEntry("IP-99", "reason 99");
         assertThat(merged.getDurationMs()).isEqualTo(1000);
         assertThat(merged.getPrompt().length()).isLessThanOrEqualTo(32768);

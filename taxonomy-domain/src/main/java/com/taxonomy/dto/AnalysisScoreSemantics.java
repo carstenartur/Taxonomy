@@ -19,11 +19,11 @@ import java.util.TreeMap;
  * {@code effectiveScores}. A product's effective relevance is its direct family relevance
  * multiplied by its suitability:</p>
  *
- * <pre>effective = round(parent relevance × product suitability / 100)</pre>
+ * <pre>effective = parent relevance × product suitability / 100 (no integer rounding)</pre>
  */
 public final class AnalysisScoreSemantics {
 
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
     public static final String ROLE_PRODUCT = "PRODUCT";
 
     private static final int MAX_WARNINGS = 100;
@@ -34,28 +34,28 @@ public final class AnalysisScoreSemantics {
     }
 
     public static Derived derive(
-            Map<String, Integer> rawScores,
+            Map<String, ? extends Number> rawScores,
             List<TaxonomyNodeDto> taxonomyTree) {
         return deriveWithContexts(rawScores, index(taxonomyTree));
     }
 
     /** Derive from bounded scalar metadata retained while visiting scored nodes. */
-    public static Derived deriveWithContexts(Map<String, Integer> rawScores, Map<String, NodeContext> contexts) {
-        Map<String, Integer> normalizedScores = normalizeScores(rawScores);
+    public static Derived deriveWithContexts(Map<String, ? extends Number> rawScores, Map<String, NodeContext> contexts) {
+        Map<String, Double> normalizedScores = normalizeScores(rawScores);
         if (contexts == null) contexts = Map.of();
         Map<String, AnalysisScoreDetail> details = new LinkedHashMap<>();
-        Map<String, Integer> effectiveScores = new LinkedHashMap<>();
-        Map<String, Integer> productSuitabilityScores = new LinkedHashMap<>();
+        Map<String, Double> effectiveScores = new LinkedHashMap<>();
+        Map<String, Double> productSuitabilityScores = new LinkedHashMap<>();
         List<String> warnings = new ArrayList<>();
 
-        for (Map.Entry<String, Integer> entry : normalizedScores.entrySet()) {
+        for (Map.Entry<String, Double> entry : normalizedScores.entrySet()) {
             String code = entry.getKey();
-            int rawScore = entry.getValue();
+            double rawScore = entry.getValue();
             NodeContext context = contexts.get(code);
             AnalysisScoreKind kind;
             String parentCode = context == null ? null : context.parentCode();
-            Integer parentScore = parentCode == null ? null : normalizedScores.get(parentCode);
-            int effectiveRelevance = rawScore;
+            Double parentScore = parentCode == null ? null : normalizedScores.get(parentCode);
+            double effectiveRelevance = rawScore;
 
             if (context == null) {
                 kind = AnalysisScoreKind.HIERARCHICAL_RELEVANCE;
@@ -86,10 +86,8 @@ public final class AnalysisScoreSemantics {
         return new Derived(effectiveScores, productSuitabilityScores, details, warnings);
     }
 
-    public static int effectiveProductRelevance(int familyRelevance, int suitability) {
-        int family = clamp(familyRelevance);
-        int product = clamp(suitability);
-        return clamp((int) Math.round(family * product / 100.0));
+    public static double effectiveProductRelevance(double familyRelevance, double suitability) {
+        return AnalysisPercentages.product(familyRelevance, suitability);
     }
 
     private static void addWarning(List<String> warnings, String warning) {
@@ -100,12 +98,12 @@ public final class AnalysisScoreSemantics {
         }
     }
 
-    static Map<String, Integer> normalizeScores(Map<String, Integer> source) {
+    static Map<String, Double> normalizeScores(Map<String, ? extends Number> source) {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
-        Map<String, Integer> canonicalScores = new TreeMap<>();
-        for (Map.Entry<String, Integer> entry : source.entrySet()) {
+        Map<String, Double> canonicalScores = new TreeMap<>();
+        for (var entry : source.entrySet()) {
             if (entry.getKey() == null || entry.getKey().isBlank()
                     || entry.getValue() == null) {
                 continue;
@@ -115,13 +113,13 @@ public final class AnalysisScoreSemantics {
                 throw new IllegalArgumentException(
                         "Score map contains multiple entries for canonical node code " + code);
             }
-            canonicalScores.put(code, clamp(entry.getValue()));
+            canonicalScores.put(code, AnalysisPercentages.require(entry.getValue()));
         }
         return new LinkedHashMap<>(canonicalScores);
     }
 
-    private static int clamp(int value) {
-        return Math.max(0, Math.min(100, value));
+    private static double clamp(double value) {
+        return AnalysisPercentages.require(value);
     }
 
     private static Map<String, NodeContext> index(List<TaxonomyNodeDto> roots) {
@@ -192,8 +190,8 @@ public final class AnalysisScoreSemantics {
     }
 
     public record Derived(
-            Map<String, Integer> effectiveScores,
-            Map<String, Integer> productSuitabilityScores,
+            Map<String, Double> effectiveScores,
+            Map<String, Double> productSuitabilityScores,
             Map<String, AnalysisScoreDetail> scoreDetails,
             List<String> warnings) {
 

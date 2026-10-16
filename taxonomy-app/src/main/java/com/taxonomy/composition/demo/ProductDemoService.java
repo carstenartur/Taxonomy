@@ -172,7 +172,7 @@ public class ProductDemoService {
                                                            WorkspaceContext context) {
         if (summary.isEmpty()) return new DemoReferenceEvaluator.Observation(null, null, Set.of());
         SnapshotDetail detail = analyses.getSnapshot(run.getProjectId(), summary.get().id(), username, context);
-        Map<String, Integer> scores = detail.analysis() != null ? detail.analysis().getRawScores() : null;
+        Map<String, Double> scores = detail.analysis() != null ? detail.analysis().getRawScores() : null;
         Set<String> relations = new LinkedHashSet<>();
         if (detail.relationMappings() != null)
             detail.relationMappings().forEach(r -> relations.add(r.sourceCode() + " " + r.relationType() + " " + r.targetCode()));

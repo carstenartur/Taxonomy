@@ -231,7 +231,7 @@ public class PortfolioDecisionGitContributor {
                             List.of(project.getProjectKey(),
                                     link.getRequirement().getRequirementKey(), solutionKey), properties(
                                     "sourceSnapshotId", link.getSnapshotId(),
-                                    "coveragePercent", string(link.getCoveragePercent()),
+                                    "coveragePercent", com.taxonomy.dto.AnalysisPercentages.canonical(link.getCoveragePercent()),
                                     "role", name(link.getRole()),
                                     "reviewStatus", name(link.getReviewStatus()),
                                     "evidence", link.getEvidence(),
@@ -567,7 +567,8 @@ public class PortfolioDecisionGitContributor {
                             projectSolution.getId(), requirement.getId())
                     .orElse(null);
             String sourceSnapshotId = block.property("sourceSnapshotId");
-            int percent = clamp(integer(block.property("coveragePercent"), 0), 0, 100);
+            double percent = isBlank(block.property("coveragePercent")) ? 0d
+                    : com.taxonomy.dto.AnalysisPercentages.require(new BigDecimal(block.property("coveragePercent")));
             RequirementSolutionRole role = enumValue(
                     RequirementSolutionRole.class, block.property("role"), RequirementSolutionRole.USES);
             ReviewStatus review = enumValue(

@@ -434,8 +434,10 @@ class ArtemisAnalysisTransportTest {
         BytesMessage malformed = session.createBytesMessage();
         malformed.writeBytes("not json".getBytes(StandardCharsets.UTF_8));
         producer.send(malformed);
-        String futureSchema = new String(codec.encode(subtaxonomyTask(CP)), StandardCharsets.UTF_8)
-                .replace("\"schemaVersion\":1", "\"schemaVersion\":99");
+        var currentTask = subtaxonomyTask(CP);
+        String futureSchema = new String(codec.encode(currentTask), StandardCharsets.UTF_8)
+                .replace("\"schemaVersion\":" + currentTask.envelope().schemaVersion(),
+                        "\"schemaVersion\":99");
         assertThat(futureSchema).contains("\"schemaVersion\":99");
         BytesMessage future = session.createBytesMessage();
         future.writeBytes(futureSchema.getBytes(StandardCharsets.UTF_8));

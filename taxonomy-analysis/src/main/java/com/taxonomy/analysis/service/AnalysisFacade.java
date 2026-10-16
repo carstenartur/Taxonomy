@@ -40,7 +40,7 @@ public class AnalysisFacade {
      * @return populated {@link SavedAnalysis} ready for serialization
      */
     public SavedAnalysis buildAnalysisExport(String requirement,
-                                             Map<String, Integer> scores,
+                                             Map<String, Double> scores,
                                              Map<String, String> reasons,
                                              String provider) {
         return savedAnalysisService.buildExport(requirement, scores, reasons, provider);
@@ -53,7 +53,7 @@ public class AnalysisFacade {
      * @return list of relation hypotheses sorted by confidence descending
      */
     @Transactional(readOnly = true)
-    public List<RelationHypothesisDto> generateRelationsFromScores(Map<String, Integer> scores) {
+    public List<RelationHypothesisDto> generateRelationsFromScores(Map<String, Double> scores) {
         return analysisRelationGenerator.generate(scores);
     }
 }

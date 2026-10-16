@@ -44,7 +44,7 @@ public final class LlmResponseProseChecks {
             for (var parsed : List.of(
                     PARSER.parseScoreParseResult(response, nodes(), 100),
                     PARSER.parseIndependentScoreParseResult(response, nodes(), 50))) {
-                require(Map.of("IP", 100).equals(parsed.scores()), "Score must survive prose extraction");
+                require(Map.of("IP", 100d).equals(parsed.scores()), "Score must survive prose extraction");
                 require(Map.of("IP", REASON).equals(parsed.reasons()), "Reason must remain unchanged");
             }
         }

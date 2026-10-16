@@ -58,7 +58,7 @@ class TaxonomyNodeDtoTest {
         assertEquals("ref", dto.getReference());
         assertEquals(5, dto.getSortOrder());
         assertEquals("active", dto.getState());
-        assertEquals(80, dto.getMatchPercentage());
+        assertEquals(80d, dto.getMatchPercentage());
     }
 
     @Test
@@ -220,10 +220,10 @@ class TaxonomyNodeDtoTest {
         assertEquals("fixture-container-uuid", root.getUuid());
         assertEquals("BP", root.getCode());
         assertEquals("CATEGORY", root.getAnalysisRole());
-        assertEquals(64, root.getMatchPercentage());
+        assertEquals(64d, root.getMatchPercentage());
         assertSame(original, root.getChildren().get(0));
         assertEquals("BP", original.getParentCode());
-        assertEquals(64, original.getMatchPercentage());
+        assertEquals(64d, original.getMatchPercentage());
         assertEquals(fingerprint, TaxonomyDataFingerprint.sha256(tree));
         assertEquals(legacyFingerprint, TaxonomyDataFingerprint.legacySha256(tree));
     }

@@ -28,6 +28,9 @@ public final class AnalysisMessageCodec {
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .build();
 
     public byte[] encode(AnalysisMessage message) {
@@ -58,12 +61,22 @@ public final class AnalysisMessageCodec {
         }
         JsonNode version = envelope.get("schemaVersion");
         if (version == null || !version.isInt()
-                || (version.intValue() != AnalysisEnvelope.SCHEMA_VERSION && version.intValue() != 2)) {
+                || !AnalysisEnvelope.supportedVersion(version.intValue())) {
             throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.UNSUPPORTED_SCHEMA,
                     "unsupported schema version", null);
         }
         AnalysisMessageType type = messageType(envelope.get("messageType"));
         try {
+            if (type == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED) {
+                var score = root.get("rootScore");
+                if (score != null && !score.isNull()) {
+                    if (!score.isNumber()) throw new IllegalArgumentException("rootScore must be numeric");
+                    var decimal = new java.math.BigDecimal(score.toString());
+                    com.taxonomy.dto.AnalysisPercentages.require(decimal);
+                    if (version.intValue() == 1 && decimal.stripTrailingZeros().scale() > 0)
+                        throw new IllegalArgumentException("Legacy rootScore must be integral");
+                }
+            }
             return mapper.treeToValue(root, type.contract());
         } catch (JacksonException | IllegalArgumentException | NullPointerException invalid) {
             throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.INVALID_CONTRACT,
