@@ -159,6 +159,12 @@
         S.lastAnalysisDurationMillis = Number.isSafeInteger(envelope.analysisDurationMillis)
             && envelope.analysisDurationMillis >= 0 ? envelope.analysisDurationMillis : null;
         if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
+        refreshScoreStatistics();
+    }
+
+    function refreshScoreStatistics() {
+        var statistics = window.TaxonomyResultStatistics;
+        if (statistics && typeof statistics.refresh === 'function') statistics.refresh();
     }
 
     function describeScore(code, effective) {
@@ -1054,6 +1060,7 @@
                 (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
                 (S.currentRawScores || {})[code]);
         });
+        refreshScoreStatistics();
     }
 
     function renderedScoreNode(code, scores) {

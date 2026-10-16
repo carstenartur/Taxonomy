@@ -21,8 +21,10 @@ class ResultStatisticsTest {
                 RepositoryResources.applicationResource("static/js/core/taxonomy-result-statistics.js"));
         assertThat(RepositoryResources.applicationResource("static/js/core/taxonomy-analysis-session.js"))
                 .contains("/js/core/taxonomy-result-statistics.js");
+        Path scoring = Files.writeString(directory.resolve("scoring.js"),
+                RepositoryResources.applicationResource("static/js/core/taxonomy-scoring.js"));
         Path log = directory.resolve("statistics.log");
-        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"), script.toString(), source.toString())
+        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"), script.toString(), source.toString(), scoring.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         boolean done = process.waitFor(30, TimeUnit.SECONDS);
         if (!done) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS); }
