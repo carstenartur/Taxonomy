@@ -39,7 +39,7 @@ class ProvisionalRelationStepTest {
     void marksUsedProvisionalWhenAtLeastOneHypothesisWasAdded() {
         RelationHypothesisDto valid = hypothesis("BP", "CP");
         ArchitectureViewContext ctx = new ArchitectureViewContext(
-                Map.of("BP", 80, "CP", 70),
+                Map.of("BP", 80d, "CP", 70d),
                 "test",
                 0,
                 List.of(valid));

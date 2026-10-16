@@ -177,7 +177,7 @@ class ArtemisProductionExecutionTest {
     @Test void productionRelationWorkersMatchFrozenLocalPromptsEvidenceAndCallCount() throws Exception {
         var fixture = fixture("relation-source", "UA", true);
         var db = database();
-        var engine = new Engine(Map.of("UA", 80, "UA-1574", 70));
+        var engine = new Engine(Map.of("UA", 80d, "UA-1574", 70d));
         var prompts = traceRelationPrompts(engine);
         var observed = new ClusterAnalysisSignals();
         coordinator(db, observed, finalizer(db, engine));
@@ -202,7 +202,7 @@ class ArtemisProductionExecutionTest {
                 snapshot -> { if (snapshot.state().terminal()) assertThat(snapshot.result().getArchitectureView()).isNotNull(); }));
         try {
             var result = resultFuture.get(45, TimeUnit.SECONDS);
-            var local = new Engine(Map.of("UA", 80, "UA-1574", 70));
+            var local = new Engine(Map.of("UA", 80d, "UA-1574", 70d));
             var localPrompts = traceRelationPrompts(local);
             var expected = localScore(local, fixture);
             RelationSearchReport expectedRelations;
@@ -333,7 +333,7 @@ class ArtemisProductionExecutionTest {
         final LlmGatewayRegistry gateways = mock(LlmGatewayRegistry.class);
         final PromptTemplateService templates = mock(PromptTemplateService.class);
         final LlmService llm;
-        Engine(Map<String, Integer> mockScores) throws java.io.IOException {
+        Engine(Map<String, Double> mockScores) throws java.io.IOException {
             ReflectionTestUtils.setField(providers, "llmProviderConfig", "OPENAI");
             ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
             ReflectionTestUtils.setField(taxonomy, "catalogueRuntimePolicy", new CatalogueRuntimePolicy("worker", String.join(",", ALL_ROOTS)));

@@ -121,7 +121,7 @@ class ClusterAnalysisStoreTest {
             assertTrue(db.store.accept(cpCompletion));
             var snapshot = db.store.snapshot(context);
             assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
-            assertEquals(Map.of("CP", 50, "IP", 70), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 50d, "IP", 70d), snapshot.result().getRawScores());
             assertEquals(List.of("CP", "IP"), snapshot.result().getTree().stream().map(TaxonomyNodeDto::getCode).toList());
             assertEquals("SUCCESS", snapshot.result().getStatus());
             assertEquals(snapshot.revision(), db.store.events(context, 0, 100).getLast().sequence());
@@ -173,7 +173,7 @@ class ClusterAnalysisStoreTest {
             db.store.accept(db.complete(db.task(IP), failed));
             var result = db.store.snapshot(context).result();
             assertEquals(ClusterAnalysisState.PARTIAL, db.store.snapshot(context).state());
-            assertEquals(Map.of("CP", 80), result.getRawScores());
+            assertEquals(Map.of("CP", 80d), result.getRawScores());
             assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("IP")));
             assertFalse(result.getRawScores().containsKey("IP"));
         }
@@ -264,7 +264,7 @@ class ClusterAnalysisStoreTest {
             assertExportable(combined);
             assertNull(combined.getAnalysisCoverage(), "Legacy evidence cannot be promoted to complete version 3 coverage");
             assertEquals("PARTIAL", combined.getStatus());
-            assertEquals(Map.of("CP", 75, "IP", 30), combined.getRawScores());
+            assertEquals(Map.of("CP", 75d, "IP", 30d), combined.getRawScores());
         }
     }
 

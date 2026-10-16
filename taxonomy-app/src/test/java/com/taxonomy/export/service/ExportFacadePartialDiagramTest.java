@@ -41,6 +41,6 @@ class ExportFacadePartialDiagramTest {
 
         assertThat(diagram.title()).contains("PARTIAL").doesNotContain("0 unassessed");
         assertThat(diagram.nodes()).singleElement().satisfies(node -> assertThat(node.id()).isEqualTo("CP"));
-        assertThat(result.getScores()).containsEntry("CP", 80);
+        assertThat(result.getScores()).containsEntry("CP", 80d);
     }
 }

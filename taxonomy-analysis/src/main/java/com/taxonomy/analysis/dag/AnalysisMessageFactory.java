@@ -34,10 +34,11 @@ public final class AnalysisMessageFactory {
     }
 
     public SubtaxonomyAnalysisCompleted completed(SubtaxonomyAnalysisTask task, AnalysisTaskOutcome outcome,
-                                                  Integer rootScore, int scoredNodes, String stopReason) {
+                                                  Number rootScore, int scoredNodes, String stopReason) {
         return new SubtaxonomyAnalysisCompleted(
                 task.envelope().derive(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, clock.instant()),
-                task.root(), outcome, rootScore, scoredNodes, stopReason);
+                task.root(), outcome, rootScore == null ? null :
+                        com.taxonomy.dto.AnalysisPercentages.require(rootScore), scoredNodes, stopReason);
     }
 
     public RelationAnalysisCompleted completed(RelationAnalysisTask task, AnalysisTaskOutcome outcome,

@@ -17,7 +17,7 @@ public final class AnalysisStoppedException extends RuntimeException {
         completedCallEvidence = detail;
         return detail.getError() == null || detail.getError().isBlank() ? withPartial(detail) : this;
     }
-    private final Map<String, Integer> partialScores = new LinkedHashMap<>();
+    private final Map<String, Double> partialScores = new LinkedHashMap<>();
     private final Map<String, String> partialReasons = new LinkedHashMap<>();
     private final List<TaxonomyDiscrepancy> partialDiscrepancies = new ArrayList<>();
 
@@ -27,7 +27,7 @@ public final class AnalysisStoppedException extends RuntimeException {
     }
 
     public Reason reason() { return reason; }
-    public Map<String, Integer> partialScores() { return partialScores; }
+    public Map<String, Double> partialScores() { return partialScores; }
     public Map<String, String> partialReasons() { return partialReasons; }
     public List<TaxonomyDiscrepancy> partialDiscrepancies() { return List.copyOf(partialDiscrepancies); }
 

@@ -4,7 +4,7 @@ import java.util.Map;
 
 /** Stable response contract for one interactive child-node evaluation. */
 public record AnalyzeNodeChildrenResult(
-        Map<String, Integer> scores,
+        Map<String, Double> scores,
         Map<String, String> reasons,
         String prompt,
         String rawResponse,

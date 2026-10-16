@@ -57,7 +57,7 @@ class ReportLayoutExceptionHandlerHttpTest {
 
     private MockMvc reportEndpointThrowing(RuntimeException failure) {
         var reports = mock(ArchitectureReportService.class);
-        when(reports.generateReport(Map.of("CP-1023", 75), "Report fixture", 0))
+        when(reports.generateReport(Map.of("CP-1023", 75.0), "Report fixture", 0))
                 .thenReturn(new ArchitectureReport());
         var renderer = new ReportRendererExtension() {
             @Override

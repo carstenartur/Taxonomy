@@ -39,7 +39,7 @@ public final class AnalysisContinuationBackupRestorer {
         if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());
         else { bounded(source.resultJson(),MAX_RUN_CHARACTERS);result=json.readValue(source.resultJson(),AnalysisResult.class); }
         var keys=new HashSet<String>();var ids=new HashSet<SourceRecordId>();long payload=0;
-        var scores=new LinkedHashMap<String,Integer>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());
+        var scores=new LinkedHashMap<String,Double>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());
         for(var question:questions) {
             requireKind(question.sourceId(),"analysis.question");
             if(!source.sourceId().equals(question.run()) || !ids.add(question.sourceId()) || !keys.add(question.questionKey())

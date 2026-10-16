@@ -30,7 +30,7 @@ public interface NodeScorer {
      * @return map of node code → raw score (0–100); must contain an entry for
      *         every node in {@code nodes}
      */
-    Map<String, Integer> score(String requirementText,
+    Map<String, Double> score(String requirementText,
                                List<TaxonomyNode> nodes,
-                               int parentScore);
+                               double parentScore);
 }

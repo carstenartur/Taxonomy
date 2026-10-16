@@ -82,7 +82,7 @@ public class AnalysisProgressRegistry {
     }
     public record Snapshot(String operationId, String status, String phase, String node, String stopReason,
                            long sequence, long startedAt, long lastActivityAt, long serverTime,
-                           int evaluatedNodes, boolean scoresTruncated, Map<String, Integer> rawScores,
+                           int evaluatedNodes, boolean scoresTruncated, Map<String, Double> rawScores,
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
                            String databaseStorage, String indexStorage, AnalysisProvenance provenance,
                            Long finishedAt, long elapsedMillis, Long executionStartedAt,
@@ -362,7 +362,7 @@ public class AnalysisProgressRegistry {
         final AnalysisMemoryGuard guard = new AnalysisMemoryGuard(policy, AnalysisMemoryGuard::heapSample,
                 () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         final ArrayDeque<Call> calls = new ArrayDeque<>();
-        final Map<String, Integer> scores = new LinkedHashMap<>();
+        final Map<String, Double> scores = new LinkedHashMap<>();
         final AnalysisNodeTracker nodeTracker = new AnalysisNodeTracker();
         com.taxonomy.dto.RelationSearchProgress relationProgress;
         volatile String status = "QUEUED";

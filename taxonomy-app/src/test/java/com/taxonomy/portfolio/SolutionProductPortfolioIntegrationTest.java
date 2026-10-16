@@ -257,12 +257,12 @@ class SolutionProductPortfolioIntegrationTest {
                     assertThat(node.requirementKeys()).containsExactly("REQ-001", "REQ-002");
                 });
         assertThat(portfolio.requirementTaxonomyMatrix().values().get("REQ-001"))
-                .containsEntry("CP", 80);
+                .containsEntry("CP", 80d);
         assertThat(portfolio.requirementSolutionMatrix().values().get("SOL-SHARED"))
-                .containsEntry("REQ-001", 80)
-                .containsEntry("REQ-002", 80);
+                .containsEntry("REQ-001", 80d)
+                .containsEntry("REQ-002", 80d);
         assertThat(portfolio.solutionProductMatrix().values().get("SOL-SHARED"))
-                .containsEntry("PRD-001", 90);
+                .containsEntry("PRD-001", 90d);
     }
 
     private AnalysisResult successfulAnalysis(AnalyzeRequirementCommand command) {

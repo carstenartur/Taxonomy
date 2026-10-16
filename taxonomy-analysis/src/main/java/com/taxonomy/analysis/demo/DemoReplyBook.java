@@ -30,7 +30,7 @@ public final class DemoReplyBook {
     private static final String ROOT_MARKER = "This is one root assessment";
     private static final String PRODUCT_MARKER = "Concrete Information Product candidates";
     private static final Pattern KEYS = Pattern.compile("using EXACTLY these keys: ([^\\n]+)");
-    private static final Pattern PARENT_SCORE = Pattern.compile("The scores must sum to (\\d+)");
+    private static final Pattern PARENT_SCORE = Pattern.compile("The scores must sum to (\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?![\\d.eE])");
     private static final Pattern LEAF = Pattern.compile("Node to explain: (\\S+)");
 
     private final DemoScenario scenario;
@@ -61,7 +61,7 @@ public final class DemoReplyBook {
         if (prompt.contains(ROOT_MARKER)) return roots(keys(prompt));
         if (prompt.contains(PRODUCT_MARKER))
             throw failure(DemoReplayException.Code.MISSING_REPLY, "the scenario authors no concrete-product assessment for " + keys(prompt));
-        if (parentPrompt) return children(keys(prompt), Integer.parseInt(parent.group(1)));
+        if (parentPrompt) return children(keys(prompt), com.taxonomy.dto.AnalysisPercentages.require(new java.math.BigDecimal(parent.group(1))));
         return justification(leaf.group(1));
     }
 
@@ -99,7 +99,7 @@ public final class DemoReplyBook {
         return JSON.writeValueAsString(reply);
     }
 
-    private String children(List<String> keys, int parentScore) {
+    private String children(List<String> keys, double parentScore) {
         String parent = null;
         Map<String, DemoScenario.Score> declared = null;
         for (var expansion : iteration.expansions().entrySet()) {
@@ -117,37 +117,20 @@ public final class DemoReplyBook {
         var reply = new LinkedHashMap<String, Object>();
         for (String key : keys) {
             var score = declared.get(key);
-            reply.put(key, Map.of("score", scaled.getOrDefault(key, 0),
+            reply.put(key, Map.of("score", scaled.getOrDefault(key, 0d),
                     "reason", score == null ? iteration.zeroReason() : score.reason()));
         }
         return JSON.writeValueAsString(reply);
     }
 
-    /** Largest-remainder scaling so authored proportions meet the product's exact parent budget. */
-    static Map<String, Integer> scale(Map<String, DemoScenario.Score> declared, List<String> keys, int target) {
-        int sum = declared.values().stream().mapToInt(DemoScenario.Score::score).sum();
-        var result = new LinkedHashMap<String, Integer>();
-        if (sum <= 0 || target <= 0) {
-            keys.forEach(k -> result.put(k, 0));
-            return result;
+    /** Decimal-preserving scaling so authored proportions meet the product's exact parent budget. */
+    static Map<String, Double> scale(Map<String, DemoScenario.Score> declared, List<String> keys, double target) {
+        var weights = new LinkedHashMap<String, Double>();
+        for (String key : keys) {
+            var score = declared.get(key);
+            weights.put(key, score == null ? 0d : score.score());
         }
-        var remainders = new ArrayList<Map.Entry<String, Double>>();
-        int assigned = 0;
-        for (var entry : declared.entrySet()) {
-            double exact = entry.getValue().score() * (double) target / sum;
-            int floor = (int) Math.floor(exact);
-            result.put(entry.getKey(), floor);
-            assigned += floor;
-            remainders.add(Map.entry(entry.getKey(), exact - floor));
-        }
-        remainders.sort((a, b) -> {
-            int byRemainder = Double.compare(b.getValue(), a.getValue());
-            return byRemainder != 0 ? byRemainder : a.getKey().compareTo(b.getKey());
-        });
-        for (int i = 0; assigned < target && i < remainders.size(); i++, assigned++) {
-            result.merge(remainders.get(i).getKey(), 1, Integer::sum);
-        }
-        return result;
+        return com.taxonomy.dto.AnalysisPercentages.normalize(weights, target);
     }
 
     private String justification(String code) {

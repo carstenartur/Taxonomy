@@ -104,7 +104,7 @@ public final class PartialClusterFlowChecks {
     }
 
     private static void architecture(AnalysisResult result) {
-        check(result.getRawScores().equals(Map.of("BP", 100, "BP-1", 70)), "accepted scores changed");
+        check(result.getRawScores().equals(Map.of("BP", 100d, "BP-1", 70d)), "accepted scores changed");
         var view = result.getArchitectureView();
         check(view != null, "accepted evidence has no architecture without continuation journal");
         check(view.getIncludedElements().size() == 1 && view.getIncludedElements().getFirst().getNodeCode().equals("BP-1"), "missing or invented concrete elements");
@@ -159,7 +159,7 @@ public final class PartialClusterFlowChecks {
             var child = new TaxonomyNodeDto(); child.setCode("BP-1"); child.setTaxonomyRoot("BP"); child.setParentCode("BP");
             child.setLevel(1); child.setNameEn("Status records"); root.setChildren(new ArrayList<>(List.of(child)));
             // Legacy accepted evidence is a supported aggregation input; it must not acquire invented coverage.
-            var result = new AnalysisResult(Map.of("BP", 100, "BP-1", 70), List.of(root)); result.setStatus(status);
+            var result = new AnalysisResult(Map.of("BP", 100d, "BP-1", 70d), List.of(root)); result.setStatus(status);
             tx.executeWithoutResult(ignored -> store.persistResult(task, result));
         }
         public void close() { factory.close(); }

@@ -22,7 +22,7 @@ import java.util.Map;
  */
 public final class RecordedNodeScorer implements NodeScorer {
 
-    private final Map<String, Integer> recordedScores;
+    private final Map<String, Double> recordedScores;
 
     /**
      * Creates a scorer backed by the given recorded analysis.
@@ -40,17 +40,17 @@ public final class RecordedNodeScorer implements NodeScorer {
      *
      * @param scores pre-computed node code → score map
      */
-    public RecordedNodeScorer(Map<String, Integer> scores) {
+    public RecordedNodeScorer(Map<String, Double> scores) {
         this.recordedScores = scores != null ? Map.copyOf(scores) : Map.of();
     }
 
     @Override
-    public Map<String, Integer> score(String requirementText,
+    public Map<String, Double> score(String requirementText,
                                       List<TaxonomyNode> nodes,
-                                      int parentScore) {
-        Map<String, Integer> result = new LinkedHashMap<>();
+                                      double parentScore) {
+        Map<String, Double> result = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
-            result.put(node.getCode(), recordedScores.getOrDefault(node.getCode(), 0));
+            result.put(node.getCode(), recordedScores.getOrDefault(node.getCode(), 0d));
         }
         return result;
     }

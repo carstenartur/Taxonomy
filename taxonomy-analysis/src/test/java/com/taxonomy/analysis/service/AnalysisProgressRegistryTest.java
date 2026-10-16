@@ -13,8 +13,8 @@ class AnalysisProgressRegistryTest {
     private final WorkspaceContext scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
     @Test void completedCountSurvivesPreviewEvictionAndRepeatedAnswers() {
         try (var handle = registry.open(null, "alice", scope, null)) {
-            var scores = new java.util.LinkedHashMap<String, Integer>();
-            for (int i = 0; i < 9000; i++) scores.put("CP-" + i, 1);
+            var scores = new java.util.LinkedHashMap<String, Double>();
+            for (int i = 0; i < 9000; i++) scores.put("CP-" + i, 1d);
             var answer = detail("CP", "prompt", "response");
             answer.setScores(scores);
             AnalysisRunControl.call("MOCK", "CP", () -> answer);
@@ -27,7 +27,7 @@ class AnalysisProgressRegistryTest {
     @Test void failedFallbackZerosDoNotCompleteAssessments() {
         try (var handle = registry.open(null, "alice", scope, null)) {
             var answer = detail("CP", "prompt", "");
-            answer.setScores(Map.of("CP", 0));
+            answer.setScores(Map.of("CP", 0d));
             answer.setError("Invalid JSON");
             AnalysisRunControl.call("MOCK", "CP", () -> answer);
             assertThat(registry.snapshot(handle.id(), "alice", scope).evaluatedNodes()).isZero();
@@ -43,7 +43,7 @@ class AnalysisProgressRegistryTest {
                 return detail("CP", "prompt", "response");
             });
             var snapshot=registry.snapshot(handle.id(),"alice",scope);
-            assertThat(snapshot.rawScores()).containsEntry("CP",80);
+            assertThat(snapshot.rawScores()).containsEntry("CP",80d);
             assertThat(snapshot.calls().getFirst().status()).isEqualTo("COMPLETED");
             handle.finish("SUCCESS");
             assertThat(registry.snapshot(handle.id(),"alice",scope).status()).isEqualTo("COMPLETED");

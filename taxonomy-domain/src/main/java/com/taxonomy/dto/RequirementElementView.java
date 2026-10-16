@@ -27,7 +27,7 @@ public class RequirementElementView {
     private String scoringPath;
 
     /** Original LLM score (0–100); 0 when the node was only reached by propagation. */
-    private int directLlmScore;
+    private double directLlmScore;
 
     /**
      * Original typed assessment for requirement-scoped projections. Null means no
@@ -95,8 +95,8 @@ public class RequirementElementView {
     public String getScoringPath() { return scoringPath; }
     public void setScoringPath(String scoringPath) { this.scoringPath = scoringPath; }
 
-    public int getDirectLlmScore() { return directLlmScore; }
-    public void setDirectLlmScore(int directLlmScore) { this.directLlmScore = directLlmScore; }
+    public double getDirectLlmScore() { return directLlmScore; }
+    public void setDirectLlmScore(double directLlmScore) { this.directLlmScore = directLlmScore; }
 
     public boolean isSelectedForImpact() { return selectedForImpact; }
     public void setSelectedForImpact(boolean selectedForImpact) { this.selectedForImpact = selectedForImpact; }

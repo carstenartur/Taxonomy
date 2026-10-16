@@ -522,7 +522,7 @@ public class AnalysisApiController {
     public ResponseEntity<AnalyzeNodeChildrenResult> analyzeNode(
             @RequestParam String parentCode,
             @RequestParam String businessText,
-            @RequestParam(defaultValue = "100") int parentScore) {
+            @RequestParam(defaultValue = "100") double parentScore) {
         ResponseEntity<AnalyzeNodeChildrenResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
@@ -536,7 +536,7 @@ public class AnalysisApiController {
     public record JustifyLeafRequest(
             String nodeCode,
             String businessText,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons) {
     }
 

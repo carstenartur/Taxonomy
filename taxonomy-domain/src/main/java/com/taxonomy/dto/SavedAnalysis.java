@@ -16,6 +16,7 @@ import java.util.Map;
  * <ul>
  *   <li><b>Version 1</b>: Original format with requirement, scores, reasons</li>
  *   <li><b>Version 2</b>: Adds optional provenance data (sources, sourceVersions, sourceFragments, requirementSourceLinks)</li>
+ *   <li><b>Version 4</b>: Decimal percentages; raw scores remain distinct from effective relevance. Automatic coverage, when supplied, is validated as in version 3.</li>
  *   <li><b>Version 3</b>: Requires raw scores, own assessment/subtree coverage and analysis status; older readers reject it rather than silently losing unknowns.</li>
  * </ul>
  */
@@ -43,7 +44,7 @@ public class SavedAnalysis {
      * {@code 0} means the node was evaluated but scored zero (not relevant).
      * An absent key means the node was not evaluated at all.
      */
-    private Map<String, Integer> scores;
+    private Map<String, Double> scores;
 
     /**
      * Node code → reason text (optional, may be sparse).
@@ -64,22 +65,24 @@ public class SavedAnalysis {
 
     private AnalysisCoverage analysisCoverage;
     private String analysisStatus;
-    private Map<String, Integer> rawScores;
+    private Map<String, Double> rawScores;
     public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
     public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }
     public String getAnalysisStatus() { return analysisStatus; }
     public void setAnalysisStatus(String value) { analysisStatus = value; }
-    public Map<String, Integer> getRawScores() { return rawScores; }
-    public void setRawScores(Map<String, Integer> value) { rawScores = value; }
+    public Map<String, Double> getRawScores() { return rawScores; }
+    public void setRawScores(Map<String, ? extends Number> value) { rawScores = value == null ? null : new java.util.LinkedHashMap<>(AnalysisScoreSemantics.normalizeScores(value)); }
 
-    /** Validate version 3 before publishing or consuming a score file. */
+    /** Validate recorded coverage in versions 3 and 4 before publishing or consuming a score file. */
     public void validateCoverageEvidence() {
-        if (this.getVersion() >= 3) {
+        // Version 4 also supports manual scores without fabricated automatic coverage.
+        // Version 3 retains its original mandatory coverage contract.
+        if (this.getVersion() == 3 || this.getVersion() >= 4 && this.getAnalysisCoverage() != null) {
             var coverage = this.getAnalysisCoverage(); var raw = this.getRawScores();
-            if (coverage == null || raw == null || this.getAnalysisStatus() == null
+            if (coverage == null || raw == null || this.getScores() == null || this.getAnalysisStatus() == null
                     || this.getAnalysisStatus().isBlank() || raw.size() > 25000
                     || !raw.keySet().containsAll(this.getScores().keySet()))
-                throw new IllegalArgumentException("Version 3 requires complete raw evidence, status and coverage metadata");
+                throw new IllegalArgumentException("Recorded coverage requires complete raw evidence, status and coverage metadata");
             for (var entry : raw.entrySet()) {
                 var assessment = coverage.nodes().get(entry.getKey());
                 if (assessment == null || assessment.state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN
@@ -113,8 +116,8 @@ public class SavedAnalysis {
     public String getProvider() { return provider; }
     public void setProvider(String provider) { this.provider = provider; }
 
-    public Map<String, Integer> getScores() { return scores; }
-    public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+    public Map<String, Double> getScores() { return scores; }
+    public void setScores(Map<String, ? extends Number> scores) { this.scores = scores == null ? null : new java.util.LinkedHashMap<>(AnalysisScoreSemantics.normalizeScores(scores)); }
 
     public Map<String, String> getReasons() { return reasons; }
     public void setReasons(Map<String, String> reasons) { this.reasons = reasons; }

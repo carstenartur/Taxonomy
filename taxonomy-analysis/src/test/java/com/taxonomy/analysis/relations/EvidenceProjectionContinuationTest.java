@@ -25,14 +25,14 @@ class EvidenceProjectionContinuationTest {
     @Test
     void rawSuitabilitySurvivesRealUseCaseAndSnapshot() throws Exception {
         AnalysisResult result = analyze(List.of(edge(Necessity.REQUIRED, Direction.OUTGOING)), 20, false);
-        assertEquals(80, result.getRawScores().get("reader"));
-        assertEquals(32, result.getScores().get("reader"));
+        assertEquals(80d, result.getRawScores().get("reader"));
+        assertEquals(32d, result.getScores().get("reader"));
         RequirementElementView source = element(result, "reader");
-        assertEquals(80, source.getDirectLlmScore(), "effective product relevance must not replace the original score");
+        assertEquals(80d, source.getDirectLlmScore(), "effective product relevance must not replace the original score");
         assertEquals(0.32, source.getRelevance(), 0.00001);
         var metadata = JSON.readTree(JSON.writeValueAsString(source)).path("scoreDetail");
         assertEquals("PRODUCT_SUITABILITY", metadata.path("kind").asString());
-        assertEquals(40, metadata.path("parentScore").asInt());
+        assertEquals(40d, metadata.path("parentScore").asInt());
         AnalysisResult copy = JSON.readValue(JSON.writeValueAsString(result), AnalysisResult.class);
         assertEquals(metadata, JSON.readTree(JSON.writeValueAsString(element(copy, "reader"))).path("scoreDetail"));
         assertEquals(result.getRelationSearchReport(), copy.getRelationSearchReport());
@@ -42,7 +42,7 @@ class EvidenceProjectionContinuationTest {
     void explicitZeroHasKnownScoreDetail() throws Exception {
         var result = analyze(List.of(edge(Necessity.REQUIRED, Direction.OUTGOING)), 20, true);
         var node = JSON.readTree(JSON.writeValueAsString(element(result, "record")));
-        assertEquals(0, node.path("scoreDetail").path("rawScore").asInt(-1), "explicit zero is known evidence");
+        assertEquals(0d, node.path("scoreDetail").path("rawScore").asInt(-1), "explicit zero is known evidence");
     }
 
     @Test
@@ -125,8 +125,8 @@ class EvidenceProjectionContinuationTest {
 
     private static AnalysisResult analyze(List<Edge> edges, int limit, boolean explicitZero) throws Exception {
         AnalysisResult scored = new AnalysisResult();
-        Map<String,Integer> raw = new LinkedHashMap<>(Map.of("family", 40, "reader", 80));
-        if (explicitZero) raw.put("record", 0);
+        Map<String,Double> raw = new LinkedHashMap<>(Map.of("family", 40d, "reader", 80d));
+        if (explicitZero) raw.put("record", 0d);
         scored.setRawScores(raw);
         scored.setScoreSemanticsContext(Map.of("reader", new AnalysisScoreSemantics.NodeContext("family", "PRODUCT"),
                 "family", new AnalysisScoreSemantics.NodeContext(null, "CATEGORY"), "record", new AnalysisScoreSemantics.NodeContext("IP", "CATEGORY")));

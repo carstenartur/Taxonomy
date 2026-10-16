@@ -98,8 +98,8 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
                 || offered.stream().anyMatch(node -> node == null || node.isBlank())) {
             throw new IllegalArgumentException("A recovery question requires unique catalogue node identities");
         }
-        Question question = new Question(digest(kind, String.join("\n", offered)),
-                digest(provider, input), provider, offered, input);
+        Question question = new Question(digest(com.taxonomy.dto.AnalysisPercentages.POLICY, kind, String.join("\n", offered)),
+                digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider, input), provider, offered, input);
         Checkpoint checkpoint = current.store.prepare(question);
         question = checkpoint.question();
         if ("SUCCESS".equals(checkpoint.state())) return copy(checkpoint.detail());
@@ -133,10 +133,10 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
                     + Objects.toString(failure.getMessage(), "Provider call failed"));
         }
         String problem = result.getError();
-        Map<String, Integer> scores = result.getScores();
+        Map<String, Double> scores = result.getScores();
         if (problem == null || problem.isBlank()) {
             if (scores == null || !scores.keySet().equals(new HashSet<>(offered))
-                    || scores.values().stream().anyMatch(value -> value == null || value < 0 || value > 100)) {
+                    || scores.values().stream().anyMatch(value -> !com.taxonomy.dto.AnalysisPercentages.valid(value))) {
                 problem = "INCOMPLETE_ASSESSMENT: response must cover the complete question with valid scores";
             }
         }

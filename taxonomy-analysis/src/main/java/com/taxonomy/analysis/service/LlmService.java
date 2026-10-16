@@ -57,18 +57,18 @@ public class LlmService {
 
     /**
      * Holds the parsed scores, optional reasons, and an optional discrepancy from an LLM response.
-     * Backward-compatible: if the LLM returns the old integer-only format, reasons will be empty.
+     * Backward-compatible: if the LLM returns the old number-only format, reasons will be empty.
      * A non-null {@code discrepancy} indicates the LLM's raw child scores exceeded the parent
      * budget — a taxonomy inconsistency signal.
      */
-    record ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons,
+    record ScoreParseResult(Map<String, Double> scores, Map<String, String> reasons,
                             TaxonomyDiscrepancy discrepancy) {
-        ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons) {
+        ScoreParseResult(Map<String, Double> scores, Map<String, String> reasons) {
             this(scores, reasons, null);
         }
         static ScoreParseResult empty(List<TaxonomyNode> nodes) {
-            Map<String, Integer> zeros = new HashMap<>();
-            for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
+            Map<String, Double> zeros = new HashMap<>();
+            for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0d);
             return new ScoreParseResult(zeros, Map.of(), null);
         }
     }
@@ -128,15 +128,15 @@ public class LlmService {
     //    enabling real-time voice and data exchange between departments" ──
     // These are used as per-taxonomy independent scores (0–100 each), NOT a pie-chart that sums to 100.
     // Each value represents "how well does this taxonomy cover the requirement?" independently.
-    private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
-            "CO", 90,
-            "CR", 70,
-            "CP", 55,
-            "IP", 30,
-            "BP", 25,
-            "CI", 15,
-            "UA", 10,
-            "BR",  0
+    private static final Map<String, Double> MOCK_ROOT_SCORES = Map.of(
+            "CO", 90d,
+            "CR", 70d,
+            "CP", 55d,
+            "IP", 30d,
+            "BP", 25d,
+            "CI", 15d,
+            "UA", 10d,
+            "BR",  0d
     );
 
     private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(
@@ -277,14 +277,14 @@ public class LlmService {
      * @param nodes       the nodes to score
      * @param parentScore the budget the child scores must sum to (used only in the fallback path)
      */
-    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore) {
+    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, double parentScore) {
         return buildMockScores(nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
     }
 
-    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore,
+    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, double parentScore,
                                              ScoreAssessmentKind kind) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
-        Map<String, Integer> scores = new HashMap<>();
+        Map<String, Double> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
         boolean allFromJson = true;
         for (TaxonomyNode node : nodes) {
@@ -305,10 +305,10 @@ public class LlmService {
                 // Fallback: use hardcoded root scores with deterministic variation,
                 // capped at parentScore so individual scores never exceed the parent budget.
                 String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
-                int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
+                double baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30d);
                 // Add deterministic variation ±15 based on the node code
                 int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;
-                int score = Math.max(0, Math.min(parentScore, baseScore + variation));
+                double score = Math.max(0, Math.min(parentScore, baseScore + variation));
                 scores.put(node.getCode(), score);
                 String reason = MOCK_ROOT_REASONS.getOrDefault(root,
                         "Relevant to the integrated hospital communication services requirement.");
@@ -326,7 +326,7 @@ public class LlmService {
 
         // Fallback path (one or more nodes missing from JSON): normalize so the batch sums to
         // parentScore, and record a discrepancy if the raw sum already exceeds the budget.
-        int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
+        double rawSum = scores.values().stream().mapToDouble(Double::doubleValue).sum();
 
         TaxonomyDiscrepancy discrepancy = null;
         if (rawSum > parentScore) {
@@ -336,7 +336,7 @@ public class LlmService {
                     parentCode, rawSum, parentScore);
         }
 
-        Map<String, Integer> finalScores;
+        Map<String, Double> finalScores;
         if (rawSum == parentScore || rawSum == 0) {
             finalScores = scores;
         } else {
@@ -446,7 +446,7 @@ public class LlmService {
 
     /** Mutable, thread-confined accumulation of one operation's root task results. */
     private static final class RootScoringRun {
-        final Map<String, Integer> allScores = new HashMap<>();
+        final Map<String, Double> allScores = new HashMap<>();
         final Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         final Map<String, String> allReasons = new LinkedHashMap<>();
         final List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
@@ -487,7 +487,7 @@ public class LlmService {
             // Score root independently (0-100) to gauge branch relevance
             LlmCallDetail rootDetail = callLlmPropagatingDetailed(
                     businessText, List.of(root), 100, ScoreAssessmentKind.ROOT_RELEVANCE);
-            Map<String, Integer> rootScore = rootDetail.getScores();
+            Map<String, Double> rootScore = rootDetail.getScores();
             run.allScores.putAll(rootScore);
             if (rootDetail.getReasons() != null) {
                 run.allReasons.putAll(rootDetail.getReasons());
@@ -497,7 +497,7 @@ public class LlmService {
             }
             int warningsBefore = run.warnings.size();
             addAnalysisWarning(run.warnings, root.getCode(), rootDetail);
-            int score = rootScore.getOrDefault(root.getCode(), 0);
+            double score = rootScore.getOrDefault(root.getCode(), 0d);
 
             if (score > 0) {
                 // Score Level-1 children distributing the root's score
@@ -539,7 +539,7 @@ public class LlmService {
         }
     }
 
-    private static Integer boundedScore(Integer score) {
+    private static Double boundedScore(Double score) {
         return score == null ? null : Math.max(0, Math.min(100, score));
     }
 
@@ -558,12 +558,12 @@ public class LlmService {
 
     private void analyzeNodesPropagating(String businessText,
                                           List<TaxonomyNode> nodes,
-                                          Map<String, Integer> allScores,
+                                          Map<String, Double> allScores,
                                           Map<String, String> allReasons,
                                           List<TaxonomyDiscrepancy> allDiscrepancies,
                                           List<ProductCoverageGap> productCoverageGaps,
                                           List<String> warnings,
-                                          int parentScore,
+                                          double parentScore,
                                           Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts,
                                           AnalysisEventCallback callback) {
         if (nodes == null || nodes.isEmpty()) return;
@@ -571,7 +571,7 @@ public class LlmService {
 
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
-        Map<String, Integer> scores = detail.getScores();
+        Map<String, Double> scores = detail.getScores();
         allScores.putAll(scores);
         if (detail.getReasons() != null) {
             allReasons.putAll(detail.getReasons());
@@ -586,11 +586,11 @@ public class LlmService {
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
         if (!productNodes.isEmpty() && batch.productEvaluationComplete()
                 && productNodes.stream().noneMatch(
-                        node -> scores.getOrDefault(node.getCode(), 0) > 0)) {
+                        node -> scores.getOrDefault(node.getCode(), 0d) > 0)) {
             addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
         }
 
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() > 0 && !isProductCode(entry.getKey())) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
@@ -623,7 +623,7 @@ public class LlmService {
         // Legacy SSE preserves catalogue order, including its partial-evidence boundary.
         List<TaxonomyNode> roots = selectedRoots(scope, !scope.legacyFull());
         if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(scope.selectedTree(taxonomyService.getFullTree()));
-        Map<String, Integer> allScores = new HashMap<>();
+        Map<String, Double> allScores = new HashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
@@ -639,7 +639,7 @@ public class LlmService {
                 // Score root independently (0-100) to gauge branch relevance
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100,
                         ScoreAssessmentKind.ROOT_RELEVANCE);
-                int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
+                double rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0d);
                 allScores.putAll(rootDetail.getScores());
                 if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
                 if (rootDetail.getDiscrepancy() != null) {
@@ -685,7 +685,7 @@ public class LlmService {
      * bounded calls. The method does not recurse into children.
      * Used by interactive mode. Delegates to {@link #analyzeSingleBatchDetailed}.
      */
-    public Map<String, Integer> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+    public Map<String, Double> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes, double parentScore) {
         return analyzeSingleBatchDetailed(businessText, nodes, parentScore).getScores();
     }
 
@@ -695,7 +695,7 @@ public class LlmService {
      * the frontend can display the LLM communication log.
      */
     public LlmCallDetail analyzeSingleBatchDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+            String businessText, List<TaxonomyNode> nodes, double parentScore) {
         try {
             return scoreSiblingBatchDetailed(businessText, nodes, parentScore);
         } catch (LlmTimeoutException e) {
@@ -739,12 +739,12 @@ public class LlmService {
     }
 
     private LlmCallDetail scoreSiblingBatchDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+            String businessText, List<TaxonomyNode> nodes, double parentScore) {
         return scoreSiblingBatch(businessText, nodes, parentScore).detail();
     }
 
     private SiblingBatchResult scoreSiblingBatch(
-            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+            String businessText, List<TaxonomyNode> nodes, double parentScore) {
         if (nodes == null || nodes.isEmpty()) {
             LlmCallDetail empty = new LlmCallDetail();
             empty.setProvider(getActiveProviderName());
@@ -828,7 +828,7 @@ public class LlmService {
             var replay = providerConfig.requireScenarioReplay(provider);
             String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
                     .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
-            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), "SCENARIO_REPLAY",
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider.value(), "SCENARIO_REPLAY",
                     replay.contentIdentity(), replay.model(), Integer.toString(productBatchSize),
                     Integer.toString(minimumProductScore()), templates);
         }
@@ -838,12 +838,12 @@ public class LlmService {
                 : providerConfig.getOpenAiCompatibleModel(provider);
         String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
                 .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
-        String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.value(), endpoint, model,
+        String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider.value(), endpoint, model,
                 Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
                 Integer.toString(minimumProductScore()), templates);
         String tokenContract = providerConfig.isMockMode() ? null : providerConfig.tokenContractRevision(provider);
         if (tokenContract != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, tokenContract);
-        // Existing built-in continuations retain their identity; external transports
+        // Numeric-policy changes invalidate old answer reuse; external transports
         // must never reuse checkpoints produced by another artifact or configuration.
         if (LlmProvider.builtin(provider).isEmpty()) {
             var binding = providerConfig.captureProviderBinding(provider.value());
@@ -857,13 +857,13 @@ public class LlmService {
         return promptTemplateService.renderProductPrompt(text, buildNodeListWithContext(nodes),
                 String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()), minimumProductScore());
     }
-    private String categoryQuestionPrompt(String text, List<TaxonomyNode> nodes, int parentScore) {
+    private String categoryQuestionPrompt(String text, List<TaxonomyNode> nodes, double parentScore) {
         return promptTemplateService.renderPrompt(nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot(),
                 text, buildNodeListWithContext(nodes), parentScore,
                 String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()));
     }
 
-    private String assessmentPrompt(String text, List<TaxonomyNode> nodes, int parentScore,
+    private String assessmentPrompt(String text, List<TaxonomyNode> nodes, double parentScore,
                                     ScoreAssessmentKind kind) {
         return kind == ScoreAssessmentKind.ROOT_RELEVANCE
                 ? promptTemplateService.renderRootPrompt(nodes.getFirst().getCode(), text, buildNodeListWithContext(nodes))
@@ -881,12 +881,12 @@ public class LlmService {
                         () -> performProductBatchDetailed(businessText, products, prompt))));
     }
 
-    private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+    private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, double parentScore) {
         return callLlmPropagatingDetailed(businessText, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);
     }
 
     private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes,
-                                                      int parentScore, ScoreAssessmentKind kind) {
+                                                      double parentScore, ScoreAssessmentKind kind) {
         if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
             return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
                     () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null, kind));
@@ -927,7 +927,7 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Integer> rawScores = scoreLocalNodes(businessText, products);
+            Map<String, Double> rawScores = scoreLocalNodes(businessText, products);
             detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
             detail.setReasons(Map.of());
             detail.setPrompt("(local embedding – independent product suitability)");
@@ -1020,15 +1020,15 @@ public class LlmService {
     private ScoreParseResult buildMockProductScores(
             List<TaxonomyNode> products, int minimumScore) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
         for (TaxonomyNode product : products) {
-            Integer raw = mockAnalysis != null && mockAnalysis.getScores() != null
+            Double raw = mockAnalysis != null && mockAnalysis.getScores() != null
                     ? mockAnalysis.getScores().get(product.getCode()) : null;
             if (raw == null) {
-                raw = Math.floorMod(product.getCode().hashCode(), 101);
+                raw = (double) Math.floorMod(product.getCode().hashCode(), 101);
             }
-            int score = Math.max(0, Math.min(100, raw));
+            double score = Math.max(0, Math.min(100, raw));
             scores.put(product.getCode(), score >= minimumScore ? score : 0);
             String reason = mockAnalysis != null && mockAnalysis.getReasons() != null
                     ? mockAnalysis.getReasons().get(product.getCode()) : null;
@@ -1040,14 +1040,14 @@ public class LlmService {
         return new ScoreParseResult(scores, reasons, null);
     }
 
-    private Map<String, Integer> applyProductThreshold(
-            Map<String, Integer> rawScores,
+    private Map<String, Double> applyProductThreshold(
+            Map<String, Double> rawScores,
             List<TaxonomyNode> products,
             int minimumScore) {
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         for (TaxonomyNode product : products) {
-            int raw = rawScores.getOrDefault(product.getCode(), 0);
-            int clamped = Math.max(0, Math.min(100, raw));
+            double raw = rawScores.getOrDefault(product.getCode(), 0d);
+            double clamped = com.taxonomy.dto.AnalysisPercentages.require(raw);
             scores.put(product.getCode(), clamped >= minimumScore ? clamped : 0);
         }
         return scores;
@@ -1092,7 +1092,7 @@ public class LlmService {
 
     private void addProductCoverageGap(List<ProductCoverageGap> gaps,
                                        List<TaxonomyNode> products,
-                                       int familyScore) {
+                                       double familyScore) {
         String parentCode = products.get(0).getParentCode();
         if (gaps.stream().anyMatch(gap -> Objects.equals(gap.productFamilyCode(), parentCode))) {
             return;
@@ -1133,7 +1133,7 @@ public class LlmService {
         return Math.max(0, Math.min(100, productMinimumScore));
     }
 
-    private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+    private Map<String, Double> callLlm(String businessText, List<TaxonomyNode> nodes, double parentScore) {
         try {
             return callLlmPropagating(businessText, nodes, parentScore);
         } catch (AnalysisStoppedException stopped) {
@@ -1147,9 +1147,9 @@ public class LlmService {
 
     /**
      * Like {@link #callLlm} but returns both scores and reasons (backward-compatible).
-     * Reasons will be empty when using LOCAL_ONNX or when the LLM returns the old integer-only format.
+     * Reasons will be empty when using LOCAL_ONNX or when the LLM returns the old number-only format.
      */
-    private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+    private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes, double parentScore) {
         try {
             if (providerConfig.isMockMode()) {
                 log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
@@ -1165,7 +1165,7 @@ public class LlmService {
                     return ScoreParseResult.empty(nodes);
                 }
                 log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-                Map<String, Integer> scores = normalizeToParent(
+                Map<String, Double> scores = normalizeToParent(
                         scoreLocalNodes(businessText, nodes), parentScore);
                 recordSuccess();
                 return new ScoreParseResult(scores, Map.of());
@@ -1218,14 +1218,14 @@ public class LlmService {
     }
 
     /** Frozen workers do not enter the legacy global-index transaction. */
-    private Map<String, Integer> scoreLocalNodes(String businessText, List<TaxonomyNode> nodes) {
+    private Map<String, Double> scoreLocalNodes(String businessText, List<TaxonomyNode> nodes) {
         return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.current() == null
                 ? localEmbeddingService.scoreNodes(businessText, nodes)
                 : localEmbeddingService.scoreFrozenNodes(businessText, nodes);
     }
 
     /** Like {@link #callLlm}, but propagates {@link LlmRateLimitException}. */
-    private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+    private Map<String, Double> callLlmPropagating(String businessText, List<TaxonomyNode> nodes, double parentScore) {
         if (providerConfig.isMockMode()) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
             return buildMockScores(nodes, parentScore).scores();
@@ -1240,7 +1240,7 @@ public class LlmService {
                 return responseParser.zeroScores(nodes);
             }
             log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-            Map<String, Integer> scores = normalizeToParent(
+            Map<String, Double> scores = normalizeToParent(
                     scoreLocalNodes(businessText, nodes), parentScore);
             recordSuccess();
             return scores;
@@ -1285,7 +1285,7 @@ public class LlmService {
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
     private LlmCallDetail performLlmPropagatingDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore, String preparedPrompt,
+            String businessText, List<TaxonomyNode> nodes, double parentScore, String preparedPrompt,
             ScoreAssessmentKind kind) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setReasons(Map.of());
@@ -1320,8 +1320,8 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Integer> similarityScores = scoreLocalNodes(businessText, nodes);
-            Map<String, Integer> scores = kind == ScoreAssessmentKind.ROOT_RELEVANCE
+            Map<String, Double> similarityScores = scoreLocalNodes(businessText, nodes);
+            Map<String, Double> scores = kind == ScoreAssessmentKind.ROOT_RELEVANCE
                     ? similarityScores : normalizeToParent(similarityScores, parentScore);
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
@@ -1421,7 +1421,7 @@ public class LlmService {
      * @param scores raw scores to normalize
      * @param target the target sum (e.g. parent node's score, or 100 for root-level nodes)
      */
-    public Map<String, Integer> normalizeToParent(Map<String, Integer> scores, int target) {
+    public Map<String, Double> normalizeToParent(Map<String, ? extends Number> scores, double target) {
         return responseParser.normalizeToParent(scores, target);
     }
 
@@ -1430,7 +1430,7 @@ public class LlmService {
      * Delegates to {@link #normalizeToParent(Map, int)} with target = 100.
      * Preserved for backward compatibility.
      */
-    public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
+    public Map<String, Double> normalizeToHundred(Map<String, ? extends Number> scores) {
         return responseParser.normalizeToHundred(scores);
     }
 
@@ -1485,7 +1485,7 @@ public class LlmService {
                 "Business Requirement: " + businessText + "\n\n" +
                 "Categories:\n" + nodeList + "\n" +
                 "Respond ONLY with a valid JSON object where keys are the category codes " +
-                "and values are integer percentages (0-100). " +
+                "and values are numeric percentages (0-100; decimals such as 0.5 and 0.125 are allowed). " +
                 "Example: {\"C1\": 0, \"C2\": 15, \"C3\": 80}";
     }
 
@@ -1551,7 +1551,7 @@ public class LlmService {
     public String generateLeafJustification(String businessText,
                                              String leafCode,
                                              List<TaxonomyNode> pathNodes,
-                                             Map<String, Integer> allScores,
+                                             Map<String, Double> allScores,
                                              Map<String, String> allReasons) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
@@ -1577,7 +1577,7 @@ public class LlmService {
         StringBuilder pathDesc = new StringBuilder();
         for (TaxonomyNode n : pathNodes) {
             pathDesc.append("  ").append(n.getCode()).append(": ").append(n.getName());
-            int score = allScores.getOrDefault(n.getCode(), 0);
+            double score = allScores.getOrDefault(n.getCode(), 0d);
             pathDesc.append(" [").append(score).append("%]");
             String reason = allReasons.get(n.getCode());
             if (reason != null && !reason.isBlank()) {
@@ -1593,7 +1593,7 @@ public class LlmService {
         StringBuilder crossRefs = new StringBuilder();
         allScores.entrySet().stream()
                 .filter(e -> e.getValue() >= MIN_CROSS_REFERENCE_SCORE && !pathCodes.contains(e.getKey()))
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .limit(MAX_CROSS_REFERENCES)
                 .forEach(e -> {
                     crossRefs.append("  ").append(e.getKey()).append(": ").append(e.getValue()).append("%");

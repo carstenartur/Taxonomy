@@ -4,6 +4,14 @@
 
     function t() { return window.TaxonomyI18n.t.apply(null, arguments); }
 
+    // Display only. The frozen graph keeps its unrounded normalized relevance.
+    function relevanceText(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return '—';
+        const percentage = value * 100;
+        if (percentage > 0 && percentage < 0.000001) return '<0.000001';
+        return String(Number(percentage.toFixed(6)));
+    }
+
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const body = document.body;
     const projectId = body.dataset.projectId;
@@ -252,7 +260,7 @@
             [t('workbench.ui.detail.element'), node.id],
             [t('workbench.ui.detail.title'), node.label],
             [t('workbench.ui.detail.layer'), node.type],
-            [t('workbench.ui.detail.relevance'), Math.round(node.relevance * 100) + '%'],
+            [t('workbench.ui.detail.relevance'), relevanceText(node.relevance) + '%'],
             [t('workbench.ui.detail.direct_score'), metadata.directScore],
             [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
             [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
@@ -272,7 +280,7 @@
             [t('workbench.ui.detail.source'), edge.sourceId],
             [t('workbench.ui.detail.target'), edge.targetId],
             [t('workbench.ui.detail.category'), edge.relationCategory],
-            [t('workbench.ui.detail.relevance'), Math.round(edge.relevance * 100) + '%'],
+            [t('workbench.ui.detail.relevance'), relevanceText(edge.relevance) + '%'],
             [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.relationOrigin)],
             [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
             [t('workbench.ui.detail.reason'), metadata.presenceReason],
@@ -622,7 +630,7 @@
                 'data-node-id': node.id,
                 tabindex: 0,
                 role: 'button',
-                'aria-label': t('workbench.ui.nodeLabel', node.id, node.label, node.type, Math.round(node.relevance * 100))
+                'aria-label': t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance))
             });
             group.appendChild(createSvgElement('rect', {
                 class: 'architecture-node-card',
@@ -645,7 +653,7 @@
                 rx: 11,
                 fill: rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12)
             }));
-            const score = (node.anchor ? '★ ' : '') + Math.round(node.relevance * 100) + '%';
+            const score = (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%';
             const scoreText = appendSvgText(
                 group,
                 'architecture-node-score',
@@ -676,7 +684,7 @@
             const metadata = projection.elements[node.id] || {};
             tooltip.textContent = node.id + ' — ' + node.label
                 + '\n' + node.type
-                + '\n' + Math.round(node.relevance * 100) + '%'
+                + '\n' + relevanceText(node.relevance) + '%'
                 + (metadata.presenceReason ? '\n' + metadata.presenceReason : '');
             group.appendChild(tooltip);
 

@@ -50,7 +50,7 @@ class DecisionTreeLandscapeContentsTest {
     }
 
     private static DecisionTreeOverview.DecisionTreeRow row(int depth, String code) {
-        return new DecisionTreeOverview.DecisionTreeRow(depth, code, code, 60,
+        return new DecisionTreeOverview.DecisionTreeRow(depth, code, code, 60d,
                 DecisionRationaleReport.Disposition.LEAF_CANDIDATE, null, null);
     }
 

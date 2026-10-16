@@ -13,10 +13,17 @@ package com.taxonomy.dto;
 public record AnalysisScoreDetail(
         String nodeCode,
         AnalysisScoreKind kind,
-        int rawScore,
-        int effectiveRelevance,
+        double rawScore,
+        double effectiveRelevance,
         String parentCode,
-        Integer parentScore) {
+        Double parentScore) {
+
+    /** Accept legacy integer callers without narrowing the saved percentage. */
+    public AnalysisScoreDetail(String nodeCode, AnalysisScoreKind kind, double rawScore,
+                               double effectiveRelevance, String parentCode, Number parentScore) {
+        this(nodeCode, kind, rawScore, effectiveRelevance, parentCode,
+                parentScore == null ? null : Double.valueOf(AnalysisPercentages.require(parentScore)));
+    }
 
     public AnalysisScoreDetail {
         if (nodeCode == null || nodeCode.isBlank()) {
@@ -24,14 +31,14 @@ public record AnalysisScoreDetail(
         }
         nodeCode = nodeCode.strip();
         kind = kind == null ? AnalysisScoreKind.HIERARCHICAL_RELEVANCE : kind;
-        if (rawScore < 0 || rawScore > 100) {
+        if (!AnalysisPercentages.valid(rawScore)) {
             throw new IllegalArgumentException("rawScore must be between 0 and 100");
         }
-        if (effectiveRelevance < 0 || effectiveRelevance > 100) {
+        if (!AnalysisPercentages.valid(effectiveRelevance)) {
             throw new IllegalArgumentException("effectiveRelevance must be between 0 and 100");
         }
         parentCode = parentCode == null || parentCode.isBlank() ? null : parentCode.strip();
-        if (parentScore != null && (parentScore < 0 || parentScore > 100)) {
+        if (parentScore != null && (!AnalysisPercentages.valid(parentScore))) {
             throw new IllegalArgumentException("parentScore must be between 0 and 100");
         }
     }

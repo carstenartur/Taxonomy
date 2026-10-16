@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DecisionSourceFingerprintTest {
     private final List<TaxonomyNodeDto> tree = List.of(node("CP", "Capabilities", 0,
             node("CP-product", "Product", 1), node("CP-zero", "Rejected", 1)));
-    private final Map<String, Integer> scores = Map.of("CP", 80, "CP-product", 64, "CP-zero", 0);
+    private final Map<String, Double> scores = Map.of("CP", 80d, "CP-product", 64d, "CP-zero", 0d);
     private final Map<String, AnalysisScoreDetail> details = Map.of("CP-product",
             new AnalysisScoreDetail("CP-product", AnalysisScoreKind.PRODUCT_SUITABILITY, 80, 64, "CP", 80));
     private final DecisionRationaleScoreSemanticsAdapter adapter = new DecisionRationaleScoreSemanticsAdapter();

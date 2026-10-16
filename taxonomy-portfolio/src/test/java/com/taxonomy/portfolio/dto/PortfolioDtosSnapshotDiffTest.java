@@ -17,9 +17,9 @@ class PortfolioDtosSnapshotDiffTest {
     @Test
     void scoreChangesRemainCanonicalAndImmutableAtTheRestBoundary() {
         Map<String, ScoreChange> changes = new LinkedHashMap<>();
-        changes.put("Z", new ScoreChange(1, 2));
-        changes.put("A", new ScoreChange(2, 3));
-        changes.put("M", new ScoreChange(3, 4));
+        changes.put("Z", new ScoreChange(1d, 2d));
+        changes.put("A", new ScoreChange(2d, 3d));
+        changes.put("M", new ScoreChange(3d, 4d));
 
         SnapshotDiff diff = new SnapshotDiff(
                 "old", "new", changes,
@@ -29,9 +29,9 @@ class PortfolioDtosSnapshotDiffTest {
 
         assertEquals(List.of("A", "M", "Z"),
                 new ArrayList<>(diff.scoreChanges().keySet()));
-        assertEquals(new ScoreChange(2, 3), diff.scoreChanges().get("A"));
+        assertEquals(new ScoreChange(2d, 3d), diff.scoreChanges().get("A"));
         assertThrows(UnsupportedOperationException.class,
-                () -> diff.scoreChanges().put("B", new ScoreChange(4, 5)));
+                () -> diff.scoreChanges().put("B", new ScoreChange(4d, 5d)));
     }
 
     @Test
@@ -43,6 +43,6 @@ class PortfolioDtosSnapshotDiffTest {
 
         assertEquals(Map.of(), diff.scoreChanges());
         assertThrows(UnsupportedOperationException.class,
-                () -> diff.scoreChanges().put("B", new ScoreChange(4, 5)));
+                () -> diff.scoreChanges().put("B", new ScoreChange(4d, 5d)));
     }
 }

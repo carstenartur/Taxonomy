@@ -41,14 +41,14 @@ class ArchitectureReportMetadataPortTest {
         var service = new ArchitectureReportService(views, gaps, patterns, recommendations,
                 projection, mermaid, proposals, selected::get);
 
-        assertThat(service.generateReport(Map.of("A", 50), "business", 20).getArchitectureView()).isSameAs(view);
+        assertThat(service.generateReport(Map.of("A", 50d), "business", 20).getArchitectureView()).isSameAs(view);
         verify(view).setViewTitle(initial.viewTitle());
         verify(view).setViewDescription(initial.viewDescription());
         verify(view).setContainmentEnabled(initial.containmentEnabled());
         verify(view).setActiveRules(initial.activeRules());
         clearInvocations(view);
         selected.set(updated);
-        service.generateReport(Map.of("A", 50), "business", 20);
+        service.generateReport(Map.of("A", 50d), "business", 20);
         verify(view).setViewTitle(updated.viewTitle());
         verify(view).setViewDescription(updated.viewDescription());
         verify(view).setContainmentEnabled(updated.containmentEnabled());

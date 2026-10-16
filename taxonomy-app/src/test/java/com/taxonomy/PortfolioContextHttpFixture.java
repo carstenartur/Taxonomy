@@ -299,8 +299,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     private ProjectPortfolioView portfolio(ProjectView project) {
         boolean withSolution = project.id() == PROJECT_A;
         var items = requirements(project.id());
-        Map<String, Integer> values = new LinkedHashMap<>();
-        values.put("QA-REQ-0", 0); values.put("QA-REQ-65", 65);
+        Map<String, Double> values = new LinkedHashMap<>();
+        values.put("QA-REQ-0", 0d); values.put("QA-REQ-65", 65d);
         // Deliberate malformed-response injection; the normal sparse integer
         // matrix service omits unknown relationships instead of returning null.
         if (unknownCoverage) values.put("QA-REQ-UNKNOWN", null);

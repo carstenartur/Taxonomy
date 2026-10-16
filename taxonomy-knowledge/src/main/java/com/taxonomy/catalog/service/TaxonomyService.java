@@ -969,7 +969,7 @@ public class TaxonomyService {
         return map;
     }
 
-    public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Integer> scores) {
+    public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Double> scores) {
         if (scores.containsKey(dto.getCode())) {
             dto.setMatchPercentage(scores.get(dto.getCode()));
         }

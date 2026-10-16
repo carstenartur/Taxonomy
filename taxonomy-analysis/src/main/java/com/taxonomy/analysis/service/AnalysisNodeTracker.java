@@ -11,7 +11,7 @@ final class AnalysisNodeTracker {
     private record Root(String code, String en, String de) { }
     private final Map<String, Node> nodes = new LinkedHashMap<>();
     private final List<Root> roots = new ArrayList<>();
-    private final Map<String, Integer> scores = new HashMap<>();
+    private final Map<String, Double> scores = new HashMap<>();
     private boolean planned;
     private AnalysisNodeProgress cached;
 
@@ -47,7 +47,7 @@ final class AnalysisNodeTracker {
             int[] count = counts.computeIfAbsent(node.root(), unused -> new int[3]);
             count[0]++;
             boolean excluded = Boolean.TRUE.equals(pruned.get(node.parent()));
-            Integer score = scores.get(node.code());
+            Double score = scores.get(node.code());
             if (score != null) count[1]++;
             else if (excluded) count[2]++;
             pruned.put(node.code(), excluded || Integer.valueOf(0).equals(score));

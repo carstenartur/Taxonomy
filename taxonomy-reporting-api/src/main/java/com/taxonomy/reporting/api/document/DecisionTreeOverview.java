@@ -19,7 +19,7 @@ public record DecisionTreeOverview(List<DecisionTreeRow> rows, List<String> warn
             int depth,
             String code,
             String title,
-            Integer score,
+            Double score,
             Disposition disposition,
             Integer chapterNumber,
             String bookmark) {}

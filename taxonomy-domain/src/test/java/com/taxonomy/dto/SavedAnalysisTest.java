@@ -50,7 +50,7 @@ class SavedAnalysisTest {
         assertEquals("2024-06-15T12:00:00Z", dto.getTimestamp());
         assertEquals("gemini", dto.getProvider());
         assertEquals(2, dto.getScores().size());
-        assertEquals(80, dto.getScores().get("CP-1023"));
+        assertEquals(80d, dto.getScores().get("CP-1023"));
         assertEquals(1, dto.getReasons().size());
         assertEquals(1, dto.getSources().size());
         assertEquals(1, dto.getSourceVersions().size());
@@ -64,7 +64,7 @@ class SavedAnalysisTest {
         dto.setScores(Map.of("CP-1023", 0));
 
         assertTrue(dto.getScores().containsKey("CP-1023"));
-        assertEquals(0, dto.getScores().get("CP-1023"));
+        assertEquals(0d, dto.getScores().get("CP-1023"));
     }
 
     @Test

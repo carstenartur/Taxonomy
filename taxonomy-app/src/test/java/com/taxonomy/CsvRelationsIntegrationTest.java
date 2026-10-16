@@ -42,10 +42,10 @@ class CsvRelationsIntegrationTest {
     @Test
     void architectureViewTraversesCsvRelations() {
         // Simulate scores where CP (Capabilities) scores high
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 90);  // Capabilities
-        scores.put("BP", 85);  // Business Processes
-        scores.put("CR", 80);  // Core Services
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 90d);  // Capabilities
+        scores.put("BP", 85d);  // Business Processes
+        scores.put("CR", 80d);  // Core Services
 
         RequirementArchitectureView view = architectureViewService.build(scores, "test requirement", 20);
 

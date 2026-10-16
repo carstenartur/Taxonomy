@@ -9,14 +9,14 @@ public class RecommendedElement {
     private String nodeCode;
     private String title;
     private String taxonomyRoot;
-    private int score;
+    private double score;
     private String reasoning;
     private ExplanationTrace explanationTrace;
 
     public RecommendedElement() {}
 
     public RecommendedElement(String nodeCode, String title, String taxonomyRoot,
-                              int score, String reasoning) {
+                              double score, String reasoning) {
         this.nodeCode = nodeCode;
         this.title = title;
         this.taxonomyRoot = taxonomyRoot;
@@ -33,8 +33,8 @@ public class RecommendedElement {
     public String getTaxonomyRoot() { return taxonomyRoot; }
     public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }
 
-    public int getScore() { return score; }
-    public void setScore(int score) { this.score = score; }
+    public double getScore() { return score; }
+    public void setScore(double score) { this.score = score; }
 
     public String getReasoning() { return reasoning; }
     public void setReasoning(String reasoning) { this.reasoning = reasoning; }

@@ -48,13 +48,13 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                            int completedRoots, int totalRoots, int runningTasks, int queuedTasks,
                            long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result) { }
     /** The same bounded score preview for individual and recovery-list views. */
-    public record ScorePreview(int evaluatedNodes, Map<String, Integer> rawScores) {
+    public record ScorePreview(int evaluatedNodes, Map<String, Double> rawScores) {
         private static final int MAX_PREVIEW_SCORES = 8192;
         public ScorePreview { rawScores = Map.copyOf(rawScores); }
         public boolean scoresTruncated() { return evaluatedNodes > rawScores.size(); }
         static ScorePreview from(AnalysisResult result) {
-            var raw = result == null ? Map.<String, Integer>of() : result.getRawScores();
-            var scores = new LinkedHashMap<String, Integer>();
+            var raw = result == null ? Map.<String, Double>of() : result.getRawScores();
+            var scores = new LinkedHashMap<String, Double>();
             raw.entrySet().stream().limit(MAX_PREVIEW_SCORES).forEach(entry -> scores.put(entry.getKey(), entry.getValue()));
             return new ScorePreview(raw.size(), scores);
         }
@@ -683,7 +683,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     }
 
     private AnalysisResult aggregate(ClusterAnalysisRun run) {
-        var scores = new LinkedHashMap<String, Integer>(); var reasons = new LinkedHashMap<String, String>();
+        var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();

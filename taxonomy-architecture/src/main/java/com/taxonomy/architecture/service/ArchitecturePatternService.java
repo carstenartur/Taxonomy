@@ -138,7 +138,7 @@ public class ArchitecturePatternService {
      * @return pattern detection view aggregated across all anchors
      */
     @Transactional(readOnly = true)
-    public PatternDetectionView detectForScores(Map<String, Integer> scores, int minScore) {
+    public PatternDetectionView detectForScores(Map<String, Double> scores, int minScore) {
         PatternDetectionView view = new PatternDetectionView();
 
         if (scores == null || scores.isEmpty()) {
@@ -152,7 +152,7 @@ public class ArchitecturePatternService {
         List<DetectedPattern> allIncomplete = new ArrayList<>();
         Set<String> seenPatterns = new HashSet<>();
 
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             if (entry.getValue() == null || entry.getValue() < threshold) continue;
 
             PatternDetectionView nodeView = detectForNode(entry.getKey());

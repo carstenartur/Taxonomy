@@ -89,3 +89,17 @@ test('legacy anchor-only mode hides context nodes and incident edges', () => {
     assert.deepEqual(Array.from(restored.model.nodeIds), ['anchor', 'context']);
     assert.equal(restored.model.edges.length, 1);
 });
+
+// Execute the actual node caption expression; no copied percentage formula.
+for (const [relevance, expected] of [[0.00125, '0.125%'], [1e-12, '<0.000001%'], [0.85, '85%']]) {
+    test(`architecture node caption preserves relevance ${relevance}`, () => {
+        const caption = source.match(/const score = ([^;\n]+);/)?.[1];
+        assert.ok(caption, 'production node caption is present');
+        const helperStart = source.indexOf('    function relevanceText(');
+        const helperEnd = source.indexOf("    const SVG_NS", helperStart);
+        const helper = helperStart >= 0 && helperEnd > helperStart ? source.slice(helperStart, helperEnd) : '';
+        const actual = vm.runInNewContext(helper + '\n' + caption,
+            {node: {anchor: false, relevance}});
+        assert.equal(actual, expected);
+    });
+}

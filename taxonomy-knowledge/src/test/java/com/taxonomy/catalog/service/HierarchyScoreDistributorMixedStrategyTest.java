@@ -39,17 +39,17 @@ class HierarchyScoreDistributorMixedStrategyTest {
                 "RT-CATEGORY", List.of(categoryLeaf)));
 
         NodeScorer categoryScorer = (requirement, nodes, parentScore) -> {
-            Map<String, Integer> scores = new LinkedHashMap<>();
+            Map<String, Double> scores = new LinkedHashMap<>();
             for (TaxonomyNode node : nodes) {
-                scores.put(node.getCode(), 1);
+                scores.put(node.getCode(), 1d);
             }
             return scores;
         };
         NodeScorer productScorer = (requirement, nodes, parentScore) ->
-                Map.of("RT-PRODUCT", 90);
+                Map.of("RT-PRODUCT", 90d);
 
         HierarchyScoreDistributor.DistributionResult result = distributor.distribute(
-                Map.of("RT", 40),
+                Map.of("RT", 40d),
                 Map.of("RT", "root reason"),
                 "requirement",
                 categoryScorer,
@@ -59,10 +59,10 @@ class HierarchyScoreDistributorMixedStrategyTest {
                 IndependentScoring.INSTANCE);
 
         assertThat(result.scores())
-                .containsEntry("RT", 40)
-                .containsEntry("RT-CATEGORY", 40)
-                .containsEntry("RT-CATEGORY-LEAF", 40)
-                .containsEntry("RT-PRODUCT", 90);
+                .containsEntry("RT", 40d)
+                .containsEntry("RT-CATEGORY", 40d)
+                .containsEntry("RT-CATEGORY-LEAF", 40d)
+                .containsEntry("RT-PRODUCT", 90d);
         assertThat(result.scores().get("RT-CATEGORY"))
                 .as("the only hierarchical child receives the complete parent budget")
                 .isEqualTo(result.scores().get("RT"));
@@ -83,7 +83,7 @@ class HierarchyScoreDistributorMixedStrategyTest {
         };
 
         HierarchyScoreDistributor.DistributionResult result = distributor.distribute(
-                Map.of("RT", 0),
+                Map.of("RT", 0d),
                 Map.of("RT", "not relevant"),
                 "requirement",
                 mustNotRun,
@@ -93,9 +93,9 @@ class HierarchyScoreDistributorMixedStrategyTest {
                 IndependentScoring.INSTANCE);
 
         assertThat(result.scores())
-                .containsEntry("RT", 0)
-                .containsEntry("RT-CATEGORY", 0)
-                .containsEntry("RT-PRODUCT", 0);
+                .containsEntry("RT", 0d)
+                .containsEntry("RT-CATEGORY", 0d)
+                .containsEntry("RT-PRODUCT", 0d);
     }
 
     private TaxonomyNode node(String code, String parentCode, int level) {

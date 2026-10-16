@@ -182,7 +182,7 @@ class ArtemisCoordinatorNotificationRecoveryTest {
         await(() -> coordinator.failures() == 1 && messages(destinations.completion()) == 0, "rejected foreign completion");
         assertThat(observed.events).isEmpty();
         assertThat(coordinator.redeliveries()).isZero();
-        assertThat(db.store.snapshot(context).result().getRawScores()).containsEntry("CP", 73);
+        assertThat(db.store.snapshot(context).result().getRawScores()).containsEntry("CP", 73d);
     }
 
     private void assertRecovered(Database db, AnalysisOperationContext context, Observed observed) throws Exception {
@@ -196,7 +196,7 @@ class ArtemisCoordinatorNotificationRecoveryTest {
             assertThat(event.totalTasks()).isEqualTo(1);
         });
         assertThat(saved.state()).isEqualTo(ClusterAnalysisState.COMPLETED);
-        assertThat(saved.result().getRawScores()).containsEntry("CP", 73);
+        assertThat(saved.result().getRawScores()).containsEntry("CP", 73d);
         assertThat(db.store.events(context, 0, 100)).hasSize((int) saved.revision());
         assertThat(observed.reconnects).hasValue(0);
         assertThat(observed.foreignWakes).hasValue(0);

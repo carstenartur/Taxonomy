@@ -83,7 +83,7 @@ class DemoScenarioCatalogueTest {
         // The surveillance mutation target is a real code that the replay never scores positively.
         assertThat(NODES).containsKey("CI-1121");
         for (var iteration : scenario.iterations().values())
-            assertThat(iteration.declaredScores().getOrDefault("CI-1121", 0)).isZero();
+            assertThat(iteration.declaredScores().getOrDefault("CI-1121", 0d)).isZero();
     }
 
     @Test void scenarioRejectsUnknownCodesAndMismatchedCatalogue() {

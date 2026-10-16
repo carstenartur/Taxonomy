@@ -44,7 +44,7 @@ public class RequirementRelationSearchService {
         return new RequirementRelationSearch.Options(new Limits(maxCalls, maxDepth, batchSize, maxWorkItems), maxSources);
     }
 
-    public RelationSearchReport search(String original, Map<String,Integer> scores) {
+    public RelationSearchReport search(String original, Map<String,Double> scores) {
         if (!llm.supportsGenerativeCompletion()) {
             return RequirementRelationSearch.unassessed(original, options().limits().maxCalls(),
                     "GENERATION_UNSUPPORTED: " + llm.getActiveProviderId().value()
@@ -66,7 +66,7 @@ public class RequirementRelationSearchService {
     }
 
     /** Source preparation must receive the admission snapshot; there is no live-catalogue fallback. */
-    public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map<String, Integer> scores,
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map<String, Double> scores,
             List<String> sourceResultIds, RequirementRelationSearch.InputCatalogue frozenCatalogue,
             boolean includeRelations) {
         // Version-two transport identities admit ordinals 0..511. Retain the

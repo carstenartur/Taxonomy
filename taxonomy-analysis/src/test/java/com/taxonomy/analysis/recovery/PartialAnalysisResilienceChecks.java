@@ -33,13 +33,13 @@ public final class PartialAnalysisResilienceChecks {
         var journal = new Journal(); var calls = new AtomicInteger();
         try (var session = new AnalysisCheckpointSession(journal)) {
             var failure = AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-1"), "first", () -> {
-                calls.incrementAndGet(); return answer(Map.of("BP-1", 0), "Invalid JSON", "broken");
+                calls.incrementAndGet(); return answer(Map.of("BP-1", 0d), "Invalid JSON", "broken");
             });
             check(failure.getScores().isEmpty(), "an invalid answer cannot publish fallback zeroes");
             var success = AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-2"), "second", () -> {
-                calls.incrementAndGet(); return answer(Map.of("BP-2", 75), null, "accepted");
+                calls.incrementAndGet(); return answer(Map.of("BP-2", 75d), null, "accepted");
             });
-            check(success.getScores().equals(Map.of("BP-2", 75)), "independent work must continue");
+            check(success.getScores().equals(Map.of("BP-2", 75d)), "independent work must continue");
             check(journal.entries.values().stream().anyMatch(q -> q.state().equals("UNASSESSED")), "failure must remain inspectable and retryable");
             AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-1"), "first", () -> { throw new AssertionError("implicit retry"); });
             AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-2"), "second", () -> { throw new AssertionError("repeated success"); });
@@ -114,11 +114,11 @@ public final class PartialAnalysisResilienceChecks {
             var request = request(); var claim = db.begin(request);
             try (var session = db.session(claim)) {
                 AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-1"), "bad",
-                        () -> answer(Map.of("BP-1", 0), "Invalid JSON", "original bad reply"));
+                        () -> answer(Map.of("BP-1", 0d), "Invalid JSON", "original bad reply"));
                 AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-2"), "good",
-                        () -> answer(Map.of("BP-2", 70), null, "original good reply"));
+                        () -> answer(Map.of("BP-2", 70d), null, "original good reply"));
             }
-            var result = new AnalysisResult(Map.of("BP-2", 70), tree()); result.setStatus("PARTIAL");
+            var result = new AnalysisResult(Map.of("BP-2", 70d), tree()); result.setStatus("PARTIAL");
             var completed = db.call(s -> s.complete(claim, result, tree()));
             check(completed.getRecovery().state().equals("COMPLETED_WITH_GAPS"), "finished incomplete analysis is not PAUSED");
             check(completed.getRecovery().openQuestions().size() == 1, "open failure must survive completion");
@@ -130,7 +130,7 @@ public final class PartialAnalysisResilienceChecks {
             var calls = new AtomicInteger();
             try (var session = db.session(resumed)) {
                 AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-1"), "bad", () -> {
-                    calls.incrementAndGet(); return answer(Map.of("BP-1", 60), null, "fixed");
+                    calls.incrementAndGet(); return answer(Map.of("BP-1", 60d), null, "fixed");
                 });
                 AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-2"), "good", () -> { throw new AssertionError("repeated successful request"); });
             }
@@ -198,7 +198,7 @@ public final class PartialAnalysisResilienceChecks {
                         () -> { throw new AssertionError("a successful relation was reissued"); });
             }
             check(calls.get() == 2, "only the explicitly selected requests are reissued");
-            var done = new AnalysisResult(Map.of("BP-1", 50, "BP-2", 50), tree()); done.setStatus("SUCCESS");
+            var done = new AnalysisResult(Map.of("BP-1", 50d, "BP-2", 50d), tree()); done.setStatus("SUCCESS");
             var completed = db.call(store -> store.complete(retry, done, tree()));
             check(completed.getRecovery().state().equals("COMPLETED") && completed.getArchitectureView().getIncludedElements().size() == 2,
                     "selected rework completes and regenerates the architecture");
@@ -211,14 +211,14 @@ public final class PartialAnalysisResilienceChecks {
             var request = request(); var claim = db.begin(request);
             try (var session = db.session(claim)) {
                 AnalysisCheckpointSession.evaluate("CATEGORY", "TEST", List.of("BP-1"), "accepted",
-                        () -> answer(Map.of("BP-1", 70), null, "accepted"));
+                        () -> answer(Map.of("BP-1", 70d), null, "accepted"));
             }
             var cancelled = db.call(store -> store.cancel(request.getContinuationId(), scope()));
             check(cancelled.recovery().state().equals("CANCELLED"), "cancellation remains authoritative");
             check(cancelled.result().getArchitectureView().getIncludedElements().size() == 1, "cancellation retains a useful accepted view");
-            var late = new AnalysisResult(Map.of("BP-1", 1, "BP-2", 99), tree()); late.setStatus("SUCCESS");
+            var late = new AnalysisResult(Map.of("BP-1", 1d, "BP-2", 99d), tree()); late.setStatus("SUCCESS");
             var settled = db.call(store -> store.complete(claim, late, tree()));
-            check(settled.getRawScores().equals(Map.of("BP-1", 70)), "late result cannot replace the cancelled snapshot");
+            check(settled.getRawScores().equals(Map.of("BP-1", 70d)), "late result cannot replace the cancelled snapshot");
         }
     }
 
@@ -271,7 +271,7 @@ public final class PartialAnalysisResilienceChecks {
     public static void testRelationRuntimeStopRemainsContinuableEvenWithoutAnOpenQuestion() {
         try (var db = new Database()) {
             var request = request(); var claim = db.begin(request);
-            var result = new AnalysisResult(Map.of("BP-1",70),tree()); result.setStatus("PARTIAL");
+            var result = new AnalysisResult(Map.of("BP-1",70d),tree()); result.setStatus("PARTIAL");
             result.setErrorMessage("RELATION_SEARCH_PARTIAL: interrupted search");
             result.setRelationSearchReport(com.taxonomy.analysis.relations.RequirementRelationSearch.unassessed(
                     "a requirement",24,"TIME_LIMIT: no further calls admitted"));
@@ -297,7 +297,7 @@ public final class PartialAnalysisResilienceChecks {
             var rows = new ArrayList<com.taxonomy.analysis.backup.AnalysisBackupContributor.QuestionRecord>();
             for (String state : List.of("UNASSESSED","CLARIFICATION")) {
                 String key = state.equals("UNASSESSED") ? "a".repeat(64) : "R"+"b".repeat(63);
-                var detail = answer(state.equals("UNASSESSED") ? Map.of("BP-1",0) : Map.of(),
+                var detail = answer(state.equals("UNASSESSED") ? Map.of("BP-1",0d) : Map.of(),
                         state.equals("UNASSESSED") ? "Invalid JSON" : "RELATION_UNRESOLVED: Which retention period?", "raw " + state);
                 rows.add(new com.taxonomy.analysis.backup.AnalysisBackupContributor.QuestionRecord(
                         new com.taxonomy.backup.SourceRecordId("analysis.question",key),sourceId,key,"f".repeat(64),"TEST",
@@ -324,7 +324,7 @@ public final class PartialAnalysisResilienceChecks {
         catch (ResponseStatusException expected) { check(expected.getStatusCode().value() == 409, "expected scoped conflict"); }
     }
 
-    static LlmCallDetail answer(Map<String, Integer> scores, String error, String raw) {
+    static LlmCallDetail answer(Map<String, ? extends Number> scores, String error, String raw) {
         var detail = new LlmCallDetail(); detail.setScores(scores); detail.setReasons(Map.of());
         detail.setError(error); detail.setRawResponse(raw); detail.setProvider("TEST"); return detail;
     }

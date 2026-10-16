@@ -56,7 +56,7 @@ public class ArchitectureGapService {
      * @return gap analysis view with missing relations, incomplete patterns, and coverage gaps
      */
     @Transactional(readOnly = true)
-    public GapAnalysisView analyze(Map<String, Integer> scores, String businessText, int minScore) {
+    public GapAnalysisView analyze(Map<String, Double> scores, String businessText, int minScore) {
         GapAnalysisView view = new GapAnalysisView();
         view.setBusinessText(businessText);
 
@@ -68,7 +68,7 @@ public class ArchitectureGapService {
         int threshold = minScore > 0 ? minScore : DEFAULT_MIN_SCORE;
 
         // Filter to anchor nodes above threshold
-        Map<String, Integer> anchors = scores.entrySet().stream()
+        Map<String, Double> anchors = scores.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue() >= threshold)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
@@ -83,9 +83,9 @@ public class ArchitectureGapService {
         List<IncompletePattern> incompletePatterns = new ArrayList<>();
         List<CoverageGap> coverageGaps = new ArrayList<>();
 
-        for (Map.Entry<String, Integer> entry : anchors.entrySet()) {
+        for (Map.Entry<String, Double> entry : anchors.entrySet()) {
             String nodeCode = entry.getKey();
-            int score = entry.getValue();
+            double score = entry.getValue();
 
             Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
             if (nodeOpt.isEmpty()) {

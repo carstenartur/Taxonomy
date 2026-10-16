@@ -36,7 +36,7 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
     public record DemoDecision(String question, List<String> values, String rationale) { }
     public record DemoReview(String wording, String action, String rationale) { }
     public record Station(String id, String de, String en) { }
-    public record Score(int score, String reason) { }
+    public record Score(double score, String reason) { }
     public record Relation(String source, String type, List<String> path, String contribution) {
         public String target() { return path.getLast(); }
     }
@@ -51,7 +51,7 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
                             Map<String, Map<String, Score>> expansions, Map<String, String> justifications,
                             List<Relation> relations, Reformulation reformulation) {
         /** Authored score of a node, or {@code null} when the scenario does not score it positively. */
-        public Integer authoredScore(String code) {
+        public Double authoredScore(String code) {
             Score root = roots.get(code);
             if (root != null) return root.score();
             for (var children : expansions.values()) {
@@ -62,8 +62,8 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
         }
 
         /** All codes the iteration scores (roots and declared children). */
-        public Map<String, Integer> declaredScores() {
-            var scores = new LinkedHashMap<String, Integer>();
+        public Map<String, Double> declaredScores() {
+            var scores = new LinkedHashMap<String, Double>();
             roots.forEach((code, score) -> scores.put(code, score.score()));
             expansions.values().forEach(children -> children.forEach((code, score) -> scores.put(code, score.score())));
             return Collections.unmodifiableMap(scores);
@@ -146,17 +146,17 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
             require(iteration.roots().keySet().equals(Set.copyOf(ROOTS)),
                     iteration.name() + ": every taxonomy root needs an authored root reply");
             for (var parent : iteration.expansions().entrySet()) {
-                Integer parentScore = iteration.authoredScore(parent.getKey());
+                Double parentScore = iteration.authoredScore(parent.getKey());
                 require(parentScore != null && parentScore > 0,
                         iteration.name() + ": expansion of unscored parent " + parent.getKey());
-                int sum = parent.getValue().values().stream().mapToInt(Score::score).sum();
+                double sum = parent.getValue().values().stream().mapToDouble(Score::score).sum();
                 require(sum == parentScore, iteration.name() + ": children of " + parent.getKey()
                         + " must sum to its authored score " + parentScore + " but sum to " + sum);
             }
             for (var relation : iteration.relations()) {
                 require(relation.path().size() >= 2 && ROOTS.contains(relation.path().getFirst()),
                         iteration.name() + ": relation path must start at a taxonomy root");
-                Integer sourceScore = iteration.authoredScore(relation.source());
+                Double sourceScore = iteration.authoredScore(relation.source());
                 require(sourceScore != null && sourceScore > 0, iteration.name() + ": relation source must be scored");
             }
             var questionIds = new LinkedHashSet<String>();

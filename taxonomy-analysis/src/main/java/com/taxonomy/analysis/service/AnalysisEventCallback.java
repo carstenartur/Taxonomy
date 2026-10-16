@@ -17,26 +17,26 @@ public interface AnalysisEventCallback {
     void onPhase(String message, int progressPercent);
 
     /** Partial scores have arrived; merge these into the UI immediately. */
-    void onScores(Map<String, Integer> newScores, Map<String, String> reasons, String description,
+    void onScores(Map<String, Double> newScores, Map<String, String> reasons, String description,
                   LlmCallDetail detail);
 
     /** A parent node is about to be expanded; its children are next to be evaluated. */
     void onExpanding(String parentCode, List<String> childCodes);
 
     /** Analysis completed successfully. */
-    void onComplete(String status, Map<String, Integer> allScores, List<String> warnings,
+    void onComplete(String status, Map<String, Double> allScores, List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies,
                     List<ProductCoverageGap> productCoverageGaps);
 
     /** Analysis stopped due to an error (possibly with partial scores). */
     void onError(String status, String errorMessage,
-                 Map<String, Integer> partialScores, List<String> warnings,
+                 Map<String, Double> partialScores, List<String> warnings,
                  List<TaxonomyDiscrepancy> discrepancies,
                  List<ProductCoverageGap> productCoverageGaps);
 
     /** Evidence-complete stop; legacy callback implementations retain their error contract. */
     default void onError(String status, String errorMessage,
-                         Map<String, Integer> partialScores, Map<String, String> partialReasons,
+                         Map<String, Double> partialScores, Map<String, String> partialReasons,
                          List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                          List<ProductCoverageGap> productCoverageGaps) {
         onError(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps);

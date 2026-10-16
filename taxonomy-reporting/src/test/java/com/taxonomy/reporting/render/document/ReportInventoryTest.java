@@ -22,7 +22,7 @@ class ReportInventoryTest {
 
     @ParameterizedTest @ValueSource(booleans = {true, false})
     void countsCompleteTreeIncludingUnassessedRowsRatherThanLeadingCandidates(boolean de) {
-        var root = new DecisionTreeOverview.DecisionTreeRow(0, "CP", "Capabilities", 1, null, null, null);
+        var root = new DecisionTreeOverview.DecisionTreeRow(0, "CP", "Capabilities", 1.0, null, null, null);
         var child = new DecisionTreeOverview.DecisionTreeRow(1, "CP-1", "Function", null, null, null, null);
         var tree = new DecisionTreeOverview(List.of(root, child, child), List.of());
         String text = String.join("\n", ReportInventory.tree(tree, de));

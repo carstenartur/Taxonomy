@@ -10,7 +10,7 @@ import java.util.Map;
 final class LlmDetailAccumulator {
     private static final int TEXT_LIMIT = 32_768;
     private static final String TRUNCATED = "\n[diagnostic transcript truncated]";
-    private final Map<String, Integer> scores = new LinkedHashMap<>();
+    private final Map<String, Double> scores = new LinkedHashMap<>();
     private final Map<String, String> reasons = new LinkedHashMap<>();
     private final StringBuilder prompts = new StringBuilder();
     private final StringBuilder responses = new StringBuilder();

@@ -59,7 +59,7 @@ public class ArchitectureImpactSelector {
      * @return the input list with {@code selectedForImpact} and {@code origin} updated in place
      */
     public List<RequirementElementView> selectForImpact(List<RequirementElementView> elements,
-                                                         Map<String, Integer> allScores,
+                                                         Map<String, Double> allScores,
                                                          Set<String> crossCategoryCodes) {
         if (elements == null || elements.isEmpty()) {
             return elements;
@@ -118,13 +118,13 @@ public class ArchitectureImpactSelector {
      * Computes the composite impact score for a single element.
      */
     double computeImpactScore(RequirementElementView element,
-                              Map<String, Integer> allScores,
+                              Map<String, Double> allScores,
                               Set<String> crossCategoryCodes,
                               List<RequirementElementView> categoryElements) {
         String code = element.getNodeCode();
 
         // 1. LLM score component (normalised to 0–1)
-        double llmComponent = allScores.getOrDefault(code, 0) / 100.0;
+        double llmComponent = allScores.getOrDefault(code, 0d) / 100.0;
 
         // 2. Specificity: deeper nodes score higher (normalised via depth / 5.0, capped at 1)
         double specificityComponent = Math.min(element.getTaxonomyDepth() / 5.0, 1.0);
@@ -150,7 +150,7 @@ public class ArchitectureImpactSelector {
      * and a more concrete descendant with ≥ 50% of its score exists.
      */
     boolean isGenericWeakNode(RequirementElementView node,
-                              Map<String, Integer> allScores,
+                              Map<String, Double> allScores,
                               List<RequirementElementView> categoryElements) {
         if (node.getTaxonomyDepth() > 1) return false;
 
@@ -159,13 +159,13 @@ public class ArchitectureImpactSelector {
             return false;
         }
 
-        int nodeScore = allScores.getOrDefault(node.getNodeCode(), 0);
-        int halfScore = nodeScore / 2;
+        double nodeScore = allScores.getOrDefault(node.getNodeCode(), 0d);
+        double halfScore = nodeScore / 2;
 
         // Check if any deeper node in the same category has a score ≥ half of this node's score
         return categoryElements.stream()
                 .filter(e -> e.getTaxonomyDepth() > node.getTaxonomyDepth())
-                .anyMatch(e -> allScores.getOrDefault(e.getNodeCode(), 0) >= halfScore);
+                .anyMatch(e -> allScores.getOrDefault(e.getNodeCode(), 0d) >= halfScore);
     }
 
     /**
@@ -193,19 +193,19 @@ public class ArchitectureImpactSelector {
      * so the child can represent the area directly.
      */
     boolean isRedundantIntermediate(RequirementElementView node,
-                                    Map<String, Integer> allScores,
+                                    Map<String, Double> allScores,
                                     List<RequirementElementView> categoryElements) {
         if (node.getTaxonomyDepth() <= 1) return false; // handled by scaffolding check
 
         String nodeCode = node.getNodeCode();
-        int nodeScore = allScores.getOrDefault(nodeCode, 0);
-        int halfScore = Math.max(nodeScore / 2, 1);
+        double nodeScore = allScores.getOrDefault(nodeCode, 0d);
+        double halfScore = Math.max(nodeScore / 2, 1);
 
         // Count children (deeper nodes whose hierarchyPath passes through this node)
         List<RequirementElementView> strongChildren = categoryElements.stream()
                 .filter(e -> e.getTaxonomyDepth() > node.getTaxonomyDepth())
                 .filter(e -> isChildOf(e, nodeCode))
-                .filter(e -> allScores.getOrDefault(e.getNodeCode(), 0) >= halfScore)
+                .filter(e -> allScores.getOrDefault(e.getNodeCode(), 0d) >= halfScore)
                 .toList();
 
         // Suppress when exactly one strong child exists — the child alone represents the area

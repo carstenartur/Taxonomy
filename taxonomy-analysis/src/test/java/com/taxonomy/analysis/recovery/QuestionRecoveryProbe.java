@@ -43,7 +43,7 @@ public final class QuestionRecoveryProbe {
             });
             check(value.getScores().get("BP") == 80, "valid evidence lost");
             // Returned maps are not allowed to mutate the persisted question checkpoint.
-            value.getScores().put("BP", 1);
+            value.getScores().put("BP", 1d);
             var replay = AnalysisCheckpointSession.evaluate("CATEGORY", "test", List.of("BP"), "same input", () -> {
                 throw new AssertionError("successful question contacted provider again");
             });

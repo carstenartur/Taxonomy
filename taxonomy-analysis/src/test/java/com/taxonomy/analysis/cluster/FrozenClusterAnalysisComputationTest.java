@@ -51,7 +51,7 @@ class FrozenClusterAnalysisComputationTest {
                 task, () -> false);
 
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
-        assertThat(result.getRawScores()).containsExactly(entry("CP", 58));
+        assertThat(result.getRawScores()).containsExactly(entry("CP", 58d));
         assertThat(result.getTree()).singleElement().satisfies(root -> assertThat(root.getNameEn()).isEqualTo("Frozen CP"));
         assertThat(result.getAnalysisScope().taxonomyRoots()).containsExactly("CP");
         assertThat(result.getProvider()).isEqualTo("Mock");
@@ -128,7 +128,7 @@ class FrozenClusterAnalysisComputationTest {
             AnalysisRuntimeSettings settings = (key, fallback) -> "llm.retry.max".equals(key) ? 0 : fallback;
             var gateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, mapper, new LlmResponseParser(mapper), settings, null, null);
             var gateways = mock(LlmGatewayRegistry.class); when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
-            var templates = mock(PromptTemplateService.class); when(templates.renderPrompt(anyString(), anyString(), anyString(), anyInt(), anyString())).thenReturn("PRIVATE-FROZEN-REQUEST");
+            var templates = mock(PromptTemplateService.class); when(templates.renderPrompt(anyString(), anyString(), anyString(), anyDouble(), anyString())).thenReturn("PRIVATE-FROZEN-REQUEST");
             var llm = new LlmService(providers, gateways, mapper, taxonomy, templates, embedding, mock(SavedAnalysisService.class));
             ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
             var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, llm, providers, FrozenClusterAnalysisComputationTest::guard, mapper);
@@ -137,7 +137,7 @@ class FrozenClusterAnalysisComputationTest {
                 assertThat(db.store.snapshot(context).state()).isEqualTo(ClusterAnalysisState.CANCELLED);
                 assertThat(db.store.callDiagnostics().summaries(context).calls()).singleElement().satisfies(c -> assertThat(c.status()).isEqualTo("STOPPED"));
                 assertThat(db.store.callDiagnostics().detail(context, 1).response()).contains("CP");
-            } else assertThat(computation.score(input, task, cancelled::get).getRawScores()).containsEntry("CP", 75);
+            } else assertThat(computation.score(input, task, cancelled::get).getRawScores()).containsEntry("CP", 75d);
             server.verify();
             assertThat(db.store.callDiagnostics().detail(context, 1).attempts()).singleElement().satisfies(a -> {
                 assertThat(a.source()).isEqualTo("HTTP"); assertThat(a.usage().totalTokens()).isEqualTo(7L);

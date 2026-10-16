@@ -53,9 +53,10 @@ public final class RequirementRelationSearch {
                 0, maxCalls, 0, List.of(reason), reason);
     }
 
-    public RelationSearchReport search(String original, Map<String, Integer> scores, Options options) {
+    public RelationSearchReport search(String original, Map<String, ? extends Number> inputScores, Options options) {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
-        Objects.requireNonNull(scores); Objects.requireNonNull(options);
+        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
+        Map<String, Double> scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores);
         long start = System.nanoTime();
         var previous = AnalysisCheckpointSession.previousRelations();
         if (previous != null && !previous.originalSha256().equals(sha256(original)))
@@ -128,9 +129,10 @@ public final class RequirementRelationSearch {
      * A missing root result must remain a prerequisite, not a synthetic zero score.
      */
     public RelationSearchDistribution.Plan prepare(String preparationId, String original,
-            Map<String, Integer> scores, List<String> sourceResultIds, Options options, boolean includeRelations) {
+            Map<String, ? extends Number> inputScores, List<String> sourceResultIds, Options options, boolean includeRelations) {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
-        Objects.requireNonNull(scores); Objects.requireNonNull(options); Objects.requireNonNull(sourceResultIds);
+        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
+        Map<String, Double> scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores); Objects.requireNonNull(sourceResultIds);
         long started = System.nanoTime();
         List<Node> nodes = List.of(), roots = List.of();
         List<SourceAssessment> sources = new ArrayList<>();
@@ -325,10 +327,10 @@ public final class RequirementRelationSearch {
         }
     }
 
-    private List<Node> sourceNodes(Map<String, Integer> scores, List<String> warnings) {
-        List<Map.Entry<String,Integer>> positive = scores.entrySet().stream()
+    private List<Node> sourceNodes(Map<String, Double> scores, List<String> warnings) {
+        List<Map.Entry<String,Double>> positive = scores.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue() > 0)
-                .sorted(Map.Entry.<String,Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .sorted(Map.Entry.<String,Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .toList();
         if (positive.isEmpty()) warnings.add("SOURCE_DISCOVERY_REQUIRED: no positively assessed concrete source is available; "
                 + "this is not proof that the requirement has no architectural dependencies.");

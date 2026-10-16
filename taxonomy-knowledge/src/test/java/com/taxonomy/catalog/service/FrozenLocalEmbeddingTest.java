@@ -4,19 +4,6 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.snapshot.*;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.KnnFloatVectorField;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.VectorSimilarityFunction;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.KnnFloatVectorQuery;
-import org.apache.lucene.search.TermInSetQuery;
-import org.apache.lucene.store.ByteBuffersDirectory;
-import org.apache.lucene.util.BytesRef;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -133,7 +120,7 @@ class FrozenLocalEmbeddingTest {
         assertThat(embeddings.texts.stream().filter("same text"::equals)).hasSize(2);
     }
 
-    static Map<String, Integer> score(FixtureEmbeddings service, RootCatalogueSnapshot snapshot) {
+    static Map<String, Double> score(FixtureEmbeddings service, RootCatalogueSnapshot snapshot) {
         try (var ignored = bind(snapshot)) {
             return service.scoreFrozenNodes("requirement", FrozenCatalogueContext.current().allNodes());
         }
@@ -193,27 +180,12 @@ class FrozenLocalEmbeddingTest {
         }
     }
 
-    static Map<String, Integer> lucene(Map<String, float[]> vectors, List<String> selected, float[] query) throws Exception {
-        try (var directory = new ByteBuffersDirectory()) {
-            try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
-                for (var item : vectors.entrySet()) {
-                    var document = new Document();
-                    document.add(new StringField("code", item.getKey(), Field.Store.YES));
-                    document.add(new KnnFloatVectorField("embedding", item.getValue(), VectorSimilarityFunction.COSINE));
-                    writer.addDocument(document);
-                }
-            }
-            try (var reader = DirectoryReader.open(directory)) {
-                var searcher = new IndexSearcher(reader);
-                var filter = new TermInSetQuery("code", selected.stream().map(BytesRef::new).toList());
-                var hits = searcher.search(new KnnFloatVectorQuery("embedding", query, selected.size(), filter), selected.size());
-                var result = new LinkedHashMap<String, Integer>();
-                for (var hit : hits.scoreDocs) {
-                    result.put(searcher.storedFields().document(hit.doc).get("code"),
-                            Math.max(0, Math.min(100, (int) Math.round((2.0 * hit.score - 1.0) * 100.0))));
-                }
-                return result;
-            }
-        }
+    static Map<String, Double> lucene(Map<String, float[]> vectors, List<String> selected, float[] query) throws Exception {
+        return FrozenEmbeddingPrecisionChecks.lucene(vectors, selected, query);
+    }
+
+    @Test
+    void subPercentCosineScoresMatchLuceneAndSurviveCacheReuse() throws Exception {
+        FrozenEmbeddingPrecisionChecks.positiveSubPercentCosineRemainsPositive();
     }
 }

@@ -238,7 +238,7 @@ public class ExportApiController {
     @ApiResponse(responseCode = "400", description = "Requirement is blank or scores are missing")
     @PostMapping("/scores/export")
     public ResponseEntity<SavedAnalysis> exportScores(@RequestBody Map<String, Object> body) {
-        String requirement = (String) body.get("requirement");
+        String requirement = body.get("requirement") instanceof String text ? text : null;
         if (requirement == null || requirement.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -248,12 +248,9 @@ public class ExportApiController {
         if (rawScores == null || rawScores.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : rawScores.entrySet()) {
-            if (entry.getValue() instanceof Number number) {
-                scores.put(entry.getKey(), number.intValue());
-            }
-        }
+        final Map<String, Double> scores;
+        try { scores = percentageMap(rawScores); }
+        catch (IllegalArgumentException invalid) { return ResponseEntity.badRequest().build(); }
         @SuppressWarnings("unchecked")
         Map<String, String> reasons = body.get("reasons") instanceof Map<?, ?>
                 ? (Map<String, String>) body.get("reasons") : Map.of();
@@ -275,23 +272,32 @@ public class ExportApiController {
             try {
                 var coverage = recoveryObjectMapper.convertValue(body.get("analysisCoverage"), com.taxonomy.dto.AnalysisCoverage.class);
                 exported.setAnalysisCoverage(coverage);
-                exported.setVersion(3);
+                exported.setVersion(4);
                 exported.setAnalysisStatus(coverage.hasOpenEvaluations() ? "PARTIAL" : String.valueOf(body.getOrDefault("analysisStatus", "UNKNOWN")));
-                if (body.get("rawScores") instanceof Map<?, ?>) {
-                    Map<String, Integer> raw = recoveryObjectMapper.convertValue(body.get("rawScores"),
-                            new tools.jackson.core.type.TypeReference<Map<String, Integer>>() { });
-                    if (raw.size() > 25000 || raw.values().stream().anyMatch(v -> v == null || v < 0 || v > 100))
-                        return ResponseEntity.badRequest().build();
-                    exported.setRawScores(raw);
-                }
+
             } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) { return ResponseEntity.badRequest().build(); }
         }
         try {
+            // Keep raw product suitability even for a manual export without automatic coverage.
+            if (body.get("rawScores") != null) exported.setRawScores(percentageMap(body.get("rawScores")));
             exportFacade.validateCoverageEvidence(exported);
         } catch (IllegalArgumentException invalid) {
             return ResponseEntity.badRequest().build();
         }
         return ResponseEntity.ok(exported);
+    }
+
+    private static Map<String, Double> percentageMap(Object input) {
+        if (!(input instanceof Map<?, ?> values) || values.size() > 25000)
+            throw new IllegalArgumentException("Invalid score map");
+        Map<String, Double> result = new LinkedHashMap<>();
+        for (var entry : values.entrySet()) {
+            if (!(entry.getKey() instanceof String code) || code.isBlank()
+                    || !(entry.getValue() instanceof Number score))
+                throw new IllegalArgumentException("A score requires a node identity and numeric percentage");
+            result.put(code, com.taxonomy.dto.AnalysisPercentages.require(score));
+        }
+        return result;
     }
 
     @Operation(summary = "Import analysis scores from JSON",

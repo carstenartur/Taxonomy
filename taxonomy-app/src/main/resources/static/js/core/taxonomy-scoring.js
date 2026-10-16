@@ -44,9 +44,38 @@
     }
 
     function clampScore(value) {
-        var numeric = Number(value);
-        if (!Number.isFinite(numeric)) return 0;
-        return Math.max(0, Math.min(100, Math.round(numeric)));
+        // Do not coerce null/booleans/strings to measured evidence or round decimals.
+        return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+            ? value : NaN;
+    }
+
+    function requireScore(value) {
+        var score = clampScore(value);
+        if (!Number.isFinite(score)) throw new Error('Invalid numeric percentage; this assessment remains open.');
+        return score;
+    }
+
+    function scoreText(value) {
+        var score = clampScore(value);
+        if (!Number.isFinite(score)) return '—';
+        if (score > 0 && score < 0.000001) return '<0.000001';
+        return String(Number(score.toFixed(6)));
+    }
+
+    function percentageProduct(parent, suitability) {
+        parent = requireScore(parent); suitability = requireScore(suitability);
+        // Use decimal coefficients like the server. 0.1 * 0.2 / 100 must not
+        // acquire an extra binary rounding digit in a subsequently saved score.
+        function decimal(value) {
+            var parts = String(value).split(/[eE]/), digits = parts[0].split('.');
+            return { coefficient: BigInt(digits.join('')),
+                exponent: Number(parts[1] || 0) - (digits[1] || '').length };
+        }
+        var a = decimal(parent), b = decimal(suitability);
+        var value = Number(String(a.coefficient * b.coefficient) + 'e' + (a.exponent + b.exponent - 2));
+        if (parent > 0 && suitability > 0 && value === 0)
+            throw new Error('Unsupported percentage precision; this assessment remains open.');
+        return requireScore(value);
     }
 
     function productParentScore(detail) {
@@ -65,7 +94,7 @@
     function effectiveProductScore(rawScore, detail) {
         var parentScore = productParentScore(detail);
         if (parentScore === null) return 0;
-        return clampScore(clampScore(parentScore) * clampScore(rawScore) / 100);
+        return percentageProduct(parentScore, rawScore);
     }
 
     function effectiveIncrementalScores(rawScores, details) {
@@ -74,7 +103,7 @@
             var detail = details && details[code] ? details[code] : null;
             effective[code] = isProductScore(detail)
                 ? effectiveProductScore(raw, detail)
-                : clampScore(raw);
+                : requireScore(raw);
         });
         return effective;
     }
@@ -90,32 +119,32 @@
         if (isProductScore(detail)) {
             if (productRelevancePending(detail)) {
                 return isGermanLocale()
-                    ? 'Eignung ' + clampScore(raw) + '% · effektive Relevanz ausstehend'
-                    : 'Suitability ' + clampScore(raw) + '% · effective relevance pending';
+                    ? 'Eignung ' + scoreText(raw) + '% · effektive Relevanz ausstehend'
+                    : 'Suitability ' + scoreText(raw) + '% · effective relevance pending';
             }
             return isGermanLocale()
-                ? 'Eignung ' + clampScore(raw) + '% · effektiv ' + clampScore(effective) + '/100'
-                : 'Suitability ' + clampScore(raw) + '% · effective ' + clampScore(effective) + '/100';
+                ? 'Eignung ' + scoreText(raw) + '% · effektiv ' + scoreText(effective) + '/100'
+                : 'Suitability ' + scoreText(raw) + '% · effective ' + scoreText(effective) + '/100';
         }
-        return clampScore(effective) + '%';
+        return scoreText(effective) + '%';
     }
 
     function scoreAriaLabel(code, effective, raw, detail) {
         if (isProductScore(detail)) {
             if (productRelevancePending(detail)) {
                 return isGermanLocale()
-                    ? 'Produkteignung: ' + clampScore(raw) + ' Prozent, effektive Relevanz ausstehend'
-                    : 'Product suitability: ' + clampScore(raw) + ' percent, effective relevance pending';
+                    ? 'Produkteignung: ' + scoreText(raw) + ' Prozent, effektive Relevanz ausstehend'
+                    : 'Product suitability: ' + scoreText(raw) + ' percent, effective relevance pending';
             }
             return isGermanLocale()
-                ? 'Produkteignung: ' + clampScore(raw)
-                    + ' Prozent, effektive Relevanz: ' + clampScore(effective) + ' von 100'
-                : 'Product suitability: ' + clampScore(raw)
-                    + ' percent, effective relevance: ' + clampScore(effective) + ' of 100';
+                ? 'Produkteignung: ' + scoreText(raw)
+                    + ' Prozent, effektive Relevanz: ' + scoreText(effective) + ' von 100'
+                : 'Product suitability: ' + scoreText(raw)
+                    + ' percent, effective relevance: ' + scoreText(effective) + ' of 100';
         }
         return isGermanLocale()
-            ? 'Bewertung: ' + clampScore(effective) + ' Prozent'
-            : 'Score: ' + clampScore(effective) + ' percent';
+            ? 'Bewertung: ' + scoreText(effective) + ' Prozent'
+            : 'Score: ' + scoreText(effective) + ' percent';
     }
 
     function applyScoreEnvelope(envelope) {
@@ -150,7 +179,7 @@
     function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys) {
         var raw = replace ? {} : Object.assign({}, S.currentRawScores || {});
         Object.entries(scores || {}).forEach(function ([code, value]) {
-            raw[code] = clampScore(value);
+            raw[code] = requireScore(value);
         });
         var contexts = new Map();
         var visited = new Set();
@@ -192,7 +221,7 @@
                 ? raw[context.parentCode] : null;
             var product = context.role === 'PRODUCT';
             var relevance = product
-                ? (parentScore === null ? 0 : clampScore(parentScore * value / 100)) : value;
+                ? (parentScore === null ? 0 : percentageProduct(parentScore, value)) : value;
             if (product) {
                 suitability[code] = value;
                 if (parentScore === null && warnings.length < 100) {
@@ -210,7 +239,7 @@
             };
         });
         applyScoreEnvelope({ rawScores: raw, effectiveScores: effective, scoreDetails: details,
-            productSuitabilityScores: suitability, scoreSemanticsVersion: 1,
+            productSuitabilityScores: suitability, scoreSemanticsVersion: 2,
             scoreSemanticsWarnings: warnings });
         return effective;
     }
@@ -867,6 +896,14 @@
         eventSource.addEventListener('scores', function (e) {
             const data = JSON.parse(e.data);
             var rawScores = data.rawScores || data.scores || {};
+            try {
+                Object.values(rawScores).forEach(requireScore);
+            } catch (invalid) {
+                // Validate before mutating the current evidence. Never inject error zeros.
+                S.lastAnalysisStatus = 'PARTIAL';
+                B().showStatus('warning', invalid.message);
+                return;
+            }
             var details = data.scoreDetails || {};
             Object.assign(S.currentRawScores, rawScores);
             Object.assign(S.currentScoreDetails, details);
@@ -1296,8 +1333,8 @@
             var scoped = e.origin === 'RELATION_EVIDENCE' || e.origin === 'REQUIREMENT_EVIDENCE';
             var detail = e.scoreDetail;
             var relevanceLabel = scoped
-                ? (detail && Number.isFinite(detail.effectiveRelevance) ? detail.effectiveRelevance.toFixed(1) + '%' : '—')
-                : (e.relevance * 100).toFixed(1) + '%';
+                ? (detail && Number.isFinite(detail.effectiveRelevance) ? scoreText(detail.effectiveRelevance) + '%' : '—')
+                : scoreText(e.relevance * 100) + '%';
             var rawLabel = scoped
                 ? (detail && Number.isFinite(detail.rawScore) ? String(detail.rawScore) : '—')
                 : String(e.directLlmScore || 0);
@@ -1323,7 +1360,7 @@
      * Renders a single swimlane node (used by both flat and containment rendering).
      */
     function renderSwimNode(el, hotspotCodes, hotspotReasons) {
-        var pct = (el.relevance * 100).toFixed(0);
+        var pct = scoreText(el.relevance * 100);
         var nodeClasses = 'impact-node';
         if (el.anchor) nodeClasses += ' impact-node-anchor';
         if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
@@ -1703,7 +1740,7 @@
                             '<td>\u2192</td>' +
                             '<td>' + escapeHtml(r.targetCode) + '</td>' +
                             '<td>' + escapeHtml(r.relationType) + '</td>' +
-                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + scoreText(r.propagatedRelevance * 100) + '%</td>' +
                             '<td>' + (r.confidence ? (r.confidence * 100).toFixed(0) + '%' : '') + '</td>' +
                             '<td>' + relOriginLabel + '</td>' +
                             '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
@@ -1740,7 +1777,7 @@
                             '<td>\u2192</td>' +
                             '<td>' + escapeHtml(r.targetCode) + '</td>' +
                             '<td>' + escapeHtml(r.relationType) + '</td>' +
-                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + scoreText(r.propagatedRelevance * 100) + '%</td>' +
                             '<td>' + r.hopDistance + '</td>' +
                             '<td>' + traceOriginLabel + '</td>' +
                             '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
@@ -1761,7 +1798,7 @@
                             '<td>\u2192</td>' +
                             '<td>' + escapeHtml(r.targetCode) + '</td>' +
                             '<td>' + escapeHtml(r.relationType) + '</td>' +
-                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + scoreText(r.propagatedRelevance * 100) + '%</td>' +
                             '<td>' + seedOriginLabel + '</td>' +
                             '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
                             '</tr>';
@@ -2099,7 +2136,7 @@
 
             elements.sort(function (a, b) { return b.relevance - a.relevance; });
             elements.forEach(function (el) {
-                var pct = (el.relevance * 100).toFixed(0);
+                var pct = scoreText(el.relevance * 100);
                 // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
                 var path = el.hierarchyPath || el.nodeCode;
                 var titleParts = [path, el.title || '', el.includedBecause || '']
@@ -2181,6 +2218,7 @@
         runStreamingAnalysis: runStreamingAnalysis,
         applyScoreToNode: applyScoreToNode,
         describeScore: describeScore,
+        formatPercentage: function (value) { return scoreText(value) + '%'; },
         applyLocalRawScores: applyLocalRawScores,
         syncVisibleScoreNodes: syncVisibleScoreNodes,
         markNodeAsEvaluating: markNodeAsEvaluating,

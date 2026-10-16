@@ -151,7 +151,7 @@ class EmbeddingModelKnnIsolationTest {
     @Test
     void scoringLeavesWrongModelAndUntaggedCandidatesAtZero() {
         assertThat(embeddings.scoreNodes("authored query", candidates))
-                .containsExactlyInAnyOrderEntriesOf(Map.of(CURRENT_NODE, 80, WRONG_NODE, 0, LEGACY_NODE, 0));
+                .containsExactlyInAnyOrderEntriesOf(Map.of(CURRENT_NODE, 80.0, WRONG_NODE, 0.0, LEGACY_NODE, 0.0));
     }
 
     @Test

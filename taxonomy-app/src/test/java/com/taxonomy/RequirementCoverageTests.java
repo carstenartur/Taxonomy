@@ -43,7 +43,7 @@ class RequirementCoverageTests {
 
     @Test
     void recordingCoverageStoresEntriesAboveThreshold() {
-        Map<String, Integer> scores = Map.of("CP-1010", 85, "BP-1481", 72, "BP-1486", 30);
+        Map<String, Double> scores = Map.of("CP-1010", 85d, "BP-1481", 72d, "BP-1486", 30d);
         coverageService.analyzeCoverage(scores, "REQ-001", "Some requirement text", 50);
 
         var forCp = coverageService.getCoverageForNode("CP-1010");
@@ -58,8 +58,8 @@ class RequirementCoverageTests {
 
     @Test
     void recordingCoverageReplacesExistingEntries() {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80), "REQ-001", "text", 50);
-        coverageService.analyzeCoverage(Map.of("CP-1010", 90), "REQ-001", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d), "REQ-001", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 90d), "REQ-001", "text", 50);
 
         var entries = coverageService.getCoverageForNode("CP-1010");
         assertThat(entries).hasSize(1);
@@ -68,7 +68,7 @@ class RequirementCoverageTests {
 
     @Test
     void getCoverageForRequirementReturnsAllNodes() {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80, "BP-1481", 70), "REQ-002", "another req", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d, "BP-1481", 70d), "REQ-002", "another req", 50);
         var entries = coverageService.getCoverageForRequirement("REQ-002");
         assertThat(entries).hasSize(2);
         assertThat(entries).extracting("requirementId").containsOnly("REQ-002");
@@ -82,7 +82,7 @@ class RequirementCoverageTests {
 
     @Test
     void coverageStatisticsShowsCoveredNodes() {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80, "BP-1481", 70), "REQ-003", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d, "BP-1481", 70d), "REQ-003", "text", 50);
 
         CoverageStatistics stats = coverageService.getCoverageStatistics();
         assertThat(stats.coveredNodes()).isGreaterThanOrEqualTo(2);
@@ -91,7 +91,7 @@ class RequirementCoverageTests {
 
     @Test
     void deleteCoverageRemovesAllEntriesForRequirement() {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80), "REQ-DEL", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d), "REQ-DEL", "text", 50);
         assertThat(coverageService.getCoverageForRequirement("REQ-DEL")).isNotEmpty();
 
         coverageService.deleteCoverageForRequirement("REQ-DEL");
@@ -100,7 +100,7 @@ class RequirementCoverageTests {
 
     @Test
     void densityMapContainsCoveredNodes() {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80, "BP-1481", 70), "REQ-004", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d, "BP-1481", 70d), "REQ-004", "text", 50);
         Map<String, Integer> density = coverageService.getRequirementDensityMap();
         assertThat(density).containsKey("CP-1010");
         assertThat(density).containsKey("BP-1481");
@@ -162,7 +162,7 @@ class RequirementCoverageTests {
 
     @Test
     void deleteEndpointRemovesCoverage() throws Exception {
-        coverageService.analyzeCoverage(Map.of("CP-1010", 80), "REQ-API-DEL", "text", 50);
+        coverageService.analyzeCoverage(Map.of("CP-1010", 80d), "REQ-API-DEL", "text", 50);
 
         mockMvc.perform(delete("/api/coverage/requirement/REQ-API-DEL"))
                 .andExpect(status().isNoContent());

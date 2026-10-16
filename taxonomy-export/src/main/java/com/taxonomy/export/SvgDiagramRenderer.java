@@ -79,7 +79,7 @@ public class SvgDiagramRenderer {
                     .append("\" y=\"18\" text-anchor=\"end\" font-family=\"Arial, sans-serif\" ")
                     .append("font-size=\"10\" fill=\"#475569\">")
                     .append(xml(node.type())).append(" · ")
-                    .append(Math.round(node.relevance() * 100.0)).append("%</text>\n")
+                    .append(xml(com.taxonomy.dto.AnalysisPercentages.display(node.relevance() * 100.0))).append("</text>\n")
                     .append("  </g>\n");
         }
 

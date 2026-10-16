@@ -8,7 +8,7 @@ import java.util.Map;
  */
 public class LlmCallDetail {
 
-    private Map<String, Integer> scores;
+    private Map<String, Double> scores;
     private Map<String, String> reasons;
     private String prompt;
     private String rawResponse;
@@ -19,8 +19,8 @@ public class LlmCallDetail {
 
     public LlmCallDetail() {}
 
-    public Map<String, Integer> getScores() { return scores; }
-    public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+    public Map<String, Double> getScores() { return scores; }
+    public void setScores(Map<String, ? extends Number> scores) { this.scores = scores == null ? null : new java.util.LinkedHashMap<>(AnalysisScoreSemantics.normalizeScores(scores)); }
 
     public Map<String, String> getReasons() { return reasons; }
     public void setReasons(Map<String, String> reasons) { this.reasons = reasons; }

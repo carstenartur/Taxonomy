@@ -34,7 +34,7 @@ public class PatternDetectionApiController {
      * Request body for pattern detection on scored nodes.
      */
     public record PatternDetectionRequest(
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             int minScore) {
     }
 

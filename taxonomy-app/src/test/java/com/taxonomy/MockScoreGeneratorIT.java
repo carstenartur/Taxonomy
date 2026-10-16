@@ -59,14 +59,14 @@ class MockScoreGeneratorIT {
 
     private static final NodeScorer PRODUCT_SCORER =
             (requirementText, products, parentScore) -> {
-                Map<String, Integer> rawScores = DeterministicNodeScorer.INSTANCE.score(
+                Map<String, Double> rawScores = DeterministicNodeScorer.INSTANCE.score(
                         requirementText, products, 100);
-                Map<String, Integer> thresholdedScores = new LinkedHashMap<>();
+                Map<String, Double> thresholdedScores = new LinkedHashMap<>();
                 for (TaxonomyNode product : products) {
-                    int rawScore = rawScores.getOrDefault(product.getCode(), 0);
+                    double rawScore = rawScores.getOrDefault(product.getCode(), 0d);
                     thresholdedScores.put(
                             product.getCode(),
-                            rawScore >= DEFAULT_PRODUCT_MINIMUM_SCORE ? rawScore : 0);
+                            rawScore >= DEFAULT_PRODUCT_MINIMUM_SCORE ? rawScore : 0d);
                 }
                 return thresholdedScores;
             };
@@ -79,15 +79,15 @@ class MockScoreGeneratorIT {
 
     // ── Scenario 1: Secure voice communications ────────────────────────────
 
-    private static final Map<String, Integer> VOICE_COMMS_ROOT_SCORES = Map.of(
-            "CO", 90,
-            "CR", 70,
-            "CP", 55,
-            "IP", 30,
-            "BP", 25,
-            "CI", 15,
-            "UA", 10,
-            "BR", 0
+    private static final Map<String, Double> VOICE_COMMS_ROOT_SCORES = Map.of(
+            "CO", 90d,
+            "CR", 70d,
+            "CP", 55d,
+            "IP", 30d,
+            "BP", 25d,
+            "CI", 15d,
+            "UA", 10d,
+            "BR", 0d
     );
 
     private static final Map<String, String> VOICE_COMMS_REASONS = Map.of(
@@ -103,15 +103,15 @@ class MockScoreGeneratorIT {
 
     // ── Scenario 2: Logistics and supply chain ─────────────────────────────
 
-    private static final Map<String, Integer> LOGISTICS_ROOT_SCORES = Map.of(
-            "BP", 85,
-            "CP", 70,
-            "IP", 65,
-            "UA", 50,
-            "CR", 45,
-            "BR", 30,
-            "CO", 20,
-            "CI", 15
+    private static final Map<String, Double> LOGISTICS_ROOT_SCORES = Map.of(
+            "BP", 85d,
+            "CP", 70d,
+            "IP", 65d,
+            "UA", 50d,
+            "CR", 45d,
+            "BR", 30d,
+            "CO", 20d,
+            "CI", 15d
     );
 
     private static final Map<String, String> LOGISTICS_REASONS = Map.of(
@@ -127,15 +127,15 @@ class MockScoreGeneratorIT {
 
     // ── Scenario 3: Cyber defence monitoring ───────────────────────────────
 
-    private static final Map<String, Integer> CYBER_DEFENCE_ROOT_SCORES = Map.of(
-            "CO", 80,
-            "CR", 75,
-            "CP", 70,
-            "IP", 55,
-            "CI", 50,
-            "BP", 45,
-            "UA", 35,
-            "BR", 20
+    private static final Map<String, Double> CYBER_DEFENCE_ROOT_SCORES = Map.of(
+            "CO", 80d,
+            "CR", 75d,
+            "CP", 70d,
+            "IP", 55d,
+            "CI", 50d,
+            "BP", 45d,
+            "UA", 35d,
+            "BR", 20d
     );
 
     private static final Map<String, String> CYBER_DEFENCE_REASONS = Map.of(
@@ -183,7 +183,7 @@ class MockScoreGeneratorIT {
 
     private void generateAndSave(
             String requirement,
-            Map<String, Integer> rootScores,
+            Map<String, Double> rootScores,
             Map<String, String> rootReasons,
             String filename) throws IOException {
 

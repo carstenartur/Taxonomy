@@ -102,50 +102,50 @@ class ReadmeShowcaseDriftTest {
     @Test
     void readmeMermaidMatchesExportShowcase() throws IOException {
         // ── Generate the expected Mermaid output ────────────────────────────
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 92);
-        scores.put("CO", 88);
-        scores.put("CR", 81);
-        scores.put("UA", 74);
-        scores.put("BP", 71);
-        scores.put("IP", 60);
-        scores.put("BR", 55);
-        scores.put("CI", 45);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 92d);
+        scores.put("CO", 88d);
+        scores.put("CR", 81d);
+        scores.put("UA", 74d);
+        scores.put("BP", 71d);
+        scores.put("IP", 60d);
+        scores.put("BR", 55d);
+        scores.put("CI", 45d);
 
-        scores.put("CP-1000", 90);
-        scores.put("CP-1023", 85);
-        scores.put("CP-1010", 40);
-        scores.put("CP-1030", 30);
+        scores.put("CP-1000", 90d);
+        scores.put("CP-1023", 85d);
+        scores.put("CP-1010", 40d);
+        scores.put("CP-1030", 30d);
 
-        scores.put("CO-1000", 86);
-        scores.put("CO-1011", 80);
-        scores.put("CO-1063", 70);
-        scores.put("CO-1050", 55);
-        scores.put("CO-1019", 52);
+        scores.put("CO-1000", 86d);
+        scores.put("CO-1011", 80d);
+        scores.put("CO-1063", 70d);
+        scores.put("CO-1050", 55d);
+        scores.put("CO-1019", 52d);
 
-        scores.put("CR-1000", 79);
-        scores.put("CR-1047", 75);
-        scores.put("CR-1039", 52);
-        scores.put("CR-1021", 48);
+        scores.put("CR-1000", 79d);
+        scores.put("CR-1047", 75d);
+        scores.put("CR-1039", 52d);
+        scores.put("CR-1021", 48d);
 
-        scores.put("UA-1000", 72);
-        scores.put("UA-1179", 68);
-        scores.put("UA-1574", 62);
+        scores.put("UA-1000", 72d);
+        scores.put("UA-1179", 68d);
+        scores.put("UA-1574", 62d);
 
-        scores.put("BP-1000", 69);
-        scores.put("BP-1327", 65);
-        scores.put("BP-1490", 58);
-        scores.put("BP-1697", 52);
+        scores.put("BP-1000", 69d);
+        scores.put("BP-1327", 65d);
+        scores.put("BP-1490", 58d);
+        scores.put("BP-1697", 52d);
 
-        scores.put("IP-1000", 58);
-        scores.put("IP-1078", 48);
-        scores.put("IP-1023", 42);
-        scores.put("IP-2106", 38);
+        scores.put("IP-1000", 58d);
+        scores.put("IP-1078", 48d);
+        scores.put("IP-1023", 42d);
+        scores.put("IP-2106", 38d);
 
-        scores.put("BR-1000", 53);
-        scores.put("BR-1057", 45);
-        scores.put("BR-1023", 38);
-        scores.put("BR-1334", 32);
+        scores.put("BR-1000", 53d);
+        scores.put("BR-1057", 45d);
+        scores.put("BR-1023", 38d);
+        scores.put("BR-1334", 32d);
 
         RequirementArchitectureView view = architectureViewService.build(scores, BUSINESS_TEXT, 20);
         DiagramModel diagram = diagramProjectionService.project(view, BUSINESS_TEXT);

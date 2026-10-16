@@ -35,8 +35,8 @@ class AnalysisResultJsonTest {
                     "{\"rawScores\":null,\"scores\":{\"IP\":40}}",
                     "{\"scores\":{\"IP\":40}}")) {
                 AnalysisResult result = mapper.readValue(json, AnalysisResult.class);
-                assertEquals(Map.of("IP", 40), result.getRawScores(), json);
-                assertEquals(Map.of("IP", 40), result.getScores(), json);
+                assertEquals(Map.of("IP", 40d), result.getRawScores(), json);
+                assertEquals(Map.of("IP", 40d), result.getScores(), json);
             }
         }
     }
@@ -63,7 +63,7 @@ class AnalysisResultJsonTest {
                     "{\"rawScores\":{\"IP\":80},\"scores\":{\"IP\":32}}",
                     "{\"scores\":{},\"rawScores\":{\"IP\":80}}",
                     "{\"rawScores\":{\"IP\":80},\"scores\":{}}")) {
-                assertEquals(Map.of("IP", 80),
+                assertEquals(Map.of("IP", 80d),
                         mapper.readValue(json, AnalysisResult.class).getRawScores(), json);
             }
         }
@@ -96,7 +96,7 @@ class AnalysisResultJsonTest {
             String fingerprint = result.getScoreSemanticsFingerprintSha256();
             for (int round = 0; round < 3; round++) {
                 result = mapper.readValue(mapper.writeValueAsBytes(result), AnalysisResult.class);
-                assertEquals(Map.of("IP", 80), result.getRawScores());
+                assertEquals(Map.of("IP", 80d), result.getRawScores());
                 assertEquals(fingerprint, result.getScoreSemanticsFingerprintSha256());
             }
         }
@@ -115,9 +115,9 @@ class AnalysisResultJsonTest {
             String fingerprint = result.getScoreSemanticsFingerprintSha256();
             for (int round = 0; round < 3; round++) {
                 result = mapper.readValue(mapper.writeValueAsBytes(result), AnalysisResult.class);
-                assertEquals(80, result.getRawScores().get(code));
-                assertEquals(80, result.getProductSuitabilityScores().get(code));
-                assertEquals(32, result.getScores().get(code));
+                assertEquals(80d, result.getRawScores().get(code));
+                assertEquals(80d, result.getProductSuitabilityScores().get(code));
+                assertEquals(32d, result.getScores().get(code));
                 assertEquals(fingerprint, result.getScoreSemanticsFingerprintSha256());
             }
         }

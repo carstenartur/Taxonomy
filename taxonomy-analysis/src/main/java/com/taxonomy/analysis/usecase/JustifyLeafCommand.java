@@ -6,7 +6,7 @@ import java.util.Map;
 public record JustifyLeafCommand(
         String nodeCode,
         String businessText,
-        Map<String, Integer> scores,
+        Map<String, Double> scores,
         Map<String, String> reasons) {
 
     public JustifyLeafCommand {

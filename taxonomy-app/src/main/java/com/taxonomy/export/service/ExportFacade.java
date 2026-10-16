@@ -74,7 +74,7 @@ public class ExportFacade {
     }
 
     public SavedAnalysis buildExport(String requirement,
-                                     Map<String, Integer> scores,
+                                     Map<String, Double> scores,
                                      Map<String, String> reasons,
                                      String provider) {
         return savedAnalysisService.buildExport(requirement, scores, reasons, provider);

@@ -33,7 +33,7 @@ class AnalysisProgressControllerTest {
 
     private static ClusterAnalysisView clusterView(String status, long sequence) {
         var snapshot = new AnalysisProgressRegistry.Snapshot(ID, status, "SCORING", "CP", null,
-                sequence, 1000, 2000, 2000, 3, false, Map.of("CP", 80), List.of(), 0,
+                sequence, 1000, 2000, 2000, 3, false, Map.of("CP", 80d), List.of(), 0,
                 null, "EXTERNAL_OR_UNKNOWN", "FILESYSTEM_OR_EXTERNAL", null, null, 1000,
                 1000L, 0, 1000, null, null);
         return new ClusterAnalysisView(snapshot, ClusterAnalysisView.Transport.ARTEMIS,
@@ -142,7 +142,7 @@ class AnalysisProgressControllerTest {
         try(var run=registry.open(null,"alice",scope,null)) {
             AnalysisRunControl.call("MOCK","CP",()-> {
                 var detail=new LlmCallDetail();
-                detail.setScores(Map.of("CP",80));detail.setPrompt("private-prompt-marker");
+                detail.setScores(Map.of("CP",80d));detail.setPrompt("private-prompt-marker");
                 detail.setRawResponse("private-response-marker");return detail;
             });
             mvc.perform(get("/api/analysis-runs/"+run.id()))

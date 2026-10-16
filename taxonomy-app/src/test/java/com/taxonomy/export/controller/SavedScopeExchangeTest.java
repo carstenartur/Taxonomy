@@ -49,10 +49,10 @@ class SavedScopeExchangeTest {
     }
 
     private SavedAnalysis evidence(int version) {
-        var saved = service.buildExport("Manual or automatic requirement", Map.of("BP", 70), Map.of(), "MOCK");
+        var saved = service.buildExport("Manual or automatic requirement", Map.of("BP", 70d), Map.of(), "MOCK");
         saved.setVersion(version);
         if (version == 3) {
-            saved.setRawScores(Map.of("BP", 70)); saved.setAnalysisStatus("SUCCESS");
+            saved.setRawScores(Map.of("BP", 70d)); saved.setAnalysisStatus("SUCCESS");
             saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", assessed(70, 70)), 1, 0, 0));
         }
         return saved;
@@ -85,7 +85,7 @@ class SavedScopeExchangeTest {
 
     @Test
     void manualExportAndImportDoesNotClaimAnAutomaticFullRun() throws Exception {
-        var exported = controller().exportScores(Map.of("requirement", "Manual requirement", "scores", Map.of("BP", 70), "provider", "MANUAL"));
+        var exported = controller().exportScores(Map.of("requirement", "Manual requirement", "scores", Map.of("BP", 70d), "provider", "MANUAL"));
         assertThat(exported.getStatusCode().value()).isEqualTo(200);
         var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
         assertThat(imported.getStatusCode().value()).isEqualTo(200);
@@ -96,7 +96,7 @@ class SavedScopeExchangeTest {
     @CsvSource({"1, PARTIAL", "2, PARTIAL", "1, SUCCESS", "2, SUCCESS"})
     void legacyCoverageFreeStatusSurvivesHttpExportAndImport(int version, String analysisStatus) throws Exception {
         var saved = evidence(version);
-        saved.setScores(Map.of("BP", 70, "IP", 40));
+        saved.setScores(Map.of("BP", 70d, "IP", 40d));
         saved.setAnalysisStatus(analysisStatus);
         var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
         var exported = mvc.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
@@ -134,7 +134,7 @@ class SavedScopeExchangeTest {
         var saved = evidence(3);
         saved.setAnalysisScope(new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY));
         boolean raw = kind.equals("raw");
-        if (raw) saved.setRawScores(Map.of("BP", 70, "BP-looking-other", 35));
+        if (raw) saved.setRawScores(Map.of("BP", 70d, "BP-looking-other", 35d));
         saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", assessed(70, 70),
                 "BP-looking-other", raw ? assessed(35, null) : new AnalysisCoverage.NodeAssessment(
                         AnalysisCoverage.State.UNKNOWN, null, null, AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:q")),
@@ -146,7 +146,7 @@ class SavedScopeExchangeTest {
     @CsvSource({"FULL", "TAXONOMIES_ONLY"})
     void selectedPartialEvidenceRoundTripUsesMembershipInsteadOfCodePrefixes(AnalysisMode mode) throws Exception {
         var saved = evidence(3);
-        saved.setScores(Map.of("IP-looking-selected", 70)); saved.setRawScores(saved.getScores());
+        saved.setScores(Map.of("IP-looking-selected", 70d)); saved.setRawScores(saved.getScores());
         saved.setAnalysisScope(new AnalysisScope(Set.of("BP", "CP"), mode));
         saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("IP-looking-selected", assessed(70, 70),
                 "BP", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
@@ -166,7 +166,7 @@ class SavedScopeExchangeTest {
     @ParameterizedTest
     @CsvSource({"1", "2"})
     void unscopedLegacyUnknownScoresStillReturnWarnings(int version) throws Exception {
-        var saved = evidence(version); saved.setScores(Map.of("UNKNOWN_LEGACY", 0));
+        var saved = evidence(version); saved.setScores(Map.of("UNKNOWN_LEGACY", 0d));
         var imported = controller().importScores(mapper.writeValueAsString(saved));
         assertThat(imported.getStatusCode().value()).isEqualTo(200);
         assertThat(mapper.valueToTree(imported.getBody()).path("warnings").get(0).asString())
@@ -202,7 +202,7 @@ class SavedScopeExchangeTest {
     void importChecksSelectedOptionalEvidenceEvenWithoutVersionThree(String field) throws Exception {
         var saved = evidence(2);
         saved.setAnalysisScope(new AnalysisScope(Set.of("BP"), AnalysisMode.FULL));
-        if (field.equals("raw")) saved.setRawScores(Map.of("BP-looking-other", 35));
+        if (field.equals("raw")) saved.setRawScores(Map.of("BP-looking-other", 35d));
         else saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP-looking-other",
                 new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
                         AnalysisCoverage.Descendants.UNASSESSED, "NOT_EVALUATED")), 0, 1, 0));

@@ -186,7 +186,7 @@ class DecisionRationaleReportControllerValidationTest {
     }
 
     private DecisionReportRequest timedRequest(Long duration) {
-        return new DecisionReportRequest(Map.of("CP", 100), null, null, null, null, null,
+        return new DecisionReportRequest(Map.of("CP", 100d), null, null, null, null, null,
                 Map.of("CP", "reason"), "bounded requirement", "MOCK", "SUCCESS",
                 List.of(), List.of(), "en", duration);
     }
@@ -211,7 +211,7 @@ class DecisionRationaleReportControllerValidationTest {
             List<TaxonomyDiscrepancy> discrepancies,
             List<ProductCoverageGap> productCoverageGaps) {
         return new DecisionReportRequest(
-                Map.of("CP", 100),
+                Map.of("CP", 100d),
                 Map.of("CP", "reason"),
                 "bounded requirement",
                 "MOCK",

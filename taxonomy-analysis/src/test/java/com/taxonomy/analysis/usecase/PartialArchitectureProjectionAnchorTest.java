@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PartialArchitectureProjectionAnchorTest {
     @Test
     void oneAcceptedDirectAssessmentCreatesAnAnchorFromEffectiveEvidence() {
-        var result = assessment(Map.of("IP-1018", 70), List.of(familyTree()));
+        var result = assessment(Map.of("IP-1018", 70d), List.of(familyTree()));
 
         var view = PartialArchitectureProjection.complete(result, null, 10);
 
@@ -35,7 +35,7 @@ class PartialArchitectureProjectionAnchorTest {
     @Test
     void multipleDirectAssessmentsAreIdempotentAndKeepVerifiedRelationships() {
         var tree = productTree();
-        var result = assessment(Map.of("IP-1065", 80, "IP-1011", 70), List.of(tree));
+        var result = assessment(Map.of("IP-1065", 80d, "IP-1011", 70d), List.of(tree));
         var view = new RequirementArchitectureView();
         var verified = new RequirementRelationshipView();
         verified.setSourceCode("IP-1065");
@@ -73,7 +73,7 @@ class PartialArchitectureProjectionAnchorTest {
 
     @Test
     void preservesExistingValidAnchorWithoutDuplicatingItOnRepeatedCompletion() {
-        var result = assessment(Map.of("IP-1018", 70), List.of(familyTree()));
+        var result = assessment(Map.of("IP-1018", 70d), List.of(familyTree()));
         var view = new RequirementArchitectureView();
         var element = new RequirementElementView();
         element.setNodeCode("IP-1018");
@@ -96,7 +96,7 @@ class PartialArchitectureProjectionAnchorTest {
         var root = node("IP", null, "IP", 0, "Information Products");
         root.getChildren().add(node("IP-1018", "IP", "IP", 1, "Asset State Reports"));
         root.getChildren().add(node("IP-1021", "IP", "IP", 1, "Capability Reports"));
-        var result = assessment(Map.of("IP", 100, "IP-1018", 80, "IP-1021", 0, "IP-9999", 95), List.of(root));
+        var result = assessment(Map.of("IP", 100d, "IP-1018", 80d, "IP-1021", 0d, "IP-9999", 95d), List.of(root));
 
         var view = PartialArchitectureProjection.complete(result, null, 1);
 
@@ -108,7 +108,7 @@ class PartialArchitectureProjectionAnchorTest {
                 || element.getNodeCode().equals("IP-9999") || element.getNodeCode().equals("IP"));
     }
 
-    private static AnalysisResult assessment(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
+    private static AnalysisResult assessment(Map<String, Double> scores, List<TaxonomyNodeDto> tree) {
         var result = new AnalysisResult(scores, tree);
         result.setStatus("PARTIAL");
         return result;

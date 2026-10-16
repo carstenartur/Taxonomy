@@ -466,17 +466,15 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .format(instant);
     }
 
-    private String score(Integer value) {
-        return value == null ? "—" : value + " %";
+    private String score(Double value) {
+        return value == null ? "—" : com.taxonomy.dto.AnalysisPercentages.display(value).replace("%", " %");
     }
 
     private String percent(Double value) {
         if (value == null) {
             return "—";
         }
-        return Math.abs(value - Math.rint(value)) < 0.05
-                ? String.format(Locale.ROOT, "%.0f %%", value)
-                : String.format(Locale.ROOT, "%.1f %%", value);
+        return com.taxonomy.dto.AnalysisPercentages.display(value).replace("%", " %");
     }
 
     private String shortHash(String value) {

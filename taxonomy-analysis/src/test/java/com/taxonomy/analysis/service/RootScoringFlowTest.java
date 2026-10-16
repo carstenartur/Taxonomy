@@ -81,7 +81,7 @@ class RootScoringFlowTest {
 
     @ParameterizedTest
     @ValueSource(ints = {0, 20, 100})
-    void remoteSingletonRootRetainsIndependentRelevance(int score) {
+    void remoteSingletonRootRetainsIndependentRelevance(double score) {
         var gateway = new Gateway("{\"BP\":{\"score\":" + score + ",\"reason\":\"root evidence\"}}");
         AnalysisResult result = service(LlmProvider.OPENAI, false, gateway, null).analyzeWithBudget("requirement");
         assertEquals("SUCCESS", result.getStatus());
@@ -98,7 +98,7 @@ class RootScoringFlowTest {
         var callback = new Capture();
         service(LlmProvider.OPENAI, false, gateway, null).analyzeStreaming("requirement", callback);
         assertEquals("SUCCESS", callback.status);
-        assertEquals(Map.of("BP", 20), callback.scores);
+        assertEquals(Map.of("BP", 20d), callback.scores);
     }
 
     @Test
@@ -106,14 +106,14 @@ class RootScoringFlowTest {
         var gateway = new Gateway();
         var embeddings = new LocalEmbeddingService() {
             @Override public boolean isAvailable() { return true; }
-            @Override public Map<String, Integer> scoreNodes(String text, List<TaxonomyNode> nodes) {
-                return Map.of("BP", 20);
+            @Override public Map<String, Double> scoreNodes(String text, List<TaxonomyNode> nodes) {
+                return Map.of("BP", 20d);
             }
         };
         AnalysisResult result = service(LlmProvider.LOCAL_ONNX, false, gateway, embeddings)
                 .analyzeWithBudget("requirement");
         assertEquals("SUCCESS", result.getStatus());
-        assertEquals(20, result.getRawScores().get("BP"));
+        assertEquals(20d, result.getRawScores().get("BP"));
         assertTrue(gateway.prompts.isEmpty());
     }
 
@@ -126,7 +126,8 @@ class RootScoringFlowTest {
             AnalysisResult result = service(LlmProvider.LOCAL_ONNX, false, gateway, embeddings)
                     .analyzeWithBudget("requirement");
             assertEquals("SUCCESS", result.getStatus());
-            assertEquals(Map.of("BP", 20), result.getRawScores());
+            assertEquals(1, result.getRawScores().size());
+            assertEquals(20d, result.getRawScores().get("BP"), 0.00001d);
             assertEquals(List.of("query: requirement", "frozen root text"), embeddings.texts);
             assertTrue(gateway.prompts.isEmpty());
         }
@@ -188,8 +189,8 @@ class RootScoringFlowTest {
         var gateway = new Gateway("{\"BP\":20}", "{\"BP-1\":5}");
         AnalysisResult result = service(LlmProvider.OPENAI, true, gateway, null).analyzeWithBudget("requirement");
         assertEquals("SUCCESS", result.getStatus());
-        assertEquals(20, result.getRawScores().get("BP"));
-        assertEquals(20, result.getRawScores().get("BP-1"));
+        assertEquals(20d, result.getRawScores().get("BP"));
+        assertEquals(20d, result.getRawScores().get("BP-1"));
         assertEquals(2, gateway.prompts.size());
     }
 
@@ -209,28 +210,29 @@ class RootScoringFlowTest {
             @Override public void checkActive() { }
         };
         try (var session = new AnalysisCheckpointSession(store)) {
-            assertEquals(20, service.analyzeWithBudget("requirement").getRawScores().get("BP"));
-            assertEquals(20, service.analyzeWithBudget("requirement").getRawScores().get("BP"));
+            assertEquals(20d, service.analyzeWithBudget("requirement").getRawScores().get("BP"));
+            assertEquals(20d, service.analyzeWithBudget("requirement").getRawScores().get("BP"));
         }
         assertEquals(1, gateway.prompts.size(), "successful assessment must replay, not call again");
         assertEquals(1, checkpoints.size());
         var question = checkpoints.values().iterator().next().question();
-        assertEquals(AnalysisCheckpointSession.digest("ROOT_RELEVANCE", "BP"), question.key());
+        assertEquals(AnalysisCheckpointSession.digest(
+                com.taxonomy.dto.AnalysisPercentages.POLICY, "ROOT_RELEVANCE", "BP"), question.key());
         assertTrue(question.prompt().contains("independent relevance"));
     }
 
     private static final class Capture implements AnalysisEventCallback {
         String status;
-        Map<String, Integer> scores;
+        Map<String, Double> scores;
         @Override public void onPhase(String message, int progressPercent) { }
-        @Override public void onScores(Map<String, Integer> newScores, Map<String, String> reasons,
+        @Override public void onScores(Map<String, Double> newScores, Map<String, String> reasons,
                                        String description, LlmCallDetail detail) { }
         @Override public void onExpanding(String parentCode, List<String> childCodes) { }
-        @Override public void onComplete(String status, Map<String, Integer> scores, List<String> warnings,
+        @Override public void onComplete(String status, Map<String, Double> scores, List<String> warnings,
                                          List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> gaps) {
             this.status = status; this.scores = Map.copyOf(scores);
         }
-        @Override public void onError(String status, String message, Map<String, Integer> scores,
+        @Override public void onError(String status, String message, Map<String, Double> scores,
                                       List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                                       List<ProductCoverageGap> gaps) {
             fail(message);

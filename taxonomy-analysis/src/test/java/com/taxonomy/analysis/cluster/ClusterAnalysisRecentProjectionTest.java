@@ -131,7 +131,7 @@ class ClusterAnalysisRecentProjectionTest {
                 assertEquals(1100, snapshot.lastActivityAt());
                 assertEquals(1010L, snapshot.executionStartedAt());
                 assertEquals(10, snapshot.queueWaitMillis());
-                assertEquals(Map.of("CP", 0, "IP", 100), snapshot.rawScores());
+                assertEquals(Map.of("CP", 0d, "IP", 100d), snapshot.rawScores());
                 assertEquals(2, snapshot.evaluatedNodes());
                 assertEquals(new ClusterAnalysisView.ObservationScope("workspace", "repo", "draft", "source"), view.scope());
                 assertEquals(List.of(
@@ -159,8 +159,8 @@ class ClusterAnalysisRecentProjectionTest {
                 persist(db, "legacy-" + index, index, ClusterAnalysisState.COMPLETED, SCOPE,
                         RequirementReference.adHoc("requirement"), documents.get(index));
             }
-            var scores = new LinkedHashMap<String, Integer>();
-            for (int index = 8192; index >= 0; index--) scores.put("node-%05d".formatted(index), index % 101);
+            var scores = new LinkedHashMap<String, Double>();
+            for (int index = 8192; index >= 0; index--) scores.put("node-%05d".formatted(index), (double) (index % 101));
             persist(db, "large-preview", 100, ClusterAnalysisState.COMPLETED, SCOPE,
                     RequirementReference.adHoc("requirement"), JSON.writeValueAsString(Map.of("rawScores", scores,
                             "warnings", List.of("optional result evidence ".repeat(1000)), "tree", List.of())));
@@ -175,7 +175,7 @@ class ClusterAnalysisRecentProjectionTest {
             assertFalse(large.rawScores().containsKey("node-08192"));
             var retained = db.store.recentSnapshots("alice", SCOPE, null, null).getFirst();
             assertNull(retained.snapshot().result(), "Recent must not retain the full score map or result graph");
-            assertEquals(8193, retained.scorePreview().evaluatedNodes());
+            assertEquals(8193d, retained.scorePreview().evaluatedNodes());
             assertEquals(8192, retained.scorePreview().rawScores().size());
             assertTrue(retained.scorePreview().scoresTruncated());
         }

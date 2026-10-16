@@ -50,10 +50,10 @@ class StreamRequirementAnalysisUseCaseTest {
             assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.GERMAN);
             com.taxonomy.analysis.service.AnalysisEventCallback callback = invocation.getArgument(1);
             callback.onPhase("Working", 12);
-            callback.onScores(Map.of("CP", 80), Map.of("CP", "reason"), "Capabilities scored 80/100", detail);
+            callback.onScores(Map.of("CP", 80d), Map.of("CP", "reason"), "Capabilities scored 80/100", detail);
             callback.onExpanding("CP", List.of("CP-1023"));
             callback.onComplete(
-                    "SUCCESS", Map.of("CP", 80, "CR", 0), List.of("warn"),
+                    "SUCCESS", Map.of("CP", 80d, "CR", 0d), List.of("warn"),
                     List.of(), List.of());
             return null;
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
@@ -71,7 +71,7 @@ class StreamRequirementAnalysisUseCaseTest {
         assertThat(events).hasSize(4);
         assertThat(events.get(0)).isEqualTo(new AnalysisStreamEvent.Phase("Working", 12));
         AnalysisStreamEvent.Scores scores = (AnalysisStreamEvent.Scores) events.get(1);
-        assertThat(scores.newScores()).isEqualTo(Map.of("CP", 80));
+        assertThat(scores.newScores()).isEqualTo(Map.of("CP", 80d));
         assertThat(scores.reasons()).isEqualTo(Map.of("CP", "reason"));
         assertThat(scores.description()).isEqualTo("Capabilities scored 80/100");
         assertThat(scores.detail()).isSameAs(detail);
@@ -80,7 +80,7 @@ class StreamRequirementAnalysisUseCaseTest {
         assertThat(complete.analysisDurationMillis()).isNotNull().isNotNegative();
         assertThat(complete).isEqualTo(new AnalysisStreamEvent.Complete(
                 "SUCCESS",
-                Map.of("CP", 80, "CR", 0),
+                Map.of("CP", 80d, "CR", 0d),
                 List.of("warn"),
                 List.of(),
                 List.of(), complete.analysisDurationMillis()));
@@ -102,7 +102,7 @@ class StreamRequirementAnalysisUseCaseTest {
         doAnswer(invocation -> {
             com.taxonomy.analysis.service.AnalysisEventCallback callback = invocation.getArgument(1);
             callback.onError(
-                    "PARTIAL", "Analysis failed", Map.of("CP", 80), List.of("warn"),
+                    "PARTIAL", "Analysis failed", Map.of("CP", 80d), List.of("warn"),
                     List.of(), List.of());
             return null;
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
@@ -117,7 +117,7 @@ class StreamRequirementAnalysisUseCaseTest {
         assertThat(events).containsExactly(new AnalysisStreamEvent.Error(
                 "PARTIAL",
                 "Analysis failed",
-                Map.of("CP", 80),
+                Map.of("CP", 80d),
                 List.of("warn"),
                 List.of(),
                 List.of(), Map.of(), error.analysisDurationMillis()));

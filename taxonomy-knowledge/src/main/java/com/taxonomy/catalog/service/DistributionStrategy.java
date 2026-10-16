@@ -30,7 +30,7 @@ public interface DistributionStrategy {
      * @return adjusted scores (node code → 0–100); the returned map must
      *         contain the same keys as {@code rawScores}
      */
-    Map<String, Integer> adjust(Map<String, Integer> rawScores, int parentScore);
+    Map<String, Double> adjust(Map<String, Double> rawScores, double parentScore);
 
     /** Short identifier for logging/display (e.g. {@code "budget"}, {@code "independent"}). */
     String name();

@@ -71,7 +71,7 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void generateReturnsEmptyWhenAllScoresBelowThreshold() {
-        Map<String, Integer> scores = Map.of("BP", 30, "CP", 20);
+        Map<String, Double> scores = Map.of("BP", 30d, "CP", 20d);
         List<RelationHypothesisDto> result = generator.generate(scores);
         assertThat(result).isEmpty();
     }
@@ -79,7 +79,7 @@ class AnalysisRelationGeneratorTests {
     @Test
     void generateReturnsEmptyWhenOnlyOneRootQualifies() {
         // Only BP root qualifies — need at least 2 roots for cross-root relations
-        Map<String, Integer> scores = Map.of("BP", 80, "BP-1327", 70);
+        Map<String, Double> scores = Map.of("BP", 80d, "BP-1327", 70d);
         List<RelationHypothesisDto> result = generator.generate(scores);
         assertThat(result).isEmpty();
     }
@@ -87,9 +87,9 @@ class AnalysisRelationGeneratorTests {
     @Test
     void generateProducesHypothesesForCrossRootScores() {
         // CP and CR nodes both score high — compatibility matrix says CP→CR via REALIZES
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 80);
-        scores.put("CR", 70);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
 
         List<RelationHypothesisDto> result = generator.generate(scores);
 
@@ -103,9 +103,9 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void generateSetsConfidenceFromScoreProduct() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 80);
-        scores.put("CR", 70);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
 
         List<RelationHypothesisDto> result = generator.generate(scores);
 
@@ -122,11 +122,11 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void generateSortsResultsByConfidenceDescending() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 90);
-        scores.put("CP", 80);
-        scores.put("CR", 70);
-        scores.put("IP", 60);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 90d);
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
+        scores.put("IP", 60d);
 
         List<RelationHypothesisDto> result = generator.generate(scores);
 
@@ -139,9 +139,9 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void generateIncludesReasoningWithNodeNames() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 80);
-        scores.put("CR", 70);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
 
         List<RelationHypothesisDto> result = generator.generate(scores);
 
@@ -152,11 +152,11 @@ class AnalysisRelationGeneratorTests {
     @Test
     void generateUsesMultipleRelationTypes() {
         // BP, CP, CR, IP all score high — multiple relation types should appear
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BP", 90);
-        scores.put("CP", 85);
-        scores.put("CR", 80);
-        scores.put("IP", 75);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BP", 90d);
+        scores.put("CP", 85d);
+        scores.put("CR", 80d);
+        scores.put("IP", 75d);
 
         List<RelationHypothesisDto> result = generator.generate(scores);
 
@@ -171,10 +171,10 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void architectureViewUsesProvisionalRelationsWhenNoConfirmedExist() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 80);
-        scores.put("CR", 70);
-        scores.put("BP", 75);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
+        scores.put("BP", 75d);
 
         List<RelationHypothesisDto> provisional = generator.generate(scores);
 
@@ -190,10 +190,10 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void architectureViewWithoutProvisionalReturnsOnlyDirectMatches() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("CP", 80);
-        scores.put("CR", 70);
-        scores.put("BP", 75);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("CP", 80d);
+        scores.put("CR", 70d);
+        scores.put("BP", 75d);
 
         RequirementArchitectureView view = architectureViewService.build(
                 scores, "test", 0, null);

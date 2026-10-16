@@ -105,7 +105,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
         rows.write(sink,"knowledge","legacy-coverage",profile,scope.selectedVersion() || !scope.installation() ? null
                 : new Query("select id,requirement_id,"+(scope.history()?"requirement_text":"cast(null as varchar(2000)) as requirement_text")
                 + ",node_code,score,analyzed_at from requirement_coverage order by id",List.of()), r -> new CoverageRecord(
-                reference(r,"knowledge.legacy-coverage","id"),text(r,"requirement_id"),text(r,"requirement_text"),text(r,"node_code"),r.getInt("score"),instant(r,"analyzed_at")));
+                reference(r,"knowledge.legacy-coverage","id"),text(r,"requirement_id"),text(r,"requirement_text"),text(r,"node_code"),r.getObject("score") == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject("score")),instant(r,"analyzed_at")));
     }
 
     private Set<String> hypotheses(SnapshotContext snapshot,BackupRowScope scope,Selection selection) throws IOException {
@@ -235,5 +235,5 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                                  RelationType relationType,ProposalStatus status,String confidence,String rationale,String provenance,String createdAt,String reviewedAt) { }
     public record RecoveryRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String previousHead,String authoritativeCommit,String causationId,RecoveryStatus status,
                                  ResumePolicy resumePolicy,String firstObservedAt,String lastObservedAt,String completedAt) { }
-    public record CoverageRecord(SourceRecordId sourceId,String legacyRequirementId,String requirementText,String nodeCode,int score,String analyzedAt) { }
+    public record CoverageRecord(SourceRecordId sourceId,String legacyRequirementId,String requirementText,String nodeCode,Double score,String analyzedAt) { }
 }

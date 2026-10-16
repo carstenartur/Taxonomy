@@ -16,7 +16,7 @@ public class ArchitectureReport {
 
     private String businessText;
     private Instant generatedAt;
-    private Map<String, Integer> scores;
+    private Map<String, Double> scores;
 
     private RequirementArchitectureView architectureView;
     private GapAnalysisView gapAnalysis;
@@ -40,8 +40,8 @@ public class ArchitectureReport {
     public Instant getGeneratedAt() { return generatedAt; }
     public void setGeneratedAt(Instant generatedAt) { this.generatedAt = generatedAt; }
 
-    public Map<String, Integer> getScores() { return scores; }
-    public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+    public Map<String, Double> getScores() { return scores; }
+    public void setScores(Map<String, Double> scores) { this.scores = scores; }
 
     public RequirementArchitectureView getArchitectureView() { return architectureView; }
     public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }

@@ -21,7 +21,7 @@ class ArchitecturePipelineStepContextWriteTest {
 
     @Test
     void customStepCanReadScoresFromContext() {
-        Map<String, Integer> scores = Map.of("BP", 91, "CP", 75);
+        Map<String, Double> scores = Map.of("BP", 91d, "CP", 75d);
         ArchitectureViewContext ctx = contextWithScores(scores);
 
         List<String> observed = new ArrayList<>();
@@ -35,14 +35,14 @@ class ArchitecturePipelineStepContextWriteTest {
 
         reader.apply(ctx);
 
-        assertThat(observed).containsExactlyInAnyOrder("BP=91", "CP=75");
+        assertThat(observed).containsExactlyInAnyOrder("BP=91.0", "CP=75.0");
     }
 
     // ── A step can add elements to the context ────────────────────────────────
 
     @Test
     void customStepCanAddElementsToContext() {
-        ArchitectureViewContext ctx = contextWithScores(Map.of("BP", 91));
+        ArchitectureViewContext ctx = contextWithScores(Map.of("BP", 91d));
 
         ArchitecturePipelineStep writer = new ArchitecturePipelineStep() {
             @Override public String id()    { return "element-injector"; }
@@ -67,7 +67,7 @@ class ArchitecturePipelineStepContextWriteTest {
 
     @Test
     void customStepCanReplaceElementList() {
-        ArchitectureViewContext ctx = contextWithScores(Map.of("CP", 80));
+        ArchitectureViewContext ctx = contextWithScores(Map.of("CP", 80d));
 
         // Pre-populate elements
         RequirementElementView existing = new RequirementElementView();
@@ -164,7 +164,7 @@ class ArchitecturePipelineStepContextWriteTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static ArchitectureViewContext contextWithScores(Map<String, Integer> scores) {
+    private static ArchitectureViewContext contextWithScores(Map<String, Double> scores) {
         return new ArchitectureViewContext(scores, "test", 0, null);
     }
 

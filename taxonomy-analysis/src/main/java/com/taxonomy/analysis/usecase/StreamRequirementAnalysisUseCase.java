@@ -51,7 +51,7 @@ public class StreamRequirementAnalysisUseCase {
                 }
 
                 @Override
-                public void onScores(Map<String, Integer> newScores, Map<String, String> reasons,
+                public void onScores(Map<String, Double> newScores, Map<String, String> reasons,
                                      String description, LlmCallDetail detail) {
                     handler.handle(new AnalysisStreamEvent.Scores(newScores, reasons, description, detail));
                 }
@@ -62,7 +62,7 @@ public class StreamRequirementAnalysisUseCase {
                 }
 
                 @Override
-                public void onComplete(String status, Map<String, Integer> allScores,
+                public void onComplete(String status, Map<String, Double> allScores,
                                        List<String> warnings,
                                        List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps) {
@@ -72,7 +72,7 @@ public class StreamRequirementAnalysisUseCase {
 
                 @Override
                 public void onError(String status, String errorMessage,
-                                    Map<String, Integer> partialScores,
+                                    Map<String, Double> partialScores,
                                     List<String> warnings,
                                     List<TaxonomyDiscrepancy> discrepancies,
                                     List<ProductCoverageGap> productCoverageGaps) {
@@ -82,7 +82,7 @@ public class StreamRequirementAnalysisUseCase {
                 }
                 @Override
                 public void onError(String status, String errorMessage,
-                                    Map<String, Integer> partialScores, Map<String, String> partialReasons,
+                                    Map<String, Double> partialScores, Map<String, String> partialReasons,
                                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                                     List<ProductCoverageGap> productCoverageGaps) {
                     handler.handle(new AnalysisStreamEvent.Error(

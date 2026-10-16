@@ -40,7 +40,7 @@ class ClusterRelationCoordinatorTest {
             db.completions.commit(new PreparedAnalysisCompletion<>(stopped, () -> db.store.persistResult(task, result("CP", 20))));
             db.store.accept(stopped);
             assertEquals(ClusterAnalysisState.PARTIAL, db.store.snapshot(context).state());
-            assertEquals(Map.of("CP", 20), db.store.snapshot(context).result().getRawScores());
+            assertEquals(Map.of("CP", 20d), db.store.snapshot(context).result().getRawScores());
             assertFalse(db.store.start(db.task(IP)).executable());
             assertEquals(2, db.sent.size());
         }
@@ -98,7 +98,7 @@ class ClusterRelationCoordinatorTest {
             }
             var snapshot = db.store.snapshot(context);
             assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
-            assertEquals(Map.of("CP", 40, "IP", 80), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 40d, "IP", 80d), snapshot.result().getRawScores());
             assertTrue(snapshot.result().getRelationSearchReport().isSearchExhausted());
             assertEquals(3, snapshot.result().getRelationSearchReport().totalCalls());
             assertEquals(5, db.sent.size());

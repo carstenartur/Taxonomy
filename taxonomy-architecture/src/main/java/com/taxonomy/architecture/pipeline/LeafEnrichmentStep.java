@@ -67,7 +67,7 @@ public class LeafEnrichmentStep implements ArchitecturePipelineStep {
     @Override
     public void apply(ArchitectureViewContext ctx) {
         List<RequirementElementView> elements = ctx.getElements();
-        Map<String, Integer> scores = ctx.getScores();
+        Map<String, Double> scores = ctx.getScores();
 
         Set<String> includedCodes = elements.stream()
                 .map(RequirementElementView::getNodeCode)
@@ -79,10 +79,10 @@ public class LeafEnrichmentStep implements ArchitecturePipelineStep {
                 .collect(Collectors.toSet());
 
         // Group leaf-level scores by their taxonomy root
-        Map<String, List<Map.Entry<String, Integer>>> leafScoresByRoot = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        Map<String, List<Map.Entry<String, Double>>> leafScoresByRoot = new LinkedHashMap<>();
+        for (Map.Entry<String, Double> entry : scores.entrySet()) {
             String code = entry.getKey();
-            int score = entry.getValue();
+            double score = entry.getValue();
             if (score < LEAF_ENRICHMENT_MIN_SCORE) continue;
             if (includedCodes.contains(code)) continue;
             if (!code.contains("-")) continue;
@@ -95,7 +95,7 @@ public class LeafEnrichmentStep implements ArchitecturePipelineStep {
 
         // Pre-compute which root layers have deep-leaf candidates (depth > 1)
         Map<String, Boolean> rootHasDeepLeaf = new LinkedHashMap<>();
-        for (Map.Entry<String, List<Map.Entry<String, Integer>>> rootEntry : leafScoresByRoot.entrySet()) {
+        for (Map.Entry<String, List<Map.Entry<String, Double>>> rootEntry : leafScoresByRoot.entrySet()) {
             String root = rootEntry.getKey();
             boolean hasDeep = rootEntry.getValue().stream()
                     .anyMatch(e -> {
@@ -107,21 +107,21 @@ public class LeafEnrichmentStep implements ArchitecturePipelineStep {
 
         LayerRepresentativeSelector layerSelector = new LayerRepresentativeSelector(nodeRepository);
 
-        for (Map.Entry<String, List<Map.Entry<String, Integer>>> rootEntry : leafScoresByRoot.entrySet()) {
+        for (Map.Entry<String, List<Map.Entry<String, Double>>> rootEntry : leafScoresByRoot.entrySet()) {
             String root = rootEntry.getKey();
-            List<Map.Entry<String, Integer>> candidates = rootEntry.getValue();
+            List<Map.Entry<String, Double>> candidates = rootEntry.getValue();
             candidates.sort(
-                    Comparator.<Map.Entry<String, Integer>, Integer>comparing(Map.Entry::getValue)
+                    Comparator.<Map.Entry<String, Double>, Double>comparing(Map.Entry::getValue)
                               .reversed());
 
-            int rootScore = scores.getOrDefault(root, 0);
+            double rootScore = scores.getOrDefault(root, 0d);
             boolean hasDeepLeaf = rootHasDeepLeaf.getOrDefault(root, false);
 
             int added = 0;
-            for (Map.Entry<String, Integer> candidate : candidates) {
+            for (Map.Entry<String, Double> candidate : candidates) {
                 if (added >= MAX_LEAF_ENRICHMENT) break;
                 String leafCode = candidate.getKey();
-                int leafScore = candidate.getValue();
+                double leafScore = candidate.getValue();
 
                 RequirementElementView element = new RequirementElementView();
                 element.setNodeCode(leafCode);

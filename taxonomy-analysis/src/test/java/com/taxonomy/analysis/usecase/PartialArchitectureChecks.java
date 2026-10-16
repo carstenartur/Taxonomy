@@ -33,7 +33,7 @@ public final class PartialArchitectureChecks {
     public static void testRelationStopStillProjectsAcceptedNodes() throws Exception {
         var useCase = fixture(assessed(), null);
         field(useCase, "requirementRelationSearch", new RequirementRelationSearchService(null, null, null, null) {
-            @Override public RelationSearchReport search(String original, Map<String,Integer> scores) {
+            @Override public RelationSearchReport search(String original, Map<String,Double> scores) {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.TIME_LIMIT);
             }
         });
@@ -43,7 +43,7 @@ public final class PartialArchitectureChecks {
     public static void testUnexpectedRelationFailureStillProjectsAcceptedNodes() throws Exception {
         var useCase = fixture(assessed(), null);
         field(useCase, "requirementRelationSearch", new RequirementRelationSearchService(null, null, null, null) {
-            @Override public RelationSearchReport search(String original, Map<String,Integer> scores) {
+            @Override public RelationSearchReport search(String original, Map<String,Double> scores) {
                 throw new IllegalStateException("relation preparation unavailable");
             }
         });
@@ -99,7 +99,7 @@ public final class PartialArchitectureChecks {
         var view = (RequirementArchitectureView) method.invoke(null, command(true), result);
         check(view.getIncludedElements().size() == 2, "navigation containers must not become architecture elements");
         check(view.getIncludedRelationships().isEmpty(), "no invented relationships in the direct projection");
-        check(result.getRawScores().equals(Map.of("BP",100,"BP-1",70,"BP-2",30)), "frozen scores remain unchanged");
+        check(result.getRawScores().equals(Map.of("BP",100d,"BP-1",70d,"BP-2",30d)), "frozen scores remain unchanged");
     }
     public static void testFallbackPreservesAcceptedRelationshipsWithoutInferringNewOnes() {
         var result = assessed(); var view = new RequirementArchitectureView();
@@ -128,12 +128,12 @@ public final class PartialArchitectureChecks {
     }
     public static void testLongContainmentCycleCannotBypassProjectionDepthLimit() {
         var root = new TaxonomyNodeDto(); root.setCode("BP"); root.setTaxonomyRoot("BP");
-        var scores = new LinkedHashMap<String, Integer>();
+        var scores = new LinkedHashMap<String, Double>();
         for (int i = 0; i < 300; i++) {
             var child = new TaxonomyNodeDto(); child.setCode("BP-CYCLE-" + i);
             child.setTaxonomyRoot("BP"); child.setLevel(1);
             child.setParentCode("BP-CYCLE-" + ((i + 1) % 300));
-            root.getChildren().add(child); scores.put(child.getCode(), 1);
+            root.getChildren().add(child); scores.put(child.getCode(), 1d);
         }
         var result = new AnalysisResult(scores, List.of(root));
         var projected = PartialArchitectureProjection.complete(result, null, 400);
@@ -155,7 +155,7 @@ public final class PartialArchitectureChecks {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(String text, String provider) { return null; }
         };
         var architecture = new RequirementArchitectureViewService(new ArchitectureViewPipeline(null, new ArchitecturePipelineInvariantValidator())) {
-            @Override public RequirementArchitectureView buildFromEvidence(Map<String,Integer> scores, Map<String,AnalysisScoreDetail> details, int limit, RelationSearchReport report) {
+            @Override public RequirementArchitectureView buildFromEvidence(Map<String,Double> scores, Map<String,AnalysisScoreDetail> details, int limit, RelationSearchReport report) {
                 if (renderingFailure != null) throw renderingFailure;
                 return super.buildFromEvidence(scores, details, limit, report);
             }
@@ -167,7 +167,7 @@ public final class PartialArchitectureChecks {
         var useCase = new AnalyzeRequirementUseCase(llm, budget, architecture, null, null, views,
                 () -> DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
         field(useCase, "requirementRelationSearch", new RequirementRelationSearchService(null,null,null,null) {
-            @Override public RelationSearchReport search(String original, Map<String,Integer> scores) {
+            @Override public RelationSearchReport search(String original, Map<String,Double> scores) {
                 return RequirementRelationSearch.unassessed(original, 24, "INVALID_SOURCE_RESPONSE");
             }
         });
@@ -182,7 +182,7 @@ public final class PartialArchitectureChecks {
             var child = new TaxonomyNodeDto(); child.setCode(code); child.setNameEn(code); child.setNameDe("Prozess " + code);
             child.setTaxonomyRoot("BP"); child.setParentCode("BP"); child.setLevel(1); root.getChildren().add(child);
         }
-        var result = new AnalysisResult(Map.of("BP", 100, "BP-1", 70, "BP-2", 30), List.of(root));
+        var result = new AnalysisResult(Map.of("BP", 100d, "BP-1", 70d, "BP-2", 30d), List.of(root));
         result.setStatus("SUCCESS"); return result;
     }
     static AnalyzeRequirementCommand command(boolean view) { return new AnalyzeRequirementCommand("requirement", view, 20, null, "tester", scope()); }

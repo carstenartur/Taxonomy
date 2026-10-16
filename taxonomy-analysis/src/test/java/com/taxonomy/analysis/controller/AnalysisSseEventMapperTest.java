@@ -33,7 +33,7 @@ class AnalysisSseEventMapperTest {
         detail.setError("minor");
 
         AnalysisSseEventMapper.MappedEvent mapped = mapper.map(new AnalysisStreamEvent.Scores(
-                Map.of("CP", 80),
+                Map.of("CP", 80d),
                 Map.of("CP", "reason"),
                 "Capabilities scored 80/100",
                 detail));
@@ -41,8 +41,8 @@ class AnalysisSseEventMapperTest {
         assertThat(mapped.name()).isEqualTo("scores");
         Map<String, Object> payload = payload(mapped);
         assertThat(payload)
-                .containsEntry("scores", Map.of("CP", 80))
-                .containsEntry("rawScores", Map.of("CP", 80))
+                .containsEntry("scores", Map.of("CP", 80d))
+                .containsEntry("rawScores", Map.of("CP", 80d))
                 .containsEntry("reasons", Map.of("CP", "reason"))
                 .containsEntry("description", "Capabilities scored 80/100")
                 .containsEntry("message", "Capabilities scored 80/100")
@@ -67,7 +67,7 @@ class AnalysisSseEventMapperTest {
 
         AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
                 new AnalysisStreamEvent.Scores(
-                        Map.of("IP-P", 80), Map.of(), "product batch", null));
+                        Map.of("IP-P", 80d), Map.of(), "product batch", null));
 
         Map<String, Object> payload = payload(mapped);
         Map<String, Object> hint = scoreDetailHint(payload, "IP-P");
@@ -86,14 +86,14 @@ class AnalysisSseEventMapperTest {
     void mapTerminalEventsPreserveExistingNamesAndAddEffectiveScores() {
         AnalysisSseEventMapper.MappedEvent complete = mapper.map(new AnalysisStreamEvent.Complete(
                 "SUCCESS",
-                Map.of("CP", 80, "CR", 0),
+                Map.of("CP", 80d, "CR", 0d),
                 List.of("warn"),
                 List.of(),
                 List.of()));
         AnalysisSseEventMapper.MappedEvent error = mapper.map(new AnalysisStreamEvent.Error(
                 "PARTIAL",
                 "boom",
-                Map.of("CP", 80),
+                Map.of("CP", 80d),
                 List.of("warn"),
                 List.of(),
                 List.of()));
@@ -102,9 +102,9 @@ class AnalysisSseEventMapperTest {
         Map<String, Object> completePayload = payload(complete);
         assertThat(completePayload)
                 .containsEntry("status", "SUCCESS")
-                .containsEntry("totalScores", Map.of("CP", 80, "CR", 0))
-                .containsEntry("rawScores", Map.of("CP", 80, "CR", 0))
-                .containsEntry("effectiveScores", Map.of("CP", 80, "CR", 0))
+                .containsEntry("totalScores", Map.of("CP", 80d, "CR", 0d))
+                .containsEntry("rawScores", Map.of("CP", 80d, "CR", 0d))
+                .containsEntry("effectiveScores", Map.of("CP", 80d, "CR", 0d))
                 .containsEntry("totalMatched", 1)
                 .containsEntry("warnings", List.of("warn"))
                 .containsEntry("discrepancies", List.of())
@@ -115,9 +115,9 @@ class AnalysisSseEventMapperTest {
         assertThat(errorPayload)
                 .containsEntry("status", "PARTIAL")
                 .containsEntry("errorMessage", "boom")
-                .containsEntry("partialScores", Map.of("CP", 80))
-                .containsEntry("rawScores", Map.of("CP", 80))
-                .containsEntry("effectiveScores", Map.of("CP", 80))
+                .containsEntry("partialScores", Map.of("CP", 80d))
+                .containsEntry("rawScores", Map.of("CP", 80d))
+                .containsEntry("effectiveScores", Map.of("CP", 80d))
                 .containsEntry("warnings", List.of("warn"))
                 .containsEntry("discrepancies", List.of())
                 .containsEntry("productCoverageGaps", List.of());
@@ -155,7 +155,7 @@ class AnalysisSseEventMapperTest {
                 taxonomyService, nanoTime::get, 10L);
 
         semanticMapper.map(new AnalysisStreamEvent.Scores(
-                Map.of("IP-P", 80), Map.of(), "product batch", null));
+                Map.of("IP-P", 80d), Map.of(), "product batch", null));
         semanticMapper.map(completeProductEvent());
 
         verify(taxonomyService, times(1)).getFingerprintTree();
@@ -191,7 +191,7 @@ class AnalysisSseEventMapperTest {
     private AnalysisStreamEvent.Complete completeProductEvent() {
         return new AnalysisStreamEvent.Complete(
                 "SUCCESS",
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 80),
+                Map.of("IP", 100d, "IP-F", 40d, "IP-P", 80d),
                 List.of(), List.of(), List.of());
     }
 

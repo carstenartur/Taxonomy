@@ -47,7 +47,7 @@ public final class RelationSearchUseCaseContract {
         check(result.getRelationSearchReport() != null && !result.getRelationSearchReport().result().edges().isEmpty(), "real use case must execute scoped search");
         check(result.getArchitectureView().getIncludedRelationships().size() == 1, "real evidence projection");
         check(result.getProvisionalRelations().isEmpty(), "scoped relations must not be inserted as global hypotheses");
-        check(result.getScores().equals(Map.of("process", 1)), "original scores remain unchanged");
+        check(result.getScores().equals(Map.of("process", 1d)), "original scores remain unchanged");
     }
     public static void testEnabledSearchNeverFallsBackToLegacyInference() throws Exception {
         Fixture f = fixture(true, 24, false); f.analyze(true);
@@ -107,7 +107,7 @@ public final class RelationSearchUseCaseContract {
                            java.util.function.Function<String, String> complete) throws Exception {
         AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
-            @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1)); r.setStatus("SUCCESS"); return r; }
+            @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1d)); r.setStatus("SUCCESS"); return r; }
             @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return complete.apply(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
             @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
@@ -126,10 +126,10 @@ public final class RelationSearchUseCaseContract {
         if (enabled != null) field(service, "enabled", enabled);
         field(service, "maxCalls", calls);
         var generator = new AnalysisRelationGenerator(new RelationCompatibilityMatrix(), id -> Optional.empty()) {
-            @Override public List<RelationHypothesisDto> generate(Map<String,Integer> scores) { legacy.incrementAndGet(); return List.of(); }
+            @Override public List<RelationHypothesisDto> generate(Map<String,Double> scores) { legacy.incrementAndGet(); return List.of(); }
         };
         var projection = new RequirementArchitectureViewService(new ArchitectureViewPipeline(null, new ArchitecturePipelineInvariantValidator())) {
-            @Override public RequirementArchitectureView build(Map<String,Integer> scores, String text, int limit, List<RelationHypothesisDto> provisional) {
+            @Override public RequirementArchitectureView build(Map<String,Double> scores, String text, int limit, List<RelationHypothesisDto> provisional) {
                 views.incrementAndGet(); return new RequirementArchitectureView();
             }
         };

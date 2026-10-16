@@ -72,7 +72,8 @@ class FrozenClusterAnalysisFinalizerTest {
             assertThat(view.getIncludedRelationships()).isEmpty();
             assertThat(view.getNotes()).anyMatch(note -> note.contains("hierarchy-only"));
             assertThat(view.getViewTitle()).isEqualTo("archview.policy.title.trace");
-            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1023", 55, "IP-1136", 80));
+            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("CP-1023", 55.0, "IP-1136", 80.0));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
             return true;
         }));
@@ -173,7 +174,7 @@ class FrozenClusterAnalysisFinalizerTest {
         verify(store).finalizeResult(eq(context), argThat(finalized -> {
             var view = finalized.getArchitectureView();
             assertThat(finalized.getRawScores()).containsExactlyInAnyOrderEntriesOf(
-                    Map.of("CP-1023", 55, "IP-1136", 80));
+                    Map.of("CP-1023", 55.0, "IP-1136", 80.0));
             assertThat(view.getIncludedElements()).extracting(RequirementElementView::getNodeCode)
                     .containsExactlyInAnyOrder("CP-1023", "IP-1136");
             assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)

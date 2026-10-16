@@ -38,7 +38,7 @@ class CategoryAssessmentContractTest {
     void completeScoresKeepOfferedOrderReasonsAndParentBudget() throws Exception {
         var result = parser.parseScoreParseResult(
                 "{\"CP\":{\"score\":20,\"reason\":\"support\"},\"BP\":60}", nodes, 40);
-        assertEquals(Map.of("BP", 30, "CP", 10), result.scores());
+        assertEquals(Map.of("BP", 30d, "CP", 10d), result.scores());
         assertEquals(List.of("BP", "CP"), List.copyOf(result.scores().keySet()));
         assertEquals("support", result.reasons().get("CP"));
         assertNotNull(result.discrepancy());
@@ -46,7 +46,7 @@ class CategoryAssessmentContractTest {
 
     @Test
     void explicitZerosAreValidNegativeEvidence() throws Exception {
-        assertEquals(Map.of("BP", 0, "CP", 0), parser.parseScoreParseResult(
+        assertEquals(Map.of("BP", 0d, "CP", 0d), parser.parseScoreParseResult(
                 "{\"BP\":0,\"CP\":{\"score\":0,\"reason\":\"not requested\"}}", nodes, 100).scores());
     }
 

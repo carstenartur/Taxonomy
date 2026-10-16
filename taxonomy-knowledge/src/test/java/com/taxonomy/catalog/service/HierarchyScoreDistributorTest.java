@@ -44,21 +44,21 @@ class HierarchyScoreDistributorTest {
                 "RT-1000", List.of(a1, a2)));
 
         var result = distributor.distribute(
-                Map.of("RT", 100),
+                Map.of("RT", 100d),
                 Map.of("RT", "Test root"));
 
-        Map<String, Integer> scores = result.scores();
+        Map<String, Double> scores = result.scores();
         assertThat(scores).containsKey("RT");
         assertThat(scores.get("RT")).isEqualTo(100);
 
         // Children of ROOT must sum to 100
-        int aScore = scores.get("RT-1000");
-        int bScore = scores.get("RT-1001");
+        double aScore = scores.get("RT-1000");
+        double bScore = scores.get("RT-1001");
         assertThat(aScore + bScore).isEqualTo(100);
 
         // Grandchildren of A must sum to A's score
-        int a1Score = scores.get("RT-1010");
-        int a2Score = scores.get("RT-1020");
+        double a1Score = scores.get("RT-1010");
+        double a2Score = scores.get("RT-1020");
         assertThat(a1Score + a2Score).isEqualTo(aScore);
     }
 
@@ -72,7 +72,7 @@ class HierarchyScoreDistributorTest {
                 "RT", List.of(a)));
 
         var result = distributor.distribute(
-                Map.of("RT", 0),
+                Map.of("RT", 0d),
                 Map.of("RT", "Not relevant"));
 
         assertThat(result.scores().get("RT")).isZero();
@@ -89,7 +89,7 @@ class HierarchyScoreDistributorTest {
                 "CP", List.of(child)));
 
         var result = distributor.distribute(
-                Map.of("CP", 80),
+                Map.of("CP", 80d),
                 Map.of("CP", "Capabilities are relevant"));
 
         assertThat(result.reasons()).containsEntry("CP", "Capabilities are relevant");
@@ -110,15 +110,15 @@ class HierarchyScoreDistributorTest {
 
         // Custom scorer: child A=90, child B=20 (sum > parent 50)
         NodeScorer scorer = (req, nodes, parent) -> {
-            Map<String, Integer> s = new LinkedHashMap<>();
+            Map<String, Double> s = new LinkedHashMap<>();
             for (TaxonomyNode n : nodes) {
-                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 90 : 20);
+                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 90d : 20d);
             }
             return s;
         };
 
         var result = distributor.distribute(
-                Map.of("RT", 50),
+                Map.of("RT", 50d),
                 Map.of("RT", "test"),
                 "some requirement",
                 scorer,
@@ -142,23 +142,23 @@ class HierarchyScoreDistributorTest {
 
         // Custom scorer: raw weights 75 and 25
         NodeScorer scorer = (req, nodes, parent) -> {
-            Map<String, Integer> s = new LinkedHashMap<>();
+            Map<String, Double> s = new LinkedHashMap<>();
             for (TaxonomyNode n : nodes) {
-                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 75 : 25);
+                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 75d : 25d);
             }
             return s;
         };
 
         var result = distributor.distribute(
-                Map.of("RT", 80),
+                Map.of("RT", 80d),
                 Map.of("RT", "test"),
                 "some requirement",
                 scorer,
                 BudgetDistribution.INSTANCE);
 
         // Budget distribution normalises: children must sum to parent (80)
-        int aScore = result.scores().get("RT-1000");
-        int bScore = result.scores().get("RT-1001");
+        double aScore = result.scores().get("RT-1000");
+        double bScore = result.scores().get("RT-1001");
         assertThat(aScore + bScore).isEqualTo(80);
         // 75% weight gets 60, 25% weight gets 20
         assertThat(aScore).isEqualTo(60);
@@ -176,11 +176,11 @@ class HierarchyScoreDistributorTest {
                 "RT", List.of(a, b)));
 
         // Pre-recorded scores: child A=85 (higher than parent!), child B=10
-        Map<String, Integer> recorded = Map.of("RT", 50, "RT-1000", 85, "RT-1001", 10);
+        Map<String, Double> recorded = Map.of("RT", 50d, "RT-1000", 85d, "RT-1001", 10d);
         RecordedNodeScorer scorer = new RecordedNodeScorer(recorded);
 
         var result = distributor.distribute(
-                Map.of("RT", 50),
+                Map.of("RT", 50d),
                 Map.of("RT", "test"),
                 "irrelevant",
                 scorer,
@@ -198,8 +198,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode a = node("CP-1000", 1, "CP");
         TaxonomyNode b = node("CP-1001", 1, "CP");
 
-        Map<String, Integer> scores1 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
-        Map<String, Integer> scores2 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
+        Map<String, Double> scores1 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
+        Map<String, Double> scores2 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
 
         assertThat(scores1).isEqualTo(scores2);
         assertThat(scores1.values()).allMatch(v -> v >= 1 && v <= 100);
@@ -209,13 +209,13 @@ class HierarchyScoreDistributorTest {
 
     @Test
     void recordedScorerReturnsZeroForUnknownNodes() {
-        Map<String, Integer> recorded = Map.of("CP-1000", 75);
+        Map<String, Double> recorded = Map.of("CP-1000", 75d);
         RecordedNodeScorer scorer = new RecordedNodeScorer(recorded);
 
         TaxonomyNode known   = node("CP-1000", 1, "CP");
         TaxonomyNode unknown = node("CP-9999", 1, "CP");
 
-        Map<String, Integer> scores = scorer.score("test", List.of(known, unknown), 100);
+        Map<String, Double> scores = scorer.score("test", List.of(known, unknown), 100);
 
         assertThat(scores.get("CP-1000")).isEqualTo(75);
         assertThat(scores.get("CP-9999")).isZero();
@@ -225,21 +225,21 @@ class HierarchyScoreDistributorTest {
 
     @Test
     void budgetDistributionSumsToParent() {
-        Map<String, Integer> raw = new LinkedHashMap<>();
-        raw.put("A", 40);
-        raw.put("B", 30);
-        raw.put("C", 30);
+        Map<String, Double> raw = new LinkedHashMap<>();
+        raw.put("A", 40d);
+        raw.put("B", 30d);
+        raw.put("C", 30d);
 
-        Map<String, Integer> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 100);
+        Map<String, Double> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 100);
 
-        assertThat(adjusted.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(100);
+        assertThat(adjusted.values().stream().mapToDouble(Double::doubleValue).sum()).isEqualTo(100);
     }
 
     @Test
     void budgetDistributionHandlesZeroParent() {
-        Map<String, Integer> raw = Map.of("A", 50, "B", 50);
+        Map<String, Double> raw = Map.of("A", 50d, "B", 50d);
 
-        Map<String, Integer> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 0);
+        Map<String, Double> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 0);
 
         assertThat(adjusted.values()).allMatch(v -> v == 0);
     }
@@ -248,19 +248,19 @@ class HierarchyScoreDistributorTest {
 
     @Test
     void independentScoringKeepsRawValues() {
-        Map<String, Integer> raw = Map.of("A", 90, "B", 5);
+        Map<String, Double> raw = Map.of("A", 90d, "B", 5d);
 
-        Map<String, Integer> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
+        Map<String, Double> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
 
-        assertThat(adjusted).containsEntry("A", 90);
-        assertThat(adjusted).containsEntry("B", 5);
+        assertThat(adjusted).containsEntry("A", 90d);
+        assertThat(adjusted).containsEntry("B", 5d);
     }
 
     @Test
     void independentScoringClampsToValidRange() {
-        Map<String, Integer> raw = Map.of("A", 150, "B", -10);
+        Map<String, Double> raw = Map.of("A", 150d, "B", -10d);
 
-        Map<String, Integer> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
+        Map<String, Double> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
 
         assertThat(adjusted.get("A")).isEqualTo(100);
         assertThat(adjusted.get("B")).isZero();
@@ -280,9 +280,9 @@ class HierarchyScoreDistributorTest {
         when(taxonomyService.getPathToRoot("RT-1020"))
                 .thenReturn(List.of(root, middle, deep, leaf));
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("RT", 100);
-        scores.put("RT-1020", 40);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("RT", 100d);
+        scores.put("RT-1020", 40d);
 
         distributor.fillIntermediateScores(scores);
 
@@ -304,9 +304,9 @@ class HierarchyScoreDistributorTest {
         when(taxonomyService.getPathToRoot("RT-1000"))
                 .thenReturn(List.of(root, child));
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("RT", 100);
-        scores.put("RT-1000", 80);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("RT", 100d);
+        scores.put("RT-1000", 80d);
 
         distributor.fillIntermediateScores(scores);
 
@@ -326,17 +326,17 @@ class HierarchyScoreDistributorTest {
         when(taxonomyService.getPathToRoot("RT-1000"))
                 .thenReturn(List.of(root, middle));
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("RT", 100);
-        scores.put("RT-1000", 90);
-        scores.put("RT-1010", 70);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("RT", 100d);
+        scores.put("RT-1000", 90d);
+        scores.put("RT-1010", 70d);
 
         distributor.fillIntermediateScores(scores);
 
         // Nothing changed
-        assertThat(scores).containsEntry("RT", 100);
-        assertThat(scores).containsEntry("RT-1000", 90);
-        assertThat(scores).containsEntry("RT-1010", 70);
+        assertThat(scores).containsEntry("RT", 100d);
+        assertThat(scores).containsEntry("RT-1000", 90d);
+        assertThat(scores).containsEntry("RT-1010", 70d);
     }
 
     @Test
@@ -353,9 +353,9 @@ class HierarchyScoreDistributorTest {
         when(taxonomyService.getPathToRoot("BR-1043"))
                 .thenReturn(List.of(n0, n1, n2, n3, n4, n5));
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("BR", 55);
-        scores.put("BR-1043", 35);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("BR", 55d);
+        scores.put("BR-1043", 35d);
 
         distributor.fillIntermediateScores(scores);
 

@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -72,7 +73,7 @@ class LlmServiceBranchCoverageTest {
 
         assertThat(result.getError()).isNull();
         assertThat(result.getScores()).containsExactlyInAnyOrderEntriesOf(
-                Map.of("IP-1365", 70, "IP-1676", 60, "IP-1775", 70));
+                Map.of("IP-1365", 70d, "IP-1676", 60d, "IP-1775", 70d));
         assertThat(result.getReasons()).containsEntry("IP-1775", "Queries identify vaccination status.");
         assertThat(result.getRawResponse()).contains(raw);
         verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
@@ -96,7 +97,7 @@ class LlmServiceBranchCoverageTest {
             assertThat(result.getStatus()).isEqualTo("PARTIAL");
             assertThat(result.getErrorMessage()).startsWith("CANCELLED:");
             // The independent root retains its own relevance on a cooperative stop.
-            assertThat(result.getScores()).containsEntry("BP", 80).doesNotContainKey("CP");
+            assertThat(result.getScores()).containsEntry("BP", 80d).doesNotContainKey("CP");
             assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
             assertThat(result.getTree()).isEmpty();
             // The initial decision plan is known before evaluation; cancellation must not allocate another tree.
@@ -132,7 +133,7 @@ class LlmServiceBranchCoverageTest {
                     AnalysisStoppedException.class);
             assertThat(stopped).isNotNull();
             assertThat(stopped.partialScores()).containsKeys("IP-C", "IP-P1").doesNotContainKey("IP-P2");
-            assertThat(stopped.partialScores()).containsEntry("IP-P1", 75);
+            assertThat(stopped.partialScores()).containsEntry("IP-P1", 75.0);
             assertThat(stopped.partialReasons()).containsEntry("IP-P1", "completed product");
             verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest("product prompt", "test-key");
         }
@@ -156,7 +157,7 @@ class LlmServiceBranchCoverageTest {
         when(gateway.extractResponseText("root")).thenReturn("{\"IP\":100}");
         when(gateway.extractResponseText("families")).thenReturn("{\"IP-1065\":40,\"IP-1069\":60}");
         var retained = new LlmCallDetail();
-        retained.setScores(Map.of("IP-1011", 75));
+        retained.setScores(Map.of("IP-1011", 75d));
         retained.setReasons(Map.of("IP-1011", "completed product rationale"));
         when(gateway.sendHttpRequest("product prompt", "test-key"))
                 .thenThrow(new AnalysisStoppedException(reason).withPartial(retained));
@@ -175,14 +176,14 @@ class LlmServiceBranchCoverageTest {
         String serialized = json.writeValueAsString(result);
         assertProductSemantics(json.readValue(serialized, AnalysisResult.class));
         assertThat(serialized).doesNotContain("nameEn", "descriptionEn", "semanticEmbedding");
-        result.getRawScores().put("IP-1065", 20);
-        assertThat(result.getScores()).containsEntry("IP-1011", 15);
+        result.getRawScores().put("IP-1065", 20d);
+        assertThat(result.getScores()).containsEntry("IP-1011", 15d);
     }
 
     private static void assertProductSemantics(AnalysisResult result) {
-        assertThat(result.getRawScores()).containsEntry("IP-1011", 75);
-        assertThat(result.getProductSuitabilityScores()).containsEntry("IP-1011", 75);
-        assertThat(result.getScores()).containsEntry("IP-1011", 30);
+        assertThat(result.getRawScores()).containsEntry("IP-1011", 75d);
+        assertThat(result.getProductSuitabilityScores()).containsEntry("IP-1011", 75d);
+        assertThat(result.getScores()).containsEntry("IP-1011", 30d);
         var detail = result.getScoreDetails().get("IP-1011");
         assertThat(detail.isProductSuitability()).isTrue();
         assertThat(detail.parentCode()).isEqualTo("IP-1065");
@@ -228,7 +229,7 @@ class LlmServiceBranchCoverageTest {
         service.analyzeStreaming("requirement", callback);
         verify(callback).onScores(eq(Map.of()), anyMap(), argThat(text -> !text.contains("0/100")),
                 argThat(detail -> detail.getError() != null && detail.getRawResponse().equals("{}")));
-        verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100)),
+        verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100d)),
                 argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList());
     }
 
@@ -247,7 +248,7 @@ class LlmServiceBranchCoverageTest {
         var json = new ObjectMapper();
         AnalysisResult saved = json.readValue(json.writeValueAsString(result), AnalysisResult.class);
         assertThat(saved.getStatus()).isEqualTo("PARTIAL");
-        assertThat(saved.getRawScores()).isEqualTo(Map.of("IP", 100));
+        assertThat(saved.getRawScores()).isEqualTo(Map.of("IP", 100d));
         assertThat(saved.getScores()).doesNotContainKeys("IP-1065", "IP-1069");
         verify(taxonomyService, never()).getChildrenOf("IP-1065");
     }
@@ -273,7 +274,7 @@ class LlmServiceBranchCoverageTest {
         lenient().when(providerConfig.isAvailable()).thenReturn(true);
         lenient().when(providerConfig.getAvailableProviders()).thenReturn(List.of("OPENAI", "LOCAL_ONNX"));
         lenient().when(gatewayRegistry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(gateway);
-        lenient().when(promptTemplateService.renderPrompt(any(), anyString(), anyString(), anyInt(), anyString()))
+        lenient().when(promptTemplateService.renderPrompt(any(), anyString(), anyString(), anyDouble(), anyString()))
                 .thenReturn("rendered prompt");
         lenient().when(promptTemplateService.renderRootPrompt(anyString(), anyString(), anyString()))
                 .thenReturn("rendered prompt");
@@ -323,10 +324,10 @@ class LlmServiceBranchCoverageTest {
         assertThat(unavailable.getScores()).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
-        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 17));
+        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 17d));
         LlmCallDetail available = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
         assertThat(available.getError()).isNull();
-        assertThat(available.getScores()).containsEntry("A", 100);
+        assertThat(available.getScores()).containsEntry("A", 100d);
         assertThat(available.getRawResponse()).contains("cosine similarity");
     }
 
@@ -338,7 +339,7 @@ class LlmServiceBranchCoverageTest {
                 .thenReturn("{\"A\":{\"score\":70,\"reason\":\"primary\"},\"B\":30}");
 
         LlmCallDetail success = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
-        assertThat(success.getScores()).containsEntry("A", 70).containsEntry("B", 30);
+        assertThat(success.getScores()).containsEntry("A", 70d).containsEntry("B", 30d);
         assertThat(success.getReasons()).containsEntry("A", "primary");
         assertThat(success.getPrompt()).isEqualTo("rendered prompt");
         assertThat(success.getRawResponse()).contains("primary");
@@ -367,7 +368,7 @@ class LlmServiceBranchCoverageTest {
         TaxonomyNode node = node("A", null, "A");
         when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("body");
         when(gateway.extractResponseText("body")).thenReturn("{\"A\":100}");
-        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100d);
 
         when(gateway.extractResponseText("body")).thenReturn("bad-json");
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
@@ -380,8 +381,8 @@ class LlmServiceBranchCoverageTest {
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
-        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 9));
-        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100);
+        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 9d));
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100d);
     }
 
     @Test
@@ -395,7 +396,7 @@ class LlmServiceBranchCoverageTest {
         assertThat(detail.getError()).isNull();
         assertThat(detail.getPrompt()).contains("mock mode");
         assertThat(detail.getRawResponse()).contains("hardcoded mock scores");
-        assertThat(detail.getScores().values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(40);
+        assertThat(detail.getScores().values().stream().mapToDouble(Double::doubleValue).sum()).isEqualTo(40);
         assertThat(detail.getReasons()).containsKeys("BP-X", "BP-Y");
     }
 
@@ -415,7 +416,7 @@ class LlmServiceBranchCoverageTest {
 
         AnalysisResult success = service.analyzeWithBudget("requirement");
         assertThat(success.getStatus()).isEqualTo("SUCCESS");
-        assertThat(success.getScores()).containsEntry("BP", 100).containsEntry("BP-1", 100);
+        assertThat(success.getScores()).containsEntry("BP", 100d).containsEntry("BP-1", 100d);
 
         TaxonomyNode other = node("CP", null, "CP");
         other.setNameEn("Capabilities");
@@ -502,7 +503,7 @@ class LlmServiceBranchCoverageTest {
     void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {
         TaxonomyNode leaf = node("A", "P", "R");
         leaf.setNameEn("Leaf");
-        Map<String, Integer> scores = Map.of("A", 90, "X", 80);
+        Map<String, Double> scores = Map.of("A", 90d, "X", 80d);
         Map<String, String> reasons = Map.of("A", "path reason", "X", "cross reason");
 
         when(providerConfig.isMockMode()).thenReturn(true);
@@ -576,7 +577,7 @@ class LlmServiceBranchCoverageTest {
         when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
         when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
         com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
-        saved.setScores(Map.of("IP-P1", 80, "IP-P2", 70));
+        saved.setScores(Map.of("IP-P1", 80d, "IP-P2", 70d));
         saved.setReasons(Map.of("IP-P1", "first", "IP-P2", "second"));
         when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
         ReflectionTestUtils.setField(service, "productBatchSize", 1);
@@ -585,8 +586,8 @@ class LlmServiceBranchCoverageTest {
         LlmCallDetail detail = service.analyzeSingleBatchDetailed(
                 "requirement", List.of(first, second), 40);
 
-        assertThat(detail.getScores()).containsEntry("IP-P1", 80).containsEntry("IP-P2", 70);
-        assertThat(detail.getScores().values().stream().mapToInt(Integer::intValue).sum())
+        assertThat(detail.getScores()).containsEntry("IP-P1", 80d).containsEntry("IP-P2", 70d);
+        assertThat(detail.getScores().values().stream().mapToDouble(Double::doubleValue).sum())
                 .isEqualTo(150);
         assertThat(detail.getPrompt()).contains("call 1", "call 2");
     }
@@ -608,7 +609,7 @@ class LlmServiceBranchCoverageTest {
         when(taxonomyService.getFullTree()).thenReturn(List.of());
         when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
         com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
-        saved.setScores(Map.of("IP", 100, "IP-F", 80, "IP-P1", 30, "IP-P2", 20));
+        saved.setScores(Map.of("IP", 100d, "IP-F", 80d, "IP-P1", 30d, "IP-P2", 20d));
         saved.setReasons(Map.of());
         when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
         ReflectionTestUtils.setField(service, "productMinimumScore", 50);
@@ -642,11 +643,11 @@ class LlmServiceBranchCoverageTest {
         when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
         com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
         saved.setScores(Map.of(
-                "IP", 100,
-                "IP-F", 80,
-                "IP-C", 20,
-                "IP-P1", 30,
-                "IP-P2", 20));
+                "IP", 100d,
+                "IP-F", 80d,
+                "IP-C", 20d,
+                "IP-P1", 30d,
+                "IP-P2", 20d));
         saved.setReasons(Map.of());
         when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
         ReflectionTestUtils.setField(service, "productMinimumScore", 50);

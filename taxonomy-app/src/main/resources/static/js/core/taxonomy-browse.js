@@ -1706,8 +1706,8 @@
                                 e.stopPropagation();
                                 var score = prompt(t('browse.manual.score.prompt', code));
                                 if (score !== null) {
-                                    var val = parseInt(score, 10);
-                                    if (!isNaN(val) && val >= 0 && val <= 100) {
+                                    var val = score.trim() === "" ? NaN : Number(score);
+                                    if (Number.isFinite(val) && val >= 0 && val <= 100) {
                                         SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
                                         SC().syncVisibleScoreNodes();

@@ -22,12 +22,12 @@ class DemoReferenceEvaluatorTest {
     private final DemoReference reference = DemoReference.load("time-tracking-v1");
 
     private static DemoReferenceEvaluator.Observation a0() {
-        return new DemoReferenceEvaluator.Observation(R0, Map.of("UA-1605", 60, "CR-1036", 20), Set.of("UA-1605 USES CR-1036"));
+        return new DemoReferenceEvaluator.Observation(R0, Map.of("UA-1605", 60d, "CR-1036", 20d), Set.of("UA-1605 USES CR-1036"));
     }
 
     private static DemoReferenceEvaluator.Observation a1() {
         return new DemoReferenceEvaluator.Observation(R1,
-                Map.of("UA-1605", 70, "CR-1036", 25, "CR-1006", 12, "CR-1065", 15, "BR-1101", 25),
+                Map.of("UA-1605", 70d, "CR-1036", 25d, "CR-1006", 12d, "CR-1065", 15d, "BR-1101", 25d),
                 Set.of("UA-1605 USES CR-1036", "UA-1605 USES CR-1006", "UA-1605 USES CR-1065"));
     }
 
@@ -40,7 +40,7 @@ class DemoReferenceEvaluatorTest {
 
     @Test void surveillanceMutationIsDetected() {
         var scores = new HashMap<>(a1().scores());
-        scores.put("CI-1121", 10);
+        scores.put("CI-1121", 10d);
         var mutated = new DemoReferenceEvaluator.Observation(R1 + "\nBeim Stempeln wird zusätzlich der GPS-Standort des Mitarbeiters gespeichert.",
                 scores, a1().relations());
         var report = DemoReferenceEvaluator.evaluate(reference, a0(), mutated);
@@ -86,7 +86,7 @@ class DemoReferenceEvaluatorTest {
 
     @Test void missingRelationEvidenceDoesNotOverrideAKnownForbiddenNode() {
         var scores = new HashMap<>(a1().scores());
-        scores.put("CI-1121", 10);
+        scores.put("CI-1121", 10d);
         var unsafeR1 = new DemoReferenceEvaluator.Observation(R1, scores, null);
         var report = DemoReferenceEvaluator.evaluate(reference, a0(), unsafeR1);
         assertThat(report.checks()).filteredOn(c -> "forbidden-node:CI-1121".equals(c.id())

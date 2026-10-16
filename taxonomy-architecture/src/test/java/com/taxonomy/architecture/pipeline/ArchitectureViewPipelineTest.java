@@ -60,7 +60,7 @@ class ArchitectureViewPipelineTest {
                 context.setElements(new ArrayList<>(List.of(first, duplicate)));
             }
         };
-        ArchitectureViewContext context = contextWithScores(Map.of("CP", 90));
+        ArchitectureViewContext context = contextWithScores(Map.of("CP", 90d));
         ArchitectureViewPipeline pipeline = new ArchitectureViewPipeline(
                 new ArchitecturePipelineStepRegistry(
                         List.of(new AnchorSelectionStep(), corruptingStep)), validator);
@@ -93,7 +93,7 @@ class ArchitectureViewPipelineTest {
         return element;
     }
 
-    private static ArchitectureViewContext contextWithScores(Map<String, Integer> scores) {
+    private static ArchitectureViewContext contextWithScores(Map<String, Double> scores) {
         return new ArchitectureViewContext(scores, "test", 0, null);
     }
 

@@ -29,8 +29,8 @@ public final class DecisionReadingChecks {
             "Unknown historical duration is explicit");
         var chapters = new ArrayList<DecisionChapter>();
         // BP -> BP-1000 and BR -> BR-1000 are direct parent/child pairs in the real catalogue.
-        for (String code : List.of("BP", "BR")) chapters.add(new DecisionChapter(chapters.size()+1,code,code,"",100,0,true,"Authored decision","Authored comparison",
-            List.of(new ChildDecision(code+"-1000",code,"",100,100.0,1,true,Disposition.CONTINUED,"Authored evidence",ReasonSource.AI_SCORING,false)),List.of()));
+        for (String code : List.of("BP", "BR")) chapters.add(new DecisionChapter(chapters.size()+1,code,code,"",100d,0,true,"Authored decision","Authored comparison",
+            List.of(new ChildDecision(code+"-1000",code,"",100d,100.0,1,true,Disposition.CONTINUED,"Authored evidence",ReasonSource.AI_SCORING,false)),List.of()));
         var report = new DecisionRationaleReport("Reading QA",locale,"Arbeitszeiterfassung",ReportStatus.FINAL,metadata,
             new ExecutiveSummary(null,List.of(),"Authored conclusion","Authored method"),chapters,List.of(),List.of(),List.of(),List.of(),null);
         String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report);

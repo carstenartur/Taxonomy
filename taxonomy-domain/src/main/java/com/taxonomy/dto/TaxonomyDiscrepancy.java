@@ -14,4 +14,4 @@ package com.taxonomy.dto;
  * @param expectedParentScore the parent's assigned score (target for children)
  * @param actualChildSum     the raw sum of child scores returned by the LLM
  */
-public record TaxonomyDiscrepancy(String parentCode, int expectedParentScore, int actualChildSum) {}
+public record TaxonomyDiscrepancy(String parentCode, double expectedParentScore, double actualChildSum) {}

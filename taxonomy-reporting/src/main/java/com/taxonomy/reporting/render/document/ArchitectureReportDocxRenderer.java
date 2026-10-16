@@ -250,7 +250,7 @@ public final class ArchitectureReportDocxRenderer {
     }
 
     private static String percent(double value) {
-        return String.format(Locale.ROOT, "%.0f%%", value * 100);
+        return com.taxonomy.dto.AnalysisPercentages.display(value * 100);
     }
 
     private static void runningIdentity(XWPFDocument document, DecisionReportLabels labels, String identity) {

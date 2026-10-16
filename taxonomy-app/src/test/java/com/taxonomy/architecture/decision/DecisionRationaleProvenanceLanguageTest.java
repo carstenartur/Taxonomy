@@ -35,7 +35,7 @@ class DecisionRationaleProvenanceLanguageTest {
                 fingerprint, "saved prompt hash");
         var report = new DecisionRationaleReportService(taxonomy, catalogue, build, "UTC").generate(
                 new DecisionRationaleReportService.DecisionAnalysisInput("Saved English requirement",
-                        Map.of("A", 100), Map.of("A", "Saved English reason"), "MOCK", "SUCCESS",
+                        Map.of("A", 100d), Map.of("A", "Saved English reason"), "MOCK", "SUCCESS",
                         List.of(), tree, provenance),
                 new WorkspaceContext("auditor", "workspace", "main", "repo"), null,
                 Locale.forLanguageTag(language));

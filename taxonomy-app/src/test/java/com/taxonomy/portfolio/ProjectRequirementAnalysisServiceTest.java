@@ -129,7 +129,7 @@ class ProjectRequirementAnalysisServiceTest {
             assertThat(snapshots).hasSize(1);
             var detail = analysisService.getSnapshot(
                     project.id(), snapshots.get(0).id(), context.username(), context);
-            assertThat(detail.analysis().getScores()).containsEntry("CP-1010", 80);
+            assertThat(detail.analysis().getScores()).containsEntry("CP-1010", 80d);
             assertThat(detail.elementMappings()).singleElement()
                     .satisfies(mapping -> {
                         assertThat(mapping.nodeCode()).isEqualTo("CP-1010");

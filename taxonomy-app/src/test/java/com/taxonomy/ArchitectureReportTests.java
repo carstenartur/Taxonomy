@@ -47,7 +47,7 @@ class ArchitectureReportTests {
     @Test
     void reportServicePopulatesSectionsAndHandlesEmptyInput() {
         ArchitectureReport populated = reportService.generateReport(
-                Map.of("CP-1010", 90, "BP-1010", 80),
+                Map.of("CP-1010", 90d, "BP-1010", 80d),
                 "secure voice communications",
                 50);
         assertThat(populated.getBusinessText()).isEqualTo("secure voice communications");
@@ -136,7 +136,7 @@ class ArchitectureReportTests {
     void explanationTraceProvidesStructuredEvidence() {
         ExplanationTrace trace = traceService.buildTrace(
                 "CP-1010",
-                Map.of("CP-1010", 85),
+                Map.of("CP-1010", 85d),
                 Map.of(),
                 "communications secure voice capability");
         assertThat(trace.getSemanticScore()).isGreaterThan(0);
@@ -165,7 +165,7 @@ class ArchitectureReportTests {
 
     private ArchitectureReport sampleReport() {
         return reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
+                Map.of("CP-1010", 90d), "test requirement", 50);
     }
 
     private static ReportRendererExtension renderer(String id) {

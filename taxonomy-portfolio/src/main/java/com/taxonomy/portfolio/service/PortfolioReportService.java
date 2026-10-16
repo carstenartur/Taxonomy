@@ -344,7 +344,7 @@ public class PortfolioReportService {
             output.append(csvCell(row));
             for (String column : matrix.columns()) {
                 output.append(',').append(matrix.values().getOrDefault(row, Map.of())
-                        .getOrDefault(column, 0));
+                        .getOrDefault(column, 0d));
             }
             output.append('\n');
         }

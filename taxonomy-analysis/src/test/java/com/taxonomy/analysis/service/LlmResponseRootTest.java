@@ -47,7 +47,7 @@ class LlmResponseRootTest {
         var nodes = List.of(node);
         String response = "Here is the result:\n```json\n" + SCORE_OBJECT + "\n```";
         assertEquals(SCORE_OBJECT, parser.extractJson(response));
-        assertEquals(100, parser.parseScoreParseResult(response, nodes, 100).scores().get("IP"));
-        assertEquals(100, parser.parseIndependentScoreParseResult(response, nodes, 50).scores().get("IP"));
+        assertEquals(100d, parser.parseScoreParseResult(response, nodes, 100).scores().get("IP"));
+        assertEquals(100d, parser.parseIndependentScoreParseResult(response, nodes, 50).scores().get("IP"));
     }
 }

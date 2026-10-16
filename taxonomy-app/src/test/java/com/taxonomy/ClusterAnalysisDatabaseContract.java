@@ -160,7 +160,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             assertEquals(frozenInput, reread.store.shard(context, CP));
             var snapshot = reread.store.snapshot(context);
             assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
-            assertEquals(Map.of("CP", 40, "IP", 70), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 40d, "IP", 70d), snapshot.result().getRawScores());
             assertEquals(Map.of("CP", reason, "IP", reason), snapshot.result().getReasons());
             assertEquals(List.of("CP", "IP"), snapshot.result().getTree().stream().map(TaxonomyNodeDto::getCode).toList());
             assertTrue(snapshot.tasks().stream().allMatch(work -> work.state().equals("COMPLETED")));
@@ -237,7 +237,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         var snapshot = store.snapshot(context);
         assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
         assertEquals(2, snapshot.completedRoots());
-        assertEquals(Map.of("CP", 40, "IP", 70), snapshot.result().getRawScores());
+        assertEquals(Map.of("CP", 40d, "IP", 70d), snapshot.result().getRawScores());
         assertEquals(Map.of("CP", "committed", "IP", "committed"), snapshot.result().getReasons());
         assertEquals(2, count("AnalysisTaskCompletionRecord", "operationId", context.operationId()));
         assertContinuousEvents(context, 5);
@@ -296,7 +296,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         var result = new AnalysisResult(Map.of(root.code(), score), List.of(node)); result.setReasons(Map.of(root.code(), reason));
         result.setStatus("SUCCESS"); result.setProvider("MOCK"); return result;
     }
-    private static AnalysisCompletionMessage completion(SubtaxonomyAnalysisTask task, int score) {
+    private static AnalysisCompletionMessage completion(SubtaxonomyAnalysisTask task, double score) {
         return new AnalysisMessageFactory(ClusterAnalysisStore.context(task.envelope()), Clock.systemUTC())
                 .completed(task, AnalysisTaskOutcome.COMPLETED, score, 1, null);
     }

@@ -65,7 +65,7 @@ class ClusterAnalysisBackupRestoreTest {
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
             var snapshot = target.store.snapshot(restored);
             assertEquals(ClusterAnalysisState.CANCELLED, snapshot.state());
-            assertEquals(Map.of("CP", 70), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 70d), snapshot.result().getRawScores());
             assertNull(snapshot.result().getAnalysisCoverage(), "Legacy evidence must retain its original coverage contract");
             assertEquals("PARTIAL", snapshot.result().getStatus());
             assertTrue(snapshot.result().getWarnings().stream().anyMatch(w -> w.contains("RESTORE_INTERRUPTED")));
@@ -116,7 +116,7 @@ class ClusterAnalysisBackupRestoreTest {
             assertEquals(AnalysisCoverage.Descendants.COMPLETE, coverage.nodes().get("fixture-ip-child").descendants());
             assertEquals(1, coverage.assessedNodes()); assertEquals(2, coverage.unknownNodes());
             assertEquals(2, coverage.failedOrBlockedNodes()); assertTrue(coverage.hasOpenEvaluations());
-            assertEquals(Map.of("CP", 70), result.getRawScores()); assertEquals("PARTIAL", result.getStatus());
+            assertEquals(Map.of("CP", 70d), result.getRawScores()); assertEquals("PARTIAL", result.getStatus());
             assertExportable(result);
             assertEquals(source.store.shard(original, IP), target.store.shard(restored, IP),
                     "Frozen inputs retain the original source even when restore remaps the target authority");
@@ -139,7 +139,7 @@ class ClusterAnalysisBackupRestoreTest {
 
             var result = target.store.snapshot(restored).result();
             assertNull(result.getAnalysisCoverage(), "A modern subset cannot describe legacy scored evidence");
-            assertEquals(Map.of("CP", 70, "IP", 30), result.getRawScores());
+            assertEquals(Map.of("CP", 70d, "IP", 30d), result.getRawScores());
             assertEquals("PARTIAL", result.getStatus()); assertExportable(result);
             assertNoOperationalState(target);
         }
@@ -214,7 +214,7 @@ class ClusterAnalysisBackupRestoreTest {
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
             var snapshot = target.store.snapshot(restored);
             assertEquals(ClusterAnalysisState.CANCELLED, snapshot.state());
-            assertEquals(Map.of("CP", 70), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 70d), snapshot.result().getRawScores());
             assertEquals(source.store.snapshot(original).result().getWarnings(), snapshot.result().getWarnings());
             assertEquals(List.of("COMPLETED", "STOPPED"), snapshot.tasks().stream().map(ClusterAnalysisStore.TaskView::state).toList());
             assertEquals(AnalysisProgressPhase.OPERATION_STOPPED, target.store.events(restored, 0, 100).getLast().phase());
@@ -259,7 +259,7 @@ class ClusterAnalysisBackupRestoreTest {
             var snapshot = target.store.snapshot(restored);
             assertEquals(ClusterAnalysisState.COMPLETED, snapshot.state());
             assertEquals("SUCCESS", snapshot.result().getStatus());
-            assertEquals(Map.of("CP", 55, "IP", 55), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 55d, "IP", 55d), snapshot.result().getRawScores());
             assertFalse(snapshot.result().getWarnings().stream().anyMatch(w -> w.contains("RESTORE_INTERRUPTED")));
             assertTrue(snapshot.tasks().stream().allMatch(w -> w.taskId().startsWith("restored-finished:")));
             assertThrows(IllegalStateException.class, () -> helper.restore(archive, restored, targetCommand()));
@@ -333,7 +333,7 @@ class ClusterAnalysisBackupRestoreTest {
                     JSON.readValue(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisScope());
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand);
             var result = target.store.snapshot(restored).result();
-            assertEquals(Map.of("CP", 45, "IP", 45), result.getRawScores());
+            assertEquals(Map.of("CP", 45d, "IP", 45d), result.getRawScores());
             assertEquals(2, result.getRelationSearchReport().totalCalls());
             assertFalse(result.getRelationSearchReport().isSearchExhausted());
             assertFalse(result.getRelationSearchReport().result().unfinished().isEmpty());
@@ -373,7 +373,7 @@ class ClusterAnalysisBackupRestoreTest {
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, command);
             var snapshot = target.store.snapshot(restored);
             assertEquals(settled ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.CANCELLED, snapshot.state());
-            assertEquals(Map.of("CP", 45, "IP", 45), snapshot.result().getRawScores());
+            assertEquals(Map.of("CP", 45d, "IP", 45d), snapshot.result().getRawScores());
             assertNull(snapshot.result().getRelationSearchReport());
             assertEquals(JSON.writeValueAsString(List.of(hypothesis)), JSON.writeValueAsString(snapshot.result().getProvisionalRelations()));
             assertEquals(!settled, snapshot.result().getWarnings().stream().anyMatch(warning -> warning.contains("RESTORE_INTERRUPTED")));

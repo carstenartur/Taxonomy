@@ -9,7 +9,7 @@ import java.util.List;
 public record ProductCoverageGap(
         String productFamilyCode,
         String productFamilyName,
-        int familyScore,
+        double familyScore,
         List<String> candidateCodes,
         String reason) {
 

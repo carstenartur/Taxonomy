@@ -12,7 +12,11 @@ If parent hierarchy context is shown, use it only to understand the product fami
 candidates listed under "Nodes to evaluate".
 
 Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
-Each value must be an object with "score" (integer 0-100, independent of all other values) and
+Each value must be an object with "score" (number 0-100, independent of all other values) and
 "reason" (one concise sentence explaining suitability or why the product is not suitable).
 Do not omit candidates and do not add keys.
 Example: {"IP-1001": {"score": 82, "reason": "Directly satisfies the required information output."}, "IP-1002": {"score": 0, "reason": "Addresses a different operational purpose."}}
+
+Numeric contract: use JSON numbers with a decimal point, never a decimal comma, quoted number,
+percent sign or fraction expression. 0.5 means 0.5 percent, not 50 percent. Positive values may
+be smaller than 1; do not round them to zero. Keep unrelated or unresolved work distinct.

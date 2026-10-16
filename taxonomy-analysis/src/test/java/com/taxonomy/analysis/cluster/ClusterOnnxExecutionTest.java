@@ -62,7 +62,7 @@ class ClusterOnnxExecutionTest {
         var result = fixture.computation(fixture.llm).score(fixture.input(), task, () -> false);
 
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
-        assertThat(result.getRawScores()).containsExactly(entry("CP", 20));
+        assertThat(result.getRawScores()).containsExactly(entry("CP", 20d));
         assertThat(result.getTree()).singleElement().satisfies(root -> assertThat(root.getCode()).isEqualTo("CP"));
         assertThat(fixture.embeddings.texts).containsExactly("query: requirement", saved.embeddings().nodeTexts().get("CP"));
         assertThat(fixture.embeddings.frozenCacheStatistics().vectors()).isEqualTo(1);

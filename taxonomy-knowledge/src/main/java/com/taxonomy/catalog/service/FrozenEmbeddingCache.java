@@ -14,7 +14,7 @@ import java.util.Map;
 final class FrozenEmbeddingCache {
     private final Map<Key, float[]> vectors = new LinkedHashMap<>(16, .75f, true);
 
-    Map<String, Integer> score(FrozenCatalogueView catalogue, EmbeddingModelIdentity activeModel,
+    Map<String, Double> score(FrozenCatalogueView catalogue, EmbeddingModelIdentity activeModel,
                                String businessText, List<TaxonomyNode> candidates,
                                LocalEmbeddingService embeddings, int capacity) throws Exception {
         if (capacity < 1 || capacity > 100_000) throw new IllegalArgumentException("Invalid frozen embedding cache limit");
@@ -25,7 +25,7 @@ final class FrozenEmbeddingCache {
                 throw new IllegalStateException("Frozen embedding model does not match the worker model configuration");
             }
         }
-        Map<String, Integer> result = new LinkedHashMap<>();
+        Map<String, Double> result = new LinkedHashMap<>();
         if (nodes.isEmpty()) return result;
         float[] query = checked(embeddings.embedQuery(businessText));
         for (var node : nodes) {
@@ -39,7 +39,7 @@ final class FrozenEmbeddingCache {
             if (vector == null) vector = retain(key, checked(embeddings.embedDocument(text)), capacity);
             float score = VectorSimilarityFunction.COSINE.compare(query, vector);
             result.put(node.getCode(), Math.max(0, Math.min(100,
-                    (int) Math.round((2.0 * score - 1.0) * 100.0))));
+                    (2.0 * score - 1.0) * 100.0)));
         }
         return result;
     }

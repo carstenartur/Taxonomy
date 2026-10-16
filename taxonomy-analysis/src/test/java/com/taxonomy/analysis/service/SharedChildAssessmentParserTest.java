@@ -24,7 +24,7 @@ class SharedChildAssessmentParserTest {
                 {"P2":{"score":70,"reason":"also suitable"},
                  "P1":{"score":80,"reason":"suitable"}}
                 """, List.of(node("P1"), node("P2")), 50);
-        assertEquals(Map.of("P1", 80, "P2", 70), scores.scores());
+        assertEquals(Map.of("P1", 80d, "P2", 70d), scores.scores());
         assertEquals(List.of("P1", "P2"), List.copyOf(scores.scores().keySet()));
         assertThrows(IllegalArgumentException.class, () ->
                 parser.parseIndependentScoreParseResult(
@@ -57,7 +57,7 @@ class SharedChildAssessmentParserTest {
     @Test
     void categoryKeepsParentBudgetButRequiresTheSharedCompleteChildSet() throws Exception {
         var scores = parser.parseScoreParseResult("{\"A\":60,\"B\":20}", List.of(node("A"), node("B")), 40);
-        assertEquals(Map.of("A", 30, "B", 10), scores.scores());
+        assertEquals(Map.of("A", 30d, "B", 10d), scores.scores());
         assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(
                 "{\"A\":100}", List.of(node("A"), node("B")), 100));
         assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(

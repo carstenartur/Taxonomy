@@ -33,9 +33,9 @@ public class SavedAnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(SavedAnalysisService.class);
 
-    private static final int CURRENT_VERSION = 2;
+    private static final int CURRENT_VERSION = 4;
     private static final int MIN_SUPPORTED_VERSION = 1;
-    private static final int MAX_SUPPORTED_VERSION = 3;
+    private static final int MAX_SUPPORTED_VERSION = 4;
 
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
@@ -55,7 +55,7 @@ public class SavedAnalysisService {
      * @return populated {@link SavedAnalysis}
      */
     public SavedAnalysis buildExport(String requirement,
-                                     Map<String, Integer> scores,
+                                     Map<String, ? extends Number> scores,
                                      Map<String, String> reasons,
                                      String provider) {
         SavedAnalysis saved = new SavedAnalysis();
@@ -80,7 +80,7 @@ public class SavedAnalysisService {
      * @return populated {@link SavedAnalysis} with provenance
      */
     public SavedAnalysis buildExport(String requirement,
-                                     Map<String, Integer> scores,
+                                     Map<String, ? extends Number> scores,
                                      Map<String, String> reasons,
                                      String provider,
                                      List<SourceArtifactDto> sources,
@@ -108,11 +108,11 @@ public class SavedAnalysisService {
      * @throws IOException              if the JSON cannot be parsed
      */
     public SavedAnalysis importFromJson(String json) throws IOException {
-        int version = objectMapper.readTree(json).path("version").asInt(2);
-        SavedAnalysis saved = version >= 3
-                ? objectMapper.readerFor(SavedAnalysis.class)
-                    .without(tools.jackson.databind.DeserializationFeature.ACCEPT_FLOAT_AS_INT).readValue(json)
-                : objectMapper.readValue(json, SavedAnalysis.class);
+        SavedAnalysis saved = objectMapper.readerFor(SavedAnalysis.class)
+                .with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .with(tools.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                .without(tools.jackson.databind.DeserializationFeature.ACCEPT_FLOAT_AS_INT).readValue(json);
 
         if (saved.getVersion() < MIN_SUPPORTED_VERSION || saved.getVersion() > MAX_SUPPORTED_VERSION) {
             throw new IllegalArgumentException(
@@ -154,7 +154,7 @@ public class SavedAnalysisService {
             }
         }
         saved.validateCoverageEvidence();
-        if (saved.getVersion() >= 3 && !selectedRoots) {
+        if (saved.getVersion() >= 3 && saved.getAnalysisCoverage() != null && !selectedRoots) {
             for (String code : saved.getAnalysisCoverage().nodes().keySet()) {
                 if (taxonomyService.getNodeByCode(code) == null) {
                     throw new IllegalArgumentException("Unknown catalogue node in assessment coverage: " + code);

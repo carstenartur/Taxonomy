@@ -91,7 +91,7 @@ public final class RecoveryDurabilityProbe {
         var cancelled = store.cancel(ID, SCOPE).result();
         check(cancelled.getAnalysisScope().equals(selected), "Cancellation lost scope");
         check(cancelled.getAnalysisCoverage().nodes().keySet().equals(Set.of("BP")), "Cancellation assessed unselected taxonomy");
-        check(cancelled.getTree().size() == 2 && cancelled.getRawScores().equals(Map.of("BP", 80)), "Cancellation lost full tree or evidence");
+        check(cancelled.getTree().size() == 2 && cancelled.getRawScores().equals(Map.of("BP", 80d)), "Cancellation lost full tree or evidence");
         check(store.read(ID, SCOPE).result().getAnalysisScope().equals(selected), "Restored result lost scope");
         try {
             store.begin(request, SCOPE, "different-signature", tree);
@@ -114,21 +114,21 @@ public final class RecoveryDurabilityProbe {
         store.complete(claim, partial, tree);
         request.setContinuationAction("CONTINUE"); request.setContinuationVersion(store.read(ID, SCOPE).recovery().version());
         claim = store.begin(request, SCOPE, "selected-signature", tree);
-        var success = new AnalysisResult(Map.of("BP", 80), List.of()); success.setStatus("SUCCESS");
+        var success = new AnalysisResult(Map.of("BP", 80d), List.of()); success.setStatus("SUCCESS");
         var completed = store.complete(claim, success, tree);
         check(completed.getAnalysisScope().equals(selected), "Continuation lost frozen scope");
         check(completed.getAnalysisCoverage().nodes().keySet().equals(Set.of("BP")), "Continuation broadened selected coverage");
         request.setContinuationAction("START");
         var replay = store.begin(request, SCOPE, "selected-signature", tree).completedResult();
         check(replay.getAnalysisScope().equals(selected) && replay.getTree().size() == 2
-                && replay.getRawScores().equals(Map.of("BP", 80)), "Replay lost selected evidence scope");
+                && replay.getRawScores().equals(Map.of("BP", 80d)), "Replay lost selected evidence scope");
     }
 
     public static void cancelledEvidence() {
         var journal = new Journal(); journal.question("good", "SUCCESS", "BP", 70);
         journal.question("bad", "FAILED", "CP", 0); journal.question("pending", "ATTEMPT", "IP", 0);
         var cancelled = journal.store().cancel(ID, SCOPE);
-        check(cancelled.result() != null && Integer.valueOf(70).equals(cancelled.result().getRawScores().get("BP")),
+        check(cancelled.result() != null && Double.valueOf(70).equals(cancelled.result().getRawScores().get("BP")),
                 "Cancellation published before successful checkpoint evidence was materialized");
         check(!cancelled.result().getRawScores().containsKey("CP") && !cancelled.result().getRawScores().containsKey("IP"),
                 "Failed or in-flight questions became completed zero scores");
@@ -137,7 +137,7 @@ public final class RecoveryDurabilityProbe {
                 "Cancellation erased independently assessed evidence");
         String durable = journal.run.resultJson;
         var restarted = journal.store().read(ID, SCOPE);
-        check("CANCELLED".equals(restarted.result().getStatus()) && restarted.result().getRawScores().equals(Map.of("BP",70)),
+        check("CANCELLED".equals(restarted.result().getStatus()) && restarted.result().getRawScores().equals(Map.of("BP",70d)),
                 "Restored store depends on a late worker to produce the cancellation result");
         journal.store().cancel(ID, SCOPE);
         check(durable.equals(journal.run.resultJson), "Repeated cancellation rewrites the accepted result");
@@ -146,7 +146,7 @@ public final class RecoveryDurabilityProbe {
         var journal = new Journal(); journal.run.inputHash = "same";
         journal.question("Rskipped", "SKIPPED", "BP", 0);
         journal.question("Rpending", "READY", "IP", 0);
-        var result = new AnalysisResult(Map.of("BP", 70, "CP", 0, "IP", 0), List.of(node("BP"), node("CP"), node("IP")));
+        var result = new AnalysisResult(Map.of("BP", 70d, "CP", 0d, "IP", 0d), List.of(node("BP"), node("CP"), node("IP")));
         result.setStatus("PARTIAL");
         result.setRelationSearchReport(new RelationSearchReport(2, "original", "policy", List.of(),
                 new RelationSearchModel.Result(List.of(), List.of(new RelationSearchModel.Unfinished("BP", "CONSUMES",
@@ -166,14 +166,14 @@ public final class RecoveryDurabilityProbe {
         journal.question("pending", "ATTEMPT", "IP", 0);
         journal.store().cancel(ID, SCOPE);
         String accepted = journal.run.resultJson;
-        var late = new LlmCallDetail(); late.setScores(Map.of("IP", 90));
+        var late = new LlmCallDetail(); late.setScores(Map.of("IP", 90d));
         try {
             journal.store().finish(journal.claim(), new AnalysisCheckpointSession.Question("pending", "", "MOCK", List.of("IP"), ""), "SUCCESS", late);
             throw new AssertionError("Late provider response changed a terminal cancellation");
         } catch (ResponseStatusException expected) { check(expected.getStatusCode().value() == 409, "Expected conflict"); }
-        var incomplete = new AnalysisResult(Map.of("IP",90), List.of(node("IP"))); incomplete.setStatus("SUCCESS");
+        var incomplete = new AnalysisResult(Map.of("IP",90d), List.of(node("IP"))); incomplete.setStatus("SUCCESS");
         var completed = journal.store().complete(journal.claim(), incomplete, List.of(node("IP")));
-        check(completed.getRawScores().equals(Map.of("BP",70)), "Late complete overwrote durable cancellation evidence");
+        check(completed.getRawScores().equals(Map.of("BP",70d)), "Late complete overwrote durable cancellation evidence");
         check(accepted.equals(journal.run.resultJson), "Late complete rewrote frozen cancellation snapshot");
     }
     public static void frozenAdmission() {
@@ -198,7 +198,7 @@ public final class RecoveryDurabilityProbe {
                 throw new AssertionError("Legacy cancellation trusted a changed catalogue");
             } catch (ResponseStatusException expected) { }
             var result = journal.store().cancel(ID, SCOPE, List.of(node("BP"),node("CP")), "original-signature").result();
-            check(result != null && result.getRawScores().equals(Map.of("BP",70)), "Legacy cancelled row lost checkpoint evidence");
+            check(result != null && result.getRawScores().equals(Map.of("BP",70d)), "Legacy cancelled row lost checkpoint evidence");
         }
     }
     public static void invalidProvider() {
@@ -219,7 +219,7 @@ public final class RecoveryDurabilityProbe {
                 var progress = registry.recent("alice", SCOPE, null, null).getFirst();
                 check(progress.finishedAt() == null, "Terminal live progress was published before the durable commit");
                 if (failPersistence) throw new IllegalStateException("simulated durable write failure");
-                var saved = new AnalysisResult(Map.of("BP",70), tree); saved.setStatus(persistedStatus); return saved;
+                var saved = new AnalysisResult(Map.of("BP",70d), tree); saved.setStatus(persistedStatus); return saved;
             }
             @Override public void interrupted(Claim claim) { }
         };

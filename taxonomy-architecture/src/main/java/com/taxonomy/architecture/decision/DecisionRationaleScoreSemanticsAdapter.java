@@ -213,11 +213,13 @@ public class DecisionRationaleScoreSemanticsAdapter {
     }
 
     private String evidence(AnalysisScoreDetail detail, boolean german) {
+        String suitability = com.taxonomy.dto.AnalysisPercentages.canonical(detail.rawScore());
+        String relevance = com.taxonomy.dto.AnalysisPercentages.canonical(detail.effectiveRelevance());
         return german
-                ? "Produkteignung: " + detail.rawScore()
-                        + " %; effektive Relevanz: " + detail.effectiveRelevance() + "/100."
-                : "Product suitability: " + detail.rawScore()
-                        + "%; effective relevance: " + detail.effectiveRelevance() + "/100.";
+                ? "Produkteignung: " + suitability
+                        + " %; effektive Relevanz: " + relevance + "/100."
+                : "Product suitability: " + suitability
+                        + "%; effective relevance: " + relevance + "/100.";
     }
 
     private Double bounded(Double value) {

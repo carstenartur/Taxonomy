@@ -50,7 +50,7 @@ public final class PartialArchitectureProjection {
                 .filter(entry -> details.get(entry.getKey()) != null
                         && details.get(entry.getKey()).effectiveRelevance() == entry.getValue())
                 .filter(entry -> index.containsKey(entry.getKey()) && !index.get(entry.getKey()).isTaxonomyContainer())
-                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
+                .sorted(Map.Entry.<String, Double>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
                 .toList();
         int limit = maxNodes > 0 ? maxNodes : MAX_SNAPSHOT_NODES;
         int added = 0;

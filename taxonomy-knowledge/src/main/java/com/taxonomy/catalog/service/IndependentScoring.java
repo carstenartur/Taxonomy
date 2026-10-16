@@ -23,10 +23,10 @@ public final class IndependentScoring implements DistributionStrategy {
     private IndependentScoring() {}
 
     @Override
-    public Map<String, Integer> adjust(Map<String, Integer> rawScores, int parentScore) {
+    public Map<String, Double> adjust(Map<String, Double> rawScores, double parentScore) {
         // Keep raw scores unchanged — clamp to [0, 100] only
-        Map<String, Integer> result = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : rawScores.entrySet()) {
+        Map<String, Double> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Double> entry : rawScores.entrySet()) {
             result.put(entry.getKey(), Math.max(0, Math.min(100, entry.getValue())));
         }
         return result;

@@ -27,7 +27,7 @@ public class TaxonomyNodeDto {
     private boolean classificationReviewRequired;
     private String classificationJustification;
     private List<TaxonomyNodeDto> children = new ArrayList<>();
-    private Integer matchPercentage;
+    private Double matchPercentage;
     private List<TaxonomyRelationDto> outgoingRelations = new ArrayList<>();
     private List<TaxonomyRelationDto> incomingRelations = new ArrayList<>();
 
@@ -123,8 +123,8 @@ public class TaxonomyNodeDto {
     public List<TaxonomyNodeDto> getChildren() { return children; }
     public void setChildren(List<TaxonomyNodeDto> children) { this.children = children; }
 
-    public Integer getMatchPercentage() { return matchPercentage; }
-    public void setMatchPercentage(Integer matchPercentage) { this.matchPercentage = matchPercentage; }
+    public Double getMatchPercentage() { return matchPercentage; }
+    public void setMatchPercentage(Number matchPercentage) { this.matchPercentage = matchPercentage == null ? null : AnalysisPercentages.require(matchPercentage); }
 
     public List<TaxonomyRelationDto> getOutgoingRelations() { return outgoingRelations; }
     public void setOutgoingRelations(List<TaxonomyRelationDto> outgoingRelations) { this.outgoingRelations = outgoingRelations; }

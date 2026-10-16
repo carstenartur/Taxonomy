@@ -28,13 +28,13 @@ public class RequirementArchitectureViewService {
     }
 
     /** Projects only requirement-scoped evidence; does not read or mutate catalogue relations. */
-    public RequirementArchitectureView buildFromEvidence(Map<String,Integer> scores, int maxNodes,
+    public RequirementArchitectureView buildFromEvidence(Map<String,Double> scores, int maxNodes,
                                                          com.taxonomy.dto.RelationSearchReport report) {
         return buildFromEvidence(scores, Map.of(), maxNodes, report);
     }
 
     /** Keeps original assessment provenance separate from comparable effective relevance. */
-    public RequirementArchitectureView buildFromEvidence(Map<String,Integer> effectiveScores,
+    public RequirementArchitectureView buildFromEvidence(Map<String,Double> effectiveScores,
             Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes,
             com.taxonomy.dto.RelationSearchReport report) {
         return pipeline.projectEvidence(report, effectiveScores, scoreDetails, maxNodes);
@@ -49,7 +49,7 @@ public class RequirementArchitectureViewService {
      * @return the architecture view, or an empty view with a note if no anchors are found
      */
     @Transactional(readOnly = true)
-    public RequirementArchitectureView build(Map<String, Integer> scores, String businessText,
+    public RequirementArchitectureView build(Map<String, Double> scores, String businessText,
                                              int maxArchitectureNodes) {
         return build(scores, businessText, maxArchitectureNodes, null);
     }
@@ -66,7 +66,7 @@ public class RequirementArchitectureViewService {
      * @return the architecture view, or an empty view with a note if no anchors are found
      */
     @Transactional(readOnly = true)
-    public RequirementArchitectureView build(Map<String, Integer> scores, String businessText,
+    public RequirementArchitectureView build(Map<String, Double> scores, String businessText,
                                              int maxArchitectureNodes,
                                              List<RelationHypothesisDto> provisionalRelations) {
         if (scores == null || scores.isEmpty()) {

@@ -96,19 +96,19 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
     private void ensureElement(List<RequirementElementView> elements,
                                 Set<String> includedCodes,
                                 String nodeCode, String nodeName,
-                                java.util.Map<String, Integer> scores,
+                                java.util.Map<String, Double> scores,
                                 ArchitectureViewContext ctx) {
         if (includedCodes.contains(nodeCode)) {
             return;
         }
         RequirementElementView element = new RequirementElementView();
         element.setNodeCode(nodeCode);
-        element.setRelevance(scores.getOrDefault(nodeCode, 0) / 100.0);
+        element.setRelevance(scores.getOrDefault(nodeCode, 0d) / 100.0);
         element.setHopDistance(0);
         element.setAnchor(false);
         element.setIncludedBecause("provisional relation endpoint");
         element.setOrigin(NodeOrigin.SEED_CONTEXT);
-        element.setDirectLlmScore(scores.getOrDefault(nodeCode, 0));
+        element.setDirectLlmScore(scores.getOrDefault(nodeCode, 0d));
         element.setTitle(nodeName);
 
         Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);

@@ -10,15 +10,15 @@ import java.util.stream.IntStream;
  * Standard hierarchical narrowing: children's scores are normalised so they
  * sum exactly to the parent's score (budget distribution).
  *
- * <p>Uses the largest-remainder method to distribute the parent budget
+ * <p>Uses decimal-preserving arithmetic to distribute the parent budget
  * proportionally based on the raw scores.  This guarantees that:
  * <ul>
- *   <li>Every child score is a non-negative integer</li>
- *   <li>The sum of all child scores equals {@code parentScore} exactly</li>
+ *   <li>Every child score is a non-negative percentage, including fractions</li>
+ *   <li>The sum of all child scores equals {@code parentScore} to the numeric representation precision</li>
  *   <li>Children with higher raw scores receive a proportionally larger share</li>
  * </ul>
  *
- * <p>If all raw scores are zero, children receive zero scores.
+ * <p>If all raw weights are zero, the deterministic equal-weight fallback is retained.
  */
 public final class BudgetDistribution implements DistributionStrategy {
 
@@ -28,59 +28,15 @@ public final class BudgetDistribution implements DistributionStrategy {
     private BudgetDistribution() {}
 
     @Override
-    public Map<String, Integer> adjust(Map<String, Integer> rawScores, int parentScore) {
-        if (rawScores.isEmpty()) {
-            return Map.of();
+    public Map<String, Double> adjust(Map<String, Double> rawScores, double parentScore) {
+        if (rawScores.isEmpty()) return Map.of();
+        var weights = com.taxonomy.dto.AnalysisPercentages.copy(rawScores);
+        if (weights.values().stream().allMatch(value -> value == 0)) {
+            // Existing deterministic-distributor policy: equal fallback when no weight is available.
+            // The LLM parser is stricter: an explicit all-zero answer remains all-zero.
+            weights.replaceAll((key, value) -> 1d);
         }
-
-        if (parentScore == 0) {
-            Map<String, Integer> zeros = new LinkedHashMap<>();
-            rawScores.keySet().forEach(k -> zeros.put(k, 0));
-            return zeros;
-        }
-
-        List<String> keys = List.copyOf(rawScores.keySet());
-        int[] weights = keys.stream()
-                .mapToInt(k -> Math.max(rawScores.getOrDefault(k, 0), 0))
-                .toArray();
-        int totalWeight = Arrays.stream(weights).sum();
-
-        if (totalWeight == 0) {
-            // All raw scores are 0 — distribute equally with remainder to first nodes
-            Map<String, Integer> result = new LinkedHashMap<>();
-            int base = parentScore / keys.size();
-            int remainder = parentScore - base * keys.size();
-            for (int i = 0; i < keys.size(); i++) {
-                result.put(keys.get(i), base + (i < remainder ? 1 : 0));
-            }
-            return result;
-        }
-
-        // Largest-remainder proportional distribution
-        int[] childScores = new int[keys.size()];
-        double[] fractions = new double[keys.size()];
-        int distributed = 0;
-        for (int i = 0; i < keys.size(); i++) {
-            double raw = (double) parentScore * weights[i] / totalWeight;
-            childScores[i] = (int) raw;
-            fractions[i] = raw - childScores[i];
-            distributed += childScores[i];
-        }
-
-        int remainder = parentScore - distributed;
-        Integer[] byFraction = IntStream.range(0, keys.size())
-                .boxed()
-                .sorted((a, b) -> Double.compare(fractions[b], fractions[a]))
-                .toArray(Integer[]::new);
-        for (int i = 0; i < remainder; i++) {
-            childScores[byFraction[i]]++;
-        }
-
-        Map<String, Integer> result = new LinkedHashMap<>();
-        for (int i = 0; i < keys.size(); i++) {
-            result.put(keys.get(i), childScores[i]);
-        }
-        return result;
+        return com.taxonomy.dto.AnalysisPercentages.normalize(weights, parentScore);
     }
 
     @Override

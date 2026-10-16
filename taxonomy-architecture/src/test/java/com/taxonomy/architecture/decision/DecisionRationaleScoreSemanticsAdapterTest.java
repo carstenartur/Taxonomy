@@ -39,14 +39,14 @@ class DecisionRationaleScoreSemanticsAdapterTest {
                 "IP-P", "Concrete product", 32, "IP", 2,
                 "IP → IP-F → IP-P", "AI reason", ReasonSource.AI_SCORING);
         PathStep pathStep = new PathStep(
-                3, "IP-P", "Concrete product", 32, 200.0,
+                3, "IP-P", "Concrete product", 32d, 200.0,
                 "AI reason", ReasonSource.AI_SCORING);
         ChildDecision child = new ChildDecision(
-                "IP-P", "Concrete product", "Description", 32, 200.0,
+                "IP-P", "Concrete product", "Description", 32d, 200.0,
                 1, true, Disposition.LEAF_CANDIDATE,
                 "AI reason", ReasonSource.AI_SCORING, true);
         DecisionChapter chapter = new DecisionChapter(
-                1, "IP-F", "Product family", "Description", 40, 1,
+                1, "IP-F", "Product family", "Description", 40d, 1,
                 true, "summary", "comparison", List.of(child), List.of());
         DecisionRationaleReport report = new DecisionRationaleReport(
                 "Report", "en", "requirement", ReportStatus.FINAL,
@@ -81,11 +81,11 @@ class DecisionRationaleScoreSemanticsAdapterTest {
     @Test
     void ordinaryHierarchySharesAreOnlyBoundedAndOtherwiseRemainUnchanged() {
         ChildDecision child = new ChildDecision(
-                "CP-C", "Category", "Description", 30, 150.0,
+                "CP-C", "Category", "Description", 30d, 150.0,
                 1, true, Disposition.LEAF_CANDIDATE,
                 "reason", ReasonSource.AI_SCORING, true);
         DecisionChapter chapter = new DecisionChapter(
-                1, "CP", "Capabilities", "Description", 30, 0,
+                1, "CP", "Capabilities", "Description", 30d, 0,
                 true, "summary", "comparison", List.of(child), List.of());
         DecisionRationaleReport report = new DecisionRationaleReport(
                 "Report", "en", "requirement", ReportStatus.FINAL,

@@ -23,10 +23,10 @@ class DistributedRelationSearchTest {
     void persistedPreparationAndReverseShardCompletionKeepSequentialEvidenceAndPrompts() {
         var catalogue = twoTargets();
         List<String> sequentialPrompts = new ArrayList<>();
-        var sequential = search(catalogue, record(sequentialPrompts)).search(WRITE, Map.of("process", 90), OPTIONS);
+        var sequential = search(catalogue, record(sequentialPrompts)).search(WRITE, Map.of("process", 90d), OPTIONS);
         List<String> distributedPrompts = new ArrayList<>();
         var coordinator = search(catalogue, record(distributedPrompts));
-        var plan = coordinator.prepare("prepared-result", WRITE, Map.of("process", 90),
+        var plan = coordinator.prepare("prepared-result", WRITE, Map.of("process", 90d),
                 List.of("persisted-BP-result"), OPTIONS, true);
         plan = JSON.readValue(JSON.writeValueAsString(plan), RelationSearchDistribution.Plan.class);
         var results = new ArrayList<RelationSearchDistribution.WorkResult>();
@@ -56,10 +56,10 @@ class DistributedRelationSearchTest {
         for (int calls = 0; calls < 12; calls++) {
             var options = new RequirementRelationSearch.Options(new Limits(calls, 8, 10, 128), 16);
             var prompts = new ArrayList<String>();
-            var sequential = search(twoTargets(), record(prompts)).search(WRITE, Map.of("process", 90), options);
+            var sequential = search(twoTargets(), record(prompts)).search(WRITE, Map.of("process", 90d), options);
             var actual = new ArrayList<String>();
             var engine = search(twoTargets(), record(actual));
-            var plan = engine.prepare("plan-" + calls, WRITE, Map.of("process", 90), List.of("root-result"), options, true);
+            var plan = engine.prepare("plan-" + calls, WRITE, Map.of("process", 90d), List.of("root-result"), options, true);
             var results = execute(engine, plan, WRITE);
             var report = RelationSearchDistribution.combine(plan, results);
             assertThat(report.totalCalls()).as("global budget %s", calls).isEqualTo(sequential.totalCalls()).isLessThanOrEqualTo(calls);
@@ -76,7 +76,7 @@ class DistributedRelationSearchTest {
     @Test
     void partialWaveCannotReleaseUnusedCreditsBeforeOtherReservationsFinish() {
         var engine = search(twoTargets(), RequirementRelationSearchContract::answer);
-        var plan = engine.prepare("plan", WRITE, Map.of("process", 90), List.of("root-result"), OPTIONS, true);
+        var plan = engine.prepare("plan", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
         var wave = RelationSearchDistribution.ready(plan, List.of());
         assertThat(wave.size()).isGreaterThan(1);
         var last = wave.getLast();
@@ -91,7 +91,7 @@ class DistributedRelationSearchTest {
     void fullyFundedTargetShardsCanExecuteAtTheSameTimeWithoutRepeatingExtraction() throws Exception {
         var catalogue = twoTargets();
         var plan = search(catalogue, RequirementRelationSearchContract::answer)
-                .prepare("parallel", WRITE, Map.of("process", 90), List.of("root-result"), OPTIONS, true);
+                .prepare("parallel", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
         var wave = RelationSearchDistribution.ready(plan, List.of());
         var left = wave.getFirst();
         var right = wave.stream().filter(w -> !w.targetRoot().equals(left.targetRoot())).findFirst().orElseThrow();
@@ -124,7 +124,7 @@ class DistributedRelationSearchTest {
             public List<Node> roots() { return List.of(ROOT); }
             public List<Node> children(Node n) { return catalogue().children(n); }
         };
-        var scores = Map.of("process", 50, "application", 90);
+        var scores = Map.of("process", 50d, "application", 90d);
         var sequentialPrompts = new ArrayList<String>();
         var expected = search(catalogue, record(sequentialPrompts)).search(WRITE, scores, OPTIONS);
         var distributedPrompts = new ArrayList<String>();
@@ -140,9 +140,9 @@ class DistributedRelationSearchTest {
     @Test
     void sourceAndWorkLimitsRemainExplicitAndBounded() {
         var many = new LinkedHashMap<String, Node>();
-        var scores = new LinkedHashMap<String, Integer>();
+        var scores = new LinkedHashMap<String, Double>();
         for (int n = 0; n < 40; n++) { String id = "process-" + n;
-            many.put(id, new Node(id, "BP", id, "fixture process", false)); scores.put(id, 1); }
+            many.put(id, new Node(id, "BP", id, "fixture process", false)); scores.put(id, 1d); }
         var catalogue = new RequirementRelationSearch.InputCatalogue() {
             public Node find(String id) { return many.get(id); }
             public List<Node> roots() { return List.of(ROOT); }
@@ -168,7 +168,7 @@ class DistributedRelationSearchTest {
     void missingAndUnresolvedSourcesNeverBecomeNegativeCompletedFindings() {
         AtomicInteger calls = new AtomicInteger();
         var engine = search(catalogue(), p -> { calls.incrementAndGet(); return "{\"selections\":[{\"nodeId\":\"process\",\"outcome\":\"UNRESOLVED\",\"contributions\":[],\"rationale\":\"Scope unclear\",\"question\":\"Which evidence?\"}]}"; });
-        var plan = engine.prepare("partial", READ, Map.of("process", 20, "missing", 10), List.of("root-result"), OPTIONS, true);
+        var plan = engine.prepare("partial", READ, Map.of("process", 20d, "missing", 10d), List.of("root-result"), OPTIONS, true);
         var report = RelationSearchDistribution.combine(plan, List.of());
         assertThat(calls).hasValue(1);
         assertThat(RelationSearchDistribution.ready(plan, List.of())).isEmpty();
@@ -187,18 +187,18 @@ class DistributedRelationSearchTest {
             public List<Node> children(Node n) { throw new AssertionError("no children read"); }
         };
         var skipped = search(absent, p -> { throw new AssertionError("no provider"); })
-                .prepare("disabled", READ, Map.of("process", 90), List.of("root-result"), OPTIONS, false);
+                .prepare("disabled", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, false);
         assertThat(RelationSearchDistribution.ready(skipped, List.of())).isEmpty();
         assertThat(RelationSearchDistribution.combine(skipped, List.of()).totalCalls()).isZero();
         var plan = session(RequirementRelationSearchContract::answer)
-                .prepare("subset", READ, Map.of("process", 90), List.of("root-result"), OPTIONS, true);
+                .prepare("subset", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
         assertThat(plan.items()).allMatch(i -> i.targetRoot().code().equals("IP"));
     }
 
     @Test
     void workerRejectsMissingTargetOrForeignRequirementAndDoesNotLoadSourceCatalogue() {
         var coordinator = session(RequirementRelationSearchContract::answer);
-        var plan = coordinator.prepare("plan", READ, Map.of("process", 90), List.of("root-result"), OPTIONS, true);
+        var plan = coordinator.prepare("plan", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
         var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
         var wrong = search(targetOnly(twoTargets(), "CR"), p -> { throw new AssertionError("no remote call"); });
         assertThatThrownBy(() -> wrong.evaluate(READ, plan, work)).isInstanceOf(IllegalArgumentException.class);
@@ -220,8 +220,8 @@ class DistributedRelationSearchTest {
         var journal = new Journal();
         var options = new RequirementRelationSearch.Options(new Limits(5, 8, 10, 128), 1);
         try (var ignored = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
-            var first = engine.prepare("replayed", READ, Map.of("process", 20, "later", 10), List.of("root-result"), options, true);
-            var replay = engine.prepare("replayed", READ, Map.of("process", 20, "later", 10), List.of("root-result"), options, true);
+            var first = engine.prepare("replayed", READ, Map.of("process", 20d, "later", 10d), List.of("root-result"), options, true);
+            var replay = engine.prepare("replayed", READ, Map.of("process", 20d, "later", 10d), List.of("root-result"), options, true);
             assertThat(replay.sources()).isEqualTo(first.sources()).hasSize(1);
             assertThat(replay.sourceCalls()).isEqualTo(first.sourceCalls()).isEqualTo(1);
             assertThat(replay.warnings()).isEqualTo(first.warnings());
@@ -233,7 +233,7 @@ class DistributedRelationSearchTest {
     void workReplayCannotReleasePreviouslySpentOperationCredits() {
         var calls = new AtomicInteger();
         var engine = search(catalogue(), prompt -> { calls.incrementAndGet(); return answer(prompt); });
-        var plan = engine.prepare("replay-work", READ, Map.of("process", 90), List.of("root-result"), OPTIONS, true);
+        var plan = engine.prepare("replay-work", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
         var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
         var journal = new Journal();
         try (var ignored = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {

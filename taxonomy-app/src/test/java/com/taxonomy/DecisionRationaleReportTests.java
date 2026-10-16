@@ -99,17 +99,17 @@ class DecisionRationaleReportTests {
     void evaluatedProductCoverageGapIsCompleteAndFinalWithWarnings() {
         Fixture fixture = completeFixture();
         Map<String, List<TaxonomyNode>> childrenMap = taxonomyService.getChildrenMap();
-        Map<String, Integer> scores = new LinkedHashMap<>(fixture.scores());
+        Map<String, Double> scores = new LinkedHashMap<>(fixture.scores());
         TaxonomyNode productFamily = taxonomyService.getRootNodes().stream()
-      .filter(root -> scores.getOrDefault(root.getCode(), 0) == 0)
+      .filter(root -> scores.getOrDefault(root.getCode(), 0d) == 0)
       .filter(root -> !childrenMap.getOrDefault(root.getCode(), List.of()).isEmpty())
       .findFirst()
       .orElseThrow();
         List<String> candidateCodes = childrenMap.get(productFamily.getCode()).stream()
       .map(TaxonomyNode::getCode)
       .toList();
-        scores.put(productFamily.getCode(), 40);
-        candidateCodes.forEach(code -> scores.put(code, 0));
+        scores.put(productFamily.getCode(), 40d);
+        candidateCodes.forEach(code -> scores.put(code, 0d));
         ProductCoverageGap gap = new ProductCoverageGap(
       productFamily.getCode(),
       productFamily.getName(),
@@ -138,7 +138,7 @@ class DecisionRationaleReportTests {
     @Test
     void missingChildScoreProducesDraftAndDoesNotTreatMissingAsZero() {
         Fixture fixture = completeFixture();
-        Map<String, Integer> incompleteScores = new LinkedHashMap<>(fixture.scores());
+        Map<String, Double> incompleteScores = new LinkedHashMap<>(fixture.scores());
         String parent = fixture.pathCodes().get(Math.min(1, fixture.pathCodes().size() - 2));
         String missingChild = taxonomyService.getChildrenOf(parent).stream()
                 .map(TaxonomyNode::getCode)
@@ -271,10 +271,10 @@ class DecisionRationaleReportTests {
     @Test
     void diagramSplitsLargeSiblingGroupsAndPreservesEveryChild() {
         DecisionRationaleReport.DecisionChapter chapter = new DecisionRationaleReport.DecisionChapter(
-                1, "P", "Parent", "", 100, 0, true, "decision", "comparison",
+                1, "P", "Parent", "", 100d, 0, true, "decision", "comparison",
                 java.util.stream.IntStream.range(0, 13)
                         .mapToObj(index -> new DecisionRationaleReport.ChildDecision(
-                                "C" + index, "Child " + index, "", index, (double) index,
+                                "C" + index, "Child " + index, "", (double) index, (double) index,
                                 index + 1, index == 12,
                                 DecisionRationaleReport.Disposition.LEAF_CANDIDATE,
                                 "reason", DecisionRationaleReport.ReasonSource.AI_SCORING, true))
@@ -352,7 +352,7 @@ class DecisionRationaleReportTests {
     @Test
     void adHocEndpointRejectsUnboundedOrInvalidEvidence() throws Exception {
         Map<String, Object> invalidScore = new LinkedHashMap<>();
-        invalidScore.put("scores", Map.of("CP", 101));
+        invalidScore.put("scores", Map.of("CP", 101d));
         invalidScore.put("businessText", "bounded requirement");
         mockMvc.perform(post("/api/decision-report/json")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -360,7 +360,7 @@ class DecisionRationaleReportTests {
                 .andExpect(status().isBadRequest());
 
         Map<String, Object> oversizedReason = new LinkedHashMap<>();
-        oversizedReason.put("scores", Map.of("CP", 100));
+        oversizedReason.put("scores", Map.of("CP", 100d));
         oversizedReason.put("reasons", Map.of("CP", "x".repeat(50_001)));
         oversizedReason.put("businessText", "bounded requirement");
         mockMvc.perform(post("/api/decision-report/json")
@@ -370,7 +370,7 @@ class DecisionRationaleReportTests {
 
 
         Map<String, Object> invalidGap = new LinkedHashMap<>();
-        invalidGap.put("scores", Map.of("CP", 100));
+        invalidGap.put("scores", Map.of("CP", 100d));
         invalidGap.put("businessText", "bounded requirement");
         invalidGap.put("productCoverageGaps", List.of(Map.of(
       "productFamilyCode", "CP",
@@ -435,21 +435,21 @@ class DecisionRationaleReportTests {
             visited.add(current.getCode());
         }
 
-        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new HashMap<>();
         for (TaxonomyNode root : roots) {
-            scores.put(root.getCode(), root.getCode().equals(selectedRoot.getCode()) ? 90 : 0);
+            scores.put(root.getCode(), root.getCode().equals(selectedRoot.getCode()) ? 90d : 0d);
         }
         reasons.put(selectedRoot.getCode(),
                 "Die Anforderung wird in diesem Taxonomiebereich am unmittelbarsten adressiert.");
 
-        int currentScore = 90;
+        double currentScore = 90;
         for (int index = 0; index < path.size() - 1; index++) {
             TaxonomyNode parent = path.get(index);
             TaxonomyNode selectedChild = path.get(index + 1);
             for (TaxonomyNode child : childrenMap.getOrDefault(parent.getCode(), List.of())) {
                 scores.put(child.getCode(), child.getCode().equals(selectedChild.getCode())
-                        ? currentScore : 0);
+                        ? currentScore : 0d);
             }
             reasons.put(selectedChild.getCode(),
                     "Dieser Schritt konkretisiert die Anforderung gegenüber den direkten Alternativen am stärksten.");
@@ -476,7 +476,7 @@ class DecisionRationaleReportTests {
 
     private record Fixture(
             String requirement,
-            Map<String, Integer> scores,
+            Map<String, Double> scores,
             Map<String, String> reasons,
             List<String> pathCodes,
             String leafCode) {

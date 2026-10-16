@@ -66,10 +66,10 @@ public class GraphQueryApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        Map<String, Integer> scores = new java.util.LinkedHashMap<>();
+        Map<String, Double> scores = new java.util.LinkedHashMap<>();
         if (rawScores != null) {
             for (Map.Entry<String, Object> entry : rawScores.entrySet()) {
-                scores.put(entry.getKey(), ((Number) entry.getValue()).intValue());
+                scores.put(entry.getKey(), com.taxonomy.dto.AnalysisPercentages.require((Number) entry.getValue()));
             }
         }
 

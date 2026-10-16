@@ -19,7 +19,7 @@ class CoverageApiControllerInputTest {
     @Test
     void suppliedScoresAndExplicitThresholdAreForwardedUnchanged() {
         var service = mock(RequirementCoverageService.class);
-        var scores = Map.of("BP", 85, "CP", 40);
+        var scores = Map.of("BP", 85d, "CP", 40d);
         var response = new CoverageApiController(service).recordCoverage(
                 new CoverageApiController.RecordCoverageRequest("REQ-18", "Another requirement", scores, 50));
         assertThat(response.getStatusCode().value()).isEqualTo(200);

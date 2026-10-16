@@ -51,36 +51,36 @@ class ScoringPipelineTests {
 
     @Test
     void normalizeToParentPassesThroughWhenSumMatchesTarget() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("A", 40);
-        scores.put("B", 35);
-        scores.put("C", 25);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("A", 40d);
+        scores.put("B", 35d);
+        scores.put("C", 25d);
         // Sum = 100, target = 100 → should pass through unchanged
-        Map<String, Integer> result = llmService.normalizeToParent(scores, 100);
+        Map<String, Double> result = llmService.normalizeToParent(scores, 100);
         assertThat(result.get("A")).isEqualTo(40);
         assertThat(result.get("B")).isEqualTo(35);
         assertThat(result.get("C")).isEqualTo(25);
-        assertThat(result.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(100);
+        assertThat(result.values().stream().mapToDouble(Double::doubleValue).sum()).isEqualTo(100);
     }
 
     @Test
     void normalizeToParentNormalizesWhenSumExceedsTarget() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("A", 60);
-        scores.put("B", 80);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("A", 60d);
+        scores.put("B", 80d);
         // Sum = 140, target = 75 → must normalize down
-        Map<String, Integer> result = llmService.normalizeToParent(scores, 75);
-        assertThat(result.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(75);
+        Map<String, Double> result = llmService.normalizeToParent(scores, 75);
+        assertThat(result.values().stream().mapToDouble(Double::doubleValue).sum()).isEqualTo(75);
     }
 
     @Test
     void normalizeToParentNormalizesWhenSumBelowTarget() {
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        scores.put("A", 10);
-        scores.put("B", 15);
+        Map<String, Double> scores = new LinkedHashMap<>();
+        scores.put("A", 10d);
+        scores.put("B", 15d);
         // Sum = 25, target = 75 → must normalize up
-        Map<String, Integer> result = llmService.normalizeToParent(scores, 75);
-        assertThat(result.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(75);
+        Map<String, Double> result = llmService.normalizeToParent(scores, 75);
+        assertThat(result.values().stream().mapToDouble(Double::doubleValue).sum()).isEqualTo(75);
     }
 
     // ── AnalysisResult discrepancies field ────────────────────────────────────

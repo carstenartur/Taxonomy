@@ -26,7 +26,7 @@ public class ArchitectureViewContext {
 
     // --- Inputs (immutable after construction) -------------------------
 
-    private final Map<String, Integer> scores;
+    private final Map<String, Double> scores;
     private final String businessText;
     private final int maxArchitectureNodes;
 
@@ -52,7 +52,7 @@ public class ArchitectureViewContext {
 
     // --- Construction --------------------------------------------------
 
-    public ArchitectureViewContext(Map<String, Integer> scores,
+    public ArchitectureViewContext(Map<String, Double> scores,
                                    String businessText,
                                    int maxArchitectureNodes,
                                    List<RelationHypothesisDto> provisionalRelations) {
@@ -89,7 +89,7 @@ public class ArchitectureViewContext {
 
     // --- Getters / setters ---------------------------------------------
 
-    public Map<String, Integer> getScores() { return scores; }
+    public Map<String, Double> getScores() { return scores; }
 
     public String getBusinessText() { return businessText; }
 
