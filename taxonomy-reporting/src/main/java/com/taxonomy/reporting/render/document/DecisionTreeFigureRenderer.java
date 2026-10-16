@@ -1,5 +1,6 @@
 package com.taxonomy.reporting.render.document;
 
+import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
@@ -78,9 +79,9 @@ public final class DecisionTreeFigureRenderer {
                     case REJECTED -> labels.rejected(); case NOT_EVALUATED -> labels.notEvaluated();
                 };
                 boolean stateIncludesScore = row.score() == null && row.disposition() == com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.NOT_EVALUATED
-                        || Integer.valueOf(0).equals(row.score()) && row.disposition() == com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.REJECTED;
+                        || (row.score() != null && row.score() == 0d) && row.disposition() == com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.REJECTED;
                 String text = row.code() + " · " + row.title() + "  |  " + (stateIncludesScore ? state
-                        : (row.score() == null ? labels.notEvaluated() : row.score() + "%") + " · " + state);
+                        : (row.score() == null ? labels.notEvaluated() : AnalysisPercentages.display(row.score())) + " · " + state);
                 if (FONT.canDisplayUpTo(text) >= 0) throw new WordReportLayoutException(
                         "The server font cannot display a tree label. Choose the table layout or install a font covering its characters.");
                 var wrapped = wrap(text, width - indent - 36, g.getFontMetrics());
