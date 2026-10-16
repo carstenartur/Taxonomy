@@ -27,8 +27,6 @@ public class VisioPageContentsConverter implements Converter {
             "http://schemas.microsoft.com/office/visio/2012/main";
     private static final String REL_NS =
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-    private static final String ANCHOR_FILL = "#4CAF50";
-    private static final String DEFAULT_FILL = "#2196F3";
     private static final String LINE_COLOR = "#44546A";
 
     @Override
@@ -107,11 +105,11 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LocPinX", decimal(shape.getWidth() / 2.0), "Width*0.5");
         writeCell(writer, "LocPinY", decimal(shape.getHeight() / 2.0), "Height*0.5");
         writeCell(writer, "Angle", "0");
-        writeCell(writer, "FillForegnd", shape.isAnchor() ? ANCHOR_FILL : DEFAULT_FILL);
+        writeCell(writer, "FillForegnd", com.taxonomy.export.DiagramPresentation.fill(shape.getType()));
         writeCell(writer, "FillPattern", "1");
         writeCell(writer, "LineColor", LINE_COLOR);
         writeCell(writer, "LinePattern", "1");
-        writeCell(writer, "LineWeight", "0.01388888888888889");
+        writeCell(writer, "LineWeight", shape.isAnchor() ? "0.02777777777777778" : "0.01388888888888889");
         writeCell(writer, "VerticalAlign", "1");
         writeCharacterStyle(writer, shape.getHeight() >= 1 ? 12 : 10);
         writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());

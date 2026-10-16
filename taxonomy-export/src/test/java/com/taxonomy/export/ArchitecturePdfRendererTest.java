@@ -38,6 +38,7 @@ class ArchitecturePdfRendererTest {
                     super.writeString(value, positions);
                 }
             };
+            text.setEndPage(1); // Geometry belongs to the diagram, not the separate inventory.
             assertThat(text.getText(document)).contains("Short Messaging Access Services", "CO-1048", "100%", "Communications Services");
             assertThat(labels).isNotEmpty().allSatisfy(position -> assertThat(position.getFontSizeInPt()).isGreaterThanOrEqualTo(8));
             assertThat(nodeText).isNotEmpty().allSatisfy(position -> {

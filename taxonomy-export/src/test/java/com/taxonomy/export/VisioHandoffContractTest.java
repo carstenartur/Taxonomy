@@ -59,7 +59,11 @@ class VisioHandoffContractTest {
             assertNotNull(data);
             assertEquals(node.type(), data.get("taxonomy.type"));
             assertEquals(node.label(), data.get("taxonomy.label"));
-            assertEquals(node.label(), data.get("label").replace("\n", ""));
+            String display = data.get("label");
+            assertTrue(display.startsWith(node.id() + "\n"));
+            assertTrue(display.endsWith("\nDepth " + node.depth()));
+            assertEquals(node.label(), display.substring(node.id().length() + 1,
+                    display.lastIndexOf("\nDepth ")).replace("\n", ""));
             assertEquals(node.relevance(), Double.parseDouble(data.get("taxonomy.relevance")));
             assertEquals(node.anchor() ? "1" : "0", data.get("taxonomy.anchor"));
             assertEquals(node.selectedForImpact() ? "1" : "0", data.get("taxonomy.selectedForImpact"));
@@ -231,7 +235,8 @@ class VisioHandoffContractTest {
         Map<String, Map<String, String>> data = shapeData(parts(output).get("visio/pages/page1.xml"));
         assertEquals(152, data.size());
         assertEquals(longLabel, data.get("a").get("taxonomy.label"));
-        assertTrue(data.get("a").get("label").endsWith("…"));
+        assertTrue(data.get("a").get("label").startsWith("a\n"));
+        assertTrue(data.get("a").get("label").contains("…\nDepth "));
         assertEquals("CUSTOM/RELATION", data.get("e149").get("taxonomy.type"));
     }
 
