@@ -100,7 +100,7 @@ flowchart TD
         CP_1023(["Communication and Information System Ca…<br/>★ ⚠ 85%"])
     end
     subgraph Business_Roles["🟢 Roles"]
-        BR["Business Roles<br/>61%"]
+        BR["Business Roles<br/>60.75%"]
     end
     subgraph Business_Processes["🟢 Processes"]
         BP_1490["Health Services<br/>58%"]
@@ -109,7 +109,7 @@ flowchart TD
         CR_1047(["Infrastructure Services<br/>★ 75%"])
     end
     subgraph COI_Services["🟠 COI Services"]
-        CI["COI Services<br/>74%"]
+        CI["COI Services<br/>73.6%"]
     end
     subgraph User_Applications["🟣 Applications"]
         UA_1574["Unified Communication Applications<br/>62%"]
