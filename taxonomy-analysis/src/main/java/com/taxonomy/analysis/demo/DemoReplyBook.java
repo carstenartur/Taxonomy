@@ -30,7 +30,8 @@ public final class DemoReplyBook {
     private static final String ROOT_MARKER = "This is one root assessment";
     private static final String PRODUCT_MARKER = "Concrete Information Product candidates";
     private static final Pattern KEYS = Pattern.compile("using EXACTLY these keys: ([^\\n]+)");
-    private static final Pattern PARENT_SCORE = Pattern.compile("The scores must sum to (\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?![\\d.eE])");
+    private static final Pattern PARENT_SCORE = Pattern.compile(
+            "The scores must sum to (\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?=\\.(?:\\s|$)|\\s|$)");
     private static final Pattern LEAF = Pattern.compile("Node to explain: (\\S+)");
 
     private final DemoScenario scenario;

@@ -37,8 +37,7 @@ public final class AnalysisMessageFactory {
                                                   Number rootScore, int scoredNodes, String stopReason) {
         return new SubtaxonomyAnalysisCompleted(
                 task.envelope().derive(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED, clock.instant()),
-                task.root(), outcome, rootScore == null ? null :
-                        com.taxonomy.dto.AnalysisPercentages.require(rootScore), scoredNodes, stopReason);
+                task.root(), outcome, rootScore, scoredNodes, stopReason);
     }
 
     public RelationAnalysisCompleted completed(RelationAnalysisTask task, AnalysisTaskOutcome outcome,

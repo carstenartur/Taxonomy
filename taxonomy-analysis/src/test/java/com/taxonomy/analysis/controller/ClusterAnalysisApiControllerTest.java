@@ -197,7 +197,7 @@ class ClusterAnalysisApiControllerTest {
                         .header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, operation))
                 .andExpect(status().isOk()).andExpect(content().string(containsString("\"sequence\":2")))
                 .andExpect(content().string(containsString("\"sequence\":5")))
-                .andExpect(content().string(containsString("\"totalScores\":{\"CP\":71}")))
+                .andExpect(content().string(containsString("\"totalScores\":{\"CP\":71.0}")))
                 .andExpect(content().string(containsString("\"architectureView\"")))
                 .andExpect(content().string(containsString("Frozen title")));
         verifyNoInteractions(localMapper, localRegistry);

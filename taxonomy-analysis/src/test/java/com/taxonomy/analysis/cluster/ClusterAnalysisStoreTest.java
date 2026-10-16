@@ -128,6 +128,43 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void acceptsFractionalV3CompletionForPersistedLegacyV1Task() {
+        try (var db = new Database()) {
+            var context = context("legacy-v1-completion");
+            db.admit(context);
+            var currentTask = db.task(CP);
+            db.store.start(currentTask);
+            var taskEnvelope = currentTask.envelope();
+            var legacy = new SubtaxonomyAnalysisTask(new AnalysisEnvelope(1,
+                    AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK, taskEnvelope.operationId(),
+                    taskEnvelope.taskId(), taskEnvelope.taskType(), taskEnvelope.authority(),
+                    taskEnvelope.requirement(), taskEnvelope.roots(), 1, null, taskEnvelope.correlationId(),
+                    taskEnvelope.createdAt(), taskEnvelope.deadline()), currentTask.root());
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> {
+                var work = db.em.createQuery(
+                                "select w from ClusterAnalysisWork w where w.operationId=:operation and w.taskId=:task",
+                                ClusterAnalysisWork.class)
+                        .setParameter("operation", context.operationId())
+                        .setParameter("task", legacy.taskId().value()).getSingleResult();
+                work.messageJson = new String(new com.taxonomy.analysis.dag.json.AnalysisMessageCodec().encode(legacy),
+                        java.nio.charset.StandardCharsets.UTF_8);
+            });
+            var node = new TaxonomyNodeDto();
+            node.setCode("CP"); node.setTaxonomyRoot("CP");
+            var result = new AnalysisResult(Map.of("CP", 0.5d), List.of(node));
+            result.setStatus("SUCCESS");
+            var completion = new AnalysisMessageFactory(context, Clock.systemUTC())
+                    .completed(legacy, AnalysisTaskOutcome.COMPLETED, 0.5d, 1, null);
+            db.completions.commit(new PreparedAnalysisCompletion<>(completion,
+                    () -> db.store.persistResult(legacy, result)));
+
+            assertTrue(db.store.accept(completion));
+            assertEquals(1, db.store.snapshot(context).completedRoots());
+            assertTrue(db.store.accept(db.complete(db.task(IP), result("IP", 70))));
+            assertEquals(Map.of("CP", 0.5d, "IP", 70d), db.store.snapshot(context).result().getRawScores());
+        }
+    }
+
     @Test void cancellationWinsOverLateProviderResultAndSurvivesNewStore() {
         try (var db = new Database()) {
             var context = context("cancel"); db.admit(context);

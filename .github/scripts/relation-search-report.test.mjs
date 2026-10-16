@@ -64,19 +64,20 @@ function elementTable(element) {
   vm.runInNewContext(source.replace('window.TaxonomyScoring = {',
     'window.elementProbe = renderElementsTable; window.TaxonomyScoring = {'),
     { window: local, TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml } });
-  return local.elementProbe([element], new Set());
+  return { html: local.elementProbe([element], new Set()),
+    formatPercentage: local.TaxonomyScoring.formatPercentage };
 }
 test('scoped source and target proposals never display absent scores as assessed zeros', () => {
   for (const origin of ['REQUIREMENT_EVIDENCE', 'RELATION_EVIDENCE']) {
-    const html = elementTable({ nodeCode: 'reader', origin, relevance: 0, directLlmScore: 0 });
+    const { html } = elementTable({ nodeCode: 'reader', origin, relevance: 0, directLlmScore: 0 });
     assert.doesNotMatch(html, /<td>0\.0%<\/td>|<td>0<\/td>/);
     assert.match(html, /<td>—<\/td><td>—<\/td>/);
   }
 });
 test('scoped raw and effective assessment values remain distinct, including explicit zero', () => {
   for (const [rawScore, effectiveRelevance] of [[80, 32], [0, 0]]) {
-    const html = elementTable({ nodeCode: 'reader', origin: 'REQUIREMENT_EVIDENCE', relevance: 0.95,
+    const { html, formatPercentage } = elementTable({ nodeCode: 'reader', origin: 'REQUIREMENT_EVIDENCE', relevance: 0.95,
       directLlmScore: 95, scoreDetail: { rawScore, effectiveRelevance } });
-    assert.ok(html.includes(`<td>${effectiveRelevance.toFixed(1)}%</td><td>${rawScore}</td>`));
+    assert.ok(html.includes(`<td>${formatPercentage(effectiveRelevance)}</td><td>${rawScore}</td>`));
   }
 });

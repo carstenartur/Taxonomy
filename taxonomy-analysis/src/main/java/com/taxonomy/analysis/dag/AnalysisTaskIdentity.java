@@ -8,7 +8,7 @@ public final class AnalysisTaskIdentity {
 
     public static void requireSameSource(AnalysisEnvelope expected, AnalysisEnvelope actual) {
         if (expected == null || actual == null || expected.taskId() == null
-                || expected.schemaVersion() != actual.schemaVersion()
+                || !compatibleSchema(expected, actual)
                 || !Objects.equals(expected.operationId(), actual.operationId())
                 || !Objects.equals(expected.taskId(), actual.taskId())
                 || expected.taskType() != actual.taskType()
@@ -18,5 +18,15 @@ public final class AnalysisTaskIdentity {
                 || !Objects.equals(expected.deadline(), actual.deadline())) {
             throw new IllegalStateException("Analysis task source identity mismatch");
         }
+    }
+
+    private static boolean compatibleSchema(AnalysisEnvelope expected, AnalysisEnvelope actual) {
+        if (expected.schemaVersion() == actual.schemaVersion()) return true;
+        return expected.schemaVersion() == 1
+                && actual.schemaVersion() == AnalysisEnvelope.SCHEMA_VERSION
+                && expected.messageType() == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK
+                && expected.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS
+                && actual.messageType() == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED
+                && actual.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS;
     }
 }

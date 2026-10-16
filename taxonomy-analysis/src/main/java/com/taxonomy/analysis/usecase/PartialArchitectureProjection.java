@@ -117,7 +117,8 @@ public final class PartialArchitectureProjection {
             String kind = detail.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ');
             anchors.put(element.getNodeCode(), new RequirementAnchor(element.getNodeCode(),
                     detail.effectiveRelevance(), "Direct " + kind + " assessment; raw score "
-                    + detail.rawScore() + ", effective relevance " + detail.effectiveRelevance() + "%."));
+                    + AnalysisPercentages.display(detail.rawScore()) + ", effective relevance "
+                    + AnalysisPercentages.display(detail.effectiveRelevance()) + "."));
         }
         view.setIncludedElements(elements); view.setTotalElements(elements.size());
         view.setTotalRelationships(view.getIncludedRelationships() == null ? 0 : view.getIncludedRelationships().size());

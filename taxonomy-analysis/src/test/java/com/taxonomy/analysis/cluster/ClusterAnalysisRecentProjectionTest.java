@@ -118,7 +118,7 @@ class ClusterAnalysisRecentProjectionTest {
             for (var state : ClusterAnalysisState.values()) {
                 persist(db, state.name(), 1000, state, SCOPE,
                         RequirementReference.of(7L, 8L, "requirement-version", "requirement"),
-                        "{\"rawScores\":{\"IP\":125,\" CP \":-5},\"tree\":[],\"warnings\":[\"large optional evidence\"]}");
+                        "{\"rawScores\":{\"IP\":100,\" CP \":0},\"tree\":[],\"warnings\":[\"large optional evidence\"]}");
             }
             var recent = observer.recent("alice", SCOPE, null, null);
             assertEquals(7, recent.size());

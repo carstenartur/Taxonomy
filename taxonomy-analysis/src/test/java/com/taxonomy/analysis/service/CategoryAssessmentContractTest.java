@@ -26,7 +26,6 @@ class CategoryAssessmentContractTest {
         "{\"BP\":true,\"CP\":40}",
         "{\"BP\":-1,\"CP\":100}",
         "{\"BP\":101,\"CP\":0}",
-        "{\"BP\":60.5,\"CP\":39.5}",
         "{\"BP\":4294967296,\"CP\":100}",
         "{\"BP\":60,\"BP\":0,\"CP\":40}"
     })
@@ -42,6 +41,13 @@ class CategoryAssessmentContractTest {
         assertEquals(List.of("BP", "CP"), List.copyOf(result.scores().keySet()));
         assertEquals("support", result.reasons().get("CP"));
         assertNotNull(result.discrepancy());
+    }
+
+    @Test
+    void validFractionalCategoryScoresRemainDecimalEvidence() throws Exception {
+        var result = parser.parseScoreParseResult("{\"BP\":60.5,\"CP\":39.5}", nodes, 100);
+
+        assertEquals(Map.of("BP", 60.5d, "CP", 39.5d), result.scores());
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.taxonomy.analysis.dag;
 
 import java.util.Objects;
 import java.util.regex.Pattern;
+import java.math.BigDecimal;
 
 /**
  * Completion of one {@link SubtaxonomyAnalysisTask}. Carries counts and the root
@@ -24,7 +25,7 @@ public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomySh
     public SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomyShardRoot root,
             AnalysisTaskOutcome outcome, Number rootScore, int scoredNodes, String stopReason) {
         this(envelope, root, outcome, rootScore == null ? null :
-                Double.valueOf(com.taxonomy.dto.AnalysisPercentages.require(rootScore)), scoredNodes, stopReason);
+                Double.valueOf(requirePercentage(rootScore)), scoredNodes, stopReason);
     }
 
     public SubtaxonomyAnalysisCompleted {
@@ -35,7 +36,7 @@ public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomySh
         if (!AnalysisTaskId.subtaxonomy(envelope.operationId(), root).equals(envelope.taskId())) {
             throw new IllegalArgumentException("Completion does not belong to the root task");
         }
-        if (rootScore != null && !com.taxonomy.dto.AnalysisPercentages.valid(rootScore)) {
+        if (rootScore != null && (!Double.isFinite(rootScore) || rootScore < 0 || rootScore > 100)) {
             throw new IllegalArgumentException("rootScore must be within 0..100");
         }
         if (envelope.schemaVersion() == 1 && rootScore != null && rootScore != Math.rint(rootScore)) {
@@ -53,5 +54,22 @@ public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomySh
     @Override
     public boolean stopsOperation() {
         return outcome == AnalysisTaskOutcome.STOPPED;
+    }
+
+    private static double requirePercentage(Number number) {
+        final BigDecimal value;
+        try {
+            value = number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("rootScore must be a finite percentage within 0..100", invalid);
+        }
+        if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException("rootScore must be within 0..100");
+        }
+        double result = value.doubleValue();
+        if (!Double.isFinite(result) || result == 0d && value.signum() != 0) {
+            throw new IllegalArgumentException("rootScore is outside the supported numeric precision");
+        }
+        return result == 0d ? 0d : result;
     }
 }

@@ -50,7 +50,7 @@ final class AnalysisNodeTracker {
             Double score = scores.get(node.code());
             if (score != null) count[1]++;
             else if (excluded) count[2]++;
-            pruned.put(node.code(), excluded || Integer.valueOf(0).equals(score));
+            pruned.put(node.code(), excluded || score != null && score == 0d);
         }
         List<AnalysisNodeProgress.Taxonomy> parts = new ArrayList<>();
         int total = 0, assessed = 0, excluded = 0;

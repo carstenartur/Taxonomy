@@ -55,7 +55,7 @@ class PartialArchitectureProjectionAnchorTest {
         assertThat(view.getAnchors()).filteredOn(anchor -> anchor.getNodeCode().equals("IP-1011"))
                 .singleElement().satisfies(anchor -> {
                     assertThat(anchor.getDirectScore()).isEqualTo(56);
-                    assertThat(anchor.getReason()).contains("raw score 70", "effective relevance 56%");
+                    assertThat(anchor.getReason()).contains("raw score 70%", "effective relevance 56%");
                 });
         assertThat(view.getTotalAnchors()).isEqualTo(2);
         assertThat(view.getIncludedElements()).filteredOn(element -> element.getNodeCode().equals("IP-1011"))

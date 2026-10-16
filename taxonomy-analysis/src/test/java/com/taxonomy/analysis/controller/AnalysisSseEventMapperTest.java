@@ -55,7 +55,7 @@ class AnalysisSseEventMapperTest {
         Map<String, Object> hint = scoreDetailHint(payload, "CP");
         assertThat(hint)
                 .containsEntry("nodeCode", "CP")
-                .containsEntry("rawScore", 80)
+                .containsEntry("rawScore", 80d)
                 .doesNotContainKeys("effectiveRelevance", "parentScore");
     }
 
@@ -77,7 +77,7 @@ class AnalysisSseEventMapperTest {
         assertThat(hint)
                 .containsEntry("nodeCode", "IP-P")
                 .containsEntry("kind", AnalysisScoreKind.PRODUCT_SUITABILITY)
-                .containsEntry("rawScore", 80)
+                .containsEntry("rawScore", 80d)
                 .containsEntry("parentCode", "IP-F")
                 .doesNotContainKeys("effectiveRelevance", "parentScore");
     }
@@ -134,14 +134,14 @@ class AnalysisSseEventMapperTest {
                 completeProductEvent());
 
         Map<String, Object> payload = payload(mapped);
-        assertThat(((Map<?, ?>) payload.get("totalScores")).get("IP-P")).isEqualTo(32);
-        assertThat(((Map<?, ?>) payload.get("rawScores")).get("IP-P")).isEqualTo(80);
+        assertThat(((Map<?, ?>) payload.get("totalScores")).get("IP-P")).isEqualTo(32d);
+        assertThat(((Map<?, ?>) payload.get("rawScores")).get("IP-P")).isEqualTo(80d);
         assertThat(((Map<?, ?>) payload.get("productSuitabilityScores")).get("IP-P"))
-                .isEqualTo(80);
+                .isEqualTo(80d);
         AnalysisScoreDetail productDetail = (AnalysisScoreDetail)
                 ((Map<?, ?>) payload.get("scoreDetails")).get("IP-P");
         assertThat(productDetail.kind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
-        assertThat(productDetail.effectiveRelevance()).isEqualTo(32);
+        assertThat(productDetail.effectiveRelevance()).isEqualTo(32d);
         verify(taxonomyService).getFingerprintTree();
         verify(taxonomyService, never()).getFullTree();
     }

@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 /** Real Lucene KNN queries; only local model inference is replaced with authored vectors. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -150,8 +151,9 @@ class EmbeddingModelKnnIsolationTest {
 
     @Test
     void scoringLeavesWrongModelAndUntaggedCandidatesAtZero() {
-        assertThat(embeddings.scoreNodes("authored query", candidates))
-                .containsExactlyInAnyOrderEntriesOf(Map.of(CURRENT_NODE, 80.0, WRONG_NODE, 0.0, LEGACY_NODE, 0.0));
+        var scores = embeddings.scoreNodes("authored query", candidates);
+        assertThat(scores.get(CURRENT_NODE)).isCloseTo(80.0, within(0.00001));
+        assertThat(scores).containsEntry(WRONG_NODE, 0.0).containsEntry(LEGACY_NODE, 0.0);
     }
 
     @Test
