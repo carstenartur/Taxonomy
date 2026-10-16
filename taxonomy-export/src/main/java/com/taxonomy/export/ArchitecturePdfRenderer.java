@@ -94,38 +94,39 @@ public final class ArchitecturePdfRenderer {
                                HeaderWriter header, FooterWriter footer) {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            // Preserve natural-size labels on wide architecture views. A3 remains the minimum;
-            // larger scenes use a poster page, bounded by the PDF page-size limit.
-            float pageWidth = (float) Math.min(MAX_PAGE_SIZE,
-                    Math.max(PDRectangle.A3.getHeight(), scene.width() + 2 * PAGE_MARGIN));
-            float pageHeight = (float) Math.min(MAX_PAGE_SIZE,
-                    Math.max(PDRectangle.A3.getWidth(), scene.height() + 2 * PAGE_MARGIN + HEADER_HEIGHT));
-            PDPage page = new PDPage(new PDRectangle(pageWidth, pageHeight));
-            document.addPage(page);
+            PdfDiagramPages.Plan plan = PdfDiagramPages.plan(scene);
             metadata.accept(document);
-
-            float availableWidth = page.getMediaBox().getWidth() - 2 * PAGE_MARGIN;
-            float availableHeight = page.getMediaBox().getHeight() - 2 * PAGE_MARGIN - HEADER_HEIGHT;
-            float scale = (float) Math.min(1.0, Math.min(
-                    availableWidth / Math.max(1.0, scene.width()),
-                    availableHeight / Math.max(1.0, scene.height())));
-            if (scale < 0.8f) throw new IllegalArgumentException(
-                    "Architecture exceeds readable PDF page size; export a smaller selection or separate taxonomies");
-            float diagramX = PAGE_MARGIN;
-            float diagramTop = page.getMediaBox().getHeight() - PAGE_MARGIN - HEADER_HEIGHT;
-
-            try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
-                stream.setNonStrokingColor(Color.WHITE);
-                stream.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
-                stream.fill();
-
-                header.write(stream, page.getMediaBox().getHeight());
-                drawEdges(stream, scene, diagramX, diagramTop, scale);
-                drawNodes(stream, scene, diagramX, diagramTop, scale);
-                footer.write(stream);
+            for (int index = 0; index < plan.panels().size(); index++) {
+                var panel = plan.panels().get(index);
+                DiagramScene part = panel.scene();
+                float pageWidth = (float) Math.min(MAX_PAGE_SIZE,
+                        Math.max(PDRectangle.A3.getHeight(), part.width() + 2 * PAGE_MARGIN));
+                float pageHeight = (float) Math.min(MAX_PAGE_SIZE,
+                        Math.max(PDRectangle.A3.getWidth(), part.height() + 2 * PAGE_MARGIN + HEADER_HEIGHT));
+                PDPage page = new PDPage(new PDRectangle(pageWidth, pageHeight));
+                document.addPage(page);
+                float scale = (float) Math.min(1.0, Math.min(
+                        (pageWidth - 2 * PAGE_MARGIN) / Math.max(1.0, part.width()),
+                        (pageHeight - 2 * PAGE_MARGIN - HEADER_HEIGHT) / Math.max(1.0, part.height())));
+                if (scale < 0.8f) throw new IllegalArgumentException("PDF panel is not readable");
+                float diagramTop = pageHeight - PAGE_MARGIN - HEADER_HEIGHT;
+                try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
+                    stream.setNonStrokingColor(Color.WHITE);
+                    stream.addRect(0, 0, pageWidth, pageHeight);
+                    stream.fill();
+                    header.write(stream, pageHeight);
+                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale);
+                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale);
+                    footer.write(stream);
+                    if (plan.panels().size() > 1) {
+                        text(stream, REGULAR, 8, PAGE_MARGIN, 30,
+                                "Diagram D" + (index + 1) + "/" + plan.panels().size()
+                                        + " | Cross-page relationships: " + panel.crossPageRelationships()
+                                        + " | Complete endpoints and diagram references: see export inventory.");
+                    }
+                }
             }
-
-            drawInventory(document, scene);
+            drawInventory(document, scene, plan.nodePages());
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -272,12 +273,12 @@ public final class ArchitecturePdfRenderer {
     }
 
     /** A complete, paginated inventory is the accessible counterpart of bounded diagram labels. */
-    private static void drawInventory(PDDocument document, DiagramScene scene) throws IOException {
+    private static void drawInventory(PDDocument document, DiagramScene scene, java.util.Map<String, Integer> nodePages) throws IOException {
         var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene));
         lines.add("Element inventory | diagram ellipses do not remove saved labels below");
         var seenNodes = new java.util.HashSet<String>();
         for (var node : scene.nodes()) if (seenNodes.add(node.id())) {
-            lines.add(node.id() + " | Depth " + node.depth() + " | " + DiagramPresentation.percent(node.relevance())
+            lines.add(node.id() + " | D" + nodePages.get(node.id()) + " | Depth " + node.depth() + " | " + DiagramPresentation.percent(node.relevance())
                     + (node.container() ? " | Container" : ""));
             lines.add(node.label());
             lines.add(node.type() + " | Parent: " + (node.parentId() == null ? "not included" : node.parentId()));
@@ -286,7 +287,8 @@ public final class ArchitecturePdfRenderer {
         var seenEdges = new java.util.HashSet<String>();
         for (var edge : scene.edges()) if (seenEdges.add(edge.id()))
             lines.add(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId()
-                    + " | " + edge.relationType() + " | " + edge.relationCategory());
+                    + " | " + edge.relationType() + " | " + edge.relationCategory()
+                    + " | D" + nodePages.get(edge.sourceId()) + " -> D" + nodePages.get(edge.targetId()));
         var wrapped = new java.util.ArrayList<String>();
         float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;
         for (String line : lines) wrapped.addAll(PdfDiagramText.wrap(line, REGULAR, 9, width, Integer.MAX_VALUE));

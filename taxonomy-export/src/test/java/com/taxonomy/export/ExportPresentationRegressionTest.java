@@ -108,9 +108,9 @@ class ExportPresentationRegressionTest {
     }
 
     @Test
-    void unreadablePosterScaleFailsExplicitlyInsteadOfClippingMinimumSizeText() {
+    void unreadableSingleNodeFailsExplicitlyInsteadOfClippingMinimumSizeText() {
         var node = new DiagramSceneNode("fixture", "Working time", "Capabilities",
-                .01, true, 1, 3, false, null, false, 50, 50, 238, 82);
+                .01, true, 1, 3, false, null, false, 50, 50, 50_000, 82);
         var scene = new DiagramScene("Too wide", 100_000, 420, "LR", List.of(node), List.of());
         assertThatThrownBy(() -> new ArchitecturePdfRenderer().render(scene, "fixture"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("readable");
