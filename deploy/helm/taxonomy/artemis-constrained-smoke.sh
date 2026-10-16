@@ -210,7 +210,8 @@ kubectl rollout status deployment/smoke-broker --namespace "${NAMESPACE}" --time
 PG_POD=$(kubectl get pods --namespace "${NAMESPACE}" --selector app.kubernetes.io/name=taxonomy-smoke-postgres -o jsonpath='{.items[0].metadata.name}')
 start_broker_forward() {
   if [[ -n "${BROKER_FORWARD_PID}" ]]; then kill "${BROKER_FORWARD_PID}" 2>/dev/null || true; wait "${BROKER_FORWARD_PID}" 2>/dev/null || true; fi
-  kubectl port-forward --namespace "${NAMESPACE}" service/smoke-broker 18161:8161 >>"${EVIDENCE_DIR}/broker-forward.log" 2>&1 &
+  # Track the actual process, not the context-wrapper subshell, so replacement releases the port.
+  command kubectl --context "${KUBE_CONTEXT}" port-forward --namespace "${NAMESPACE}" service/smoke-broker 18161:8161 >>"${EVIDENCE_DIR}/broker-forward.log" 2>&1 &
   BROKER_FORWARD_PID=$!; BACKGROUND_PIDS+=("${BROKER_FORWARD_PID}")
 }
 start_broker_forward
@@ -242,7 +243,8 @@ start_web_forward() {
   local pod
   pod=$(kubectl get pods --namespace "${NAMESPACE}" --selector "${WEB_SELECTOR}" -o jsonpath='{.items[0].metadata.name}')
   [[ "${pod}" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || fail "Replacement coordinator pod unavailable"
-  kubectl port-forward --namespace "${NAMESPACE}" "pod/${pod}" 18081:8080 >>"${EVIDENCE_DIR}/web-forward.log" 2>&1 &
+  # Track the actual process, not the context-wrapper subshell, so replacement releases the port.
+  command kubectl --context "${KUBE_CONTEXT}" port-forward --namespace "${NAMESPACE}" "pod/${pod}" 18081:8080 >>"${EVIDENCE_DIR}/web-forward.log" 2>&1 &
   WEB_FORWARD_PID=$!; BACKGROUND_PIDS+=("${WEB_FORWARD_PID}")
 }
 start_web_forward

@@ -55,4 +55,43 @@ assert.match(text, /<b>data<\/b>: 1/);
 assert.equal(elements.get('taxonomyResultStatistics').innerHTML, undefined); // textContent only
 state.taxonomyData=[]; render();
 assert.equal(elements.get('taxonomyResultStatistics').hidden, true);
+// Real shared score-update paths, with no full view render and no network requests.
+// These are the paths used by evaluateNodeChildren and its inline manual editor.
+function scoreUpdateRuntime() {
+    const listeners = new Map(), microtasks = [], dom = new Map();
+    dom.set('statusArea', {insertAdjacentElement(_, child) { dom.set(child.id, child); }});
+    const document = {documentElement:{lang:'en'}, getElementById:id=>dom.get(id),
+        querySelectorAll:()=>[], createElement:()=>({textContent:'',setAttribute(){}}),
+        addEventListener:(name, listener)=>listeners.set(name, listener)};
+    const state = {taxonomyData:[{code:'BP',taxonomyRoot:'BP',level:0,children:[
+        {code:'BP-1',taxonomyRoot:'BP',level:1,children:[]}]}], currentScores:null};
+    const window = {TaxonomyState:state};
+    const context = vm.createContext({window,document,queueMicrotask:task=>microtasks.push(task),
+        TaxonomyI18n:{t:key=>key},TaxonomyUtils:{escapeHtml:value=>value}});
+    vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
+    vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
+    function settle() { while(microtasks.length) microtasks.shift()(); }
+    settle();
+    return {state,scoring:window.TaxonomyScoring,settle,microtasks,
+        text:()=>dom.get('taxonomyResultStatistics').textContent};
+}
+{
+    const h = scoreUpdateRuntime();
+    h.scoring.applyLocalRawScores({'BP':1, 'BP-1':25}); // interactive provider child batch
+    h.settle();
+    assert.match(h.text(), /Positive assessments: 2/, 'Interactive evaluation must refresh statistics');
+    h.scoring.applyLocalRawScores({'BP-1':0}); // inline manual edit, no view rebuild
+    h.scoring.syncVisibleScoreNodes();
+    assert.equal(h.microtasks.length, 1, 'Repeated updates in one transaction must be coalesced');
+    h.settle();
+    assert.match(h.text(), /Positive assessments: 1/, 'Manual edit must refresh statistics');
+    h.scoring.applyLocalRawScores({'BP-1':10});
+    h.settle();
+    assert.match(h.text(), /Positive assessments: 2/);
+    // A caller reconciling already updated scores must use the same notification path.
+    h.state.currentScores = {'BP':0, 'BP-1':0};
+    h.scoring.syncVisibleScoreNodes();
+    h.settle();
+    assert.match(h.text(), /Positive assessments: 0/, 'Visible-score reconciliation must refresh statistics');
+}
 console.log('RESULT_STATISTICS_OK');
