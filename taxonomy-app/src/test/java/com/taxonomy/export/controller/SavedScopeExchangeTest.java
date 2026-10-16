@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
@@ -51,7 +52,7 @@ class SavedScopeExchangeTest {
     private SavedAnalysis evidence(int version) {
         var saved = service.buildExport("Manual or automatic requirement", Map.of("BP", 70d), Map.of(), "MOCK");
         saved.setVersion(version);
-        if (version == 3) {
+        if (version >= 3) {
             saved.setRawScores(Map.of("BP", 70d)); saved.setAnalysisStatus("SUCCESS");
             saved.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", assessed(70, 70)), 1, 0, 0));
         }
@@ -71,7 +72,7 @@ class SavedScopeExchangeTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"1, false", "1, true", "2, false", "2, true", "3, false", "3, true"})
+    @CsvSource({"1, false", "1, true", "2, false", "2, true", "3, false", "3, true", "4, false", "4, true"})
     void absentOrExplicitNullScopeSurvivesImportAndReExport(int version, boolean explicitNull) throws Exception {
         var tree = mapper.convertValue(evidence(version), new TypeReference<Map<String, Object>>() {});
         if (explicitNull) tree.put("analysisScope", null); else tree.remove("analysisScope");
@@ -103,7 +104,7 @@ class SavedScopeExchangeTest {
                         .content(mapper.writeValueAsString(saved)))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         var output = mapper.readTree(exported);
-        assertThat(output.path("version").asInt()).isEqualTo(2);
+        assertThat(output.path("version").asInt()).isEqualTo(4);
         assertThat(output.path("analysisCoverage").isNull()).isTrue();
         assertThat(output.path("analysisStatus").asString()).isEqualTo(analysisStatus);
         var imported = mvc.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON).content(exported))
@@ -112,8 +113,42 @@ class SavedScopeExchangeTest {
         assertThat(mapper.readTree(imported).path("scores").size()).isEqualTo(2);
     }
 
+    @Test
+    void fractionalVersionFourRetainsZeroAndUnknownEvidenceThroughHttpExchange() throws Exception {
+        var saved = evidence(4);
+        saved.setScores(Map.of("BP", 0.125d, "IP", 0d));
+        saved.setRawScores(saved.getScores());
+        saved.setAnalysisCoverage(new AnalysisCoverage(Map.of(
+                "BP", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.RELEVANT, 0.125d, 0.125d,
+                        AnalysisCoverage.Descendants.COMPLETE, null),
+                "IP", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.NOT_RELEVANT, 0d, 0d,
+                        AnalysisCoverage.Descendants.COMPLETE, null),
+                "CP", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                        AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:fixture")), 2, 1, 1));
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
+        var exported = mvc.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(saved)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var imported = mvc.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON).content(exported))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(exported).path("version").asInt()).isEqualTo(4);
+        for (var result : List.of(mapper.readTree(exported), mapper.readTree(imported))) {
+            assertThat(result.path("analysisStatus").asString()).isEqualTo("PARTIAL");
+            assertThat(result.path("scores").size()).isEqualTo(2);
+            assertThat(result.path("scores").path("BP").asDouble()).isEqualTo(0.125);
+            assertThat(result.path("rawScores").path("BP").asDouble()).isEqualTo(0.125);
+            assertThat(result.path("scores").path("IP").asDouble()).isEqualTo(0);
+            assertThat(result.path("scores").has("CP")).isFalse();
+            assertThat(result.path("rawScores").has("CP")).isFalse();
+            var unknown = result.path("analysisCoverage").path("nodes").path("CP");
+            assertThat(unknown.path("state").asString()).isEqualTo("UNKNOWN");
+            assertThat(unknown.path("score").isNull()).isTrue();
+            assertThat(unknown.path("effectiveRelevance").isNull()).isTrue();
+        }
+    }
+
     @ParameterizedTest
-    @CsvSource({"export, 1", "import, 1", "export, 2", "import, 2", "export, 3", "import, 3"})
+    @CsvSource({"export, 1", "import, 1", "export, 2", "import, 2", "export, 3", "import, 3", "export, 4", "import, 4"})
     void rejectsDeclaredUnknownRootOnEveryExchangeVersion(String direction, int version) throws Exception {
         var saved = evidence(version);
         saved.setAnalysisScope(new AnalysisScope(Set.of("NOT_A_ROOT"), AnalysisMode.TAXONOMIES_ONLY));
@@ -121,7 +156,7 @@ class SavedScopeExchangeTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"export, 1", "import, 1", "export, 2", "import, 2", "export, 3", "import, 3"})
+    @CsvSource({"export, 1", "import, 1", "export, 2", "import, 2", "export, 3", "import, 3", "export, 4", "import, 4"})
     void rejectsEffectiveScoresFromAnotherCatalogueRoot(String direction, int version) throws Exception {
         var saved = evidence(version);
         saved.setAnalysisScope(new AnalysisScope(Set.of("IP"), AnalysisMode.FULL));
@@ -186,7 +221,7 @@ class SavedScopeExchangeTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"2", "3"})
+    @CsvSource({"2", "3", "4"})
     void allRootTaxonomiesOnlyEvidenceDoesNotRequireCompleteCoverage(int version) throws Exception {
         var saved = evidence(version);
         saved.setAnalysisScope(new AnalysisScope(Set.of(), AnalysisMode.TAXONOMIES_ONLY));
