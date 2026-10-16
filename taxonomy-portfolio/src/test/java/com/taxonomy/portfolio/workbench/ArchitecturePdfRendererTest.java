@@ -102,18 +102,31 @@ class ArchitecturePdfRendererTest {
         byte[] pdf = realRenderer.render(projection(scene()));
 
         try (var document = Loader.loadPDF(pdf)) {
-            assertThat(document.getNumberOfPages()).isEqualTo(1);
+            // This small scene occupies one diagram page and one complete inventory page.
+            assertThat(document.getNumberOfPages()).isEqualTo(2);
             var information = document.getDocumentInformation();
             assertThat(information.getTitle()).isEqualTo("Payment architecture");
             assertThat(information.getSubject())
                     .isEqualTo("Requirement-derived architecture snapshot snapshot-17");
             assertThat(information.getAuthor()).isEqualTo("Taxonomy Architecture Analyzer");
             assertThat(information.getCreator()).isEqualTo("Taxonomy server-side vector renderer");
-            assertThat(new PDFTextStripper().getText(document)).contains(
+            var diagramReader = new PDFTextStripper();
+            diagramReader.setStartPage(1);
+            diagramReader.setEndPage(1);
+            assertThat(diagramReader.getText(document)).contains(
                     "Project P-001", "Requirement REQ-001", "Snapshot snapshot-17",
                     "Provider GEMINI", "Branch feature-pdf", "Commit abcdef123456",
                     "Warnings: Review relation | Verify dependency",
                     "APP-1", "Payment application", "SVC-1", "Payment service", "USES");
+            var inventoryReader = new PDFTextStripper();
+            inventoryReader.setStartPage(2);
+            inventoryReader.setEndPage(2);
+            assertThat(inventoryReader.getText(document)).contains(
+                    "Export inventory - 1", "Elements: 2", "Containers: 0", "Relationships: 1",
+                    "Applications: 1", "Services: 1", "Element inventory", "Relationship inventory",
+                    "APP-1", "Payment application", "SVC-1", "Payment service",
+                    "edge-1 | APP-1 -> SVC-1 | USES | manual",
+                    "Human confirmation is not recorded");
         }
     }
 

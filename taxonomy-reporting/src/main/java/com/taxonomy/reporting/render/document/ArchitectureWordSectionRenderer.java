@@ -18,6 +18,7 @@ public final class ArchitectureWordSectionRenderer {
         writer.paragraph(report.requirement());
         writer.heading(labels.scope(), 2, null);
         writer.paragraph(report.scope());
+        ReportInventory.diagram(report.diagram(), labels.german()).forEach(writer::paragraph);
         writer.heading(labels.recommendation(), 2, null);
         writer.paragraph(report.recommendation());
         writer.heading(labels.gaps(), 2, null);

@@ -63,6 +63,9 @@ public final class DecisionReportPresentation {
         lines.add((de ? "Quellfingerabdruck: " : "Source fingerprint: ") + report.metadata().analysisSnapshotFingerprintSha256());
         if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() == null)
             lines.add(de ? "Keine gespeicherte Architektur für diese Berichtsauswahl." : "No saved architecture for this report selection.");
+        lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.tree(scope.decisionTree(), de));
+        if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null)
+            lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.diagram(report.architecture().diagram(), de));
         lines.addAll(report.warnings());
         return List.copyOf(lines);
     }

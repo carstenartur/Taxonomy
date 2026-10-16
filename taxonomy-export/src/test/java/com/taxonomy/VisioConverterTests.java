@@ -84,24 +84,24 @@ class VisioConverterTests {
     }
 
     @Test
-    void pageContentsConverterUsesGreenForAnchorShapes() {
+    void pageContentsConverterUsesTaxonomyFillAndStrongBorderForAnchors() {
         VisioPage page = new VisioPage("1", "Page");
         page.getShapes().add(new VisioShape("1", "Anchor", 1.0, 1.0, 2.0, 0.75, "Capabilities", true));
 
         String xml = pageXstream.toXML(page);
 
-        assertThat(xml).contains("#4CAF50");
+        assertThat(xml).contains("#DBEAFE", "0.02777777777777778");
         assertThat(xml).doesNotContain("#2196F3");
     }
 
     @Test
-    void pageContentsConverterUsesBlueForNonAnchorShapes() {
+    void pageContentsConverterUsesTaxonomyFillForNonAnchors() {
         VisioPage page = new VisioPage("1", "Page");
         page.getShapes().add(new VisioShape("1", "Regular", 1.0, 1.0, 2.0, 0.75, "Services", false));
 
         String xml = pageXstream.toXML(page);
 
-        assertThat(xml).contains("#2196F3");
+        assertThat(xml).contains("#FEF3C7");
         assertThat(xml).doesNotContain("#4CAF50");
     }
 
