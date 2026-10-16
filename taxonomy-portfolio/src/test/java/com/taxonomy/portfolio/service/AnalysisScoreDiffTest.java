@@ -95,7 +95,7 @@ class AnalysisScoreDiffTest {
         assertThat(change.oldScore()).isEqualTo(change.newScore()).isEqualTo(32);
         assertThat(change.oldRawScore()).isEqualTo(change.newRawScore()).isEqualTo(80);
         assertThat(change.oldParentCode()).isEqualTo("IP-F1");
-        assertThat(change.newParentCode()).isEqualTo(change.newParentCode()).isEqualTo("IP-F2");
+        assertThat(change.newParentCode()).isEqualTo("IP-F2");
         assertThat(change.oldParentScore()).isEqualTo(change.newParentScore()).isEqualTo(40);
     }
 
