@@ -15,7 +15,14 @@ public final class ClusterAnalysisBackupRecords {
     public record Work(SourceRecordId sourceId, SourceRecordId run, String taskId, String taskType,
                        String root, int ordinal, String messageJson, String inputJson, String resultJson,
                        String failureReason, String sourceState, boolean settled, int attempts,
-                       Long startedAt, Long finishedAt) { }
+                       Long startedAt, Long finishedAt, String progressJson) {
+        public Work(SourceRecordId sourceId, SourceRecordId run, String taskId, String taskType, String root, int ordinal,
+                    String messageJson, String inputJson, String resultJson, String failureReason, String sourceState,
+                    boolean settled, int attempts, Long startedAt, Long finishedAt) {
+            this(sourceId, run, taskId, taskType, root, ordinal, messageJson, inputJson, resultJson, failureReason,
+                    sourceState, settled, attempts, startedAt, finishedAt, null);
+        }
+    }
     public record Input(SourceRecordId sourceId, SourceRecordId run, String root, String inputJson) { }
     public record Event(SourceRecordId sourceId, SourceRecordId run, long revision, String eventJson) { }
     public record Call(SourceRecordId sourceId, SourceRecordId run, String taskId, long callNumber,

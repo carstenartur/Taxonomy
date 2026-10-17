@@ -326,6 +326,145 @@
     cursor: default;
 }
 
+/* Catalogue coverage and relationship search work share geometry, but retain
+   their own labels and counts. Unknown task totals use a static pattern. */
+#analysisWorkProgress {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+#analysisWorkProgress .analysis-work-meter {
+    min-width: 0;
+    margin-block: 0.65rem;
+}
+#analysisWorkProgress .analysis-work-meter-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.15rem 0.75rem;
+    margin-bottom: 0.2rem;
+}
+#analysisWorkProgress .analysis-work-meter-label {
+    flex: 1 1 12rem;
+    min-width: 0;
+    font-weight: 600;
+}
+#analysisWorkProgress .analysis-work-meter-count {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.875em;
+}
+#analysisWorkProgress .analysis-work-bar {
+    --analysis-work-fill: var(--bs-primary, #0d6efd);
+    --analysis-work-track: var(--bs-secondary-bg, #e9ecef);
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: 0.75rem;
+    appearance: none;
+    background: var(--analysis-work-track);
+    accent-color: var(--analysis-work-fill);
+    border: 1px solid currentColor;
+    border-radius: 0.2rem;
+    animation: none;
+    transition: none;
+}
+#analysisWorkProgress .analysis-work-bar::-webkit-progress-bar {
+    background: var(--analysis-work-track);
+    border-radius: inherit;
+}
+#analysisWorkProgress .analysis-work-bar::-webkit-progress-value {
+    background: var(--analysis-work-fill);
+    border-radius: inherit;
+}
+#analysisWorkProgress .analysis-work-bar::-moz-progress-bar {
+    background: var(--analysis-work-fill);
+    border-radius: inherit;
+}
+#analysisWorkProgress .analysis-work-bar:not([value]) {
+    appearance: none;
+    border-style: dashed;
+    background: repeating-linear-gradient(135deg, transparent, transparent 0.35rem,
+        var(--bs-border-color, #adb5bd) 0.35rem, var(--bs-border-color, #adb5bd) 0.5rem);
+}
+#analysisWorkProgress .analysis-work-bar:not([value])::-webkit-progress-bar {
+    background: transparent;
+}
+#analysisWorkProgress .analysis-work-bar:not([value])::-webkit-progress-value {
+    background: transparent;
+}
+#analysisWorkProgress .analysis-work-bar:not([value])::-moz-progress-bar {
+    background: transparent;
+}
+#analysisWorkProgress .analysis-work-bar[data-progress-state="empty"] {
+    border-style: solid;
+    background: transparent;
+}
+#analysisWorkProgress .analysis-work-meter-detail,
+#analysisWorkProgress .analysis-work-note {
+    margin-block: 0.2rem;
+    font-size: 0.875em;
+    line-height: 1.4;
+}
+#analysisWorkProgress .analysis-taxonomy-progress {
+    display: grid;
+    /* At most two columns; a narrow panel keeps one readable column. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, max(18rem, calc(50% - 0.5rem))), 1fr));
+    gap: 0 1rem;
+}
+#analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter {
+    margin-block: 0.4rem;
+    padding-inline-start: 0.6rem;
+    border-inline-start: 2px solid var(--bs-border-color, #adb5bd);
+}
+#analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-known .analysis-work-meter-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+#analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-label {
+    font-size: 0.875em;
+    line-height: 1.25;
+}
+#analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-count,
+#analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-detail {
+    font-size: 0.8125em;
+    line-height: 1.3;
+}
+#analysisTaxonomyProgressToggle {
+    margin-block: 0.5rem 0;
+    cursor: pointer;
+}
+#analysisTaxonomyProgressToggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+}
+#analysisWorkProgress .analysis-work-outcome {
+    font-weight: 600;
+}
+@media (forced-colors: active) {
+    #analysisWorkProgress .analysis-work-bar {
+        --analysis-work-fill: Highlight;
+        --analysis-work-track: Canvas;
+        color: CanvasText;
+        border-color: CanvasText;
+        accent-color: Highlight;
+        /* Only the native meter paint is explicit, using the user's system colors. */
+        forced-color-adjust: none;
+    }
+    #analysisWorkProgress .analysis-work-bar:not([value]) {
+        background: Canvas;
+    }
+    #analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter {
+        border-color: CanvasText;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #analysisWorkProgress .analysis-work-bar {
+        animation: none;
+        transition: none;
+    }
+}
+
 /* ── Diagnostics panel ───────────────────────────────────── */
 .diagnostics-panel > summary {
     color: #495057;

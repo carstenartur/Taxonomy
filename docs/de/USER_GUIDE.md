@@ -56,7 +56,7 @@ Antwort bei einer späteren Modellabfrage. Die gespeicherten Arbeitsabläufe erl
 ## Umfang auswählen und Fortschritt verstehen
 
 Für automatische Analyse und Copilot wählen Sie die Teiltaxonomien und entweder
-den vollständigen Modus oder **Nur Taxonomien**. Die Auswahl bleibt an den Lauf
+den vollständigen Modus oder **Nur Knotenbewertung**. Die Auswahl bleibt an den Lauf
 gebunden und wird bei kompatibler Wiederholung/Fortsetzung sowie im JSON-Austausch
 erhalten. Einstellungen für den nächsten Lauf verändern kein früheres Ergebnis.
 
@@ -64,6 +64,18 @@ Ausgewählte Wurzeln begrenzen Bewertung und Relationsquellen. Im vollständigen
 Modus können weiterhin passende Relationsziele aus anderen Teiltaxonomien untersucht
 werden. „Nur Taxonomien“ führt keine Relationssuche oder relationenabhängige
 Architekturableitung aus und ist keine abgeschlossene vollständige Architekturanalyse.
+
+Nach einem gespeicherten Lauf mit **Nur Knotenbewertung** ergänzt **Relationssuche ergänzen** die Beziehungen. Die vorhandenen Bewertungen und Begründungen bleiben erhalten. Der zusätzliche Schritt verwendet die ursprüngliche Anforderung, Taxonomie und Anbieterauswahl. Nach einem Neuladen steht er im selben Workspace wieder zur Verfügung. Geänderte Eingaben, bearbeitete oder ergänzte Bewertungen und Begründungen sowie ältere Importe ohne passenden gespeicherten Lauf werden mit einer Erklärung abgewiesen; starten Sie dann eine neue Knotenbewertung. Eine pausierte oder mit offenen Prüfungen beendete Relationssuche lässt sich über diese Prüfungen fortsetzen.
+
+Im Analyse-Status sind die Balken je Teiltaxonomie zunächst aufgeklappt; die Liste kann eingeklappt werden. Die Relationsphase hat einen eigenen Gesamtbalken und Balken je Ziel-Teiltaxonomie. Solange der Umfang noch nicht feststeht, zeigt die Anzeige keinen festen Prozentwert.
+
+| Anzeige | Bedeutung |
+|---|---|
+| Knotenbewertung | Direkt bewertete Knoten und durch eine gültige übergeordnete Entscheidung ausgeschlossene Nachfahren zählen als erledigt; offene Knoten bleiben sichtbar. |
+| Relationssuche | Erledigte Suchaufträge werden gegen den geplanten Umfang gezählt. Ungeklärte und noch offene Aufträge stehen getrennt dabei. |
+| Gefundene Beziehungen | Ergebniszahl der Relationssuche; sie misst keinen Arbeitsfortschritt und bedeutet keine menschliche Freigabe. |
+
+Abbruch oder Fehler füllen offene Balken nicht nachträglich auf. **Ausblenden** schließt die Anzeige; der Lauf arbeitet weiter. Über **Einstellungen → Analyse-Status** öffnen Sie sie wieder.
 
 Direkt bewertete Knoten, durch eine gültige Nullbewertung ausgeschlossene Nachfahren,
 offene und nicht ausgewählte Knoten sind unterschiedlich zu lesen. Budgetende,
@@ -271,7 +283,7 @@ Tipps für gute Anforderungen:
 ### Standardanalyse
 
 1. Geben Sie Ihre Anforderung im Textbereich ein.
-2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Taxonomien** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
+2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Knotenbewertung** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
 3. Klicken Sie auf die Schaltfläche **Analyze with AI**.
 4. Der Fortschritt erscheint im Analyse-Status direkt im Analysebereich. Sobald Ergebnisse eintreffen, zeigt der Taxonomiebaum im linken Panel farbcodierte Bewertungsbalken.
 5. Nach Abschluss zeigt der Analyse-Status eine Zusammenfassung; die Export-Schaltflächen werden verfügbar.

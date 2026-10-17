@@ -138,26 +138,40 @@ public class AnalysisApiController {
     }
 
     @Operation(summary = "Analyze business requirement",
-            description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.",
+            description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view. "
+                    + "To add only relationship search to a completed durable node-only assessment, send resumable=true, a new continuationId, "
+                    + "relationSourceContinuationId and relationSourceVersion. The owned saved requirement, catalogue, scores, explanations, provider and policies "
+                    + "remain authoritative; supplied preferences cannot replace them. Reusing the target continuationId observes/replays its accepted result. "
+                    + "continuationAuthority is server-maintained metadata and is overwritten on new ordinary starts.",
             tags = {"Analysis"})
     @ApiResponse(responseCode = "200", description = "Analysis completed")
-    @ApiResponse(responseCode = "400", description = "Business text is blank or the provider is unknown")
+    @ApiResponse(responseCode = "400", description = "Business text is blank, the provider is unknown, or a relation source revision is missing")
+    @ApiResponse(responseCode = "404", description = "The continuation or source is unavailable in the current owner/workspace scope")
+    @ApiResponse(responseCode = "409", description = "Source revision, catalogue, source commit or provider policy changed; the source is running or unsupported; or relation work already exists")
     @PostMapping("/analyze")
     public ResponseEntity<AnalysisResult> analyze(@RequestBody AnalysisRequest request) {
         ResponseEntity<AnalysisResult> guard = checkInitialized();
         if (guard != null) return guard;
-        if (request == null || request.getBusinessText() == null
-                || request.getBusinessText().isBlank()) {
+        if (request == null) return ResponseEntity.badRequest().build();
+        String resolvedUsername = null;
+        WorkspaceContext resolvedContext = null;
+        if (request.getRelationSourceContinuationId() != null) {
+            if (continuationService == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
+            resolvedUsername = workspaceResolver.resolveCurrentUsername();
+            resolvedContext = resolveWorkspaceContext(resolvedUsername);
+            request = continuationService.resolveRelationsRequest(request, resolvedUsername, resolvedContext);
+        }
+        if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
         enforceBusinessTextLimit(request.getBusinessText());
         AnalysisScope analysisScope = validateAnalysisScope(request.getAnalysisScope());
         int maxArchitectureNodes = resolveMaxArchitectureNodes(request);
+        String username = resolvedUsername == null ? workspaceResolver.resolveCurrentUsername() : resolvedUsername;
+        WorkspaceContext context = resolvedContext == null ? resolveWorkspaceContext(username) : resolvedContext;
 
         String operationId = newOperationId();
         try {
-            String username = workspaceResolver.resolveCurrentUsername();
-            WorkspaceContext context = resolveWorkspaceContext(username);
             if (clusterExecution != null) {
                 if (request.isResumable() && continuationService == null)
                     throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
@@ -194,11 +208,13 @@ public class AnalysisApiController {
             var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                     maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope)
                     .withAnalysisReasonLength(reasonLength);
-            AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(command)
+            final var boundCommand = continuation == null ? command : continuation.bind(command);
+            AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(boundCommand)
                     : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
-                            () -> analyzeRequirementUseCase.analyze(command));
+                            () -> analyzeRequirementUseCase.analyze(boundCommand));
             result.analysisResult().setAnalysisOperationId(operationId);
-            result.analysisResult().setAnalysisProviderId(pinnedProvider);
+            result.analysisResult().setAnalysisProviderId(continuation != null && boundCommand.provider() != null
+                    ? boundCommand.provider() : pinnedProvider);
             result.analysisResult().setAnalysisReasonLength(reasonLength);
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {

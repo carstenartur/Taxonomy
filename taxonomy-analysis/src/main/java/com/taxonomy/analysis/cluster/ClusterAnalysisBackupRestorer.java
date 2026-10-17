@@ -71,6 +71,10 @@ public final class ClusterAnalysisBackupRestorer {
                 restored.operationId = run.id; restored.taskId = remapped.taskId().value(); restored.taskType = work.taskType();
                 restored.root = work.root(); restored.ordinal = work.ordinal(); restored.messageJson = encode(remapped);
                 restored.inputJson = work.inputJson(); restored.resultJson = work.resultJson();
+                var progress = ClusterAnalysisProgress.read(work.progressJson(), json);
+                if (progress != null) restored.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(
+                        UUID.randomUUID().toString(), progress.delivery(), progress.revision(), progress.phase(), progress.node(),
+                        progress.scores(), progress.relations()));
                 if (task.taskType() == AnalysisTaskType.RELATION_ANALYSIS) {
                     if (work.inputJson() != null) {
                         restored.inputJson = json.writeValueAsString(remapGrant(read(work.inputJson(), RelationSearchDistribution.Work.class), run.id));
@@ -143,7 +147,8 @@ public final class ClusterAnalysisBackupRestorer {
                 && sourceCommand.includeArchitectureView() == command.includeArchitectureView()
                 && sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() && Objects.equals(sourceCommand.provider(), command.provider())
                 && Objects.equals(sourceCommand.providerBinding(), command.providerBinding())
-                && Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength()),
+                && Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength())
+                && Objects.equals(json.valueToTree(sourceCommand.retainedAnalysis()), json.valueToTree(command.retainedAnalysis())),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
         if (state.terminal()) { require(run.resultJson() != null, "Terminal archived result is missing"); read(run.resultJson(), AnalysisResult.class); }
@@ -170,7 +175,10 @@ public final class ClusterAnalysisBackupRestorer {
                 if (work.settled()) completed++;
                 if (work.resultJson() != null) read(work.resultJson(), AnalysisResult.class);
             }
-            characters += bounded(work.messageJson()) + bounded(work.inputJson()) + bounded(work.resultJson());
+            var progress = ClusterAnalysisProgress.read(work.progressJson(), json);
+            validateProgress(progress, run.revision(), work.attempts(), work.sourceState(), task);
+            validateProgressCatalogue(progress, task, archive);
+            characters += bounded(work.messageJson()) + bounded(work.inputJson()) + bounded(work.resultJson()) + bounded(work.progressJson());
         }
         require(roots.size() == run.totalRoots() && completed == run.completedRoots() && inputRoots.containsAll(roots), "Incomplete archived root closure");
         for (var work : archive.work()) if (decode(work.messageJson()) instanceof RelationAnalysisTask relation)
@@ -211,6 +219,65 @@ public final class ClusterAnalysisBackupRestorer {
         require(revision == run.revision() && characters <= 64_000_000L, "Incomplete or oversized archived aggregate");
     }
 
+    static void validateProgress(ClusterAnalysisProgress.Worker progress, long revision, int attempts,
+                                 String state, AnalysisTaskMessage task) {
+        if (progress == null) return;
+        require(progress.revision() <= revision && (progress.delivery() <= attempts
+                || attempts == 0 && !Set.of("QUEUED", "RUNNING").contains(state)), "Invalid archived worker progress delivery");
+        require(task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS || progress.scores().isEmpty(), "Foreign worker coverage");
+        require(task.taskType() == AnalysisTaskType.RELATION_ANALYSIS || progress.relations() == null, "Foreign relation progress");
+    }
+
+    private void validateProgressCatalogue(ClusterAnalysisProgress.Worker progress, AnalysisTaskMessage task, Archive archive) {
+        if (progress == null || progress.scores().isEmpty() && progress.relations() == null) return;
+        var roots = new HashMap<String, RootCatalogueSnapshot>();
+        boolean restored = ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal()
+                && archive.work().stream().allMatch(work -> work.attempts() == 0 && work.startedAt() == null);
+        com.taxonomy.catalog.snapshot.CatalogueSourceIdentity original = null;
+        for (var input : archive.inputs()) {
+            var root = ClusterAnalysisProgress.frozen(input.inputJson(), json, archive.run().context(), input.root(), restored);
+            if (root == null) continue;
+            require(original == null || original.equals(root.source()), "Conflicting archived progress sources");
+            original = root.source(); roots.put(input.root(), root);
+        }
+        if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {
+            var root = roots.get(task.routingRoot().code());
+            require(root != null && root.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet())
+                    .containsAll(progress.scores().keySet()), "Worker coverage differs from frozen catalogue");
+            return;
+        }
+        var p = progress.relations(); if (p == null) return;
+        int sources = archive.work().stream().filter(work -> work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name()))
+                .map(work -> roots.get(work.root())).filter(Objects::nonNull).mapToInt(root -> root.nodes().size()).sum();
+        require(p.totalSources() <= sources && p.taxonomies().stream().allMatch(part -> roots.containsKey(part.root())
+                && part.total() <= p.totalSources()), "Relation progress differs from frozen catalogue");
+        if (task.taskId().relationWorkOrdinal().isPresent()) {
+            var work = archive.work().stream().filter(value -> value.taskId().equals(task.taskId().value())).findFirst().orElseThrow();
+            var grant = read(work.inputJson(), RelationSearchDistribution.Work.class);
+            var plan = read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class);
+            var item = plan.items().get(grant.ordinal());
+            require(p.maxCalls() == grant.maxCalls() && p.totalSources() == 1 && p.totalSearches() <= 1
+                    && p.taxonomies().stream().allMatch(part -> part.root().equals(grant.targetRoot().code())), "Progress differs from admitted relation grant");
+            var current = p.current();
+            if (current != null) {
+                var root = roots.get(grant.targetRoot().code());
+                require(root != null && root.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet())
+                        .containsAll(current.candidates()) && current.sourceId().equals(plan.sources().get(item.sourceIndex()).node().id())
+                        && current.targetRoot().equals(grant.targetRoot().code()) && current.type().equals(item.type())
+                        && current.direction() == item.direction(), "Foreign archived current relation search");
+            }
+        } else if (p.current() != null) {
+            var sourceCodes = new HashSet<String>();
+            for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {
+                var root = roots.get(work.root()); if (root != null) root.nodes().forEach(node -> sourceCodes.add(node.code()));
+            }
+            var current = p.current();
+            require(p.step() == RelationSearchProgress.Step.SOURCES && current.targetRoot().isEmpty() && current.type().isEmpty()
+                    && current.direction() == null && current.depth() == 0 && sourceCodes.containsAll(current.candidates())
+                    && current.sourceId().equals(String.join(", ", current.candidates())), "Foreign archived source assessment progress");
+        }
+    }
+
     static void validateCall(Call call, long revision, Set<String> taskIds) {
         ClusterAnalysisDiagnostics.uuid(call.executionId());
         require(taskIds.contains(call.taskId()) && call.callNumber() > 0 && call.callNumber() <= ClusterAnalysisDiagnostics.MAX_CALLS
@@ -241,12 +308,15 @@ public final class ClusterAnalysisBackupRestorer {
     }
 
     private AnalysisResult interruptedResult(Archive archive) {
+        var command = read(archive.run().commandJson(), AnalyzeRequirementCommand.class);
+        var retained = command.retainedAnalysis();
         var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>(); var tree = new ArrayList<TaxonomyNodeDto>();
-        var warnings = new ArrayList<String>(); var discrepancies = new ArrayList<TaxonomyDiscrepancy>(); var gaps = new ArrayList<ProductCoverageGap>();
+        var warnings = new ArrayList<String>(retained == null ? List.of() : retained.getWarnings());
+        var discrepancies = new ArrayList<TaxonomyDiscrepancy>(); var gaps = new ArrayList<ProductCoverageGap>();
         var coverage = new ClusterAnalysisCoverage();
         String provider = null;
-        for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {
+        for (var work : archive.work()) if (retained == null && work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {
             var result = work.resultJson() == null ? null : read(work.resultJson(), AnalysisResult.class);
             coverage.add(work.root(), result);
             if (result == null) { warnings.add(work.root() + ": " + Objects.toString(work.failureReason(), INTERRUPTED) + "; no negative finding"); continue; }
@@ -256,21 +326,34 @@ public final class ClusterAnalysisBackupRestorer {
             warnings.addAll(result.getWarnings()); discrepancies.addAll(result.getDiscrepancies()); gaps.addAll(result.getProductCoverageGaps()); provider = result.getProvider();
             if (!"SUCCESS".equals(result.getStatus())) warnings.add(work.root() + ": " + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
-        var result = new AnalysisResult(scores, tree); result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
-        // Inputs retain their archived identity; target authority is remapped only after aggregation.
-        result.setAnalysisCoverage(coverage.combine(archive.run().context().authority(), root -> read(
-                archive.inputs().stream().filter(input -> input.root().equals(root)).findFirst().orElseThrow().inputJson(),
-                RootCatalogueSnapshot.class)));
-        result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); result.setProvider(provider);
-        if (archive.run().relationPlanJson() != null) result.setRelationSearchReport(RelationSearchDistribution.combine(
-                read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class), relationEffects(archive)));
-        else result.setProvisionalRelations(scoreOnlyRelations(archive));
+        // Retained source evidence is canonical for an extension. Partitioned root
+        // work records authorize prerequisites; they cannot reconstruct all node notes.
+        var result = retained == null ? new AnalysisResult(scores, tree) : read(json.writeValueAsString(retained), AnalysisResult.class);
+        if (retained == null) {
+            result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+            // Inputs retain their archived identity; target authority is remapped only after aggregation.
+            result.setAnalysisCoverage(coverage.combine(archive.run().context().authority(), root -> read(
+                    archive.inputs().stream().filter(input -> input.root().equals(root)).findFirst().orElseThrow().inputJson(),
+                    RootCatalogueSnapshot.class)));
+            result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); result.setProvider(provider);
+        }
+        if (archive.run().relationPlanJson() != null) {
+            var report = RelationSearchDistribution.combine(read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class), relationEffects(archive));
+            result.setRelationSearchReport(RelationSearchDistribution.retainAcceptedRelations(report,
+                    retained == null ? null : retained.getRelationSearchReport()));
+            result.setProvisionalRelations(List.of());
+        } else result.setProvisionalRelations(scoreOnlyRelations(archive));
         warnings.add(INTERRUPTED + ": restored committed evidence; unfinished work requires a new explicit analysis request.");
         result.setWarnings(warnings); result.setStatus("PARTIAL"); result.setErrorMessage(INTERRUPTED);
-        result.setAnalysisScope(read(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisScope());
-        result.setAnalysisReasonLength(read(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisReasonLength());
+        result.setAnalysisScope(command.analysisScope());
+        result.setAnalysisReasonLength(command.analysisReasonLength());
         if (archive.run().viewJson() != null) result.setViewContext(read(archive.run().viewJson(), ViewContext.class));
-        result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt())); return result;
+        result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt()));
+        if (result.getArchitectureView() != null) {
+            result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
+            result.getArchitectureView().setAnalysisStatus(result.getStatus());
+        }
+        return result;
     }
 
     private List<RelationHypothesisDto> scoreOnlyRelations(Archive archive) {

@@ -210,13 +210,16 @@ public final class RequirementRelationSearch {
         if (offered.stream().noneMatch(target::equals))
             throw new IllegalArgumentException("Missing or different frozen relation target shard");
         int[] calls = {0};
+        var progress = new RelationWorkPlan(List.of(intent.contribution().source()), List.of(target), rules, work.maxCalls());
+        progress.assessed(plan.sources().get(item.sourceIndex()));
+        progress.expect(List.of(intent));
         var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
             if (step == Step.SOURCES) throw new IllegalStateException("Prepared source extraction cannot repeat");
             return completion.apply(prompt);
         }, provider, (step, ids) -> {
             if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
             if (calls[0] >= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
-            calls[0]++;
+            calls[0]++; progress.calls(calls[0]);
         }, plan.options().maxPromptCharacters());
         Limits limits = plan.options().limits();
         var engine = new RelationSearchEngine(node -> {
@@ -225,7 +228,7 @@ public final class RequirementRelationSearch {
             if (children.stream().anyMatch(child -> !child.root().equals(work.targetRoot().code())))
                 throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
             return children;
-        }, protocol::evaluateRecovering, checkpoint, new RelationSearchEngine.Observer() { }, true, plan.options().maxPromptCharacters());
+        }, protocol::evaluateRecovering, checkpoint, progress, true, plan.options().maxPromptCharacters());
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
         String stop = "";
         try {
@@ -233,6 +236,7 @@ public final class RequirementRelationSearch {
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult(); stop = failureReason(interrupted.getCause());
         } catch (RuntimeException failure) { stop = failureReason(failure); }
+        progress.finish(stop.isEmpty() && result.searchExhausted());
         return new RelationSearchDistribution.WorkResult(work, result, calls[0], stop);
     }
 

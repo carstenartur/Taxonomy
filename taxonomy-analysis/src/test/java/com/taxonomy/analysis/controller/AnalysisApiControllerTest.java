@@ -107,6 +107,34 @@ class AnalysisApiControllerTest {
     }
 
     @Test
+    void relationSourceIdentityIsResolvedBeforeBusinessTextValidationAndBoundToTrustedEvidence() throws Exception {
+        var continuations = org.mockito.Mockito.mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.class);
+        var execution = org.mockito.Mockito.mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.Execution.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "continuationService", continuations);
+        var frozen = new AnalysisRequest("Original server requirement"); frozen.setProvider("MOCK"); frozen.setMaxArchitectureNodes(23);
+        frozen.setResumable(true); frozen.setContinuationId(UUID.randomUUID().toString());
+        frozen.setRelationSourceContinuationId(UUID.randomUUID().toString()); frozen.setRelationSourceVersion(7L);
+        frozen.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.FULL));
+        var retained = new AnalysisResult(Map.of("CP", 71.125), List.of()); retained.setReasons(Map.of("CP", "Original reason"));
+        when(continuations.resolveRelationsRequest(any(), any(), any())).thenReturn(frozen);
+        when(continuations.begin(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(execution);
+        when(execution.bind(any())).thenAnswer(call -> call.<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand>getArgument(0).withRetainedAnalysis(retained));
+        when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("CP"));
+        var response = new AnalysisResult(Map.of("CP", 71.125), List.of()); response.setStatus("SUCCESS");
+        when(analyzeRequirementUseCase.analyze(any())).thenReturn(new AnalyzeRequirementResult(response));
+        when(execution.complete(response)).thenReturn(response);
+        mockMvc.perform(post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(new ObjectMapper().writeValueAsString(Map.of(
+                "resumable", true, "continuationId", frozen.getContinuationId(), "relationSourceContinuationId", frozen.getRelationSourceContinuationId(), "relationSourceVersion", 7))))
+                .andExpect(status().isOk()).andExpect(jsonPath("rawScores.CP").value(71.125));
+        var command = ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(command.capture());
+        assertThat(command.getValue().businessText()).isEqualTo("Original server requirement");
+        assertThat(command.getValue().provider()).isEqualTo("MOCK");
+        assertThat(command.getValue().maxArchitectureNodes()).isEqualTo(23);
+        assertThat(command.getValue().retainedAnalysis()).isSameAs(retained);
+    }
+
+    @Test
     void analyzeCarriesSelectedScopeInTypedCommand() throws Exception {
         when(taxonomyService.getRootCodes()).thenReturn(java.util.Set.of("BP"));
         when(analyzeRequirementUseCase.analyze(any())).thenReturn(new AnalyzeRequirementResult(new AnalysisResult()));

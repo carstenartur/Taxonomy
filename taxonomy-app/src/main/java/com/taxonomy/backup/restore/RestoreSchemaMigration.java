@@ -50,7 +50,7 @@ public final class RestoreSchemaMigration {
             var bound=bound(candidate,target);
             checkpoint.check(); var business=business(bound); business.validate();
             var applied=business.info().applied();
-            if(!Arrays.stream(applied).map(migration->migration.getVersion().toString()).toList().equals(List.of("1","2","3","4","5","6","7","8","9")))
+            if(!Arrays.stream(applied).map(migration->migration.getVersion().toString()).toList().equals(List.of("1","2","3","4","5","6","7","8","9","10")))
                 throw new IOException("Staged restore schema validation failed");
             // Structural proof rejects unsupported triggers/views before any factory can import rows.
             TargetSchemaEvidence.inspect(bound,checkpoint);

@@ -11,6 +11,22 @@ public class AnalysisRequest {
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
 
+    /** Explicit source of server-retained node evidence for a new relations-only continuation. */
+    private String relationSourceContinuationId;
+    private Long relationSourceVersion;
+    /** Server-derived node completeness, independent of temporary relation-attempt gaps. */
+    private boolean relationSourcePartial;
+    public boolean isRelationSourcePartial() { return relationSourcePartial; }
+    public void setRelationSourcePartial(boolean value) { relationSourcePartial = value; }
+    /** Server-captured provider/policy/catalogue authority; never accepted from a new client request. */
+    private String continuationAuthority;
+    public String getRelationSourceContinuationId() { return relationSourceContinuationId; }
+    public void setRelationSourceContinuationId(String value) { relationSourceContinuationId = value; }
+    public Long getRelationSourceVersion() { return relationSourceVersion; }
+    public void setRelationSourceVersion(Long value) { relationSourceVersion = value; }
+    public String getContinuationAuthority() { return continuationAuthority; }
+    public void setContinuationAuthority(String value) { continuationAuthority = value; }
+
     private String businessText;
     private boolean includeArchitectureView;
     // Null means "use the live server-side runtime preference". Keeping this

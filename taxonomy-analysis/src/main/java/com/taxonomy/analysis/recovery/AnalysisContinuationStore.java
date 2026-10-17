@@ -22,7 +22,11 @@ public class AnalysisContinuationStore {
     private final EntityManager em;
     private final ObjectMapper mapper;
     public AnalysisContinuationStore(EntityManager em, ObjectMapper mapper) { this.em = em; this.mapper = mapper; }
-    public record Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations) {
+    public record Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations,
+                        AnalysisResult retainedAnalysis) {
+        public Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations) {
+            this(id, token, completedResult, previousRelations, null);
+        }
         public Claim(String id, String token, AnalysisResult completedResult) { this(id, token, completedResult, null); }
     }
     public record Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request, String clusterOperationId) {
@@ -52,16 +56,43 @@ public class AnalysisContinuationStore {
             run.repositoryId = scope.repositoryId(); run.branchName = scope.currentBranch();
             run.inputHash = signature; run.requestJson = mapper.writeValueAsString(request);
             run.state = "NEW";
+            AnalysisResult retained = null;
+            if (request.getRelationSourceContinuationId() != null) {
+                var source = relationSource(request, scope, LockModeType.PESSIMISTIC_WRITE);
+                var duplicate = em.createQuery("select r.id from AnalysisContinuationRun r where r.inputHash=:hash and r.username=:owner and r.workspaceId=:workspace and r.state<>'CANCELLED'", String.class)
+                        .setParameter("hash", signature).setParameter("owner", scope.username()).setParameter("workspace", scope.workspaceId())
+                        .setMaxResults(1).getResultList();
+                if (!duplicate.isEmpty()) throw conflict("This source revision already has a relations continuation: " + duplicate.getFirst());
+                var original = mapper.readValue(source.requestJson, AnalysisRequest.class);
+                retained = readResult(source);
+                request.setRelationSourcePartial(!"SUCCESS".equals(retained.getStatus()) || retained.getAnalysisCoverage().hasOpenEvaluations());
+                if (!Objects.equals(original.getBusinessText(), request.getBusinessText())
+                        || !(Objects.equals(original.getProvider(), request.getProvider())
+                            || Objects.equals(retained.getAnalysisProviderId(), request.getProvider()))
+                        || original.getContinuationAuthority() != null
+                        && !Objects.equals(original.getContinuationAuthority(), request.getContinuationAuthority())
+                        || !Objects.equals(original.getMaxArchitectureNodes(), request.getMaxArchitectureNodes())
+                        || !original.getAnalysisScope().taxonomyRoots().equals(request.getAnalysisScope().taxonomyRoots())
+                        || !request.getAnalysisScope().includesRelations()
+                        || !mapper.writeValueAsString(retained.getTree()).equals(mapper.writeValueAsString(tree)))
+                    throw conflict("Relations extension differs from its retained source authority");
+            }
             // Seed the original catalogue before any provider call. Cancellation can then
             // reconstruct typed evidence without a worker or a potentially changed catalogue.
-            var seed = new AnalysisResult(Map.of(), tree);
+            var seed = retained == null ? new AnalysisResult(Map.of(), tree) : retained;
             seed.setAnalysisScope(request.getAnalysisScope());
             seed.setAnalysisReasonLength(request.getAnalysisReasonLength());
-            seed.setStatus("IN_PROGRESS"); seed.setProvider(request.getProvider());
+            if (retained == null) seed.setStatus("IN_PROGRESS");
+            seed.setProvider(request.getProvider());
+            run.requestJson = mapper.writeValueAsString(request);
             writeResult(run, seed);
             em.persist(run);
         } else {
             authorize(run, scope);
+            var savedRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
+            if (!Objects.equals(savedRequest.getRelationSourceContinuationId(), request.getRelationSourceContinuationId())
+                    || !Objects.equals(savedRequest.getRelationSourceVersion(), request.getRelationSourceVersion()))
+                throw conflict("This continuation belongs to a different retained source revision");
             if (!run.inputHash.equals(signature)) throw conflict(
                     "Requirement, catalogue, prompt, provider or policy changed; the saved answers cannot be reused in this context");
             expire(run);
@@ -105,7 +136,58 @@ public class AnalysisContinuationStore {
         run.claimUntil = System.currentTimeMillis() + CLAIM_MILLIS; run.updatedAt = System.currentTimeMillis();
         em.flush();
         var previous = readResult(run);
-        return new Claim(id, run.claimToken, null, previous == null ? null : previous.getRelationSearchReport());
+        var savedRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
+        var previousRelations = previous == null ? null : previous.getRelationSearchReport();
+        if (savedRequest.getRelationSourceContinuationId() != null && previous != null) resetRelationAttempt(previous, savedRequest);
+        return new Claim(id, run.claimToken, null, previousRelations,
+                savedRequest.getRelationSourceContinuationId() == null ? null : previous);
+    }
+
+    /** Resolves a new extension or its existing target without changing the source.
+     * PostgreSQL requires a regular transaction for the shared source row lock. */
+    @Transactional
+    public Snapshot relationInput(AnalysisRequest request, WorkspaceContext scope) {
+        requireScope(scope);
+        String id = requireId(request.getContinuationId());
+        var existing = em.find(AnalysisContinuationRun.class, id);
+        if (existing != null) {
+            authorize(existing, scope);
+            var saved = mapper.readValue(existing.requestJson, AnalysisRequest.class);
+            if (!Objects.equals(saved.getRelationSourceContinuationId(), request.getRelationSourceContinuationId())
+                    || !Objects.equals(saved.getRelationSourceVersion(), request.getRelationSourceVersion()))
+                throw conflict("This continuation belongs to a different retained source revision");
+            return new Snapshot(view(existing), readResult(existing), saved, existing.clusterOperationId);
+        }
+        var source = relationSource(request, scope, LockModeType.PESSIMISTIC_READ);
+        return new Snapshot(view(source), readResult(source), mapper.readValue(source.requestJson, AnalysisRequest.class), source.clusterOperationId);
+    }
+
+    @Transactional(readOnly = true)
+    public void verifySourceSignature(String id, WorkspaceContext scope, String signature) {
+        var source = em.find(AnalysisContinuationRun.class, requireId(id));
+        if (source == null) throw notFound();
+        authorize(source, scope);
+        if (!Objects.equals(signature, source.inputHash))
+            throw conflict("Requirement, catalogue, provider or policy changed; saved node evidence cannot authorize relation calls");
+    }
+
+    private AnalysisContinuationRun relationSource(AnalysisRequest request, WorkspaceContext scope, LockModeType lock) {
+        String sourceId = requireId(request.getRelationSourceContinuationId());
+        if (sourceId.equals(request.getContinuationId())) throw conflict("A relations extension requires a new continuation identity");
+        var source = em.find(AnalysisContinuationRun.class, sourceId, lock);
+        if (source == null) throw notFound();
+        authorize(source, scope);
+        if (request.getRelationSourceVersion() == null || request.getRelationSourceVersion() != source.version)
+            throw conflict("A newer source revision exists; refresh before extending relations");
+        var saved = mapper.readValue(source.requestJson, AnalysisRequest.class);
+        var result = readResult(source);
+        if (!Set.of("COMPLETED", "COMPLETED_WITH_GAPS").contains(source.state)
+                || saved.getAnalysisScope().includesRelations() || result == null || result.getTree() == null
+                || result.getTree().isEmpty() || result.getAnalysisCoverage() == null
+                || !Set.of("SUCCESS", "PARTIAL").contains(result.getStatus()) || result.getRelationSearchReport() != null
+                || result.getWarnings().stream().anyMatch(w -> w.startsWith("RESTORED_HISTORICAL_SOURCE_EVIDENCE:")))
+            throw conflict("Relations require a completed retained node-only analysis with original catalogue authority; imported or running evidence is unsupported");
+        return source;
     }
 
     @Transactional(readOnly = true)
@@ -136,7 +218,14 @@ public class AnalysisContinuationStore {
                 || com.taxonomy.analysis.service.AnalysisReasonContext.effective(request.getAnalysisReasonLength())
                     != com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()))
             throw conflict("Distributed command differs from the saved requirement");
-        if (!AnalysisContinuationCatalogue.matches(readResult(run).getTree(), roots))
+        var retained = readResult(run);
+        if (request.getRelationSourceContinuationId() != null
+                && (command.retainedAnalysis() == null
+                || !sameNodeEvidence(retained, command.retainedAnalysis())))
+            throw conflict("Distributed relations command changed the retained node evidence");
+        if (request.getRelationSourceContinuationId() == null && command.retainedAnalysis() != null)
+            throw conflict("Retained evidence requires an explicit relations source");
+        if (!AnalysisContinuationCatalogue.matches(retained.getTree(), roots))
             throw conflict("Catalogue changed between continuation capture and distributed admission");
         if (run.clusterSourceJson != null && (!run.clusterSourceJson.equals(sourceJson) || !Objects.equals(run.clusterCatalogueHash, catalogueHash)))
             throw conflict("Frozen source or catalogue changed; start a new continuation");
@@ -339,10 +428,18 @@ public class AnalysisContinuationStore {
         var previous = readResult(run);
         if ("CANCELLED".equals(run.state) && previous != null && previous.getAnalysisCoverage() != null
                 && "CANCELLED".equals(previous.getStatus())) {
-            return previous; // Cancellation already committed the canonical result; late workers cannot rewrite it.
+            // The local search returns its accepted partial report after observing cancellation.
+            // Only that report may enrich the canonical cancelled result; node evidence is immutable.
+            retainRelationReport(run, previous, result.getRelationSearchReport());
+            writeResult(run, previous); em.flush();
+            previous.setRecovery(view(run));
+            return previous;
         }
         if (previous != null && previous.getTree() != null) tree = previous.getTree();
         AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
+        boolean relationsOnly = frozenRequest.getRelationSourceContinuationId() != null;
+        if (relationsOnly && previous != null && !sameNodeEvidence(previous, result))
+            throw conflict("Relations work cannot replace retained node assessments or explanations");
         AnalysisScope analysisScope = frozenRequest.getAnalysisScope();
         result.setAnalysisScope(analysisScope);
         result.setAnalysisReasonLength(frozenRequest.getAnalysisReasonLength());
@@ -392,7 +489,14 @@ public class AnalysisContinuationStore {
         }
         String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
                 ? "INTERRUPTED:" + run.state : null;
-        result.setAnalysisCoverage(AnalysisCoverage.derive(analysisScope.selectedTree(tree), result.getRawScores(), result.getScores(), missing, interruption));
+        if (relationsOnly && previous != null && previous.getAnalysisCoverage() != null) {
+            result.setAnalysisCoverage(previous.getAnalysisCoverage());
+            if (!"CANCELLED".equals(result.getStatus()) && (frozenRequest.isRelationSourcePartial()
+                    || previous.getAnalysisCoverage().hasOpenEvaluations())) {
+                result.setStatus("PARTIAL");
+                if ("COMPLETED".equals(run.state)) run.state = "COMPLETED_WITH_GAPS";
+            }
+        } else result.setAnalysisCoverage(AnalysisCoverage.derive(analysisScope.selectedTree(tree), result.getRawScores(), result.getScores(), missing, interruption));
         if (frozenRequest.isIncludeArchitectureView()) {
             result.setArchitectureView(com.taxonomy.analysis.usecase.PartialArchitectureProjection.complete(
                     result, result.getArchitectureView(), frozenRequest.getMaxArchitectureNodes()));
@@ -432,6 +536,48 @@ public class AnalysisContinuationStore {
     public Snapshot cancel(String id, WorkspaceContext scope) {
         return cancelLocked(scoped(id, scope), null, null);
     }
+    /** Cluster cancellation supplies only its already committed aggregate relation evidence. */
+    @Transactional
+    public Snapshot cancel(String id, WorkspaceContext scope, RelationSearchReport report) {
+        var run = scoped(id, scope);
+        var result = readResult(run);
+        if (result != null) { retainRelationReport(run, result, report); writeResult(run, result); }
+        return cancelLocked(run, null, null);
+    }
+    private void retainRelationReport(AnalysisContinuationRun run, AnalysisResult result, RelationSearchReport report) {
+        if (report == null) return;
+        var request = mapper.readValue(run.requestJson, AnalysisRequest.class);
+        if (!Objects.equals(report.originalSha256(), com.taxonomy.analysis.dag.RequirementReference.sha256(request.getBusinessText())))
+            throw conflict("Relation evidence belongs to a different requirement");
+        result.setRelationSearchReport(report);
+        if (result.getArchitectureView() != null) result.getArchitectureView().setRelationSearchReport(report);
+    }
+    /** Retry only resets extension-attempt diagnostics; original node notes and gaps remain authoritative. */
+    private void resetRelationAttempt(AnalysisResult result, AnalysisRequest request) {
+        var report = result.getRelationSearchReport();
+        var relationWarnings = new HashSet<String>();
+        if (report != null) {
+            relationWarnings.addAll(report.warnings());
+            report.result().unfinished().stream().filter(item -> !item.question().isBlank())
+                    .map(item -> item.sourceId() + ": " + item.question()).forEach(relationWarnings::add);
+        }
+        result.setWarnings(result.getWarnings().stream().filter(warning -> !relationAttemptMessage(warning)
+                && !relationWarnings.contains(warning)).collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
+        if (relationAttemptMessage(result.getErrorMessage())
+                || report != null && Objects.equals(result.getErrorMessage(), report.stopReason())) result.setErrorMessage(null);
+        result.setStatus(request.isRelationSourcePartial() ? "PARTIAL" : "SUCCESS");
+    }
+    private boolean relationAttemptMessage(String message) {
+        return message != null && (message.startsWith("RELATION_SEARCH_PARTIAL:") || message.startsWith("RELATION_EVALUATION_FAILED:"));
+    }
+    private boolean sameNodeEvidence(AnalysisResult expected, AnalysisResult offered) {
+        return expected != null && offered != null && expected.getRawScores().equals(offered.getRawScores())
+                && expected.getScores().equals(offered.getScores())
+                && expected.getReasons().equals(offered.getReasons())
+                && Objects.equals(expected.getScoreSemanticsFingerprintSha256(), offered.getScoreSemanticsFingerprintSha256())
+                && mapper.writeValueAsString(expected.getTree()).equals(mapper.writeValueAsString(offered.getTree()));
+    }
+
     /** Legacy in-flight rows can recover the tree only after its full semantic identity is verified. */
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope, List<TaxonomyNodeDto> tree, String signature) {

@@ -17,13 +17,16 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     const unschedule = key => timers.delete(key);
     const elements = new Map();
     class Element {
-        constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.isConnected = true; }
+        constructor(tag) { this.tag = tag; this.children = []; this.ownText = ''; this.attributes = {}; this.isConnected = true; }
         set id(value) { this.identifier = value; elements.set(value, this); }
         get id() { return this.identifier; }
-        set textContent(value) { this.value = String(value); this.children = []; }
-        get textContent() { return this.value + this.children.map(child => child.textContent).join(' '); }
+        set textContent(value) { this.ownText = String(value); this.children = []; }
+        get textContent() { return this.ownText + this.children.map(child => child.textContent).join(' '); }
         append(...children) { this.children.push(...children); }
-        setAttribute() {}
+        setAttribute(key, value) { this.attributes[key] = String(value); }
+        getAttribute(key) { return Object.hasOwn(this.attributes, key) ? this.attributes[key] : null; }
+        querySelector(selector) { return descendants(this).find(child => child.tag === selector) || null; }
+        focus() { document.activeElement = this; }
         addEventListener(name, listener) { (this.listeners ||= new Map()).set(name, listener); }
         insertAdjacentElement() {}
         replaceChildren(...children) { this.children = children; }
@@ -82,7 +85,13 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { window, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+    return { window, document, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+}
+function descendants(element) { return element.children.flatMap(child => [child, ...descendants(child)]); }
+function workBar(fixture, kind, root = '') {
+    return descendants(fixture.elements.get('analysisWorkProgress')).find(element => element.tag === 'progress'
+        && element.getAttribute('data-progress-kind') === kind
+        && (element.getAttribute('data-taxonomy-root') || '') === root);
 }
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
@@ -322,6 +331,163 @@ test('preserves provider wait reasons while showing relation work and its separa
     assert.doesNotMatch(text, /80 of 80/);
     f.monitor.stop();
 });
+
+function coverage() {
+    return { total: 12, assessed: 4, excluded: 3, open: 5, taxonomies: [
+        { root: 'BP', nameEn: 'Business processes', nameDe: 'Geschäftsprozesse', total: 8, assessed: 3, excluded: 2, open: 3 },
+        { root: 'IP', nameEn: 'Information products', nameDe: 'Informationsprodukte', total: 4, assessed: 1, excluded: 1, open: 2 }
+    ] };
+}
+function relationshipWork() {
+    return { totalSources: 3, assessedSources: 2, totalSearches: 10, completedSearches: 4,
+        unresolvedSearches: 2, pendingSearches: 4, calls: 8, maxCalls: 12, verifiedRelations: 99,
+        step: 'NAVIGATE', current: null, taxonomies: [
+            { root: 'BP', total: 6, completed: 2, unresolved: 1, pending: 3 },
+            { root: 'IP', total: 4, completed: 2, unresolved: 1, pending: 1 }
+        ] };
+}
+
+test('every taxonomy has a visible labelled bar while direct and excluded node coverage stay distinct', async () => {
+    const value = { ...clusterSnapshot(), nodeProgress: coverage(), relationProgress: relationshipWork() };
+    value.cluster = { ...value.cluster, completedRoots: 8, totalRoots: 8 };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(f.elements.get('analysisTaxonomyProgressDetails').open, true, 'Every taxonomy starts visible');
+    for (const [root, completed, total] of [['', 7, 12], ['BP', 5, 8], ['IP', 2, 4]]) {
+        const bar = workBar(f, 'nodes', root);
+        assert.ok(bar, `Missing native node bar for ${root || 'overall coverage'}`);
+        assert.equal(bar.getAttribute('value'), String(completed));
+        assert.equal(bar.getAttribute('max'), String(total));
+        assert.ok(f.elements.get(bar.getAttribute('aria-labelledby'))?.textContent, 'Native bar has a visible label');
+        assert.match(bar.getAttribute('aria-valuetext'), /assessed.*excluded.*open/);
+    }
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /4 directly assessed.*3 excluded by parent decision.*5 open/);
+    assert.equal(descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress'
+        && element.getAttribute('data-progress-kind') === 'nodes').length, 3, 'Distributed DTOs do not duplicate node coverage');
+    const bars = descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress');
+    assert.equal(bars.length, 6, 'Only the detailed node and relationship DTO bars are primary');
+    assert.equal(workBar(f, 'cluster-nodes'), undefined);
+    assert.equal(workBar(f, 'cluster-relations'), undefined);
+    assert.ok(bars.every(bar => Number(bar.getAttribute('value')) < Number(bar.getAttribute('max'))));
+    assert.doesNotMatch(f.elements.get('analysisWorkProgress').textContent, /8 of 8 complete/);
+    f.monitor.stop();
+});
+
+test('taxonomy count rows stay compact while accessible values retain the assessment and exclusion meaning', async () => {
+    const f = fixture(async () => response({ ...snapshot(), nodeProgress: coverage() }), 'workspace-a', true);
+    await f.step(0);
+    const bar = workBar(f, 'nodes', 'BP');
+    const row = descendants(f.elements.get('analysisWorkProgress')).find(element => element.children.includes(bar));
+    assert.equal(row.children[0].children[1].textContent, '5/8');
+    assert.match(row.textContent, /3 assessed · 2 excluded · 3 open/);
+    assert.match(bar.getAttribute('aria-valuetext'), /3 directly assessed · 2 excluded by parent decision · 3 open/);
+    f.monitor.stop();
+});
+
+test('relations have overall and target bars based on completed searches independently of verified relations', async () => {
+    const f = fixture(async () => response({ ...snapshot(), relationProgress: relationshipWork() }), 'workspace-a', true);
+    f.window.TaxonomyState = { taxonomyData: [{ code: 'BP', nameEn: 'Business processes' }, { code: 'IP', nameEn: 'Information products' }] };
+    await f.step(0);
+    for (const [root, completed, total] of [['', 4, 10], ['BP', 2, 6], ['IP', 2, 4]]) {
+        const bar = workBar(f, 'relations', root);
+        assert.ok(bar, `Missing relationship-search bar for ${root || 'overall search'}`);
+        assert.equal(bar.getAttribute('value'), String(completed), 'Unresolved tasks and found relations are not completed work');
+        assert.equal(bar.getAttribute('max'), String(total));
+        assert.match(bar.getAttribute('aria-valuetext'), /unresolved.*pending/);
+        const label = f.elements.get(bar.getAttribute('aria-labelledby'))?.textContent;
+        assert.match(label, root ? new RegExp(root) : /Relationship search/);
+    }
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /99 relationship proposals checked/);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /search tasks.*relationships found/i);
+    f.monitor.stop();
+});
+
+test('the concise live status announces local relationship work independently of the non-live taxonomy list', async () => {
+    const f = fixture(async () => response({ ...snapshot(), evaluatedNodes: 0, relationProgress: relationshipWork() }), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(f.elements.get('analysisWorkProgress').getAttribute('aria-live'), 'off');
+    assert.match(f.elements.get('analysisLiveProgress').children[1].textContent, /Relationship search.*4 of 10/);
+    assert.doesNotMatch(f.elements.get('analysisLiveProgress').children[1].textContent, /0 nodes evaluated/);
+    f.monitor.stop();
+});
+
+test('zero planned searches stay unknown until finished and empty work never becomes a fabricated complete bar', async () => {
+    const r = { ...relationshipWork(), totalSources: 0, assessedSources: 0, totalSearches: 0, completedSearches: 0,
+        unresolvedSearches: 0, pendingSearches: 0, step: 'SOURCES', taxonomies: [{ root: 'BP', total: 0, completed: 0, unresolved: 0, pending: 0 }] };
+    let value = { ...snapshot(), relationProgress: r };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    for (const root of ['', 'BP']) {
+        const bar = workBar(f, 'relations', root);
+        assert.ok(bar);
+        assert.equal(bar.getAttribute('value'), null);
+        assert.match(bar.getAttribute('aria-valuetext'), /not yet known/i);
+    }
+    value = { ...value, sequence: 2, status: 'COMPLETED', relationProgress: { ...r, step: 'FINISHED' } };
+    await f.step(1000);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /No search tasks required/);
+    assert.equal(workBar(f, 'relations').getAttribute('value'), null);
+    assert.doesNotMatch(f.elements.get('analysisWorkProgress').textContent, /100%|0 of 0 complete/);
+});
+
+test('cluster-only dynamic search work has indeterminate total and target bars with honest failure counts', async () => {
+    const value = clusterSnapshot(); value.phase = 'RELATIONS';
+    value.cluster.tasks[1] = { taskType: 'RELATION_ANALYSIS', root: { code: 'IP' }, queued: 1, running: 0, completed: 3, failed: 2 };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    for (const [kind, root] of [['cluster-nodes', 'CP'], ['cluster-relations', ''], ['cluster-relations', 'IP']]) {
+        const bar = workBar(f, kind, root);
+        assert.ok(bar, `Missing cluster bar ${kind} ${root}`);
+        assert.equal(bar.getAttribute('value'), null, 'Task states cannot claim a fixed catalogue/search denominator');
+        assert.match(bar.getAttribute('aria-valuetext'), /running|active|queued|failed/);
+    }
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /More tasks may be added/);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /2 failed/);
+    f.monitor.stop();
+});
+
+test('terminal cluster-only search states retain bars without suggesting that the stopped run will add work', async () => {
+    const value = clusterSnapshot(2, 'PARTIAL'); value.phase = 'FINISHED';
+    value.cluster.tasks = [{ taskType: 'RELATION_ANALYSIS', root: { code: 'IP' }, queued: 0, running: 0, completed: 3, failed: 2 }];
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    assert.ok(workBar(f, 'cluster-relations'), 'Terminal task history keeps the overall search bar');
+    assert.equal(workBar(f, 'cluster-relations', 'IP').getAttribute('value'), null);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /Search totals unavailable/);
+    assert.doesNotMatch(f.elements.get('analysisWorkProgress').textContent, /More tasks may be added/);
+});
+
+test('live updates retain keyboard disclosure state and focus and refresh localized labels', async () => {
+    let value = { ...snapshot(), nodeProgress: coverage() };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    const details = f.elements.get('analysisTaxonomyProgressDetails');
+    details.open = false;
+    f.elements.get('analysisTaxonomyProgressToggle').focus();
+    value = { ...value, sequence: 2, nodeProgress: { ...coverage(), assessed: 5, open: 4 } };
+    await f.step(1000);
+    assert.equal(f.elements.get('analysisTaxonomyProgressDetails').open, false);
+    assert.equal(f.document.activeElement, f.elements.get('analysisTaxonomyProgressToggle'));
+    f.document.documentElement.lang = 'de';
+    value = { ...value, sequence: 3 };
+    await f.step(1000);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /Geschäftsprozesse/);
+    assert.match(workBar(f, 'nodes', 'BP').getAttribute('aria-valuetext'), /bewertet.*ausgeschlossen.*offen/);
+    assert.equal(f.document.activeElement, f.elements.get('analysisTaxonomyProgressToggle'));
+    f.monitor.stop();
+});
+
+for (const status of ['ERROR', 'CANCELLED', 'PARTIAL']) {
+    test(`${status} retains incomplete relationship work without showing successful completion`, async () => {
+        const f = fixture(async () => response({ ...snapshot(1, status), relationProgress: { ...relationshipWork(), step: 'PAUSED' } }), 'workspace-a', true);
+        await f.step(0);
+        assert.equal(f.elements.get('analysisWorkProgress').getAttribute('data-run-status'), status);
+        assert.equal(workBar(f, 'relations').getAttribute('value'), '4');
+        assert.match(f.elements.get('analysisWorkProgress').textContent, /incomplete/);
+        assert.doesNotMatch(f.elements.get('analysisLiveProgress').textContent, /Complete result received/);
+        assert.match(f.elements.get('analysisLiveProgress').textContent, new RegExp(status));
+    });
+}
 
 test('observes a started call and partial scores before completion; never starts work', async () => {
     const f = fixture(async () => response(snapshot()));
