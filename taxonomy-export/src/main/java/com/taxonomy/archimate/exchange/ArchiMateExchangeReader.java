@@ -110,7 +110,8 @@ public final class ArchiMateExchangeReader {
         List<DiagramEdge> edges = model.relationships().stream().map(relation -> {
             var p = relation.properties();
             return new DiagramEdge(relation.id(), relation.sourceId(), relation.targetId(),
-                    value(p, "taxonomy.type"), number(p, "taxonomy.relevance"), optional(p, "taxonomy.relationCategory"));
+                    value(p, "taxonomy.type"), number(p, "taxonomy.relevance"), optional(p, "taxonomy.relationCategory"),
+                    ArchiMateRelationProvenance.read(p));
         }).toList();
         DiagramLayout layout = model.properties().containsKey("taxonomy.layoutDirection")
                 ? new DiagramLayout(value(model.properties(), "taxonomy.layoutDirection"), flag(model.properties(), "taxonomy.groupByLayer"))

@@ -198,7 +198,7 @@ class WorkflowTestAuthorityPolicyTest {
                     jobs:
                       verify:
                         steps:
-                          - run: echo preparing %s ./mvnw -B verify -Pci
+                          - run: echo preparing %s ./mvnw -B verify -Pci -DrunOnnxTests=true
                     """.formatted(separator));
 
             WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
@@ -255,6 +255,25 @@ class WorkflowTestAuthorityPolicyTest {
         }
     }
 
+    @Test
+    void canonicalProducerCannotOmitOrDisableRequiredOnnxTests(@TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of("ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        for (String arguments : List.of("", " -DrunOnnxTests=false", " -DrunOnnxTests=true -DrunOnnxTests=false")) {
+            writeWorkflow(root, "ci-cd.yml", """
+                    name: CI
+                    jobs:
+                      verify:
+                        steps:
+                          - run: ./mvnw -B verify -Pci%s
+                    """.formatted(arguments));
+            assertThat(policy.inspect(root).errors())
+                    .as("required ONNX selection %s", arguments)
+                    .anyMatch(error -> error.contains("canonical Maven command in a run step"));
+        }
+    }
+
     private void writeCatalog(Path root, Map<String, String> responsibilities)
             throws IOException {
         Path catalog = root.resolve(".mvn/verification-suites.json");
@@ -273,7 +292,7 @@ class WorkflowTestAuthorityPolicyTest {
                 jobs:
                   verify:
                     steps:
-                      - run: ./mvnw -B verify -Pci
+                      - run: ./mvnw -B verify -Pci -DrunOnnxTests=true
                 """);
         writeWorkflow(root, "database-compatibility.yml", """
                 name: Database

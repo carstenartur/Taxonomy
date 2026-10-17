@@ -142,7 +142,7 @@ public class VisioDiagramService {
             statusCounts.forEach((status, count) -> doc.getProperties().put("taxonomy.relationships" + status.replaceAll("[^A-Za-z0-9]", ""), VisioProperty.number(count)));
             String legend = "Relationships: " + model.edges().size() + " | " + statusCounts.entrySet().stream()
                     .map(e -> e.getKey() + ": " + e.getValue()).collect(java.util.stream.Collectors.joining(" | "))
-                    + "\nDashed purple = AI-proposed. Solid = other/unrecorded origin.\nHuman approval is not recorded; AI support is not human approval.";
+                    + "\nDashed purple = AI-proposed. Solid = other/unrecorded origin.\nAI support is not human approval; supplied review metadata remains authoritative.";
             double top = page.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
             page.setLegend(new com.taxonomy.visio.VisioTextBox(legend, 5.5, top + 1.3, 10, 1.5));
         }
@@ -157,7 +157,10 @@ public class VisioDiagramService {
         values.put("taxonomy.proposed", VisioProperty.bool(m.proposed()));
         if (m.relationId() != null) values.put("taxonomy.relationId", VisioProperty.text(m.relationId().toString()));
         if (m.origin() != null) values.putIfAbsent("taxonomy.origin", VisioProperty.text(m.origin().name()));
-        if (m.confidence() != null) values.put("taxonomy.confidence", VisioProperty.number(m.confidence()));
+        if (m.confidence() != null) {
+            values.putIfAbsent("taxonomy.confidence", VisioProperty.number(m.confidence()));
+            values.put("taxonomy.provenanceConfidence", VisioProperty.number(m.confidence()));
+        }
         if (m.includedBecause() != null) values.put("taxonomy.includedBecause", VisioProperty.text(m.includedBecause()));
         if (m.derivationReason() != null) values.put("taxonomy.derivationReason", VisioProperty.text(m.derivationReason()));
         if (m.presenceReason() != null) values.put("taxonomy.presenceReason", VisioProperty.text(m.presenceReason()));

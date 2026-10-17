@@ -9,7 +9,8 @@ class CoverageReplayCostTest {
   var pom=XmlSupport.parse(root.resolve("pom.xml")).getDocumentElement();
   var npm=XmlSupport.descendants(pom,"execution").stream().filter(p -> XmlSupport.childText(p,"id").equals("install-junit-javascript-driver-dependencies")).findFirst().orElseThrow();
   assertEquals("${taxonomy.frontend.skip}",XmlSupport.childText(XmlSupport.child(npm,"configuration"),"skip"));
-  assertFalse(XmlSupport.childText(XmlSupport.child(npm,"configuration"),"skipTests").equals("false"),"Docker -DskipTests packaging must retain frontend npm's skipTests contract");
+  assertEquals("test",XmlSupport.childText(npm,"phase"),"frontend 2.0.2 only honors skipTests during test/integration-test, and root test must provision dependencies before module JUnit");
+  assertFalse(XmlSupport.childText(XmlSupport.child(npm,"configuration"),"skipTests").equals("false"),"Explicit skipTests=false would bypass Docker's requested test skip");
  }
 
  @Test void repositoryWideJUnitOwnersCannotReuseAModuleOnlyCacheKey() throws Exception {

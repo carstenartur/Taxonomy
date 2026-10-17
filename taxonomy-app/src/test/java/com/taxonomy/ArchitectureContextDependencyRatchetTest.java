@@ -105,6 +105,27 @@ class ArchitectureContextDependencyRatchetTest {
                 .isEmpty();
     }
 
+    @Test
+    void followUpProviderRetainsOnlyItsReviewedWorkspaceIdentityEdges() {
+        // Both the resolver API and retained pin must bind the original workspace;
+        // neither may depend on mutable workspace services or persistence implementations.
+        var classes = new ClassFileImporter().importClasses(
+                com.taxonomy.analysis.service.AnalysisFollowUpProviders.class,
+                java.util.Arrays.stream(com.taxonomy.analysis.service.AnalysisFollowUpProviders.class.getDeclaredClasses())
+                        .filter(type -> type.getSimpleName().equals("Pin")).findFirst().orElseThrow());
+        Set<String> pairs = new TreeSet<>();
+        for (JavaClass origin : classes) {
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                if (dependency.getTargetClass().getPackageName().equals("com.taxonomy.workspace.service")) {
+                    pairs.add(origin.getName() + " -> " + dependency.getTargetClass().getName());
+                }
+            }
+        }
+        assertThat(pairs).containsExactly(
+                "com.taxonomy.analysis.service.AnalysisFollowUpProviders -> com.taxonomy.workspace.service.WorkspaceContext",
+                "com.taxonomy.analysis.service.AnalysisFollowUpProviders$Pin -> com.taxonomy.workspace.service.WorkspaceContext");
+    }
+
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("featureModuleRootSources")
     void rejectsRootPackageSourcesInFeatureModules(

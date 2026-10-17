@@ -264,7 +264,9 @@
                     </configuration>
                 </execution><execution>
                     <id>install-junit-javascript-driver-dependencies</id>
-                    <phase>process-test-resources</phase>
+                    <!-- frontend 2.0.2 honors skipTests only in test/integration-test.
+                         Root test completes before child-module JUnit execution. -->
+                    <phase>test</phase>
                     <goals><goal>npm</goal></goals>
                     <configuration>
                         <skip>${taxonomy.frontend.skip}</skip>
@@ -433,6 +435,11 @@
         </plugins>
     </build>
     <profiles>
+        <profile>
+            <id>skip-java-test-runtime</id>
+            <activation><property><name>maven.test.skip</name><value>true</value></property></activation>
+            <properties><taxonomy.frontend.skip>true</taxonomy.frontend.skip></properties>
+        </profile>
         <profile>
             <id>windows-node-runtime</id>
             <activation><os><family>Windows</family></os></activation>

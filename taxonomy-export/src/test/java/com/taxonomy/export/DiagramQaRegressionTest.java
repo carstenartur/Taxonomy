@@ -91,7 +91,7 @@ class DiagramQaRegressionTest {
         assertThat(edge.getProperties().get("taxonomy.origin").value()).isEqualTo("LLM_SUPPORTED");
         assertThat(edge.getProperties().get("taxonomy.evidence1quote").value()).isEqualTo("exact original quote");
         assertThat(edge.getProperties().get("taxonomy.evidence1necessity").value()).isEqualTo("OPTIONAL");
-        assertThat(visio.getPages().getFirst().getLegend().text()).contains("AI-proposed: 1", "Human approval is not recorded");
+        assertThat(visio.getPages().getFirst().getLegend().text()).contains("AI-proposed: 1", "supplied review metadata remains authoritative");
         byte[] vsdx = new VisioPackageBuilder().build(visio);
         var entries = new java.util.HashMap<String, String>();
         try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(vsdx))) {

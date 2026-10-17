@@ -152,6 +152,7 @@ public class ArchiMateDiagramService {
             properties.put("taxonomy.type", ArchiMateProperty.text(edge.relationType()));
             properties.put("taxonomy.relevance", score(edge.relevance()));
             if (edge.relationCategory() != null) properties.put("taxonomy.relationCategory", ArchiMateProperty.text(edge.relationCategory()));
+            properties.putAll(com.taxonomy.archimate.exchange.ArchiMateRelationProvenance.write(edge.metadata()));
             losses.add(new ArchiMateLoss("relationship", edge.id(), "type", mapping.kind(), mapping.rationale()));
             relationships.add(new ArchiMateRelationship(edge.id(), edge.sourceId(), edge.targetId(),
                     mapping.targetType(), mapping.accessType(), edge.relationType(), properties));
