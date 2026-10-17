@@ -6,7 +6,9 @@ cp -a target/observability-performance/. \
   target/quality-reports/evidence/observability-performance/
 rm -rf target/quality-reports/evidence/observability-performance/tests
 if [[ -d target/observability-performance/tests ]]; then
-  cp -a target/observability-performance/tests/. target/quality-reports/tests/
+  # Core also records the disabled invocation; keep both original lane outcomes.
+  mkdir -p target/quality-reports/tests/observability-performance
+  cp -a target/observability-performance/tests/. target/quality-reports/tests/observability-performance/
 fi
 cp target/ui-verification/summary.json \
   target/quality-reports/evidence/ui-verification-summary.json

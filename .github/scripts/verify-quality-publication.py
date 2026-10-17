@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -46,6 +47,58 @@ def verify_report_totals(summary: dict, reports: list[tuple[str, str]]) -> None:
     totals["reportFiles"] = len(reports)
     if totals != summary["tests"]:
         raise ValueError(f"raw JUnit outcomes differ from summary: {totals}")
+
+
+def verify_application_shards(root: Path, summary: dict) -> None:
+    """Retain every source-bound original after merging independent lane outputs."""
+    evidence = root / "evidence/application-test-shards"
+    if not evidence.is_dir():
+        return
+
+    def verify_digest(path: Path, expected: object) -> None:
+        if not path.is_file():
+            raise ValueError(f"application shard original is missing: {path}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError(f"application shard original digest differs: {path}")
+
+    for shard in ("core", "browser", "recovery"):
+        manifest_path = evidence / shard / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(f"application shard manifest is missing: {shard}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_metadata = {
+            "schemaVersion": 1, "shard": shard, "commit": summary["commit"],
+            "sourceTree": summary["sourceTree"], "buildId": f"{summary['buildId']}.{shard}",
+        }
+        if not isinstance(manifest, dict) or any(manifest.get(key) != value for key, value in expected_metadata.items()):
+            raise ValueError(f"application shard source/build metadata differs: {shard}")
+        coverage = manifest.get("coverage")
+        if not isinstance(coverage, dict) or coverage.get("path") != "coverage.exec":
+            raise ValueError(f"application shard coverage metadata is invalid: {shard}")
+        verify_digest(evidence / shard / "coverage.exec", coverage.get("sha256"))
+
+        reports = manifest.get("reports")
+        if not isinstance(reports, list) or not reports:
+            raise ValueError(f"application shard report inventory is empty: {shard}")
+        destination = root / ("tests/taxonomy-app/target" if shard == "core"
+                              else f"tests/application-test-shards/{shard}")
+        originals = set()
+        for report in reports:
+            if not isinstance(report, dict):
+                raise ValueError(f"application shard report metadata is invalid: {shard}")
+            relative = report.get("path")
+            validate_report_path(relative)
+            path = destination / Path(relative).relative_to("tests")
+            if path in originals:
+                raise ValueError(f"application shard repeats an original report: {path}")
+            originals.add(path)
+            verify_digest(path, report.get("sha256"))
+            counts = _GENERATOR.parse_junit_report(path.read_text(encoding="utf-8"), path)
+            if any(report.get(key) != value for key, value in counts.items()):
+                raise ValueError(f"application shard original outcomes differ: {path}")
+        if originals != set(destination.rglob("TEST-*.xml")):
+            raise ValueError(f"application shard original report inventory differs: {shard}")
+
 
 REQUIRED_FILES = (
     "index.html",
@@ -131,6 +184,7 @@ def verify_local(root: Path, expected_commit: str) -> None:
     verify_payloads(summary, test_badge, coverage_badge, expected_commit)
     verify_report_totals(summary, [(str(path.relative_to(root)), path.read_text(encoding="utf-8"))
                                    for path in sorted((root / "tests").rglob("TEST-*.xml"))])
+    verify_application_shards(root, summary)
 
 
 def _request(url: str) -> Request:
