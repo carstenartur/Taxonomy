@@ -19,7 +19,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Captures the complete authored native scenario that exceeded the existing twelve-page gate. */
+/**
+ * Reproduces the native scenario's complete provenance and geometry for the twelve-page gate.
+ * Its two BR-1228 display labels are neutralized; the canonical graph hash is recomputed.
+ */
 class ArchitectureWordProvenanceLayoutTest {
     @Test
     void identicalReasonsShareTheirFullValueWhileRetainingEveryFieldLabel() throws Exception {
@@ -49,11 +52,11 @@ class ArchitectureWordProvenanceLayoutTest {
     }
 
     @Test
-    void nativeFloodScenarioRetainsEveryNodeRelationshipAndEvidenceValueWithoutTriplicatedReasons() throws Exception {
+    void scenarioRetainsEveryNodeRelationshipAndEvidenceValueWithoutTriplicatedReasons() throws Exception {
         var mapper = new ObjectMapper().findAndRegisterModules()
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         NativeFixture fixture;
-        try (var input = getClass().getResourceAsStream("/reports/flood-architecture-provenance.json")) {
+        try (var input = getClass().getResourceAsStream("/reports/architecture-provenance-layout.json")) {
             fixture = mapper.readValue(input, NativeFixture.class);
         }
         var report = fixture.document();

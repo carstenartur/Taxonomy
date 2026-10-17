@@ -103,6 +103,59 @@ class ScenarioDocumentQaTest {
     }
 
     @Test
+    void nativeVisioCaptionsRequireTheExactRecordedProvenanceOnTheSamePage() throws Exception {
+        var cases = new java.util.LinkedHashMap<java.util.Map<String, Object>, String>();
+        cases.put(java.util.Map.of(), "Origin unrecorded");
+        var nullOrigin = new java.util.HashMap<String, Object>();
+        nullOrigin.put("origin", null);
+        cases.put(nullOrigin, "Origin unrecorded");
+        cases.put(java.util.Map.of("origin", "LLM_SUPPORTED"), "AI-proposed");
+        cases.put(java.util.Map.of("origin", "SUGGESTED_CANDIDATE"), "AI-proposed");
+        cases.put(java.util.Map.of("origin", "TAXONOMY_SEED"), "Catalogue seed");
+        cases.put(java.util.Map.of("origin", "PROPAGATED_TRACE"), "Propagated trace");
+        cases.put(java.util.Map.of("origin", "IMPACT_DERIVED"), "Derived impact");
+        cases.put(java.util.Map.of("origin", "IMPACT_DERIVED", "requirementEvidence", List.of(java.util.Map.of("sourceId", "a"))), "AI-proposed");
+        cases.put(java.util.Map.of("includedBecause", "provisional (AI-suggested, not yet confirmed)"), "AI-proposed");
+        for (var entry : cases.entrySet()) {
+            var edge = new java.util.LinkedHashMap<String, Object>(java.util.Map.of(
+                    "id", "e1", "sourceId", "a", "targetId", "b", "relationType", "SUPPORTS"));
+            edge.put("metadata", entry.getKey());
+            var source = java.util.Map.<String, Object>of("diagram", java.util.Map.of("nodes", List.of(
+                    java.util.Map.of("id", "a"), java.util.Map.of("id", "b")), "edges", List.of(edge)));
+            String caption = "R1 N1 → N2\nSUPPORTS\n" + entry.getValue();
+            String shape = "<Shape><Section N='Property'>";
+            for (var pair : java.util.Map.of("taxonomy.id", "e1", "taxonomy.sourceId", "a", "taxonomy.targetId", "b",
+                    "taxonomy.type", "SUPPORTS", "taxonomy.displayKey", "R1", "taxonomy.captionDisposition", "READABLE_DETAIL",
+                    "taxonomy.provenanceStatus", entry.getValue()).entrySet())
+                shape += "<Row><Cell N='Label' V='" + pair.getKey() + "'/><Cell N='Value' V='" + pair.getValue() + "'/></Row>";
+            String xml = "<PageContents><Shapes>" + shape + "</Section><Text>" + caption + "</Text></Shape></Shapes></PageContents>";
+            var parts = java.util.Map.of("visio/pages/page1.xml", xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(ScenarioDocumentQa.checkVisioRelationships(parts, source, caption)).containsEntry("renderedRelationships", 1);
+            for (String wrong : List.of(caption.replace("N1 → N2", "N2 → N1"), caption.replace("SUPPORTS", "REALIZES"),
+                    caption.replace(entry.getValue(), "Human approved"), caption.replace("\n" + entry.getValue(), ""))) {
+                var wrongParts = java.util.Map.of("visio/pages/page1.xml", xml.replace(caption, wrong).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(wrongParts, source, wrong))
+                        .hasMessageContaining("caption semantics");
+            }
+            var falseProperty = java.util.Map.of("visio/pages/page1.xml", xml.replace("V='" + entry.getValue() + "'", "V='Human approved'").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(falseProperty, source, caption))
+                    .hasMessageContaining("provenance status");
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(parts, source, caption.replace("\n" + entry.getValue(), "\f" + entry.getValue())))
+                    .hasMessageContaining("rendered relationship");
+            String statusRow = "<Row><Cell N='Label' V='taxonomy.provenanceStatus'/><Cell N='Value' V='" + entry.getValue() + "'/></Row>";
+            var missingProperty = java.util.Map.of("visio/pages/page1.xml", xml.replace(statusRow, "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(missingProperty, source, caption))
+                    .hasMessageContaining("provenance status");
+            edge.put("metadata", null);
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(parts, source, caption))
+                    .hasMessageContaining("provenance status");
+            edge.put("metadata", java.util.Map.of("origin", "HUMAN_APPROVED"));
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(parts, source, caption))
+                    .hasMessageContaining("Unknown relationship origin");
+        }
+    }
+
+    @Test
     void cliVisioOnlyFlagKeepsTheArtifactArgumentAndDefaultsToAllDocuments() {
         var selected = TaxonomyTooling.Arguments.parse(new String[]{"--visio-only", "--artifacts", "actual"});
         assertThat(selected.flag("visio-only")).isTrue();

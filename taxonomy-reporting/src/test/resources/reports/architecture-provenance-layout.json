@@ -161,7 +161,7 @@
       },
       {
         "id": "BR-1228",
-        "label": "Civilian Roles",
+        "label": "Business Roles",
         "type": "Business Roles",
         "relevance": 1.0,
         "anchor": true,
@@ -1160,7 +1160,7 @@
       },
       {
         "id": "BR-1228",
-        "label": "Civilian Roles",
+        "label": "Business Roles",
         "type": "Business Roles",
         "relevance": 1.0,
         "anchor": true,
@@ -2132,6 +2132,6 @@
     "provider": "CUSTOM_OPENAI",
     "model": "unknown",
     "taxonomyFingerprint": "ad093001cee3944e131bdb1963b8e66966530bb43da5c74c7686f0b94b472459",
-    "graphSha256": "491d5f4c7d859e7ad8272232baace4bc80a71daea9c1ef2a59aacf112cd52878"
+    "graphSha256": "73a0de9e6fd778c8f1133cad06981fac1217f186b6e4655d36ac84de3d295161"
   }
 }

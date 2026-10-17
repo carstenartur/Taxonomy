@@ -212,11 +212,16 @@ final class ScenarioDocumentQa {
                 for (String field : List.of("sourceId", "targetId", "type"))
                     require(text(edge, field.equals("type") ? "relationType" : field).equals(properties.get("taxonomy." + field)),
                             "Canonical relationship " + id + " changed " + field);
+                String status = expectedRelationshipStatus(edge.get("metadata"));
+                require(status == null ? !properties.containsKey("taxonomy.provenanceStatus")
+                                : status.equals(properties.get("taxonomy.provenanceStatus")),
+                        "Wrong provenance status for canonical relationship " + id);
                 if (pageNumber == 1) canonical.add(id);
                 if (!"READABLE_DETAIL".equals(properties.get("taxonomy.captionDisposition"))) continue;
                 String caption = XmlSupport.descendants(shape, "Text").getFirst().getTextContent();
                 String expectedCaption = relationKeys.get(id) + " " + nodeKeys.get(text(edge, "sourceId")) + " → "
-                        + nodeKeys.get(text(edge, "targetId")) + " " + text(edge, "relationType");
+                        + nodeKeys.get(text(edge, "targetId")) + " " + text(edge, "relationType")
+                        + (status == null ? "" : " " + status);
                 require(relationshipText(caption).equals(relationshipText(expectedCaption)),
                         "Wrong caption semantics for canonical relationship " + id);
                 require(pageNumber <= renderedPages.length && !caption.isBlank()
@@ -230,6 +235,28 @@ final class ScenarioDocumentQa {
         require(coverage.keySet().equals(expected.keySet()), "Missing rendered relationship details: "
                 + expected.keySet().stream().filter(id -> !coverage.containsKey(id)).toList());
         return Map.of("canonicalRelationships", canonical.size(), "renderedRelationships", coverage.size(), "relationships", coverage);
+    }
+
+    /** Independent JSON oracle: retain the exact caption, including its recorded provenance. */
+    private static String expectedRelationshipStatus(Object value) {
+        // Legacy edges have no provenance property or caption suffix at all.
+        if (value == null) return null;
+        var metadata = object(value);
+        Object origin = metadata.get("origin");
+        String status;
+        if (origin == null) status = "Origin unrecorded";
+        else status = switch (origin.toString()) {
+            case "TAXONOMY_SEED" -> "Catalogue seed";
+            case "PROPAGATED_TRACE" -> "Propagated trace";
+            case "IMPACT_DERIVED" -> "Derived impact";
+            case "LLM_SUPPORTED", "SUGGESTED_CANDIDATE" -> "AI-proposed";
+            default -> throw new IllegalArgumentException("Unknown relationship origin: " + origin);
+        };
+        Object evidence = metadata.get("requirementEvidence");
+        if ((evidence != null && !array(evidence).isEmpty())
+                || "provisional (AI-suggested, not yet confirmed)".equals(metadata.get("includedBecause")))
+            return "AI-proposed";
+        return status;
     }
 
     static Map<String, Object> checkText(String name, String bbox, String rawText,
