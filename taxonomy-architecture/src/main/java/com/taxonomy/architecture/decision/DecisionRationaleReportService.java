@@ -94,7 +94,18 @@ public class DecisionRationaleReportService {
             Long analysisDurationMillis,
             AnalysisScope analysisScope,
             AnalysisCoverage analysisCoverage,
-            Map<String, String> recordedReasons) {
+            Map<String, String> recordedReasons,
+            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+        public DecisionAnalysisInput(String businessText, Map<String, Double> scores,
+                Map<String, String> reasons, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                List<TaxonomyNodeDto> taxonomyTree, AnalysisSnapshotProvenance snapshotProvenance,
+                Map<String, AnalysisScoreDetail> scoreDetails, Long analysisDurationMillis,
+                AnalysisScope analysisScope, AnalysisCoverage analysisCoverage, Map<String, String> recordedReasons) {
+            this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps,
+                    taxonomyTree, snapshotProvenance, scoreDetails, analysisDurationMillis, analysisScope,
+                    analysisCoverage, recordedReasons, null);
+        }
         public DecisionAnalysisInput(String businessText, Map<String, Double> scores,
                 Map<String, String> reasons, String provider, String analysisStatus,
                 List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
@@ -116,13 +127,18 @@ public class DecisionRationaleReportService {
         public DecisionAnalysisInput withScope(AnalysisScope scope, AnalysisCoverage coverage) {
             return new DecisionAnalysisInput(businessText, scores, reasons, provider, analysisStatus,
                     discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails,
-                    analysisDurationMillis, scope, coverage, recordedReasons);
+                    analysisDurationMillis, scope, coverage, recordedReasons, analysisReasonLength);
         }
         /** Preserve unmodified source reasons independently of score-semantic display additions. */
         public DecisionAnalysisInput withRecordedReasons(Map<String, String> original) {
             return new DecisionAnalysisInput(businessText, scores, reasons, provider, analysisStatus,
                     discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails,
-                    analysisDurationMillis, analysisScope, analysisCoverage, original);
+                    analysisDurationMillis, analysisScope, analysisCoverage, original, analysisReasonLength);
+        }
+        public DecisionAnalysisInput withAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength length) {
+            return new DecisionAnalysisInput(businessText, scores, reasons, provider, analysisStatus,
+                    discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails,
+                    analysisDurationMillis, analysisScope, analysisCoverage, recordedReasons, length);
         }
         public DecisionAnalysisInput(
   String businessText,
@@ -396,7 +412,8 @@ public class DecisionRationaleReportService {
                 options, completeness.complete() && (input.analysisCoverage() == null || !input.analysisCoverage().hasOpenEvaluations()),
                 selectedCompleteness.complete()).withRecordedReasons(recordedReasons.entrySet().stream()
                         .filter(entry -> selectedCodes.contains(entry.getKey()))
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
+                .withAnalysisReasonLength(input.analysisReasonLength());
         return new DecisionRationaleReport(
                 german ? "Hierarchischer Entscheidungs- und Begründungsbericht"
                         : "Hierarchical Decision Rationale Report",
@@ -1269,6 +1286,8 @@ public class DecisionRationaleReportService {
             updateDigest(digest, "requirement", normalized(input.businessText(), ""));
             updateDigest(digest, "provider", normalized(input.provider(), "unknown"));
             updateDigest(digest, "status", normalized(input.analysisStatus(), "UNKNOWN"));
+            if (input.analysisReasonLength() != null)
+                updateDigest(digest, "analysis-reason-length", input.analysisReasonLength().value());
             if (input.analysisScope() != null) {
                 updateDigest(digest, "analysis-mode", input.analysisScope().mode().name());
                 input.analysisScope().taxonomyRoots().stream().sorted()

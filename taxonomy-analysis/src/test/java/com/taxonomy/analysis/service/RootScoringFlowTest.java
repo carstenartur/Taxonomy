@@ -57,14 +57,52 @@ class RootScoringFlowTest {
     private static final class Gateway implements LlmGateway {
         final List<String> prompts = new ArrayList<>();
         final List<String> replies;
+        Runnable beforeResponse = () -> { };
         Gateway(String... replies) { this.replies = List.of(replies); }
         @Override public String sendHttpRequest(String prompt, String key) {
             assertEquals("test-key", key);
             prompts.add(prompt);
+            beforeResponse.run();
             return replies.get(prompts.size() - 1);
         }
         @Override public String extractResponseText(String body) { return body; }
         @Override public String providerName() { return "fake remote"; }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aPreferenceChangeDuringRootWorkCannotChangeLaterReasonsInThatRun(boolean streaming) {
+        var configured = new java.util.concurrent.atomic.AtomicReference<>("detailed");
+        var reads = new java.util.concurrent.atomic.AtomicInteger();
+        AnalysisRuntimeSettings settings = new AnalysisRuntimeSettings() {
+            @Override public int getInt(String key, int fallback) { return fallback; }
+            @Override public String getString(String key, String fallback) {
+                assertEquals("analysis.reason-length", key);
+                reads.incrementAndGet();
+                return configured.get();
+            }
+        };
+        var gateway = new Gateway("{\"BP\":{\"score\":50,\"reason\":\"Root evidence\"}}",
+                "{\"BP-1\":{\"score\":50,\"reason\":\"Child evidence\"}}");
+        gateway.beforeResponse = () -> configured.set("short");
+        var llm = service(LlmProvider.OPENAI, true, gateway, null);
+        ReflectionTestUtils.setField(llm, "analysisRuntimeSettings", settings);
+        if (streaming) {
+            var callback = new Capture();
+            llm.analyzeStreaming("requirement", callback);
+            assertEquals("SUCCESS", callback.status);
+            assertEquals(Map.of("BP", 50d, "BP-1", 50d), callback.scores);
+        } else {
+            var result = llm.analyzeWithBudget("requirement");
+            assertEquals("SUCCESS", result.getStatus());
+            assertEquals(com.taxonomy.dto.AnalysisReasonLength.DETAILED, result.getAnalysisReasonLength());
+            assertEquals(Map.of("BP", "Root evidence", "BP-1", "Child evidence"), result.getReasons());
+        }
+        assertEquals(2, gateway.prompts.size());
+        assertTrue(gateway.prompts.stream().allMatch(prompt -> prompt.contains("reason-length-v1): detailed")));
+        assertEquals(1, reads.get(), "A run captures the preference once before the first root task");
+        assertNull(AnalysisReasonContext.current(), "A reused worker must not inherit the last run's mode");
+        assertEquals(com.taxonomy.dto.AnalysisReasonLength.SHORT, llm.resolveAnalysisReasonLength(null));
     }
 
     private static LlmService service(LlmProvider provider, boolean withChild, Gateway gateway,

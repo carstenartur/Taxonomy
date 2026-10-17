@@ -1,5 +1,6 @@
 package com.taxonomy.preferences;
 
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.preferences.storage.PreferencesCommit;
 import com.taxonomy.preferences.storage.PreferencesGitRepository;
 import jakarta.annotation.PostConstruct;
@@ -32,6 +33,7 @@ public class PreferencesService {
     private static final Logger log = LoggerFactory.getLogger(PreferencesService.class);
 
     private static final String TOKEN_MASK_PREFIX = "****";
+    private static final String ANALYSIS_REASON_LENGTH = "analysis.reason-length";
 
     private final PreferencesGitRepository gitRepository;
     private final ObjectMapper objectMapper;
@@ -55,6 +57,9 @@ public class PreferencesService {
 
     @Value("${taxonomy.analysis.min-score:70}")
     private int defaultAnalysisMinScore;
+
+    @Value("${taxonomy.analysis.reason-length:standard}")
+    private String defaultAnalysisReasonLength = "standard";
 
     @Value("${taxonomy.dsl.default-branch:draft}")
     private String defaultDslDefaultBranch;
@@ -101,6 +106,9 @@ public class PreferencesService {
             if (json != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> loaded = objectMapper.readValue(json, Map.class);
+                // An older preferences commit has no reason-length setting. Expose
+                // the deployment default immediately without creating a read-time commit.
+                loaded.putIfAbsent(ANALYSIS_REASON_LENGTH, configuredReasonLength());
                 cache = immutableSnapshot(loaded);
                 log.info("Preferences loaded from JGit repository ({} entries)", cache.size());
             } else {
@@ -177,6 +185,7 @@ public class PreferencesService {
      * @throws IOException if the JGit commit fails
      */
     public synchronized void update(Map<String, Object> changes, String author) throws IOException {
+        validateReasonLength(changes);
         Map<String, Object> updated = new LinkedHashMap<>(cache);
         updated.putAll(changes);
         String json = objectMapper.writeValueAsString(updated);
@@ -216,6 +225,24 @@ public class PreferencesService {
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
+    private static void validateReasonLength(Map<String, Object> changes) {
+        if (!changes.containsKey(ANALYSIS_REASON_LENGTH)) return;
+        Object value = changes.get(ANALYSIS_REASON_LENGTH);
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                AnalysisReasonLength.fromValue(text);
+                return;
+            } catch (IllegalArgumentException ignored) {
+                // Return a stable, non-reflective validation message at the API boundary.
+            }
+        }
+        throw new IllegalArgumentException("analysis.reason-length must be short, standard or detailed");
+    }
+
+    private String configuredReasonLength() {
+        return AnalysisReasonLength.fromValue(defaultAnalysisReasonLength).value();
+    }
+
     private static Map<String, Object> immutableSnapshot(Map<String, Object> source) {
         return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
@@ -227,6 +254,7 @@ public class PreferencesService {
         defaults.put("llm.timeout.seconds", defaultLlmTimeoutSeconds);
         defaults.put("rate-limit.per-minute", defaultRateLimitPerMinute);
         defaults.put("analysis.min-relevance-score", defaultAnalysisMinScore);
+        defaults.put(ANALYSIS_REASON_LENGTH, configuredReasonLength());
         // JGit / DSL Configuration
         defaults.put("dsl.default-branch", defaultDslDefaultBranch);
         defaults.put("dsl.project-name", defaultDslProjectName);

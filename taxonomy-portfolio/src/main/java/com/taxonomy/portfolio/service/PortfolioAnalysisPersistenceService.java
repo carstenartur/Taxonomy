@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.NodeOrigin;
@@ -61,6 +62,10 @@ public class PortfolioAnalysisPersistenceService {
     private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
     @org.springframework.beans.factory.annotation.Autowired
     void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }
+
+    private com.taxonomy.analysis.service.AnalysisRuntimeSettings analysisSettings;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void analysisSettings(com.taxonomy.analysis.service.AnalysisRuntimeSettings settings) { this.analysisSettings = settings; }
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -150,6 +155,8 @@ public class PortfolioAnalysisPersistenceService {
                 PortfolioScope.workspaceId(context),
                 requirements.size(),
                 now);
+        job.recordAnalysisReasonLength(analysisSettings == null ? AnalysisReasonLength.STANDARD
+                : AnalysisReasonLength.fromValue(analysisSettings.getString("analysis.reason-length", "standard")));
         var bound = providerBinding.admittedProvider(projectId, targets(requirements), provider, username, context);
         if (bound.isPresent()) {
             // A bound project uses exactly its admitted provider: no mock, live or fallback provider.
@@ -643,7 +650,7 @@ public class PortfolioAnalysisPersistenceService {
                 job.getPartialItems(),
                 job.getFailedItems(),
                 job.getErrorSummary(),
-                items, job.getProviderBinding());
+                items, job.getProviderBinding(), job.getAnalysisReasonLength());
     }
 
     private AnalysisJobItemView toItemView(RequirementAnalysisJobItem item) {

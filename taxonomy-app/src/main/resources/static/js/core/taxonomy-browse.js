@@ -164,6 +164,7 @@
                         S.analysisRecovery = null;
                         S.analysisCoverage = data.analysisCoverage || null;
                         S.lastAnalysisScope = data.analysisScope || null;
+                        S.lastAnalysisReasonLength = data.analysisReasonLength || null;
                         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
                         if (window.TaxonomyScoring?.applyLocalRawScores) {
                             window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
@@ -847,6 +848,7 @@
                 analysisDurationMillis: S.lastAnalysisDurationMillis,
                 analysisCoverage: S.analysisCoverage || null,
                 analysisScope: S.lastAnalysisScope || null,
+                analysisReasonLength: S.lastAnalysisReasonLength || null,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
@@ -1746,6 +1748,7 @@
                 const scores = Object.fromEntries(Object.keys(rawScores)
                     .map(code => [code, S.currentScores[code]]));
                 const reasons = result.reasons || {};
+                SC().acceptAnalysisReasonLength?.(result, false);
                 if (result.provider) { S.lastAnalysisProvider = result.provider; }
                 S.lastAnalysisStatus = result.error ? 'PARTIAL' : 'IN_PROGRESS';
 
@@ -1838,6 +1841,7 @@
                                     if (Number.isFinite(val) && val >= 0 && val <= 100) {
                                         SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
+                                        S.lastAnalysisReasonLength = null;
                                         SC().syncVisibleScoreNodes();
                                         updateExportGroupVisibility();
                                     }
@@ -1950,6 +1954,7 @@
         S.analysisOperationId = null;
         S.analysisProviderId = null;
         S.currentReasons = {};
+        S.lastAnalysisReasonLength = null;
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();
         S.lastAnalyzedText = null;
@@ -2503,6 +2508,7 @@
         }
 
         S.lastAnalysisScope = null;
+        S.lastAnalysisReasonLength = null;
         S.analysisOperationId = null;
         S.analysisProviderId = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
@@ -2578,6 +2584,7 @@
 
         SC().applyLocalRawScores(scores, true);
         S.lastAnalysisScope = null;
+        S.lastAnalysisReasonLength = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.currentReasons = reasons;
         window._taxonomyCurrentScores = S.currentScores;

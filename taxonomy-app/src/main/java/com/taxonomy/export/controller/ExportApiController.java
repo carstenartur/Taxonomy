@@ -306,6 +306,14 @@ public class ExportApiController {
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
         if (body.get("analysisOperationId") instanceof String id) exported.setAnalysisOperationId(id);
         if (body.get("analysisProviderId") instanceof String id) exported.setAnalysisProviderId(id);
+        if (body.get("analysisReasonLength") != null) {
+            try {
+                exported.setAnalysisReasonLength(recoveryObjectMapper.convertValue(body.get("analysisReasonLength"),
+                        com.taxonomy.dto.AnalysisReasonLength.class));
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
         // Legacy and mixed worker evidence can be partial without v3 coverage.
         if (body.get("analysisStatus") instanceof String analysisStatus) {
             exported.setAnalysisStatus(analysisStatus);
@@ -372,6 +380,7 @@ public class ExportApiController {
             result.put("warnings", warnings);
             result.put("analysisCoverage", saved.getAnalysisCoverage());
             result.put("analysisScope", saved.getAnalysisScope());
+            result.put("analysisReasonLength", saved.getAnalysisReasonLength());
             result.put("rawScores", saved.getRawScores());
             result.put("analysisStatus", saved.getAnalysisCoverage() != null && saved.getAnalysisCoverage().hasOpenEvaluations()
                     ? "PARTIAL" : saved.getAnalysisStatus());

@@ -30,7 +30,7 @@ function completedPayload() {
         provisionalRelations: [{source: 'CP-1023', target: 'CR-1047', status: 'proposed'}],
         evaluatedNodes: ['CR-1047'], currentView: 'list'};
 }
-function fixture({deferDraftRead = false, checkboxPreference = false} = {}) {
+function fixture({deferDraftRead = false, checkboxPreference = false, reasonLengthPreference = false} = {}) {
     const listeners = new Map(), requests = [], timers = new Map(), controls = [];
     const preferenceGates = new Map();
     let timerId = 0, preferenceFailure = false, pendingDraftSave = null;
@@ -58,6 +58,19 @@ function fixture({deferDraftRead = false, checkboxPreference = false} = {}) {
     const maxNodes = element('pref-max-arch-nodes', {type: 'number', value: '50'});
     maxNodes.setAttribute('data-pref-key', 'limits.max-architecture-nodes');
     controls.push(maxNodes);
+    let reasonLength = null;
+    if (reasonLengthPreference) {
+        const select = template.match(/<select\b[^>]*id="pref-analysis-reason-length"[^>]*>([\s\S]*?)<\/select>/);
+        assert.ok(select, 'the live preferences form includes the reason-length select');
+        const options = [...select[1].matchAll(/<option\s+value="([^"]+)"([^>]*)>/g)];
+        const selected = options.find(option => /\bselected\b/.test(option[2]));
+        assert.ok(selected, 'the default choice is visible before loading preferences');
+        reasonLength = element('pref-analysis-reason-length', {type: 'select-one', value: selected[1]});
+        reasonLength.setAttribute('data-pref-key', 'analysis.reason-length');
+        reasonLength.checkValidity = () => options.some(option => option[1] === reasonLength.value);
+        controls.push(reasonLength);
+        preferences['analysis.reason-length'] = 'standard';
+    }
     const checkbox = checkboxPreference ? element('pref-fixture-checkbox', {type: 'checkbox', checked: false}) : null;
     if (checkbox) {
         checkbox.setAttribute('data-pref-key', 'fixture.checkbox');
@@ -125,6 +138,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false} = {}) {
         if (url === '/api/preferences/reset') {
             preferences['limits.max-architecture-nodes'] = 50;
             if (checkbox) preferences['fixture.checkbox'] = false;
+            if (reasonLength) preferences['analysis.reason-length'] = 'standard';
         }
         const snapshot = copy(preferences);
         const response = {ok: true, json: async () => copy(snapshot)};
@@ -141,7 +155,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false} = {}) {
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
-    return {C, state, runtime, nodes, maxNodes, checkbox, requests, storedDraft, preferences,
+    return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, requests, storedDraft, preferences,
         draftRead, activate(page) {
             if (page === 'preferences') nodes.get('tab-preferences').classList.remove('d-none');
             else nodes.get('tab-preferences').classList.add('d-none');
@@ -175,6 +189,35 @@ async function openAndSave(f) {
     f.nodes.get('prefSaveBtn').click();
     await settled();
 }
+
+test('reason-length choice loads, saves only its changed value and resets without rewriting saved analysis', async () => {
+    const f = fixture({reasonLengthPreference: true}), expected = completedPayload();
+    await f.C.loadDraft();
+    assert.equal(f.reasonLength.value, 'standard');
+    f.preferences['analysis.reason-length'] = 'detailed';
+    f.activate('preferences');
+    await settled();
+    assert.equal(f.reasonLength.value, 'detailed');
+    assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+    for (const value of ['short', 'standard', 'detailed']) {
+        f.reasonLength.value = value;
+        f.reasonLength.fire('change');
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, false);
+        f.nodes.get('prefSaveBtn').click();
+        await settled();
+        assert.deepEqual(JSON.parse(f.requests.filter(request => request.method === 'PUT').at(-1).body),
+            {'analysis.reason-length': value});
+        assert.equal(f.preferences['analysis.reason-length'], value);
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+        assertWorkPreserved(f, expected);
+    }
+    f.nodes.get('prefResetBtn').click();
+    await settled();
+    assert.equal(f.reasonLength.value, 'standard');
+    assertWorkPreserved(f, expected);
+    assert.equal(f.requests.filter(request => request.url.includes('/api/analyze')).length, 0);
+    assert.equal(f.requests.filter(request => request.url === '/api/analysis-drafts/ws-1' && request.method !== 'GET').length, 0);
+});
 
 test('Preferences 50 to 150 leaves completed draft, analysis and manual evidence intact through return and reload', async () => {
     const f = fixture(), expected = completedPayload();

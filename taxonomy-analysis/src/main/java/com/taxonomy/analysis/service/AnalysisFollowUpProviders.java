@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
 import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.extension.api.plugin.PluginInvocation;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -17,24 +18,31 @@ import java.util.function.Supplier;
 /** Resolves a follow-up's provider only within its original owner, source and requirement. */
 @Service
 public class AnalysisFollowUpProviders {
-    private record Pin(String provider, PluginInvocation binding, RequirementReference requirement,
+    private record Pin(String provider, PluginInvocation binding, AnalysisReasonLength reasonLength, RequirementReference requirement,
                        String owner, WorkspaceContext workspace, Instant expires) { }
     private final LlmProviderConfig providers;
     private final LinkedHashMap<String, Pin> local = new LinkedHashMap<>();
     @Autowired(required = false) private ClusterAnalysisStore cluster;
+    @Autowired(required = false) private AnalysisRuntimeSettings analysisRuntimeSettings;
 
     public AnalysisFollowUpProviders(LlmProviderConfig providers) { this.providers = providers; }
 
     /** Retention is bounded like live progress; an evicted operation must be reloaded or restarted explicitly. */
     public synchronized String remember(String operationId, String requested, String text,
                                         String owner, WorkspaceContext workspace) {
+        return remember(operationId, requested, text, owner, workspace,
+                AnalysisReasonContext.resolve(null, analysisRuntimeSettings));
+    }
+
+    public synchronized String remember(String operationId, String requested, String text,
+                                        String owner, WorkspaceContext workspace, AnalysisReasonLength reasonLength) {
         String provider = effectiveProvider(requested);
         if (providers.isScenarioReplay(provider)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Replay requires an authorized persisted analysis operation");
         local.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
         if (local.containsKey(operationId)) throw unavailable();
         while (local.size() >= 512) local.remove(local.keySet().iterator().next());
-        local.put(operationId, new Pin(provider, providers.captureProviderBinding(provider),
+        local.put(operationId, new Pin(provider, providers.captureProviderBinding(provider), AnalysisReasonContext.effective(reasonLength),
                 RequirementReference.adHoc(text), owner, workspace, Instant.now().plusSeconds(86400)));
         return provider;
     }
@@ -52,10 +60,12 @@ public class AnalysisFollowUpProviders {
             String provider = effectiveProvider(requestedProvider);
             // Replay identities are usable only through a persisted and authorized operation.
             if (providers.isScenarioReplay(provider)) throw unavailable();
-            pin = new Pin(provider, providers.captureProviderBinding(provider), RequirementReference.adHoc(text),
+            pin = new Pin(provider, providers.captureProviderBinding(provider),
+                    AnalysisReasonContext.resolve(null, analysisRuntimeSettings), RequirementReference.adHoc(text),
                     owner, workspace, Instant.now());
         }
-        try (var ignored = providers.withRequestProvider(pin.provider(), pin.binding())) { return work.get(); }
+        try (var ignored = providers.withRequestProvider(pin.provider(), pin.binding());
+             var reasons = AnalysisReasonContext.open(pin.reasonLength())) { return work.get(); }
     }
 
     private Pin resolve(String operationId, String owner, WorkspaceContext workspace) {
@@ -69,7 +79,9 @@ public class AnalysisFollowUpProviders {
                         throw unavailable();
                     if (command.provider() == null || command.provider().isBlank()
                             || !context.get().requirement().matches(command.businessText())) throw unavailable();
-                    return new Pin(command.provider(), command.providerBinding(), context.get().requirement(), owner, workspace, Instant.MAX);
+                    return new Pin(command.provider(), command.providerBinding(),
+                            AnalysisReasonContext.effective(command.analysisReasonLength()),
+                            context.get().requirement(), owner, workspace, Instant.MAX);
                 }
             } catch (SecurityException denied) { throw unavailable(); }
         }

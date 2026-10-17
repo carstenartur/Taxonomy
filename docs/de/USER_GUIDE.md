@@ -864,7 +864,9 @@ Der Dialog beginnt mit **Standard**, kurzem Inhaltsverzeichnis und **Automatisch
 
 Unter **Weitere Optionen** können Sie die Abschnitte einzeln wählen. Das Inhaltsverzeichnis lässt sich auf Hauptabschnitte verkürzen, ausführlich ausgeben oder weglassen. Bei einer reinen Taxonomieanalyse ist der Abschnitt für gespeicherte Architektur deaktiviert. Verfügbare Quellangaben, Status und Warnungen bleiben auch in einem kurzen Bericht sichtbar.
 
-Der Word-Bericht beginnt mit einer Übersicht je ausgewählter Teiltaxonomie: Bereichsrelevanz, Bewertungsstand, wesentlicher Entscheidungspfad und gespeicherte Begründung. Auch Bereiche ohne positive Treffer oder ohne abgeschlossene Bewertung erscheinen dort. Die Baumgrafiken zeigen Zahlenwerte und Relevanzbalken. Ein anklickbarer Knotenschlüssel bei jeder Grafik führt zur vollständigen Begründung; von dort gelangen Sie zum zugehörigen Baum zurück. Entscheidungskapitel und Begründungen stehen vor umfangreichen Architektur- und Herkunftsnachweisen.
+Der Word-Bericht beginnt mit einer Übersicht je ausgewählter Teiltaxonomie: Bereichsrelevanz, Bewertungsstand, wesentlicher Entscheidungspfad und gespeicherte Begründung. Auch Bereiche ohne positive Treffer oder ohne abgeschlossene Bewertung erscheinen dort. Anschließend zeigen verbundene Baumgrafiken die Eltern-Kind-Beziehungen, Zahlenwerte und Relevanzbalken. Für die gedruckten Seiten werden die Knoten je Teiltaxonomie vertikal und eingerückt angeordnet; das räumliche Layout unterscheidet sich von der gemeinsamen Browseransicht. Ein anklickbarer Knotenschlüssel unter jeder Grafik führt zur vollständigen Begründung; von dort gelangen Sie zum zugehörigen Baum zurück. Entscheidungskapitel und Begründungen stehen vor umfangreichen Architektur- und Herkunftsnachweisen.
+
+Der Export verwendet die bereits gespeicherten Begründungen. Für ausführlichere Begründungen wählen Sie vor einer neuen Analyse **Einstellungen → LLM-Konfiguration → Begründungsumfang → Ausführlich**. Die Auswahl des Berichtsumfangs **Kompakt**, **Standard** oder **Vollständig** steuert die enthaltenen Abschnitte; sie erzeugt keine zusätzlichen Modellantworten.
 
 ![Weitere Exportoptionen: kurzes Inhaltsverzeichnis, A4-Querformat und einzeln wählbare Berichtsabschnitte](../images/decision-export-options-de.png)
 
@@ -1785,16 +1787,18 @@ Die Einstellungsseite ist in drei Abschnitte organisiert:
 
 | Abschnitt | Einstellungen | Geltungsbereich |
 |---|---|---|
-| **🤖 LLM-Konfiguration** | RPM-Limit, Timeout, Ratenbegrenzung, Mindest-Relevanzbewertung | ☁️ Systemweit |
-| **📂 JGit / DSL-Konfiguration** | Standard-Branch, Projektname, Auto-Speichern, Remote-Git-URL/Token, Push-bei-Commit | ☁️ Systemweit |
-| **📈 Größenbeschränkungen** | Max. Geschäftstext, Max. Architekturknoten, Max. Exportknoten | ☁️ Systemweit |
+| **🤖 LLM-Konfiguration** | RPM-Limit, Timeout, Ratenbegrenzung, Begründungsumfang | ☁️ Systemweit |
+| **📈 Größenbeschränkungen** | Max. Geschäftstext, Standardwert für Architekturknoten | ☁️ Systemweit |
+| **Diagramm-Konfiguration** | Auswahlrichtlinie für Architekturdiagramme | ☁️ Systemweit |
 
 **So ändern Sie eine Einstellung:**
 
 1. Navigieren Sie zum Tab **⚙️ Einstellungen**.
 2. Ändern Sie die gewünschte Einstellung im entsprechenden Abschnitt.
-3. Klicken Sie auf **💾 Speichern** — Änderungen werden sofort wirksam.
+3. Klicken Sie auf **💾 Speichern** — die Änderung gilt für nachfolgende Vorgänge.
 4. Eine Erfolgsmeldung bestätigt das Speichern; die Änderung wird in der Audit-Spur aufgezeichnet.
+
+**Begründungsumfang:** **Kurz** fordert einen Satz je Entscheidung, **Standard** ein bis zwei Sätze und **Ausführlich** drei bis fünf gehaltvolle Sätze mit Anforderungsbezug, Bewertungskriterien und gegebenenfalls Unsicherheiten. Bereits angenommene und wiederaufgenommene Analyseläufe behalten ihre Auswahl. Vorhandene Texte bleiben erhalten; ausführlichere neue Gründe benötigen einen neuen Analyselauf. Die genauen Vorgaben und die REST-API sind unter [Begründungsumfang der Analyse](PREFERENCES.md#begründungsumfang-der-analyse) beschrieben.
 
 **Audit-Spur:** Klappen Sie den Abschnitt **📋 Änderungsverlauf der Einstellungen** am unteren Rand auf, um zu sehen, wer was und wann geändert hat. Jede Änderung wird als Git-Commit im separaten Repository `taxonomy-preferences` persistiert.
 

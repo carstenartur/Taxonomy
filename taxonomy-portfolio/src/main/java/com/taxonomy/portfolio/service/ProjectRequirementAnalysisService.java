@@ -294,7 +294,9 @@ public class ProjectRequirementAnalysisService {
                                         projectId,
                                         workItem.requirementId(),
                                         snapshotId,
-                                        analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding()))
+                                        analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding())
+                                .withAnalysisReasonLength(job.analysisReasonLength() == null
+                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength()))
                         .analysisResult();
                 if (analysis == null || analysis.getScores() == null
                         || "ERROR".equalsIgnoreCase(analysis.getStatus())) {

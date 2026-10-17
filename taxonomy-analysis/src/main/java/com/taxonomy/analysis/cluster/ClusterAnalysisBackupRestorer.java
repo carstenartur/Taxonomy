@@ -142,7 +142,8 @@ public final class ClusterAnalysisBackupRestorer {
                 && sourceCommand.businessText().equals(command.businessText()) && sourceCommand.analysisScope().equals(command.analysisScope())
                 && sourceCommand.includeArchitectureView() == command.includeArchitectureView()
                 && sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() && Objects.equals(sourceCommand.provider(), command.provider())
-                && Objects.equals(sourceCommand.providerBinding(), command.providerBinding()),
+                && Objects.equals(sourceCommand.providerBinding(), command.providerBinding())
+                && Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength()),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
         if (state.terminal()) { require(run.resultJson() != null, "Terminal archived result is missing"); read(run.resultJson(), AnalysisResult.class); }
@@ -267,6 +268,7 @@ public final class ClusterAnalysisBackupRestorer {
         warnings.add(INTERRUPTED + ": restored committed evidence; unfinished work requires a new explicit analysis request.");
         result.setWarnings(warnings); result.setStatus("PARTIAL"); result.setErrorMessage(INTERRUPTED);
         result.setAnalysisScope(read(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisScope());
+        result.setAnalysisReasonLength(read(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisReasonLength());
         if (archive.run().viewJson() != null) result.setViewContext(read(archive.run().viewJson(), ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt())); return result;
     }

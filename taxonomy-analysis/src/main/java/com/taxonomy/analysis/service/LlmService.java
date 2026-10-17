@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
@@ -94,6 +95,18 @@ public class LlmService {
 
     @Autowired(required = false)
     private CatalogueOverlayService catalogueOverlayService;
+
+    @Autowired(required = false)
+    private AnalysisRuntimeSettings analysisRuntimeSettings;
+
+    /** Resolve once before admitting an operation or a standalone follow-up. */
+    public AnalysisReasonLength resolveAnalysisReasonLength(AnalysisReasonLength requested) {
+        return AnalysisReasonContext.resolve(requested, analysisRuntimeSettings);
+    }
+
+    public AnalysisReasonContext.Scope withAnalysisReasonLength(AnalysisReasonLength requested) {
+        return AnalysisReasonContext.open(resolveAnalysisReasonLength(requested));
+    }
 
     @Value("${taxonomy.analysis.product.batch-size:10}")
     private int productBatchSize = 10;
@@ -370,6 +383,12 @@ public class LlmService {
     }
 
     public AnalysisResult analyzeWithBudget(String businessText, AnalysisScope requestedScope) {
+        try (var reasons = withAnalysisReasonLength(null)) {
+            return analyzeWithFrozenReasonLength(businessText, requestedScope);
+        }
+    }
+
+    private AnalysisResult analyzeWithFrozenReasonLength(String businessText, AnalysisScope requestedScope) {
         AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
         List<TaxonomyNode> roots = selectedRoots(scope, true);
         List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() || !scope.legacyFull()
@@ -417,6 +436,7 @@ public class LlmService {
             result.setScoreSemanticsContext(run.scoreContexts);
         }
         result.setAnalysisScope(scope);
+        result.setAnalysisReasonLength(AnalysisReasonContext.current());
         result.setReasons(run.allReasons);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(run.allDiscrepancies);
@@ -644,6 +664,12 @@ public class LlmService {
     }
 
     public void analyzeStreaming(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
+        try (var reasons = withAnalysisReasonLength(null)) {
+            analyzeStreamingWithFrozenReasonLength(businessText, requestedScope, callback);
+        }
+    }
+
+    private void analyzeStreamingWithFrozenReasonLength(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
         AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
         // Legacy SSE preserves catalogue order, including its partial-evidence boundary.
         List<TaxonomyNode> roots = selectedRoots(scope, !scope.legacyFull());
@@ -721,7 +747,7 @@ public class LlmService {
      */
     public LlmCallDetail analyzeSingleBatchDetailed(
             String businessText, List<TaxonomyNode> nodes, double parentScore) {
-        try {
+        try (var reasons = withAnalysisReasonLength(null)) {
             return scoreSiblingBatchDetailed(businessText, nodes, parentScore);
         } catch (ProductBatchFailure failure) {
             return failure.detail;
@@ -863,6 +889,14 @@ public class LlmService {
 
     /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
     public String recoveryPolicyFingerprint(String requestedProvider) {
+        try (var reasons = withAnalysisReasonLength(null)) {
+            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
+                    recoveryProviderPolicyFingerprint(requestedProvider), AnalysisReasonContext.POLICY,
+                    AnalysisReasonContext.current().value());
+        }
+    }
+
+    private String recoveryProviderPolicyFingerprint(String requestedProvider) {
         ProviderId provider;
         if (requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)) {
             provider = getActiveProviderId();
@@ -1640,6 +1674,13 @@ public class LlmService {
                                              List<TaxonomyNode> pathNodes,
                                              Map<String, Double> allScores,
                                              Map<String, String> allReasons) {
+        try (var reasons = withAnalysisReasonLength(null)) {
+            return generateLeafJustificationWithFrozenReasonLength(businessText, leafCode, pathNodes, allScores, allReasons);
+        }
+    }
+
+    private String generateLeafJustificationWithFrozenReasonLength(String businessText, String leafCode,
+            List<TaxonomyNode> pathNodes, Map<String, Double> allScores, Map<String, String> allReasons) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
             return "Node " + leafCode + " is relevant because it supports the requirement to "

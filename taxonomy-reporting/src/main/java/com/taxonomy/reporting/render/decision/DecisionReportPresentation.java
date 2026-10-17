@@ -58,6 +58,14 @@ public final class DecisionReportPresentation {
                 ? (de ? "historisch nicht aufgezeichnet" : "not recorded in this source")
                 : (scope.analysisScope().taxonomyRoots().isEmpty() ? (de ? "alle Taxonomien" : "all taxonomies")
                     : String.join(", ", scope.analysisScope().taxonomyRoots())) + " · " + scope.analysisScope().mode()));
+        if (scope.analysisReasonLength() != null) {
+            String length = switch (scope.analysisReasonLength()) {
+                case SHORT -> de ? "Kurz" : "Short";
+                case STANDARD -> "Standard";
+                case DETAILED -> de ? "Ausführlich" : "Detailed";
+            };
+            lines.add((de ? "Vorgabe für Begründungen: " : "Requested explanation length: ") + length);
+        }
         lines.add("Snapshot: " + report.metadata().analysisSnapshotId() + " · "
                 + (de ? "Anforderungsversion: " : "Requirement version: ") + report.metadata().requirementVersionNumber());
         lines.add((de ? "Quellfingerabdruck: " : "Source fingerprint: ") + report.metadata().analysisSnapshotFingerprintSha256());

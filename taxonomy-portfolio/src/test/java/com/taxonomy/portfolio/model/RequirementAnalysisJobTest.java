@@ -9,6 +9,23 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class RequirementAnalysisJobTest {
+    @Test
+    void admittedReasonLengthIsImmutableAcrossJobLifecycleTransitions() {
+        var job = job(Instant.parse("2026-10-17T09:00:00Z"));
+        job.recordAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        job.markRunning(Instant.parse("2026-10-17T09:01:00Z"));
+        job.markPending();
+        assertThat(job.getAnalysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                job.recordAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.SHORT))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("immutable");
+    }
+
+    @Test
+    void legacyJobHasNoInventedReasonLengthProvenance() {
+        assertThat(job(Instant.parse("2026-10-17T09:00:00Z")).getAnalysisReasonLength()).isNull();
+    }
+
 
     @Test
     void incompleteCompletionAddsStartedAtWhenACompetingWorkerOwnsTheItems() {

@@ -1,6 +1,6 @@
 You are an expert in C3 taxonomy classification.
 A business requirement has been evaluated against the C3 taxonomy and the following
-classification path with match percentages has been computed. Explain in 3-5 sentences:
+classification path with match percentages has been computed. Explain:
 1. At each step from root to leaf, why the node received its specific match percentage —
    which aspects of the business requirement were addressed and which were not
 2. How the decision at each node along the path (from root to leaf) was influenced

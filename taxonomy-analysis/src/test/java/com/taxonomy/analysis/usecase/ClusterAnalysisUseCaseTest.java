@@ -29,7 +29,7 @@ class ClusterAnalysisUseCaseTest {
     private final WorkspaceViewContextReadPort views = mock(WorkspaceViewContextReadPort.class);
     private final AnalyzeRequirementCommand command = new AnalyzeRequirementCommand("requirement", true, 8, "MOCK", "alice",
             new WorkspaceContext("alice", "workspace", "draft", "repo"), null,
-            new AnalysisScope(Set.of("CP"), AnalysisMode.FULL));
+            new AnalysisScope(Set.of("CP"), AnalysisMode.FULL)).withAnalysisReasonLength(AnalysisReasonLength.STANDARD);
     private final ViewContext view = new ViewContext("commit", "draft", null, false, false, false);
 
     @Test

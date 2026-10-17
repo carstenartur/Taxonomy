@@ -13,4 +13,5 @@ public final class PreferenceAnalysisRuntimeSettings implements AnalysisRuntimeS
     private final ObjectProvider<PreferencesService> preferences;
     public PreferenceAnalysisRuntimeSettings(ObjectProvider<PreferencesService> preferences) { this.preferences = preferences; }
     @Override public int getInt(String key, int defaultValue) { return preferences.getObject().getInt(key, defaultValue); }
+    @Override public String getString(String key, String defaultValue) { return preferences.getObject().getString(key, defaultValue); }
 }

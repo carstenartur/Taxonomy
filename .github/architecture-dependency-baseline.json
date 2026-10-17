@@ -1336,7 +1336,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 7
+      "classDependencyCount": 8
     },
     {
       "fromContext": "portfolio",

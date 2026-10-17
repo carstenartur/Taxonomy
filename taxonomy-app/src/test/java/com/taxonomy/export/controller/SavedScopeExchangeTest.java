@@ -73,6 +73,57 @@ class SavedScopeExchangeTest {
         return saved;
     }
 
+    @ParameterizedTest
+    @CsvSource({"short", "standard", "detailed"})
+    void recordedReasonLengthSurvivesExportImportAndReExport(String length) throws Exception {
+        var request = new HashMap<String, Object>(Map.of("requirement", "requirement",
+                "scores", Map.of("BP", 70d), "reasons", Map.of("BP", "Recorded reason"),
+                "provider", "MOCK", "analysisReasonLength", length));
+        var exported = controller().exportScores(request);
+        assertThat(exported.getStatusCode().value()).isEqualTo(200);
+        var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
+        assertThat(imported.getStatusCode().value()).isEqualTo(200);
+        var reExported = controller().exportScores(imported.getBody());
+        assertThat(reExported.getStatusCode().value()).isEqualTo(200);
+        for (var result : List.of(exported.getBody(), imported.getBody(), reExported.getBody())) {
+            var json = mapper.valueToTree(result);
+            assertThat(json.path("analysisReasonLength").asString()).isEqualTo(length);
+            assertThat(json.path("reasons").path("BP").asString()).isEqualTo("Recorded reason");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, false", "2, true", "3, false", "4, true"})
+    void unrecordedReasonLengthStaysUnknownInLegacyAndManualEvidence(int version, boolean explicitNull) throws Exception {
+        var request = mapper.convertValue(evidence(version), new TypeReference<Map<String, Object>>() {});
+        request.put("provider", "MANUAL");
+        if (explicitNull) request.put("analysisReasonLength", null); else request.remove("analysisReasonLength");
+        var imported = controller().importScores(mapper.writeValueAsString(request));
+        assertThat(imported.getStatusCode().value()).isEqualTo(200);
+        assertThat(imported.getBody()).containsKey("analysisReasonLength");
+        assertThat(imported.getBody().get("analysisReasonLength")).isNull();
+        var exported = controller().exportScores(imported.getBody());
+        assertThat(exported.getStatusCode().value()).isEqualTo(200);
+        assertThat(mapper.valueToTree(exported.getBody()).path("analysisReasonLength").isNull()).isTrue();
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("invalidRecordedReasonLengths")
+    void invalidReasonLengthIsRejectedInsteadOfLosingRecordedMetadata(String direction, Object value) throws Exception {
+        var request = new HashMap<String, Object>(Map.of("requirement", "requirement", "scores", Map.of("BP", 70d),
+                "provider", "MOCK", "analysisReasonLength", value));
+        var response = direction.equals("export") ? controller().exportScores(request)
+                : controller().importScores(mapper.writeValueAsString(request));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+    }
+
+    private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> invalidRecordedReasonLengths() {
+        return java.util.stream.Stream.of("export", "import").flatMap(direction ->
+                java.util.stream.Stream.<Object>of("unlimited", "", " ", "\t", "\r\n",
+                                42, true, Map.of("value", "detailed"), List.of("detailed"))
+                        .map(value -> org.junit.jupiter.params.provider.Arguments.of(direction, value)));
+    }
+
     private AnalysisCoverage.NodeAssessment assessed(int raw, Integer effective) {
         return new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.RELEVANT, raw, effective,
                 AnalysisCoverage.Descendants.COMPLETE, null);

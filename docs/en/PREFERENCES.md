@@ -10,6 +10,7 @@ The Preferences system provides **runtime-configurable settings** for the Taxono
 - [Using the Web UI](#using-the-web-ui)
 - [Available Settings](#available-settings)
 - [LLM Configuration](#llm-configuration)
+- [Analysis reason length](#analysis-reason-length)
 - [Repository and legacy keys](#repository-and-legacy-keys)
 - [Size Limits](#size-limits)
 - [Diagram Configuration](#diagram-configuration)
@@ -89,7 +90,7 @@ The **Preferences** tab in the navigation bar provides a graphical interface for
 
 The Preferences page has three cards:
 
-1. **🤖 LLM Configuration** — Request rate, timeout, and incoming LLM quota.
+1. **🤖 LLM Configuration** — Request rate, timeout, incoming LLM quota, and analysis reason length.
 2. **📈 Size Limits** — Maximum ad-hoc business-text length and default architecture-node count.
 3. **Diagram Configuration** — Selection policy for architecture diagrams.
 
@@ -122,12 +123,35 @@ Click **↩️ Reset to Defaults** to restore all settings to the values from `a
 | `llm.rpm` | int | `5` | ☁️ System | Maximum API requests per minute (outgoing LLM throttle) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP read timeout for LLM API calls |
 | `rate-limit.per-minute` | int | `10` | ☁️ System | Incoming LLM quota per authenticated identity and minute (`0` disables) |
+| `analysis.reason-length` | string | `"standard"` | ☁️ System | Reason length for newly started analyses: `short`, `standard`, or `detailed` |
 
 The `llm.rpm` setting controls the sliding-window throttle for outgoing LLM API calls. The system maintains a FIFO queue of timestamps and sleeps the thread if the rate limit would be exceeded. A 50ms grace period is added for clock drift.
 
 The `llm.timeout.seconds` setting dynamically updates the `RestTemplate` read timeout without restarting the application.
 
 The incoming `rate-limit.per-minute` quota is evaluated only after authentication and authorization and applies to each stable authenticated identity. Local accounts are keyed by their canonical authenticated username; Keycloak browser OIDC and bearer JWT access for one account share the immutable issuer/subject (`iss`/`sub`) identity. Forwarding headers, peer addresses, and the editable `preferred_username` claim do not create quota identities, and rejected requests do not allocate or consume quota state. Exactly `0` disables this limiter; negative values fail closed to one admitted request per minute. Inactive identities expire, the in-memory identity set is bounded, and HTTP `429` responses include `Retry-After` and `Cache-Control: no-store`. Counters are in-memory per application instance; multi-replica deployments need a distributed outer quota or must account for the multiplied aggregate allowance.
+
+### Analysis reason length
+
+Under **Preferences → LLM Configuration → Explanation Length**, choose how much explanation the model should provide for its assessments, then select **Save**. The setting applies system-wide to newly admitted analysis runs.
+
+| Choice | Target length per decision | Content |
+|---|---|---|
+| **Short** (`short`) | One concise sentence | Requirement relevance and the principal reason for the assessment |
+| **Standard** (`standard`) | One or two sentences | The existing concise explanation of the assessment |
+| **Detailed** (`detailed`) | Three to five substantive sentences | Requirement relevance, decisive criteria and an explanation of the assessment; material uncertainties or missing information when applicable |
+
+The length is a text-generation instruction; individual responses can vary. Detailed reasons request additional factual explanation and can take more time and model capacity. The setting does not invent requirement details or rewrite existing reasons. The prescribed scoring and relevance rules remain in place.
+
+Each analysis captures its selected length at admission. Queued, running and resumed operations retain that choice after a preference change. New results save it with the analysis metadata; older and manual results without recorded length keep that distinction. To obtain fuller reasons for existing decisions, select **Detailed** and start a new analysis. Word export uses the recorded reasons and does not generate new model responses.
+
+The runtime preference is also available through `PUT /api/preferences`:
+
+```json
+{"analysis.reason-length": "detailed"}
+```
+
+Only the three listed string values are accepted. Invalid values return HTTP `400` before changes are saved. `TAXONOMY_ANALYSIS_REASON_LENGTH`, or `taxonomy.analysis.reason-length`, supplies the deployment default; otherwise it is `standard`. An older preferences file without this key receives the effective default without creating a history entry merely by being read.
 
 ### Repository and legacy keys
 

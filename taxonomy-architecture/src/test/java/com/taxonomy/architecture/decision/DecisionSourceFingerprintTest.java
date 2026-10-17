@@ -67,12 +67,31 @@ class DecisionSourceFingerprintTest {
                 "Localizing a generated description must not change source identity");
     }
 
+    @Test
+    void recordedReasonSettingIsPreservedAndPartOfSourceIdentity() {
+        var reasons = Map.of("CP", "Recorded requirement evidence.");
+        var legacy = report(reasons, reasons);
+        var standard = report(reasons, reasons, com.taxonomy.dto.AnalysisReasonLength.STANDARD);
+        var detailed = report(reasons, reasons, com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        assertEquals(null, legacy.scope().analysisReasonLength());
+        assertEquals(com.taxonomy.dto.AnalysisReasonLength.DETAILED, detailed.scope().analysisReasonLength());
+        assertEquals(reasons, detailed.scope().recordedReasons());
+        assertNotEquals(fingerprint(legacy), fingerprint(standard));
+        assertNotEquals(fingerprint(standard), fingerprint(detailed));
+    }
+
     private DecisionRationaleReport report(Map<String, String> displayReasons, Map<String, String> recordedReasons) {
+        return report(displayReasons, recordedReasons, null);
+    }
+
+    private DecisionRationaleReport report(Map<String, String> displayReasons, Map<String, String> recordedReasons,
+            com.taxonomy.dto.AnalysisReasonLength length) {
         var provenance = new AnalysisSnapshotProvenance("snapshot", 1L, 2L, 3L, 1, Instant.EPOCH,
                 "author", "mock-model", TaxonomyDataFingerprint.sha256(tree), "prompt");
         var input = new DecisionAnalysisInput("Frozen requirement", scores, displayReasons, "MOCK", "SUCCESS",
                 List.of(), List.of(), tree, provenance, details).withRecordedReasons(recordedReasons)
-                .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), null);
+                .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), null)
+                .withAnalysisReasonLength(length);
         return adapter.adapt(service.generate(input, context, null, Locale.ENGLISH), details, Locale.ENGLISH);
     }
 

@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.model;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.dto.AnalysisReasonLength;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -74,6 +75,11 @@ public class RequirementAnalysisJob {
 
     @Column(name = "max_architecture_nodes", nullable = false)
     private int maxArchitectureNodes;
+
+    /** Frozen when admitted; null means a job created before this setting was recorded. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_reason_length", length = 16)
+    private AnalysisReasonLength analysisReasonLength;
 
     @Column(name = "requested_by", nullable = false, length = 160)
     private String requestedBy;
@@ -243,6 +249,11 @@ public class RequirementAnalysisJob {
     }
     public String getProvider() { return provider; }
     public int getMaxArchitectureNodes() { return maxArchitectureNodes; }
+    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
+    public void recordAnalysisReasonLength(AnalysisReasonLength length) {
+        if (analysisReasonLength != null) throw new IllegalStateException("Analysis reason length admission is immutable");
+        analysisReasonLength = Objects.requireNonNull(length, "Analysis reason length is required for a new job");
+    }
     public String getRequestedBy() { return requestedBy; }
     public String getWorkspaceId() { return workspaceId; }
     public Instant getCreatedAt() { return createdAt; }

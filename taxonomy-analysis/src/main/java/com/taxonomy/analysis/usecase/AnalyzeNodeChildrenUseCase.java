@@ -21,6 +21,8 @@ public class AnalyzeNodeChildrenUseCase {
     }
 
     public AnalyzeNodeChildrenResult analyze(AnalyzeNodeChildrenCommand command) {
+        var length = com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));
+        try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(length)) {
         List<TaxonomyNode> children = taxonomyService.getChildrenOf(command.parentCode());
         if (children.isEmpty()) {
             return AnalyzeNodeChildrenResult.empty();
@@ -34,6 +36,7 @@ public class AnalyzeNodeChildrenUseCase {
                 detail.getRawResponse(),
                 detail.getProvider(),
                 detail.getDurationMs(),
-                detail.getError());
+                detail.getError()).withAnalysisReasonLength(length);
+        }
     }
 }

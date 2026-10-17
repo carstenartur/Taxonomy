@@ -118,7 +118,19 @@ public class DecisionRationaleReportController {
             String language,
             Long analysisDurationMillis,
             com.taxonomy.dto.AnalysisCoverage analysisCoverage,
-            AnalysisScope analysisScope, DecisionReportOptions exportOptions) {
+            AnalysisScope analysisScope, DecisionReportOptions exportOptions,
+            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage,
+                AnalysisScope analysisScope, DecisionReportOptions exportOptions) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, analysisCoverage, analysisScope, exportOptions, null);
+        }
         public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
                 Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
                 Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
@@ -275,7 +287,8 @@ public class DecisionRationaleReportController {
                 List.of(),
                 null,
                 scoreDetails, request.analysisDurationMillis()).withRecordedReasons(request.reasons())
-                .withScope(request.analysisScope(), request.analysisCoverage());
+                .withScope(request.analysisScope(), request.analysisCoverage())
+                .withAnalysisReasonLength(request.analysisReasonLength());
         DecisionRationaleReport report = request.exportOptions() == null
                 ? reportService.generate(input, context, viewContext, locale)
                 : reportService.generate(input, context, viewContext, locale, request.exportOptions());

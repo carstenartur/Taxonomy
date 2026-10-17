@@ -39,6 +39,9 @@ class FrozenClusterAnalysisComputationTest {
         var llm = new LlmService(providers, gateways, mapper, taxonomy,
                 mock(PromptTemplateService.class), embedding, mock(SavedAnalysisService.class));
         ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
+        var liveSettings = mock(AnalysisRuntimeSettings.class);
+        when(liveSettings.getString(anyString(), anyString())).thenReturn("short");
+        ReflectionTestUtils.setField(llm, "analysisRuntimeSettings", liveSettings);
         var computation = new FrozenClusterAnalysisComputation(store, snapshots, llm, providers,
                 FrozenClusterAnalysisComputationTest::guard, mapper);
         var context = DurableClusterAnalysisExecutionTest.context("score");
@@ -47,7 +50,8 @@ class FrozenClusterAnalysisComputationTest {
                 DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), "CP")));
 
         var result = computation.score(new ClusterAnalysisStore.Input(context,
-                DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK"), true, null),
+                DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK")
+                        .withAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED), true, null),
                 task, () -> false);
 
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
@@ -55,6 +59,9 @@ class FrozenClusterAnalysisComputationTest {
         assertThat(result.getTree()).singleElement().satisfies(root -> assertThat(root.getNameEn()).isEqualTo("Frozen CP"));
         assertThat(result.getAnalysisScope().taxonomyRoots()).containsExactly("CP");
         assertThat(result.getProvider()).isEqualTo("Mock");
+        assertThat(result.getAnalysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        assertThat(AnalysisReasonContext.current()).isNull();
+        verifyNoInteractions(liveSettings);
         assertThat(FrozenCatalogueContext.current()).isNull();
         assertThat(AnalysisRunControl.active()).isFalse();
         assertThat(providers.isMockMode()).isFalse();

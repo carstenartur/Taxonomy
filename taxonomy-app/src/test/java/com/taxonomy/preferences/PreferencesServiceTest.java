@@ -92,6 +92,7 @@ class PreferencesServiceTest {
         assertThat(preferencesService.getInt("llm.timeout.seconds", 0)).isEqualTo(45);
         assertThat(preferencesService.getInt("rate-limit.per-minute", 0)).isEqualTo(12);
         assertThat(preferencesService.getInt("limits.max-business-text", 0)).isEqualTo(9000);
+        assertThat(preferencesService.getString("analysis.reason-length", "missing")).isEqualTo("standard");
     }
 
     @Test
@@ -162,9 +163,10 @@ class PreferencesServiceTest {
 
     @Test
     void resetToDefaultsRestoresPropertyValues() throws IOException {
-        preferencesService.update(Map.of("llm.rpm", 99), "tester");
+        preferencesService.update(Map.of("llm.rpm", 99, "analysis.reason-length", "detailed"), "tester");
         preferencesService.resetToDefaults("tester");
         assertThat(preferencesService.getInt("llm.rpm", 0)).isEqualTo(7); // from test property
+        assertThat(preferencesService.getString("analysis.reason-length", "missing")).isEqualTo("standard");
     }
 
     @Test

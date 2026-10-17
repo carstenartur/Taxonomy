@@ -4,9 +4,13 @@ import com.taxonomy.analysis.controller.AnalysisProgressController;
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,6 +36,55 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DurableClusterAnalysisObservationTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final WorkspaceContext SCOPE = command("requirement").workspaceContext();
+
+    @ParameterizedTest
+    @EnumSource(AnalysisReasonLength.class)
+    @NullSource
+    void recoveryApiRetainsCapturedReasonLengthOnlyWithinTheOriginalScope(AnalysisReasonLength captured) throws Exception {
+        try (var db = new Database(); var observer = new DurableClusterAnalysisObservation(
+                db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE, Runnable::run)) {
+            var context = context("reason-length-recovery");
+            db.store.admit(context, command("requirement").withAnalysisReasonLength(captured), null,
+                    Map.of(CP, "{}", IP, "{}"));
+            long originalRevision = db.store.snapshot(context).revision();
+            int originalDispatches = db.sent.size();
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentUsername()).thenReturn("alice");
+            when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
+            var mvc = MockMvcBuilders.standaloneSetup(new AnalysisProgressController(
+                    new AnalysisProgressRegistry(new StandardEnvironment()), resolver, observer)).build();
+            String url = "/api/analysis-runs/" + context.operationId() + "/request";
+
+            assertEquals(captured, observer.request(context.operationId(), "alice", SCOPE).analysisReasonLength());
+            var authorized = mvc.perform(get(url))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.businessText").value("requirement"))
+                    .andExpect(jsonPath("$.provider").value("MOCK"))
+                    .andExpect(jsonPath("$.scope.workspaceId").value("workspace"))
+                    .andExpect(jsonPath("$.scope.repositoryId").value("repo"))
+                    .andExpect(jsonPath("$.scope.branch").value("draft"))
+                    .andExpect(jsonPath("$.scope.sourceCommit").value("source"));
+            if (captured == null) {
+                authorized.andExpect(jsonPath("$.analysisReasonLength").value(org.hamcrest.Matchers.nullValue()));
+            } else {
+                authorized.andExpect(jsonPath("$.analysisReasonLength").value(captured.value()));
+            }
+
+            when(resolver.resolveCurrentUsername()).thenReturn("bob");
+            mvc.perform(get(url)).andExpect(status().isNotFound());
+            when(resolver.resolveCurrentUsername()).thenReturn("alice");
+            for (var foreign : List.of(
+                    new WorkspaceContext("alice", "foreign-workspace", "draft", "repo"),
+                    new WorkspaceContext("alice", "workspace", "foreign-branch", "repo"),
+                    new WorkspaceContext("alice", "workspace", "draft", "foreign-repo"))) {
+                when(resolver.resolveCurrentContext()).thenReturn(foreign);
+                mvc.perform(get(url)).andExpect(status().isNotFound());
+            }
+            assertEquals(originalRevision, db.store.snapshot(context).revision(), "Recovery input is read-only");
+            assertEquals(originalDispatches, db.sent.size(), "Recovery input never starts analysis work");
+        }
+    }
 
     @Test void explicitScopedDetailsSurvivePersistenceRestartAndDoNotEnterProgress() throws Exception {
         String url = "jdbc:hsqldb:mem:diagnostic-restart-" + java.util.UUID.randomUUID() + ";hsqldb.tx=mvcc";

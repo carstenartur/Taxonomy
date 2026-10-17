@@ -744,6 +744,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         result.setAnalysisOperationId(run.id);
         result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());
         result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());
+        result.setAnalysisReasonLength(read(run.commandJson, AnalyzeRequirementCommand.class).analysisReasonLength());
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
         return result;

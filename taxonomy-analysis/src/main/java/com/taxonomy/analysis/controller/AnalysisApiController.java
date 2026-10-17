@@ -20,6 +20,7 @@ import com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase;
 import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisResult;
@@ -166,6 +167,7 @@ public class AnalysisApiController {
                     var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                             maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
                     if (continuation != null) command = continuation.bind(command);
+                    else command = command.withAnalysisReasonLength(resolveReasonLength(request.getAnalysisReasonLength()));
                     String branch = context.currentBranch();
                     var view = repositoryStateService.getViewContext(context.username(), branch, context);
                     var operation = AnalysisOperationContexts.create(operationId, command, view);
@@ -174,8 +176,6 @@ public class AnalysisApiController {
                             .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(result.analysisResult());
                 }
             }
-            String pinnedProvider = followUpProviders == null ? request.getProvider()
-                    : followUpProviders.remember(operationId, request.getProvider(), request.getBusinessText(), username, context);
             if (request.isResumable() && continuationService == null) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
             }
@@ -185,15 +185,21 @@ public class AnalysisApiController {
                 return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                         .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());
             }
+            var reasonLength = continuation == null ? resolveReasonLength(request.getAnalysisReasonLength())
+                    : continuation.analysisReasonLength();
+            String pinnedProvider = followUpProviders == null ? request.getProvider()
+                    : followUpProviders.remember(operationId, request.getProvider(), request.getBusinessText(), username, context, reasonLength);
             try (var run = analysisProgressRegistry == null ? null
                     : analysisProgressRegistry.open(operationId, username, context, null)) {
             var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
-                    maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
+                    maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope)
+                    .withAnalysisReasonLength(reasonLength);
             AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(command)
                     : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
                             () -> analyzeRequirementUseCase.analyze(command));
             result.analysisResult().setAnalysisOperationId(operationId);
             result.analysisResult().setAnalysisProviderId(pinnedProvider);
+            result.analysisResult().setAnalysisReasonLength(reasonLength);
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {
                 // The continuation is the durable authority. Publishing live completion must
@@ -305,10 +311,11 @@ public class AnalysisApiController {
                     "Full analysis requires an isolated workspace");
         }
 
+        var reasonLength = resolveReasonLength(null);
         String followUpProvider = followUpProviders == null ? provider
-                : followUpProviders.remember(operationId, provider, businessText, username, streamContext);
+                : followUpProviders.remember(operationId, provider, businessText, username, streamContext, reasonLength);
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
-                businessText, provider, LocaleContextHolder.getLocale(), analysisScope);
+                businessText, provider, LocaleContextHolder.getLocale(), analysisScope, reasonLength);
         // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
         // Reservation does not install thread-local control; the executor's worker claims that ownership.
         var reservation = analysisProgressRegistry == null ? null
@@ -352,6 +359,7 @@ public class AnalysisApiController {
                     Map<String, Object> scopedPayload = new LinkedHashMap<>();
                     ((Map<?, ?>) mapped.payload()).forEach((key, value) -> scopedPayload.put(String.valueOf(key), value));
                     scopedPayload.put("analysisScope", analysisScope);
+                    scopedPayload.put("analysisReasonLength", reasonLength);
                     if (followUpProvider != null) scopedPayload.put("analysisProviderId", followUpProvider);
                     mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);
                     if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
@@ -421,12 +429,14 @@ public class AnalysisApiController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Full analysis requires an isolated workspace");
         }
         String operationId = newOperationId();
+        var reasonLength = resolveReasonLength(null);
         var command = new AnalyzeRequirementCommand(businessText, scope.includesRelations(),
-                resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope);
+                resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope)
+                .withAnalysisReasonLength(reasonLength);
         String branch = workspace.currentBranch();
         var view = repositoryStateService.getViewContext(workspace.username(), branch, workspace);
         var operation = AnalysisOperationContexts.create(operationId, command, view);
-        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope);
+        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope, reasonLength);
         var emitter = new SseEmitter(0L);
         var completed = new AtomicBoolean();
         var disconnected = new AtomicBoolean();
@@ -459,6 +469,7 @@ public class AnalysisApiController {
                         if (snapshot.revision() <= sequence.get()) return;
                         sequence.set(snapshot.revision());
                         var payload = durablePayload(snapshot, scope);
+                        payload.put("analysisReasonLength", reasonLength);
                         boolean terminal = snapshot.state().terminal();
                         if (terminal) completed.set(true);
                         String name = terminal ? ("SUCCESS".equals(snapshot.result().getStatus()) ? "complete" : "error") : "phase";
@@ -526,6 +537,10 @@ public class AnalysisApiController {
         return scope;
     }
 
+    private AnalysisReasonLength resolveReasonLength(AnalysisReasonLength requested) {
+        return com.taxonomy.analysis.service.AnalysisReasonContext.resolve(requested, analysisRuntimeSettings);
+    }
+
     @Operation(summary = "Analyze single node children",
             description = "Analyzes the children of a taxonomy node against a requirement",
             tags = {"Analysis"})
@@ -543,7 +558,7 @@ public class AnalysisApiController {
                 String owner = workspaceResolver.resolveCurrentUsername();
                 WorkspaceContext workspace = resolveWorkspaceContext(owner);
                 String id = UUID.randomUUID().toString();
-                String pin = followUpProviders.remember(id, provider, businessText, owner, workspace);
+                String pin = followUpProviders.remember(id, provider, businessText, owner, workspace, resolveReasonLength(null));
                 var result = followUpProviders.execute(id, null, businessText, owner, workspace,
                         () -> analyzeNodeChildrenUseCase.analyze(new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
                 return ResponseEntity.ok(result.withFollowUpContext(id, pin));
@@ -576,7 +591,9 @@ public class AnalysisApiController {
         if (followUpProviders == null) {
             if ((operationId != null && !operationId.isBlank()) || (provider != null && !provider.isBlank()))
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analysis provider binding is unavailable");
-            return work.get();
+            try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(resolveReasonLength(null))) {
+                return work.get();
+            }
         }
         String owner = workspaceResolver.resolveCurrentUsername();
         return followUpProviders.execute(operationId, provider, text, owner, resolveWorkspaceContext(owner), work);
