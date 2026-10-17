@@ -368,3 +368,138 @@ for (const change of ['raw score','effective score','reason','new assessment']) 
   assert.equal(h.analyses.length,1);assert.equal(JSON.stringify([h.S.currentRawScores,h.S.currentScores,h.S.currentReasons]),visible);
  });
 }
+
+// Reload the real versioned draft lifecycle, not a copy of the recovery module's
+// private state. The provider request remains pending in the page being left.
+function persistedRecovery(shared = {}) {
+ const copy = value => JSON.parse(JSON.stringify(value));
+ const selected = {taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};
+ const id = '5da958bf-e34c-4320-a036-ae0f794789dc';
+ const request = {businessText:'Hospital communications',provider:'CUSTOM_OPENAI',analysisScope:selected,includeArchitectureView:false};
+ function result(version, state, score, reason) {
+  return {recovery:{id,version,state,completedCalls:version,openQuestions:state==='PAUSED'?[{key:'question-a',nodes:['CP']}]:[]},
+   rawScores:{CP:score},effectiveScores:{CP:score-5},scores:{CP:score-5},reasons:{CP:reason},analysisScope:selected,
+   analysisCoverage:{failedOrBlockedNodes:state==='PAUSED'?1:0,nodes:{}},status:state==='PAUSED'?'PARTIAL':'SUCCESS'};
+ }
+ if (!shared.snapshot) {
+  const paused=result(7,'PAUSED',80,'Accepted paused explanation');
+  shared.snapshot={request,recovery:paused.recovery,result:paused};
+  shared.storage=new Map([['taxonomy.recovery.active.v1',JSON.stringify({id,workspaceId:'ws-a'})]]);
+ }
+ const listeners=new Map(), timers=new Map(), fields={}, analyses=[];let sequence=0, options=[];
+ for(const name of ['businessText','copilotBtn','analyzeBtn','providerSelect','analysisRelationsExtension',
+  'extendAnalysisRelationsBtn','analysisRelationsExtensionHint']) fields[name]=Object.assign(node(),{dataset:{}});
+ fields.businessText.value=shared.draft?'':'Hospital communications';fields.providerSelect.value='CUSTOM_OPENAI';
+ const S={taxonomyData:[{code:'CP',children:[]}],currentView:'list',evaluatedNodes:new Set()};
+ const document={documentElement:{lang:'en'},getElementById:name=>fields[name]||null,querySelectorAll:()=>[],querySelector:()=>null,
+  addEventListener(name,fn){if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);},
+  dispatchEvent(event){for(const fn of listeners.get(event.type)||[])fn(event);}};
+ const ui={update(){},close(){},error(){},isDismissed:()=>true,open(title,message,build,actions){options=actions;}};
+ const window={TaxonomyState:S,TaxonomyRecoveryViewport:{mount:()=>ui},
+  TaxonomyBrowse:{renderView(){},updateExportGroupVisibility(){}},
+  TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},runAnalysis(value){analyses.push(copy(value.continuation));return new Promise(()=>{});}},
+  TaxonomyAnalysisScope:{read:()=>selected,acceptResult(){},restrictsGlobalAnalysis:()=>true},
+  setTimeout(fn){timers.set(++sequence,fn);return sequence;},clearTimeout:key=>timers.delete(key),
+  TaxonomyAnalysisSessionApi:{async request(url,configuration={}){
+   if(url.startsWith('/api/analysis-drafts/')) {
+    if(configuration.method==='PUT') {
+     const body=JSON.parse(configuration.body);
+     assert.equal(body.expectedVersion,shared.draft?.version??null);
+     shared.draft={version:(shared.draft?.version||0)+1,payload:copy(body.payload)};
+    }
+    return {ok:true,status:200,json:async()=>copy(shared.draft||null)};
+   }
+   assert.equal(url,'/api/analysis-continuations/'+id);
+   if(shared.readGate)return shared.readGate;
+   return {ok:true,json:async()=>copy(shared.snapshot)};
+  }}};
+ const context=vm.createContext({window,document,crypto:webcrypto,console,Set,
+  sessionStorage:{getItem:key=>shared.storage.get(key)||null,setItem:(key,value)=>shared.storage.set(key,value),removeItem:key=>shared.storage.delete(key)},
+  setTimeout:window.setTimeout,clearTimeout:window.clearTimeout,
+  CustomEvent:class {constructor(type,configuration={}){this.type=type;this.detail=configuration.detail;}}});
+ const load=name=>vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/'+name,import.meta.url),'utf8'),context);
+ load('taxonomy-analysis-session-core.js');const C=window.__TaxonomyAnalysisSessionContext;
+ C.runtime.workspaceId='ws-a';C.runtime.analysisGeneration=0;C.showActionAlert=()=>{};
+ load('taxonomy-analysis-session-draft.js');
+ window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:C.runtime.workspaceId}),saveNow:()=>C.saveDraft()};
+ load('taxonomy-analysis-recovery.js');load('taxonomy-relations-extension.js');
+ return {S,C,window,fields,analyses,shared,
+  async restore(){if(shared.draft)await C.loadDraft();else document.dispatchEvent({type:'taxonomy:analysis-draft-restored'});await settle();},
+  retry(){window.TaxonomyAnalysisRecovery.open();options.find(option=>option.id==='analysisRecoveryRetry').handler();},
+  running(){shared.snapshot={...shared.snapshot,recovery:{...shared.snapshot.recovery,state:'RUNNING',version:8}};},
+  completed(){const finished=result(9,'COMPLETED',95,'New completed explanation');shared.snapshot={request,recovery:finished.recovery,result:finished};},
+  refresh:()=>window.TaxonomyAnalysisRecovery.refresh(),save:()=>C.saveDraft(),
+  eligible(){window.TaxonomyRelationsExtension.render();return !fields.extendAnalysisRelationsBtn.disabled;}};
+}
+
+test('reload during a retried node assessment accepts newer server evidence and enables relations',async()=>{
+ const before=persistedRecovery();await before.restore();
+ assert.equal(before.S.currentRawScores.CP,80);before.retry();before.running();await before.save();
+ assert.equal(before.analyses[0].continuationAction,'RETRY');assert.equal(before.analyses[0].continuationVersion,7);
+ const after=persistedRecovery(before.shared);await after.restore();
+ assert.equal(after.S.analysisRecovery.state,'RUNNING');assert.equal(after.S.currentRawScores.CP,80);
+ after.completed();await after.refresh();await after.refresh();
+ assert.equal(after.S.currentRawScores.CP,95,'A newer completed result is not a local edit');
+ assert.equal(after.S.currentScores.CP,90);assert.equal(after.S.currentReasons.CP,'New completed explanation');
+ assert.equal(after.S.analysisRecovery.version,9);assert.equal(after.eligible(),true);
+ after.window.TaxonomyAnalysisRecovery.extendRelations();
+ assert.equal(after.analyses[0].relationSourceVersion,9);
+ assert.equal(after.analyses[0].relationSourceContinuationId,before.S.recoveryContext.id);
+});
+
+for(const edit of ['raw score','effective score','reason','new assessment']) {
+ test(`reload during retry preserves a saved ${edit} edit until it is explicitly reverted`,async()=>{
+  const before=persistedRecovery();await before.restore();before.retry();before.running();
+  const original=JSON.stringify([before.S.currentRawScores,before.S.currentScores,before.S.currentReasons]);
+  if(edit==='raw score')before.S.currentRawScores.CP=99;
+  else if(edit==='effective score')before.S.currentScores.CP=99;
+  else if(edit==='reason')before.S.currentReasons.CP='User explanation';
+  else before.S.currentRawScores['CP-new']=84;
+  const edited=JSON.stringify([before.S.currentRawScores,before.S.currentScores,before.S.currentReasons]);await before.save();
+  const after=persistedRecovery(before.shared);await after.restore();after.completed();await after.refresh();await after.refresh();
+  assert.equal(JSON.stringify([after.S.currentRawScores,after.S.currentScores,after.S.currentReasons]),edited);
+  assert.equal(after.eligible(),false);after.window.TaxonomyAnalysisRecovery.extendRelations();assert.equal(after.analyses.length,0);
+  [after.S.currentRawScores,after.S.currentScores,after.S.currentReasons]=JSON.parse(original);
+  after.S.currentEffectiveScores=after.S.currentScores;
+  assert.equal(after.eligible(),false,'The old evidence does not belong to the completed server revision');
+  await after.refresh();assert.equal(after.S.currentRawScores.CP,95);assert.equal(after.eligible(),true);
+ });
+}
+
+for(const switchScope of ['workspace','generation']) {
+ test(`a late completed read after a ${switchScope} switch cannot attach its evidence to a new analysis`,async()=>{
+  const h=persistedRecovery();await h.restore();h.completed();let release;
+  h.shared.readGate=new Promise(resolve=>{release=resolve;});const read=h.refresh();
+  if(switchScope==='workspace')h.C.runtime.workspaceId='ws-b';else h.C.runtime.analysisGeneration++;
+  h.window.TaxonomyAnalysisRecovery.startManagedAnalysis();const next=h.S.recoveryContext;
+  release({ok:true,json:async()=>h.shared.snapshot});await read;
+  assert.equal(h.S.recoveryContext,next);assert.equal(h.S.analysisRecovery.state,'RUNNING');assert.equal(h.S.currentRawScores.CP,80);
+  assert.equal(h.eligible(),false);
+ });
+}
+
+test('persisting accepted evidence does not duplicate a long provider explanation in the bounded draft',async()=>{
+ const h=persistedRecovery();const explanation='Retained provider explanation. '.repeat(20000);
+ h.shared.snapshot.result.reasons.CP=explanation;await h.restore();
+ assert.equal(h.shared.draft.payload.reasons.CP,explanation);
+ assert.ok(JSON.stringify(h.shared.draft).length<explanation.length+5000,'The baseline must have bounded persistence overhead');
+});
+
+for(const variant of ['matching same revision','edited same revision','newer revision']) {
+ test(`legacy recovery drafts without an accepted baseline conservatively handle ${variant}`,async()=>{
+  const before=persistedRecovery();await before.restore();await before.save();
+  const payload=before.shared.draft.payload;
+  const {id,workspaceId,request,followups,noFollowups}=payload.recoveryContext;
+  payload.recoveryContext={id,workspaceId,request,followups,noFollowups};
+  if(variant==='edited same revision')payload.reasons.CP='Legacy user edit';
+  if(variant==='newer revision')before.completed();
+  else {
+   before.shared.snapshot.recovery={...before.shared.snapshot.recovery,state:'COMPLETED',openQuestions:[]};
+   before.shared.snapshot.result={...before.shared.snapshot.result,recovery:before.shared.snapshot.recovery,status:'SUCCESS'};
+  }
+  const after=persistedRecovery(before.shared);await after.restore();await after.refresh();
+  assert.equal(after.S.currentRawScores.CP,80);
+  assert.equal(after.S.currentReasons.CP,variant==='edited same revision'?'Legacy user edit':'Accepted paused explanation');
+  assert.equal(after.eligible(),variant==='matching same revision');
+ });
+}

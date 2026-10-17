@@ -213,7 +213,8 @@ public class AnalysisApiController {
                     : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
                             () -> analyzeRequirementUseCase.analyze(boundCommand));
             result.analysisResult().setAnalysisOperationId(operationId);
-            result.analysisResult().setAnalysisProviderId(boundCommand.provider() == null ? pinnedProvider : boundCommand.provider());
+            result.analysisResult().setAnalysisProviderId(continuation != null && boundCommand.provider() != null
+                    ? boundCommand.provider() : pinnedProvider);
             result.analysisResult().setAnalysisReasonLength(reasonLength);
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {

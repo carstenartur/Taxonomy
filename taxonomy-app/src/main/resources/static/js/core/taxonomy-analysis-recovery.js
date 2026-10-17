@@ -3,7 +3,6 @@
     'use strict';
     var C = window.__TaxonomyAnalysisSessionContext;
     if (!C || !window.TaxonomyRecoveryViewport) throw new Error('Recovery requires session and viewport modules');
-    var nodeEvidenceSnapshots = new WeakMap();
     var S = C.S, busy = false, decisionBusy = false, poll = null, reading = false, liveWork = '';
     var generation = C.runtime.analysisGeneration || 0;
     var STORAGE = 'taxonomy.recovery.active.v1';
@@ -18,10 +17,23 @@
             && generation === (C.runtime.analysisGeneration || 0) && !C.runtime.invalidating);
     }
     // Presentation compatibility only. The server independently loads and authorizes the durable evidence.
+    function evidenceChecksum(value) {
+        // Keep persisted baselines bounded even for long explanations. These independent
+        // integer checksums are presentation metadata, never server evidence or authorization.
+        var hashes = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35];
+        var primes = [0x01000193, 0x27d4eb2f, 0x165667b1, 0x5bd1e995];
+        for (var at = 0; at < value.length; at++) {
+            var code = value.charCodeAt(at);
+            for (var lane = 0; lane < hashes.length; lane++) hashes[lane] = Math.imul(hashes[lane] ^ code, primes[lane]);
+        }
+        return 'v1:' + value.length + ':' + hashes.map(function (hash) {
+            return (hash >>> 0).toString(16).padStart(8, '0');
+        }).join('');
+    }
     function nodeEvidence(raw, effective, displayed, reasons) {
-        return JSON.stringify([raw || {}, effective || {}, displayed || {}, reasons || {}].map(function (values) {
+        return evidenceChecksum(JSON.stringify([raw || {}, effective || {}, displayed || {}, reasons || {}].map(function (values) {
             return Object.keys(values).sort().map(function (key) { return [key, values[key]]; });
-        }));
+        })));
     }
     function resultNodeEvidence(result) {
         var effective = result.effectiveScores || result.scores || {};
@@ -31,8 +43,27 @@
         var effective = S.currentEffectiveScores || S.currentScores || {};
         return nodeEvidence(S.currentRawScores, effective, S.currentScores || effective, S.currentReasons);
     }
+    function evidenceScope(context) {
+        var request = context.request, scope = request.analysisScope;
+        return evidenceChecksum(JSON.stringify([context.id, context.workspaceId, request.businessText,
+            scope?.mode || null, (scope?.taxonomyRoots || []).slice().sort()]));
+    }
+    function acceptedNodeEvidence(context) {
+        var baseline = context?.nodeEvidenceBaseline;
+        return baseline && baseline.scope === evidenceScope(context) && Number.isSafeInteger(baseline.version)
+            && typeof baseline.evidence === 'string' ? baseline : null;
+    }
+    function rememberNodeEvidence(result, context) {
+        if (result.recovery?.id !== context.id || !Number.isSafeInteger(result.recovery?.version)) return;
+        // recoveryContext is already saved/restored by the versioned draft lifecycle.
+        // Retain the last accepted server evidence separately from editable score/reason maps.
+        context.nodeEvidenceBaseline = { scope: evidenceScope(context), version: result.recovery.version,
+            evidence: resultNodeEvidence(result) };
+    }
     function nodeEvidenceMatches(context) {
-        return Boolean(context && nodeEvidenceSnapshots.has(context) && nodeEvidenceSnapshots.get(context) === currentNodeEvidence());
+        var baseline = acceptedNodeEvidence(context);
+        return Boolean(baseline && S.analysisRecovery?.id === context.id && baseline.version === S.analysisRecovery.version
+            && baseline.evidence === currentNodeEvidence());
     }
     function stopped() { return S.analysisRecovery?.state === 'CANCELLED' || current()?.followupState === 'CANCELLED'; }
     function setBusy(value) {
@@ -122,15 +153,16 @@
     }
     function hydrate(result, context) {
         if (!result || !inScope(context)) return;
+        var baseline = acceptedNodeEvidence(context);
         var completedSource = context.request.analysisScope?.mode === 'TAXONOMIES_ONLY'
             && ['COMPLETED', 'COMPLETED_WITH_GAPS'].includes(result.recovery?.state);
         if (completedSource && S.lastAnalyzedText === context.request.businessText
-                && (nodeEvidenceSnapshots.has(context) ? !nodeEvidenceMatches(context) : currentNodeEvidence() !== resultNodeEvidence(result))) {
+                && (baseline ? baseline.evidence !== currentNodeEvidence() : currentNodeEvidence() !== resultNodeEvidence(result))) {
             // Refreshing a journal must not erase manual edits or independent assessment additions.
-            if (!nodeEvidenceSnapshots.has(context)) nodeEvidenceSnapshots.set(context, resultNodeEvidence(result));
+            // Legacy drafts without a baseline can only establish one from an exact evidence match.
             return;
         }
-        nodeEvidenceSnapshots.set(context, resultNodeEvidence(result));
+        rememberNodeEvidence(result, context);
         S.analysisRecovery = result.recovery || S.analysisRecovery;
         context.pauseReason = ['PAUSED', 'STOPPED'].includes(S.analysisRecovery?.state) ? result.errorMessage : null;
         S.analysisCoverage = result.analysisCoverage || null;
@@ -244,7 +276,7 @@
             restoreArchitecture();
             if (!result?.recovery) throw new Error(text('Keine bestätigte Fortsetzungsantwort.', 'No confirmed continuation response.'));
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
-            nodeEvidenceSnapshots.set(c, resultNodeEvidence(result));
+            rememberNodeEvidence(result, c);
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
             c.observationError = null;
             c.pauseReason = ['PAUSED', 'STOPPED'].includes(result.recovery.state) ? result.errorMessage : null;

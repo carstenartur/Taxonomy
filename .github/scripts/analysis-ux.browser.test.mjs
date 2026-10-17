@@ -364,12 +364,36 @@ for(const locale of ['de','en']){
         const page=await progressFixture(locale);try{
             await page.evaluate(()=>{window.progressMonitor=TaxonomyAnalysisProgress.start('ux-progress');});
             await page.waitForFunction(()=>window.observedSequence===1);
+            const details=page.locator('#analysisWorkProgress details');
             const summary=page.locator('#analysisWorkProgress details > summary');
-            await summary.click();await summary.focus();
-            await page.evaluate(()=>{progressSnapshot.sequence=2;progressSnapshot.nodeProgress.assessed=2;});
+            const taxonomyBar=details.locator('progress[data-taxonomy-root="BP"]');
+            assert.equal(await details.evaluate(e=>e.open),true,'Taxonomy progress starts expanded');
+            assert.equal(await taxonomyBar.isVisible(),true);
+            assert.equal(await taxonomyBar.getAttribute('value'),'1');
+            await summary.focus();await page.keyboard.press('Space');
+            assert.equal(await details.evaluate(e=>e.open),false,'Keyboard closes the initially expanded details');
+            await page.evaluate(()=>{
+                progressSnapshot.sequence=2;
+                Object.assign(progressSnapshot.nodeProgress,{assessed:2,open:2});
+                Object.assign(progressSnapshot.nodeProgress.taxonomies[0],{assessed:2,open:2});
+            });
             await page.waitForFunction(()=>window.observedSequence===2);
             assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
-            assert.equal(await page.locator('#analysisWorkProgress details').getAttribute('open'),'');
+            assert.equal(await details.evaluate(e=>e.open),false,'Counter updates preserve the user’s closed disclosure');
+            assert.equal(await taxonomyBar.isVisible(),false);
+            assert.equal(await taxonomyBar.getAttribute('value'),'2');
+            await page.keyboard.press('Space');
+            assert.equal(await details.evaluate(e=>e.open),true,'Keyboard reopens the focused details');
+            await page.evaluate(()=>{
+                progressSnapshot.sequence=3;
+                Object.assign(progressSnapshot.nodeProgress,{assessed:3,open:1});
+                Object.assign(progressSnapshot.nodeProgress.taxonomies[0],{assessed:3,open:1});
+            });
+            await page.waitForFunction(()=>window.observedSequence===3);
+            assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
+            assert.equal(await details.evaluate(e=>e.open),true,'Counter updates preserve the user’s reopened disclosure');
+            assert.equal(await taxonomyBar.isVisible(),true);
+            assert.equal(await taxonomyBar.getAttribute('value'),'3');
             await page.evaluate(()=>progressMonitor.stop());
         }finally{await finish(page);}
     });

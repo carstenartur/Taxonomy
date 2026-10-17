@@ -143,8 +143,9 @@ public class AnalysisContinuationStore {
                 savedRequest.getRelationSourceContinuationId() == null ? null : previous);
     }
 
-    /** Resolves a new extension or its existing target without changing the source. */
-    @Transactional(readOnly = true)
+    /** Resolves a new extension or its existing target without changing the source.
+     * PostgreSQL requires a regular transaction for the shared source row lock. */
+    @Transactional
     public Snapshot relationInput(AnalysisRequest request, WorkspaceContext scope) {
         requireScope(scope);
         String id = requireId(request.getContinuationId());

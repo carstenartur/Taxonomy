@@ -35,7 +35,9 @@ public class AnalysisContinuationService {
     /** The only HTTP input for an extension is an owned source revision and a new target identity. */
     public AnalysisRequest resolveRelationsRequest(AnalysisRequest decision, String username, WorkspaceContext scope) {
         authorize(username, scope);
-        if (!decision.isResumable() || decision.getRelationSourceVersion() == null)
+        if (!decision.isResumable())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Relations extension requires a durable source revision");
+        if (decision.getRelationSourceVersion() == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Relations extension requires a durable source revision");
         var input = store.relationInput(decision, scope);
         var saved = input.request();
@@ -139,7 +141,9 @@ public class AnalysisContinuationService {
         var binding = authority == null ? null : authority.binding();
         try (var ignored = providers == null ? null : providers.withRequestProvider(frozen.getProvider(), binding);
              var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
-            if (request.getRelationSourceContinuationId() != null) validateAuthority(authority, tree);
+            // A claim may authorize execution only after its server-captured authority matches.
+            // Standalone local callers without a provider envelope bind their policy in this scope.
+            validateAuthority(authority == null ? authority(frozen.getProvider(), binding, tree) : authority, tree);
             return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, frozen, binding);
         }
     }
@@ -156,7 +160,7 @@ public class AnalysisContinuationService {
         var pluginBinding = authority == null ? providers.captureProviderBinding(provider) : authority.binding();
         try (var ignored = providers.withRequestProvider(provider, pluginBinding);
              var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
-            if (request.getRelationSourceContinuationId() != null) validateAuthority(authority, tree);
+            validateAuthority(authority == null ? authority(provider, pluginBinding, tree) : authority, tree);
             String signature = signature(frozen, tree);
             var claim = store.begin(frozen, scope, signature, tree);
             var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
